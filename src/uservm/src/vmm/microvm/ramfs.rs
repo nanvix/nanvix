@@ -5,23 +5,29 @@
 // Imports
 //==================================================================================================
 
+#[cfg(target_os = "linux")]
 use crate::vmm::microvm::kvm::vmem::VirtualMemory;
+#[cfg(target_os = "windows")]
+use crate::vmm::microvm::whp::vmem::VirtualMemory;
 use ::anyhow::Result;
 use ::arch::mem::PAGE_SIZE;
 use ::log::{
     error,
     trace,
 };
+#[cfg(target_os = "windows")]
+use ::std::io::Read;
 use ::std::{
-    fs::{
-        File,
-        Metadata,
-    },
-    os::fd::AsRawFd,
+    fs::File,
     path::{
         Path,
         PathBuf,
     },
+};
+#[cfg(target_os = "linux")]
+use ::std::{
+    fs::Metadata,
+    os::fd::AsRawFd,
 };
 
 //==================================================================================================
@@ -38,17 +44,25 @@ const RAMFS_MIN_SLACK_BYTES: usize = 4 * 1024 * 1024;
 ///
 /// # Description
 ///
-/// Encapsulates a RAM filesystem image, its metadata, and the operations required to map it into a
-/// guest's physical memory.
+/// Encapsulates a RAM filesystem image and the operations required to load it into a guest's
+/// physical memory.
+///
+/// On Linux, the image is file-backed (memory-mapped into guest memory via `remap_file_at`).
+/// On Windows, the image contents are read into memory and copied into guest memory.
 ///
 #[derive(Debug)]
 pub struct RamFs {
     /// Filesystem path from which the RAMFS image was loaded.
     path: PathBuf,
-    /// Size of the RAMFS image in bytes.
+    /// Size of the RAMFS image in bytes (Linux: from file metadata).
+    #[cfg(target_os = "linux")]
     size: usize,
-    /// Handle to the RAMFS image file used for memory-mapping.
+    /// Handle to the RAMFS image file used for memory-mapping (Linux only).
+    #[cfg(target_os = "linux")]
     file: File,
+    /// Contents of the RAMFS image (Windows only).
+    #[cfg(target_os = "windows")]
+    data: Vec<u8>,
 }
 
 //==================================================================================================
@@ -59,7 +73,7 @@ impl RamFs {
     ///
     /// # Description
     ///
-    /// Opens a RAMFS image from the provided path and captures its metadata for later mapping.
+    /// Opens a RAMFS image from the provided path and captures its metadata for later loading.
     ///
     /// # Parameters
     ///
@@ -72,49 +86,95 @@ impl RamFs {
     pub fn open(path: &Path) -> Result<Self> {
         trace!("RamFs::open(): path={path:?}");
 
-        let metadata: Metadata = match path.metadata() {
-            Ok(metadata) => metadata,
-            Err(error) => {
-                let reason: String =
-                    format!("failed retrieving ramfs metadata (path={path:?}, error={error:?})");
-                error!("RamFs::open(): {reason}");
-                anyhow::bail!(reason)
-            },
-        };
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "linux")] {
+                let metadata: Metadata = match path.metadata() {
+                    Ok(metadata) => metadata,
+                    Err(error) => {
+                        let reason: String = format!(
+                            "failed retrieving ramfs metadata (path={path:?}, error={error:?})"
+                        );
+                        error!("RamFs::open(): {reason}");
+                        anyhow::bail!(reason)
+                    },
+                };
 
-        let size_u64: u64 = metadata.len();
-        let size: usize = match usize::try_from(size_u64) {
-            Ok(size) => size,
-            Err(_error) => {
-                let reason: String =
-                    format!("ramfs image too large to fit on this platform (size={size_u64})");
-                error!("RamFs::open(): {reason}");
-                anyhow::bail!(reason)
-            },
-        };
+                let size_u64: u64 = metadata.len();
+                let size: usize = match usize::try_from(size_u64) {
+                    Ok(size) => size,
+                    Err(_error) => {
+                        let reason: String = format!(
+                            "ramfs image too large to fit on this platform (size={size_u64})"
+                        );
+                        error!("RamFs::open(): {reason}");
+                        anyhow::bail!(reason)
+                    },
+                };
 
-        let file: File = match File::open(path) {
-            Ok(file) => file,
-            Err(error) => {
-                let reason: String =
-                    format!("failed to open ramfs image (path={path:?}, error={error:?})");
-                error!("RamFs::open(): {reason}");
-                anyhow::bail!(reason)
-            },
-        };
+                let file: File = match File::open(path) {
+                    Ok(file) => file,
+                    Err(error) => {
+                        let reason: String = format!(
+                            "failed to open ramfs image (path={path:?}, error={error:?})"
+                        );
+                        error!("RamFs::open(): {reason}");
+                        anyhow::bail!(reason)
+                    },
+                };
 
-        Ok(Self {
-            path: path.to_path_buf(),
-            size,
-            file,
-        })
+                Ok(Self {
+                    path: path.to_path_buf(),
+                    size,
+                    file,
+                })
+            } else if #[cfg(target_os = "windows")] {
+                let mut file: File = match File::open(path) {
+                    Ok(file) => file,
+                    Err(error) => {
+                        let reason: String = format!(
+                            "failed to open ramfs image (path={path:?}, error={error:?})"
+                        );
+                        error!("RamFs::open(): {reason}");
+                        anyhow::bail!(reason)
+                    },
+                };
+
+                let mut data: Vec<u8> = Vec::new();
+                if let Err(error) = file.read_to_end(&mut data) {
+                    let reason: String = format!(
+                        "failed to read ramfs image (path={path:?}, error={error:?})"
+                    );
+                    error!("RamFs::open(): {reason}");
+                    anyhow::bail!(reason)
+                }
+
+                Ok(Self {
+                    path: path.to_path_buf(),
+                    data,
+                })
+            }
+        }
+    }
+
+    /// Returns the size of the RAMFS image in bytes.
+    fn ramfs_size(&self) -> usize {
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "linux")] {
+                self.size
+            } else if #[cfg(target_os = "windows")] {
+                self.data.len()
+            }
+        }
     }
 
     ///
     /// # Description
     ///
-    /// Maps this RAMFS image near the end of the provided virtual memory while maintaining the
+    /// Loads this RAMFS image near the end of the provided virtual memory while maintaining the
     /// alignment and slack guarantees required by the initrd.
+    ///
+    /// On Linux, the file is memory-mapped directly into guest memory (zero-copy). On Windows,
+    /// the file contents are copied into guest memory.
     ///
     /// # Parameters
     ///
@@ -123,20 +183,20 @@ impl RamFs {
     ///
     /// # Returns
     ///
-    /// Upon success, returns the guest-physical base address and size where the RAMFS was mapped.
+    /// Upon success, returns the guest-physical base address and size where the RAMFS was loaded.
     /// Otherwise, returns an error.
     ///
-    pub fn map_into_virtual_memory(
+    pub fn load_into_virtual_memory(
         &self,
         vmem: &mut VirtualMemory,
         initrd_end: usize,
     ) -> Result<(usize, usize)> {
         trace!(
-            "RamFs::map_into_virtual_memory(): path={:?}, initrd_end={:#010x}",
+            "RamFs::load_into_virtual_memory(): path={:?}, initrd_end={:#010x}",
             self.path, initrd_end
         );
 
-        let ramfs_size: usize = self.size;
+        let ramfs_size: usize = self.ramfs_size();
         let memory_size: usize = vmem.get_size();
 
         if ramfs_size > memory_size {
@@ -144,7 +204,7 @@ impl RamFs {
                 "ramfs image exceeds guest memory size (ramfs_size={ramfs_size}, memory_size={})",
                 memory_size
             );
-            error!("RamFs::map_into_virtual_memory(): {reason}");
+            error!("RamFs::load_into_virtual_memory(): {reason}");
             anyhow::bail!(reason)
         }
 
@@ -152,7 +212,7 @@ impl RamFs {
             Some(value) => value,
             None => {
                 let reason: &str = "overflow while computing required ramfs slack";
-                error!("RamFs::map_into_virtual_memory(): {reason}");
+                error!("RamFs::load_into_virtual_memory(): {reason}");
                 anyhow::bail!(reason)
             },
         };
@@ -162,7 +222,7 @@ impl RamFs {
                 "guest memory ({memory_size}) is smaller than initrd end plus slack \
                  ({min_available_base})",
             );
-            error!("RamFs::map_into_virtual_memory(): {reason}");
+            error!("RamFs::load_into_virtual_memory(): {reason}");
             anyhow::bail!(reason)
         }
 
@@ -173,7 +233,7 @@ impl RamFs {
                     "ramfs image does not fit in guest memory (ramfs_size={ramfs_size}, \
                      memory_size={memory_size})",
                 );
-                error!("RamFs::map_into_virtual_memory(): {reason}");
+                error!("RamFs::load_into_virtual_memory(): {reason}");
                 anyhow::bail!(reason)
             },
         };
@@ -185,7 +245,7 @@ impl RamFs {
                 Some(value) => value,
                 None => {
                     let reason: &str = "underflow while computing available guest memory for ramfs";
-                    error!("RamFs::map_into_virtual_memory(): {reason}");
+                    error!("RamFs::load_into_virtual_memory(): {reason}");
                     anyhow::bail!(reason)
                 },
             };
@@ -194,14 +254,29 @@ impl RamFs {
                  available_for_ramfs={available}, required_slack={} bytes)",
                 RAMFS_MIN_SLACK_BYTES,
             );
-            error!("RamFs::map_into_virtual_memory(): {reason}");
+            error!("RamFs::load_into_virtual_memory(): {reason}");
             anyhow::bail!(reason)
         }
 
-        self.map_file_into_guest(vmem, ramfs_base, ramfs_size)?;
+        // Transfer RAMFS data into guest memory.
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "linux")] {
+                self.map_file_into_guest(vmem, ramfs_base, ramfs_size)?;
+            } else if #[cfg(target_os = "windows")] {
+                vmem.write_bytes(ramfs_base as u64, &self.data)
+                    .map_err(|e| {
+                        let reason: String = format!(
+                            "failed to write ramfs image into guest memory (path={:?}, error={e})",
+                            self.path
+                        );
+                        error!("RamFs::load_into_virtual_memory(): {reason}");
+                        anyhow::anyhow!(reason)
+                    })?;
+            }
+        }
 
         trace!(
-            "RamFs::map_into_virtual_memory(): mapped ramfs (path={:?}, base={:#010x}, \
+            "RamFs::load_into_virtual_memory(): loaded ramfs (path={:?}, base={:#010x}, \
              size={ramfs_size})",
             self.path, ramfs_base
         );
@@ -216,12 +291,10 @@ impl RamFs {
     ///
     /// # Note
     ///
-    /// The RAMFS registers at [`config::microvm::DEFAULT_MICROVM_CTRL_RAMFS_BASE`] (GPA `0xC`)
-    /// and [`config::microvm::DEFAULT_MICROVM_CTRL_RAMFS_SIZE`] (GPA `0x10`) fall inside the
-    /// kernel ELF's `.zero` section (`LOAD` segment at GPA `0x0` with `MemSiz=0x8000`). The
-    /// ELF loader zero-fills this range when `load_kernel()` runs. This method must therefore
-    /// execute **after** the ELF has been loaded, so that the VMM-written values are not
-    /// overwritten.
+    /// The RAMFS registers at GPA `0xC` and GPA `0x10` fall inside the kernel ELF's `.zero`
+    /// section (`LOAD` segment at GPA `0x0` with `MemSiz=0x8000`). The ELF loader zero-fills
+    /// this range when `load_kernel()` runs. This method must therefore execute **after** the
+    /// ELF has been loaded, so that the VMM-written values are not overwritten.
     ///
     /// # Parameters
     ///
@@ -279,18 +352,9 @@ impl RamFs {
     ///
     /// # Description
     ///
-    /// Maps the RAMFS file directly into the provided guest memory region.
+    /// Maps the RAMFS file directly into the provided guest memory region (Linux only).
     ///
-    /// # Parameters
-    ///
-    /// - `vmem`: Virtual memory that hosts the guest.
-    /// - `base`: Guest-physical base address where the RAMFS should reside.
-    /// - `length`: Number of bytes to map.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, returns empty. Otherwise, returns an error.
-    ///
+    #[cfg(target_os = "linux")]
     fn map_file_into_guest(&self, vmem: &VirtualMemory, base: usize, length: usize) -> Result<()> {
         trace!(
             "RamFs::map_file_into_guest(): path={:?}, base={:#010x}, length={length}",

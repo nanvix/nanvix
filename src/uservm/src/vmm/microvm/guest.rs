@@ -1,17 +1,26 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+// Guest uses pointer-to-usize casts for address arithmetic.
+#![allow(clippy::cast_possible_truncation)]
+
 //==================================================================================================
 // Imports
 //==================================================================================================
 
+#[cfg(target_os = "linux")]
+use crate::vmm::kvm::{
+    vcpu::VirtualProcessor,
+    vmem::VirtualMemory,
+};
+#[cfg(target_os = "windows")]
+use crate::vmm::microvm::whp::{
+    vcpu::VirtualProcessor,
+    vmem::VirtualMemory,
+};
 use crate::{
     elf,
     pal::FileMapping,
-    vmm::kvm::{
-        vcpu::VirtualProcessor,
-        vmem::VirtualMemory,
-    },
 };
 use ::anyhow::Result;
 use ::log::{
@@ -81,7 +90,10 @@ impl Guest {
 
         let (ptr, size) = (vmem.get_raw_ptr(), vmem.get_size());
 
+        #[cfg(target_os = "linux")]
         let elf: FileMapping = FileMapping::mmap(kernel_filename)?;
+        #[cfg(target_os = "windows")]
+        let elf: FileMapping = FileMapping::open(kernel_filename)?;
         let (entry, first_address, size): (usize, usize, usize) =
             unsafe { elf::load(ptr.cast::<::std::ffi::c_void>(), elf.ptr(), size)? };
 
@@ -115,7 +127,10 @@ impl Guest {
         trace!("load_initrd(): initrd_filename={}, initrd_args={:?}", initrd_filename, initrd_args);
 
         debug!("load_initrd(): mapping initrd file");
+        #[cfg(target_os = "linux")]
         let initrd: FileMapping = FileMapping::mmap(initrd_filename)?;
+        #[cfg(target_os = "windows")]
+        let initrd: FileMapping = FileMapping::open(initrd_filename)?;
 
         // Check if initrd would overlap with kernel.
         if let Some((kernel_base, kernel_size)) = self.kernel
@@ -189,9 +204,9 @@ impl Guest {
             debug!("load_initrd(): multibinary format detected, skipping write_args");
         } else {
             // Single ELF binary: write length-prefixed args after the initrd.
-            let mut args: String = initrd_filename
-                .split('/')
-                .next_back()
+            let mut args: String = ::std::path::Path::new(initrd_filename)
+                .file_name()
+                .and_then(|n| n.to_str())
                 .unwrap_or(initrd_filename)
                 .to_string();
 

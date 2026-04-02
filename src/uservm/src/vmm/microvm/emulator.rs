@@ -1,20 +1,32 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+// The emulator uses u32/u16 casts when interfacing with port I/O.
+#![allow(clippy::cast_possible_truncation)]
+
 //==================================================================================================
 // Imports
 //==================================================================================================
 
+#[cfg(target_os = "linux")]
+use crate::vmm::kvm::pmio::{
+    PmioAccess,
+    PmioWidth,
+};
+#[cfg(target_os = "linux")]
+use crate::vmm::microvm::kvm::vmem::VirtualMemory;
+#[cfg(target_os = "windows")]
+use crate::vmm::microvm::whp::vcpu::exit::{
+    PmioAccess,
+    PmioWidth,
+};
+#[cfg(target_os = "windows")]
+use crate::vmm::microvm::whp::vmem::VirtualMemory;
 use crate::vmm::{
     StderrFn,
     StdinFn,
     StdoutFn,
     guest::Guest,
-    kvm::pmio::{
-        PmioAccess,
-        PmioWidth,
-    },
-    microvm::kvm::vmem::VirtualMemory,
 };
 use ::anyhow::Result;
 use ::log::{
@@ -47,7 +59,7 @@ pub struct Emulator {
     stdin_fn: Box<StdinFn>,
     /// Function used for emulating writes to standard output.
     stdout_fn: Box<StdoutFn>,
-    /// Function used for emulating writs to standard error.
+    /// Function used for emulating writes to standard error.
     stderr_fn: Box<StderrFn>,
 }
 
@@ -67,7 +79,7 @@ impl Emulator {
     /// - `vmem`: Virtual memory of the guest.
     /// - `stdin_fn`: Function used for emulating reads from standard input.
     /// - `stdout_fn`: Function used for emulating writes to standard output.
-    /// - `stderr_fn`: Function used for emulating writs to standard error.
+    /// - `stderr_fn`: Function used for emulating writes to standard error.
     ///
     /// # Returns
     ///
@@ -125,36 +137,64 @@ impl Emulator {
     ///
     /// # Parameters
     ///
-    /// - `vcpu`: Virtual processor on which the I/O port access occurred.
     /// - `exit_context`: Context in which the I/O port access occurred.
     ///
     /// # Returns
     ///
     /// Upon successful completion, this method returns `Ok(None)` if the virtual machine should
-    /// resumed or `Ok(Some(status))` if the virtual machine should be stopped. The status is
-    /// returned in case the virtual machine should be stopped.  . If an error is encountered, an
-    /// error is returned instead.
+    /// be resumed or `Ok(Some(status))` if the virtual machine should be stopped.
     ///
     pub fn handle_pmio_access(&mut self, exit_context: &PmioAccess) -> Result<Option<u16>> {
-        // Parse context.
         match exit_context {
             // Read from an I/O port.
             PmioAccess::PmioIn(port, _data) => {
-                // Read from an I/O port that is not supported.
-                let reason: String = format!("read from unsupported port i/o (port={:#06x})", port);
-                error!("handle_pmio_access(): {reason}");
-                anyhow::bail!(reason);
+                // On Linux/KVM, unsupported port reads are fatal errors.
+                // On Windows/WHP, well-known hardware ports read during boot are silently ignored.
+                #[cfg(target_os = "linux")]
+                {
+                    let reason: String =
+                        format!("read from unsupported port i/o (port={:#06x})", port);
+                    error!("handle_pmio_access(): {reason}");
+                    anyhow::bail!(reason);
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    match *port {
+                        0x20
+                        | 0x21
+                        | 0x22
+                        | 0x23
+                        | 0xA0
+                        | 0xA1
+                        | 0x40..=0x43
+                        | 0x61
+                        | 0x70
+                        | 0x71
+                        | 0x3F8..=0x3FF
+                        | 0xCF8
+                        | 0xCFC..=0xCFF => {
+                            trace!(
+                                "handle_pmio_access(): ignoring read from port (port={:#06x})",
+                                port
+                            );
+                        },
+                        _ => {
+                            warn!(
+                                "handle_pmio_access(): ignoring read from unknown port \
+                                 (port={:#06x})",
+                                port
+                            );
+                        },
+                    }
+                }
             },
             // Write to an I/O port.
             PmioAccess::PmioOut(port, data, width) => match *port {
                 // Write to standard output.
                 ::config::microvm::DEFAULT_STDOUT_PORT => {
                     if *width == PmioWidth::Byte {
-                        // Convert data to a character.
                         let ch: char = match char::from_u32(*data) {
-                            // Valid character.
                             Some(ch) => ch,
-                            // Invalid character.
                             None => {
                                 let reason: String = format!("invalid character (data={data:?})");
                                 error!("output(): {reason}");
@@ -164,8 +204,6 @@ impl Emulator {
                         let buf: &[u8] = &[ch as u8];
                         self.stderr_fn.write_all(buf)?;
                     } else if *width == PmioWidth::Dword {
-                        // Read the vmbus message from guest memory and forward it to the
-                        // stdout callback, which handles both IKC messages and data chunk transfers.
                         let envelope: VmBusMessage = self.read_envelope(*data)?;
                         (self.stdout_fn)(&self.vmem, &envelope)?;
                     } else {
@@ -174,7 +212,6 @@ impl Emulator {
                 },
                 // Read from standard input.
                 ::config::microvm::DEFAULT_STDIN_PORT => {
-                    // Read the vmbus message from guest memory.
                     let envelope: VmBusMessage = self.read_envelope(*data)?;
                     (self.stdin_fn)(
                         &self.guest,
@@ -184,32 +221,71 @@ impl Emulator {
                     )?;
                 },
                 // Write to the virtual machine monitor port.
-                ::config::microvm::DEFAULT_VMM_PORT => {
-                    // Extract parse command.
-                    match (*data >> 16) as u16 {
-                        ::config::microvm::DEFAULT_VMM_SHUTDOWN_CMD => {
-                            // Extract status code.
-                            let status: u16 = (*data & 0xffff) as u16;
-                            return Ok(Some(status));
-                        },
-                        ::config::microvm::DEFAULT_VMM_PAUSE_CMD => {
-                            return Ok(Some(::config::microvm::DEFAULT_VMM_PAUSE_CMD));
-                        },
-                        ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD => {
-                            return Ok(Some(::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD));
-                        },
-                        ::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD => {
-                            return Ok(Some(::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD));
-                        },
-                        cmd => anyhow::bail!("unknown virtual machine command (cmd={cmd:#06x})"),
-                    }
+                ::config::microvm::DEFAULT_VMM_PORT => match (*data >> 16) as u16 {
+                    ::config::microvm::DEFAULT_VMM_SHUTDOWN_CMD => {
+                        let status: u16 = (*data & 0xffff) as u16;
+                        return Ok(Some(status));
+                    },
+                    ::config::microvm::DEFAULT_VMM_PAUSE_CMD => {
+                        return Ok(Some(::config::microvm::DEFAULT_VMM_PAUSE_CMD));
+                    },
+                    ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD => {
+                        return Ok(Some(::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD));
+                    },
+                    ::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD => {
+                        return Ok(Some(::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD));
+                    },
+                    cmd => anyhow::bail!("unknown virtual machine command (cmd={cmd:#06x})"),
                 },
-                // Write to an I/O port that is not supported.
+                // Write to an I/O port that is not emulated.
                 _ => {
-                    let reason: String =
-                        format!("write to unsupported port i/o (port={port:#06x})");
-                    error!("handle_pmio_access(): {reason}");
-                    anyhow::bail!(reason);
+                    // On Linux/KVM, unsupported port writes are fatal errors.
+                    // On Windows/WHP, well-known hardware initialization ports are silently
+                    // ignored.
+                    #[cfg(target_os = "linux")]
+                    {
+                        let reason: String =
+                            format!("write to unsupported port i/o (port={port:#06x})");
+                        error!("handle_pmio_access(): {reason}");
+                        anyhow::bail!(reason);
+                    }
+                    #[cfg(target_os = "windows")]
+                    {
+                        match *port {
+                            0x20 | 0x21 | 0xA0 | 0xA1 | 0x22 | 0x23 => {
+                                trace!(
+                                    "handle_pmio_access(): ignoring PIC/IMCR write \
+                                     (port={port:#06x})"
+                                );
+                            },
+                            0x40..=0x43 | 0x61 => {
+                                trace!(
+                                    "handle_pmio_access(): ignoring PIT write (port={port:#06x})"
+                                );
+                            },
+                            0x70 | 0x71 => {
+                                trace!(
+                                    "handle_pmio_access(): ignoring CMOS write (port={port:#06x})"
+                                );
+                            },
+                            0x3F8..=0x3FF => {
+                                trace!(
+                                    "handle_pmio_access(): ignoring COM1 write (port={port:#06x})"
+                                );
+                            },
+                            0xCF8 | 0xCFC..=0xCFF => {
+                                trace!(
+                                    "handle_pmio_access(): ignoring PCI write (port={port:#06x})"
+                                );
+                            },
+                            _ => {
+                                warn!(
+                                    "handle_pmio_access(): ignoring write to unknown port \
+                                     (port={port:#06x})"
+                                );
+                            },
+                        }
+                    }
                 },
             },
         }
