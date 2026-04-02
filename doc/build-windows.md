@@ -86,7 +86,7 @@ Available build parameters:
 | `DEPLOYMENT_MODE` | `standalone` | `standalone`                                       |
 | `LOG_LEVEL`       | `error`      | `trace`, `debug`, `info`, `warn`, `error`, `panic` |
 | `MACHINE`         | `microvm`    | `microvm`, `hyperlight`                            |
-| `MESSAGE_FORMAT`  | (none)       | `json`, `json-diagnostic-rendered-ansi`             |
+| `MESSAGE_FORMAT`  | (none)       | `json`, `json-diagnostic-rendered-ansi`            |
 | `RELEASE`         | `no`         | `yes`, `no`                                        |
 | `TARGET`          | `x86`        | `x86`                                              |
 | `TIMEOUT`         | `600`        | Execution timeout in seconds                       |
