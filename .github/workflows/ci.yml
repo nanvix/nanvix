@@ -632,19 +632,14 @@ jobs:
             bin/*.elf
             bin/*.img
 
-  # Run the full standalone test suite on Windows Hypervisor Platform using
-  # nanvix-test.exe, mirroring the Linux CI integration-test stage.
-  # NOTE: GitHub-hosted Windows runners have highly variable WHP performance.
-  # Some runners complete all tests in under a minute while others time out
-  # due to slow nested virtualization. continue-on-error prevents flaky
-  # failures from blocking the pipeline.
+  # Run the full standalone test suite on Windows Hypervisor Platform using nanvix-test.exe,
+  # mirroring the Linux CI integration-test stage.
   windows-integration-test:
     name: "Windows Integration Test (${{ matrix.machine-type }}, ${{ matrix.build-type }})"
     needs: [windows-ci-build]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: ${{ !cancelled() && needs.windows-ci-build.result == 'success' }}
     timeout-minutes: 30
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -738,17 +733,13 @@ jobs:
             **/*.out
             **/*.err
 
-  # Run micro-benchmarks on a Windows GitHub-hosted runner using WHP so that
-  # Windows-specific performance data is collected alongside the Linux results.
-  # Only standalone-mode benchmarks are supported (boot-time, cold-start,
-  # snapshot-restore, warm-start-vmm). GitHub-hosted Windows runners have
-  # variable WHP performance, so continue-on-error prevents flaky failures
-  # from blocking the pipeline.
+  # Run micro-benchmarks on a Windows GitHub-hosted runner using WHP so that Windows-specific
+  # performance data is collected alongside the Linux results. Only standalone-mode benchmarks are
+  # supported (boot-time, cold-start, warm-start-vmm).
   windows-benchmark-ci:
     name: "Windows Benchmark CI (${{ matrix.machine-type }})"
     needs: [precheck]
     timeout-minutes: 120
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -1695,10 +1686,7 @@ jobs:
   windows-benchmark-ci-finalize:
     name: "Windows Benchmark CI Finalize"
     needs: [windows-benchmark-ci]
-    # NOTE: windows-benchmark-ci uses continue-on-error, so its result may be
-    # 'failure' even when it ran successfully enough to produce artifacts. Run
-    # the finalize job whenever the benchmark job actually ran (not skipped).
-    if: ${{ !cancelled() && needs.windows-benchmark-ci.result != 'skipped' }}
+    if: ${{ !cancelled() && needs.windows-benchmark-ci.result == 'success' }}
     timeout-minutes: 30
     runs-on: ubuntu-24.04
     permissions:
@@ -1847,7 +1835,8 @@ jobs:
       needs.ci-l2.result == 'success' &&
       needs.benchmark-finalize.result == 'success' &&
       needs.benchmark-ci-finalize.result == 'success' &&
-      needs.windows-benchmark-finalize.result == 'success'
+      needs.windows-benchmark-finalize.result == 'success' &&
+      needs.windows-integration-test.result == 'success'
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -1951,6 +1940,7 @@ jobs:
         windows-format-check,
         windows-lint-check,
         windows-ci-build,
+        windows-integration-test,
       ]
     if: |
       always() &&
