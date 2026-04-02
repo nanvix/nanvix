@@ -14,6 +14,10 @@ homepage.workspace = true
 name = "mkramfs"
 path = "src/main.rs"
 
+[lib]
+name = "mkramfs"
+path = "src/lib.rs"
+
 [dependencies]
 fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
 
