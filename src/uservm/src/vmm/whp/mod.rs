@@ -484,7 +484,11 @@ impl Vmm {
 
             // Write host TSC base frequency so the guest can use RDTSC-based LAPIC
             // timer calibration without requiring CPUID leaf 0x16.
-            let tsc_freq_mhz: u32 = ::arch::cpu::cpuid::get_base_frequency_mhz();
+            // Use WHP's ProcessorClockFrequency capability (returns Hz) because
+            // Hyper-V zeros out CPUID leaf 0x16 on the host.
+            let tsc_freq_mhz: u32 = unsafe {
+                (partition::WhpPartition::query_processor_clock_frequency() / 1_000_000) as u32
+            };
             vmem.write_bytes(
                 ::config::microvm::DEFAULT_MICROVM_CTRL_TSC_FREQ_MHZ as u64,
                 &tsc_freq_mhz.to_le_bytes(),
