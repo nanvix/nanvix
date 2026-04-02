@@ -453,6 +453,21 @@ unsafe fn read_control_register(offset: usize) -> u32 {
     core::ptr::read_volatile(addr)
 }
 
+///
+/// # Description
+///
+/// Returns the TSC base frequency in MHz as provided by the VMM via a
+/// microvm control register. Returns `0` when the VMM did not populate
+/// the register.
+///
+#[cfg(feature = "whp")]
+pub fn tsc_base_frequency_mhz() -> u32 {
+    // SAFETY: The control register is memory-mapped at a fixed address
+    // inside the kernel's identity-mapped region and is guaranteed to be
+    // valid on the microvm platform after ELF load.
+    unsafe { read_control_register(::config::microvm::DEFAULT_MICROVM_CTRL_TSC_FREQ_MHZ) }
+}
+
 fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     // Register I/O ports for 8259 PIC.
     ioports.register_read_write(pic::PIC_CTRL_MASTER as u16)?;
