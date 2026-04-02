@@ -79,6 +79,15 @@ unsafe impl Sync for VirtualMemory {}
 
 const SIZE_OF_HEADER: usize = mem::size_of::<SnapshotHeader>();
 
+/// Page size used by the sparse snapshot format.
+const SPARSE_PAGE_SIZE: usize = ::arch::mem::PAGE_SIZE;
+
+/// Byte size of the memory-size field (`u64`) in the sparse snapshot header.
+const SPARSE_MEMORY_SIZE_FIELD: usize = mem::size_of::<u64>();
+
+/// Byte size of a page-index entry (`u32`) in the sparse snapshot format.
+const SPARSE_PAGE_INDEX_SIZE: usize = ::arch::mem::paging::PageTableEntry::SIZE;
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
@@ -338,6 +347,170 @@ impl VirtualMemory {
             error!("load_snapshot(): {reason}");
             anyhow::bail!(reason)
         }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Saves a sparse virtual memory snapshot, writing only pages with non-zero content.
+    ///
+    /// **Format:**
+    /// - `u64` — memory size in bytes (little-endian).
+    /// - `u32` — number of non-zero pages (little-endian).
+    /// - For each non-zero page: `u32` page index (LE) + PAGE_SIZE raw bytes.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: Path to the snapshot file.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn save_snapshot_sparse(&self, path: &Path) -> Result<()> {
+        trace!("save_snapshot_sparse(): writing to {:?}", path);
+
+        let page_size: usize = SPARSE_PAGE_SIZE;
+        let page_count: usize = self.size / page_size;
+        let zero_page: [u8; SPARSE_PAGE_SIZE] = [0u8; SPARSE_PAGE_SIZE];
+        let memory_slice: &[u8] = unsafe { slice::from_raw_parts(self.ptr, self.size) };
+
+        let mut file: File = File::create(path).map_err(|e| {
+            let reason: String = format!("failed creating sparse snapshot file (error={e:?})");
+            error!("save_snapshot_sparse(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+
+        // Write placeholder header (memory_size + page_count).
+        file.write_all(&(self.size as u64).to_le_bytes())
+            .map_err(|e| {
+                let reason: String = format!("failed writing header memory_size (error={e:?})");
+                error!("save_snapshot_sparse(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+        file.write_all(&0u32.to_le_bytes()).map_err(|e| {
+            let reason: String =
+                format!("failed writing header placeholder page_count (error={e:?})");
+            error!("save_snapshot_sparse(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+
+        let mut non_zero_count: u32 = 0;
+        for i in 0..page_count {
+            let offset: usize = i * page_size;
+            let page: &[u8] = &memory_slice[offset..offset + page_size];
+            if page != zero_page {
+                file.write_all(&(i as u32).to_le_bytes()).map_err(|e| {
+                    let reason: String = format!("failed writing page index {i} (error={e:?})");
+                    error!("save_snapshot_sparse(): {reason}");
+                    anyhow::anyhow!(reason)
+                })?;
+                file.write_all(page).map_err(|e| {
+                    let reason: String =
+                        format!("failed writing page data for page {i} (error={e:?})");
+                    error!("save_snapshot_sparse(): {reason}");
+                    anyhow::anyhow!(reason)
+                })?;
+                non_zero_count += 1;
+            }
+        }
+
+        // Seek back and write actual page count.
+        use std::io::Seek;
+        file.seek(std::io::SeekFrom::Start(SPARSE_MEMORY_SIZE_FIELD as u64))
+            .map_err(|e| {
+                let reason: String =
+                    format!("failed seeking to header page_count field (error={e:?})");
+                error!("save_snapshot_sparse(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+        file.write_all(&non_zero_count.to_le_bytes()).map_err(|e| {
+            let reason: String = format!("failed writing final page_count (error={e:?})");
+            error!("save_snapshot_sparse(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+        file.sync_all().map_err(|e| {
+            let reason: String = format!("failed to sync sparse snapshot file (error={e:?})");
+            error!("save_snapshot_sparse(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+
+        trace!(
+            "save_snapshot_sparse(): saved {non_zero_count} non-zero pages ({} bytes) out of \
+             {page_count} total pages",
+            non_zero_count as usize * (SPARSE_PAGE_INDEX_SIZE + page_size),
+        );
+
+        Ok(())
+    }
+
+    /// Loads a sparse virtual memory snapshot.
+    ///
+    /// Assumes the target memory is zero-initialized (true for fresh `VirtualAlloc`).
+    /// Only non-zero pages stored in the snapshot are written.
+    pub fn load_snapshot_sparse(&mut self, path: &Path) -> Result<()> {
+        trace!("load_snapshot_sparse(): reading from {:?}", path);
+
+        let page_size: usize = SPARSE_PAGE_SIZE;
+        let mut file: File = File::open(path).map_err(|e| {
+            let reason: String = format!("failed opening sparse snapshot file (error={e:?})");
+            error!("load_snapshot_sparse(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+
+        // Read header.
+        let mut size_buf: [u8; 8] = [0u8; 8];
+        file.read_exact(&mut size_buf).map_err(|e| {
+            let reason: String = format!("failed reading header memory_size (error={e:?})");
+            error!("load_snapshot_sparse(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+        let memory_size: usize = u64::from_le_bytes(size_buf) as usize;
+        if memory_size != self.size {
+            anyhow::bail!("memory size mismatch: expected {}, got {}", self.size, memory_size);
+        }
+
+        let mut count_buf: [u8; 4] = [0u8; 4];
+        file.read_exact(&mut count_buf).map_err(|e| {
+            let reason: String = format!("failed reading header page_count (error={e:?})");
+            error!("load_snapshot_sparse(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+        let page_count: u32 = u32::from_le_bytes(count_buf);
+
+        // Read and restore each non-zero page.
+        let mut idx_buf: [u8; 4] = [0u8; 4];
+        let mut page_buf: [u8; SPARSE_PAGE_SIZE] = [0u8; SPARSE_PAGE_SIZE];
+        for _ in 0..page_count {
+            file.read_exact(&mut idx_buf).map_err(|e| {
+                let reason: String = format!("failed reading page index (error={e:?})");
+                error!("load_snapshot_sparse(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+            let idx: usize = u32::from_le_bytes(idx_buf) as usize;
+            file.read_exact(&mut page_buf).map_err(|e| {
+                let reason: String =
+                    format!("failed reading page data for page {idx} (error={e:?})");
+                error!("load_snapshot_sparse(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+
+            let offset: usize = idx * page_size;
+            if offset + page_size > self.size {
+                anyhow::bail!("sparse page index {idx} out of bounds (memory_size={})", self.size);
+            }
+
+            unsafe {
+                ptr::copy_nonoverlapping(page_buf.as_ptr(), self.ptr.add(offset), page_size);
+            }
+        }
+
+        trace!(
+            "load_snapshot_sparse(): loaded {page_count} pages ({} bytes)",
+            page_count as usize * page_size,
+        );
 
         Ok(())
     }

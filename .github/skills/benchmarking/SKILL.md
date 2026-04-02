@@ -126,6 +126,7 @@ from process spawn to the first echo round-trip.
 |--------------------|---------------------------------------------------------|
 | `boot-time`        | Start a user VM (no nanvixd)                            |
 | `cold-start`       | Spawn nanvixd + VM + echo round-trip (standalone mode)  |
+| `snapshot-restore` | Measure snapshot restore latency vs boot-time           |
 | `warm-start-vmm`   | Raw round-trip latency inside the user VM               |
 
 ### Running
