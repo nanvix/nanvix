@@ -157,6 +157,26 @@ class PlatformInfo:
         )
 
 
+def _is_windows_server() -> bool:
+    """Detect if running on Windows Server (vs desktop Windows)."""
+    try:
+        result = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "(Get-CimInstance Win32_OperatingSystem).ProductType",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        # ProductType: 1=Workstation, 2=Domain Controller, 3=Server
+        return result.stdout.strip() != "1"
+    except Exception:
+        return False
+
+
 def _assert_windows_version() -> None:
     """Warn if not running Windows 11+."""
     try:
@@ -976,6 +996,63 @@ def _install_git_hooks(repo_root: Path) -> None:
         print_warning("Failed to configure git hooks.")
 
 
+def _refresh_windows_path() -> None:
+    """Refresh the session PATH from the registry so newly installed tools are found."""
+    try:
+        result = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "[Environment]::GetEnvironmentVariable('Path','Machine') + ';' + "
+                "[Environment]::GetEnvironmentVariable('Path','User')",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            os.environ["PATH"] = result.stdout.strip()
+    except Exception:
+        pass
+
+
+def _install_chocolatey() -> None:
+    """Install the Chocolatey package manager (Windows Server)."""
+    print_info("Installing Chocolatey...")
+    rc = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            "[System.Net.ServicePointManager]::SecurityProtocol = "
+            "[System.Net.ServicePointManager]::SecurityProtocol -bor 3072; "
+            "iex ((New-Object System.Net.WebClient).DownloadString("
+            "'https://community.chocolatey.org/install.ps1'))",
+        ],
+    ).returncode
+    if rc != 0:
+        die("Failed to install Chocolatey.")
+    _refresh_windows_path()
+    if not shutil.which("choco"):
+        die("Chocolatey installed but 'choco' not found on PATH.")
+    print_success("Chocolatey installed.")
+
+
+def _choco_install(package_id: str, name: str) -> None:
+    """Install a package via Chocolatey."""
+    print_info(f"Installing {name} via Chocolatey...")
+    rc = subprocess.run(
+        ["choco", "install", package_id, "-y", "--no-progress"],
+        stdout=subprocess.DEVNULL,
+    ).returncode
+    if rc != 0:
+        die(f"Failed to install {name} via Chocolatey.")
+    _refresh_windows_path()
+
+
 def _winget_install(package_id: str, name: str, *, silent: bool = True) -> None:
     """Install a package via winget."""
     print_info(f"Installing {name} via winget...")
@@ -985,6 +1062,22 @@ def _winget_install(package_id: str, name: str, *, silent: bool = True) -> None:
     rc = subprocess.run(cmd).returncode
     if rc != 0:
         die(f"Failed to install {name}. Install it manually.")
+
+
+def _pkg_install(
+    name: str,
+    *,
+    winget_id: str | None = None,
+    choco_id: str | None = None,
+    use_choco: bool = False,
+) -> None:
+    """Install a package using the available package manager."""
+    if use_choco and choco_id:
+        _choco_install(choco_id, name)
+    elif winget_id:
+        _winget_install(winget_id, name)
+    else:
+        die(f"No package manager ID available to install {name}. Install it manually.")
 
 
 def cmd_setup_linux(plat: PlatformInfo, config: BuildConfig) -> int:
@@ -1095,6 +1188,39 @@ def cmd_setup_windows(plat: PlatformInfo, config: BuildConfig) -> int:
     _assert_developer_mode()
     _assert_hypervisor_enabled()
 
+    # On Windows Server, install Chocolatey as the package manager.
+    is_server = _is_windows_server()
+    use_choco = False
+    if is_server:
+        print_info("Windows Server detected.")
+        if not shutil.which("choco"):
+            _install_chocolatey()
+        else:
+            print_success("Chocolatey: OK")
+        use_choco = True
+
+    # Git.
+    _refresh_windows_path()
+    if not shutil.which("git"):
+        _pkg_install("Git", winget_id="Git.Git", choco_id="git", use_choco=use_choco)
+        _refresh_windows_path()
+        if not shutil.which("git"):
+            die("Git still not found after installation. Add it to PATH manually.")
+    print_success("Git: OK")
+
+    # Python.
+    if not shutil.which("python"):
+        _pkg_install(
+            "Python 3.12",
+            winget_id="Python.Python.3.12",
+            choco_id="python312",
+            use_choco=use_choco,
+        )
+        _refresh_windows_path()
+        if not shutil.which("python"):
+            die("Python still not found after installation. Add it to PATH manually.")
+    print_success("Python: OK")
+
     # GNU Make.
     if not shutil.which("make"):
         found = False
@@ -1110,12 +1236,45 @@ def cmd_setup_windows(plat: PlatformInfo, config: BuildConfig) -> int:
                     if found:
                         break
         if not found:
-            _winget_install("ezwinports.make", "GNU Make")
+            _pkg_install(
+                "GNU Make",
+                winget_id="ezwinports.make",
+                choco_id="make",
+                use_choco=use_choco,
+            )
+            _refresh_windows_path()
             if not shutil.which("make"):
                 die(
                     "GNU Make still not found after installation. Add it to PATH manually."
                 )
     print_success("GNU Make: OK")
+
+    # Visual Studio Build Tools.
+    vswhere = (
+        Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))
+        / "Microsoft Visual Studio"
+        / "Installer"
+        / "vswhere.exe"
+    )
+    if vswhere.exists():
+        result = subprocess.run(
+            [str(vswhere), "-latest", "-property", "installationPath"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            print_success("Visual Studio Build Tools: OK")
+        else:
+            print_warning(
+                "vswhere found but no VS installation detected. "
+                "Install the C++ workload from Visual Studio Installer."
+            )
+    else:
+        print_warning(
+            "Visual Studio Build Tools not found. Install the "
+            "'Desktop development with C++' workload from "
+            "https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022"
+        )
 
     # Rust toolchain.
     if not shutil.which("rustc"):
@@ -1124,6 +1283,7 @@ def cmd_setup_windows(plat: PlatformInfo, config: BuildConfig) -> int:
             _prepend_path(str(cargo_bin))
         if not shutil.which("rustc"):
             _winget_install("Rustlang.Rustup", "Rust toolchain")
+            _refresh_windows_path()
             if not shutil.which("rustc"):
                 die(
                     "Rust toolchain still not found. Add ~/.cargo/bin to PATH manually."
