@@ -16,11 +16,8 @@
 // Modules
 //==================================================================================================
 
-pub mod emulator;
-pub mod guest;
 pub mod lapic;
 pub mod partition;
-pub mod ramfs;
 pub mod timer;
 pub mod vcpu;
 pub mod vmem;
@@ -37,12 +34,16 @@ use crate::{
     vmm::{
         MicroVmArgs,
         emulator::Emulator,
-        guest::Guest,
-        vcpu::VirtualProcessorExitContext,
-        whp::vcpu::{
+        guest::{
+            Guest,
+            GuestState,
+        },
+        microvm::whp::vcpu::{
             VirtualProcessor,
+            VirtualProcessorExitContext,
             VirtualProcessorExitReasonRef,
         },
+        ramfs::RamFs,
     },
 };
 use ::anyhow::Result;
@@ -93,7 +94,7 @@ use crate::perf::PerfTimings;
 // Re-exports
 //==================================================================================================
 
-pub use crate::vmm::whp::vcpu::exit::{
+pub use crate::vmm::microvm::whp::vcpu::exit::{
     PmioAccess,
     PmioWidth,
 };
@@ -298,7 +299,7 @@ impl IkcNotifier {
 #[derive(Serialize, Deserialize)]
 struct WhpSnapshot {
     /// Guest metadata (kernel/initrd locations, credits, entry point).
-    guest_state: guest::GuestState,
+    guest_state: GuestState,
     /// Full vCPU register and LAPIC state.
     vcpu_state: vcpu::VcpuState,
 }
@@ -472,7 +473,7 @@ impl Vmm {
                         None => ::config::microvm::DEFAULT_INITRD_BASE,
                     };
 
-                    let ramfs: ramfs::RamFs = ramfs::RamFs::open(Path::new(ramfs_filename))?;
+                    let ramfs: RamFs = RamFs::open(Path::new(ramfs_filename))?;
                     let (ramfs_base, ramfs_size) =
                         ramfs.load_into_virtual_memory(&mut vmem, initrd_end)?;
                     Some((ramfs_base, ramfs_size))
@@ -480,7 +481,7 @@ impl Vmm {
                     None
                 };
 
-            ramfs::RamFs::write_registers(&mut vmem, ramfs_region)?;
+            RamFs::write_registers(&mut vmem, ramfs_region)?;
 
             // Write host TSC base frequency so the guest can use RDTSC-based LAPIC
             // timer calibration without requiring CPUID leaf 0x16.

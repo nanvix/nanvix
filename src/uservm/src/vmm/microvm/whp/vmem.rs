@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use crate::vmm::whp::partition::WhpPartition;
+use crate::vmm::microvm::whp::partition::WhpPartition;
 use ::anyhow::Result;
 use ::log::{
     error,

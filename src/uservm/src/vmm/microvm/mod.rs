@@ -12,16 +12,25 @@
 //==================================================================================================
 
 pub mod emulator;
-#[cfg(feature = "gdb")]
-pub mod gdb;
 pub mod guest;
-pub mod kvm;
 pub mod ramfs;
 
+cfg_if::cfg_if! {
+    if #[cfg(feature = "whp")] {
+        pub mod whp;
+        pub use whp::*;
+    } else {
+        #[cfg(feature = "gdb")]
+        pub mod gdb;
+        pub mod kvm;
+    }
+}
+
 //==================================================================================================
-// Imports
+// KVM-specific implementation (Linux only)
 //==================================================================================================
 
+#[cfg(target_os = "linux")]
 use crate::vmm::{
     MicroVmArgs,
     guest::Guest,
@@ -45,22 +54,27 @@ use crate::{
         VirtualProcessorExitReasonRef,
     },
 };
+#[cfg(target_os = "linux")]
 use ::anyhow::Result;
+#[cfg(target_os = "linux")]
 use ::kvm_ioctls::{
     Kvm,
     VmFd,
 };
+#[cfg(target_os = "linux")]
 use ::libc::{
     SIGUSR1,
     c_int,
     sigaction,
     sigemptyset,
 };
+#[cfg(target_os = "linux")]
 use ::log::{
     error,
     trace,
     warn,
 };
+#[cfg(target_os = "linux")]
 use ::std::{
     ffi::OsStr,
     fs::File,
@@ -85,7 +99,9 @@ use ::std::{
         },
     },
 };
+#[cfg(target_os = "linux")]
 use ::sys::error::ErrorCode;
+#[cfg(target_os = "linux")]
 use ::tokio::{
     runtime::Handle,
     sync::{
@@ -99,23 +115,26 @@ use ::tokio::{
     task,
 };
 
-#[cfg(feature = "profile-time")]
+#[cfg(all(target_os = "linux", feature = "profile-time"))]
 use crate::perf::PerfTimings;
-#[cfg(feature = "profile-time")]
+#[cfg(all(target_os = "linux", feature = "profile-time"))]
 use ::std::time::Instant;
 
 //==================================================================================================
 // Re-Exports
 //==================================================================================================
 
+#[cfg(target_os = "linux")]
 pub use kvm::vmem::VirtualMemory;
+#[cfg(target_os = "linux")]
 pub use ramfs::RamFs;
 
 //==================================================================================================
-// IKC IRQ Notifier
+// IKC IRQ Notifier (Linux/KVM only)
 //==================================================================================================
 
 /// IRQ number used for IKC (inter-kernel communication) notifications.
+#[cfg(target_os = "linux")]
 const IKC_IRQ: u32 = 9;
 
 ///
@@ -132,6 +151,7 @@ const IKC_IRQ: u32 = 9;
 /// `KVM_IRQ_LINE` is thread-safe — the KVM subsystem serialises concurrent ioctl calls
 /// internally, so no user-space locking is required.
 ///
+#[cfg(target_os = "linux")]
 #[derive(Clone)]
 pub struct IkcNotifier {
     /// Duplicated VM file descriptor for lock-free IRQ injection.
@@ -141,6 +161,7 @@ pub struct IkcNotifier {
     pending: Arc<AtomicBool>,
 }
 
+#[cfg(target_os = "linux")]
 impl IkcNotifier {
     /// Creates a new notifier by duplicating the given VM file descriptor.
     fn new(vm_fd: &VmFd, pending: Arc<AtomicBool>) -> Result<Self> {
@@ -208,19 +229,22 @@ impl IkcNotifier {
 }
 
 //==================================================================================================
-// Constants
+// Constants (Linux/KVM only)
 //==================================================================================================
 
 /// Signal used to interrupt the vCPU thread.
+#[cfg(target_os = "linux")]
 pub const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 
 /// Signal used to kill the vCPU thread.
+#[cfg(target_os = "linux")]
 pub const KILL_SIGNAL: c_int = libc::SIGKILL;
 
 //==================================================================================================
-// Thread-Local Variables
+// Thread-Local Variables (Linux/KVM only)
 //==================================================================================================
 
+#[cfg(target_os = "linux")]
 thread_local! {
     ///
     /// # Description
@@ -235,7 +259,7 @@ thread_local! {
 }
 
 //==================================================================================================
-// Structures
+// Structures (Linux/KVM only)
 //==================================================================================================
 
 ///
@@ -243,6 +267,7 @@ thread_local! {
 ///
 /// A structure that represents a VMM.
 ///
+#[cfg(target_os = "linux")]
 #[derive(Clone)]
 pub struct Vmm {
     /// Guest of the virtual machine.
@@ -269,6 +294,7 @@ pub struct Vmm {
 /// An internal structure to the VMM that wraps its contents in `Arc<Mutex<_>>`. It allows
 /// `MicroVm` to be clonable without wrapping each field in `Arc<Mutex<_>>`.
 ///
+#[cfg(target_os = "linux")]
 pub(crate) struct InteriorMicroVmHandle {
     /// Handle to the KVM (keep it)
     kvm: Kvm,
@@ -292,26 +318,31 @@ pub(crate) struct InteriorMicroVmHandle {
 }
 
 //==================================================================================================
-// Types
+// Types (Linux/KVM only)
 //==================================================================================================
 
+#[cfg(target_os = "linux")]
 pub type StdinFn =
     dyn FnMut(&Arc<Mutex<Guest>>, &Arc<Mutex<VirtualMemory>>, u32, usize) -> Result<()> + Send;
 
+#[cfg(target_os = "linux")]
 pub type StdoutFn =
     dyn FnMut(&Arc<Mutex<VirtualMemory>>, &::sys::ipc::VmBusMessage) -> Result<()> + Send;
 
+#[cfg(target_os = "linux")]
 pub type StderrFn = dyn Write + Send;
 
 //==================================================================================================
-// Implementations
+// Implementations (Linux/KVM only)
 //==================================================================================================
 
 /// Signal handler for the vCPU thread. We install an empty handler to trigger an -EINTR.
+#[cfg(target_os = "linux")]
 extern "C" fn vcpu_thread_signal_handler(_: i32) {
     SHUTDOWN.with(|shutdown| shutdown.store(true, Ordering::SeqCst));
 }
 
+#[cfg(target_os = "linux")]
 impl InteriorMicroVmHandle {
     /// Returns a mutable reference to the emulator.
     pub(crate) fn emulator_mut(&mut self) -> &mut Emulator {
@@ -319,6 +350,7 @@ impl InteriorMicroVmHandle {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl Vmm {
     ///
     /// # Description
@@ -422,7 +454,7 @@ impl Vmm {
 
                     let ramfs: RamFs = RamFs::open(Path::new(ramfs_filename))?;
                     let (ramfs_base, ramfs_size) =
-                        ramfs.map_into_virtual_memory(&mut vmem, initrd_end)?;
+                        ramfs.load_into_virtual_memory(&mut vmem, initrd_end)?;
                     vmem.attach_ramfs(ramfs);
                     Some((ramfs_base, ramfs_size))
                 } else {
