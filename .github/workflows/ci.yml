@@ -1915,6 +1915,93 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+  # Notify downstream ecosystem repos after a successful nightly release so
+  # they can rebuild against the new version immediately instead of waiting
+  # for their next scheduled cron run.
+  dispatch-downstream:
+    name: "Dispatch Downstream Releases"
+    needs: [publish-release]
+    timeout-minutes: 5
+    if: |
+      !cancelled() &&
+      needs.publish-release.result == 'success'
+    runs-on: ubuntu-latest
+    permissions: {}
+    env:
+      TARGET_REPOSITORIES: |
+        bzip2
+        cymem
+        kiwi
+        libexpat
+        libffi
+        murmurhash
+        numpy
+        openblas
+        openssl
+        preshed
+        quickjs
+        rusty_v8
+        sqlite
+        srsly
+        zlib
+    steps:
+      - name: "Dispatch nanvix-minor-release to downstream repos"
+        env:
+          DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ -z "${DISPATCH_TOKEN}" ]]; then
+            echo "::warning::DISPATCH_TOKEN secret is not configured; skipping dispatch."
+            exit 0
+          fi
+
+          source_repo="nanvix/nanvix"
+          failed_repos=()
+
+          while IFS= read -r repo || [[ -n "${repo}" ]]; do
+            [[ -z "${repo}" ]] && continue
+            api_url="https://api.github.com/repos/nanvix/${repo}/dispatches"
+            payload=$(jq -c -n \
+              --arg source_repo "${source_repo}" \
+              --arg ref "${GITHUB_REF_NAME}" \
+              --arg sha "${GITHUB_SHA}" \
+              --arg target_repo "nanvix/${repo}" \
+              --arg reason "nightly release" \
+              '{
+                event_type: "nanvix-minor-release",
+                client_payload: {
+                  source_repo: $source_repo,
+                  ref: $ref,
+                  sha: $sha,
+                  target_repo: $target_repo,
+                  reason: $reason
+                }
+              }')
+
+            http_response=$(curl -sS -o /dev/null -w "%{http_code}" -X POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "${api_url}" \
+              -d "${payload}")
+
+            if [[ "${http_response}" -ge 200 && "${http_response}" -lt 300 ]]; then
+              echo "Dispatched nanvix-minor-release to nanvix/${repo} (HTTP ${http_response})."
+            else
+              echo "::error::Failed to dispatch to nanvix/${repo} (HTTP ${http_response})."
+              failed_repos+=("nanvix/${repo}")
+            fi
+          done <<< "${TARGET_REPOSITORIES}"
+
+          if [[ ${#failed_repos[@]} -gt 0 ]]; then
+            printf '::error::Dispatch failed for: %s\n' "${failed_repos[@]}"
+            exit 1
+          fi
+
+          echo "All dispatch requests succeeded."
+
   # Open a GitHub issue when any job in the release pipeline fails on dev.
   notify-release-failure:
     name: "Notify Release Failure"
