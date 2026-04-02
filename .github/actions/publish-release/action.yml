@@ -361,6 +361,68 @@ runs:
                 core.warning(`Failed to update latest tag: ${error.message}`);
               }
             }
+
+            // --- Maintain a rolling `latest` GitHub Release ---
+            // Delete any existing release tagged "latest" and recreate it so
+            // that tag-based download URLs always serve the current artifacts.
+
+            // Step 1: Delete existing "latest" release (if any).
+            try {
+              const { data: latestRel } = await github.rest.repos.getReleaseByTag({
+                owner,
+                repo,
+                tag: 'latest',
+              });
+              core.info(`Deleting existing 'latest' release (id=${latestRel.id})...`);
+              await github.rest.repos.deleteRelease({ owner, repo, release_id: latestRel.id });
+              core.info('Deleted existing \'latest\' release.');
+            } catch (error) {
+              if (error.status === 404) {
+                core.info('No existing \'latest\' release found; will create a new one.');
+              } else {
+                core.warning(`Failed to delete existing 'latest' release: ${error.message}`);
+              }
+            }
+
+            // Step 2: Create a new "latest" release.
+            // Use make_latest: "false" so the versioned release keeps the GitHub "Latest" badge.
+            let latestRelease;
+            try {
+              const { data: created } = await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: 'latest',
+                target_commitish: commitSha,
+                name: `Nanvix ${version} (latest)`,
+                body: `Rolling release tracking the latest build.\n\nVersion: ${version}\nCommit: ${commitSha}`,
+                draft: false,
+                prerelease: false,
+                make_latest: 'false',
+              });
+              latestRelease = created;
+              core.info(`Created 'latest' release (id=${latestRelease.id}).`);
+            } catch (error) {
+              if (error.status === 422) {
+                core.warning(`Concurrent run already created the 'latest' release: ${error.message}`);
+              } else {
+                core.warning(`Failed to create 'latest' release: ${error.message}`);
+              }
+            }
+
+            // Step 3: Upload artifacts to the new "latest" release.
+            if (latestRelease) {
+              for (const filePath of files) {
+                const name = path.basename(filePath);
+                const data = fs.readFileSync(filePath);
+                core.info(`Uploading ${name} (${data.length} bytes) to 'latest' release...`);
+                try {
+                  await uploadAssetWithRetry(latestRelease.id, name, data);
+                } catch (error) {
+                  core.warning(`Failed to upload ${name} to 'latest' release: ${error.message}`);
+                }
+              }
+              core.info('Finished uploading artifacts to \'latest\' release.');
+            }
           } else {
             core.info(
               `Skipping update of refs/tags/latest because version ${version} ` +
