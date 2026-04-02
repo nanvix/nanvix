@@ -142,7 +142,7 @@ hyper-util = { version = "0.1.20", default-features = false }
 hwloc = { path = "src/libs/hwloc", default-features = false }
 kvm-bindings = "0.14.0"
 kvm-ioctls = "0.24.0"
-libc = "0.2.183"
+libc = "0.2.184"
 linuxd = { path = "src/daemons/linuxd", default-features = false }
 log = "0.4.29"
 multibin = { path = "src/libs/multibin", default-features = false }
@@ -197,7 +197,7 @@ tempfile = "3"
 talc = { git = "https://github.com/nanvix/talc", rev = "12e66643796be912933a369a2d556aaac4c68771", default-features = false, package = "talc" }
 thiserror = "2"
 tokio = { version = "1.50.0", default-features = false }
-toml = { version = "1.1.1", default-features = false, features = [
+toml = { version = "1.1.2", default-features = false, features = [
         "parse",
         "serde",
 ] }
