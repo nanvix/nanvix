@@ -220,6 +220,9 @@ windows = { version = "0.62", features = [
         "Win32_System_Hypervisor",
         "Win32_System_Memory",
         "Win32_System_Threading",
+        "Win32_Storage_FileSystem",
+        "Win32_Foundation",
+        "Win32_Security",
 ] }
 
 [profile.dev]

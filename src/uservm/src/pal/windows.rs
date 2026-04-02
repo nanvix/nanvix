@@ -15,21 +15,51 @@ use ::log::{
     error,
     trace,
 };
-use ::std::{
-    fs,
-    path::Path,
+use ::std::os::windows::ffi::OsStrExt;
+use ::std::path::Path;
+use windows::Win32::{
+    Foundation::{
+        CloseHandle,
+        HANDLE,
+        INVALID_HANDLE_VALUE,
+    },
+    Storage::FileSystem::{
+        CreateFileW,
+        GetFileSizeEx,
+        FILE_ATTRIBUTE_NORMAL,
+        FILE_GENERIC_READ,
+        FILE_SHARE_READ,
+        OPEN_EXISTING,
+    },
+    System::Memory::{
+        CreateFileMappingW,
+        MapViewOfFile,
+        UnmapViewOfFile,
+        FILE_MAP_READ,
+        PAGE_READONLY,
+    },
 };
 
 //==================================================================================================
 // Structures
 //==================================================================================================
 
-/// A file loaded into memory.
+/// A file loaded into memory via Windows memory-mapped I/O.
 #[derive(Debug)]
 pub struct FileMapping {
-    /// Contents of the file.
-    data: Vec<u8>,
+    /// Pointer to the mapped view.
+    ptr: *const u8,
+    /// Size of the file in bytes.
+    len: usize,
+    /// Handle to the file mapping object (needed for cleanup).
+    map_handle: HANDLE,
+    /// Handle to the file (needed for cleanup).
+    file_handle: HANDLE,
 }
+
+// SAFETY: The mapped memory is read-only and the handles are opaque OS resources.
+unsafe impl Send for FileMapping {}
+unsafe impl Sync for FileMapping {}
 
 //==================================================================================================
 // Implementations
@@ -39,7 +69,7 @@ impl FileMapping {
     ///
     /// # Description
     ///
-    /// Reads a file into memory.
+    /// Memory-maps a file for reading using Windows `CreateFileMapping`/`MapViewOfFile`.
     ///
     /// # Parameters
     ///
@@ -54,17 +84,75 @@ impl FileMapping {
         trace!("open(): filename={filename}");
 
         let path: &Path = Path::new(filename);
+        let wide_path: Vec<u16> = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
 
-        let data: Vec<u8> = match fs::read(path) {
-            Ok(data) => data,
-            Err(e) => {
-                let reason: String = format!("failed to read file (error={e})");
+        unsafe {
+            // Open the file for reading.
+            let file_handle: HANDLE = CreateFileW(
+                windows::core::PCWSTR(wide_path.as_ptr()),
+                FILE_GENERIC_READ.0,
+                FILE_SHARE_READ,
+                None,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                None,
+            )
+            .map_err(|e| {
+                let reason: String = format!("failed to open file (error={e})");
                 error!("open(): {reason} (filename={filename})");
-                anyhow::bail!(reason);
-            },
-        };
+                anyhow::anyhow!(reason)
+            })?;
 
-        Ok(Self { data })
+            if file_handle == INVALID_HANDLE_VALUE {
+                anyhow::bail!("open(): CreateFileW returned INVALID_HANDLE_VALUE");
+            }
+
+            // Get file size.
+            let mut file_size_large: i64 = 0;
+            GetFileSizeEx(file_handle, &mut file_size_large).map_err(|e| {
+                let _ = CloseHandle(file_handle);
+                let reason: String = format!("failed to get file size (error={e})");
+                error!("open(): {reason} (filename={filename})");
+                anyhow::anyhow!(reason)
+            })?;
+
+            let file_size: usize = file_size_large as usize;
+
+            if file_size == 0 {
+                let _ = CloseHandle(file_handle);
+                anyhow::bail!("open(): file is empty (filename={filename})");
+            }
+
+            // Create a file mapping object.
+            let map_handle: HANDLE =
+                CreateFileMappingW(file_handle, None, PAGE_READONLY, 0, 0, None).map_err(|e| {
+                    let _ = CloseHandle(file_handle);
+                    let reason: String = format!("failed to create file mapping (error={e})");
+                    error!("open(): {reason} (filename={filename})");
+                    anyhow::anyhow!(reason)
+                })?;
+
+            // Map the file into memory.
+            let view = MapViewOfFile(map_handle, FILE_MAP_READ, 0, 0, 0);
+            if view.Value.is_null() {
+                let _ = CloseHandle(map_handle);
+                let _ = CloseHandle(file_handle);
+                anyhow::bail!("open(): MapViewOfFile returned null (filename={filename})");
+            }
+
+            trace!("open(): mapped {file_size} bytes from {filename}");
+
+            Ok(Self {
+                ptr: view.Value as *const u8,
+                len: file_size,
+                map_handle,
+                file_handle,
+            })
+        }
     }
 
     ///
@@ -77,7 +165,7 @@ impl FileMapping {
     /// A pointer to the file data.
     ///
     pub fn ptr(&self) -> *const u8 {
-        self.data.as_ptr()
+        self.ptr
     }
 
     ///
@@ -90,7 +178,19 @@ impl FileMapping {
     /// The size of the file (in bytes).
     ///
     pub fn size(&self) -> usize {
-        self.data.len()
+        self.len
+    }
+}
+
+impl Drop for FileMapping {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = UnmapViewOfFile(windows::Win32::System::Memory::MEMORY_MAPPED_VIEW_ADDRESS {
+                Value: self.ptr as *mut _,
+            });
+            let _ = CloseHandle(self.map_handle);
+            let _ = CloseHandle(self.file_handle);
+        }
     }
 }
 
