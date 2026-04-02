@@ -48,14 +48,13 @@ use ::std::{
     sync::Arc,
 };
 use ::tokio::{
-    io::{
-        AsyncReadExt,
-        AsyncWriteExt,
-    },
-    net::UnixListener,
     sync::Mutex,
     task::JoinHandle,
 };
+#[cfg(unix)]
+use ::tokio::io::{AsyncReadExt, AsyncWriteExt};
+#[cfg(unix)]
+use ::tokio::net::UnixListener;
 use ::user_vm_api::UserVmIdentifier;
 use ::uservm::standalone::{
     StandaloneVmHandle,
@@ -279,26 +278,37 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
             state.config.gdb_port,
         );
 
-        // Create a Unix socket that serves as the gateway stream. The test harness (or any
-        // consumer) connects to this socket to exchange I/O with the guest — exactly like the
-        // multi-process gateway, but backed by IKC channels instead of a system VM.
-        let gateway_socket_path: String =
-            format!("/tmp/nvx-standalone-gw-{}.sock", std::process::id());
-        let _ = ::std::fs::remove_file(&gateway_socket_path);
-        let listener: UnixListener = match UnixListener::bind(&gateway_socket_path) {
-            Ok(l) => l,
-            Err(e) => {
-                let reason: String =
-                    format!("failed to bind gateway socket at {gateway_socket_path}: {e}");
-                error!("serve_new(): {reason}");
-                handle.abort();
-                anyhow::bail!(reason);
-            },
+        #[cfg(unix)]
+        let (gateway_bridge, gateway_socket_path) = {
+            let gateway_socket_path: String =
+                format!("/tmp/nvx-standalone-gw-{}.sock", std::process::id());
+            let _ = ::std::fs::remove_file(&gateway_socket_path);
+            let listener: UnixListener = match UnixListener::bind(&gateway_socket_path) {
+                Ok(l) => l,
+                Err(e) => {
+                    let reason: String =
+                        format!("failed to bind gateway socket at {gateway_socket_path}: {e}");
+                    error!("serve_new(): {reason}");
+                    handle.abort();
+                    anyhow::bail!(reason);
+                },
+            };
+
+            debug!("serve_new(): gateway socket bound at {gateway_socket_path}",);
+
+            (tokio::spawn(gateway_bridge_task(listener, io)), gateway_socket_path)
         };
 
-        debug!("serve_new(): gateway socket bound at {gateway_socket_path}",);
-
-        let gateway_bridge: JoinHandle<()> = tokio::spawn(gateway_bridge_task(listener, io));
+        #[cfg(windows)]
+        let (gateway_bridge, gateway_socket_path) = {
+            // Gateway bridge uses Unix sockets — not available on Windows.
+            // Provide a no-op task and empty path.
+            let _ = io; // consume io to avoid unused warning
+            let task: JoinHandle<()> = tokio::spawn(async {
+                tokio::time::sleep(std::time::Duration::from_secs(u64::MAX / 2)).await;
+            });
+            (task, String::new())
+        };
 
         *guard = Some(RunningVm {
             handle,
@@ -478,6 +488,7 @@ impl<T: Send + Sync + Default + 'static> Service<Request<Incoming>> for HttpClie
 //==================================================================================================
 
 /// Size of the I/O buffer used by the gateway bridge for socket reads.
+#[cfg(unix)]
 const GATEWAY_BRIDGE_BUFFER_SIZE: usize = 4096;
 
 ///
@@ -496,6 +507,7 @@ const GATEWAY_BRIDGE_BUFFER_SIZE: usize = 4096;
 /// - `listener`: Unix socket listener bound to the gateway path.
 /// - `io`: I/O channels connected to the guest's stdin/stdout via IKC.
 ///
+#[cfg(unix)]
 async fn gateway_bridge_task(listener: UnixListener, io: StandaloneVmIo) {
     let StandaloneVmIo {
         mut output_rx,
