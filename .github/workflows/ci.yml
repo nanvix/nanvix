@@ -231,7 +231,11 @@ jobs:
         build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' || github.event_name == 'workflow_dispatch' && '["debug","release"]' || '["release"]') }}
         machine-type: [microvm, hyperlight]
         deployment-type: [standalone, single-process, multi-process]
-        memory-size: [128]
+        memory-size: [128, 256]
+        # 256MB images are release-only; exclude them from debug builds.
+        exclude:
+          - build-type: debug
+            memory-size: 256
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -1789,7 +1793,7 @@ jobs:
       matrix:
         machine-type: [microvm, hyperlight]
         deployment-type: [standalone, single-process, multi-process]
-        memory-size: [128]
+        memory-size: [128, 256]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
