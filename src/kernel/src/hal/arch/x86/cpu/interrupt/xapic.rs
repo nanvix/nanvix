@@ -482,8 +482,6 @@ impl UninitXapicTimer {
             calibration_ms
         };
 
-        info!("calibrating lapic timer via pit channel 2 ({}ms window)", calibration_ms);
-
         // Timer vector = IDT hardware interrupt base + Timer IRQ 0.
         let timer_vector: u32 = crate::hal::arch::x86::cpu::idt::INT_OFF as u32;
 
@@ -496,31 +494,98 @@ impl UninitXapicTimer {
         // Set LAPIC timer divide-by-128.
         self.write(xapic::XAPIC_TDCR, 0x0A);
 
-        // Arm the PIT one-shot — countdown starts on return.
-        pit.arm_oneshot(calibration_ms);
+        // LAPIC timer calibration.
+        //
+        // The platform provides the host TSC base frequency (in MHz). When
+        // non-zero, an RDTSC-based spin loop is used. This eliminates ~100
+        // PIT-polling VM exits that are expensive during the first
+        // WHvRunVirtualProcessor call (WHP lazily initialises internal partition
+        // state) and removes the dependency on CPUID leaf 0x16 (unavailable on
+        // i686 guests).
+        //
+        // When the value is zero (platform does not provide it), we fall back
+        // to PIT-based calibration.
+        let base_freq: u32 = crate::hal::platform::tsc_base_frequency_mhz();
 
-        // Start the LAPIC timer counting down from max value.
-        self.write(xapic::XAPIC_TICR, 0xFFFF_FFFF);
+        // NOTE: the RDTSC path always calibrates for ~1 ms regardless of
+        // `calibration_ms`; only the PIT fallback uses that parameter.
+        let mut ticks_per_ms: u32 = if base_freq > 0 {
+            // RDTSC-based calibration (zero VM exits).
+            let tsc_freq_mhz: u64 = base_freq as u64;
+            let tsc_ticks_per_ms: u64 = tsc_freq_mhz * 1_000;
 
-        // Wait for PIT delay to elapse.
-        pit.wait_oneshot();
+            info!("calibrating lapic timer via rdtsc (tsc_freq={}mhz)", tsc_freq_mhz);
 
-        // Read remaining LAPIC timer count and compute ticks per millisecond.
-        let current_count: u32 = self.read(xapic::XAPIC_TCCR);
-        let elapsed_ticks: u32 = 0xFFFF_FFFF - current_count;
-        let mut ticks_per_ms: u32 = elapsed_ticks / calibration_ms;
-        if ticks_per_ms == 0 {
-            warn!(
-                "lapic timer calibration underflow: elapsed_ticks={elapsed_ticks}, using fallback \
-                 ticks_per_ms=1"
+            // Start the LAPIC timer counting down from max value.
+            self.write(xapic::XAPIC_TICR, 0xFFFF_FFFF);
+
+            // Spin for ~1 ms using RDTSC (zero VM exits). A max-iteration
+            // guard prevents a hang if TSC does not advance.
+            const RDTSC_MAX_ITERS: u64 = 1_000_000_000;
+            let tsc_start: u64 = ::arch::cpu::rdtsc();
+            let mut iters: u64 = 0;
+            while (::arch::cpu::rdtsc() - tsc_start) < tsc_ticks_per_ms {
+                core::hint::spin_loop();
+                iters += 1;
+                if iters >= RDTSC_MAX_ITERS {
+                    warn!("rdtsc calibration timeout after {} iterations", RDTSC_MAX_ITERS);
+                    break;
+                }
+            }
+
+            // Read remaining LAPIC count and actual TSC delta to correct for overshoot.
+            let current_count: u32 = self.read(xapic::XAPIC_TCCR);
+            let elapsed_ticks: u32 = 0xFFFF_FFFF_u32.wrapping_sub(current_count);
+            let tsc_elapsed: u64 = ::arch::cpu::rdtsc() - tsc_start;
+
+            // ticks_per_ms = elapsed × (target / actual) so the result is independent
+            // of TSC frequency errors. Guard against tsc_elapsed == 0 (TSC did not
+            // advance); the ticks_per_ms == 0 fallback below handles the result.
+            let tpm: u32 = if tsc_elapsed > 0 {
+                ((elapsed_ticks as u64 * tsc_ticks_per_ms) / tsc_elapsed) as u32
+            } else {
+                0
+            };
+
+            info!(
+                "lapic timer calibration (rdtsc): elapsed_ticks={}, ticks_per_ms={}, \
+                 tsc_freq_mhz={}",
+                elapsed_ticks, tpm, tsc_freq_mhz
             );
+            tpm
+        } else {
+            // PIT-based fallback.
+            info!(
+                "vmm tsc_freq_mhz register is zero, calibrating lapic timer via pit channel 2 \
+                 ({}ms window)",
+                calibration_ms
+            );
+
+            // Arm the PIT one-shot — countdown starts on return.
+            pit.arm_oneshot(calibration_ms);
+
+            // Start the LAPIC timer counting down from max value.
+            self.write(xapic::XAPIC_TICR, 0xFFFF_FFFF);
+
+            // Wait for PIT delay to elapse.
+            pit.wait_oneshot();
+
+            // Read remaining LAPIC timer count and compute ticks per millisecond.
+            let current_count: u32 = self.read(xapic::XAPIC_TCCR);
+            let elapsed_ticks: u32 = 0xFFFF_FFFF_u32.wrapping_sub(current_count);
+            let tpm: u32 = elapsed_ticks / calibration_ms;
+
+            info!(
+                "lapic timer calibration (pit fallback): elapsed_ticks={}, ticks_per_ms={}",
+                elapsed_ticks, tpm
+            );
+            tpm
+        };
+
+        if ticks_per_ms == 0 {
+            warn!("lapic timer calibration underflow: using fallback ticks_per_ms=1");
             ticks_per_ms = 1;
         }
-
-        info!(
-            "lapic timer calibration: elapsed_ticks={}, ticks_per_ms={}",
-            elapsed_ticks, ticks_per_ms
-        );
 
         // Enable LAPIC via spurious interrupt vector register.
         self.write(xapic::XAPIC_SVR, 0x1FF);
