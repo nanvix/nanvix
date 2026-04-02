@@ -25,9 +25,6 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "hyperlight")] {
         mod hyperlight;
         pub use hyperlight::*;
-    } else if #[cfg(all(feature = "microvm", target_os = "windows"))] {
-        mod whp;
-        pub use whp::*;
     } else if #[cfg(feature = "microvm")] {
         mod microvm;
         pub use microvm::*;
