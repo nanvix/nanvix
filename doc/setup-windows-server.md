@@ -1,33 +1,41 @@
 # Setting Up Your Development Environment (Windows Server 2022)
 
-This guide covers setting up the Nanvix development environment on Windows Server 2022/2025 Datacenter.
-Phase 1 installs system-wide prerequisites in an elevated PowerShell session. Phase 2 installs
-per-user tools and configures the repository as a regular user.
+This guide covers setting up the Nanvix development environment on Windows Server 2022/2025
+Datacenter. The workflow is identical to Windows 11 except that `z.ps1 setup` automatically
+installs [Chocolatey](https://chocolatey.org/) and uses it as the package manager instead of
+winget.
 
-## Phase 1: Administrator Setup
+## Table of Contents
 
-Run in an **elevated PowerShell prompt** (once per machine). This installs Chocolatey, Git,
-Python 3.12, GNU Make, Visual Studio Build Tools (C++ workload), enables Developer Mode, and
-enables the Windows Hypervisor Platform.
+- [1. Enable Developer Mode](#1-enable-developer-mode)
+- [2. Enable Windows Hypervisor Platform](#2-enable-windows-hypervisor-platform)
+- [3. Clone This Repository](#3-clone-this-repository)
+- [4. Run Setup](#4-run-setup)
+- [5. Remote Development with VS Code Tunnel (Optional)](#5-remote-development-with-vs-code-tunnel-optional)
+
+---
+
+## 1. Enable Developer Mode
+
+Run in an **elevated PowerShell prompt** (once per machine):
 
 ```powershell
-.\scripts\setup\windows-server-admin.ps1
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" `
+    /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1
 ```
 
-Reboot after running if Windows Hypervisor Platform was just enabled.
+## 2. Enable Windows Hypervisor Platform
+
+Run in an **elevated PowerShell prompt** (once per machine):
+
+```powershell
+Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All
+```
+
+Restart the machine after enabling the feature.
 
 > **Note:** The VM must support nested virtualization to use WHP. On Azure, use Dv5, Ev5, or
 > newer series (e.g., `Standard_D4s_v5`).
-
-## Phase 2: User Setup
-
-Run in a **regular (non-elevated) PowerShell prompt** (once per user). This installs the Rust
-toolchain under the current user profile, clones the Nanvix repository with symlink support, and
-runs `z.ps1 setup` to validate the environment and configure Git hooks.
-
-```powershell
-.\scripts\setup\windows-server-user.ps1
-```
 
 ## 3. Clone This Repository
 
@@ -39,9 +47,8 @@ cd nanvix                                                                # Navig
 ```
 
 > **Note:** The `-c core.symlinks=true` flag ensures Git creates native symlinks instead of text
-> stub files. This requires Developer Mode to be enabled (Phase 1). If you already cloned without
-> this flag, prefer re-cloning after enabling Developer Mode so your existing worktree is not
-> overwritten.
+> stub files. This requires Developer Mode to be enabled. If you already cloned without this flag,
+> prefer re-cloning after enabling Developer Mode so your existing worktree is not overwritten.
 
 ## 4. Run Setup
 
@@ -49,8 +56,15 @@ cd nanvix                                                                # Navig
 .\z.ps1 setup
 ```
 
-This validates the development environment and configures the repository Git hooks from
-`.githooks`.
+On Windows Server, this command automatically detects the server environment and:
+
+1. Installs [Chocolatey](https://chocolatey.org/) (if not already installed).
+2. Installs Git via Chocolatey (if not already installed).
+3. Installs Python 3.12 via Chocolatey (if not already installed).
+4. Installs GNU Make via Chocolatey (if not already installed).
+5. Checks for Visual Studio Build Tools (warns if missing).
+6. Installs the Rust toolchain via rustup (if not already installed).
+7. Configures the repository Git hooks from `.githooks`.
 
 > **Note:** `z.ps1 setup` emits a non-fatal warning about the Windows build number being below
 > 22000. This is expected on Server 2022 and does not affect functionality.
