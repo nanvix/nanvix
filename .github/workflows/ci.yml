@@ -2017,21 +2017,33 @@ jobs:
       always() &&
       github.repository == 'nanvix/nanvix' &&
       github.ref == 'refs/heads/dev' &&
-      contains(needs.*.result, 'failure')
+      (
+        contains(needs.*.result, 'failure') ||
+        (
+          (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+          (
+            needs.release-archive.result == 'skipped' ||
+            needs.windows-release-archive.result == 'skipped' ||
+            needs.publish-release.result == 'skipped'
+          )
+        )
+      )
     runs-on: ubuntu-24.04
     permissions:
       issues: write
       contents: read
 
     steps:
-      - name: "Collect Failed Jobs"
+      - name: "Collect Failed or Skipped Jobs"
         id: failed
         shell: bash
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
-          failed_jobs=$(echo "${NEEDS_JSON}" | jq -r 'to_entries[] | select(.value.result == "failure") | .key' | paste -sd ', ')
-          echo "list=${failed_jobs}" >> "${GITHUB_OUTPUT}"
+          failed_jobs=$(echo "${NEEDS_JSON}" | jq -r '[to_entries[] | select(.value.result == "failure") | .key] | join(", ")')
+          skipped_jobs=$(echo "${NEEDS_JSON}" | jq -r '[to_entries[] | select(.key == "release-archive" or .key == "windows-release-archive" or .key == "publish-release") | select(.value.result == "skipped") | .key] | join(", ")')
+          echo "failed=${failed_jobs}" >> "${GITHUB_OUTPUT}"
+          echo "skipped=${skipped_jobs}" >> "${GITHUB_OUTPUT}"
 
       - name: "Create Issue"
         env:
@@ -2044,14 +2056,15 @@ jobs:
             --assignee "ppenna" \
             --body "## CI/CD Release Pipeline Failure
 
-          The CI/CD pipeline failed on a push to \`dev\`.
+          The CI/CD pipeline failed on \`dev\` (event: \`${{ github.event_name }}\`).
 
           **Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           **Commit:** [\`${GITHUB_SHA::8}\`](${{ github.server_url }}/${{ github.repository }}/commit/${GITHUB_SHA})
           **Triggered by:** @${{ github.actor }}
-          **Failed jobs:** ${{ steps.failed.outputs.list }}
+          **Failed jobs:** ${{ steps.failed.outputs.failed }}
+          **Skipped jobs:** ${{ steps.failed.outputs.skipped }}
 
-          Please investigate the failed jobs linked above and resolve the issue."
+          Please investigate the failed and skipped jobs linked above and resolve the issue."
 
   # Bump the patch version on every merge to dev.
   # This job runs independently of the CI pipeline because the pipeline skips
