@@ -727,6 +727,10 @@ python-format-check: python-init
 python-lint: python-init
 	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m flake8 $(PYTHON_FILES) $(PY_VERBOSE)
 
+# Runs Python unit tests for the build backend (z.py).
+test-python: python-init
+	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m unittest discover -s tests -p "test_*.py" $(PY_VERBOSE)
+
 # Checks for linting issues in shell scripts.
 shell-lint-check:
 	@shellcheck -S warning $(SHELL_FILES)
@@ -792,6 +796,11 @@ ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 endif
 
 run-unit-tests: all-nanvix test-guest-rlibs
+
+# Python unit tests for the build backend (z.py). Linux-only (venv not available on Windows).
+ifneq ($(IS_WINDOWS),yes)
+run-unit-tests: test-python
+endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 # On Windows, only test uservm (other host rlibs have Unix-only test dependencies).
