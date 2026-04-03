@@ -1,18 +1,10 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-#![no_std]
-#![allow(clippy::all)]
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-mod x86;
-
-#[cfg(target_arch = "x86_64")]
-mod x86_64;
-
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub use x86::*;
+pub mod idt;
+pub mod idtr;
+pub mod tss;

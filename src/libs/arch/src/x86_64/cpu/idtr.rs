@@ -11,17 +11,17 @@ use ::core::arch;
 // Structures
 //==================================================================================================
 
-/// Interrupt descriptor table pointer (IDTR).
+/// Interrupt descriptor table pointer (IDTR) for 64-bit x86_64.
 #[repr(C, packed)]
 pub struct Idtr {
     pub size: u16, // IDT size.
-    pub ptr: u32,  // IDT virtual address.
+    pub ptr: u64,  // IDT virtual address.
 }
-::static_assert::assert_eq_size!(Idtr, 6);
+::static_assert::assert_eq_size!(Idtr, 10);
 
 impl Idtr {
     /// Initializes an IDT register.
-    pub unsafe fn init(&mut self, ptr: u32, size: u16) {
+    pub unsafe fn init(&mut self, ptr: u64, size: u16) {
         self.size = size - 1;
         self.ptr = ptr;
     }
@@ -29,8 +29,8 @@ impl Idtr {
     /// Loads the IDT.
     pub unsafe fn load(&self) {
         arch::asm!(
-            "lidt (%eax)",
-            in("eax") self,
+            "lidt (%rax)",
+            in("rax") self,
             options(nostack, readonly, preserves_flags, att_syntax)
         );
     }
