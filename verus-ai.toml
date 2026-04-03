@@ -1,0 +1,19 @@
+[project]
+background = """
+Nanvix is a research OS kernel written in Rust. The kheap module implements a
+kernel heap allocator that manages multiple slab allocators of different sizes
+(8–512 bytes, extended to 4096 under hyperlight). It uses the verified slab
+crate internally. The heap is backed by a static aligned storage region and
+provides the GlobalAlloc trait implementation for the kernel.
+"""
+
+[dependencies.verified]
+slab = "src/libs/slab/src/lib.spec.rs"
+bitmap = "src/libs/bitmap/src/lib.spec.rs"
+
+[build]
+cmd = "make build"
+
+[verify]
+cmd = "make verify-kernel MODULE=kheap"
+cmd_all = "make verify"

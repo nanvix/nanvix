@@ -29,6 +29,10 @@ hyperlight-common = { workspace = true, optional = true }
 hyperlight-guest = { workspace = true, optional = true }
 multibin = { workspace = true, optional = true }
 static_assert = { workspace = true }
+vstd = { workspace = true }
+
+[package.metadata.verus]
+verify = true
 
 [build-dependencies]
 build-utils = { workspace = true }
