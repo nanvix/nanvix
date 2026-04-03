@@ -1,0 +1,19 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "vfs-bench-common"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Shared protocol definitions for the VFS benchmark (guest ↔ host)."
+homepage.workspace = true
+
+[dependencies]
+
+[features]
+default = []
+
+[lints]
+workspace = true
