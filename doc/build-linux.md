@@ -130,23 +130,26 @@ To run formal verification:
 
 ```bash
 # Verify all annotated crates.
-./z build -- verify VERUS_EXECUTABLE_DIR=~/toolchain/verus
+./z verify -- VERUS_EXECUTABLE_DIR=~/toolchain/verus
 
 # Verify a single crate (e.g., bitmap).
-./z build -- verify-bitmap VERUS_EXECUTABLE_DIR=~/toolchain/verus
+./z verify -- verify-bitmap VERUS_EXECUTABLE_DIR=~/toolchain/verus
 ```
 
 > **Note:** `VERUS_EXECUTABLE_DIR` must be set; when unset, verification is a silent no-op.
 
 Verification requires `VERUS_EXECUTABLE_DIR` to point to the directory that contains the
 `verus` executable (and required companion binaries). When the variable is unset, `make verify`
-is a no-op. The `scripts/setup/verus.sh` helper can download the pinned release:
+is a no-op. Use the setup command or the helper script to download the pinned release:
 
 ```bash
-# Install verus to a local directory and run verification.
+# Option 1: Automated install via z (installs to ~/verus).
+./z setup --verus
+
+# Option 2: Install to a custom directory.
 ./scripts/setup/verus.sh ~/toolchain/verus
-./z build -- verify VERUS_EXECUTABLE_DIR=~/toolchain/verus
+./z verify -- VERUS_EXECUTABLE_DIR=~/toolchain/verus
 
 # Or use a source-built installation.
-./z build -- verify VERUS_EXECUTABLE_DIR=~/verus/target-verus/release
+./z verify -- VERUS_EXECUTABLE_DIR=~/verus/target-verus/release
 ```

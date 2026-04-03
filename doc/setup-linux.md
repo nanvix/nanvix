@@ -157,12 +157,22 @@ compatibility. Follow these steps to update your environment:
 
 Verification requires `VERUS_EXECUTABLE_DIR` to point to the directory containing the `verus`
 binary. When unset, `make verify` is a no-op. The expected version is pinned in
-`build/verus-version`; use `scripts/setup/verus.sh` to download it:
+`build/verus-version`.
+
+The easiest way to install Verus is via the setup command:
+
+```bash
+./z setup --verus
+```
+
+This installs the pinned Verus release to `~/verus` (or `<toolchain-dir>/verus` when
+`--toolchain-dir` is provided). You can also invoke the setup script directly to choose a
+custom install directory:
 
 ```bash
 # Download the pinned release and run verification.
 ./scripts/setup/verus.sh ~/toolchain/verus
-./z build -- verify VERUS_EXECUTABLE_DIR=~/toolchain/verus
+./z verify -- VERUS_EXECUTABLE_DIR=~/toolchain/verus
 ```
 
 ### Using a Custom Verus Installation
@@ -178,7 +188,7 @@ cd ~/verus-src/source
 
 # 2. From the Nanvix repo root, run verification pointing at the verus binary directory.
 cd /path/to/nanvix
-./z build -- verify VERUS_EXECUTABLE_DIR=~/verus-src/source/target-verus/release
+./z verify -- VERUS_EXECUTABLE_DIR=~/verus-src/source/target-verus/release
 ```
 
 > **Note:** The build validates that a `verus` binary exists at the given path (the directory
