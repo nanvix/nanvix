@@ -28,6 +28,10 @@ impl Idtr {
 
     /// Loads the IDT.
     pub unsafe fn load(&self) {
-        arch::asm!("lidt (%eax)", in("eax") self, options(nostack, nomem, att_syntax));
+        arch::asm!(
+            "lidt (%eax)",
+            in("eax") self,
+            options(nostack, readonly, preserves_flags, att_syntax)
+        );
     }
 }
