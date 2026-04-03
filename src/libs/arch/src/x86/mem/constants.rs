@@ -56,6 +56,13 @@ pub const PGTAB_SIZE: usize = 1 << PGTAB_SHIFT;
 ///
 /// # Description
 ///
+/// Number of entries in a page table.
+///
+pub const PAGE_TABLE_LENGTH: usize = PGTAB_SIZE / PAGE_SIZE;
+
+///
+/// # Description
+///
 /// Mask for page table offset.
 ///
 pub const PGTAB_MASK: usize = !(PGTAB_SIZE - 1);
