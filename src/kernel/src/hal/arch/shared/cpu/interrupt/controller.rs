@@ -58,6 +58,7 @@ static mut INTERRUPT_VECTOR: [Option<InterruptHandler>; INTERRUPT_VECTOR_LENGTH]
 enum InterruptControllerType {
     Legacy(Pic),
     Xapic(Xapic, Ioapic),
+    #[cfg(target_arch = "x86")]
     PicXapic(Pic, Xapic),
 }
 
@@ -72,7 +73,7 @@ impl InterruptController {
         xapic: Option<UninitXapic>,
         ioapic: Option<UninitIoapic>,
         intmap: InterruptMap,
-        eoi_xapic: Option<Xapic>,
+        #[cfg(target_arch = "x86")] eoi_xapic: Option<Xapic>,
     ) -> Result<Self, Error> {
         // If legacy PIC is available, initialize it.
         let pic: Option<Pic> = if let Some(mut pic) = pic {
@@ -93,8 +94,8 @@ impl InterruptController {
                     info!("reading apic_base={:?}", apic_base);
                     // NOTE: check this in behavior in real hardware.
                     // Specification is unclear whether address is the full linear address or the
-                    // page address. QEMU works with both, but it defaults to page address, so let's
-                    // use that to keep consistency.
+                    // page address. QEMU works with both, but it defaults to page address, so
+                    // let's use that to keep consistency.
                     let apic_base: msr::ApicBase = msr::ApicBase::new(
                         (xapic.base() >> arch::mem::PAGE_SHIFT) as u64,
                         true,
@@ -118,8 +119,8 @@ impl InterruptController {
                     info!("reading apic_base={:?}", apic_base);
                     // NOTE: check this in behavior in real hardware.
                     // Specification is unclear whether address is the full linear address or the
-                    // page address. QEMU works with both, but it defaults to page address, so let's
-                    // use that to keep consistency.
+                    // page address. QEMU works with both, but it defaults to page address, so
+                    // let's use that to keep consistency.
                     let apic_base: msr::ApicBase = msr::ApicBase::new(
                         (xapic.base() >> arch::mem::PAGE_SHIFT) as u64,
                         true,
@@ -135,8 +136,9 @@ impl InterruptController {
 
         // If legacy PIC is available, use it.
         if let Some(pic) = pic {
-            // If an xAPIC EOI handle was provided (by the xAPIC timer init path),
+            // On x86, if an xAPIC EOI handle was provided (by the xAPIC timer init path),
             // use PIC for external IRQ routing and the xAPIC for EOI acknowledgement.
+            #[cfg(target_arch = "x86")]
             if let Some(xapic_eoi) = eoi_xapic {
                 info!("using pic with xapic for eoi");
                 return Ok(Self {
@@ -167,6 +169,7 @@ impl InterruptController {
                 xapic.ack();
                 Ok(())
             },
+            #[cfg(target_arch = "x86")]
             InterruptControllerType::PicXapic(ref mut pic, ref mut xapic) => {
                 // xAPIC EOI (MMIO write to 0xFEE000B0) runs every
                 // tick to clear the ISR bit so the LAPIC can accept the
@@ -216,6 +219,7 @@ impl InterruptController {
                 let intnum: u8 = self.intmap[intnum];
                 ioapic.enable(intnum, 0)
             },
+            #[cfg(target_arch = "x86")]
             InterruptControllerType::PicXapic(ref mut pic, _) => {
                 pic.unmask(intnum as u16);
                 Ok(())
@@ -246,7 +250,13 @@ impl InterruptController {
         kstack: *const u8,
     ) -> Result<(), Error> {
         match self.intctrl {
-            InterruptControllerType::Legacy(_) | InterruptControllerType::PicXapic(..) => {
+            InterruptControllerType::Legacy(_) => {
+                let reason: &str = "legacy pic does not support starting cores";
+                error!("{reason}");
+                Err(Error::new(ErrorCode::OperationNotSupported, reason))
+            },
+            #[cfg(target_arch = "x86")]
+            InterruptControllerType::PicXapic(..) => {
                 let reason: &str = "pic does not support starting cores";
                 error!("{reason}");
                 Err(Error::new(ErrorCode::OperationNotSupported, reason))
@@ -263,9 +273,9 @@ impl InterruptController {
         handler: Option<InterruptHandler>,
     ) -> Result<(), Error> {
         let intnum: u8 = match self.intctrl {
-            InterruptControllerType::Legacy(_) | InterruptControllerType::PicXapic(..) => {
-                intnum as u8
-            },
+            InterruptControllerType::Legacy(_) => intnum as u8,
+            #[cfg(target_arch = "x86")]
+            InterruptControllerType::PicXapic(..) => intnum as u8,
             InterruptControllerType::Xapic(_, _) => self.intmap[intnum],
         };
         unsafe { INTERRUPT_VECTOR[intnum as usize] = handler };
@@ -274,9 +284,9 @@ impl InterruptController {
 
     pub fn get_handler(&self, intnum: InterruptNumber) -> Result<Option<InterruptHandler>, Error> {
         let intnum: u8 = match self.intctrl {
-            InterruptControllerType::Legacy(_) | InterruptControllerType::PicXapic(..) => {
-                intnum as u8
-            },
+            InterruptControllerType::Legacy(_) => intnum as u8,
+            #[cfg(target_arch = "x86")]
+            InterruptControllerType::PicXapic(..) => intnum as u8,
             InterruptControllerType::Xapic(_, _) => self.intmap[intnum],
         };
         unsafe { Ok(INTERRUPT_VECTOR[intnum as usize]) }

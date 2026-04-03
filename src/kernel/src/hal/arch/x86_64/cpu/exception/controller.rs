@@ -21,8 +21,13 @@ use crate::hal::arch::{
 ///
 /// # Parameters
 ///
-/// - `excp` Exception information.
 /// - `ctx`  Context information.
+/// - `excp` Exception information.
+///
+/// # Note
+///
+/// On x86_64, the hooks.S assembly passes the context pointer in RDI (first argument) and the
+/// exception information pointer in RSI (second argument). This is the opposite order from x86.
 ///
 /// # Safety
 ///
@@ -32,8 +37,8 @@ use crate::hal::arch::{
 ///
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_exception(
-    excp: *const ExceptionInformation,
     ctx: *const ContextInformation,
+    excp: *const ExceptionInformation,
 ) {
     super::exception_controller::dispatch(&*excp, &*ctx);
 }

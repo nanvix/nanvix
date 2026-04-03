@@ -9,8 +9,8 @@ use crate::hal::{
     io::IoMemoryRegion,
     mem::Address,
 };
-use arch::cpu::xapic;
-use sys::error::{
+use ::arch::cpu::xapic;
+use ::sys::error::{
     Error,
     ErrorCode,
 };
@@ -19,7 +19,7 @@ use sys::error::{
 #[path = ""]
 mod smp_feature_imports {
     pub use crate::mm::kredzone;
-    pub use sys::mm::VirtualAddress;
+    pub use ::sys::mm::VirtualAddress;
 }
 
 #[cfg(feature = "smp")]
@@ -59,8 +59,10 @@ impl UninitXapic {
     pub fn init(&mut self) -> Result<Xapic, Error> {
         info!("initializing xapic (id={}, base={:?})", self.id, self.base);
 
-        let mut xapic: Xapic =
-            Xapic::new(self.id, xapic::Xapic::new(self.base.base().into_raw_value() as *mut u32));
+        let mut xapic: Xapic = Xapic {
+            id: self.id,
+            ptr: xapic::Xapic::new(self.base.base().into_raw_value() as *mut u32),
+        };
 
         // Check ID matches the one in the APIC.
         let apic_id: xapic::XapicId = xapic::XapicId::from_u32(xapic.read(xapic::XAPIC_ID));
@@ -215,11 +217,6 @@ pub struct Xapic {
 }
 
 impl Xapic {
-    /// Creates a new xAPIC handle.
-    fn new(id: u8, ptr: xapic::Xapic) -> Self {
-        Self { id, ptr }
-    }
-
     ///
     /// # Description
     ///
@@ -375,7 +372,7 @@ impl Xapic {
 }
 
 //==================================================================================================
-// Uninitialized xAPIC Timer
+// Uninitialized xAPIC Timer (x86 only)
 //==================================================================================================
 
 ///
@@ -385,6 +382,7 @@ impl Xapic {
 /// into an [`XapicTimer`] via PIT-based calibration, following the same Uninit pattern used
 /// by [`UninitPic`] and [`UninitXapic`].
 ///
+#[cfg(target_arch = "x86")]
 #[allow(dead_code)]
 pub struct UninitXapicTimer {
     /// LAPIC MMIO region handle.
@@ -393,6 +391,7 @@ pub struct UninitXapicTimer {
     ptr: xapic::Xapic,
 }
 
+#[cfg(target_arch = "x86")]
 #[allow(dead_code)]
 impl UninitXapicTimer {
     ///
@@ -608,7 +607,7 @@ impl UninitXapicTimer {
 }
 
 //==================================================================================================
-// xAPIC Timer
+// xAPIC Timer (x86 only)
 //==================================================================================================
 
 ///
@@ -618,12 +617,14 @@ impl UninitXapicTimer {
 /// The interrupt controller handles EOI via a separate [`Xapic`] handle obtained from
 /// [`Self::create_eoi_handle()`].
 ///
+#[cfg(target_arch = "x86")]
 #[allow(dead_code)]
 pub struct XapicTimer {
     /// LAPIC MMIO region handle (kept alive to prevent reallocation).
     region: IoMemoryRegion,
 }
 
+#[cfg(target_arch = "x86")]
 #[allow(dead_code)]
 impl XapicTimer {
     ///
@@ -638,6 +639,9 @@ impl XapicTimer {
     /// does not outlive this `XapicTimer`.
     ///
     pub unsafe fn create_eoi_handle(&self) -> Xapic {
-        Xapic::new(0, xapic::Xapic::new(self.region.base().into_raw_value() as *mut u32))
+        Xapic {
+            id: 0,
+            ptr: xapic::Xapic::new(self.region.base().into_raw_value() as *mut u32),
+        }
     }
 }

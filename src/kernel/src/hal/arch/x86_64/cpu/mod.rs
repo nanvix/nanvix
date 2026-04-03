@@ -7,7 +7,7 @@
 
 mod context;
 mod exception;
-mod idt;
+pub(crate) mod idt;
 mod interrupt;
 
 #[cfg(feature = "smp")]
@@ -55,7 +55,6 @@ pub use interrupt::{
     InterruptController,
     InterruptHandler,
     InterruptNumber,
-    XapicTimer,
 };
 pub mod tss;
 pub use fpu::FpuState;
@@ -68,7 +67,7 @@ pub fn init(
     ioports: &mut IoPortAllocator,
     ioaddresses: &mut IoMemoryAllocator,
     madt: &Option<MadtInfo>,
-) -> Result<(GdtPtr, TssRef, Option<InterruptController>, Option<XapicTimer>), Error> {
+) -> Result<(GdtPtr, TssRef, Option<InterruptController>), Error> {
     unsafe extern "C" {
         static kstack: u8;
     }
@@ -125,16 +124,16 @@ pub fn init(
     let (gdtr, tss): (GdtPtr, TssRef) = unsafe { Gdt::init(&kstack)? };
     unsafe { idt::init() };
 
-    let (controller, xapic_timer): (Option<InterruptController>, Option<XapicTimer>) =
-        match interrupt::init(ioports, ioaddresses, madt) {
-            Ok((controller, xapic_timer)) => (Some(controller), xapic_timer),
-            Err(e) => {
-                warn!("failed to initialize interrupt controller (error={:?})", e);
-                (None, None)
-            },
-        };
+    let controller: Option<InterruptController> = match interrupt::init(ioports, ioaddresses, madt)
+    {
+        Ok(controller) => Some(controller),
+        Err(e) => {
+            warn!("failed to initialize interrupt controller (error={:?})", e);
+            None
+        },
+    };
 
-    Ok((gdtr, tss, controller, xapic_timer))
+    Ok((gdtr, tss, controller))
 }
 
 #[cfg(feature = "smp")]
