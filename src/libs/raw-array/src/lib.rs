@@ -293,13 +293,10 @@ impl<T> RawArray<T> {
             ptr.addr() + len * vstd::layout::size_of::<T>() + vstd::layout::align_of::<T>() - 1
                 <= usize::MAX as int,
         ensures
-            match result {
-                Ok(me) => {
-                    &&& me.inv()
-                    &&& me@.len() == len
-                    &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] me@[i])
-                },
-                Err(e) => e.code == ErrorCode::InvalidArgument,
+            result matches Ok(me) && {
+                &&& me.inv()
+                &&& me@.len() == len
+                &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] me@[i])
             },
     )]
     pub unsafe fn from_raw_parts(ptr: *mut T, len: usize) -> Result<RawArray<T>, Error> {
