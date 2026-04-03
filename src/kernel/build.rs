@@ -272,7 +272,15 @@ fn main() {
     // page of heap_padding exists.
     //
     // For non-Hyperlight targets, no reserved space is needed.
-    let linker_template_path: PathBuf = workspace_dir.join("build/kernel/linker/x86/kernel.ld.in");
+    let target_arch: String =
+        env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_else(|_| "x86".to_string());
+    let linker_subdir: &str = if target_arch == "x86_64" {
+        "x86_64"
+    } else {
+        "x86"
+    };
+    let linker_template_path: PathBuf =
+        workspace_dir.join(format!("build/kernel/linker/{}/kernel.ld.in", linker_subdir));
     let linker_output_path: PathBuf = Path::new(&out_dir).join("kernel.ld");
 
     let machine_reserved: String = if cfg!(feature = "hyperlight") {
