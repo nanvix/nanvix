@@ -36,7 +36,7 @@ VALID_DEPLOYMENT_MODES: tuple[str, ...] = (
     "l2",
 )
 VALID_LOG_LEVELS: tuple[str, ...] = ("trace", "debug", "info", "warn", "error", "panic")
-VALID_TARGETS: tuple[str, ...] = ("x86",)
+VALID_TARGETS: tuple[str, ...] = ("x86", "x86_64")
 VALID_MESSAGE_FORMATS: tuple[str, ...] = ("json", "json-diagnostic-rendered-ansi")
 
 DEFAULT_MACHINE = "microvm"

@@ -320,7 +320,12 @@ ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap config elf error fat32 type-safe pr
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd snapshot-rust-nostd vfs-bench-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
-ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust dlfcn-rust c-bindings-rust
+ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust c-bindings-rust
+# dlfcn-rust requires PIE linking for dlopen/dlsym; the x86_64 static
+# relocation model produces R_X86_64_32 relocations incompatible with PIE.
+ifneq ($(TARGET),x86_64)
+ALL_GUEST_TESTS += dlfcn-rust
+endif
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 
@@ -539,7 +544,7 @@ help:
 	@echo "Parameter Values"
 	@echo "  DEPLOYMENT_MODE standalone, single-process, multi-process, l2"
 	@echo "  MACHINE         hyperlight, microvm"
-	@echo "  TARGET          x86"
+	@echo "  TARGET          x86, x86_64"
 	@echo "  RELEASE         yes, no"
 	@echo "  LOG_LEVEL       trace, debug, info, warn, error, panic"
 	@echo "  PROFILER        yes, no"
@@ -843,7 +848,7 @@ endif
 endif
 endif
 
-# Determine the test configuration file based on deployment mode.
+# Determine the test configuration file based on deployment mode and architecture.
 ifeq ($(IS_WINDOWS),yes)
 ifeq ($(DEPLOYMENT_MODE),standalone)
 NANVIX_TEST_CONFIG := test/test-standalone-windows.toml
@@ -853,13 +858,25 @@ NANVIX_TEST_CONFIG := test/test-standalone-windows.toml
 endif
 else
 ifeq ($(DEPLOYMENT_MODE),standalone)
+ifeq ($(TARGET),x86_64)
+NANVIX_TEST_CONFIG := test/test-standalone-x86_64.toml
+else
 NANVIX_TEST_CONFIG := test/test-standalone.toml
+endif
 else ifneq ($(filter single-process,$(DEPLOYMENT_MODE)),)
+ifeq ($(TARGET),x86_64)
+NANVIX_TEST_CONFIG := test/test-standalone-x86_64.toml
+else
 NANVIX_TEST_CONFIG := test/test-single_process.toml
+endif
 else ifeq ($(DEPLOYMENT_MODE),l2)
 NANVIX_TEST_CONFIG := test/test-l2.toml
 else
+ifeq ($(TARGET),x86_64)
+NANVIX_TEST_CONFIG := test/test-standalone-x86_64.toml
+else
 NANVIX_TEST_CONFIG := test/test-multi_process.toml
+endif
 endif
 endif
 
