@@ -19,3 +19,13 @@ commit,section,operation,samples,p50,p95,p99
 0df2225daf9a1ed3df5a995987cd8a2cca1af965,Decomposed (paired),mkdir+rmdir,100,14,32,40
 0df2225daf9a1ed3df5a995987cd8a2cca1af965,Decomposed (paired),create+close+rename,100,16,37,48
 0df2225daf9a1ed3df5a995987cd8a2cca1af965,Decomposed (paired),write+flush,100,125,147,169
+925088e62b9144df371e3599d02db8dff84e8ff2,Decomposed (paired),protocol,100,241,262,11480
+925088e62b9144df371e3599d02db8dff84e8ff2,Decomposed (paired),stat,100,173,205,213
+925088e62b9144df371e3599d02db8dff84e8ff2,Decomposed (paired),open+close,100,176,203,248
+925088e62b9144df371e3599d02db8dff84e8ff2,Decomposed (paired),readdir,100,174,204,235
+925088e62b9144df371e3599d02db8dff84e8ff2,Decomposed (paired),create_scratch,100,155,175,180
+925088e62b9144df371e3599d02db8dff84e8ff2,Decomposed (paired),seq_read,100,0,47,1238
+925088e62b9144df371e3599d02db8dff84e8ff2,Decomposed (paired),create+close+unlink,100,11,30,37
+925088e62b9144df371e3599d02db8dff84e8ff2,Decomposed (paired),mkdir+rmdir,100,15,29,34
+925088e62b9144df371e3599d02db8dff84e8ff2,Decomposed (paired),create+close+rename,100,17,46,115
+925088e62b9144df371e3599d02db8dff84e8ff2,Decomposed (paired),write+flush,100,123,150,156
