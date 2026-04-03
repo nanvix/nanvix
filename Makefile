@@ -284,10 +284,26 @@ export VERUS_EXECUTABLE_DIR ?=
 # List of crates to verify with Verus.
 VERUS_CRATES := bitmap slab
 
+# Platform-specific Verus binary name.
+ifeq ($(IS_WINDOWS),yes)
+  VERUS_BINARY := verus.exe
+else
+  VERUS_BINARY := verus
+endif
+
 # Verus verification command.
 # Uses RUSTC_BOOTSTRAP=1 because the Verus rustc wrapper identifies as a stable compiler
 # but needs to accept -Z flags passed by -Z build-std.
-export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) PATH="$(VERUS_EXECUTABLE_DIR):$$PATH" \
+ifeq ($(IS_WINDOWS),yes)
+# On Windows, convert VERUS_EXECUTABLE_DIR to a Unix-style path for the MSYS2 shell
+# so that drive-letter colons (e.g., C:\) are not misinterpreted as PATH separators.
+  VERUS_PATH_PREFIX = $$(cygpath -u '$(VERUS_EXECUTABLE_DIR)')
+else
+  VERUS_PATH_PREFIX = $(VERUS_EXECUTABLE_DIR)
+endif
+
+export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
+	PATH="$(VERUS_PATH_PREFIX):$$PATH" \
 	$(CARGO) verus verify --no-default-features
 
 #===================================================================================================
@@ -538,11 +554,20 @@ ensure-verus:
 ifeq ($(VERUS_EXECUTABLE_DIR),)
 	@echo "VERUS_EXECUTABLE_DIR is not set; skipping verification."
 else
-	@if [ ! -x "$(VERUS_EXECUTABLE_DIR)/verus" ]; then \
-		echo "Error: VERUS_EXECUTABLE_DIR is set to '$(VERUS_EXECUTABLE_DIR)' but no verus binary found there."; \
+	@verus_dir="$(VERUS_EXECUTABLE_DIR)"; \
+	if command -v cygpath >/dev/null 2>&1; then \
+		verus_dir="$$(cygpath -u "$$verus_dir")"; \
+	fi; \
+	verus_path="$$verus_dir/$(VERUS_BINARY)"; \
+	if [ ! -f "$$verus_path" ]; then \
+		echo "Error: VERUS_EXECUTABLE_DIR is set to '$(VERUS_EXECUTABLE_DIR)' but no $(VERUS_BINARY) found there."; \
 		exit 1; \
-	fi
-	@echo "Using Verus installation at $(VERUS_EXECUTABLE_DIR)."
+	fi; \
+	if [ "$(IS_WINDOWS)" != "yes" ] && [ ! -x "$$verus_path" ]; then \
+		echo "Error: $(VERUS_BINARY) at '$$verus_path' is not executable."; \
+		exit 1; \
+	fi; \
+	echo "Using Verus installation at $(VERUS_EXECUTABLE_DIR)."
 endif
 
 # Pattern rule for verifying individual crates.

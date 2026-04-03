@@ -9,7 +9,8 @@ This guide will help you set up your development environment to build and run Na
 - [3. Clone This Repository](#3-clone-this-repository)
 - [4. Enable Windows Hypervisor Platform](#4-enable-windows-hypervisor-platform)
 - [5. Run Setup](#5-run-setup)
-- [6. Setup Your IDE (Optional)](#6-setup-your-ide-optional)
+- [6. Verus (Formal Verification, Optional)](#6-verus-formal-verification-optional)
+- [7. Setup Your IDE (Optional)](#7-setup-your-ide-optional)
   - [Visual Studio Code](#visual-studio-code)
 
 ---
@@ -94,7 +95,38 @@ This command validates prerequisites and configures the development environment:
 
 ---
 
-## 6. Setup Your IDE (Optional)
+## 6. Verus (Formal Verification, Optional)
+
+Verus formal verification is optional. When `VERUS_EXECUTABLE_DIR` is not set, verification
+is skipped.
+
+The easiest way to install Verus is via the setup command:
+
+```powershell
+.\z.ps1 setup --verus
+```
+
+This installs the pinned Verus release to `%USERPROFILE%\verus`. You can also invoke the
+setup script directly to choose a custom install directory:
+
+```powershell
+.\scripts\setup\verus.ps1 C:\verus
+```
+
+The script downloads the prebuilt Windows binary from the Verus GitHub releases page,
+validates the archive, and installs it to the given directory. Use `VERUS_EXECUTABLE_DIR`
+to point the build system at the installation:
+
+```powershell
+.\z.ps1 verify -- VERUS_EXECUTABLE_DIR=C:\verus
+```
+
+> **Note:** The expected version is pinned in `build/verus-version`. Re-run `setup --verus`
+> or the setup script after version bumps to update the installation.
+
+---
+
+## 7. Setup Your IDE (Optional)
 
 Choose one of the following options to set up your IDE for Nanvix development.
 
