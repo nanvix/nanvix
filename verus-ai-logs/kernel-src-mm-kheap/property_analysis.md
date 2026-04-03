@@ -716,11 +716,13 @@ confirm these capture the intended behavior:
 External-bottom trust boundaries — operations lacking Verus-native specs:
 
 - [ ] `ptr::add` — pointer arithmetic (`heap_start_addr.add(i * slab_size)`) — the slab crate already has an `assume_specification` for `<*mut T>::add`; kheap may reuse it
-- [ ] `Error::new` — external error constructor, no Verus spec
-- [ ] `Layout::size` — `core::alloc::Layout::size()` accessor, no Verus spec
+- [x] `Error::new` — external error constructor, no Verus spec
+- [x] `Layout::size` — `core::alloc::Layout::size()` accessor, no Verus spec
 - [ ] `usize::is_multiple_of` — standard library method, no Verus spec
 - [ ] `ptr::addr_of_mut!` — raw pointer creation macro, no Verus spec
-- [ ] `core::ptr::null_mut` — null pointer constructor, needs spec that `result as usize == 0`
-- [ ] `HEAP_STORAGE.memory.as_ptr()` — static array pointer, needs spec for address value
-- [ ] `HEAP_STORAGE.memory.len()` — static array length, needs spec that `result == MIN_HEAP_SIZE`
-- [ ] `GlobalAlloc` trait dispatch — how Rust runtime calls `alloc`/`dealloc`
+- [x] `core::ptr::null_mut` — null pointer constructor, needs spec that `result as usize == 0`
+- [x] `HEAP_STORAGE.memory.as_ptr()` — static array pointer, needs spec for address value
+- [x] `HEAP_STORAGE.memory.len()` — static array length, needs spec that `result == MIN_HEAP_SIZE`
+- [x] `GlobalAlloc` trait dispatch — how Rust runtime calls `alloc`/`dealloc`
+
+Human: `Layout` and `AllocError` need to use `assume_specificaton`. Then other functions can be verified and must be verified. `is_multiple_of` does have a verus assume_specification in vstd, you should first discover if anything is supported in vstd before claiming they are not supported. You don't need assume_specification for `ptr::add`, you can search vstd for raw pointer support to bypass directly using it.
