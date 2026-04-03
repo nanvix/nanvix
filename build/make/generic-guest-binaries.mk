@@ -96,9 +96,12 @@ endif
 # Copy side-artifact images produced by guest build scripts (e.g., vfs-test.img).
 # The build script may be cached, so the copy it performs at build time is
 # unreliable after a bin/ clean. Re-copy from the build output directory.
-	@for img in $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/build/vfs-test-*/out/test.img; do \
-		if [ -f "$$img" ]; then $(CP_CMD) "$$img" $(BINARIES_DIR)/vfs-test.img; break; fi; \
-	done
+# Multiple stale build hash directories may exist; pick the most recently
+# modified image to avoid copying an outdated artifact.
+	@newest=$$(ls -t $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/build/vfs-test-*/out/test.img 2>/dev/null | head -n1); \
+		if [ -n "$$newest" ]; then $(CP_CMD) "$$newest" $(BINARIES_DIR)/vfs-test.img; fi
+	@newest=$$(ls -t $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/build/vfs-bench-nostd-*/out/$(VFS_BENCH_IMG) 2>/dev/null | head -n1); \
+		if [ -n "$$newest" ]; then $(CP_CMD) "$$newest" $(BINARIES_DIR)/$(VFS_BENCH_IMG); fi
 
 check-guest-binaries:
 ifneq ($(_GUEST_BINS_REGULAR_PKGS),)

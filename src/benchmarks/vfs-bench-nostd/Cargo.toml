@@ -1,0 +1,47 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "vfs-bench-nostd"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "VFS Benchmark for Rust"
+homepage.workspace = true
+
+[[bin]]
+name = "vfs-bench-nostd"
+
+[dependencies]
+cfg-if = { workspace = true }
+nvx = { workspace = true }
+libc_string = { workspace = true }
+sys = { workspace = true, features = ["kcall"] }
+sysalloc = { workspace = true }
+sysapi = { workspace = true }
+syscall = { workspace = true, features = ["syscall"] }
+syslog = { workspace = true, default-features = true }
+vfs = { workspace = true }
+vfs-bench-common = { workspace = true }
+
+[build-dependencies]
+build-utils = { workspace = true }
+cc = { workspace = true }
+cfg-if = { workspace = true }
+fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
+mkramfs = { workspace = true }
+rand = { workspace = true }
+vfs-bench-common = { workspace = true }
+
+[features]
+default = ["panic"]
+trace = ["nvx/trace", "syslog/trace"]
+debug = ["nvx/debug", "syslog/debug"]
+info = ["nvx/info", "syslog/info"]
+warn = ["nvx/warn", "syslog/warn"]
+error = ["nvx/error", "syslog/error"]
+panic = ["nvx/panic", "syslog/panic"]
+
+[lints]
+workspace = true
