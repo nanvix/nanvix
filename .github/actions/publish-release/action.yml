@@ -403,7 +403,22 @@ runs:
               core.info(`Created 'latest' release (id=${latestRelease.id}).`);
             } catch (error) {
               if (error.status === 422) {
-                core.warning(`Concurrent run already created the 'latest' release: ${error.message}`);
+                // Concurrent run or incomplete prior delete — retrieve the existing release.
+                core.warning(`Create 'latest' release returned 422: ${error.message}; recovering existing release.`);
+                try {
+                  const { data } = await github.rest.repos.getReleaseByTag({ owner, repo, tag: 'latest' });
+                  if (data.target_commitish === commitSha) {
+                    latestRelease = data;
+                    core.info(`Recovered existing 'latest' release (id=${latestRelease.id}).`);
+                  } else {
+                    core.warning(
+                      `Recovered 'latest' release targets ${data.target_commitish}, not ${commitSha}; ` +
+                      `skipping artifact upload to avoid overwriting another run's latest release.`
+                    );
+                  }
+                } catch (recoverError) {
+                  core.warning(`Failed to recover existing 'latest' release: ${recoverError.message}`);
+                }
               } else {
                 core.warning(`Failed to create 'latest' release: ${error.message}`);
               }
