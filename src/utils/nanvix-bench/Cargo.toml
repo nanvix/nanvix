@@ -13,16 +13,19 @@ homepage.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 build-utils = { workspace = true }
+fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
 indicatif = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
 nanvixd = { workspace = true }
 nanvix = { workspace = true, features = ["internal-api"] }
 profiler = { workspace = true, optional = true }
+rand = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
+vfs-bench-common = { workspace = true }
 
 [features]
 default = ["microvm", "multi-process"]
