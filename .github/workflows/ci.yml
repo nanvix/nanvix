@@ -755,7 +755,7 @@ jobs:
       matrix:
         include:
           - machine-type: microvm
-            standard-benchmarks: "boot-time cold-start snapshot-restore warm-start-vmm"
+            standard-benchmarks: "boot-time cold-start snapshot-restore vfs-bench warm-start-vmm"
             standard-iterations: "100"
           # NOTE (#1759, #1762): Hyperlight benchmarks are disabled until the
           # round-trip-latency failure is investigated.
@@ -1054,6 +1054,8 @@ jobs:
             standard-iterations: "100"
             echo-benchmarks: "echo-breakdown echo-breakdown-l2"
             echo-iterations: "1000"
+            vfs-benchmarks: "vfs-bench"
+            vfs-iterations: "100"
           # NOTE (#1759, #1762): Hyperlight benchmarks are disabled until the
           # round-trip-latency failure is investigated.
     runs-on:
@@ -1139,6 +1141,28 @@ jobs:
           machine-type: "${{ matrix.machine-type }}"
           iterations: "${{ matrix.echo-iterations }}"
 
+      - name: "Build (Standalone VFS)"
+        if: matrix.vfs-benchmarks != ''
+        shell: bash
+        env:
+          MACHINE_TYPE: ${{ matrix.machine-type }}
+        run: |
+          ./z build -- all \
+            "MACHINE=${MACHINE_TYPE}" \
+            TARGET=x86 \
+            LOG_LEVEL=panic \
+            VERBOSE=yes \
+            RELEASE=yes \
+            DEPLOYMENT_MODE=standalone
+
+      - name: "Run VFS Benchmarks"
+        if: matrix.vfs-benchmarks != ''
+        uses: ./.github/actions/benchmark-run
+        with:
+          benchmarks: "${{ matrix.vfs-benchmarks }}"
+          machine-type: "${{ matrix.machine-type }}"
+          iterations: "${{ matrix.vfs-iterations }}"
+
       - name: "Upload Benchmark Results"
         if: always() && !cancelled()
         uses: actions/upload-artifact@v7
@@ -1185,7 +1209,7 @@ jobs:
       matrix:
         include:
           - machine-type: microvm
-            standard-benchmarks: "boot-time cold-start snapshot-restore warm-start-vmm"
+            standard-benchmarks: "boot-time cold-start snapshot-restore vfs-bench warm-start-vmm"
             standard-iterations: "100"
           # NOTE (#1759, #1762): Hyperlight benchmarks are disabled until the
           # round-trip-latency failure is investigated.
@@ -1389,7 +1413,7 @@ jobs:
       - name: "Report Benchmark Results"
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,snapshot-restore,warm-start,warm-start-l2,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-l2,warm-start-vmm"
           machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/baremetal"
@@ -1400,7 +1424,7 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,snapshot-restore,warm-start,warm-start-l2,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-l2,warm-start-vmm"
           machine-types: "microvm,hyperlight"
           archs: "X64"
           target-dir: "data/baremetal"
@@ -1455,7 +1479,7 @@ jobs:
       - name: "Report Benchmark Results"
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: "boot-time,cold-start,snapshot-restore,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,snapshot-restore,vfs-bench,warm-start-vmm"
           machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/windows-baremetal"
@@ -1466,7 +1490,7 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,snapshot-restore,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,snapshot-restore,vfs-bench,warm-start-vmm"
           machine-types: "microvm"
           archs: "X64"
           target-dir: "data/windows-baremetal"
@@ -1505,6 +1529,8 @@ jobs:
             standard-iterations: "100"
             echo-benchmarks: "echo-breakdown"
             echo-iterations: "1000"
+            vfs-benchmarks: "vfs-bench"
+            vfs-iterations: "100"
           # NOTE (#1759, #1762): Hyperlight benchmarks are disabled until the
           # round-trip-latency failure is investigated.
     runs-on: ubuntu-24.04
@@ -1608,6 +1634,40 @@ jobs:
               --commit "${{ github.sha }}"
           done
 
+      - name: "Build (Standalone VFS)"
+        if: matrix.vfs-benchmarks != ''
+        shell: bash
+        env:
+          MACHINE_TYPE: ${{ matrix.machine-type }}
+        run: |
+          ./z build -- all \
+            "MACHINE=${MACHINE_TYPE}" \
+            TARGET=x86 \
+            LOG_LEVEL=panic \
+            VERBOSE=yes \
+            RELEASE=yes \
+            DEPLOYMENT_MODE=standalone
+
+      - name: "Run VFS Benchmarks"
+        if: matrix.vfs-benchmarks != ''
+        shell: bash
+        env:
+          BENCHMARKS: ${{ matrix.vfs-benchmarks }}
+          MACHINE_TYPE: ${{ matrix.machine-type }}
+          ITERATIONS: ${{ matrix.vfs-iterations }}
+        run: |
+          for bench in ${BENCHMARKS}; do
+            echo "[INFO] Running benchmark '${bench}'..."
+            python3 ./scripts/benchmark.py \
+              run \
+              --benchmark "${bench}" \
+              --machine-type "${MACHINE_TYPE}" \
+              --iterations "${ITERATIONS}" \
+              --toolchain-bin-dir "${HOME}/toolchain/bin" \
+              --output-dir "$(pwd)" \
+              --commit "${{ github.sha }}"
+          done
+
       - name: "Upload Benchmark Results"
         if: always() && !cancelled()
         uses: actions/upload-artifact@v7
@@ -1662,7 +1722,7 @@ jobs:
       - name: "Report Benchmark Results"
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: "boot-time,cold-start,cold-start-uvm,echo-breakdown,round-trip-latency,snapshot-restore,warm-start,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-uvm,echo-breakdown,round-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm"
           machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/github"
@@ -1673,7 +1733,7 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,cold-start-uvm,echo-breakdown,round-trip-latency,snapshot-restore,warm-start,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-uvm,echo-breakdown,round-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm"
           machine-types: "microvm,hyperlight"
           archs: "X64"
           target-dir: "data/github"
@@ -1733,7 +1793,7 @@ jobs:
         if: steps.check-results.outputs.has_results == 'true'
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: "boot-time,cold-start,snapshot-restore,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,snapshot-restore,vfs-bench,warm-start-vmm"
           machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/windows-github"
@@ -1744,7 +1804,7 @@ jobs:
         if: github.ref_name == 'dev' && steps.check-results.outputs.has_results == 'true'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,snapshot-restore,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,snapshot-restore,vfs-bench,warm-start-vmm"
           machine-types: "microvm"
           archs: "X64"
           target-dir: "data/windows-github"
