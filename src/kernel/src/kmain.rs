@@ -5,6 +5,9 @@
 // Configuration
 //==================================================================================================
 
+// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+// we need `proc_macro_hygiene`.
+#![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
 #![deny(clippy::all)]
 #![forbid(clippy::large_stack_frames)]
 #![forbid(clippy::large_stack_arrays)]

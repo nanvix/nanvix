@@ -5,6 +5,16 @@
 // Imports
 //==================================================================================================
 
+#[allow(unused_imports)]
+use ::vstd::prelude::*;
+
+// Include specifications.
+#[cfg(verus_keep_ghost)]
+include!("kheap.spec.rs");
+// Include proofs.
+#[cfg(verus_keep_ghost)]
+include!("kheap.proof.rs");
+
 use crate::collections::Slab;
 use ::alloc::alloc::{
     AllocError,

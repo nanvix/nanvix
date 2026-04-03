@@ -285,7 +285,10 @@ endif
 export VERUS_EXECUTABLE_DIR ?=
 
 # List of crates to verify with Verus.
-VERUS_CRATES := bitmap slab
+VERUS_CRATES := bitmap slab kernel
+
+# Per-crate Verus feature flags (empty for crates that need none).
+VERUS_FEATURES_kernel = $(KERNEL_CARGO_FEATURES)
 
 # Platform-specific Verus binary name.
 ifeq ($(IS_WINDOWS),yes)
@@ -551,8 +554,11 @@ help:
 	@echo "  MAKE_NO_PRINT   yes, no"
 
 # Verifies all Verus-annotated crates.
-.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+.PHONY: verify $(addprefix verify-,$(VERUS_CRATES)) build
 verify: $(addprefix verify-,$(VERUS_CRATES))
+
+# Builds the kernel crate (used by the Verus verification pipeline).
+build: all-kernel
 
 # Ensures the correct Verus version is installed before verification.
 # When VERUS_EXECUTABLE_DIR is unset, verification is skipped.
@@ -584,7 +590,7 @@ $(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
 ifeq ($(VERUS_EXECUTABLE_DIR),)
 	@true
 else
-	$(VERUS_VERIFY_CMD) -p $* $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+	$(VERUS_VERIFY_CMD) -p $* $(VERUS_FEATURES_$*) $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 endif
 
 # Fixes code linting issues.
