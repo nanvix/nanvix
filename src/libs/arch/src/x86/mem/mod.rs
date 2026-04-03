@@ -12,7 +12,10 @@ mod constants;
 //==================================================================================================
 
 pub mod gdt;
+#[cfg(target_arch = "x86")]
 pub mod gdtr;
+#[cfg(target_arch = "x86_64")]
+pub use crate::x86_64::mem::gdtr;
 pub mod paging;
 
 pub use constants::*;

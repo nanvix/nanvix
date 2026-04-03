@@ -13,8 +13,15 @@ pub mod cr0;
 pub mod cr4;
 pub mod eflags;
 pub mod excp;
+#[cfg(target_arch = "x86")]
 pub mod idt;
+pub(crate) mod idt_common;
+#[cfg(target_arch = "x86_64")]
+pub use crate::x86_64::cpu::idt;
+#[cfg(target_arch = "x86")]
 pub mod idtr;
+#[cfg(target_arch = "x86_64")]
+pub use crate::x86_64::cpu::idtr;
 #[cfg(feature = "ioapic")]
 pub mod ioapic;
 #[cfg(feature = "madt")]
@@ -27,7 +34,10 @@ pub mod pic;
 #[cfg(feature = "pit")]
 pub mod pit;
 pub mod ring;
+#[cfg(target_arch = "x86")]
 pub mod tss;
+#[cfg(target_arch = "x86_64")]
+pub use crate::x86_64::cpu::tss;
 #[cfg(feature = "xapic")]
 pub mod xapic;
 
