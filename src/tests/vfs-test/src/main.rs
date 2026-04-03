@@ -151,7 +151,7 @@ fn test_ramfs_mount() -> Result<(), Error> {
 
         // Mount the FAT image.
         unsafe {
-            vfs::mount_image("/ramfs", leaked.as_mut_ptr(), leaked.len())
+            vfs::mount_image("/ramfs", leaked.as_mut_ptr(), leaked.len(), false)
                 .map_err(|e| fat_err(e, "vfs mount failed"))?;
         }
 

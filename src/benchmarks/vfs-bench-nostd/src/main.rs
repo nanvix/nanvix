@@ -158,7 +158,7 @@ fn mount_ramfs() -> Result<(), Error> {
 
     // Mount the FAT image directly from the MMIO region (writable on MicroVM).
     unsafe {
-        vfs::mount_image("/", info.base().as_ptr() as *mut u8, total_size)
+        vfs::mount_image("/", info.base().as_ptr() as *mut u8, total_size, false)
             .map_err(|e| fat_err(e, "mount ramfs failed"))?;
     }
 
