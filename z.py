@@ -255,6 +255,7 @@ class BuildConfig:
 
     nanvix_sdk: bool = False
     l2_deployment: bool = False
+    verus: bool = False
     _user_set_toolchain_dir: bool = False
 
     toolchain_dir: str = ""
@@ -395,6 +396,8 @@ def parse_cli(argv: Sequence[str]) -> tuple[str, BuildConfig]:
             config.nanvix_sdk = True
         elif arg == "--l2-deployment":
             config.l2_deployment = True
+        elif arg == "--verus":
+            config.verus = True
         elif arg == "--toolchain-dir":
             i += 1
             if i >= len(argv_list):
@@ -845,6 +848,41 @@ def cmd_test(plat: PlatformInfo, config: BuildConfig) -> int:
 
 
 # ==================================================================================================
+# Subcommand: verify
+# ==================================================================================================
+
+
+def cmd_verify(plat: PlatformInfo, config: BuildConfig) -> int:
+    """Execute the verify subcommand (Verus formal verification)."""
+    if plat.is_windows:
+        restore_git_symlinks(plat.repo_root)
+
+    injected, user_args = _assemble_build_make_args(plat, config)
+
+    # If the user did not supply explicit Make goals after `--`, default to the
+    # top-level `verify` target. Otherwise, rely solely on the user-specified
+    # goals and do not prepend `verify`.  Variable assignments (KEY=VALUE) are
+    # not Make goals, so they must not suppress the default target.
+    has_goals = any("=" not in a for a in user_args)
+    targets: list[str] = ["verify"] if not has_goals else []
+
+    rc = invoke_make(
+        plat,
+        injected_vars=injected,
+        raw_args=user_args,
+        targets=targets,
+        verbose=config.verbose,
+    )
+
+    if rc == 0:
+        print_success("Verification complete.")
+    else:
+        print_error("Verification failed.")
+
+    return rc
+
+
+# ==================================================================================================
 # Subcommand: run
 # ==================================================================================================
 
@@ -923,6 +961,7 @@ Usage:
 Commands:
   build       Build Nanvix components.
   test        Run tests.
+  verify      Run Verus formal verification on annotated crates.
   clean       Remove build artifacts (quick clean).
   distclean   Remove everything (full clean).
   setup       Install development prerequisites.
@@ -957,6 +996,8 @@ Examples:
   z.ps1 build -- all                      Build everything (Windows).
   z.ps1 build -- guest                    Cross-compile guest only.
   ./z test                                Run all tests.
+  ./z verify -- VERUS_EXECUTABLE_DIR=~/toolchain/verus   Verify all annotated crates.
+  z.ps1 verify -- VERUS_EXECUTABLE_DIR=C:\\verus          Verify on Windows.
   ./z clean                               Clean build artifacts.
   ./z setup                                Install core dev prerequisites.
   ./z setup --nanvix-sdk                   Also build the cross-compilation toolchain.
@@ -1174,6 +1215,21 @@ def cmd_setup_linux(plat: PlatformInfo, config: BuildConfig) -> int:
         if rc != 0:
             die("Cloud Hypervisor setup failed.")
 
+    # Verus formal verification toolchain (optional).
+    if config.verus:
+        verus_script = plat.repo_root / "scripts" / "setup" / "verus.sh"
+        if not verus_script.exists():
+            die(f"Verus setup script not found: {verus_script}")
+        verus_dir = (
+            Path(config.toolchain_dir) / "verus"
+            if config.toolchain_dir
+            else Path.home() / "verus"
+        )
+        print_info(f"Installing Verus to {verus_dir} ...")
+        rc = subprocess.run([str(verus_script), str(verus_dir)]).returncode
+        if rc != 0:
+            die("Verus setup failed.")
+
     _install_git_hooks(plat.repo_root)
     print_success("Setup complete.")
     return 0
@@ -1290,6 +1346,30 @@ def cmd_setup_windows(plat: PlatformInfo, config: BuildConfig) -> int:
                 )
     print_success("Rust toolchain: OK")
 
+    # Verus (optional).
+    if config.verus:
+        verus_script = plat.repo_root / "scripts" / "setup" / "verus.ps1"
+        if not verus_script.exists():
+            die(f"Verus setup script not found: {verus_script}")
+        if config.toolchain_dir:
+            verus_dir = Path(config.toolchain_dir) / "verus"
+        else:
+            verus_dir = Path(os.environ.get("USERPROFILE", "")) / "verus"
+        print_info(f"Installing Verus to {verus_dir} ...")
+        rc = subprocess.run(
+            [
+                "powershell",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(verus_script),
+                str(verus_dir),
+            ]
+        ).returncode
+        if rc != 0:
+            die("Verus setup failed.")
+        print_success("Verus: OK")
+
     _install_git_hooks(plat.repo_root)
     print_success("Windows setup complete.")
     return 0
@@ -1312,6 +1392,7 @@ def cmd_setup(plat: PlatformInfo, config: BuildConfig) -> int:
 COMMANDS = {
     "build": cmd_build,
     "test": cmd_test,
+    "verify": cmd_verify,
     "clean": cmd_clean,
     "distclean": cmd_distclean,
     "setup": cmd_setup,

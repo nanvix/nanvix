@@ -16,6 +16,7 @@ while guest components are cross-compiled using a local toolchain.
 - [Building Individual Components](#building-individual-components)
 - [Build Parameters](#build-parameters)
 - [Code Quality Checks](#code-quality-checks)
+- [Formal Verification with Verus](#formal-verification-with-verus)
 - [Cleaning](#cleaning)
 
 ---
@@ -118,6 +119,33 @@ Available build parameters:
 # Run standalone integration tests on Windows.
 .\z.ps1 test -- MACHINE=microvm
 ```
+
+## Formal Verification with Verus
+
+Nanvix uses [Verus](https://github.com/verus-lang/verus) for formal verification of selected
+kernel crates. The correct Verus version is pinned in `build/verus-version`.
+
+To install Verus on Windows, use the setup command or the PowerShell setup script:
+
+```powershell
+# Option 1: Automated install via z.ps1 (installs to %USERPROFILE%\verus).
+.\z.ps1 setup --verus
+
+# Option 2: Manual install to a custom directory.
+.\scripts\setup\verus.ps1 C:\verus
+```
+
+To run formal verification:
+
+```powershell
+# Verify all annotated crates.
+.\z.ps1 verify -- VERUS_EXECUTABLE_DIR=C:\verus
+
+# Verify a single crate (e.g., bitmap).
+.\z.ps1 verify -- verify-bitmap VERUS_EXECUTABLE_DIR=C:\verus
+```
+
+> **Note:** `VERUS_EXECUTABLE_DIR` must be set; when unset, verification is skipped.
 
 ## Cleaning
 

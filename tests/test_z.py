@@ -93,6 +93,11 @@ class TestParseCli(unittest.TestCase):
         cmd, _ = zmod.parse_cli(["run"])
         self.assertEqual(cmd, "run")
 
+    def test_subcommand_verify(self) -> None:
+        """Parsing ['verify'] extracts 'verify' as the subcommand."""
+        cmd, _ = zmod.parse_cli(["verify"])
+        self.assertEqual(cmd, "verify")
+
     def test_subcommand_bench(self) -> None:
         """Parsing ['bench'] extracts 'bench' as the subcommand."""
         cmd, _ = zmod.parse_cli(["bench"])
@@ -158,6 +163,11 @@ class TestParseCli(unittest.TestCase):
         """The --l2-deployment flag enables the l2_deployment config field."""
         _, cfg = zmod.parse_cli(["setup", "--l2-deployment"])
         self.assertTrue(cfg.l2_deployment)
+
+    def test_verus_flag(self) -> None:
+        """The --verus flag enables the verus config field."""
+        _, cfg = zmod.parse_cli(["setup", "--verus"])
+        self.assertTrue(cfg.verus)
 
     # --- -- separator behaviour ---
 
@@ -1336,6 +1346,7 @@ class TestCommands(unittest.TestCase):
         expected = {
             "build",
             "test",
+            "verify",
             "clean",
             "distclean",
             "setup",
