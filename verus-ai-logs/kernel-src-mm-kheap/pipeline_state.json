@@ -4,9 +4,19 @@
   "source_path": "src/kernel/src/mm/kheap.rs",
   "current_phase": "property-analysis",
   "current_phase_idx": 0,
-  "phase_results": {},
+  "phase_results": {
+    "property-analysis": {
+      "phase": "property-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "PASS",
+      "review_file": null
+    }
+  },
   "prover_session_id": "7e695ea9-28a1-43ab-847a-863e5184dd1f",
-  "completed": false,
+  "completed": true,
   "base_branch": "dev",
   "verus_branch": "verus-ai/kheap"
 }
