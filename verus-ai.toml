@@ -12,8 +12,9 @@ slab = "src/libs/slab/src/lib.spec.rs"
 bitmap = "src/libs/bitmap/src/lib.spec.rs"
 
 [build]
-cmd = "make build"
+cmd = "./z build -- all"
 
 [verify]
-cmd = "make verify-kernel MODULE=kheap"
-cmd_all = "make verify"
+cmd = "make verify-kernel MODULE={module} ## E.g. mm::kheap"
+cmd_all = "make verify ## To verify only kernel crate: make verify-kernel"
+

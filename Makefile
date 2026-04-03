@@ -281,36 +281,20 @@ endif
 # Verus Formal Verification
 #===================================================================================================
 
-# Path to the directory containing the Verus executable (no default; skip verification when unset).
+# Path to the directory containing the Verus executable (optional; adds to PATH if set).
 export VERUS_EXECUTABLE_DIR ?=
 
 # List of crates to verify with Verus.
 VERUS_CRATES := bitmap slab kernel
 
-# Per-crate Verus feature flags (empty for crates that need none).
-VERUS_FEATURES_kernel = $(KERNEL_CARGO_FEATURES)
+# Per-crate extra cargo arguments for Verus verification.
+# Kernel is a bin crate and needs explicit features; lib crates (bitmap, slab) need none.
+VERUS_EXTRA_CARGO_ARGS_kernel = --features $(MACHINE),$(LOG_LEVEL) $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+VERUS_EXTRA_CARGO_ARGS_bitmap = $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+VERUS_EXTRA_CARGO_ARGS_slab   = $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 
-# Platform-specific Verus binary name.
-ifeq ($(IS_WINDOWS),yes)
-  VERUS_BINARY := verus.exe
-else
-  VERUS_BINARY := verus
-endif
-
-# Verus verification command.
-# Uses RUSTC_BOOTSTRAP=1 because the Verus rustc wrapper identifies as a stable compiler
-# but needs to accept -Z flags passed by -Z build-std.
-ifeq ($(IS_WINDOWS),yes)
-# On Windows, convert VERUS_EXECUTABLE_DIR to a Unix-style path for the MSYS2 shell
-# so that drive-letter colons (e.g., C:\) are not misinterpreted as PATH separators.
-  VERUS_PATH_PREFIX = $$(cygpath -u '$(VERUS_EXECUTABLE_DIR)')
-else
-  VERUS_PATH_PREFIX = $(VERUS_EXECUTABLE_DIR)
-endif
-
-export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
-	PATH="$(VERUS_PATH_PREFIX):$$PATH" \
-	$(CARGO) verus verify --no-default-features
+# Path to the verus-ai tool directory (for guardrails.py / tree-sitter).
+VERUS_AI_DIR ?= $(HOME)/verus-ai-improve3
 
 #===================================================================================================
 # Top-Level Targets
@@ -560,38 +544,31 @@ verify: $(addprefix verify-,$(VERUS_CRATES))
 # Builds the kernel crate (used by the Verus verification pipeline).
 build: all-kernel
 
-# Ensures the correct Verus version is installed before verification.
-# When VERUS_EXECUTABLE_DIR is unset, verification is skipped.
-# When set, validates that the verus binary exists at the given path.
+# Ensures cargo-verus is available (either via VERUS_EXECUTABLE_DIR or already on PATH).
 .PHONY: ensure-verus
 ensure-verus:
-ifeq ($(VERUS_EXECUTABLE_DIR),)
-	@echo "VERUS_EXECUTABLE_DIR is not set; skipping verification."
+ifneq ($(VERUS_EXECUTABLE_DIR),)
+	@if [ ! -x "$(VERUS_EXECUTABLE_DIR)/verus" ]; then \
+		echo "Error: VERUS_EXECUTABLE_DIR is set to '$(VERUS_EXECUTABLE_DIR)' but no verus found there."; \
+		exit 1; \
+	fi
+	@echo "Using Verus installation at $(VERUS_EXECUTABLE_DIR)."
 else
-	@verus_dir="$(VERUS_EXECUTABLE_DIR)"; \
-	if command -v cygpath >/dev/null 2>&1; then \
-		verus_dir="$$(cygpath -u "$$verus_dir")"; \
-	fi; \
-	verus_path="$$verus_dir/$(VERUS_BINARY)"; \
-	if [ ! -f "$$verus_path" ]; then \
-		echo "Error: VERUS_EXECUTABLE_DIR is set to '$(VERUS_EXECUTABLE_DIR)' but no $(VERUS_BINARY) found there."; \
+	@if ! command -v cargo-verus >/dev/null 2>&1; then \
+		echo "Error: cargo-verus not found on PATH. Install Verus or set VERUS_EXECUTABLE_DIR."; \
 		exit 1; \
-	fi; \
-	if [ "$(IS_WINDOWS)" != "yes" ] && [ ! -x "$$verus_path" ]; then \
-		echo "Error: $(VERUS_BINARY) at '$$verus_path' is not executable."; \
-		exit 1; \
-	fi; \
-	echo "Using Verus installation at $(VERUS_EXECUTABLE_DIR)."
+	fi
+	@echo "Using cargo-verus from PATH."
 endif
 
 # Pattern rule for verifying individual crates.
-# Verification is skipped when VERUS_EXECUTABLE_DIR is unset.
+# Uses scripts/verify.sh for verification + cheating detection + function coverage.
 $(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
-ifeq ($(VERUS_EXECUTABLE_DIR),)
-	@true
-else
-	$(VERUS_VERIFY_CMD) -p $* $(VERUS_FEATURES_$*) $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
-endif
+	$(if $(VERUS_EXECUTABLE_DIR),PATH="$(VERUS_EXECUTABLE_DIR):$$PATH") \
+	RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
+	VERUS_EXTRA_CARGO_ARGS="$(VERUS_EXTRA_CARGO_ARGS_$*)" \
+	VERUS_AI_DIR="$(VERUS_AI_DIR)" \
+	$(SCRIPTS_DIR)/verify.sh --crate $* $(if $(MODULE),--module $(MODULE)) --log-dir verus-ai-logs
 
 # Fixes code linting issues.
 ifeq ($(IS_WINDOWS),yes)
