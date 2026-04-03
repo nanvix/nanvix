@@ -1,0 +1,12 @@
+{
+  "module_name": "kheap",
+  "log_name": "kernel-src-mm-kheap",
+  "source_path": "src/kernel/src/mm/kheap.rs",
+  "current_phase": "property-analysis",
+  "current_phase_idx": 0,
+  "phase_results": {},
+  "prover_session_id": null,
+  "completed": false,
+  "base_branch": "dev",
+  "verus_branch": "verus-ai/kheap"
+}
