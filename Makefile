@@ -142,6 +142,9 @@ RELEASE_VERSION := $(strip $(shell cargo metadata --no-deps --format-version 1 2
 MEMORY_SIZE_BYTES = $(strip $(shell sed -nE 's/^[[:space:]]*memory_size[[:space:]]*=[[:space:]]*(0x[0-9a-fA-F]+|[0-9]+).*/\1/p' $(BUILD_DIR)/kernel_config.toml | head -n1))
 MEMORY_SIZE_MB = $(shell echo $$(($(MEMORY_SIZE_BYTES) / 1048576)))
 
+# VFS benchmark image filename.
+export VFS_BENCH_IMG ?= vfs-bench.img
+
 RELEASE_ARCHIVE := nanvix-$(RELEASE_VERSION)-$(MACHINE)-$(RELEASE_DEPLOYMENT_MODE)-$(RELEASE_BUILD_MODE)-$(LOG_LEVEL)-$(MEMORY_SIZE_MB)mb.tar.bz2
 MANIFEST_FILE := $(SYSROOT_DIR)/manifest.json
 
@@ -311,11 +314,11 @@ export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
 #===================================================================================================
 
 ALL_GUEST_STATIC_LIBS := posix
-ALL_GUEST_RUST_LIBS := arch bitmap config elf error fat32 type-safe nvx proc raw-array slab static_assert sysapi syscall sysalloc syslog-macros syslog sys libc_stdlib libc_string
+ALL_GUEST_RUST_LIBS := arch bitmap config elf error fat32 type-safe nvx proc raw-array slab static_assert sysapi syscall sysalloc syslog-macros syslog sys libc_stdlib libc_string vfs-bench-common
 ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap config elf error fat32 type-safe proc raw-array slab static_assert libc_string syslog-macros syslog
 
 ALL_GUEST_DAEMONS := memd procd
-ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd snapshot-rust-nostd
+ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd snapshot-rust-nostd vfs-bench-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
 ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust dlfcn-rust c-bindings-rust
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
