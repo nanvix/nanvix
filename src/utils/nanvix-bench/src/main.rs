@@ -101,15 +101,16 @@ fn validate_benchmark(flavour: &BenchmarkFlavour) -> Result<()> {
             anyhow::bail!("benchmark '{flavour}' requires compilation with multi-process");
         }
 
-        // In standalone mode, only ColdStart is supported (no HTTP-based benchmarks).
+        // In standalone mode, only ColdStart and VfsBench are supported (no HTTP-based
+        // benchmarks). Both spawn nanvixd in interactive mode rather than using the HTTP API.
         if has_standalone
             && !has_multi
             && !has_single
-            && !matches!(flavour, BenchmarkFlavour::ColdStart)
+            && !matches!(flavour, BenchmarkFlavour::ColdStart | BenchmarkFlavour::VfsBench)
         {
             anyhow::bail!(
-                "benchmark '{flavour}' is not supported in standalone mode (only cold-start is \
-                 available)"
+                "benchmark '{flavour}' is not supported in standalone mode (only cold-start and \
+                 vfs-bench are available)"
             );
         }
     }
@@ -293,6 +294,16 @@ async fn main() -> Result<()> {
             }
         },
         BenchmarkFlavour::WarmStartVMM => benchmark.run_warm_start_vmm().await,
+        BenchmarkFlavour::VfsBench => {
+            #[cfg(feature = "standalone")]
+            {
+                benchmark.run_vfs_bench_standalone().await
+            }
+            #[cfg(not(feature = "standalone"))]
+            {
+                anyhow::bail!("vfs-bench requires compilation with standalone")
+            }
+        },
         BenchmarkFlavour::SnapshotRestore => benchmark.run_snapshot_restore().await,
     };
     match result {

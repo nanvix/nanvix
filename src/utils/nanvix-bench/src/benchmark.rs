@@ -33,6 +33,7 @@ pub enum BenchmarkFlavour {
     EchoBreakdownL2,
     RoundTripLatency,
     SnapshotRestore,
+    VfsBench,
     WarmStart,
     WarmStartL2,
     WarmStartVMM,
@@ -83,9 +84,22 @@ impl BenchmarkFlavour {
             BenchmarkFlavour::SnapshotRestore => {
                 format!("{}/bin/snapshot-rust-nostd.elf", root.display())
             },
+            BenchmarkFlavour::VfsBench => {
+                format!("{}/bin/vfs-bench-nostd.elf", root.display())
+            },
             _ => {
                 format!("{}/bin/echo-rust-nostd.elf", root.display())
             },
+        }
+    }
+
+    /// Returns the ramfs image path for this benchmark, if one is required.
+    pub fn get_ramfs(&self, root: &Path) -> Option<String> {
+        match self {
+            BenchmarkFlavour::VfsBench => {
+                Some(format!("{}/bin/{}", root.display(), vfs_bench_common::VFS_BENCH_IMG))
+            },
+            _ => None,
         }
     }
 }
@@ -103,6 +117,7 @@ impl fmt::Display for BenchmarkFlavour {
             BenchmarkFlavour::EchoBreakdownL2 => "echo-breakdown-l2",
             BenchmarkFlavour::RoundTripLatency => "round-trip-latency",
             BenchmarkFlavour::SnapshotRestore => "snapshot-restore",
+            BenchmarkFlavour::VfsBench => "vfs-bench",
             BenchmarkFlavour::WarmStart => "warm-start",
             BenchmarkFlavour::WarmStartL2 => "warm-start-l2",
             BenchmarkFlavour::WarmStartVMM => "warm-start-vmm",
@@ -126,6 +141,7 @@ impl FromStr for BenchmarkFlavour {
             "echo-breakdown-l2" => Ok(BenchmarkFlavour::EchoBreakdownL2),
             "round-trip-latency" => Ok(BenchmarkFlavour::RoundTripLatency),
             "snapshot-restore" => Ok(BenchmarkFlavour::SnapshotRestore),
+            "vfs-bench" => Ok(BenchmarkFlavour::VfsBench),
             "warm-start" => Ok(BenchmarkFlavour::WarmStart),
             "warm-start-l2" => Ok(BenchmarkFlavour::WarmStartL2),
             "warm-start-vmm" => Ok(BenchmarkFlavour::WarmStartVMM),
