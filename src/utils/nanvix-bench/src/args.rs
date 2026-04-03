@@ -98,6 +98,13 @@ impl Args {
   snapshot-restore       Measure snapshot restore latency vs boot-time.\n",
         );
 
+        if cfg!(feature = "standalone") {
+            benchmarks.push_str(
+                "\
+  vfs-bench              Measure VFS operation latencies on a dense ramfs (standalone).\n",
+            );
+        }
+
         if cfg!(any(feature = "multi-process", feature = "single-process")) {
             benchmarks.push_str(
                 "\

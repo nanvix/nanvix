@@ -74,29 +74,8 @@ fn main() {
 
 /// Creates a FAT32 image at `output` populated with the contents of `source_dir`.
 fn generate_image(output: &Path, source_dir: &Path, size: u64) {
-    // Create zeroed image file.
-    let buf: Vec<u8> = vec![0u8; size as usize];
-    fs::write(output, &buf).unwrap_or_else(|e| {
-        eprintln!("mkramfs: failed to create image: {e}");
-        process::exit(1);
-    });
-
-    // Format as FAT.
-    {
-        let file = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(output)
-            .unwrap_or_else(|e| {
-                eprintln!("mkramfs: failed to open image for formatting: {e}");
-                process::exit(1);
-            });
-        let mut storage = fatfs::StdIoWrapper::new(file);
-        fatfs::format_volume(&mut storage, fatfs::FormatVolumeOptions::new()).unwrap_or_else(|e| {
-            eprintln!("mkramfs: failed to format FAT volume: {e}");
-            process::exit(1);
-        });
-    }
+    // Create and format a zeroed FAT image.
+    mkramfs::mkfatfs(output, size as usize);
 
     // Populate the image with the source directory contents.
     {

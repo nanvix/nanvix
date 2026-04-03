@@ -282,7 +282,7 @@ impl Benchmark {
     }
 
     /// Returns the platform-specific path to the nanvixd binary.
-    fn standalone_nanvixd_path(&self) -> PathBuf {
+    pub(crate) fn standalone_nanvixd_path(&self) -> PathBuf {
         let bin_name: &str = if cfg!(windows) {
             "nanvixd.exe"
         } else {

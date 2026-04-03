@@ -45,6 +45,7 @@ ECHO_BREAKDOWN_BENCH = "echo-breakdown"
 ECHO_BREAKDOWN_L2_BENCH = ECHO_BREAKDOWN_BENCH + L2_SUFFIX
 ROUND_TRIP_LATENCY_BENCH = "round-trip-latency"
 SNAPSHOT_RESTORE_BENCH = "snapshot-restore"
+VFS_BENCH = "vfs-bench"
 WARM_START_BENCH = "warm-start"
 WARM_START_L2_BENCH = WARM_START_BENCH + L2_SUFFIX
 WARM_START_VMM_BENCH = "warm-start-vmm"
@@ -338,6 +339,57 @@ def filter_benchmark_stdout(benchmark: str, raw_stdout: str, commit: str) -> str
 
         filtered_stdout = buf.getvalue().rstrip("\r\n")
 
+    elif benchmark == VFS_BENCH:
+        # VFS benchmark prints two tables (raw operations and paired
+        # decomposition). Each table has a header line followed by a dash
+        # separator and then data rows.  Format per data row (Rust
+        # `println!("{:<22} {:>8} {:>10} {:>10} {:>10}", ...)`):
+        #   <operation>  <samples>  <p50>  <p95>  <p99>
+        columns = ["commit", "section", "operation", "samples", "p50", "p95", "p99"]
+        buf = io.StringIO()
+        writer = csv.writer(buf, lineterminator="\n")
+        writer.writerow(columns)
+
+        current_section = ""
+        row_count = 0
+        for line in raw_stdout.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            # Detect section header (the header row starts with a
+            # left-aligned section name followed by "Samples").
+            if "Samples" in stripped and "p50" in stripped:
+                # The section name is everything before the first column
+                # header keyword.
+                current_section = stripped.split("Samples")[0].strip()
+                continue
+
+            # Skip separator lines.
+            if stripped.startswith("-"):
+                continue
+
+            # Parse data rows: operation (22 chars) then numeric columns.
+            # Only accept rows after a section header has been detected to
+            # avoid capturing preamble lines (e.g. FAT image statistics).
+            parts = stripped.split()
+            if current_section and len(parts) >= 4:
+                operation = parts[0]
+                samples = parts[1]
+                p50 = parts[2]
+                p95 = parts[3]
+                p99 = parts[4] if len(parts) > 4 else parts[3]
+                writer.writerow(
+                    [commit, current_section, operation, samples, p50, p95, p99]
+                )
+                row_count += 1
+
+        if row_count == 0:
+            print("ERROR: no data parsed from vfs-bench output")
+            raise ValueError("No data in vfs-bench output")
+
+        filtered_stdout = buf.getvalue().rstrip("\r\n")
+
     else:
         print(f"ERROR: unrecognized benchmark '{benchmark}'")
         raise ValueError("Unrecognized benchmark")
@@ -456,6 +508,25 @@ def read_benchmark_values_from_file(
         except (FileNotFoundError, ValueError, IndexError) as exc:
             print(f"WARNING: could not read {file_path}: {exc}")
             result_dict = {s: NA for s in ROUND_TRIP_SIZES}
+
+    elif benchmark == VFS_BENCH:
+        # VFS benchmark CSV: commit,section,operation,samples,p50,p95,p99
+        # Return the latest commit's rows keyed by "section/operation".
+        try:
+            with open(file_path, "r") as fh:
+                lines = [line.strip() for line in fh.readlines() if line.strip()]
+            if len(lines) < 2:
+                raise ValueError("No data rows")
+            last_commit = lines[-1].split(",")[0]
+            result_dict = {}
+            for line in lines[1:]:
+                parts = line.split(",")
+                if parts[0] == last_commit:
+                    key = f"{parts[1]}/{parts[2]}"
+                    result_dict[key] = f"{parts[4]}/{parts[5]}/{parts[6]}"
+        except (FileNotFoundError, ValueError, IndexError) as exc:
+            print(f"WARNING: could not read {file_path}: {exc}")
+            result_dict = {}
 
     else:
         print(f"ERROR: unrecognized benchmark '{benchmark}'")
@@ -651,6 +722,10 @@ def ci_summary(args):
         elif benchmark.startswith(ECHO_BREAKDOWN_BENCH):
             # We handle the echo-breakdown benchmarks separately.
             continue
+        elif benchmark == VFS_BENCH:
+            # VFS benchmark results are reported in a collapsed section
+            # similar to echo-breakdown — skip the standard table.
+            continue
         else:
             print(f"ERROR: unrecognized benchmark '{benchmark}'")
             raise ValueError("Unrecognized benchmark")
@@ -685,6 +760,45 @@ def ci_summary(args):
 
     if echo_breakdown_summary is not None:
         bench_summary += "\n" + echo_breakdown_summary
+
+    # VFS benchmark collapsed section.
+    if VFS_BENCH in benchmarks:
+        vfs_summary = "<details>\n<summary>VFS Benchmark</summary>\n\n```"
+        table_width = 91
+        for machine, arch in list(itertools.product(machines, archs)):
+            file_name = gen_filename_for_benchmark(VFS_BENCH, machine, arch)
+            file_path = os.path.join(args.target_dir, file_name)
+            vfs_summary += "\n" + make_header(f"{VFS_BENCH} {machine}", table_width)
+            if os.path.exists(file_path):
+                try:
+                    with open(file_path, "r") as fh:
+                        reader = csv.DictReader(fh)
+                        current_section = ""
+                        for row in reader:
+                            if row["section"] != current_section:
+                                current_section = row["section"]
+                                vfs_summary += (
+                                    f"\n{current_section:<22} "
+                                    f"{'Samples':>8} "
+                                    f"{'p50 (us)':>10} "
+                                    f"{'p95 (us)':>10} "
+                                    f"{'p99 (us)':>10}\n"
+                                )
+                                vfs_summary += "-" * 62 + "\n"
+                            vfs_summary += (
+                                f"{row['operation']:<22} "
+                                f"{row['samples']:>8} "
+                                f"{row['p50']:>10} "
+                                f"{row['p95']:>10} "
+                                f"{row['p99']:>10}\n"
+                            )
+                except Exception as exc:
+                    vfs_summary += f"  (could not read results: {exc})\n"
+            else:
+                vfs_summary += "  (no results available)\n"
+            vfs_summary += "=" * table_width + "\n"
+        vfs_summary += "\n```\n</details>\n"
+        bench_summary += "\n" + vfs_summary
 
     with open(args.output_file, "w") as fh:
         fh.write(bench_summary)

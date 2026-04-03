@@ -2,24 +2,18 @@
 # Licensed under the MIT License.
 
 [package]
-name = "mkramfs"
+name = "vfs-bench-common"
 version.workspace = true
 license-file.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "FAT32 RAM filesystem image builder for Nanvix"
+description = "Shared protocol definitions for the VFS benchmark (guest ↔ host)."
 homepage.workspace = true
 
-[[bin]]
-name = "mkramfs"
-path = "src/main.rs"
-
-[lib]
-name = "mkramfs"
-path = "src/lib.rs"
-
 [dependencies]
-fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
+
+[features]
+default = []
 
 [lints]
 workspace = true
