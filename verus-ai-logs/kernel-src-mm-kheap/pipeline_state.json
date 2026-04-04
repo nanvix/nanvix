@@ -42,6 +42,12 @@
       "max_score": 0,
       "verdict": "PASS",
       "review_file": null
+    },
+    "final-review": {
+      "verdict": "FAIL",
+      "total_score": 4,
+      "max_score": 5,
+      "passed": false
     }
   },
   "prover_session_id": "7d7a8d85-cd80-4130-8c8a-0933f3f3634c",

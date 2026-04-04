@@ -87,3 +87,12 @@ Module: kheap
 [2026-04-04 13:01:59] [FINAL REVIEW] Rereview: FAIL (4/5)
 [2026-04-04 13:01:59] [PROVER] Final fix r2...
 [2026-04-04 13:01:59] [COPILOT] Running: copilot --model claude-opus-4.6 ...
+
+============================================================
+PIPELINE FINISHED: Some phases need improvement for kheap
+  ❌ specification: FAIL (3/5)
+  ✅ proving: PASS (0/0)
+  ✅ polish: PASS (0/0)
+  ✅ exec-fidelity: PASS (0/0)
+  ❌ final-review: FAIL (4/5)
+============================================================
