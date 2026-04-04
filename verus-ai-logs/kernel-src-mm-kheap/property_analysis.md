@@ -724,5 +724,6 @@ External-bottom trust boundaries — operations lacking Verus-native specs:
 - [x] `HEAP_STORAGE.memory.as_ptr()` — static array pointer, needs spec for address value
 - [x] `HEAP_STORAGE.memory.len()` — static array length, needs spec that `result == MIN_HEAP_SIZE`
 - [x] `GlobalAlloc` trait dispatch — how Rust runtime calls `alloc`/`dealloc`
+- [x] `usize_to_mut_ptr` — cfg-gated helper for `addr as *mut u8` cast, `external_body` with ensures `result as usize == addr`; trivially correct, workaround for Verus lacking usize-to-pointer cast support
 
 Human: `Layout` and `AllocError` need to use `assume_specificaton`. Then other functions can be verified and must be verified. `is_multiple_of` does have a verus assume_specification in vstd, you should first discover if anything is supported in vstd before claiming they are not supported. You don't need assume_specification for `ptr::add`, you can search vstd for raw pointer support to bypass directly using it.

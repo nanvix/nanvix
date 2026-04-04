@@ -190,4 +190,36 @@ proof fn lemma_slab_for_size_total(size: int)
 {
 }
 
+/// MOD-4: No allocation at address zero (conditional on base address).
+/// If the heap was constructed from a non-zero base address, no slab
+/// contains address 0 in either its allocated or free sets.
+/// The base address is non-zero at runtime because HEAP_STORAGE is a
+/// static with linker-assigned address > 0, but this is a runtime fact
+/// that cannot be expressed as a Verus axiom.
+proof fn lemma_no_null_address(kv: &KheapView, base_addr: int, slab_size: int)
+    requires
+        kv.inv(),
+        base_addr > 0,
+        slab_size > 0,
+        forall|i: int| 0 <= i < kv.slabs.len() ==>
+            (#[trigger] kv.slabs[i]).start_addr >= base_addr + i * slab_size,
+    ensures
+        forall|i: int| 0 <= i < kv.slabs.len() ==> {
+            &&& !(#[trigger] kv.slabs[i]).allocated_addrs.contains(0usize)
+            &&& !kv.slabs[i].free_addrs.contains(0usize)
+        },
+{
+    assert forall|i: int| 0 <= i < kv.slabs.len() implies {
+        &&& !(#[trigger] kv.slabs[i]).allocated_addrs.contains(0usize)
+        &&& !kv.slabs[i].free_addrs.contains(0usize)
+    } by {
+        // start_addr >= base_addr + i * slab_size >= base_addr > 0
+        // SlabView::inv: all addresses in [start_addr, end_addr), so >= start_addr > 0
+        // Therefore 0 is not in any slab's address sets
+        let slab = kv.slabs[i];
+        assert(slab.start_addr >= base_addr + i * slab_size);
+        assert(slab.start_addr > 0);
+    };
+}
+
 } // verus!
