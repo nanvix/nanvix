@@ -72,10 +72,6 @@ pub use controller::{
     InterruptHandler,
 };
 pub use number::InterruptNumber;
-pub use xapic::{
-    Xapic,
-    XapicTimer,
-};
 
 //==================================================================================================
 // Standalone Functions
@@ -116,21 +112,24 @@ pub unsafe fn forge_user_stack(
     enable_interrupts: bool,
 ) -> *mut u8 {
     // Get pointer to kernel stack.
-    let mut kstackp: *mut u32 = kernel_stack_top as *mut u32;
+    let mut kstackp: *mut u64 = kernel_stack_top as *mut u64;
 
-    // Push User Function on the kernel stack.
+    // Push arg0 above the iretq frame. On x86_64 the iretq SS slot is 8 bytes, and this
+    // value occupies the slot that the x86 (32-bit) version uses for the user function
+    // argument passed via the stack. It is consumed by the caller of forge_user_stack when
+    // it reads the forged stack layout, mirroring the x86 convention.
     kstackp = kstackp.offset(-1);
-    *kstackp = arg0 as u32;
+    *kstackp = arg0 as u64;
 
-    // Push User DS on the kernel stack.
+    // Push User SS on the kernel stack (iretq frame).
     kstackp = kstackp.offset(-1);
-    *kstackp = SegmentSelector::UserData as u32;
+    *kstackp = SegmentSelector::UserData as u64;
 
-    // Push User ESP on the kernel stack.
+    // Push User RSP on the kernel stack (iretq frame).
     kstackp = kstackp.offset(-1);
-    *kstackp = (user_stack_top) as u32;
+    *kstackp = user_stack_top as u64;
 
-    // Push EFLAGS on the kernel stack.
+    // Push RFLAGS on the kernel stack (iretq frame).
     let mut eflags: EflagsRegister = eflags::EflagsRegister::default();
     eflags.interrupt = if enable_interrupts {
         eflags::InterruptFlag::Set
@@ -138,31 +137,27 @@ pub unsafe fn forge_user_stack(
         eflags::InterruptFlag::Clear
     };
     kstackp = kstackp.offset(-1);
-    *kstackp = eflags.into_raw_value();
+    *kstackp = eflags.into_raw_value() as u64;
 
-    // Push User CS on the kernel stack.
+    // Push User CS on the kernel stack (iretq frame).
     kstackp = kstackp.offset(-1);
-    *kstackp = SegmentSelector::UserCode as u32;
+    *kstackp = SegmentSelector::UserCode as u64;
 
-    // Push User EIP on the kernel stack.
+    // Push User RIP on the kernel stack (iretq frame).
     kstackp = kstackp.offset(-1);
-    *kstackp = user_fn as u32;
-
-    // Push the segment selector for the users-space thread data area on the kernel stack.
-    kstackp = kstackp.offset(-1);
-    *kstackp = SegmentSelector::UserThreadDataArea as u32;
+    *kstackp = user_fn as u64;
 
     // Push first argument to user function on the kernel stack.
     kstackp = kstackp.offset(-1);
-    *kstackp = arg0 as u32;
+    *kstackp = arg0 as u64;
 
     // Push second argument to user function on the kernel stack.
     kstackp = kstackp.offset(-1);
-    *kstackp = arg1 as u32;
+    *kstackp = arg1 as u64;
 
-    // Push Kernel EIP on the kernel stack.
+    // Push Kernel RIP on the kernel stack.
     kstackp = kstackp.offset(-1);
-    *kstackp = kernel_func as u32;
+    *kstackp = kernel_func as u64;
 
     kstackp as *mut u8
 }
@@ -181,16 +176,11 @@ fn build_interrupt_map(madt: &MadtInfo) -> InterruptMap {
 }
 
 /// Initializes the interrupt controller.
-///
-/// If the platform registered a LAPIC MMIO region (via [`LAPIC_MMIO_TAG`]) and no MADT xAPIC
-/// consumed it, this function creates an [`XapicTimer`] (calibrated via PIT channel 2) and
-/// returns it alongside the interrupt controller. The controller receives an EOI handle extracted
-/// from the timer.
 pub fn init(
     ioports: &mut IoPortAllocator,
     ioaddresses: &mut IoMemoryAllocator,
     madt: &Option<MadtInfo>,
-) -> Result<(InterruptController, Option<XapicTimer>), Error> {
+) -> Result<InterruptController, Error> {
     info!("initializing interrupt controller...");
     match madt {
         // MADT is present.
@@ -285,91 +275,22 @@ pub fn init(
             };
 
             let intmap: InterruptMap = build_interrupt_map(madt);
-
-            let (eoi_xapic, xapic_timer) = if xapic.is_some() {
-                // MADT xAPIC path already consumed the LAPIC MMIO region; skip timer probe.
-                (None, None)
-            } else {
-                // Try to create an xAPIC timer from a platform-registered LAPIC MMIO region.
-                // This succeeds only when the MADT xAPIC path did not consume the region
-                // (e.g., no xAPIC in MADT but platform registered the region for timer use).
-                try_init_xapic_timer(ioports, ioaddresses)?
-            };
-
-            let controller = InterruptController::new(pic, xapic, ioapic, intmap, eoi_xapic)?;
-            Ok((controller, xapic_timer))
+            InterruptController::new(pic, xapic, ioapic, intmap)
         },
 
         // MADT is not present.
         None => {
             info!("madt not present, falling back to 8259 pic");
-
             match UninitPic::new(ioports, idt::INT_OFF) {
                 Ok(pic) => {
                     let intmap: InterruptMap = InterruptMap::new();
-                    // Try to create an xAPIC timer from a platform-registered LAPIC MMIO region.
-                    let (eoi_xapic, xapic_timer) = try_init_xapic_timer(ioports, ioaddresses)?;
-                    let controller =
-                        InterruptController::new(Some(pic), None, None, intmap, eoi_xapic)?;
-                    Ok((controller, xapic_timer))
+                    Ok(InterruptController::new(Some(pic), None, None, intmap)?)
                 },
                 Err(e) => {
                     warn!("failed to initialize 8259 pic (error={:?})", e);
-                    let controller =
-                        InterruptController::new(None, None, None, InterruptMap::new(), None)?;
-                    Ok((controller, None))
+                    Ok(InterruptController::new(None, None, None, InterruptMap::new())?)
                 },
             }
         },
-    }
-}
-
-/// Tries to allocate a LAPIC MMIO region for xAPIC timer use. If the platform registered
-/// [`LAPIC_MMIO_TAG`], this creates an [`UninitXapicTimer`], calibrates it via PIT, and returns
-/// the initialized [`XapicTimer`] along with an EOI handle for the interrupt controller.
-///
-/// Returns `(None, None)` if the LAPIC MMIO region is not available or the current configuration
-/// does not support PIT-based LAPIC calibration.
-fn try_init_xapic_timer(
-    _ioports: &mut IoPortAllocator,
-    ioaddresses: &mut IoMemoryAllocator,
-) -> Result<(Option<Xapic>, Option<XapicTimer>), Error> {
-    // For the WHP + PIT + microvm configuration, we attempt to allocate the LAPIC MMIO
-    // region and initialize an xAPIC timer. In other configurations, we avoid touching
-    // the allocator so we don't emit spurious error logs when LAPIC_MMIO_TAG is absent.
-    #[cfg(all(feature = "pit", feature = "microvm", feature = "whp"))]
-    {
-        use self::xapic::UninitXapicTimer;
-
-        let lapic_region: IoMemoryRegion = match ioaddresses.allocate(LAPIC_MMIO_TAG) {
-            Ok(region) => region,
-            Err(_) => return Ok((None, None)),
-        };
-
-        info!("lapic mmio region available for xapic timer");
-
-        let uninit_timer: UninitXapicTimer = UninitXapicTimer::new(lapic_region);
-
-        // Calibrate the LAPIC timer (RDTSC-based when TSC frequency is available,
-        // PIT channel 2 fallback otherwise) and program it in periodic mode.
-        use crate::hal::platform::pit::Pit;
-
-        const LAPIC_CALIBRATION_MS: u32 = 1;
-
-        let mut pit: Pit = Pit::new(_ioports, ::config::kernel::TIMER_FREQ)?;
-        let xapic_timer: XapicTimer = uninit_timer.init(&mut pit, LAPIC_CALIBRATION_MS);
-
-        // SAFETY: Single-core system; the Xapic handle shares the same LAPIC MMIO page.
-        let eoi_xapic: Xapic = unsafe { xapic_timer.create_eoi_handle() };
-        Ok((Some(eoi_xapic), Some(xapic_timer)))
-    }
-
-    #[cfg(not(all(feature = "pit", feature = "microvm", feature = "whp")))]
-    {
-        // In configurations without PIT-based LAPIC calibration support, we cannot
-        // initialize the xAPIC timer. Avoid probing the LAPIC MMIO region so we don't
-        // trigger allocator error logging on platforms that don't register LAPIC_MMIO_TAG.
-        let _ = ioaddresses;
-        Ok((None, None))
     }
 }
