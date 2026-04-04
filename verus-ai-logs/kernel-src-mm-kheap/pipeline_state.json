@@ -2,8 +2,8 @@
   "module_name": "kheap",
   "log_name": "kernel-src-mm-kheap",
   "source_path": "src/kernel/src/mm/kheap.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 2,
+  "current_phase": "polish",
+  "current_phase_idx": 3,
   "phase_results": {
     "specification": {
       "phase": "specification",
@@ -14,6 +14,15 @@
       "total_score": 3,
       "max_score": 5,
       "verdict": "FAIL",
+      "review_file": null
+    },
+    "proving": {
+      "phase": "proving",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "PASS",
       "review_file": null
     }
   },
