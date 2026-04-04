@@ -99,7 +99,7 @@ base64 = "0.22.1"
 bitmap = { path = "src/libs/bitmap", default-features = false }
 build-utils = { path = "src/libs/build-utils" }
 bytes = "1.11.1"
-cc = "1.2.58"
+cc = "1.2.59"
 cfg-if = "1.0.4"
 chrono = "0.4.44"
 clap = { version = "4.6.0", default-features = false, features = [
@@ -199,7 +199,7 @@ syslog-macros = { path = "src/libs/syslog-macros", default-features = false }
 tempfile = "3"
 talc = { git = "https://github.com/nanvix/talc", rev = "12e66643796be912933a369a2d556aaac4c68771", default-features = false, package = "talc" }
 thiserror = "2"
-tokio = { version = "1.50.0", default-features = false }
+tokio = { version = "1.51.0", default-features = false }
 toml = { version = "1.1.2", default-features = false, features = [
         "parse",
         "serde",
