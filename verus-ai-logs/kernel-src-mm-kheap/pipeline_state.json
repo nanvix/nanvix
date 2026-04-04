@@ -33,6 +33,15 @@
       "max_score": 0,
       "verdict": "PASS",
       "review_file": null
+    },
+    "exec-fidelity": {
+      "phase": "exec-fidelity",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "PASS",
+      "review_file": null
     }
   },
   "prover_session_id": "7d7a8d85-cd80-4130-8c8a-0933f3f3634c",
