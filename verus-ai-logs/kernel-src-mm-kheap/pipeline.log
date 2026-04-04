@@ -22,3 +22,18 @@ Module: kheap
 ============================================================
 PIPELINE COMPLETE: All phases passed for kheap
 ============================================================
+[2026-04-04 10:38:26] [BRANCH] Base: verus-ai/kheap → Verus: verus-ai/kheap
+
+############################################################
+VERUS AI VERIFICATION PIPELINE (in-place)
+Module: kheap
+Source: src/kernel/src/mm/kheap.rs
+Crate:  kernel
+Branch: verus-ai/kheap (base: verus-ai/kheap)
+Phases: specification → exec-fidelity
+############################################################
+
+============================================================
+PHASE: specification
+Module: kheap
+============================================================
