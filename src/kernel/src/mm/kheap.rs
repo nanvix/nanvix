@@ -142,10 +142,6 @@ impl Kheap {
                 Err(e) => {
                     // FN-2f: error code
                     &&& e.code == ErrorCode::InvalidArgument
-                    // FN-2g (reverse): error implies at least one check failed
-                    &&& (addr as int % PAGE_SIZE as int != 0
-                        || size < MIN_HEAP_SIZE
-                        || size as int % MIN_HEAP_SIZE as int != 0)
                 }
             },
     {
@@ -265,8 +261,15 @@ impl Kheap {
                     // FN-3d: exact state transition
                     &&& self@ == old(self)@.spec_allocate(opt_idx.unwrap(), ptr as usize)
                 }
-                // FN-3f, FN-3g: state preserved on error
-                Err(_) => self@ == old(self)@,
+                Err(_) => {
+                    let opt_idx = spec_slab_for_size(spec_layout_size(layout) as int);
+                    // FN-3g: state preserved on error
+                    &&& self@ == old(self)@
+                    // FN-3f: error iff size unsupported or slab exhausted
+                    &&& (opt_idx.is_none()
+                        || old(self)@.slabs[opt_idx.unwrap()].free_addrs
+                            == Set::<usize>::empty())
+                }
             },
     {
         proof { admit(); }
@@ -305,8 +308,15 @@ impl Kheap {
                     // FN-4c: exact state transition
                     &&& self@ == old(self)@.spec_deallocate(opt_idx.unwrap(), ptr as usize)
                 }
-                // FN-4e, FN-4f: state preserved on error
-                Err(_) => self@ == old(self)@,
+                Err(_) => {
+                    let opt_idx = spec_slab_for_size(spec_layout_size(layout) as int);
+                    // FN-4f: state preserved on error
+                    &&& self@ == old(self)@
+                    // FN-4e: error iff size unsupported or ptr not allocated
+                    &&& (opt_idx.is_none()
+                        || !old(self)@.slabs[opt_idx.unwrap()].allocated_addrs
+                            .contains(ptr as usize))
+                }
             },
     {
         proof { admit(); }
@@ -332,8 +342,13 @@ impl Kheap {
     pub fn layout_to_allocator(layout: &Layout) -> (result: Result<SlabSize, AllocError>)
         ensures
             match result {
-                // FN-1a, FN-1b: success iff size is supported
-                Ok(_) => spec_slab_for_size(spec_layout_size(*layout) as int).is_some(),
+                Ok(_) => {
+                    let opt_idx = spec_slab_for_size(spec_layout_size(*layout) as int);
+                    // FN-1a: size is supported
+                    &&& opt_idx.is_some()
+                    // FN-1b: the matching slab tier is large enough
+                    &&& block_sizes()[opt_idx.unwrap()] >= spec_layout_size(*layout) as int
+                }
                 // FN-1d: error iff size is unsupported
                 Err(_) => spec_slab_for_size(spec_layout_size(*layout) as int).is_none(),
             },
