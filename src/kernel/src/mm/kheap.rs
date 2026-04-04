@@ -120,6 +120,11 @@ verus! {
 impl Kheap {
     // FN-2: Construct a Kheap by partitioning a raw memory region into slabs.
     unsafe fn from_raw_parts(addr: usize, size: usize) -> (result: Result<Kheap, Error>)
+        requires
+            // SAF-1: region must not wrap around address space
+            addr as int + size as int <= usize::MAX as int,
+            // SAF-2: total size must fit in isize for pointer arithmetic
+            size as int <= isize::MAX as int,
         ensures
             match result {
                 Ok(heap) => {
@@ -184,7 +189,41 @@ impl Kheap {
         info!("heap size: {} MB", size / constants::MEGABYTE);
         #[cfg(not(verus_keep_ghost))]
         info!("slab size: {} KB", slab_size / constants::KILOBYTE);
-        proof { admit(); }
+        proof {
+            broadcast use vstd::std_specs::control_flow::group_control_flow_axioms;
+            // Establish size_of::<u8>() == 1
+            assert(size_of::<u8>() == 1) by {
+                broadcast use vstd::layout::layout_of_primitives;
+            };
+            // slab_size * NUM_OF_SLABS <= size (integer division property)
+            vstd::arithmetic::div_mod::lemma_fundamental_div_mod(size as int, NUM_OF_SLABS as int);
+            vstd::arithmetic::div_mod::lemma_mod_pos_bound(size as int, NUM_OF_SLABS as int);
+            assert(slab_size as int * NUM_OF_SLABS as int <= size as int);
+            // heap_start_addr as usize == addr
+            assert(heap_start_addr as usize == addr);
+            // For each ptr::add(i * slab_size):
+            //   p as usize + count * size_of::<u8>() = addr + i * slab_size * 1 = addr + i * slab_size
+            //   <= addr + NUM_OF_SLABS * slab_size <= addr + size <= usize::MAX
+            //   count * size_of::<u8>() = i * slab_size <= NUM_OF_SLABS * slab_size <= size <= isize::MAX
+            assert(1 * slab_size as int <= size as int);
+            assert(2 * slab_size as int <= size as int);
+            assert(3 * slab_size as int <= size as int);
+            assert(4 * slab_size as int <= size as int);
+            assert(5 * slab_size as int <= size as int);
+            assert(6 * slab_size as int <= size as int);
+            assert(heap_start_addr as usize as int + 1 * slab_size as int * size_of::<u8>() as int <= usize::MAX as int);
+            assert(1 * slab_size as int * size_of::<u8>() as int <= isize::MAX as int);
+            assert(heap_start_addr as usize as int + 2 * slab_size as int * size_of::<u8>() as int <= usize::MAX as int);
+            assert(2 * slab_size as int * size_of::<u8>() as int <= isize::MAX as int);
+            assert(heap_start_addr as usize as int + 3 * slab_size as int * size_of::<u8>() as int <= usize::MAX as int);
+            assert(3 * slab_size as int * size_of::<u8>() as int <= isize::MAX as int);
+            assert(heap_start_addr as usize as int + 4 * slab_size as int * size_of::<u8>() as int <= usize::MAX as int);
+            assert(4 * slab_size as int * size_of::<u8>() as int <= isize::MAX as int);
+            assert(heap_start_addr as usize as int + 5 * slab_size as int * size_of::<u8>() as int <= usize::MAX as int);
+            assert(5 * slab_size as int * size_of::<u8>() as int <= isize::MAX as int);
+            assert(heap_start_addr as usize as int + 6 * slab_size as int * size_of::<u8>() as int <= usize::MAX as int);
+            assert(6 * slab_size as int * size_of::<u8>() as int <= isize::MAX as int);
+        }
         Ok(Kheap {
             slab_8_bytes: Slab::from_raw_parts(
                 heap_start_addr,
@@ -272,7 +311,9 @@ impl Kheap {
                 }
             },
     {
-        proof { admit(); }
+        proof {
+            broadcast use vstd::std_specs::control_flow::group_control_flow_axioms;
+        }
         // VERUS DEVIATION: |_| → |_e| — Verus requires named variables in closure params
         match Kheap::layout_to_allocator(&layout)? {
             SlabSize::Slab8 => self.slab_8_bytes.allocate().map_err(|_e| AllocError),
@@ -319,7 +360,9 @@ impl Kheap {
                 }
             },
     {
-        proof { admit(); }
+        proof {
+            broadcast use vstd::std_specs::control_flow::group_control_flow_axioms;
+        }
         // VERUS DEVIATION: |_| → |_e| — Verus requires named variables in closure params
         match Kheap::layout_to_allocator(&layout)? {
             SlabSize::Slab8 => self.slab_8_bytes.deallocate(ptr).map_err(|_e| AllocError),
@@ -342,18 +385,19 @@ impl Kheap {
     pub fn layout_to_allocator(layout: &Layout) -> (result: Result<SlabSize, AllocError>)
         ensures
             match result {
-                Ok(_) => {
+                Ok(ss) => {
                     let opt_idx = spec_slab_for_size(spec_layout_size(*layout) as int);
                     // FN-1a: size is supported
                     &&& opt_idx.is_some()
                     // FN-1b: the matching slab tier is large enough
                     &&& block_sizes()[opt_idx.unwrap()] >= spec_layout_size(*layout) as int
+                    // FN-1c: returned SlabSize corresponds to the correct index
+                    &&& opt_idx.unwrap() == spec_slab_size_to_index(ss)
                 }
                 // FN-1d: error iff size is unsupported
                 Err(_) => spec_slab_for_size(spec_layout_size(*layout) as int).is_none(),
             },
     {
-        proof { admit(); }
         match layout.size() {
             1..=8 => Ok(SlabSize::Slab8),
             9..=16 => Ok(SlabSize::Slab16),

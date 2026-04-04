@@ -1,7 +1,31 @@
 verus! {
 
 //==================================================================================================
-// Proof Stubs — to be filled during the proof phase
+// Helper Lemmas
+//==================================================================================================
+
+/// Helper: regions are ordered across non-consecutive slabs (by transitivity).
+proof fn lemma_regions_ordered(kv: &KheapView, i: int, j: int)
+    requires
+        kv.inv(),
+        0 <= i < j < kv.slabs.len(),
+    ensures
+        kv.slabs[i].end_addr <= kv.slabs[j].start_addr,
+    decreases j - i,
+{
+    if j == i + 1 {
+        // Direct from kv.inv(): consecutive pair
+    } else {
+        lemma_regions_ordered(kv, i, j - 1);
+        // IH: kv.slabs[i].end_addr <= kv.slabs[j-1].start_addr
+        // kv.slabs[j-1].inv(): start_addr < end_addr
+        // kv.inv() consecutive: kv.slabs[j-1].end_addr <= kv.slabs[j].start_addr
+        // Chain: slabs[i].end_addr <= slabs[j-1].start_addr < slabs[j-1].end_addr <= slabs[j].start_addr
+    }
+}
+
+//==================================================================================================
+// Proof Bodies
 //==================================================================================================
 
 /// MOD-3: Cross-slab disjointness follows from TYPE-2 (region disjointness)
@@ -19,7 +43,25 @@ proof fn lemma_kheap_inv_implies_cross_slab_disjointness(kv: &KheapView)
         forall|i: int, j: int| 0 <= i < j < kv.slabs.len() ==>
             kv.slabs[i].allocated_addrs.disjoint(kv.slabs[j].free_addrs),
 {
-    admit();
+    assert forall|i: int, j: int| 0 <= i < j < kv.slabs.len() implies
+        kv.slabs[i].allocated_addrs.disjoint(kv.slabs[j].allocated_addrs)
+    by {
+        lemma_regions_ordered(kv, i, j);
+        // slabs[i].end_addr <= slabs[j].start_addr
+        // Any addr in slab i: addr < slabs[i].end_addr
+        // Any addr in slab j: addr >= slabs[j].start_addr
+        // So no overlap
+    };
+    assert forall|i: int, j: int| 0 <= i < j < kv.slabs.len() implies
+        kv.slabs[i].free_addrs.disjoint(kv.slabs[j].free_addrs)
+    by {
+        lemma_regions_ordered(kv, i, j);
+    };
+    assert forall|i: int, j: int| 0 <= i < j < kv.slabs.len() implies
+        kv.slabs[i].allocated_addrs.disjoint(kv.slabs[j].free_addrs)
+    by {
+        lemma_regions_ordered(kv, i, j);
+    };
 }
 
 /// spec_slab_for_size maps to a valid index with correct block size bound.
@@ -29,7 +71,7 @@ proof fn lemma_slab_for_size_valid(size: int)
         0 <= spec_slab_for_size(size).unwrap() < NUM_OF_SLABS as int,
         block_sizes()[spec_slab_for_size(size).unwrap()] >= size,
 {
-    admit();
+    // spec_slab_for_size and block_sizes are open specs — automatic
 }
 
 /// LIVE-5: Allocate-then-deallocate round-trip restores abstract state.
@@ -41,7 +83,20 @@ proof fn lemma_alloc_dealloc_round_trip(kv: KheapView, idx: int, addr: usize)
     ensures
         kv.spec_allocate(idx, addr).spec_deallocate(idx, addr) == kv,
 {
-    admit();
+    let slab = kv.slabs[idx];
+    // addr is in free, so not in allocated (disjoint from SlabView::inv)
+    assert(!slab.allocated_addrs.contains(addr));
+
+    let after_alloc = kv.spec_allocate(idx, addr);
+    let after_dealloc = after_alloc.spec_deallocate(idx, addr);
+
+    // Show the slab at idx is restored
+    assert(slab.allocated_addrs.insert(addr).remove(addr) =~= slab.allocated_addrs);
+    assert(slab.free_addrs.remove(addr).insert(addr) =~= slab.free_addrs);
+
+    // Show slabs sequence is restored
+    assert(after_dealloc.slabs =~= kv.slabs);
+    assert(after_dealloc =~= kv);
 }
 
 /// MOD-5: Allocation conservation — union of allocated+free is preserved
@@ -57,7 +112,21 @@ proof fn lemma_allocate_conserves(kv: KheapView, idx: int, addr: usize)
                 == kv.spec_allocate(idx, addr).slabs[j].allocated_addrs.union(
                        kv.spec_allocate(idx, addr).slabs[j].free_addrs),
 {
-    admit();
+    let new_kv = kv.spec_allocate(idx, addr);
+    assert forall|j: int| 0 <= j < kv.slabs.len() implies
+        (#[trigger] kv.slabs[j]).allocated_addrs.union(kv.slabs[j].free_addrs)
+            == new_kv.slabs[j].allocated_addrs.union(new_kv.slabs[j].free_addrs)
+    by {
+        if j == idx {
+            let old_slab = kv.slabs[idx];
+            assert(!old_slab.allocated_addrs.contains(addr));
+            // allocated.insert(addr) ∪ free.remove(addr) =~= allocated ∪ free
+            assert(old_slab.allocated_addrs.insert(addr).union(old_slab.free_addrs.remove(addr))
+                =~= old_slab.allocated_addrs.union(old_slab.free_addrs));
+        } else {
+            // Unchanged
+        }
+    };
 }
 
 /// MOD-5: Deallocation conservation.
@@ -72,7 +141,21 @@ proof fn lemma_deallocate_conserves(kv: KheapView, idx: int, addr: usize)
                 == kv.spec_deallocate(idx, addr).slabs[j].allocated_addrs.union(
                        kv.spec_deallocate(idx, addr).slabs[j].free_addrs),
 {
-    admit();
+    let new_kv = kv.spec_deallocate(idx, addr);
+    assert forall|j: int| 0 <= j < kv.slabs.len() implies
+        (#[trigger] kv.slabs[j]).allocated_addrs.union(kv.slabs[j].free_addrs)
+            == new_kv.slabs[j].allocated_addrs.union(new_kv.slabs[j].free_addrs)
+    by {
+        if j == idx {
+            let old_slab = kv.slabs[idx];
+            assert(!old_slab.free_addrs.contains(addr));
+            // allocated.remove(addr) ∪ free.insert(addr) =~= allocated ∪ free
+            assert(old_slab.allocated_addrs.remove(addr).union(old_slab.free_addrs.insert(addr))
+                =~= old_slab.allocated_addrs.union(old_slab.free_addrs));
+        } else {
+            // Unchanged
+        }
+    };
 }
 
 } // verus!

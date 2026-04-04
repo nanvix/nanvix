@@ -19,7 +19,7 @@ pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 //==================================================================================================
 
 #[derive(Copy, Clone)]
-enum SlabSize {
+pub(crate) enum SlabSize {
     Slab8 = 8,
     Slab16 = 16,
     Slab32 = 32,
@@ -35,7 +35,7 @@ enum SlabSize {
     Slab4096 = 4096,
 }
 
-struct Kheap {
+pub(crate) struct Kheap {
     slab_8_bytes: Slab,
     slab_16_bytes: Slab,
     slab_32_bytes: Slab,
@@ -112,6 +112,36 @@ pub open spec fn max_slab_size() -> int { 512 }
 
 #[cfg(feature = "hyperlight")]
 pub open spec fn max_slab_size() -> int { 4096 }
+
+/// Maps a SlabSize enum value to its slab index.
+#[cfg(not(feature = "hyperlight"))]
+pub closed spec fn spec_slab_size_to_index(ss: SlabSize) -> int {
+    match ss {
+        SlabSize::Slab8 => 0,
+        SlabSize::Slab16 => 1,
+        SlabSize::Slab32 => 2,
+        SlabSize::Slab64 => 3,
+        SlabSize::Slab128 => 4,
+        SlabSize::Slab256 => 5,
+        SlabSize::Slab512 => 6,
+    }
+}
+
+#[cfg(feature = "hyperlight")]
+pub closed spec fn spec_slab_size_to_index(ss: SlabSize) -> int {
+    match ss {
+        SlabSize::Slab8 => 0,
+        SlabSize::Slab16 => 1,
+        SlabSize::Slab32 => 2,
+        SlabSize::Slab64 => 3,
+        SlabSize::Slab128 => 4,
+        SlabSize::Slab256 => 5,
+        SlabSize::Slab512 => 6,
+        SlabSize::Slab1024 => 7,
+        SlabSize::Slab2048 => 8,
+        SlabSize::Slab4096 => 9,
+    }
+}
 
 /// The expected block size for each slab index.
 #[cfg(not(feature = "hyperlight"))]
@@ -263,7 +293,33 @@ impl View for Kheap {
 
 impl Kheap {
     pub open spec fn inv(&self) -> bool {
-        self@.inv()
+        &&& self@.inv()
+        &&& self.concrete_inv()
+    }
+
+    #[cfg(not(feature = "hyperlight"))]
+    pub closed spec fn concrete_inv(&self) -> bool {
+        &&& self.slab_8_bytes.inv()
+        &&& self.slab_16_bytes.inv()
+        &&& self.slab_32_bytes.inv()
+        &&& self.slab_64_bytes.inv()
+        &&& self.slab_128_bytes.inv()
+        &&& self.slab_256_bytes.inv()
+        &&& self.slab_512_bytes.inv()
+    }
+
+    #[cfg(feature = "hyperlight")]
+    pub closed spec fn concrete_inv(&self) -> bool {
+        &&& self.slab_8_bytes.inv()
+        &&& self.slab_16_bytes.inv()
+        &&& self.slab_32_bytes.inv()
+        &&& self.slab_64_bytes.inv()
+        &&& self.slab_128_bytes.inv()
+        &&& self.slab_256_bytes.inv()
+        &&& self.slab_512_bytes.inv()
+        &&& self.slab_1024_bytes.inv()
+        &&& self.slab_2048_bytes.inv()
+        &&& self.slab_4096_bytes.inv()
     }
 }
 
