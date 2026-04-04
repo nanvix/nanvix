@@ -69,3 +69,13 @@ ed3a6427be6f572cf5aaa85c09b43906a63259a4,Decomposed (paired),create+close+unlink
 ed3a6427be6f572cf5aaa85c09b43906a63259a4,Decomposed (paired),mkdir+rmdir,100,10,321,405
 ed3a6427be6f572cf5aaa85c09b43906a63259a4,Decomposed (paired),create+close+rename,100,10,494,714
 ed3a6427be6f572cf5aaa85c09b43906a63259a4,Decomposed (paired),write+flush,100,126,544,750
+9254292ef5c9ffc97e9e00f0f6e9462460260eba,Decomposed (paired),protocol,100,2867,3034,883359
+9254292ef5c9ffc97e9e00f0f6e9462460260eba,Decomposed (paired),stat,100,1800,2371,2505
+9254292ef5c9ffc97e9e00f0f6e9462460260eba,Decomposed (paired),open+close,100,1724,2156,3523
+9254292ef5c9ffc97e9e00f0f6e9462460260eba,Decomposed (paired),readdir,100,1770,2162,2473
+9254292ef5c9ffc97e9e00f0f6e9462460260eba,Decomposed (paired),create_scratch,100,95,380,792
+9254292ef5c9ffc97e9e00f0f6e9462460260eba,Decomposed (paired),seq_read,100,108,720,46125
+9254292ef5c9ffc97e9e00f0f6e9462460260eba,Decomposed (paired),create+close+unlink,100,20,456,964
+9254292ef5c9ffc97e9e00f0f6e9462460260eba,Decomposed (paired),mkdir+rmdir,100,0,648,1127
+9254292ef5c9ffc97e9e00f0f6e9462460260eba,Decomposed (paired),create+close+rename,100,8,520,928
+9254292ef5c9ffc97e9e00f0f6e9462460260eba,Decomposed (paired),write+flush,100,99,451,729
