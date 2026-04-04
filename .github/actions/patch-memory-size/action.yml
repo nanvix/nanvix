@@ -1,0 +1,33 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Patch Memory Size"
+description: "Patch memory_size in the kernel configuration file"
+
+inputs:
+  memory-size:
+    description: "Memory size in megabytes"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Patch memory_size in kernel config"
+      shell: bash
+      env:
+        MEMORY_SIZE_MB: ${{ inputs.memory-size }}
+      run: |
+        memory_size_bytes=$(( MEMORY_SIZE_MB * 1048576 ))
+        sed -i "s/^memory_size = .*/memory_size = ${memory_size_bytes}/" build/kernel_config.toml
+        # Verify that exactly one memory_size line exists after patching
+        matches=$(grep -c "^memory_size = " build/kernel_config.toml || true)
+        if [ "${matches}" -ne 1 ]; then
+          echo "Error: Expected exactly one 'memory_size' entry in build/kernel_config.toml, found ${matches}." >&2
+          exit 1
+        fi
+        # Verify that the memory_size line has the expected value
+        if ! grep -q "^memory_size = ${memory_size_bytes}$" build/kernel_config.toml; then
+          echo "Error: Failed to set 'memory_size' to ${memory_size_bytes} bytes in build/kernel_config.toml." >&2
+          exit 1
+        fi
+        echo "Set memory_size to ${memory_size_bytes} bytes (${MEMORY_SIZE_MB} MB)"
