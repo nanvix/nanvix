@@ -1,0 +1,630 @@
+=== Copilot Session ===
+Timestamp: 2026-04-04T12:08:06.551986
+Model: claude-opus-4.6
+Session: new
+Command: copilot --allow-all-tools --allow-all-paths --model claude-opus-4.6...
+
+=== Prompt ===
+You are polishing and strengthening the verification of /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs.
+The specs and proofs are already working. Your job is to improve quality:
+extract proof blocks, minimize redundancy, and strengthen any remaining gaps.
+
+== PROJECT CONTEXT ==
+
+Nanvix is a research OS kernel written in Rust. The kheap module implements a
+kernel heap allocator that manages multiple slab allocators of different sizes
+(8–512 bytes, extended to 4096 under hyperlight). It uses the verified slab
+crate internally. The heap is backed by a static aligned storage region and
+provides the GlobalAlloc trait implementation for the kernel.
+
+
+Property analysis: /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-mm-kheap/property_analysis.md
+Source file: /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+Spec file:  /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.spec.rs
+Proof file: /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+Verus command: make verify-kernel MODULE=kheap ## E.g. mm::kheap
+Verified dependency specs:
+- bitmap: /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/src/libs/bitmap/src/lib.spec.rs
+- slab: /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/src/libs/slab/src/lib.spec.rs
+
+== SOURCE INTEGRITY ==
+
+Do NOT modify exec logic in /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs — no changes to function bodies,
+control flow, or data structures. Adding `requires`, `ensures`, `invariant`,
+and other spec annotations to exec functions is expected and required.
+Never cfg-gate away an entire function or impl block and provide an annotated
+copy — add contracts to the original function in-place.
+All code you write must use `verus! {}` block style, which is easier to
+edit. Existing dependencies may use attribute style (`#[verus_spec]` etc.)
+— that was auto-converted from `verus! {}` and should not be imitated.
+See the **verus-constraints** skill for detailed rules and
+the **ast-consistency** skill for checking tools.
+
+== SKILLS ==
+
+Follow these skills strictly (auto-loaded from .github/skills/):
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns, source integrity
+- **proving-guide** — MUST follow: proof strategy, invariant planning
+- **spec-design** — MUST follow when writing requires/ensures/invariants
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-mm-kheap/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-improve3/scripts/
+- Source directory: /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/src/kernel/src/mm/
+- vstd library: /home/ruize/verus-ai-improve3/vstd/
+
+== SPEC QUALITY ==
+
+Follow the **spec-design** skill guidelines.
+Fewer meaningful specs always beat many trivial ones.
+
+== POLISH SKILLS ==
+
+- **proof-extraction** — MUST follow for extracting inline proof blocks
+- **proof-minimization** — MUST follow for removing redundancy
+
+== SUB-AGENT POLICY ==
+
+Sub-agents are allowed. Use ONLY these models:
+  - **claude-opus-4.6** (preferred default) — for all tasks.
+  - **gpt-5.3-codex** — for all tasks.
+When diversity is needed (e.g. independent parallel analysis), use a different model per sub-agent.
+
+== TASK ==
+
+Strengthen any remaining gaps, then polish the verification.
+
+1. **Strengthen**: Compare /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-mm-kheap/property_analysis.md against current specs —
+   strengthen any property that is weak or missing. Think independently about
+   what else should be verified. Document any discovered code bugs in /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-mm-kheap/bugs.md.
+2. **Extract proof blocks**: Use `check_proof_blocks` tool (or
+   `python3 scripts/check_proof_blocks.py /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs --all`) to find all
+   inline proof blocks. Extract those >5 lines into named lemmas in the proof
+   file, following the proof-extraction skill.
+3. **Minimize**: Remove redundant assertions, proof hints, and dead spec
+   functions following the proof-minimization skill. Re-run verification after
+   each batch of removals.
+
+== OUTPUT ==
+
+Write to /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-mm-kheap/polish/checklist.md:
+```markdown
+# Polish & Strengthen Report: kheap
+
+## Strengthening
+| Property ID | Status | Location or Reason |
+|-------------|--------|--------------------|
+(list STRENGTHENED and NEW only, then summarize PROVEN count)
+
+## Proof Extraction
+- Blocks extracted: N (list each with old location → new lemma name)
+- Blocks kept inline: M (with justification)
+
+## Minimization
+- Redundant assertions removed: N
+- Redundant lemmas/hints removed: N
+
+## Summary
+- Coverage rate: N%
+```
+
+Done when: verus verifies with 0 errors/admits and build passes.
+
+=== Output (streaming) ===
+
+
+
+
+● Read property_analysis.md
+  │ target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-mm-kheap/property_analysis.md
+  └ 1 line read
+
+● Read kheap.proof.rs
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+  └ 161 lines read
+
+● Read kheap.spec.rs
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.spec.rs
+  └ 326 lines read
+
+● Read kheap.rs
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+  └ 462 lines read
+
+● Read property_analysis.md
+  │ target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-mm-kheap/property_analysis.md
+  └ L1:100 (100 lines read)
+
+● Read lib.spec.rs
+  │ target-systems/nanvix-kheap0404/src/libs/slab/src/lib.spec.rs
+  └ 99 lines read
+
+● Run baseline verification (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=kheap 2>&1 | tail -30
+  └ 31 lines...
+
+● Read property_analysis.md
+  │ target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-mm-kheap/property_analysis.md
+  └ L100:250 (150 lines read)
+
+● Run verification with correct module path (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | tail -30
+  └ 31 lines...
+
+Good — baseline passes with 16 verified, 0 errors. Let me read the rest of the property analysis and check proof blocks.
+
+● Read property_analysis.md
+  │ target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-mm-kheap/property_analysis.md
+  └ L250:500 (250 lines read)
+
+● Check inline proof blocks (shell)
+  │ cd /home/ruize/verus-ai-improve3 && python3 scripts/check_proof_blocks.py
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs --all 2>&1
+  └ 8 lines...
+
+● Read property_analysis.md
+  │ target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-mm-kheap/property_analysis.md
+  └ L500:600 (100 lines read)
+
+● skill(proof-extraction)
+
+● Read property_analysis.md
+  │ target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-mm-kheap/property_analysis.md
+  └ L600:700 (101 lines read)
+
+● skill(proof-minimization)
+
+● skill(verus-constraints)
+
+
+
+Now I have a complete picture. Let me create a plan and execute.
+
+● Create plan.md +19
+  └ ~/.copilot/session-state/c17cd7bd-c315-490f-9eed-d551bcd0aecc/plan.md
+
+● Read kheap.rs
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+  └ L192:226 (35 lines read)
+
+Now let me check if there's an existing bugs file, and read the skill instructions loaded in context.
+
+● List directory target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-mm-kheap
+  └ 10 files found
+
+● Check logs directory (shell)
+  │ ls -la
+  │ /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-mm-kheap/
+  │ 2>&1
+  └ 14 lines...
+
+● Check subdirectory contents (shell)
+  │ ls /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-mm-khe
+  │ ap/polish/ 2>&1 && echo "---" && ls /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap040
+  │ 4/verus-ai-logs/kernel-src-mm-kheap/proving/ 2>&1
+  └ 4 lines...
+
+No bugs.md file exists yet. Now let me implement the changes. I'll do this in three phases: extract, minimize, strengthen.
+
+**Phase 1: Extract the 35-line proof block from `from_raw_parts`.**
+
+● Edit kheap.proof.rs +41
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+
+Now replace the inline proof block in kheap.rs with a lemma call:
+
+● Edit kheap.rs +1 -31
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+
+● Verify after extraction (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | tail -30
+  └ 31 lines...
+
+Trigger inference failed on the quantifier. Let me use enumerated ensures instead, which directly matches what the call site needs:
+
+● Edit kheap.proof.rs +13 -20
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+
+● Verify after extraction v2 (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | tail -30
+  └ 31 lines...
+
+The postcondition failed — the lemma ensures are missing the `i * slab_size <= size` bounds needed for the from_raw_parts postcondition. Let me add those:
+
+● Edit kheap.proof.rs +6
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+
+● Verify after adding slab_size bounds (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | tail -20
+  └ 21 lines...
+
+● Get detailed error (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -A5 "error\[E\|failed this postcondition" | head -30
+  └ 7 lines...
+
+● Find which postcondition failed (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -B2 "failed this postcondition" | head -20
+  └ 4 lines...
+
+● Get error details (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -E "error:|note:" | head -20
+  └ 4 lines...
+
+Let me try passing `heap_start_addr as usize` directly to match the ptr::add expressions:
+
+● Edit kheap.rs +1 -1
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+
+● Verify with reordered proof (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | tail -20
+  └ 21 lines...
+
+● Get full error context (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -v "^$" | grep -A 50 "error: postcondition" | head -60
+  └ 29 lines...
+
+Let me add intermediate assertions to the lemma body to help the prover:
+
+● Edit kheap.proof.rs +7
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+
+● Verify with intermediate assertions (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | tail -20
+  └ 21 lines...
+
+Let me try a more targeted approach — restore original and move incrementally:
+
+● Edit kheap.rs +13
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+
+● Verify with explicit re-assertions (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | tail -20
+  └ 21 lines...
+
+Let me try keeping the essential setup inline and only delegating the ptr bounds:
+
+● Edit kheap.rs +14 -2
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+
+● Verify with original assertions restored (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | tail -20
+  └ 20 lines...
+
+Aha — it's an rlimit issue! Adding the lemma on top of original assertions overloaded the solver. Let me restore the clean extraction and check if the original "postcondition failure" was actually a timeout:
+
+● Edit kheap.rs +1 -26
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+
+● Verify clean extraction (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -E "error:|note:|verified" | head -10
+  └ 7 lines...
+
+The issue is that the lemma ensures facts about `addr` but the call site needs facts about `heap_start_addr as usize`. Let me make the lemma take the pointer directly:
+
+● Edit kheap.proof.rs +9 -8
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+
+Now update the call site:
+
+✗ Edit kheap.rs
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+  └ No match found
+
+● Read kheap.rs
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+  └ L192:200 (9 lines read)
+
+● Edit kheap.rs +1 -2
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+
+● Verify with pointer-based lemma (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | tail -20
+  └ 21 lines...
+
+● Check error type (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -E "error:" | head -5
+  └ 3 lines...
+
+Let me check if the lemma is actually verifying by profiling the module output more carefully:
+
+● Get verification details (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -E "verification results|rlimit|assert|recomm" | head -10
+  └ 2 lines...
+
+● Get all diagnostics (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -E "^(error|warning|note:)" | head -20
+  └ 4 lines...
+
+● Full error with context (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 2>&1 | grep -B5 -A30 "postcondition not satisfied"
+  └ 36 lines...
+
+● Edit kheap.rs +1
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+
+● Verify with explicit addr assertion (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -E "error:|verified" | head -5
+  └ 6 lines...
+
+Let me check if this is secretly an rlimit issue by checking timing:
+
+● Verify with higher rlimit (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && VERUS_EXTRA_ARGS="--rlimit
+  │ 50" make verify-kernel MODULE=mm::kheap 2>&1 | grep -E "error:|verified" | head -5
+  └ 6 lines...
+
+● Check how to pass rlimit (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && grep -n
+  │ "VERUS_EXTRA_ARGS\|rlimit\|--rlimit" scripts/verify.sh Makefile 2>/dev/null | head -10
+  └ 1 line...
+
+● Find rlimit config (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && grep -n
+  │ "rlimit\|VERUS_EXTRA" Makefile scripts/verify.sh 2>/dev/null | head -20
+  └ 10 lines...
+
+Let me try a minimal approach — keep only the core arithmetic facts inline without the ptr::add assertions:
+
+● Edit kheap.rs +8 -1
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+
+● Verify with minimal inline proof (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -E "error:|verified" | head -5
+  └ 6 lines...
+
+● Edit kheap.rs +6
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+
+● Verify with slab_size bounds added (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -E "error:|verified" | head -5
+  └ 5 lines...
+
+17 verified, 0 errors! The 12 ptr::add assertions were redundant. Now I know the minimal set. Let me now properly extract by splitting into two targeted lemmas:
+
+● Edit kheap.proof.rs +30
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+
+Now update the inline proof block to use the two targeted lemmas:
+
+● Edit kheap.rs +2 -14
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+
+● Verify with two extracted lemmas (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -E "error:|verified" | head -5
+  └ 6 lines...
+
+The lemma ensures aren't usable as inline assertions. Let me try a hybrid approach — extract the computation-heavy part (division + size_of) into the lemma, keep the individual assertions inline:
+
+● Edit kheap.rs +6 -1
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+
+● Verify hybrid approach (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -E "error:|verified" | head -5
+  └ 6 lines...
+
+● Edit kheap.rs +6 -1
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+
+● Verify restored inline (no lemma call) (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -E "error:|verified" | head -5
+  └ 5 lines...
+
+The inline version works. Extraction to lemma is not possible for this block (SMT solver needs facts in same context). Let me clean up the proof.rs — remove the failed extraction lemmas and proceed to strengthening.
+
+✗ Edit kheap.proof.rs
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+  └ No match found
+
+● Read kheap.proof.rs
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+  └ L1:40 (40 lines read)
+
+● Read kheap.proof.rs
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+  └ L25:100 (76 lines read)
+
+● Read kheap.proof.rs
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+  └ L95:220 (126 lines read)
+
+Now let me remove the three unused extraction-attempt lemmas:
+
+● Edit kheap.proof.rs -78
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+
+Now let me add strengthening lemmas. I'll add a tightest-fit property for `layout_to_allocator` and a block-size monotonicity lemma:
+
+● Read kheap.proof.rs
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+  └ 161 lines read
+
+Good, the file is clean now. Let me add the strengthening lemmas — a tightest-fit property and a block-size monotonicity property:
+
+● Edit kheap.proof.rs +32 -1
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+
+Now let me also strengthen `layout_to_allocator`'s ensures to include the tightest-fit property:
+
+● Read kheap.rs
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+  └ L385:420 (36 lines read)
+
+● Read kheap.rs
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+  └ L365:398 (34 lines read)
+
+Now let me add the tightest-fit ensures to `layout_to_allocator`:
+
+● Edit kheap.rs +3
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+
+● Verify with strengthened specs (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | tail -20
+  └ 21 lines...
+
+● Find exact failure location (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -B2 "failed this"
+  └ 4 lines...
+
+● Full error message (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -B1 -A 15 "postcondition not satisfied"
+  └ 17 lines...
+
+The failure is in from_raw_parts, not layout_to_allocator. The new lemmas might be interfering. Let me test incrementally — remove the new proof lemmas first:
+
+● Edit kheap.proof.rs -32
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+
+● Verify without new proof lemmas (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -E "error:|verified" | head -5
+  └ 5 lines...
+
+The strengthened `layout_to_allocator` passes. The issue was the new proof lemmas. Let me add them back one-by-one to find the culprit:
+
+● Edit kheap.proof.rs +14
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+
+● Verify with tightest_fit lemma (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -E "error:|verified" | head -5
+  └ 6 lines...
+
+The tightest-fit lemma's quantifier interferes with from_raw_parts. Let me try the other lemmas:
+
+● Edit kheap.proof.rs +12 -6
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+
+● Verify with monotonicity + totality (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -E "error:|verified" | head -5
+  └ 5 lines...
+
+These two pass. Now let me add back the tightest-fit lemma but without `block_sizes()` in its trigger:
+
+● Edit kheap.proof.rs +13
+  └ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+
+● Verify with trigger-safe tightest-fit (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | grep -E "error:|verified" | head -5
+  └ 5 lines...
+
+19 verified, 0 errors. Now let me verify the `check_proof_blocks` output with the minimized code:
+
+● Check proof blocks after changes (shell)
+  │ cd /home/ruize/verus-ai-improve3 && python3 scripts/check_proof_blocks.py
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs --all 2>&1
+  └ 8 lines...
+
+Good — reduced from 35 to 16 lines. Now let me also check the AST consistency to make sure exec code is unchanged:
+
+● skill(ast-consistency)
+
+● Check AST consistency (shell)
+  │ cd /home/ruize/verus-ai-improve3 && python3 scripts/ast_consistency.py --base-ref HEAD
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs summary 2>&1
+  └ 2 lines...
+
+● Check git state (shell)
+  │ cd /home/ruize/verus-ai-improve3 && git --no-pager log --oneline -5 && echo "---" && git
+  │ --no-pager diff --name-only HEAD 2>/dev/null | head -20
+  └ 8 lines...
+
+● Check target repo git state (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && git --no-pager log --oneline
+  │ -5 2>&1
+  └ 6 lines...
+
+● Find base commit (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && git --no-pager log --oneline
+  │ -20 | tail -10
+  └ 11 lines...
+
+● AST consistency check against original (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && python3
+  │ /home/ruize/verus-ai-improve3/scripts/ast_consistency.py --base-ref 925088e62
+  │ src/kernel/src/mm/kheap.rs summary 2>&1
+  └ 22 lines...
+
+● Check mismatches (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && python3
+  │ /home/ruize/verus-ai-improve3/scripts/ast_consistency.py --base-ref 925088e62
+  │ src/kernel/src/mm/kheap.rs diff --name "Kheap::allocate" 2>&1 && echo "===" && python3
+  │ /home/ruize/verus-ai-improve3/scripts/ast_consistency.py --base-ref 925088e62
+  │ src/kernel/src/mm/kheap.rs diff --name "Kheap::deallocate" 2>&1
+  └ 36 lines...
+
+● Check remaining mismatches (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && python3
+  │ /home/ruize/verus-ai-improve3/scripts/ast_consistency.py --base-ref 925088e62
+  │ src/kernel/src/mm/kheap.rs diff --name "Kheap::from_raw_parts" 2>&1 | head -40 && echo "===" &&
+  │ python3 /home/ruize/verus-ai-improve3/scripts/ast_consistency.py --base-ref 925088e62
+  │ src/kernel/src/mm/kheap.rs diff --name "Kheap::layout_to_allocator" 2>&1 | head -20
+  └ 46 lines...
+
+All mismatches are pre-existing deviations (documented with `VERUS DEVIATION` comments). My changes only modified spec/proof content. Now let me verify the build also passes:
+
+● Check cargo build (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make MACHINE=microvm
+  │ LOG_LEVEL=trace 2>&1 | tail -10
+  └ 10 lines...
+
+Build passes. Now let me do the final verification run and create the output files:
+
+● Final verification (shell)
+  │ cd /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404 && make verify-kernel
+  │ MODULE=mm::kheap 2>&1 | tail -20
+  └ 20 lines...
+
+19 verified, 0 errors. Let me now view the final state of all files and write the checklist:
+
+● Read kheap.rs
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.rs
+  └ L192:210 (19 lines read)
+
+● Read kheap.proof.rs
+  │ target-systems/nanvix-kheap0404/src/kernel/src/mm/kheap.proof.rs
+  └ 193 lines read
+
+Now let me write the checklist and create the output directory:
+
+● Ensure directory exists (shell)
+  │ mkdir -p /home/ruize/verus-ai-improve3/target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-
+  │ mm-kheap/polish
+  └ 1 line...
+
+● Create checklist.md +51
+  └ target-systems/nanvix-kheap0404/verus-ai-logs/kernel-src-mm-kheap/polish/checklist.md
+
+Now let me commit the changes:
+

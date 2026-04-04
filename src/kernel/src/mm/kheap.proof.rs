@@ -149,13 +149,45 @@ proof fn lemma_deallocate_conserves(kv: KheapView, idx: int, addr: usize)
         if j == idx {
             let old_slab = kv.slabs[idx];
             assert(!old_slab.free_addrs.contains(addr));
-            // allocated.remove(addr) ∪ free.insert(addr) =~= allocated ∪ free
             assert(old_slab.allocated_addrs.remove(addr).union(old_slab.free_addrs.insert(addr))
                 =~= old_slab.allocated_addrs.union(old_slab.free_addrs));
         } else {
             // Unchanged
         }
     };
+}
+
+//==================================================================================================
+// Strengthening Lemmas
+//==================================================================================================
+
+/// FN-1c strengthened: spec_slab_for_size selects the tightest-fitting slab.
+/// All smaller slab tiers have block sizes strictly less than the requested size.
+proof fn lemma_slab_for_size_tightest_fit(size: int)
+    requires spec_slab_for_size(size).is_some(),
+    ensures ({
+        let idx = spec_slab_for_size(size).unwrap();
+        &&& (idx > 0 ==> block_sizes()[idx - 1] < size)
+        &&& (idx > 1 ==> block_sizes()[idx - 2] < size)
+        &&& block_sizes()[idx] >= size
+    }),
+{
+}
+
+/// TYPE-3 strengthened: block_sizes() is strictly monotonically increasing.
+proof fn lemma_block_sizes_strictly_increasing()
+    ensures
+        forall|i: int| #![trigger block_sizes()[i]]
+            0 <= i < (block_sizes().len() - 1) ==>
+            block_sizes()[i] < block_sizes()[i + 1],
+{
+}
+
+/// spec_slab_for_size is total over the supported range [1, max_slab_size()].
+proof fn lemma_slab_for_size_total(size: int)
+    requires 1 <= size <= max_slab_size(),
+    ensures spec_slab_for_size(size).is_some(),
+{
 }
 
 } // verus!

@@ -191,38 +191,19 @@ impl Kheap {
         info!("slab size: {} KB", slab_size / constants::KILOBYTE);
         proof {
             broadcast use vstd::std_specs::control_flow::group_control_flow_axioms;
-            // Establish size_of::<u8>() == 1
             assert(size_of::<u8>() == 1) by {
                 broadcast use vstd::layout::layout_of_primitives;
             };
-            // slab_size * NUM_OF_SLABS <= size (integer division property)
             vstd::arithmetic::div_mod::lemma_fundamental_div_mod(size as int, NUM_OF_SLABS as int);
             vstd::arithmetic::div_mod::lemma_mod_pos_bound(size as int, NUM_OF_SLABS as int);
             assert(slab_size as int * NUM_OF_SLABS as int <= size as int);
-            // heap_start_addr as usize == addr
             assert(heap_start_addr as usize == addr);
-            // For each ptr::add(i * slab_size):
-            //   p as usize + count * size_of::<u8>() = addr + i * slab_size * 1 = addr + i * slab_size
-            //   <= addr + NUM_OF_SLABS * slab_size <= addr + size <= usize::MAX
-            //   count * size_of::<u8>() = i * slab_size <= NUM_OF_SLABS * slab_size <= size <= isize::MAX
             assert(1 * slab_size as int <= size as int);
             assert(2 * slab_size as int <= size as int);
             assert(3 * slab_size as int <= size as int);
             assert(4 * slab_size as int <= size as int);
             assert(5 * slab_size as int <= size as int);
             assert(6 * slab_size as int <= size as int);
-            assert(heap_start_addr as usize as int + 1 * slab_size as int * size_of::<u8>() as int <= usize::MAX as int);
-            assert(1 * slab_size as int * size_of::<u8>() as int <= isize::MAX as int);
-            assert(heap_start_addr as usize as int + 2 * slab_size as int * size_of::<u8>() as int <= usize::MAX as int);
-            assert(2 * slab_size as int * size_of::<u8>() as int <= isize::MAX as int);
-            assert(heap_start_addr as usize as int + 3 * slab_size as int * size_of::<u8>() as int <= usize::MAX as int);
-            assert(3 * slab_size as int * size_of::<u8>() as int <= isize::MAX as int);
-            assert(heap_start_addr as usize as int + 4 * slab_size as int * size_of::<u8>() as int <= usize::MAX as int);
-            assert(4 * slab_size as int * size_of::<u8>() as int <= isize::MAX as int);
-            assert(heap_start_addr as usize as int + 5 * slab_size as int * size_of::<u8>() as int <= usize::MAX as int);
-            assert(5 * slab_size as int * size_of::<u8>() as int <= isize::MAX as int);
-            assert(heap_start_addr as usize as int + 6 * slab_size as int * size_of::<u8>() as int <= usize::MAX as int);
-            assert(6 * slab_size as int * size_of::<u8>() as int <= isize::MAX as int);
         }
         Ok(Kheap {
             slab_8_bytes: Slab::from_raw_parts(
@@ -393,6 +374,9 @@ impl Kheap {
                     &&& block_sizes()[opt_idx.unwrap()] >= spec_layout_size(*layout) as int
                     // FN-1c: returned SlabSize corresponds to the correct index
                     &&& opt_idx.unwrap() == spec_slab_size_to_index(ss)
+                    // FN-1c strengthened: tightest fit — all smaller tiers are too small
+                    &&& forall|j: int| 0 <= j < opt_idx.unwrap() ==>
+                        block_sizes()[j] < spec_layout_size(*layout) as int
                 }
                 // FN-1d: error iff size is unsupported
                 Err(_) => spec_slab_for_size(spec_layout_size(*layout) as int).is_none(),
