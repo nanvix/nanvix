@@ -16,6 +16,8 @@ include!("kheap.spec.rs");
 include!("kheap.proof.rs");
 
 use crate::collections::Slab;
+#[cfg(verus_keep_ghost)]
+use crate::collections::SlabView;
 use ::alloc::alloc::{
     AllocError,
     GlobalAlloc,
@@ -33,12 +35,17 @@ use ::sys::error::{
 // Constants
 //==================================================================================================
 
+#[cfg(not(verus_keep_ghost))]
 #[cfg(feature = "hyperlight")]
 pub const NUM_OF_SLABS: usize = 10;
+#[cfg(not(verus_keep_ghost))]
 #[cfg(not(feature = "hyperlight"))]
 pub const NUM_OF_SLABS: usize = 7;
+#[cfg(not(verus_keep_ghost))]
 const SLAB_COUNT: usize = 32;
+#[cfg(not(verus_keep_ghost))]
 pub const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
+#[cfg(not(verus_keep_ghost))]
 pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 
 //==================================================================================================
@@ -58,6 +65,7 @@ static mut HEAP_STORAGE: HeapStorage = HeapStorage {
     memory: [0; MIN_HEAP_SIZE],
 };
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Copy, Clone)]
 enum SlabSize {
     Slab8 = 8,
@@ -77,6 +85,7 @@ enum SlabSize {
     Slab4096 = 4096,
 }
 
+#[cfg(not(verus_keep_ghost))]
 struct Kheap {
     slab_8_bytes: Slab,
     slab_16_bytes: Slab,
@@ -106,10 +115,48 @@ static mut ALLOCATOR: ArenaAllocator = ArenaAllocator;
 // Implementations
 //==================================================================================================
 
+verus! {
+
 impl Kheap {
-    unsafe fn from_raw_parts(addr: usize, size: usize) -> Result<Kheap, Error> {
+    // FN-2: Construct a Kheap by partitioning a raw memory region into slabs.
+    unsafe fn from_raw_parts(addr: usize, size: usize) -> (result: Result<Kheap, Error>)
+        ensures
+            match result {
+                Ok(heap) => {
+                    let slab_size = size as int / NUM_OF_SLABS as int;
+                    // FN-2b: heap invariant holds
+                    &&& heap.inv()
+                    // FN-2c: all slabs start fully unallocated
+                    &&& forall|i: int| 0 <= i < NUM_OF_SLABS as int ==>
+                        (#[trigger] heap@.slabs[i]).allocated_addrs == Set::<usize>::empty()
+                    // FN-2e: each slab is contained within its partition
+                    &&& forall|i: int| 0 <= i < NUM_OF_SLABS as int ==> {
+                        &&& (#[trigger] heap@.slabs[i]).start_addr >= addr as int + i * slab_size
+                        &&& heap@.slabs[i].end_addr <= addr as int + (i + 1) * slab_size
+                    }
+                    // FN-2g (forward): success implies preconditions held
+                    &&& addr as int % PAGE_SIZE as int == 0
+                    &&& size >= MIN_HEAP_SIZE
+                    &&& size as int % MIN_HEAP_SIZE as int == 0
+                }
+                Err(e) => {
+                    // FN-2f: error code
+                    &&& e.code == ErrorCode::InvalidArgument
+                    // FN-2g (reverse): error implies at least one check failed
+                    &&& (addr as int % PAGE_SIZE as int != 0
+                        || size < MIN_HEAP_SIZE
+                        || size as int % MIN_HEAP_SIZE as int != 0)
+                }
+            },
+    {
         // Check if start address is not page aligned.
-        if !addr.is_multiple_of(mem::PAGE_SIZE) {
+        // VERUS DEVIATION: mem::PAGE_SIZE cfg-gated — defined outside verus! {} block
+        if !addr.is_multiple_of({
+            #[cfg(not(verus_keep_ghost))]
+            { mem::PAGE_SIZE }
+            #[cfg(verus_keep_ghost)]
+            { PAGE_SIZE }
+        }) {
             return Err(Error::new(ErrorCode::InvalidArgument, "unaligned start address"));
         }
 
@@ -129,10 +176,19 @@ impl Kheap {
             ));
         }
 
-        let heap_start_addr: *mut u8 = addr as *mut u8;
+        // VERUS DEVIATION: addr as *mut u8 unsupported — Verus lacks usize-to-pointer cast
+        let heap_start_addr: *mut u8 = {
+            #[cfg(not(verus_keep_ghost))]
+            { addr as *mut u8 }
+            #[cfg(verus_keep_ghost)]
+            { usize_to_mut_ptr(addr) }
+        };
         let slab_size: usize = size / NUM_OF_SLABS;
+        #[cfg(not(verus_keep_ghost))]
         info!("heap size: {} MB", size / constants::MEGABYTE);
+        #[cfg(not(verus_keep_ghost))]
         info!("slab size: {} KB", slab_size / constants::KILOBYTE);
+        proof { admit(); }
         Ok(Kheap {
             slab_8_bytes: Slab::from_raw_parts(
                 heap_start_addr,
@@ -190,43 +246,99 @@ impl Kheap {
         })
     }
 
-    unsafe fn allocate(&mut self, layout: Layout) -> Result<*mut u8, AllocError> {
+    // FN-3: Allocate a block from the slab matching layout.size().
+    unsafe fn allocate(&mut self, layout: Layout) -> (result: Result<*mut u8, AllocError>)
+        requires
+            // FN-3a
+            old(self).inv(),
+        ensures
+            // FN-3e: invariant preserved
+            self.inv(),
+            match result {
+                Ok(ptr) => {
+                    let opt_idx = spec_slab_for_size(spec_layout_size(layout) as int);
+                    // FN-3b: address was free in the correct slab
+                    &&& opt_idx.is_some()
+                    &&& old(self)@.slabs[opt_idx.unwrap()].free_addrs.contains(ptr as usize)
+                    // FN-3c: pointer is block-aligned
+                    &&& ptr as usize % old(self)@.slabs[opt_idx.unwrap()].block_size == 0
+                    // FN-3d: exact state transition
+                    &&& self@ == old(self)@.spec_allocate(opt_idx.unwrap(), ptr as usize)
+                }
+                // FN-3f, FN-3g: state preserved on error
+                Err(_) => self@ == old(self)@,
+            },
+    {
+        proof { admit(); }
+        // VERUS DEVIATION: |_| → |_e| — Verus requires named variables in closure params
         match Kheap::layout_to_allocator(&layout)? {
-            SlabSize::Slab8 => self.slab_8_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab16 => self.slab_16_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab32 => self.slab_32_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab64 => self.slab_64_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab128 => self.slab_128_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab256 => self.slab_256_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab512 => self.slab_512_bytes.allocate().map_err(|_| AllocError),
+            SlabSize::Slab8 => self.slab_8_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab16 => self.slab_16_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab32 => self.slab_32_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab64 => self.slab_64_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab128 => self.slab_128_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab256 => self.slab_256_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab512 => self.slab_512_bytes.allocate().map_err(|_e| AllocError),
             #[cfg(feature = "hyperlight")]
-            SlabSize::Slab1024 => self.slab_1024_bytes.allocate().map_err(|_| AllocError),
+            SlabSize::Slab1024 => self.slab_1024_bytes.allocate().map_err(|_e| AllocError),
             #[cfg(feature = "hyperlight")]
-            SlabSize::Slab2048 => self.slab_2048_bytes.allocate().map_err(|_| AllocError),
+            SlabSize::Slab2048 => self.slab_2048_bytes.allocate().map_err(|_e| AllocError),
             #[cfg(feature = "hyperlight")]
-            SlabSize::Slab4096 => self.slab_4096_bytes.allocate().map_err(|_| AllocError),
+            SlabSize::Slab4096 => self.slab_4096_bytes.allocate().map_err(|_e| AllocError),
         }
     }
 
-    unsafe fn deallocate(&mut self, ptr: *mut u8, layout: Layout) -> Result<(), AllocError> {
+    // FN-4: Return a previously-allocated block to its slab.
+    unsafe fn deallocate(&mut self, ptr: *mut u8, layout: Layout) -> (result: Result<(), AllocError>)
+        requires
+            // FN-4a
+            old(self).inv(),
+        ensures
+            // FN-4d: invariant preserved
+            self.inv(),
+            match result {
+                Ok(()) => {
+                    let opt_idx = spec_slab_for_size(spec_layout_size(layout) as int);
+                    // FN-4b: pointer was allocated in the correct slab
+                    &&& opt_idx.is_some()
+                    &&& old(self)@.slabs[opt_idx.unwrap()].allocated_addrs.contains(ptr as usize)
+                    // FN-4c: exact state transition
+                    &&& self@ == old(self)@.spec_deallocate(opt_idx.unwrap(), ptr as usize)
+                }
+                // FN-4e, FN-4f: state preserved on error
+                Err(_) => self@ == old(self)@,
+            },
+    {
+        proof { admit(); }
+        // VERUS DEVIATION: |_| → |_e| — Verus requires named variables in closure params
         match Kheap::layout_to_allocator(&layout)? {
-            SlabSize::Slab8 => self.slab_8_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab16 => self.slab_16_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab32 => self.slab_32_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab64 => self.slab_64_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab128 => self.slab_128_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab256 => self.slab_256_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab512 => self.slab_512_bytes.deallocate(ptr).map_err(|_| AllocError),
+            SlabSize::Slab8 => self.slab_8_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab16 => self.slab_16_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab32 => self.slab_32_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab64 => self.slab_64_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab128 => self.slab_128_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab256 => self.slab_256_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab512 => self.slab_512_bytes.deallocate(ptr).map_err(|_e| AllocError),
             #[cfg(feature = "hyperlight")]
-            SlabSize::Slab1024 => self.slab_1024_bytes.deallocate(ptr).map_err(|_| AllocError),
+            SlabSize::Slab1024 => self.slab_1024_bytes.deallocate(ptr).map_err(|_e| AllocError),
             #[cfg(feature = "hyperlight")]
-            SlabSize::Slab2048 => self.slab_2048_bytes.deallocate(ptr).map_err(|_| AllocError),
+            SlabSize::Slab2048 => self.slab_2048_bytes.deallocate(ptr).map_err(|_e| AllocError),
             #[cfg(feature = "hyperlight")]
-            SlabSize::Slab4096 => self.slab_4096_bytes.deallocate(ptr).map_err(|_| AllocError),
+            SlabSize::Slab4096 => self.slab_4096_bytes.deallocate(ptr).map_err(|_e| AllocError),
         }
     }
 
-    pub fn layout_to_allocator(layout: &Layout) -> Result<SlabSize, AllocError> {
+    // FN-1: Pure routing function. Maps layout size to slab tier.
+    pub fn layout_to_allocator(layout: &Layout) -> (result: Result<SlabSize, AllocError>)
+        ensures
+            match result {
+                // FN-1a, FN-1b: success iff size is supported
+                Ok(_) => spec_slab_for_size(spec_layout_size(*layout) as int).is_some(),
+                // FN-1d: error iff size is unsupported
+                Err(_) => spec_slab_for_size(spec_layout_size(*layout) as int).is_none(),
+            },
+    {
+        proof { admit(); }
         match layout.size() {
             1..=8 => Ok(SlabSize::Slab8),
             9..=16 => Ok(SlabSize::Slab16),
@@ -245,6 +357,8 @@ impl Kheap {
         }
     }
 }
+
+} // verus!
 
 unsafe impl GlobalAlloc for ArenaAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {

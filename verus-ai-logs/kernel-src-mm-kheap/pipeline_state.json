@@ -5,7 +5,7 @@
   "current_phase": "specification",
   "current_phase_idx": 1,
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "00bd1668-aa2d-4015-802c-e2b5770c1972",
   "completed": false,
   "base_branch": "verus-ai/kheap",
   "verus_branch": "verus-ai/kheap"
