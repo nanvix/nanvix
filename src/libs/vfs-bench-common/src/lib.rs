@@ -110,6 +110,22 @@ pub const ACK_ERR: u8 = 0xFF;
 pub const MAX_PATH_LEN: usize = 255;
 
 //==================================================================================================
+// Mount Configuration
+//==================================================================================================
+
+/// Mount configuration byte: mount the ramfs as writable.
+///
+/// Uses a dedicated magic value so mount configuration bytes cannot be confused with operation
+/// opcodes or acknowledgment bytes during protocol mismatches.
+pub const MOUNT_WRITABLE: u8 = 0xA5;
+
+/// Mount configuration byte: mount the ramfs as read-only.
+///
+/// Enforces the read-only gate on write operations.
+/// Uses a distinct magic value to avoid overlapping other one-byte protocol fields.
+pub const MOUNT_READONLY: u8 = 0x5A;
+
+//==================================================================================================
 // Image Filename
 //==================================================================================================
 
