@@ -222,4 +222,144 @@ proof fn lemma_no_null_address(kv: &KheapView, base_addr: int, slab_size: int)
     };
 }
 
+/// LIVE-1 (conditional): For init()-standard parameters (size = MIN_HEAP_SIZE,
+/// non-zero base), none of the Slab::from_raw_parts error conditions hold
+/// for any slab index.
+///
+/// The Slab spec provides a bidirectional error clause:
+///   Err(e) ==> (addr==0 || len==0 || len>=i32::MAX || len>isize::MAX
+///               || addr+len>usize::MAX || block_size==0 || block_size>=i32::MAX
+///               || block_size>(usize::MAX-1)/8 || len<block_size*2
+///               || addr%block_size!=0)
+/// By contrapositive: ¬(any error condition) ==> Ok.
+///
+/// Remaining architecture assumptions (requires parameters):
+/// - base_addr > 0: HEAP_STORAGE is a static; linker guarantees non-zero address.
+/// - usize::MAX >= 8 * max_slab_size() + 1: true on all ≥16-bit platforms.
+/// - MIN_HEAP_SIZE <= isize::MAX: true on all ≥32-bit platforms.
+proof fn lemma_slab_construction_feasible(
+    base_addr: int,
+    slab_idx: int,
+)
+    requires
+        base_addr > 0,
+        base_addr % PAGE_SIZE as int == 0,
+        base_addr + MIN_HEAP_SIZE as int <= usize::MAX as int,
+        MIN_HEAP_SIZE as int <= isize::MAX as int,
+        0 <= slab_idx < NUM_OF_SLABS as int,
+        usize::MAX as int >= 8 * max_slab_size() + 1,
+    ensures ({
+        let slab_size = MIN_SLAB_SIZE as int;
+        let slab_addr = base_addr + slab_idx * slab_size;
+        let block_size = block_sizes()[slab_idx];
+        // Negation of ALL Slab::from_raw_parts error conditions:
+        &&& slab_addr != 0
+        &&& slab_size > 0
+        &&& slab_size < i32::MAX as int
+        &&& slab_size <= isize::MAX as int
+        &&& slab_addr + slab_size <= usize::MAX as int
+        &&& block_size > 0
+        &&& block_size < i32::MAX as int
+        &&& block_size <= (usize::MAX as int - 1) / 8
+        &&& slab_size >= block_size * 2
+        &&& slab_addr % block_size == 0
+    }),
+{
+    let slab_size: int = MIN_SLAB_SIZE as int;
+    let slab_addr: int = base_addr + slab_idx * slab_size;
+    let block_size: int = block_sizes()[slab_idx];
+
+    // slab_addr > 0: base_addr > 0, slab_idx >= 0, slab_size > 0
+    assert(slab_addr > 0);
+
+    // MIN_SLAB_SIZE = SLAB_COUNT * PAGE_SIZE = 32 * 4096 = 131072
+    assert(slab_size > 0);
+    assert(slab_size < i32::MAX as int);
+
+    // slab_size <= isize::MAX: MIN_SLAB_SIZE <= MIN_HEAP_SIZE <= isize::MAX
+    assert(MIN_SLAB_SIZE as int <= MIN_HEAP_SIZE as int);
+
+    // slab_addr + slab_size <= usize::MAX:
+    //   = base_addr + (slab_idx + 1) * slab_size
+    //   <= base_addr + NUM_OF_SLABS * slab_size = base_addr + MIN_HEAP_SIZE
+    //   <= usize::MAX
+    assert(NUM_OF_SLABS as int * MIN_SLAB_SIZE as int == MIN_HEAP_SIZE as int);
+
+    // block_size > 0 and < i32::MAX (max is max_slab_size() <= 4096)
+    assert(block_size > 0);
+    assert(max_slab_size() < i32::MAX as int);
+    assert(block_size <= max_slab_size());
+
+    // block_size <= (usize::MAX - 1) / 8:
+    //   usize::MAX - 1 >= 8 * max_slab_size() >= 8 * block_size
+    //   By div monotonicity: (usize::MAX-1)/8 >= (8*block_size)/8 = block_size
+    assert(usize::MAX as int - 1 >= 8 * block_size);
+    vstd::arithmetic::div_mod::lemma_div_is_ordered(
+        8 * block_size,
+        usize::MAX as int - 1,
+        8,
+    );
+    vstd::arithmetic::div_mod::lemma_div_multiples_vanish(block_size, 8);
+
+    // slab_size >= block_size * 2: 131072 >= 2 * max_slab_size()
+    assert(slab_size >= max_slab_size() * 2);
+
+    // slab_addr % block_size == 0 via modular transitivity:
+    // (a) PAGE_SIZE % block_size == 0 — case-split on slab_idx for concrete block sizes
+    #[cfg(not(feature = "hyperlight"))]
+    {
+        assert(PAGE_SIZE as int % block_size == 0) by {
+            if slab_idx == 0 { }      // 4096 % 8 = 0
+            else if slab_idx == 1 { }  // 4096 % 16 = 0
+            else if slab_idx == 2 { }  // 4096 % 32 = 0
+            else if slab_idx == 3 { }  // 4096 % 64 = 0
+            else if slab_idx == 4 { }  // 4096 % 128 = 0
+            else if slab_idx == 5 { }  // 4096 % 256 = 0
+            else { }                   // 4096 % 512 = 0
+        };
+    }
+    #[cfg(feature = "hyperlight")]
+    {
+        assert(PAGE_SIZE as int % block_size == 0) by {
+            if slab_idx == 0 { }
+            else if slab_idx == 1 { }
+            else if slab_idx == 2 { }
+            else if slab_idx == 3 { }
+            else if slab_idx == 4 { }
+            else if slab_idx == 5 { }
+            else if slab_idx == 6 { }
+            else if slab_idx == 7 { }
+            else if slab_idx == 8 { }
+            else { }
+        };
+    }
+
+    // (b) base_addr % block_size == 0 (from base_addr % PAGE_SIZE == 0)
+    //     PAGE_SIZE = block_size * (PAGE_SIZE / block_size)
+    //     lemma_mod_mod: (base_addr % (block_size * b)) % block_size == base_addr % block_size
+    let b = PAGE_SIZE as int / block_size;
+    vstd::arithmetic::div_mod::lemma_fundamental_div_mod(PAGE_SIZE as int, block_size);
+    assert(PAGE_SIZE as int == block_size * b);
+    vstd::arithmetic::div_mod::lemma_mod_mod(base_addr, block_size, b);
+    assert(base_addr % block_size == 0);
+
+    // (c) (slab_idx * slab_size) % block_size == 0
+    //     MIN_SLAB_SIZE = SLAB_COUNT * PAGE_SIZE, and we showed PAGE_SIZE % block_size == 0
+    vstd::arithmetic::div_mod::lemma_mod_multiples_basic(SLAB_COUNT as int, PAGE_SIZE as int);
+    assert((SLAB_COUNT as int * PAGE_SIZE as int) % PAGE_SIZE as int == 0);
+    let b2 = PAGE_SIZE as int / block_size;
+    vstd::arithmetic::div_mod::lemma_mod_mod(MIN_SLAB_SIZE as int, block_size, b2);
+    assert(MIN_SLAB_SIZE as int % block_size == 0);
+    vstd::arithmetic::div_mod::lemma_mul_mod_noop_right(slab_idx, slab_size, block_size);
+    assert((slab_idx * slab_size) % block_size == 0);
+
+    // (d) slab_addr = base_addr + slab_idx * slab_size, both 0 mod block_size
+    vstd::arithmetic::div_mod::lemma_add_mod_noop(
+        base_addr,
+        slab_idx * slab_size,
+        block_size,
+    );
+    assert(slab_addr % block_size == 0);
+}
+
 } // verus!
