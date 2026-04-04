@@ -162,6 +162,12 @@ impl Hal {
             },
         };
 
+        // Initialize hardware page table manager for x86_64.
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            arch::x86::mem::mmu::hwpt::init();
+        }
+
         // Initialize exception manager.
         // TODO: add comments about safety.
         let excpman: ExceptionController = unsafe { ExceptionController::init()? };
