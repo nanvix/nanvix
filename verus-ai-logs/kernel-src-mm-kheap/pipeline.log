@@ -44,3 +44,11 @@ Module: kheap
 [2026-04-04 11:33:24] [REVIEW] Result: FAIL (3/5)
 [2026-04-04 11:33:24] [PROVER] Final fix (r1)...
 [2026-04-04 11:33:24] [COPILOT] Running: copilot --model claude-opus-4.6 ...
+
+[PHASE] specification: FAIL
+[2026-04-04 11:38:08] ❌ specification: FAIL (3/5)
+
+============================================================
+PHASE: proving
+Module: kheap
+============================================================

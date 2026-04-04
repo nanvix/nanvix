@@ -2,9 +2,21 @@
   "module_name": "kheap",
   "log_name": "kernel-src-mm-kheap",
   "source_path": "src/kernel/src/mm/kheap.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 1,
-  "phase_results": {},
+  "current_phase": "proving",
+  "current_phase_idx": 2,
+  "phase_results": {
+    "specification": {
+      "phase": "specification",
+      "passed": false,
+      "scores": {
+        "Grade": 3
+      },
+      "total_score": 3,
+      "max_score": 5,
+      "verdict": "FAIL",
+      "review_file": null
+    }
+  },
   "prover_session_id": "2f7f709c-a9a9-4b34-b36a-e68916684fbc",
   "completed": false,
   "base_branch": "verus-ai/kheap",
