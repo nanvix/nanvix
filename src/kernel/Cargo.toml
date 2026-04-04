@@ -24,6 +24,7 @@ no_fail = { workspace = true }
 type-safe = { workspace = true }
 raw-array = { workspace = true }
 slab = { workspace = true }
+sorted-vec = { workspace = true }
 sys = { workspace = true }
 hyperlight-common = { workspace = true, optional = true }
 hyperlight-guest = { workspace = true, optional = true }
