@@ -16,13 +16,14 @@ use crate::hal::{
     },
 };
 use ::alloc::{
-    collections::{
-        btree_map::BTreeMap,
-        VecDeque,
-    },
+    collections::VecDeque,
     rc::Rc,
 };
-use ::core::cell::RefCell;
+use ::core::{
+    cell::RefCell,
+    cmp::Ordering,
+};
+use ::sorted_vec::SortedVec;
 use ::sys::{
     error::{
         Error,
@@ -46,13 +47,61 @@ pub(super) type ReturnChannel =
 ///
 /// # Description
 ///
+/// A tagged MMIO region entry, ordered by its [`MmioTag`].
+///
+#[derive(Debug, Clone)]
+struct MmioEntry {
+    /// Unique tag associated with the region.
+    tag: MmioTag,
+    /// Backing truncated memory region.
+    region: TruncatedMemoryRegion<VirtualAddress>,
+}
+
+impl PartialEq for MmioEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.tag == other.tag
+    }
+}
+
+impl Eq for MmioEntry {}
+
+impl PartialOrd for MmioEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for MmioEntry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.tag.cmp(&other.tag)
+    }
+}
+
+///
+/// # Description
+///
 /// I/O memory allocator that tracks and hands out registered I/O regions.
+///
+/// # Notes
+///
+/// This allocator is expected to manage a small, bounded set of MMIO regions.
+/// Accordingly, it intentionally uses [`SortedVec`] for `available` and `allocated`
+/// entries to keep the representation compact and iteration simple. Insertions and
+/// removals are `O(n)` due to element shifting, which is acceptable under the
+/// expected small-N workload. If the number of tracked regions or the frequency of
+/// `allocate()`/`reclaim()` grows substantially, these collections should be
+/// revisited in favor of a tree/map-based structure.
 ///
 pub struct IoMemoryAllocator {
     /// Regions available for allocation.
-    available: BTreeMap<MmioTag, TruncatedMemoryRegion<VirtualAddress>>,
+    ///
+    /// Kept in a [`SortedVec`] because the allocator is expected to hold only a
+    /// small number of MMIO regions.
+    available: SortedVec<MmioEntry>,
     /// Currently allocated regions (tracked for overlap checking).
-    allocated: BTreeMap<MmioTag, TruncatedMemoryRegion<VirtualAddress>>,
+    ///
+    /// Kept in a [`SortedVec`] for the same small-N reason as `available`.
+    allocated: SortedVec<MmioEntry>,
     /// Channel for receiving returned regions.
     return_channel: ReturnChannel,
 }
@@ -89,8 +138,8 @@ impl IoMemoryAllocator {
     ///
     pub fn new() -> Self {
         Self {
-            available: BTreeMap::new(),
-            allocated: BTreeMap::new(),
+            available: SortedVec::new(),
+            allocated: SortedVec::new(),
             return_channel: Rc::new(RefCell::new(VecDeque::new())),
         }
     }
@@ -125,32 +174,22 @@ impl IoMemoryAllocator {
         // Reclaim any pending returned regions first.
         self.reclaim();
 
-        // Check if tag already registered in available or allocated maps.
-        if self.available.contains_key(&tag) || self.allocated.contains_key(&tag) {
+        // Check if tag already registered in available or allocated collections.
+        if self.available.lookup_by(&tag, |entry| entry.tag).is_some()
+            || self.allocated.lookup_by(&tag, |entry| entry.tag).is_some()
+        {
             let reason: &str = "tag already registered";
             error!("{reason}");
             return Err(Error::new(ErrorCode::EntryExists, reason));
         }
 
-        // Check for overlapping regions (inclusive ranges) in both maps.
+        // Check for overlapping regions (inclusive ranges) in both collections.
         let start: usize = region.start().into_raw_value();
         let end: usize = compute_inclusive_end(start, region.size())?;
 
-        let all_regions: core::iter::Chain<
-            alloc::collections::btree_map::Values<
-                '_,
-                MmioTag,
-                TruncatedMemoryRegion<VirtualAddress>,
-            >,
-            alloc::collections::btree_map::Values<
-                '_,
-                MmioTag,
-                TruncatedMemoryRegion<VirtualAddress>,
-            >,
-        > = self.available.values().chain(self.allocated.values());
-        for reg in all_regions {
-            let reg_start: usize = reg.start().into_raw_value();
-            let reg_end: usize = compute_inclusive_end(reg_start, reg.size())?;
+        for entry in self.available.iter().chain(self.allocated.iter()) {
+            let reg_start: usize = entry.region.start().into_raw_value();
+            let reg_end: usize = compute_inclusive_end(reg_start, entry.region.size())?;
             let overlaps: bool = !(end < reg_start || start > reg_end);
             if overlaps {
                 let reason: &str = "region overlaps existing entry";
@@ -159,7 +198,7 @@ impl IoMemoryAllocator {
             }
         }
 
-        self.available.insert(tag, region);
+        self.available.insert(MmioEntry { tag, region });
         trace!("registered mmio region: tag={:?}", tag);
 
         Ok(())
@@ -189,14 +228,15 @@ impl IoMemoryAllocator {
         self.reclaim();
 
         // Try to move region from available to allocated.
-        match self.available.remove(&tag) {
-            Some(region) => {
-                self.allocated.insert(tag, region.clone());
+        match self.available.remove_by(&tag, |entry| entry.tag) {
+            Some(entry) => {
+                let region: TruncatedMemoryRegion<VirtualAddress> = entry.region.clone();
+                self.allocated.insert(entry);
                 Ok(IoMemoryRegion::new(tag, region, Rc::clone(&self.return_channel)))
             },
             None => {
                 // Check if it's already allocated or simply not registered.
-                if self.allocated.contains_key(&tag) {
+                if self.allocated.lookup_by(&tag, |entry| entry.tag).is_some() {
                     let reason: &str = "region already allocated";
                     error!("{reason}");
                     Err(Error::new(ErrorCode::EntryExists, reason))
@@ -225,8 +265,8 @@ impl IoMemoryAllocator {
         while let Some((tag, region)) = channel.pop_front() {
             trace!("reclaiming region: tag={:?}", tag);
             // Remove from allocated and add back to available.
-            self.allocated.remove(&tag);
-            self.available.insert(tag, region);
+            self.allocated.remove_by(&tag, |entry| entry.tag);
+            self.available.insert(MmioEntry { tag, region });
         }
     }
 
