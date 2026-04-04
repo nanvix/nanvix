@@ -15,6 +15,12 @@
 /// Number of identification bytes in ELF header.
 pub const EI_NIDENT: usize = 16;
 
+/// Byte index of the file class in `e_ident`.
+pub const EI_CLASS: usize = 4;
+
+/// Byte index of the data encoding in `e_ident`.
+pub const EI_DATA: usize = 5;
+
 /// ELF magic number byte 0.
 pub const ELFMAG0: u8 = 0x7f;
 /// ELF magic number byte 1.
@@ -211,6 +217,7 @@ impl Elf32Fhdr {
     /// outlives the returned reference.
     ///
     pub unsafe fn from_address<'a>(addr: usize) -> &'a Self {
+        debug_assert!(addr.is_multiple_of(core::mem::align_of::<Self>()), "unaligned Elf32Fhdr");
         unsafe { &*(addr as *const Self) }
     }
 
@@ -248,10 +255,10 @@ impl Elf32Fhdr {
         if !self.is_valid() {
             return Err("invalid ELF magic");
         }
-        if self.e_ident[4] != ELFCLASS32 {
+        if self.e_ident[EI_CLASS] != ELFCLASS32 {
             return Err("invalid ELF class");
         }
-        if self.e_ident[5] != ELFDATA2LSB {
+        if self.e_ident[EI_DATA] != ELFDATA2LSB {
             return Err("invalid data encoding");
         }
         if self.e_version != EV_CURRENT {
