@@ -1,0 +1,23 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "sorted-vec"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Sorted vector with binary search lookup"
+homepage.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+
+[features]
+default = []
+std = []
+
+[lints]
+workspace = true
