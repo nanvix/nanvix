@@ -430,7 +430,7 @@ fn vfs_init_ramfs() {
             (base_ptr, false)
         };
 
-        if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, mount_ptr, total_size) }.is_err() {
+        if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, mount_ptr, total_size, false) }.is_err() {
             ::syslog::warn!("vfs_init_ramfs(): failed to mount RAMFS image");
             if !free_mmio_early {
                 let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);

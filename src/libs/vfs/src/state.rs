@@ -162,6 +162,7 @@ pub fn is_initialized() -> bool {
 ///   (e.g., "/data"). Must start with "/".
 /// - `ptr`: Pointer to the FAT image in memory.
 /// - `size`: Size of the memory region in bytes.
+/// - `readonly`: If `true`, the mount is marked read-only.
 ///
 /// # Errors
 ///
@@ -177,14 +178,19 @@ pub fn is_initialized() -> bool {
 /// - `ptr` points to valid memory containing a FAT filesystem image.
 /// - The memory remains valid for the lifetime of the mount.
 /// - The memory region is at least `size` bytes.
-pub unsafe fn mount_image(mount_path: &str, ptr: *mut u8, size: usize) -> Result<(), Fat32Error> {
+pub unsafe fn mount_image(
+    mount_path: &str,
+    ptr: *mut u8,
+    size: usize,
+    readonly: bool,
+) -> Result<(), Fat32Error> {
     if !mount_path.starts_with('/') {
         return Err(Fat32Error::InvalidPath);
     }
 
     // SAFETY: Caller guarantees memory region validity.
     let fat: Fat = unsafe { Fat::from_memory(ptr, size)? };
-    let mount: Mount = Mount::new(String::from(mount_path), fat)?;
+    let mount: Mount = Mount::new(String::from(mount_path), fat, readonly)?;
 
     let mut state = VFS_STATE.lock();
     let vfs: &mut Vfs = state.as_mut().ok_or(Fat32Error::NotInitialized)?;
@@ -247,7 +253,7 @@ pub fn create_mount(mount_path: &str, size: usize) -> Result<(), Fat32Error> {
     // SAFETY: memory_ptr points to valid FAT image of `size` bytes.
     let fat: Fat = unsafe { Fat::from_memory(memory_ptr, size)? };
 
-    let mount: Mount = Mount::new(String::from(mount_path), fat)?;
+    let mount: Mount = Mount::new(String::from(mount_path), fat, false)?;
 
     // Add to VFS (lock held).
     {

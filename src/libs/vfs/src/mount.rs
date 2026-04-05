@@ -40,6 +40,12 @@ pub struct Mount {
     path: String,
     /// The FAT filesystem backend for this mount.
     fat: Fat,
+    /// Whether this mount is read-only.
+    ///
+    /// When `true`, mutating operations (`mkdir`, `rmdir`, `unlink`,
+    /// `rename`, `open` with write/create/truncate) are rejected for paths
+    /// under this mount.
+    readonly: bool,
 }
 
 //==================================================================================================
@@ -53,16 +59,22 @@ impl Mount {
     ///
     /// - `path`: Absolute mount path (must start with "/").
     /// - `fat`: The FAT filesystem backend.
+    /// - `readonly`: If `true`, mutating operations (`mkdir`, `rmdir`, `unlink`,
+    ///   `rename`, `open` with write/create/truncate) are rejected on this mount.
     ///
     /// # Returns
     ///
     /// A new [`Mount`], or [`Fat32Error::InvalidPath`] if `path` doesn't start
     /// with "/".
-    pub fn new(path: String, fat: Fat) -> Result<Self, Fat32Error> {
+    pub fn new(path: String, fat: Fat, readonly: bool) -> Result<Self, Fat32Error> {
         if !path.starts_with('/') {
             return Err(Fat32Error::InvalidPath);
         }
-        Ok(Self { path, fat })
+        Ok(Self {
+            path,
+            fat,
+            readonly,
+        })
     }
 
     /// Returns the mount path.
@@ -81,6 +93,12 @@ impl Mount {
     #[inline]
     pub fn fat_mut(&mut self) -> &mut Fat {
         &mut self.fat
+    }
+
+    /// Returns whether this mount is read-only.
+    #[inline]
+    pub fn readonly(&self) -> bool {
+        self.readonly
     }
 
     /// Checks if the given path is under this mount point.
@@ -455,7 +473,7 @@ mod tests {
 
         // Create a Fat from the formatted buffer.
         let fat: Fat = unsafe { Fat::from_memory(ptr, size).expect("valid fat") };
-        let mount: Mount = Mount::new(String::from(mount_path), fat).expect("valid mount");
+        let mount: Mount = Mount::new(String::from(mount_path), fat, false).expect("valid mount");
         (mount, buf)
     }
 
@@ -516,7 +534,7 @@ mod tests {
             .expect("format should succeed");
         let fat: ::fat32::Fat = unsafe { ::fat32::Fat::from_memory(ptr, size).expect("valid fat") };
 
-        let result = Mount::new(String::from("relative"), fat);
+        let result = Mount::new(String::from("relative"), fat, false);
         match result {
             Err(e) => assert_eq!(e, Fat32Error::InvalidPath, "relative path should be rejected"),
             Ok(_) => panic!("Mount::new should reject relative paths"),
@@ -649,5 +667,42 @@ mod tests {
         let vfs: Vfs = Vfs::default();
         assert_eq!(vfs.cwd(), "/");
         assert_eq!(vfs.mount_count(), 0);
+    }
+
+    // -- Read-only mount tests ---------------------------------------------------
+
+    /// Helper: creates a Fat image and returns a read-only Mount.
+    fn make_readonly_mount(mount_path: &str) -> (Mount, Vec<u8>) {
+        use ::fat32::{
+            Fat,
+            RawMemoryStorage,
+        };
+
+        let size: usize = 64 * 1024;
+        let mut buf: Vec<u8> = alloc::vec![0u8; size];
+        let ptr: *mut u8 = buf.as_mut_ptr();
+
+        let mut storage: RawMemoryStorage =
+            unsafe { RawMemoryStorage::new(ptr, size).expect("valid storage") };
+        let options = ::fatfs::FormatVolumeOptions::new();
+        ::fatfs::format_volume(&mut storage, options).expect("format should succeed");
+
+        let fat: Fat = unsafe { Fat::from_memory(ptr, size).expect("valid fat") };
+        let mount: Mount = Mount::new(String::from(mount_path), fat, true).expect("valid mount");
+        (mount, buf)
+    }
+
+    /// Tests that a writable mount returns readonly() == false.
+    #[test]
+    fn mount_writable_flag() {
+        let (mount, _buf) = make_mount("/data");
+        assert!(!mount.readonly(), "writable mount should return false");
+    }
+
+    /// Tests that a read-only mount returns readonly() == true.
+    #[test]
+    fn mount_readonly_flag() {
+        let (mount, _buf) = make_readonly_mount("/data");
+        assert!(mount.readonly(), "read-only mount should return true");
     }
 }
