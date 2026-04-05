@@ -516,10 +516,12 @@ impl DirEntry {
 /// # Errors
 ///
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
+/// - [`Fat32Error::ReadOnly`] if the mount is read-only.
 /// - [`Fat32Error::AlreadyExists`] if directory already exists.
 /// - [`Fat32Error::NotFound`] if parent directory doesn't exist.
 pub fn mkdir(path: &str) -> Result<(), Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(path)?;
+    check_writable(mount_idx)?;
 
     state::with_vfs_mut(|vfs| {
         let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
@@ -536,11 +538,13 @@ pub fn mkdir(path: &str) -> Result<(), Fat32Error> {
 /// # Errors
 ///
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
+/// - [`Fat32Error::ReadOnly`] if the mount is read-only.
 /// - [`Fat32Error::NotFound`] if directory doesn't exist.
 /// - [`Fat32Error::NotEmpty`] if directory is not empty.
 /// - [`Fat32Error::NotADirectory`] if path is a file.
 pub fn rmdir(path: &str) -> Result<(), Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(path)?;
+    check_writable(mount_idx)?;
 
     state::with_vfs_mut(|vfs| {
         let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
@@ -557,10 +561,12 @@ pub fn rmdir(path: &str) -> Result<(), Fat32Error> {
 /// # Errors
 ///
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
+/// - [`Fat32Error::ReadOnly`] if the mount is read-only.
 /// - [`Fat32Error::NotFound`] if file doesn't exist.
 /// - [`Fat32Error::NotAFile`] if path is a directory.
 pub fn unlink(path: &str) -> Result<(), Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(path)?;
+    check_writable(mount_idx)?;
 
     state::with_vfs_mut(|vfs| {
         let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
@@ -629,6 +635,8 @@ pub fn rename(old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
     if old_idx != new_idx {
         return Err(Fat32Error::InvalidPath);
     }
+
+    check_writable(old_idx)?;
 
     state::with_vfs(|vfs| {
         let mount = vfs.get_mount(old_idx).ok_or(Fat32Error::NotFound)?;
@@ -699,6 +707,19 @@ fn resolve_path(path: &str) -> Result<(usize, String), Fat32Error> {
     state::with_vfs(|vfs| vfs.resolve(path))
 }
 
+/// Returns [`Fat32Error::ReadOnly`] if the mount at `mount_idx` is read-only.
+/// Used to gate mutating operations.
+fn check_writable(mount_idx: usize) -> Result<(), Fat32Error> {
+    let readonly: bool = state::with_vfs(|vfs| {
+        let mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
+        Ok(mount.readonly())
+    })?;
+    if readonly {
+        return Err(Fat32Error::ReadOnly);
+    }
+    Ok(())
+}
+
 /// Opens a file with specific options.
 ///
 /// # Parameters
@@ -718,6 +739,15 @@ fn open_with_options(
     truncate: bool,
 ) -> Result<File, Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(path)?;
+
+    // Reject write/create/truncate on read-only mounts.
+    // NOTE: This gate is also what keeps the negative cache consistent —
+    // negative entries are only populated for read-only mounts, so any
+    // O_CREAT that could create a file is blocked here before it reaches
+    // the FAT layer, preventing stale negative-cache entries.
+    if write || create || create_new || truncate {
+        check_writable(mount_idx)?;
+    }
 
     // Open the file under a single VFS lock scope, resolving both the
     // mount path and file handle together. This avoids aliased &/&mut

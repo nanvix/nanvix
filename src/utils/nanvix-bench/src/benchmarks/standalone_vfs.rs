@@ -34,6 +34,8 @@ use ::tokio::{
 };
 use ::vfs_bench_common::{
     ACK_OK,
+    MOUNT_READONLY,
+    MOUNT_WRITABLE,
     VfsOp,
 };
 
@@ -70,6 +72,18 @@ const DECOMPOSED_OPS: &[(&str, VfsOp, Option<VfsOp>)] = &[
     // Level 3 — subtract a level-2 operation.
     ("write+flush", VfsOp::SeqWrite, Some(VfsOp::CreateUnlink)),
 ];
+
+/// Returns `true` if the given operation mutates the filesystem.
+fn is_write_op(op: VfsOp) -> bool {
+    matches!(
+        op,
+        VfsOp::CreateScratch
+            | VfsOp::CreateUnlink
+            | VfsOp::MkdirRmdir
+            | VfsOp::Rename
+            | VfsOp::SeqWrite
+    )
+}
 
 //==================================================================================================
 // FAT Image Manifest
@@ -171,11 +185,15 @@ impl Benchmark {
     ///
     /// # Description
     ///
-    /// Runs the standalone VFS benchmark. For each VFS operation, spawns a fresh nanvixd process
-    /// in interactive mode with the VFS benchmark guest and a ramfs image. The host scans the FAT
-    /// image to discover available files and directories, then drives each operation by sending
-    /// `[opcode][path_len][path]` on stdin and reading a one-byte acknowledgement from stdout,
-    /// measuring the round-trip latency with `Instant::now()`.
+    /// Runs the standalone VFS benchmark in two phases:
+    ///
+    /// 1. **Writable mount** — the guest mounts ramfs without the read-only flag, so write
+    ///    operations on the ramfs are permitted.
+    /// 2. **Read-only mount** — the guest mounts ramfs as read-only, enforcing the write gate.
+    ///
+    /// Each phase measures all VFS operations via paired decomposition and prints a percentile
+    /// latency table. The host controls the mount mode by sending a configuration byte immediately
+    /// after spawning each nanvixd process.
     ///
     pub async fn run_vfs_bench_standalone(&mut self) -> Result<()> {
         let nanvixd_bin: PathBuf = self.standalone_nanvixd_path();
@@ -223,13 +241,69 @@ impl Benchmark {
         println!("  Min file size: {} bytes", manifest.min_file_size());
         println!("  Max file size: {} bytes", manifest.max_file_size());
 
+        // Phase 1: writable mount.
+        let mut writable_deltas: Vec<(&str, Vec<u128>)> = self
+            .run_vfs_bench_section(
+                false,
+                "VFS (writable):",
+                &manifest,
+                &nanvixd_bin,
+                &ramfs,
+                &program,
+            )
+            .await?;
+        Self::print_latency_table("Writable mount", &mut writable_deltas);
+
+        // Phase 2: read-only mount.
+        let mut readonly_deltas: Vec<(&str, Vec<u128>)> = self
+            .run_vfs_bench_section(
+                true,
+                "VFS (readonly):",
+                &manifest,
+                &nanvixd_bin,
+                &ramfs,
+                &program,
+            )
+            .await?;
+        Self::print_latency_table("Read-only mount", &mut readonly_deltas);
+
+        Ok(())
+    }
+
+    /// Runs one full benchmark section (all applicable decomposed operations) with the given mount
+    /// mode. Write operations are excluded when `readonly` is `true`.
+    ///
+    /// Each VM is spawned fresh, configured with the mount mode, and measured. Returns the
+    /// per-operation paired deltas for printing.
+    async fn run_vfs_bench_section(
+        &self,
+        readonly: bool,
+        progress_label: &str,
+        manifest: &FatManifest,
+        nanvixd_bin: &Path,
+        ramfs: &str,
+        program: &str,
+    ) -> Result<Vec<(&'static str, Vec<u128>)>> {
+        let mount_config: u8 = if readonly {
+            MOUNT_READONLY
+        } else {
+            MOUNT_WRITABLE
+        };
+
+        // Reseed RNG for reproducibility across sections.
         let mut rng: StdRng = StdRng::seed_from_u64(HOST_RNG_SEED);
 
-        // Progress bar: NOOP (1) + paired entries (those with a subtrahend).
-        let paired_count: usize = DECOMPOSED_OPS
+        // Filter out write operations when running in read-only mode.
+        let ops: Vec<(&str, VfsOp, Option<VfsOp>)> = DECOMPOSED_OPS
             .iter()
-            .filter(|(_, _, sub)| sub.is_some())
-            .count();
+            .copied()
+            .filter(|&(_, min, sub)| {
+                !readonly || (!is_write_op(min) && sub.is_none_or(|s| !is_write_op(s)))
+            })
+            .collect();
+
+        // Progress bar: NOOP (1) + paired entries (those with a subtrahend).
+        let paired_count: usize = ops.iter().filter(|(_, _, sub)| sub.is_some()).count();
         let total_steps: u64 = ((1 + paired_count) * self.iterations) as u64;
         let pb: ProgressBar = ProgressBar::new(total_steps);
         pb.set_style(
@@ -238,20 +312,20 @@ impl Benchmark {
                 .expect("error creating progress bar")
                 .progress_chars("#>-"),
         );
-        pb.set_message("VFS benchmark:");
+        pb.set_message(progress_label.to_string());
 
-        // Measure the NOOP (protocol overhead) first — it is the only operation without a
-        // subtrahend and serves as the baseline for all decomposed measurements.
+        // Measure the NOOP (protocol overhead) first.
         let noop_latencies: Vec<u128>;
         {
             let (mut child, mut stdin, mut stdout) =
-                Self::spawn_nanvixd(&nanvixd_bin, &ramfs, &program, &self.workspace_root)?;
+                Self::spawn_nanvixd(nanvixd_bin, ramfs, program, &self.workspace_root)?;
+            Self::send_mount_config(&mut stdin, &mut stdout, mount_config).await?;
 
             noop_latencies = Self::measure_iterations(
                 &mut stdin,
                 &mut stdout,
                 VfsOp::Noop,
-                &manifest,
+                manifest,
                 &mut rng,
                 self.iterations,
                 &pb,
@@ -262,9 +336,9 @@ impl Benchmark {
         }
 
         // Paired decomposition (one VM per pair, back-to-back measurement).
-        let mut paired_deltas: Vec<(&str, Vec<u128>)> = Vec::with_capacity(DECOMPOSED_OPS.len());
+        let mut paired_deltas: Vec<(&str, Vec<u128>)> = Vec::with_capacity(ops.len());
 
-        for &(label, minuend, subtrahend) in DECOMPOSED_OPS {
+        for &(label, minuend, subtrahend) in &ops {
             let sub_op: VfsOp = match subtrahend {
                 Some(op) => op,
                 None => {
@@ -275,14 +349,15 @@ impl Benchmark {
             };
 
             let (mut child, mut stdin, mut stdout) =
-                Self::spawn_nanvixd(&nanvixd_bin, &ramfs, &program, &self.workspace_root)?;
+                Self::spawn_nanvixd(nanvixd_bin, ramfs, program, &self.workspace_root)?;
+            Self::send_mount_config(&mut stdin, &mut stdout, mount_config).await?;
 
             let deltas: Vec<u128> = Self::measure_paired_iterations(
                 &mut stdin,
                 &mut stdout,
                 minuend,
                 sub_op,
-                &manifest,
+                manifest,
                 &mut rng,
                 self.iterations,
                 &pb,
@@ -294,11 +369,7 @@ impl Benchmark {
         }
 
         pb.finish();
-
-        // Print decomposed latency table.
-        Self::print_latency_table("Decomposed (paired)", &mut paired_deltas);
-
-        Ok(())
+        Ok(paired_deltas)
     }
 
     /// Picks a random file or directory path appropriate for the given operation.
@@ -492,6 +563,30 @@ impl Benchmark {
             anyhow::bail!("nanvixd exited with {status}");
         }
 
+        Ok(())
+    }
+
+    /// Sends the mount configuration byte and waits for the guest's mount-complete ACK.
+    ///
+    /// This must be called immediately after [`spawn_nanvixd()`] and before any
+    /// operation opcodes. The guest reads one byte to decide whether to mount the
+    /// ramfs as read-only or writable, then sends `ACK_OK` once the mount succeeds.
+    async fn send_mount_config(
+        stdin: &mut ::tokio::process::ChildStdin,
+        stdout: &mut ::tokio::process::ChildStdout,
+        config: u8,
+    ) -> Result<()> {
+        stdin.write_all(&[config]).await?;
+        stdin.flush().await?;
+        let mut ack: [u8; 1] = [0u8; 1];
+        ::tokio::time::timeout(Duration::from_secs(VFS_BENCH_TIMEOUT_SECS), async {
+            stdout.read_exact(&mut ack).await
+        })
+        .await
+        .map_err(|_| anyhow::anyhow!("guest mount timed out after {VFS_BENCH_TIMEOUT_SECS}s"))??;
+        if ack[0] != ACK_OK {
+            anyhow::bail!("guest reported mount error (config={config:#04x})");
+        }
         Ok(())
     }
 

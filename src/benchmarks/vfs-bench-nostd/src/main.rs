@@ -37,6 +37,8 @@ use ::vfs_bench_common::{
     ACK_ERR,
     ACK_OK,
     MAX_PATH_LEN,
+    MOUNT_READONLY,
+    MOUNT_WRITABLE,
 };
 
 //==================================================================================================
@@ -83,8 +85,26 @@ pub fn main() -> Result<(), Error> {
     // Initialize VFS.
     vfs::init().map_err(|e| fat_err(e, "vfs init failed"))?;
 
+    // Read mount configuration byte from host (writable or read-only).
+    let mut config_buf: [u8; 1] = [0u8; 1];
+    read_exact(STDIN_FILENO, &mut config_buf)?;
+    let readonly: bool = match config_buf[0] {
+        MOUNT_WRITABLE => false,
+        MOUNT_READONLY => true,
+        _unknown => {
+            let _ = unistd::write(STDOUT_FILENO, &[ACK_ERR]);
+            return Err(Error::new(ErrorCode::InvalidArgument, "unknown mount config byte"));
+        },
+    };
+
     // Mount RAMFS image from MMIO.
-    mount_ramfs()?;
+    if let Err(e) = mount_ramfs(readonly) {
+        let _ = unistd::write(STDOUT_FILENO, &[ACK_ERR]);
+        return Err(e);
+    }
+
+    // Acknowledge mount complete.
+    let _ = unistd::write(STDOUT_FILENO, &[ACK_OK]);
 
     // Enter command loop: read [opcode][path_len][path] from stdin, execute, write ack to stdout.
     let mut cmd_buf: [u8; 1] = [0u8; 1];
@@ -145,7 +165,12 @@ pub fn main() -> Result<(), Error> {
 /// On MicroVM the MMIO region is mapped read-write in guest physical memory,
 /// so we mount it in place without copying to the heap.  The MMIO allocation
 /// is intentionally kept alive for the lifetime of the process.
-fn mount_ramfs() -> Result<(), Error> {
+///
+/// # Parameters
+///
+/// - `readonly`: If `true`, the mount is registered as read-only, enabling
+///   negative caching and blocking write operations on the mount.
+fn mount_ramfs(readonly: bool) -> Result<(), Error> {
     // Acquire IO management capability.
     pm::capctl(Capability::IoManagement, true)?;
 
@@ -156,9 +181,9 @@ fn mount_ramfs() -> Result<(), Error> {
     let info: ::sys::mm::MmioRegionInfo = mm::mmio_info(RAMFS_MMIO_TAG)?;
     let total_size: usize = info.size();
 
-    // Mount the FAT image directly from the MMIO region (writable on MicroVM).
+    // Mount the FAT image directly from the MMIO region.
     unsafe {
-        vfs::mount_image("/", info.base().as_ptr() as *mut u8, total_size)
+        vfs::mount_image("/", info.base().as_ptr() as *mut u8, total_size, readonly)
             .map_err(|e| fat_err(e, "mount ramfs failed"))?;
     }
 
