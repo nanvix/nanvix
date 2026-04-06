@@ -12,6 +12,8 @@ use ::indicatif::{
     ProgressStyle,
 };
 use ::log::error;
+#[cfg(feature = "profile-time")]
+use ::nanvix::uservm::perf::PERF_TIMINGS_PREFIX;
 use ::rand::{
     RngExt,
     SeedableRng,
@@ -23,6 +25,11 @@ use ::std::{
         PathBuf,
     },
     time::Instant,
+};
+#[cfg(feature = "profile-time")]
+use ::tokio::io::{
+    AsyncBufReadExt,
+    BufReader,
 };
 use ::tokio::{
     io::{
@@ -45,6 +52,10 @@ use ::vfs_bench_common::{
 
 /// Timeout (in seconds) for the VFS benchmark guest application.
 const VFS_BENCH_TIMEOUT_SECS: u64 = 300;
+
+/// Timeout for reading perf timing data from stderr during teardown.
+#[cfg(feature = "profile-time")]
+const STDERR_READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Fixed seed for the host-side RNG that picks random files/dirs per iteration.
 const HOST_RNG_SEED: u64 = 0xCAFE_BABE;
@@ -316,6 +327,8 @@ impl Benchmark {
 
         // Measure the NOOP (protocol overhead) first.
         let noop_latencies: Vec<u128>;
+        #[cfg(feature = "profile-time")]
+        let mut ramfs_load_samples: Vec<u64> = Vec::new();
         {
             let (mut child, mut stdin, mut stdout) =
                 Self::spawn_nanvixd(nanvixd_bin, ramfs, program, &self.workspace_root)?;
@@ -332,7 +345,13 @@ impl Benchmark {
             )
             .await?;
 
-            Self::teardown_nanvixd(&mut child, stdin).await?;
+            let _teardown_timings = Self::teardown_nanvixd(&mut child, stdin).await?;
+            #[cfg(feature = "profile-time")]
+            if let Some(timings) = _teardown_timings {
+                if let Some(v) = timings.get("ramfs_load_us").and_then(|v| v.as_u64()) {
+                    ramfs_load_samples.push(v);
+                }
+            }
         }
 
         // Paired decomposition (one VM per pair, back-to-back measurement).
@@ -365,10 +384,25 @@ impl Benchmark {
             .await?;
             paired_deltas.push((label, deltas));
 
-            Self::teardown_nanvixd(&mut child, stdin).await?;
+            let _teardown_timings = Self::teardown_nanvixd(&mut child, stdin).await?;
+            #[cfg(feature = "profile-time")]
+            if let Some(timings) = _teardown_timings {
+                if let Some(v) = timings.get("ramfs_load_us").and_then(|v| v.as_u64()) {
+                    ramfs_load_samples.push(v);
+                }
+            }
         }
 
         pb.finish();
+
+        // Print VM setup timing breakdown (RAMFS load) when profiling is enabled.
+        #[cfg(feature = "profile-time")]
+        if !ramfs_load_samples.is_empty() {
+            let mut setup_data: Vec<(&str, Vec<u128>)> =
+                vec![("ramfs_load", ramfs_load_samples.into_iter().map(u128::from).collect())];
+            Self::print_latency_table("VM setup", &mut setup_data);
+        }
+
         Ok(paired_deltas)
     }
 
@@ -536,20 +570,57 @@ impl Benchmark {
         Ok((child, stdin, stdout))
     }
 
-    /// Tears down a nanvixd process by closing stdin and waiting for exit.
+    /// Tears down a nanvixd process by closing stdin and waiting for exit. Returns optional
+    /// per-phase timing data parsed from stderr when the `profile-time` feature is enabled.
     async fn teardown_nanvixd(
         child: &mut ::tokio::process::Child,
         stdin: ::tokio::process::ChildStdin,
-    ) -> Result<()> {
+    ) -> Result<Option<serde_json::Map<String, serde_json::Value>>> {
         // Close stdin to signal the guest to exit.
         drop(stdin);
 
         // Read any stderr output for diagnostics before waiting for exit.
+        let mut stderr: ::tokio::process::ChildStderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("failed to take nanvixd stderr"))?;
+
+        // When profiling, read stderr line-by-line looking for the PERF_TIMINGS line.
+        // This avoids relying on read_to_end() which only completes on EOF.
+        #[cfg(feature = "profile-time")]
+        let phase_timings: Option<serde_json::Map<String, serde_json::Value>> = {
+            let mut reader = BufReader::new(&mut stderr);
+            let mut timings = None;
+            let deadline = ::tokio::time::Instant::now() + STDERR_READ_TIMEOUT;
+            loop {
+                let mut line = String::new();
+                let remaining = deadline.saturating_duration_since(::tokio::time::Instant::now());
+                if remaining.is_zero() {
+                    break;
+                }
+                match ::tokio::time::timeout(remaining, reader.read_line(&mut line)).await {
+                    Ok(Ok(0)) => break, // EOF
+                    Ok(Ok(_)) => {
+                        let line = line.trim();
+                        if let Some(json_str) = line.strip_prefix(PERF_TIMINGS_PREFIX) {
+                            if let Ok(serde_json::Value::Object(map)) =
+                                serde_json::from_str(json_str)
+                            {
+                                timings = Some(map);
+                            }
+                            break;
+                        }
+                    },
+                    _ => break, // timeout or error
+                }
+            }
+            timings
+        };
+        #[cfg(not(feature = "profile-time"))]
+        let phase_timings: Option<serde_json::Map<String, serde_json::Value>> = None;
+
+        // Drain remaining stderr for diagnostics.
         let stderr_output: String = {
-            let mut stderr: ::tokio::process::ChildStderr = child
-                .stderr
-                .take()
-                .ok_or_else(|| anyhow::anyhow!("failed to take nanvixd stderr"))?;
             let mut buf: Vec<u8> = Vec::new();
             let _ = stderr.read_to_end(&mut buf).await;
             String::from_utf8_lossy(&buf).to_string()
@@ -563,7 +634,7 @@ impl Benchmark {
             anyhow::bail!("nanvixd exited with {status}");
         }
 
-        Ok(())
+        Ok(phase_timings)
     }
 
     /// Sends the mount configuration byte and waits for the guest's mount-complete ACK.

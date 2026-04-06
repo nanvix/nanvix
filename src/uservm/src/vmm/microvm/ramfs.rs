@@ -15,8 +15,6 @@ use ::log::{
     error,
     trace,
 };
-#[cfg(target_os = "windows")]
-use ::std::io::Read;
 use ::std::{
     fs::File,
     path::{
@@ -48,21 +46,17 @@ const RAMFS_MIN_SLACK_BYTES: usize = 4 * 1024 * 1024;
 /// physical memory.
 ///
 /// On Linux, the image is file-backed (memory-mapped into guest memory via `remap_file_at`).
-/// On Windows, the image contents are read into memory and copied into guest memory.
+/// On Windows, the image file is read directly into guest memory (single I/O, no intermediate
+/// buffer).
 ///
 #[derive(Debug)]
 pub struct RamFs {
     /// Filesystem path from which the RAMFS image was loaded.
     path: PathBuf,
-    /// Size of the RAMFS image in bytes (Linux: from file metadata).
-    #[cfg(target_os = "linux")]
+    /// Size of the RAMFS image in bytes.
     size: usize,
-    /// Handle to the RAMFS image file used for memory-mapping (Linux only).
-    #[cfg(target_os = "linux")]
+    /// Handle to the RAMFS image file.
     file: File,
-    /// Contents of the RAMFS image (Windows only).
-    #[cfg(target_os = "windows")]
-    data: Vec<u8>,
 }
 
 //==================================================================================================
@@ -128,7 +122,7 @@ impl RamFs {
                     file,
                 })
             } else if #[cfg(target_os = "windows")] {
-                let mut file: File = match File::open(path) {
+                let file: File = match File::open(path) {
                     Ok(file) => file,
                     Err(error) => {
                         let reason: String = format!(
@@ -139,18 +133,32 @@ impl RamFs {
                     },
                 };
 
-                let mut data: Vec<u8> = Vec::new();
-                if let Err(error) = file.read_to_end(&mut data) {
-                    let reason: String = format!(
-                        "failed to read ramfs image (path={path:?}, error={error:?})"
-                    );
-                    error!("RamFs::open(): {reason}");
-                    anyhow::bail!(reason)
-                }
+                let size_u64: u64 = match file.metadata() {
+                    Ok(metadata) => metadata.len(),
+                    Err(error) => {
+                        let reason: String = format!(
+                            "failed retrieving ramfs metadata (path={path:?}, error={error:?})"
+                        );
+                        error!("RamFs::open(): {reason}");
+                        anyhow::bail!(reason)
+                    },
+                };
+
+                let size: usize = match usize::try_from(size_u64) {
+                    Ok(size) => size,
+                    Err(_error) => {
+                        let reason: String = format!(
+                            "ramfs image too large to fit on this platform (size={size_u64})"
+                        );
+                        error!("RamFs::open(): {reason}");
+                        anyhow::bail!(reason)
+                    },
+                };
 
                 Ok(Self {
                     path: path.to_path_buf(),
-                    data,
+                    size,
+                    file,
                 })
             }
         }
@@ -158,13 +166,7 @@ impl RamFs {
 
     /// Returns the size of the RAMFS image in bytes.
     fn ramfs_size(&self) -> usize {
-        cfg_if::cfg_if! {
-            if #[cfg(target_os = "linux")] {
-                self.size
-            } else if #[cfg(target_os = "windows")] {
-                self.data.len()
-            }
-        }
+        self.size
     }
 
     ///
@@ -263,10 +265,10 @@ impl RamFs {
             if #[cfg(target_os = "linux")] {
                 self.map_file_into_guest(vmem, ramfs_base, ramfs_size)?;
             } else if #[cfg(target_os = "windows")] {
-                vmem.write_bytes(ramfs_base as u64, &self.data)
+                vmem.load_from_file(ramfs_base as u64, &self.file, ramfs_size)
                     .map_err(|e| {
                         let reason: String = format!(
-                            "failed to write ramfs image into guest memory (path={:?}, error={e})",
+                            "failed to load ramfs image into guest memory (path={:?}, error={e})",
                             self.path
                         );
                         error!("RamFs::load_into_virtual_memory(): {reason}");

@@ -817,7 +817,7 @@ jobs:
         env:
           MACHINE_TYPE: ${{ matrix.machine-type }}
         run: |
-          .\z.ps1 build -- all MACHINE=$env:MACHINE_TYPE RELEASE=yes LOG_LEVEL=panic
+          .\z.ps1 build -- all MACHINE=$env:MACHINE_TYPE RELEASE=yes LOG_LEVEL=panic PROFILER=yes
 
       - name: "Exclude bin/ from Windows Defender"
         shell: pwsh
@@ -1327,7 +1327,7 @@ jobs:
         env:
           MACHINE_TYPE: ${{ matrix.machine-type }}
         run: |
-          .\z.ps1 build -- all MACHINE=$env:MACHINE_TYPE RELEASE=yes LOG_LEVEL=panic
+          .\z.ps1 build -- all MACHINE=$env:MACHINE_TYPE RELEASE=yes LOG_LEVEL=panic PROFILER=yes
 
       - name: "Run Micro-Benchmarks"
         shell: pwsh
