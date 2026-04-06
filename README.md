@@ -15,6 +15,8 @@ Requires Ubuntu 24.04 with sudo privileges and
 [KVM](doc/setup-linux.md#4-setup-kvm) enabled.
 
 ```bash
+# Run on Bash.
+
 # Clone this source code.
 git clone https://github.com/nanvix/nanvix.git && cd nanvix
 
@@ -36,6 +38,8 @@ Mode](doc/setup-windows.md#2-enable-developer-mode) turned on, and a Rust toolch
 [rustup](https://rustup.rs).
 
 ```powershell
+# Run on PowerShell.
+
 # Clone this source code (symlinks require Developer Mode).
 git clone -c core.symlinks=true https://github.com/nanvix/nanvix.git; cd nanvix
 
