@@ -774,10 +774,13 @@ impl Vmem {
             Ok(())
         };
 
-        // Run in dry-run mode first to check for errors.
-        copy_from_user_unaligned_impl(true, src, dst, size)?;
-        // Run in normal mode to effectively copy data.
-        copy_from_user_unaligned_impl(false, src, dst, size)?;
+        if cfg!(feature = "nightly-performance-optimizations") {
+            copy_from_user_unaligned_impl(false, src, dst, size)?;
+        } else {
+            // Two-pass: first validate with a dry run, then copy.
+            copy_from_user_unaligned_impl(true, src, dst, size)?;
+            copy_from_user_unaligned_impl(false, src, dst, size)?;
+        }
 
         Ok(())
     }
