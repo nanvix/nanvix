@@ -114,7 +114,7 @@ global_asm!(
     ".global __leave_kernel_to_user_mode",
     ".global __phys_memcpy",
     ".global __phys_memcpy32",
-    ".global __phys_memset",
+    ".global __phys_memset32",
 
     // =================================================================
     // Macros
@@ -557,36 +557,52 @@ global_asm!(
     "    ret",
 
     // =================================================================
-    // __phys_memset()
+    // __phys_memset32()
     // =================================================================
     //
-    // Fills a physical memory region with a given value.
+    // Fills a physical memory region with a given value using 32-bit
+    // stores. Size must be a multiple of 4 bytes.
     //
-    "__phys_memset:",
+    "__phys_memset32:",
     "    pushl %edi",
 
     // Get parameters.
     "    movl 8(%esp), %edi",  // dest
-    "    movl 12(%esp), %edx", // value
-    "    movl 16(%esp), %ecx", // size
+    "    movl 12(%esp), %eax", // value (byte)
+    "    movl 16(%esp), %ecx", // size in bytes
+
+    // Replicate byte value across all 4 bytes of %eax.
+    "    movzbl %al, %eax",
+    "    imull $0x01010101, %eax, %eax",
+
+    // Convert size in bytes to number of 32-bit words.
+    "    shrl $2, %ecx",
+
+    // If size is zero, skip.
+    "    test %ecx, %ecx",
+    "    jz __phys_memset32.done",
+
+    // Preserve flags before paging is disabled.
+    "    pushf",
 
     // Disable paging.
-    "    movl %cr0, %eax",
-    "    andl $0x80000000 - 1, %eax",
-    "    movl %eax, %cr0",
+    "    movl %cr0, %edx",
+    "    andl $0x80000000 - 1, %edx",
+    "    movl %edx, %cr0",
 
-    // We cannot use rep stosb because we would use segment registers
-    // and therefore the GDT, which is only accessible when paging is enabled.
-    "__phys_memset.loop:",
-    "    movb %dl, (%edi)",
-    "    inc %edi",
-    "    dec %ecx",
-    "    jnz __phys_memset.loop",
+    // Fill 32-bit words using fast-string microcode.
+    "    cld",
+    "    rep stosl",
 
     // Re-enable paging.
-    "    movl %cr0, %eax",
-    "    orl $0x80000000, %eax",
-    "    movl %eax, %cr0",
+    "    movl %cr0, %edx",
+    "    orl $0x80000000, %edx",
+    "    movl %edx, %cr0",
+
+    // Restore flags.
+    "    popf",
+
+    "__phys_memset32.done:",
 
     "    popl %edi",
 

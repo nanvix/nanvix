@@ -96,7 +96,7 @@ global_asm!(
     ".global __leave_kernel_to_user_mode",
     ".global __phys_memcpy",
     ".global __phys_memcpy32",
-    ".global __phys_memset",
+    ".global __phys_memset32",
 
     // =================================================================
     // Macros
@@ -477,20 +477,28 @@ global_asm!(
     "    ret",
 
     // =================================================================
-    // __phys_memset()
+    // __phys_memset32()
     // =================================================================
     //
-    // Fills a physical memory region with a given value
-    // (identity mapped).
+    // Fills a physical memory region with a given value using 32-bit
+    // stores. Region must be identity mapped. Size must be a multiple
+    // of 4 bytes.
     //
-    // void __phys_memset(void *dest, int value, size_t size);
-    // RDI = dest, RSI = value, RDX = size
+    // void __phys_memset32(void *dest, int value, size_t size);
+    // RDI = dest, RSI = value, RDX = size (in bytes)
     //
-    "__phys_memset:",
-    "    movq %rsi, %rax", // value
-    "    movq %rdx, %rcx", // count
+    "__phys_memset32:",
+    // Replicate byte value across all 4 bytes of %eax.
+    "    movzbl %sil, %eax",
+    "    imull $0x01010101, %eax, %eax",
+    // Convert size in bytes to dword count.
+    "    movq %rdx, %rcx",
+    "    shrq $2, %rcx",
+    "    test %rcx, %rcx",
+    "    jz __phys_memset32.done",
     "    cld",
-    "    rep stosb",
+    "    rep stosl",
+    "__phys_memset32.done:",
     "    ret",
 
     // =================================================================
