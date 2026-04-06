@@ -379,7 +379,7 @@ impl Vmem {
                     .push_front((pgtable_vaddr, page_table));
             };
 
-            self.lookup_page_table_by_vaddr(pgtable_vaddr)?
+            self.lookup_user_page_table(pgtable_vaddr)?
         };
 
         // Map the page to the target virtual address space.
@@ -505,26 +505,35 @@ impl Vmem {
     /// Upon success, a mutable reference to the page table is returned. Upon failure, an error
     /// code is returned instead.
     ///
-    fn lookup_page_table_by_vaddr(
+    fn lookup_user_page_table(
         &mut self,
         pt_vaddr: PageTableAddress,
     ) -> Result<&mut PageTable<PageTableStorage>, Error> {
-        // Search for the corresponding page table.
-        let mut found_idx: Option<usize> = None;
-        for (idx, (addr, _pt)) in self.user_page_tables.iter().enumerate() {
+        // Fast path: check if the entry is already at the front (O(1)).
+        if let Some((addr, _pt)) = self.user_page_tables.front() {
             if addr.into_raw_value() == pt_vaddr.into_raw_value() {
-                found_idx = Some(idx);
-                break;
+                return Ok(&mut self.user_page_tables.front_mut().expect("front exists").1);
             }
         }
 
-        // Move the found entry to the front of the list for O(1) subsequent lookups.
-        if let Some(idx) = found_idx {
-            if idx != 0 {
-                // Remove from current position and push to front.
-                let entry = self.user_page_tables.remove(idx);
-                self.user_page_tables.push_front(entry);
+        // Slow path: single-traversal search using a cursor, then move to front.
+        let removed_entry = {
+            let mut cursor = self.user_page_tables.cursor_front_mut();
+            loop {
+                match cursor.current() {
+                    Some((addr, _pt)) => {
+                        if addr.into_raw_value() == pt_vaddr.into_raw_value() {
+                            break cursor.remove_current();
+                        }
+                    },
+                    None => break None,
+                }
+                cursor.move_next();
             }
+        };
+
+        if let Some(entry) = removed_entry {
+            self.user_page_tables.push_front(entry);
             return Ok(&mut self
                 .user_page_tables
                 .front_mut()
@@ -1173,7 +1182,7 @@ impl Vmem {
                     return Err(Error::new(ErrorCode::NoSuchEntry, reason));
                 };
 
-                (pgtable_vaddr, self.lookup_page_table_by_vaddr(pgtable_vaddr)?)
+                (pgtable_vaddr, self.lookup_user_page_table(pgtable_vaddr)?)
             };
 
             let page_address: PageAddress = PageAddress::new(vaddr);
@@ -1247,7 +1256,7 @@ impl Vmem {
                 return Err(Error::new(ErrorCode::NoSuchEntry, reason));
             };
 
-            self.lookup_page_table_by_vaddr(pgtable_vaddr)?
+            self.lookup_user_page_table(pgtable_vaddr)?
         };
 
         let page_address: PageAddress = PageAddress::new(vaddr);
