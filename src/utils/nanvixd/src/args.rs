@@ -78,6 +78,8 @@ pub struct Args {
     program_args: Vec<String>,
     /// Base directory path for creating temporary directories.
     tmp_directory: String,
+    /// Optional snapshot path: when set, restore from snapshot instead of cold-booting.
+    snapshot_path: Option<String>,
     /// Optional GDB server port: when set, the uservm starts a GDB RSP server on this TCP port.
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
@@ -123,6 +125,8 @@ impl Args {
     pub const OPT_SEPARATOR: &'static str = "--";
     /// Command-line option that sets the base temporary directory path.
     pub const OPT_TMP_DIRECTORY: &'static str = "-tmp-dir";
+    /// Command-line option for snapshot path.
+    pub const OPT_SNAPSHOT: &'static str = "-snapshot";
     /// Command-line option for GDB server port (standalone mode only).
     #[cfg(feature = "gdb")]
     pub const OPT_GDB_PORT: &'static str = "-gdb-port";
@@ -172,6 +176,7 @@ impl Args {
         let mut program_name: Option<String> = None;
         let mut program_args: Vec<String> = Vec::new();
         let mut tmp_directory: String = DEFAULT_TMP_DIRECTORY.to_string();
+        let mut snapshot_path: Option<String> = None;
         #[cfg(feature = "gdb")]
         let mut gdb_port: Option<u16> = None;
 
@@ -268,6 +273,20 @@ impl Args {
                     }
                     tmp_directory = args[i].clone();
                 },
+                Self::OPT_SNAPSHOT => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!("missing value for: {}", Self::OPT_SNAPSHOT));
+                    }
+                    let path: &str = &args[i];
+                    let metadata = ::std::fs::metadata(path)
+                        .map_err(|_| anyhow::anyhow!("snapshot path does not exist: {}", path))?;
+                    if !metadata.is_file() {
+                        return Err(anyhow::anyhow!("snapshot path is not a file: {}", path));
+                    }
+                    snapshot_path = Some(args[i].clone());
+                },
                 // Set GDB server port (standalone mode only).
                 #[cfg(feature = "gdb")]
                 Self::OPT_GDB_PORT => {
@@ -321,6 +340,12 @@ impl Args {
             if l2_snapshot_path.is_empty() {
                 l2_snapshot_path = config::default_l2_snapshot_path();
             }
+        }
+
+        // Reject -snapshot in non-standalone builds where it would silently do nothing.
+        #[cfg(not(feature = "standalone"))]
+        if snapshot_path.is_some() {
+            anyhow::bail!("{} is only supported in standalone builds", Self::OPT_SNAPSHOT);
         }
 
         // Determine operation mode: HTTP mode is active if -http-addr is provided,
@@ -377,6 +402,7 @@ impl Args {
             program_name,
             program_args,
             tmp_directory,
+            snapshot_path,
             #[cfg(feature = "gdb")]
             gdb_port,
         })
@@ -428,7 +454,9 @@ Options:
   {l2}                                      Deploy linuxd inside an L2 VM (forces TCP sockets).
   {l2_snapshot_path} <l2_snapshot_path>     Path to the L2 snapshot.
   {tmp_dir} <tmp_dir>                       Base directory for temporary files (Default: \
-             {DEFAULT_TMP_DIRECTORY}).{gdb_port_line}
+             {DEFAULT_TMP_DIRECTORY}).
+  {snapshot} <path>                         Restore VM from snapshot instead of cold-booting \
+             (standalone mode only).{gdb_port_line}
 ",
             http_usage = http_usage,
             program_name = program_name,
@@ -447,6 +475,7 @@ Options:
             l2 = Self::OPT_L2,
             l2_snapshot_path = Self::OPT_L2_SNAPSHOT_PATH,
             tmp_dir = Self::OPT_TMP_DIRECTORY,
+            snapshot = Self::OPT_SNAPSHOT,
             gdb_port_line = if cfg!(feature = "gdb") {
                 "\n  -gdb-port <port>                         GDB server port (standalone mode \
                  only)."
@@ -533,6 +562,19 @@ Options:
     ///
     pub fn ramfs_filename(&self) -> Option<&str> {
         self.ramfs_filename.as_deref()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the optional snapshot path.
+    ///
+    /// # Returns
+    ///
+    /// The snapshot path, if present.
+    ///
+    pub fn snapshot_path(&self) -> Option<&str> {
+        self.snapshot_path.as_deref()
     }
 
     ///
