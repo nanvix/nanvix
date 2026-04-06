@@ -32,10 +32,6 @@ impl PhysMemoryManager {
         PhysMemoryManager { kpool, upool }
     }
 
-    pub fn alloc_user_frame(&mut self) -> Result<UserFrame, Error> {
-        self.upool.alloc()
-    }
-
     pub fn alloc_many_user_frames(&mut self, nframes: usize) -> Result<Vec<UserFrame>, Error> {
         self.upool.alloc_many(nframes)
     }

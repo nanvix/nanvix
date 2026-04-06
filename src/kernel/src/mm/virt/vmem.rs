@@ -392,6 +392,29 @@ impl Vmem {
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Checks whether a user page is currently mapped at the given virtual address.
+    ///
+    /// # Parameters
+    ///
+    /// - `vaddr`: Virtual address of the page to check.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(true)` if the page is mapped, `Ok(false)` if it is not, or `Err(_)` on
+    /// unexpected failures.
+    ///
+    pub fn is_user_page_mapped(&self, vaddr: PageAligned<VirtualAddress>) -> Result<bool, Error> {
+        // Check if the provided address lies outside user space.
+        if !Self::is_user_addr(vaddr.into_inner()) {
+            let reason: &str = "address is not in user space";
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+        Ok(self.try_find_user_frame(vaddr)?.is_some())
+    }
+
     /// Asserts whether an address lies in the user space.
     pub fn is_user_addr(virt_addr: VirtualAddress) -> bool {
         virt_addr >= config::memory_layout::USER_BASE && virt_addr < config::memory_layout::USER_END

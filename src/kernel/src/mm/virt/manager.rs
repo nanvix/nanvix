@@ -222,49 +222,6 @@ impl VirtMemoryManager {
         Ok(new_vmem)
     }
 
-    pub fn alloc_upage(
-        &mut self,
-        vmem: &mut Vmem,
-        vaddr: PageAligned<VirtualAddress>,
-        access: AccessPermission,
-        clear: bool,
-    ) -> Result<(), Error> {
-        let uframe: UserFrame = match self.physman.try_borrow_mut() {
-            Ok(mut physman) => physman.alloc_user_frame()?,
-            Err(_) => {
-                let reason: &str = "failed to borrow physical memory manager";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::ResourceBusy, reason));
-            },
-        };
-
-        let physman: Rc<RefCell<PhysMemoryManager>> = self.physman.clone();
-        let page_table_allocator = move || {
-            let kframe: KernelFrame = match physman.try_borrow_mut() {
-                Ok(mut physman) => physman.alloc_kernel_frame(true)?,
-                Err(_) => {
-                    let reason: &str = "failed to borrow physical memory manager";
-                    error!("{reason}");
-                    return Err(Error::new(ErrorCode::ResourceBusy, reason));
-                },
-            };
-            let kpage: KernelPage = KernelPage::new(kframe);
-            let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
-            let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
-            Ok(page_table)
-        };
-
-        vmem.map(uframe, vaddr, access, &page_table_allocator)?;
-
-        // Check if the page should be cleared.
-        if clear {
-            // Safety: `vaddr` points to a valid memory location.
-            vmem.memset(vaddr, 0)?;
-        }
-
-        Ok(())
-    }
-
     ///
     /// # Description
     ///
@@ -300,8 +257,41 @@ impl VirtMemoryManager {
         mut vaddr: PageAligned<VirtualAddress>,
         nframes: usize,
         access: AccessPermission,
+        clear: bool,
     ) -> Result<(), Error> {
         trace!("vaddr={:?}, nframes={}", vaddr, nframes);
+
+        // Validate that nframes is positive and the full range lies in user space.
+        let range_size: usize = nframes.checked_mul(mem::PAGE_SIZE).ok_or_else(|| {
+            let reason: &str = "range size overflow";
+            error!("{reason} (nframes={nframes})");
+            Error::new(ErrorCode::InvalidArgument, reason)
+        })?;
+        if !Vmem::is_user_region(vaddr.into_inner(), range_size) {
+            let reason: &str = "range is not entirely in user space";
+            error!("{reason} (vaddr={vaddr:?}, nframes={nframes})");
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        // Check that none of the pages in the range are already mapped.
+        let mut check_addr: PageAligned<VirtualAddress> = vaddr;
+        for _ in 0..nframes {
+            if vmem.is_user_page_mapped(check_addr)? {
+                let reason: &str = "page already mapped in range";
+                error!("{reason} (vaddr={check_addr:?})");
+                return Err(Error::new(ErrorCode::ResourceBusy, reason));
+            }
+            check_addr = PageAligned::from_raw_value(
+                check_addr
+                    .into_raw_value()
+                    .checked_add(mem::PAGE_SIZE)
+                    .ok_or_else(|| {
+                        let reason: &str = "address overflow in range check";
+                        error!("{reason} (check_addr={check_addr:?})");
+                        Error::new(ErrorCode::BadAddress, reason)
+                    })?,
+            )?;
+        }
 
         let physman: Rc<RefCell<PhysMemoryManager>> = self.physman.clone();
 
@@ -329,11 +319,48 @@ impl VirtMemoryManager {
             },
         };
 
-        // FIXME: check if range is not busy.
+        let start_vaddr: PageAligned<VirtualAddress> = vaddr;
+        let mut mapped_count: usize = 0;
+        let mut map_error: Result<(), Error> = Ok(());
 
         for uframe in uframes {
-            vmem.map(uframe, vaddr, access, &page_table_allocator)?;
-            vaddr = PageAligned::from_raw_value(vaddr.into_raw_value() + mem::PAGE_SIZE)?;
+            if let Err(e) = vmem.map(uframe, vaddr, access, &page_table_allocator) {
+                map_error = Err(e);
+                break;
+            }
+            mapped_count += 1;
+            if clear {
+                if let Err(e) = vmem.memset(vaddr, 0) {
+                    map_error = Err(e);
+                    break;
+                }
+            }
+            match PageAligned::from_raw_value(vaddr.into_raw_value() + mem::PAGE_SIZE) {
+                Ok(next) => vaddr = next,
+                Err(e) => {
+                    map_error = Err(e);
+                    break;
+                },
+            }
+        }
+
+        if let Err(e) = map_error {
+            // Rollback: unmap all pages that were successfully mapped.
+            let mut rollback_addr: PageAligned<VirtualAddress> = start_vaddr;
+            for _ in 0..mapped_count {
+                if let Err(re) = self.try_unmap_upage(vmem, rollback_addr) {
+                    warn!(
+                        "alloc_upages(): rollback failed (vaddr={rollback_addr:?}, error={re:?})"
+                    );
+                }
+                rollback_addr = match PageAligned::from_raw_value(
+                    rollback_addr.into_raw_value() + mem::PAGE_SIZE,
+                ) {
+                    Ok(next) => next,
+                    Err(_) => break,
+                };
+            }
+            return Err(e);
         }
 
         Ok(())
