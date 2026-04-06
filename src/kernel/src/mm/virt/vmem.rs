@@ -113,20 +113,31 @@ unsafe extern "C" {
     ///
     /// # Description
     ///
-    /// This function disables paging and fills the memory region with the provided value.
+    /// Fills a physical memory region with the provided byte value using 32-bit stores. The byte
+    /// value is replicated across all four bytes of each 32-bit word.
+    ///
+    /// - **x86**: temporarily disables paging to access physical memory directly.
+    /// - **x86_64**: requires the target region to be identity-mapped.
+    ///
+    /// If the size is zero, this function does nothing.
     ///
     /// # Parameters
     ///
-    /// - `base`: Base address of the memory region.
-    /// - `value`: Value to fill the memory region with.
-    /// - `size`: Size of the memory region.
+    /// - `base`: Base physical address of the memory region.
+    /// - `value`: Byte value to fill the memory region with.
+    /// - `size`: Size of the memory region in bytes.
     ///
     /// # Safety
     ///
-    /// This function may lead to undefined behavior if the provided base address is not
-    /// correct.
+    /// This function is marked as unsafe because it performs a raw physical memory write (x86:
+    /// temporarily disables paging; x86_64: requires identity-mapped physical addresses).
     ///
-    fn __phys_memset(base: *mut u8, value: u8, size: usize);
+    /// It is safe to call this function if and only if all the following conditions are met:
+    /// - `base` points to a physical memory address that is valid and safe to write to.
+    /// - `base` is 4-byte aligned.
+    /// - `size` is a multiple of 4 bytes.
+    ///
+    fn __phys_memset32(base: *mut u8, value: u8, size: usize);
 }
 
 /// A type that represents a virtual memory space.
@@ -1064,10 +1075,13 @@ impl Vmem {
         let dst: PageAligned<PhysicalAddress> = uframe.into_physical_address();
         let base: *mut u8 = dst.into_raw_value() as *mut u8;
 
-        // Safety: `base` points to a valid memory location and `mem::PAGE_SIZE` bytes are
-        // writable.
+        // Safety:
+        // - `base` is obtained from `find_user_frame()`, which resolves a mapped user page,
+        //   so it points to a valid, writable physical memory location.
+        // - `base` is page-aligned, which satisfies the 4-byte alignment requirement.
+        // - `mem::PAGE_SIZE` is a multiple of 4 bytes, satisfying the size requirement.
         unsafe {
-            __phys_memset(base, value as u8, mem::PAGE_SIZE);
+            __phys_memset32(base, value as u8, mem::PAGE_SIZE);
         }
 
         Ok(())
