@@ -52,20 +52,6 @@ impl UpoolInner {
     ///
     /// # Description
     ///
-    /// Allocates a frame from the user frame pool.
-    ///
-    /// # Returns
-    ///
-    /// On success, the physical address of the allocated frame is returned. On failure, an error is
-    /// returned.
-    ///
-    fn alloc(&mut self) -> Result<FrameAddress, Error> {
-        self.frame_allocator.alloc()
-    }
-
-    ///
-    /// # Description
-    ///
     /// Allocates a contiguous range of frames from the user frame pool.
     ///
     /// # Parameters
@@ -185,23 +171,6 @@ impl Upool {
         Self {
             inner: Rc::new(RefCell::new(UpoolInner::new(frame_allocator))),
         }
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Allocates a frame from the user frame pool.
-    ///
-    /// # Returns
-    ///
-    /// On success, the physical address of the allocated frame is returned, with
-    /// read-only permissions and all bytes set to zero. On failure, an error is
-    /// returned instead.
-    ///
-    pub fn alloc(&mut self) -> Result<UserFrame, Error> {
-        let addr: FrameAddress = self.inner.borrow_mut().alloc()?;
-        let uframe: UserFrame = UserFrame::new(addr);
-        Ok(uframe)
     }
 
     pub fn alloc_many(&mut self, nframes: usize) -> Result<Vec<UserFrame>, Error> {
