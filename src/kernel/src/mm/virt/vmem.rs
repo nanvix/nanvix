@@ -1086,12 +1086,16 @@ impl Vmem {
             Ok(())
         };
 
-        // Two-pass approach: the dry run walks all page tables to verify that every source and
-        // destination page is mapped before any bytes are copied. This prevents partial transfers
-        // that would leave the destination in an inconsistent state if a page fault were
-        // encountered mid-copy.
-        copy_user_to_user_impl(true, src, dst, size)?;
-        copy_user_to_user_impl(false, src, dst, size)?;
+        if cfg!(feature = "nightly-performance-optimizations") {
+            copy_user_to_user_impl(false, src, dst, size)?;
+        } else {
+            // Two-pass: the dry run walks all page tables to verify that every source and
+            // destination page is mapped before any bytes are copied. This prevents partial
+            // transfers that would leave the destination in an inconsistent state if a page
+            // fault were encountered mid-copy.
+            copy_user_to_user_impl(true, src, dst, size)?;
+            copy_user_to_user_impl(false, src, dst, size)?;
+        }
 
         Ok(())
     }
