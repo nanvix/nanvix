@@ -977,10 +977,13 @@ impl Vmem {
         src: VirtualAddress,
         size: usize,
     ) -> Result<(), Error> {
-        // Perform a dry run first to check for errors.
-        self.copy_to_user_unaligned_unchecked(dst, src, size, true)?;
-        // Perform the actual copy, this will panic on irrecoverable errors.
-        self.copy_to_user_unaligned_unchecked(dst, src, size, false)
+        if cfg!(feature = "nightly-performance-optimizations") {
+            self.copy_to_user_unaligned_unchecked(dst, src, size, false)
+        } else {
+            // Two-pass: first validate with a dry run, then copy.
+            self.copy_to_user_unaligned_unchecked(dst, src, size, true)?;
+            self.copy_to_user_unaligned_unchecked(dst, src, size, false)
+        }
     }
 
     ///
