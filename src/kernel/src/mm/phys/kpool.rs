@@ -208,7 +208,6 @@ impl Kpool {
         let frame: FrameAddress = self.inner.borrow_mut().alloc()?;
         let mut kframe: KernelFrame = KernelFrame::new(self.inner.clone(), frame);
         if clear {
-            // TODO: move clear logic to page-level.
             kframe.clear();
         }
         Ok(kframe)
@@ -238,7 +237,6 @@ impl Kpool {
         while let Some(kframe) = kframes.pop() {
             let mut kframe: KernelFrame = KernelFrame::new(self.inner.clone(), kframe);
             if clear {
-                // TODO: move clear logic to page-level.
                 kframe.clear();
             }
             kpages.push(kframe);
