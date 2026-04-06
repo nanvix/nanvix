@@ -391,6 +391,11 @@ pub fn elf32_load(
     vmem: &mut Vmem,
     elf: &Elf32Fhdr,
 ) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
-    do_elf32_load(mm, vmem, elf, true)?;
-    do_elf32_load(mm, vmem, elf, false)
+    if cfg!(feature = "nightly-performance-optimizations") {
+        do_elf32_load(mm, vmem, elf, false)
+    } else {
+        // Two-pass: first validate with a dry run, then load.
+        do_elf32_load(mm, vmem, elf, true)?;
+        do_elf32_load(mm, vmem, elf, false)
+    }
 }

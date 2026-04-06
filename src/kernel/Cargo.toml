@@ -67,6 +67,9 @@ putb = []
 puts = []
 stdio = []
 
+# Enables latest performance optimizations.
+nightly-performance-optimizations = []
+
 # Interface Features
 kcall = []
 
