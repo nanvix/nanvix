@@ -178,16 +178,82 @@ impl VirtualMemory {
             },
         };
 
-        // Check if region lies within the virtual memory.
-        if addr + data.len() > self.size {
-            let reason: String = format!("invalid memory access (addr={addr:#010x})");
-            error!("write_bytes(): {reason}");
-            return Err(anyhow::anyhow!(reason));
+        // Check if region lies within the virtual memory (overflow-safe).
+        match addr.checked_add(data.len()) {
+            Some(end) if end <= self.size => {},
+            _ => {
+                let reason: String = format!(
+                    "invalid memory access (addr={addr:#010x}, len={:#x}, size={:#x})",
+                    data.len(),
+                    self.size
+                );
+                error!("write_bytes(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            },
         }
 
         unsafe {
             ptr::copy_nonoverlapping(data.as_ptr(), self.ptr.add(addr), data.len());
         }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reads `len` bytes from a file directly into the virtual memory at the given guest address,
+    /// bypassing any intermediate heap buffer.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Destination address in the virtual memory.
+    /// - `file`: File to read from (starting at its current seek position).
+    /// - `len`: Number of bytes to read.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn load_from_file(&mut self, addr: u64, file: &File, len: usize) -> Result<()> {
+        let addr: usize = match usize::try_from(addr) {
+            Ok(v) => v,
+            Err(_) => {
+                let reason: String = format!("invalid address (addr={addr:#010x})");
+                error!("load_from_file(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            },
+        };
+
+        // Check if region lies within the virtual memory (overflow-safe).
+        match addr.checked_add(len) {
+            Some(end) if end <= self.size => {},
+            _ => {
+                let reason: String = format!(
+                    "invalid memory access (addr={addr:#010x}, len={len:#x}, size={:#x})",
+                    self.size
+                );
+                error!("load_from_file(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            },
+        }
+
+        // SAFETY: `self.ptr` is a valid, committed allocation of `self.size` bytes (from
+        // `VirtualAlloc`). The checked range validation above guarantees that
+        // `[addr, addr + len)` lies within this region.
+        let dest: &mut [u8] = unsafe { slice::from_raw_parts_mut(self.ptr.add(addr), len) };
+
+        // Read from `&File` (shared reference) — Rust's std provides `impl Read for &File`,
+        // which calls `ReadFile` on the underlying OS handle.
+        let mut reader: &File = file;
+        reader.read_exact(dest).map_err(|e| {
+            let reason: String = format!(
+                "failed to read file into virtual memory (addr={addr:#010x}, len={len}, \
+                 error={e:?})"
+            );
+            error!("load_from_file(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
 
         Ok(())
     }
@@ -216,11 +282,18 @@ impl VirtualMemory {
             },
         };
 
-        // Check if region lies within the virtual memory.
-        if addr + data.len() > self.size {
-            let reason: String = format!("invalid memory access (addr={addr:#010x})");
-            error!("read_bytes(): {reason}");
-            return Err(anyhow::anyhow!(reason));
+        // Check if region lies within the virtual memory (overflow-safe).
+        match addr.checked_add(data.len()) {
+            Some(end) if end <= self.size => {},
+            _ => {
+                let reason: String = format!(
+                    "invalid memory access (addr={addr:#010x}, len={:#x}, size={:#x})",
+                    data.len(),
+                    self.size
+                );
+                error!("read_bytes(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            },
         }
 
         unsafe {
