@@ -26,7 +26,7 @@ This repository uses symbolic links. On Windows, Git needs Developer Mode enable
 symlinks during clone. Without it, symlinks are checked out as small text files and tools that
 expect real files may fail.
 
-1. Open **Settings > Privacy & Security > For developers**.
+1. Open **Settings > System > Advanced > For developers**.
 2. Turn on **Developer Mode**.
 
 Using the Settings app may prompt for approval, but it does not require you to manually open an

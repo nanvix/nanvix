@@ -15,6 +15,8 @@ Requires Ubuntu 24.04 with sudo privileges and
 [KVM](doc/setup-linux.md#4-setup-kvm) enabled.
 
 ```bash
+# Run on Bash.
+
 # Clone this source code.
 git clone https://github.com/nanvix/nanvix.git && cd nanvix
 
@@ -36,6 +38,8 @@ Mode](doc/setup-windows.md#2-enable-developer-mode) turned on, and a Rust toolch
 [rustup](https://rustup.rs).
 
 ```powershell
+# Run on PowerShell.
+
 # Clone this source code (symlinks require Developer Mode).
 git clone -c core.symlinks=true https://github.com/nanvix/nanvix.git; cd nanvix
 
@@ -59,30 +63,6 @@ git clone -c core.symlinks=true https://github.com/nanvix/nanvix.git; cd nanvix
 - [doc/run.md](doc/run.md) - Instructions for running Nanvix.
 - [doc/test.md](doc/test.md) - Instructions for testing Nanvix.
 - [doc/benchmark.md](doc/benchmark.md) - Instructions for benchmarking Nanvix.
-
-## Software Ecosystem
-
-### Runtimes
-
-- [x] `Python v3.12.3`
-- [x] `Libstdc++ v3`
-- [x] `Newlib v4.4.0`
-- [x] `QuickJS`
-
-### Libraries
-
-- [x] `OpenBlas v0.3.29`
-- [x] `OpenSSL v3.5.0`
-- [x] `SQLite v3.49.0`
-- [x] `Zlib v1.3.1`
-
-### Development Tools
-
-- [x] `Binutils v2.40`
-- [x] `G++ v12.4.0`
-- [x] `GCC v12.4.0`
-- [x] `GFortran v12.4.0`
-- [x] `Rustc v1.87.0`
 
 ## Usage Statement
 
