@@ -3,6 +3,7 @@
 
 KERNEL_FEATURES := $(MACHINE) $(LOG_LEVEL)
 KERNEL_FEATURES += $(if $(filter yes,$(WHP)),whp,)
+KERNEL_FEATURES += $(if $(filter yes,$(RELEASE)),nightly-performance-optimizations,)
 KERNEL_FEATURES := $(strip $(KERNEL_FEATURES))
 KERNEL_CARGO_FEATURES := $(if $(KERNEL_FEATURES),--features "$(KERNEL_FEATURES)")
 
