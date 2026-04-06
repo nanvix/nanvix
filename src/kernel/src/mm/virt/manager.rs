@@ -222,6 +222,7 @@ impl VirtMemoryManager {
         Ok(new_vmem)
     }
 
+    #[allow(dead_code)]
     pub fn alloc_upage(
         &mut self,
         vmem: &mut Vmem,
