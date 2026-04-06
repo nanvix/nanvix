@@ -68,6 +68,8 @@ pub struct TerminalConfig {
     ramfs_filename: Option<String>,
     /// Optional file path for capturing guest stderr output.
     console_file: Option<String>,
+    /// Optional snapshot path for restoring VM state instead of cold-booting.
+    snapshot_path: Option<String>,
     /// Optional GDB server port for debugging the guest.
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
@@ -84,18 +86,21 @@ impl TerminalConfig {
     /// - `kernel_binary_path`: Path to the guest kernel binary.
     /// - `ramfs_filename`: Optional path to a RAM filesystem image.
     /// - `console_file`: Optional file path for guest stderr capture.
+    /// - `snapshot_path`: Optional snapshot path for restoring VM state instead of cold-booting.
     /// - `gdb_port`: Optional GDB server port.
     ///
     pub fn new(
         kernel_binary_path: String,
         ramfs_filename: Option<String>,
         console_file: Option<String>,
+        snapshot_path: Option<String>,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
     ) -> Self {
         Self {
             kernel_binary_path,
             ramfs_filename,
             console_file,
+            snapshot_path,
             #[cfg(feature = "gdb")]
             gdb_port,
         }
@@ -171,7 +176,7 @@ impl Terminal {
             initrd_args,
             self.config.ramfs_filename.clone(),
             self.config.console_file.clone(),
-            None,
+            self.config.snapshot_path.clone(),
             #[cfg(feature = "gdb")]
             self.config.gdb_port,
         );

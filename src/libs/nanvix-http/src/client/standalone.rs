@@ -82,6 +82,8 @@ pub struct StandaloneConfig {
     pub(crate) ramfs_filename: Option<String>,
     /// Optional file path for capturing guest stderr output.
     pub(crate) console_file: Option<String>,
+    /// Optional snapshot path for restoring VM state instead of cold-booting.
+    pub(crate) snapshot_path: Option<String>,
     /// Optional GDB server port for debugging the guest.
     #[cfg(feature = "gdb")]
     pub(crate) gdb_port: Option<u16>,
@@ -98,18 +100,21 @@ impl StandaloneConfig {
     /// - `kernel_binary_path`: Path to the guest kernel binary.
     /// - `ramfs_filename`: Optional path to a RAM filesystem image.
     /// - `console_file`: Optional file path for guest stderr capture.
+    /// - `snapshot_path`: Optional snapshot path for restoring VM state instead of cold-booting.
     /// - `gdb_port`: Optional GDB server port.
     ///
     pub fn new(
         kernel_binary_path: String,
         ramfs_filename: Option<String>,
         console_file: Option<String>,
+        snapshot_path: Option<String>,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
     ) -> Self {
         Self {
             kernel_binary_path,
             ramfs_filename,
             console_file,
+            snapshot_path,
             #[cfg(feature = "gdb")]
             gdb_port,
         }
@@ -274,7 +279,7 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
             initrd_args,
             state.config.ramfs_filename.clone(),
             state.config.console_file.clone(),
-            None,
+            state.config.snapshot_path.clone(),
             #[cfg(feature = "gdb")]
             state.config.gdb_port,
         );
