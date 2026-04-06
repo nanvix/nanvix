@@ -332,9 +332,10 @@ fn do_elf32_load(
                     // be zeroed.
                     let page_is_partially_covered: bool =
                         page_phys_addr < phys_addr_end && page_phys_addr_end > phys_addr_end;
-                    mm.alloc_upage(
+                    mm.alloc_upages(
                         vmem,
                         vaddr,
+                        1,
                         access,
                         page_lies_in_bss || page_is_partially_covered,
                     )?;
