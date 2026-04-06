@@ -352,7 +352,7 @@ impl Vmem {
             )?;
             let pgtable_vaddr: PageTableAddress = PageTableAddress::new(vaddr);
             // Get the corresponding page directory entry.
-            let mut pde: PageDirectoryEntry = match self.pgdir.read_pde(pgtable_vaddr) {
+            let pde: PageDirectoryEntry = match self.pgdir.read_pde(pgtable_vaddr) {
                 Some(pde) => pde,
                 None => {
                     let reason: &str = "failed to read page directory entry";
@@ -375,16 +375,11 @@ impl Vmem {
                 // NOTE: if we fail beyond this point we should unmap the page table.
                 //===================================================================
 
-                self.user_page_tables.push_back((pgtable_vaddr, page_table));
-
-                // Get the corresponding page directory entry.
-                pde = match self.pgdir.read_pde(PageTableAddress::new(vaddr)) {
-                    Some(pde) => pde,
-                    None => unreachable!("failed to read page directory entry"),
-                };
+                self.user_page_tables
+                    .push_front((pgtable_vaddr, page_table));
             };
 
-            self.lookup_page_table(&pde)?
+            self.lookup_page_table_by_vaddr(pgtable_vaddr)?
         };
 
         // Map the page to the target virtual address space.
@@ -488,7 +483,62 @@ impl Vmem {
         }
     }
 
-    /// Looks up a page table in the list of page tables.
+    ///
+    /// # Description
+    ///
+    /// Looks up a user page table by its virtual base address. The first lookup in a given region
+    /// is O(n) in the number of user page tables, but moves the found entry to the front of the
+    /// list so that subsequent lookups for the same 4 MB region complete in O(1). This exploits
+    /// spatial locality: consecutive pages within the same region share the same page table.
+    ///
+    /// # Preconditions
+    ///
+    /// The caller must ensure that the page table identified by `pt_vaddr` has already been mapped
+    /// in the page directory (i.e., the corresponding PDE is present).
+    ///
+    /// # Parameters
+    ///
+    /// - `pt_vaddr`: Virtual base address of the page table to look up.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a mutable reference to the page table is returned. Upon failure, an error
+    /// code is returned instead.
+    ///
+    fn lookup_page_table_by_vaddr(
+        &mut self,
+        pt_vaddr: PageTableAddress,
+    ) -> Result<&mut PageTable<PageTableStorage>, Error> {
+        // Search for the corresponding page table.
+        let mut found_idx: Option<usize> = None;
+        for (idx, (addr, _pt)) in self.user_page_tables.iter().enumerate() {
+            if addr.into_raw_value() == pt_vaddr.into_raw_value() {
+                found_idx = Some(idx);
+                break;
+            }
+        }
+
+        // Move the found entry to the front of the list for O(1) subsequent lookups.
+        if let Some(idx) = found_idx {
+            if idx != 0 {
+                // Remove from current position and push to front.
+                let entry = self.user_page_tables.remove(idx);
+                self.user_page_tables.push_front(entry);
+            }
+            return Ok(&mut self
+                .user_page_tables
+                .front_mut()
+                .expect("entry was just pushed to front")
+                .1);
+        }
+
+        let reason: &str = "page table not found";
+        error!("{reason}");
+        Err(Error::new(ErrorCode::NoSuchEntry, reason))
+    }
+
+    /// Looks up a page table in the list of page tables by physical address.
+    #[allow(dead_code)]
     fn lookup_page_table(
         &mut self,
         pde: &PageDirectoryEntry,
@@ -1158,7 +1208,7 @@ impl Vmem {
                     return Err(Error::new(ErrorCode::NoSuchEntry, reason));
                 };
 
-                (pgtable_vaddr, self.lookup_page_table(&pde)?)
+                (pgtable_vaddr, self.lookup_page_table_by_vaddr(pgtable_vaddr)?)
             };
 
             let page_address: PageAddress = PageAddress::new(vaddr);
@@ -1214,8 +1264,9 @@ impl Vmem {
             let vaddr: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
             )?;
+            let pgtable_vaddr: PageTableAddress = PageTableAddress::new(vaddr);
             // Get the corresponding page directory entry.
-            let pde: PageDirectoryEntry = match self.pgdir.read_pde(PageTableAddress::new(vaddr)) {
+            let pde: PageDirectoryEntry = match self.pgdir.read_pde(pgtable_vaddr) {
                 Some(pde) => pde,
                 None => {
                     let reason: &str = "failed to read page directory entry";
@@ -1231,7 +1282,7 @@ impl Vmem {
                 return Err(Error::new(ErrorCode::NoSuchEntry, reason));
             };
 
-            self.lookup_page_table(&pde)?
+            self.lookup_page_table_by_vaddr(pgtable_vaddr)?
         };
 
         let page_address: PageAddress = PageAddress::new(vaddr);
