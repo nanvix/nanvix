@@ -59,6 +59,10 @@ enum InterruptControllerType {
     Legacy(Pic),
     Xapic(Xapic, Ioapic),
     PicXapic(Pic, Xapic),
+    /// xAPIC-only mode: LAPIC handles timer delivery and EOI entirely
+    /// in-kernel (via the WHP LAPIC emulator). No PIC initialization
+    /// or routing is needed, eliminating ~47 VM exits from PIC I/O.
+    XapicOnly(Xapic),
 }
 
 pub struct InterruptController {
@@ -74,6 +78,20 @@ impl InterruptController {
         intmap: InterruptMap,
         eoi_xapic: Option<Xapic>,
     ) -> Result<Self, Error> {
+        // On WHP+microvm, when the xAPIC timer has already been
+        // initialized (eoi_xapic is Some), skip PIC initialization
+        // entirely. The WHP LAPIC emulator handles timer delivery
+        // and EOI via MMIO — no VM exits. PIC ports (0x20/21/A0/A1)
+        // are never accessed, eliminating ~47 exits per cold-start.
+        #[cfg(all(feature = "microvm", feature = "whp"))]
+        if let Some(xapic_eoi) = eoi_xapic {
+            info!("using xapic-only mode (skipping pic init for whp)");
+            return Ok(Self {
+                intmap,
+                intctrl: InterruptControllerType::XapicOnly(xapic_eoi),
+            });
+        }
+
         // If legacy PIC is available, initialize it.
         let pic: Option<Pic> = if let Some(mut pic) = pic {
             Some(pic.init()?)
@@ -364,6 +382,10 @@ impl InterruptController {
                 }
                 Ok(())
             },
+            InterruptControllerType::XapicOnly(ref mut xapic) => {
+                xapic.ack();
+                Ok(())
+            },
         }
     }
 
@@ -380,6 +402,12 @@ impl InterruptController {
             },
             InterruptControllerType::PicXapic(ref mut pic, _) => {
                 pic.unmask(intnum as u16);
+                Ok(())
+            },
+            InterruptControllerType::XapicOnly(_) => {
+                // No PIC to unmask. LAPIC timer is already unmasked
+                // during calibration; other interrupt sources (IKC)
+                // are injected directly via the LAPIC by the VMM.
                 Ok(())
             },
         }
@@ -408,7 +436,9 @@ impl InterruptController {
         kstack: *const u8,
     ) -> Result<(), Error> {
         match self.intctrl {
-            InterruptControllerType::Legacy(_) | InterruptControllerType::PicXapic(..) => {
+            InterruptControllerType::Legacy(_)
+            | InterruptControllerType::PicXapic(..)
+            | InterruptControllerType::XapicOnly(_) => {
                 let reason: &str = "pic does not support starting cores";
                 error!("{reason}");
                 Err(Error::new(ErrorCode::OperationNotSupported, reason))
@@ -425,9 +455,9 @@ impl InterruptController {
         handler: Option<InterruptHandler>,
     ) -> Result<(), Error> {
         let intnum: u8 = match self.intctrl {
-            InterruptControllerType::Legacy(_) | InterruptControllerType::PicXapic(..) => {
-                intnum as u8
-            },
+            InterruptControllerType::Legacy(_)
+            | InterruptControllerType::PicXapic(..)
+            | InterruptControllerType::XapicOnly(_) => intnum as u8,
             InterruptControllerType::Xapic(_, _) => self.intmap[intnum],
         };
         unsafe { INTERRUPT_VECTOR[intnum as usize] = handler };
@@ -436,9 +466,9 @@ impl InterruptController {
 
     pub fn get_handler(&self, intnum: InterruptNumber) -> Result<Option<InterruptHandler>, Error> {
         let intnum: u8 = match self.intctrl {
-            InterruptControllerType::Legacy(_) | InterruptControllerType::PicXapic(..) => {
-                intnum as u8
-            },
+            InterruptControllerType::Legacy(_)
+            | InterruptControllerType::PicXapic(..)
+            | InterruptControllerType::XapicOnly(_) => intnum as u8,
             InterruptControllerType::Xapic(_, _) => self.intmap[intnum],
         };
         unsafe { Ok(INTERRUPT_VECTOR[intnum as usize]) }
