@@ -142,9 +142,7 @@ impl KernelFrame {
     /// Clears the target kernel page.
     ///
     fn clear(&mut self) {
-        for byte in self.iter_mut() {
-            *byte = 0;
-        }
+        self.deref_mut().fill(0);
     }
 }
 
