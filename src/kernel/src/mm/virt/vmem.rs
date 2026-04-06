@@ -95,7 +95,10 @@ unsafe extern "C" {
     ///
     /// # Description
     ///
-    /// Performs a physical memory copy.
+    /// Performs a physical memory copy using 32-bit stores.
+    ///
+    /// - **x86**: temporarily disables paging to access physical memory directly.
+    /// - **x86_64**: requires both regions to be identity-mapped.
     ///
     /// # Parameters
     ///
@@ -105,8 +108,15 @@ unsafe extern "C" {
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it performs physical memory copying and may lead to
-    /// undefined behavior if the destination or source memory regions are invalid.
+    /// This function is marked as unsafe because it performs a raw physical memory copy (x86:
+    /// temporarily disables paging; x86_64: requires identity-mapped physical addresses).
+    ///
+    /// It is safe to call this function if and only if all the following conditions are met:
+    /// - `src` points to a physical memory address that is valid and safe to read from.
+    /// - `dst` points to a physical memory address that is valid and safe to write to.
+    /// - `size` is a multiple of 4 bytes.
+    ///
+    /// If the copy size is zero, this function does nothing.
     ///
     fn __phys_memcpy32(dst: *mut u8, src: *const u8, size: usize);
 
