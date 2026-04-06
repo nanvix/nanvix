@@ -556,6 +556,7 @@ impl ProcessManager {
             initial_stack_base,
             USER_STACK_MIN_SIZE / PAGE_SIZE,
             AccessPermission::RDWR,
+            true,
         )?;
 
         //==============================================================
