@@ -300,8 +300,44 @@ fn do_elf32_load(
                     // to accommodate all segments sharing this page.
                     mm.ctrl_upage(vmem, vaddr, merged)?;
                 } else {
-                    // TODO (#1854): selectively clear pages to improve performance.
-                    mm.alloc_upage(vmem, vaddr, access, true)?;
+                    // Only clear pages that will NOT be fully overwritten by segment data.
+                    // A page is fully covered when the segment data for this page spans
+                    // the entire PAGE_SIZE bytes; in that case clearing is redundant.
+
+                    // Start of the physical/source-backed data for this page.
+                    let page_offset_in_segment: usize = vaddr.into_raw_value() - virt_addr_base;
+                    let page_phys_addr: usize =
+                        match phys_addr_base.checked_add(page_offset_in_segment) {
+                            Some(addr) => addr,
+                            None => {
+                                let reason: &str = "invalid physical address";
+                                error!("{reason}");
+                                return Err(Error::new(ErrorCode::BadFile, reason));
+                            },
+                        };
+                    // One-past-the-end if the full page were backed by segment data.
+                    let page_phys_addr_end: usize = match page_phys_addr.checked_add(mem::PAGE_SIZE)
+                    {
+                        Some(end) => end,
+                        None => {
+                            let reason: &str = "invalid physical address range";
+                            error!("{reason}");
+                            return Err(Error::new(ErrorCode::BadFile, reason));
+                        },
+                    };
+
+                    // Page is entirely beyond segment data (pure BSS) — must be zeroed.
+                    let page_lies_in_bss: bool = page_phys_addr >= phys_addr_end;
+                    // Page straddles the segment-data/BSS boundary — trailing bytes must
+                    // be zeroed.
+                    let page_is_partially_covered: bool =
+                        page_phys_addr < phys_addr_end && page_phys_addr_end > phys_addr_end;
+                    mm.alloc_upage(
+                        vmem,
+                        vaddr,
+                        access,
+                        page_lies_in_bss || page_is_partially_covered,
+                    )?;
                 }
             }
 
