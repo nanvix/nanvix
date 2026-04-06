@@ -1918,16 +1918,24 @@ impl ProcessManager {
         })?;
         let perm: AccessPermission = region.perm();
 
-        // Validate that every page can be mapped before modifying any state.
-        for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
-            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
-            vmem.kctrl(vaddr, perm, true)?;
-        }
+        if cfg!(feature = "nightly-performance-optimizations") {
+            // Single pass: apply permission changes directly.
+            for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
+                let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
+                vmem.kctrl(vaddr, perm, false)?;
+            }
+        } else {
+            // Two-pass: validate that every page can be mapped before modifying any state.
+            for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
+                let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
+                vmem.kctrl(vaddr, perm, true)?;
+            }
 
-        // All validations passed — apply the permission changes for real.
-        for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
-            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
-            vmem.kctrl(vaddr, perm, false)?;
+            // All validations passed — apply the permission changes for real.
+            for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
+                let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
+                vmem.kctrl(vaddr, perm, false)?;
+            }
         }
 
         state.add_mmio(region);
