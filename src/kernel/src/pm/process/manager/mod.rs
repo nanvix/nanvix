@@ -495,7 +495,7 @@ impl ProcessManager {
             error!("{reason} (cmdline.len={:?})", args.len());
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
-        mm.alloc_upage(&mut vmem, args_vaddr, AccessPermission::RDWR, true)?;
+        mm.alloc_upages(&mut vmem, args_vaddr, 1, AccessPermission::RDWR, true)?;
         vmem.copy_to_user_unaligned(
             args_vaddr.into_inner(),
             VirtualAddress::new(args.as_ptr() as usize),
@@ -513,7 +513,7 @@ impl ProcessManager {
         let envp_vaddr: PageAligned<VirtualAddress> = PageAligned::<VirtualAddress>::from_address(
             VirtualAddress::new(args_vaddr.into_raw_value() + PAGE_SIZE),
         )?;
-        mm.alloc_upage(&mut vmem, envp_vaddr, AccessPermission::RDWR, true)?;
+        mm.alloc_upages(&mut vmem, envp_vaddr, 1, AccessPermission::RDWR, true)?;
 
         // Populate the environment variable page.
         vmem.copy_to_user_unaligned(
@@ -1869,7 +1869,7 @@ impl ProcessManager {
     ) -> Result<(), Error> {
         let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let vmem: &mut Vmem = process.state_mut().vmem_mut();
-        mm.alloc_upage(vmem, vaddr, access, true)
+        mm.alloc_upages(vmem, vaddr, 1, access, true)
     }
 
     pub fn munmap(
