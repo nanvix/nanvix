@@ -9,7 +9,9 @@ use crate::vmm::microvm::whp::partition::WhpPartition;
 use ::anyhow::Result;
 use ::log::{
     error,
+    info,
     trace,
+    warn,
 };
 use ::std::{
     fs::File,
@@ -28,7 +30,9 @@ use windows::Win32::System::{
         WHvMapGpaRange,
     },
     Memory::{
+        GetLargePageMinimum,
         MEM_COMMIT,
+        MEM_LARGE_PAGES,
         MEM_RELEASE,
         MEM_RESERVE,
         PAGE_READWRITE,
@@ -51,6 +55,9 @@ pub struct VirtualMemory {
     ptr: *mut u8,
     /// Size of the virtual memory.
     size: usize,
+    /// Whether this allocation uses large pages.
+    #[allow(dead_code)]
+    large_pages: bool,
 }
 
 ///
@@ -111,11 +118,23 @@ impl VirtualMemory {
     pub fn new(partition: &WhpPartition, size: usize) -> Result<Self> {
         trace!("VirtualMemory::new(): size={size}");
 
-        // Allocate memory using VirtualAlloc.
-        let ptr: *mut u8 = unsafe {
-            VirtualAlloc(Some(ptr::null()), size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)
-                .cast::<u8>()
-        };
+        // Try to allocate with large pages (2MB) for better EPT performance.
+        // Large pages reduce EPT entries from size/4KB to size/2MB, dramatically
+        // reducing EPT violation overhead on WHP.
+        let (ptr, large_pages) = Self::try_alloc_large_pages(size)
+            .unwrap_or_else(|| {
+                // Fall back to regular 4KB page allocation.
+                let p = unsafe {
+                    VirtualAlloc(
+                        Some(ptr::null()),
+                        size,
+                        MEM_COMMIT | MEM_RESERVE,
+                        PAGE_READWRITE,
+                    )
+                    .cast::<u8>()
+                };
+                (p, false)
+            });
 
         if ptr.is_null() {
             let reason: String = "failed to allocate memory for the virtual machine".to_string();
@@ -123,8 +142,18 @@ impl VirtualMemory {
             return Err(anyhow::anyhow!(reason));
         }
 
+        if large_pages {
+            info!(
+                "VirtualMemory::new(): allocated {size} bytes with large pages (2MB)",
+            );
+        } else {
+            info!(
+                "VirtualMemory::new(): allocated {size} bytes with standard pages (4KB)",
+            );
+        }
+
         // Create the VirtualMemory instance (destructor will free memory on error).
-        let vmem: Self = Self { ptr, size };
+        let vmem: Self = Self { ptr, size, large_pages };
 
         // Map the memory into the WHP partition at guest physical address 0.
         unsafe {
@@ -144,6 +173,48 @@ impl VirtualMemory {
         }
 
         Ok(vmem)
+    }
+
+    /// Attempt to allocate memory using large pages (2MB).
+    ///
+    /// Returns `Some((ptr, true))` on success, `None` if large pages are unavailable.
+    /// Requires `SeLockMemoryPrivilege` to be granted to the process user.
+    fn try_alloc_large_pages(size: usize) -> Option<(*mut u8, bool)> {
+        // Check large page support and minimum size.
+        let large_page_min: usize = unsafe { GetLargePageMinimum() };
+        if large_page_min == 0 {
+            warn!("VirtualMemory: large pages not supported on this system");
+            return None;
+        }
+
+        // Size must be a multiple of the large page minimum.
+        if size % large_page_min != 0 {
+            warn!(
+                "VirtualMemory: size {size} is not a multiple of large page minimum {large_page_min}"
+            );
+            return None;
+        }
+
+        // Try to allocate with MEM_LARGE_PAGES.
+        let ptr: *mut u8 = unsafe {
+            VirtualAlloc(
+                Some(ptr::null()),
+                size,
+                MEM_COMMIT | MEM_RESERVE | MEM_LARGE_PAGES,
+                PAGE_READWRITE,
+            )
+            .cast::<u8>()
+        };
+
+        if ptr.is_null() {
+            warn!(
+                "VirtualMemory: large page allocation failed (need SeLockMemoryPrivilege). \
+                 Falling back to standard pages"
+            );
+            None
+        } else {
+            Some((ptr, true))
+        }
     }
 
     pub fn get_raw_ptr(&self) -> *mut u8 {
