@@ -65,8 +65,11 @@ jobs:
     needs: precheck
     timeout-minutes: 60
     runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/nanvix/ci:ubuntu-24.04
     permissions:
       contents: read
+      packages: read
 
     # Only run the CI for:
     # - Merge queue validation runs.
@@ -131,8 +134,11 @@ jobs:
         machine-type: [microvm, hyperlight]
         deployment-type: [standalone, single-process, multi-process]
     runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/nanvix/ci:ubuntu-24.04
     permissions:
       contents: read
+      packages: read
 
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: |
@@ -181,8 +187,11 @@ jobs:
         machine-type: [microvm, hyperlight]
         deployment-type: [standalone, single-process, multi-process]
     runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/nanvix/ci:ubuntu-24.04
     permissions:
       contents: read
+      packages: read
 
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: |
@@ -237,8 +246,11 @@ jobs:
           - build-type: debug
             memory-size: 256
     runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/nanvix/ci:ubuntu-24.04
     permissions:
       contents: read
+      packages: read
 
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     # !failure() ensures the build does not start when checks/lint/verify fail.

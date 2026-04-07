@@ -27,6 +27,14 @@ runs:
           echo "in-container=false" >> "$GITHUB_OUTPUT"
         fi
 
+    # actions/checkout sets safe.directory via a temporary HOME override that
+    # is invisible to later steps running inside the container.  Re-add it
+    # under the real HOME so git commands in ./z (and make) work correctly.
+    - name: "Mark Workspace Safe for Git"
+      if: steps.detect-container.outputs.in-container == 'true'
+      shell: bash
+      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
     # When running outside the CI container, free disk space and install system
     # dependencies from scratch.  Inside the container these are already present.
     - name: "Free Disk Space"
