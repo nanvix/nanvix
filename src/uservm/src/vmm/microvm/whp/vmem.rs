@@ -24,8 +24,15 @@ use ::std::{
 };
 use windows::Win32::System::{
     Hypervisor::{
+        WHV_ADVISE_GPA_RANGE_POPULATE,
+        WHV_ADVISE_GPA_RANGE_POPULATE_FLAGS,
         WHV_MAP_GPA_RANGE_FLAGS,
+        WHV_MEMORY_RANGE_ENTRY,
+        WHV_PARTITION_HANDLE,
+        WHvAdviseGpaRange,
+        WHvAdviseGpaRangeCodePopulate,
         WHvMapGpaRange,
+        WHvMemoryAccessWrite,
     },
     Memory::{
         MEM_COMMIT,
@@ -144,6 +151,81 @@ impl VirtualMemory {
         }
 
         Ok(vmem)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Pre-populates the hypervisor's second-level address translation (SLAT/EPT) entries for
+    /// guest physical memory starting at GPA 0. Without this call, each guest memory access to a
+    /// previously-untouched page triggers a costly EPT violation handled by the hypervisor. By
+    /// proactively faulting in the EPT entries from the host side, guest-kernel operations that
+    /// touch many new pages (e.g. zeroing kernel stacks, building page tables) avoid per-page
+    /// hypervisor intercepts.
+    ///
+    /// Only the first `populate_size` bytes are populated (capped to the actual memory size).
+    /// For cold-start benchmarks, 16 MiB covers the kernel code/data region and the kernel pool
+    /// where stacks are allocated, without the overhead of populating unused high memory.
+    ///
+    /// This should be called after all host-side memory writes (kernel loading, initrd, pvclock
+    /// setup) are complete and before the first `WHvRunVirtualProcessor` call.
+    ///
+    /// # Parameters
+    ///
+    /// - `partition`: WHP partition whose EPT entries should be populated.
+    ///
+    pub fn populate_ept(&self, partition: WHV_PARTITION_HANDLE) -> Result<()> {
+        // Populate two targeted GPA ranges covering what the kernel touches during boot:
+        //   1. First 4 MiB: kernel code/data loaded at ~0x100000, guest page directory/tables,
+        //      and low-memory structures.
+        //   2. Kernel pool (kpool): where kernel stacks are allocated via alloc_kpages — the
+        //      primary source of EPT-fault overhead during process creation.
+        let kpool_base: u64 = ::config::kernel::KPOOL_BASE_RAW as u64;
+        let kpool_size: u64 = ::config::kernel::KPOOL_SIZE as u64;
+
+        let total_populate = 4 * 1024 * 1024 + kpool_size;
+        trace!(
+            "populate_ept(): pre-populating EPT for {total_populate} bytes (kernel 0..4MiB + \
+             kpool {kpool_base:#x}..{:#x})",
+            kpool_base + kpool_size
+        );
+
+        let ranges = [
+            WHV_MEMORY_RANGE_ENTRY {
+                GuestAddress: 0,
+                SizeInBytes: std::cmp::min(4 * 1024 * 1024, self.size as u64),
+            },
+            WHV_MEMORY_RANGE_ENTRY {
+                GuestAddress: kpool_base,
+                SizeInBytes: std::cmp::min(
+                    kpool_size,
+                    self.size.saturating_sub(kpool_base as usize) as u64,
+                ),
+            },
+        ];
+
+        let populate = WHV_ADVISE_GPA_RANGE_POPULATE {
+            Flags: WHV_ADVISE_GPA_RANGE_POPULATE_FLAGS { AsUINT32: 0 },
+            AccessType: WHvMemoryAccessWrite,
+        };
+
+        unsafe {
+            WHvAdviseGpaRange(
+                partition,
+                &ranges,
+                WHvAdviseGpaRangeCodePopulate,
+                (&populate as *const WHV_ADVISE_GPA_RANGE_POPULATE).cast::<std::ffi::c_void>(),
+                std::mem::size_of::<WHV_ADVISE_GPA_RANGE_POPULATE>() as u32,
+            )
+            .map_err(|e| {
+                let reason: String = format!("WHvAdviseGpaRange(Populate) failed (error={e:?})");
+                error!("populate_ept(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+        }
+
+        trace!("populate_ept(): EPT pre-population complete ({total_populate} bytes)");
+        Ok(())
     }
 
     pub fn get_raw_ptr(&self) -> *mut u8 {

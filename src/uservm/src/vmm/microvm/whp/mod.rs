@@ -512,6 +512,13 @@ impl Vmm {
             Arc::new(Mutex::new(guest))
         };
 
+        // Pre-populate the hypervisor's EPT (second-level address translation) entries for
+        // the guest physical address range that the kernel will touch during boot. This avoids
+        // costly per-page EPT violations when the kernel zeroes stacks and builds page tables.
+        // Only the kernel code region (first 4 MiB) and kernel pool are populated to minimise
+        // the host-side overhead of faulting in pages the guest never touches.
+        vmem.populate_ept(partition.handle())?;
+
         let partition_handle = partition.handle();
         let timer: Arc<std::sync::Mutex<timer::Timer>> =
             Arc::new(std::sync::Mutex::new(timer::Timer::new(partition_handle)));
