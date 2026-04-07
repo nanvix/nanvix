@@ -46,8 +46,8 @@ const RAMFS_MIN_SLACK_BYTES: usize = 4 * 1024 * 1024;
 /// physical memory.
 ///
 /// On Linux, the image is file-backed (memory-mapped into guest memory via `remap_file_at`).
-/// On Windows, the image file is read directly into guest memory (single I/O, no intermediate
-/// buffer).
+/// On Windows, the image is zero-copy file-backed via `MapViewOfFile3` with
+/// `MEM_REPLACE_PLACEHOLDER`, mapping the file directly into the guest memory region.
 ///
 #[derive(Debug)]
 pub struct RamFs {
@@ -175,8 +175,8 @@ impl RamFs {
     /// Loads this RAMFS image near the end of the provided virtual memory while maintaining the
     /// alignment and slack guarantees required by the initrd.
     ///
-    /// On Linux, the file is memory-mapped directly into guest memory (zero-copy). On Windows,
-    /// the file contents are copied into guest memory.
+    /// On both Linux and Windows, the file is memory-mapped directly into guest memory
+    /// (zero-copy).
     ///
     /// # Parameters
     ///
@@ -261,21 +261,7 @@ impl RamFs {
         }
 
         // Transfer RAMFS data into guest memory.
-        cfg_if::cfg_if! {
-            if #[cfg(target_os = "linux")] {
-                self.map_file_into_guest(vmem, ramfs_base, ramfs_size)?;
-            } else if #[cfg(target_os = "windows")] {
-                vmem.load_from_file(ramfs_base as u64, &self.file, ramfs_size)
-                    .map_err(|e| {
-                        let reason: String = format!(
-                            "failed to load ramfs image into guest memory (path={:?}, error={e})",
-                            self.path
-                        );
-                        error!("RamFs::load_into_virtual_memory(): {reason}");
-                        anyhow::anyhow!(reason)
-                    })?;
-            }
-        }
+        self.map_file_into_guest(vmem, ramfs_base, ramfs_size)?;
 
         trace!(
             "RamFs::load_into_virtual_memory(): loaded ramfs (path={:?}, base={:#010x}, \
@@ -383,6 +369,47 @@ impl RamFs {
                 error!("RamFs::map_file_into_guest(): {reason}");
                 anyhow::anyhow!(reason)
             })?;
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Maps the RAMFS file directly into the provided guest memory region (Windows only).
+    /// Uses `MapViewOfFile3` with `MEM_REPLACE_PLACEHOLDER` for zero-copy mapping.
+    ///
+    #[cfg(target_os = "windows")]
+    fn map_file_into_guest(
+        &self,
+        vmem: &mut VirtualMemory,
+        base: usize,
+        length: usize,
+    ) -> Result<()> {
+        trace!(
+            "RamFs::map_file_into_guest(): path={:?}, base={:#010x}, length={length}",
+            self.path, base
+        );
+
+        if length > self.size {
+            let reason: String = format!(
+                "requested ramfs mapping larger than file (requested={length}, size={})",
+                self.size
+            );
+            error!("RamFs::map_file_into_guest(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Zero-copy remap: maps [base, base + length) of guest memory to be file-backed by the
+        // RAMFS image via MapViewOfFile3 with MEM_REPLACE_PLACEHOLDER.
+        vmem.remap_file_at(base, length, &self.file).map_err(|e| {
+            let reason: String = format!(
+                "failed to map ramfs image into guest memory (path={:?}, error={e})",
+                self.path
+            );
+            error!("RamFs::map_file_into_guest(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
 
         Ok(())
     }
