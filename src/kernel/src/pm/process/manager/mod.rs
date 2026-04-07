@@ -495,7 +495,10 @@ impl ProcessManager {
             error!("{reason} (cmdline.len={:?})", args.len());
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
-        mm.alloc_upages(&mut vmem, args_vaddr, 1, AccessPermission::RDWR, true)?;
+        // On microvm, the VMM provides zeroed memory via VirtualAlloc(MEM_COMMIT),
+        // so skip redundant page zeroing to avoid EPT violations on first write.
+        let clear_upages: bool = !cfg!(feature = "microvm");
+        mm.alloc_upages(&mut vmem, args_vaddr, 1, AccessPermission::RDWR, clear_upages)?;
         vmem.copy_to_user_unaligned(
             args_vaddr.into_inner(),
             VirtualAddress::new(args.as_ptr() as usize),
@@ -513,7 +516,7 @@ impl ProcessManager {
         let envp_vaddr: PageAligned<VirtualAddress> = PageAligned::<VirtualAddress>::from_address(
             VirtualAddress::new(args_vaddr.into_raw_value() + PAGE_SIZE),
         )?;
-        mm.alloc_upages(&mut vmem, envp_vaddr, 1, AccessPermission::RDWR, true)?;
+        mm.alloc_upages(&mut vmem, envp_vaddr, 1, AccessPermission::RDWR, clear_upages)?;
 
         // Populate the environment variable page.
         vmem.copy_to_user_unaligned(
@@ -556,7 +559,7 @@ impl ProcessManager {
             initial_stack_base,
             USER_STACK_MIN_SIZE / PAGE_SIZE,
             AccessPermission::RDWR,
-            true,
+            clear_upages,
         )?;
 
         //==============================================================

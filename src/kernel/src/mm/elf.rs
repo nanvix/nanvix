@@ -332,13 +332,14 @@ fn do_elf32_load(
                     // be zeroed.
                     let page_is_partially_covered: bool =
                         page_phys_addr < phys_addr_end && page_phys_addr_end > phys_addr_end;
-                    mm.alloc_upages(
-                        vmem,
-                        vaddr,
-                        1,
-                        access,
-                        page_lies_in_bss || page_is_partially_covered,
-                    )?;
+                    // On microvm, the VMM provides zeroed memory via VirtualAlloc(MEM_COMMIT),
+                    // so skip redundant page zeroing to avoid EPT violations.
+                    let needs_clear: bool = if cfg!(feature = "microvm") {
+                        false
+                    } else {
+                        page_lies_in_bss || page_is_partially_covered
+                    };
+                    mm.alloc_upages(vmem, vaddr, 1, access, needs_clear)?;
                 }
             }
 
@@ -392,7 +393,9 @@ pub fn elf32_load(
     vmem: &mut Vmem,
     elf: &Elf32Fhdr,
 ) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
-    if cfg!(feature = "nightly-performance-optimizations") {
+    if cfg!(feature = "nightly-performance-optimizations") || cfg!(feature = "microvm") {
+        // Single-pass: the VMM already validates the ELF image before loading it into
+        // guest memory, and microvm skips the dry-run to halve ELF loading overhead.
         do_elf32_load(mm, vmem, elf, false)
     } else {
         // Two-pass: first validate with a dry run, then load.
