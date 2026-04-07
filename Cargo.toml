@@ -127,17 +127,17 @@ goblin = { version = "0.10.5", default-features = false }
 indicatif = "0.18.4"
 http = "1.4.0"
 http-body-util = "0.1.3"
-hyperlight-common = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "9b1a4ce09fd5b1258c9f2184b90accf1cbe094e6", default-features = false, features = [
+hyperlight-common = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "a83ce8c1859c359778ac939c13e9e6a34118013b", default-features = false, features = [
         "nanvix-unstable",
 ] }
-hyperlight-host = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "9b1a4ce09fd5b1258c9f2184b90accf1cbe094e6", default-features = false, features = [
+hyperlight-host = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "a83ce8c1859c359778ac939c13e9e6a34118013b", default-features = false, features = [
         "kvm",
         "mshv3",
         "hw-interrupts",
         "executable_heap",
         "nanvix-unstable",
 ] }
-hyperlight-guest = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "9b1a4ce09fd5b1258c9f2184b90accf1cbe094e6", default-features = false, features = [
+hyperlight-guest = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "a83ce8c1859c359778ac939c13e9e6a34118013b", default-features = false, features = [
         "nanvix-unstable",
 ] }
 hyper = { version = "1.9.0", default-features = false }
