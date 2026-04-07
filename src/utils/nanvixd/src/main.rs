@@ -209,6 +209,7 @@ async fn async_main() -> Result<ExitCode> {
         kernel_binary_path.clone(),
         args.ramfs_filename().map(|s| s.to_string()),
         args.console_file().clone(),
+        args.snapshot_path().map(|s| s.to_string()),
         #[cfg(feature = "gdb")]
         args.gdb_port(),
     );
@@ -263,6 +264,7 @@ async fn async_main() -> Result<ExitCode> {
             kernel_binary_path.clone(),
             args.ramfs_filename().map(|s| s.to_string()),
             args.console_file().clone(),
+            args.snapshot_path().map(|s| s.to_string()),
             #[cfg(feature = "gdb")]
             args.gdb_port(),
         ));
@@ -433,6 +435,11 @@ fn print_startup_info(args: &Args) {
         mode,
         DEFAULT_MACHINE_NAME
     );
+
+    #[cfg(feature = "standalone")]
+    if let Some(snapshot) = args.snapshot_path() {
+        log_info!("snapshot restore from: {}", snapshot);
+    }
 
     #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     log_info!(
