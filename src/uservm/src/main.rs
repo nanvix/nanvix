@@ -17,6 +17,8 @@ extern crate kvm_bindings;
 extern crate kvm_ioctls;
 
 use ::anyhow::Result;
+#[cfg(target_os = "linux")]
+use ::control_plane_api::ControlPlaneRegistrationMessage;
 use ::log::{
     debug,
     error,
@@ -250,7 +252,10 @@ async fn run_managed(
     )
     .await
     {
-        Ok(Ok(stream)) => {
+        Ok(Ok(mut stream)) => {
+            let registration: Vec<u8> =
+                ControlPlaneRegistrationMessage::for_uservm(args.user_vm_id()).to_bytes()?;
+            stream.write_all(&registration).await?;
             info!(
                 "main(): connected to control plane (control_plane_addr={:?})",
                 args.control_plane_addr()
@@ -375,7 +380,7 @@ async fn run_managed(
         #[cfg(feature = "gdb")]
         gdb_port: None,
         #[cfg(feature = "profile-time")]
-        perf_timings: crate::perf::PerfTimings::new(),
+        perf_timings: ::uservm::perf::PerfTimings::new(),
     });
 
     let vm_exit_status: Result<u16> = vmm_handle.await?;

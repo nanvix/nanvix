@@ -13,20 +13,17 @@
 
 #[cfg(not(feature = "standalone"))]
 use crate::linuxd::LinuxDaemon;
+#[cfg(not(feature = "standalone"))]
+use crate::ControlPlaneAcceptor;
 use crate::{
     tcp_port::TcpPort,
     uservm::UserVm,
     SandboxTag,
 };
-use ::std::{
-    process::ExitStatus,
-    sync::Arc,
-};
-use ::syscomm::{
-    SocketListener,
-    SocketType,
-};
-use ::tokio::sync::Mutex;
+use ::std::process::ExitStatus;
+#[cfg(not(feature = "standalone"))]
+use ::std::sync::Arc;
+use ::syscomm::SocketType;
 
 //==================================================================================================
 // Structures
@@ -51,8 +48,9 @@ pub struct RunningSandbox {
     pub(super) _linuxd: Arc<LinuxDaemon>, // Keep resource.
     /// Gateway socket information (address, socket type, optional L2 TCP port).
     pub(super) gateway_socket_info: (String, SocketType, Option<TcpPort>),
-    /// Control plane listener socket, address, and socket type (kept alive for resource management).
-    pub(super) _control_plane_socket_and_info: Arc<Mutex<(SocketListener, String, SocketType)>>, // Keep resource.
+    /// Shared control-plane acceptor kept alive for resource management.
+    #[cfg(not(feature = "standalone"))]
+    pub(super) _control_plane_acceptor: Arc<ControlPlaneAcceptor>,
 }
 
 impl RunningSandbox {

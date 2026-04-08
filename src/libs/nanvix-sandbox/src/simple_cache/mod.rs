@@ -27,6 +27,7 @@ use crate::{
     control_plane_sockaddr_builder,
     gateway_sockaddr_builder,
     linuxd::LinuxDaemon,
+    ControlPlaneAcceptor,
     syscomm::{
         SocketListener,
         SocketType,
@@ -86,8 +87,8 @@ pub struct SimpleSandboxCache<T> {
     running_sandbox: Option<(UserVmIdentifier, RunningSandbox)>,
     /// Registry of Linux Daemon instances indexed by tenant ID (one per tenant).
     linuxd_instances: HashMap<String, Arc<LinuxDaemon>>,
-    /// Shared control plane listener socket (reused across sandboxes for efficiency).
-    control_plane_bind_socket: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
+    /// Shared acceptor that routes control-plane connections to waiters.
+    control_plane_acceptor: Option<Arc<ControlPlaneAcceptor>>,
 }
 
 ///
@@ -155,15 +156,18 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCache<T> {
                 },
             };
 
+        let control_plane_acceptor: Arc<ControlPlaneAcceptor> =
+            ControlPlaneAcceptor::new(
+                control_plane_bind_socket,
+                control_plane_bind_sockaddr,
+                control_plane_bind_socket_type,
+            );
+
         Ok(Arc::new(Mutex::new(Self {
             config,
             running_sandbox: None,
             linuxd_instances: HashMap::new(),
-            control_plane_bind_socket: Some(Arc::new(Mutex::new((
-                control_plane_bind_socket,
-                control_plane_bind_sockaddr,
-                control_plane_bind_socket_type,
-            )))),
+            control_plane_acceptor: Some(control_plane_acceptor),
         })))
     }
 
@@ -176,7 +180,7 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCache<T> {
         SimpleSandboxCacheStateSummary {
             has_running_sandbox: self.running_sandbox.is_some(),
             linuxd_instances: self.linuxd_instances.len(),
-            has_control_plane_bind_socket: self.control_plane_bind_socket.is_some(),
+            has_control_plane_bind_socket: self.control_plane_acceptor.is_some(),
         }
     }
 
@@ -219,9 +223,11 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCache<T> {
                 sandbox.gateway_socket_info().1,
             )),
             _ => {
-                let control_plane_bind_socket: Arc<Mutex<(SocketListener, String, SocketType)>> =
-                    self.control_plane_bind_socket.clone().ok_or_else(|| {
-                        let reason: &str = "control plane socket not initialized";
+                let control_plane_acceptor: Arc<ControlPlaneAcceptor> = self
+                    .control_plane_acceptor
+                    .clone()
+                    .ok_or_else(|| {
+                        let reason: &str = "control plane acceptor not initialized";
                         error!("get(): {reason}");
                         anyhow::anyhow!(reason)
                     })?;
@@ -230,7 +236,7 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCache<T> {
                     tag.program(),
                     tag.program_args().cloned(),
                     self.config.ramfs_filename().map(|s| s.to_string()),
-                    control_plane_bind_socket,
+                    control_plane_acceptor,
                 );
 
                 let gateway_l2_port: Option<crate::tcp_port::TcpPort> = None;

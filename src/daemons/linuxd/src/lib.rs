@@ -35,6 +35,7 @@ use ::config::{
 };
 use ::control_plane_api::{
     self,
+    ControlPlaneRegistrationMessage,
     NanvixdControlMessage,
 };
 use ::log::{
@@ -50,6 +51,7 @@ use ::std::{
         VecDeque,
     },
     io::ErrorKind,
+    net::SocketAddr,
     str::FromStr,
     sync::Arc,
 };
@@ -80,7 +82,11 @@ use ::syscomm::{
     WriteAll,
 };
 use ::tokio::{
-    net::TcpListener,
+    io::AsyncReadExt,
+    net::{
+        TcpListener,
+        TcpStream,
+    },
     sync::{
         mpsc::{
             channel,
@@ -140,6 +146,13 @@ pub const WORKER_THREAD_CHANNEL_CAPACITY: usize = 1024;
 ///
 const USER_VM_CHANNEL_CAPACITY: usize = 1024;
 
+///
+/// # Description
+///
+/// Number of bytes used to encode the tenant identifier length in the restore-gate protocol.
+///
+const RESTORE_GATE_TENANT_ID_LEN_SIZE: usize = size_of::<u16>();
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -158,6 +171,7 @@ const USER_VM_CHANNEL_CAPACITY: usize = 1024;
 pub struct LinuxDaemon<T: Sync + Send + 'static> {
     syscall_table: Arc<SyscallTable<T>>,
     assembler: Arc<Mutex<RequestAssembler>>,
+    tenant_id: String,
     control_plane_sockaddr: String,
     control_plane_sockaddr_type: SocketType,
     user_vm_listener: SocketListener,
@@ -178,6 +192,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
     /// # Parameters
     ///
     /// - `syscall_table`: System call table.
+    /// - `tenant_id`: Unique tenant identifier.
     /// - `control_plane_sockaddr`: Control plane socket address.
     /// - `control_plane_sockaddr_type`: Control plane socket type.
     /// - `user_vm_listener`: User VM listener socket.
@@ -190,6 +205,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
     ///
     pub fn init(
         syscall_table: Arc<SyscallTable<T>>,
+        tenant_id: &str,
         control_plane_sockaddr: &str,
         control_plane_sockaddr_type: &str,
         user_vm_listener: SocketListener,
@@ -214,6 +230,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         Ok(Self {
             syscall_table,
             assembler: Arc::new(Mutex::new(RequestAssembler::default())),
+            tenant_id: tenant_id.to_string(),
             control_plane_sockaddr: control_plane_sockaddr.to_string(),
             control_plane_sockaddr_type: control_plane_sockaddr_type_parsed,
             user_vm_listener,
@@ -222,8 +239,26 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         })
     }
 
-    /// This helper method accepts a connection from the control-plane.
-    async fn accept_control_plane_connection(&self) -> Result<SocketStream, Error> {
+    ///
+    /// # Description
+    ///
+    /// This helper method establishes a connection with the control-plane.
+    ///
+    /// To connect to the control-plane, we first establish the raw connection, and then send our
+    /// registration key (i.e. tenant_id) so that the control-plane can identify who is connecting.
+    ///
+    /// # Arguments
+    ///
+    /// `registration_key`: the key to send to the control-plane.
+    ///
+    /// # Returns
+    ///
+    /// The control-plane stream on success, an error otherwise.
+    ///
+    async fn accept_control_plane_connection(
+        &self,
+        registration_key: &str,
+    ) -> Result<SocketStream, Error> {
         // The control-plane socket type depends on whether we are deploying linuxd in
         // an L2 VM or not.
 
@@ -234,7 +269,28 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         )
         .await
         {
-            Ok(Ok(socket)) => {
+            Ok(Ok(mut socket)) => {
+                let registration: Vec<u8> =
+                    ControlPlaneRegistrationMessage::for_linuxd(registration_key)
+                        .and_then(|msg| msg.to_bytes())
+                        .map_err(|error| {
+                            let reason: &str = "failed to encode control-plane registration";
+                            error!(
+                                "accept_control_plane_connection(): {reason} \
+                                 (registration_key={}, error={error:?})",
+                                registration_key
+                            );
+                            Error::new(ErrorCode::InvalidArgument, reason)
+                        })?;
+                socket.write_all(&registration).await.map_err(|error| {
+                    let reason: &str = "failed to register control-plane connection";
+                    error!(
+                        "accept_control_plane_connection(): {reason} (registration_key={}, \
+                         error={error:?})",
+                        registration_key
+                    );
+                    Error::new(ErrorCode::ConnectionAborted, reason)
+                })?;
                 info!("Connected to control plane on: {:?}", self.control_plane_sockaddr);
                 Ok(socket)
             },
@@ -254,9 +310,13 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         }
     }
 
+    ///
+    /// # Description
+    ///
     /// This helper method will trap waiting for a message in a given port if we are about to be
-    /// snapshotted.
-    async fn trap_if_pending_snapshot(&self) -> Result<()> {
+    /// snapshotted. If we are, after restore it will read the corresponding tenant ID.
+    ///
+    async fn trap_if_pending_snapshot(&self) -> Result<Option<String>> {
         if self.in_l2 {
             let trap_listener: TcpListener =
                 TcpListener::bind(restore_gate_sockaddr_builder(None)).await?;
@@ -265,11 +325,33 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
             // script.
             println!("{}", SNAPSHOT_MAGIC_STRING);
 
-            trap_listener.accept().await?;
-            trace!("linuxd unblocked from restore gate");
+            // Read the tenant ID we are restored for.
+            let (mut trap_stream, _peer_addr): (TcpStream, SocketAddr) =
+                trap_listener.accept().await?;
+            let mut tenant_id_len_bytes: [u8; RESTORE_GATE_TENANT_ID_LEN_SIZE] =
+                [0u8; RESTORE_GATE_TENANT_ID_LEN_SIZE];
+            trap_stream.read_exact(&mut tenant_id_len_bytes).await?;
+
+            let tenant_id_len: usize = usize::from(u16::from_be_bytes(tenant_id_len_bytes));
+            if tenant_id_len == 0 {
+                let reason: &str = "empty tenant identifier in restore gate payload";
+                error!("trap_if_pending_snapshot(): {reason}");
+                anyhow::bail!(reason);
+            }
+
+            let mut tenant_id_bytes: Vec<u8> = vec![0u8; tenant_id_len];
+            trap_stream.read_exact(&mut tenant_id_bytes).await?;
+            let tenant_id: String = String::from_utf8(tenant_id_bytes).map_err(|error| {
+                let reason: String =
+                    format!("invalid tenant identifier in restore gate payload (error={error:?})");
+                error!("trap_if_pending_snapshot(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+            debug!("trap_if_pending_snapshot(): linuxd unblocked from restore gate");
+            return Ok(Some(tenant_id));
         }
 
-        Ok(())
+        Ok(None)
     }
 
     /// This helper method accepts connections into the main user VM listener socket, and, if
@@ -548,10 +630,17 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         // Right before entering the main loop, block if we are pending to be snapshotted, and
         // accept the control-plane stream afterwards. We are pending to be snapshotted if we are
         // in this line of code, and are deployed in an L2 VM.
-        self.trap_if_pending_snapshot().await.map_err(|_| {
-            Self::log_and_error(ErrorCode::IoErr, "error conditionally trapping on snapshot gate")
-        })?;
-        let control_plane_stream: SocketStream = self.accept_control_plane_connection().await?;
+        let restored_tenant_id: Option<String> =
+            self.trap_if_pending_snapshot().await.map_err(|_| {
+                Self::log_and_error(
+                    ErrorCode::IoErr,
+                    "error conditionally trapping on snapshot gate",
+                )
+            })?;
+        let registration_key: &str = restored_tenant_id.as_deref().unwrap_or(&self.tenant_id);
+        let control_plane_stream: SocketStream = self
+            .accept_control_plane_connection(registration_key)
+            .await?;
 
         // Split the control-plane stream so that the reader stays in the main loop and the writer
         // can be shared with gateway priming tasks to send GatewayReady notifications.
