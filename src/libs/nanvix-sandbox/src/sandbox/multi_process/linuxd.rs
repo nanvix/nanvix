@@ -15,7 +15,6 @@ use crate::{
     config::{
         get_clh_api_socket_path,
         get_clh_bin_dir,
-        CONTROL_PLANE_ACCEPT_TIMEOUT,
         SHUTDOWN_TIMEOUT,
     },
     netns::{
@@ -57,13 +56,7 @@ use ::std::{
         Stdio,
     },
 };
-use ::syscomm::{
-    SocketListener,
-    SocketStream,
-    SocketType,
-    UnboundSocket,
-    WriteAll,
-};
+use ::syscomm::{SocketStream, SocketType, UnboundSocket, WriteAll};
 use ::tokio::{
     fs as tokio_fs,
     io::{
@@ -84,9 +77,8 @@ use ::tokio::{
     },
 };
 
-/// Single-byte that we send to unlock a linuxd instance restored from a snapshot. Anything that
-/// triggers a readable event in the receiving socket should work.
-const RESTORE_GATE_BYTES: [u8; 1] = [0];
+/// Number of bytes used to encode the tenant identifier length in the restore-gate protocol.
+const RESTORE_GATE_TENANT_ID_LEN_SIZE: usize = ::core::mem::size_of::<u16>();
 
 //==================================================================================================
 // WaitForSocketError
@@ -172,6 +164,12 @@ pub struct LinuxDaemon {
     /// RAII handle to the network namespace linuxd runs in (L2-mode only).
     netns_handle: Option<NetnsHandle>,
     /// RAII handle to the per-instance snapshot directory used in L2 mode.
+    snapshot_dir_handle: Option<SnapshotDirHandle>,
+}
+
+pub struct PendingLinuxDaemon {
+    child: Child,
+    netns_handle: Option<NetnsHandle>,
     snapshot_dir_handle: Option<SnapshotDirHandle>,
 }
 
@@ -262,6 +260,7 @@ impl LinuxDaemon {
     /// # Parameters
     ///
     /// - `netns_info`: Information about the L2 VM's network namespace.
+    /// - `tenant_id`: Tenant identifier to deliver to the restored linuxd instance.
     /// - `ch_remote_path`: Path to the ch-remote binary.
     /// - `clh_api_socket_path`: Path to the cloud-hypervisor API socket.
     /// - `clh_stderr_log_path`: Destination file where CLH stderr is captured.
@@ -272,6 +271,7 @@ impl LinuxDaemon {
     ///
     async fn resume_l2_vm(
         netns_info: &NetnsInfo,
+        tenant_id: &str,
         ch_remote_path: &str,
         clh_api_socket_path: &str,
         clh_stderr_log_path: &Path,
@@ -345,13 +345,25 @@ impl LinuxDaemon {
             anyhow::bail!(reason);
         }
 
-        // After receiving the HTTP reply, unlock the post-snapshot gate by sending a single byte.
+        // After receiving the HTTP reply, unlock the post-snapshot gate and deliver the tenant ID
+        // that the restored linuxd should use when registering its control-plane connection.
         let unbound_socket: UnboundSocket = UnboundSocket::new(SocketType::Tcp);
         let mut stream: SocketStream = unbound_socket
             .connect(&restore_gate_sockaddr_builder(Some(netns_info.veth_ns_ip())))
             .await?;
-        if let Err(e) = stream.write_all(&RESTORE_GATE_BYTES).await {
-            error!("failed to write restore gate bytes (error={e:?})");
+        let tenant_id_bytes: &[u8] = tenant_id.as_bytes();
+        let tenant_id_len: u16 = u16::try_from(tenant_id_bytes.len()).map_err(|error| {
+            let reason: String =
+                format!("tenant identifier too large for restore gate payload (error={error:?})");
+            error!("resume_l2_vm(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+        let mut payload: Vec<u8> =
+            Vec::with_capacity(RESTORE_GATE_TENANT_ID_LEN_SIZE + tenant_id_bytes.len());
+        payload.extend_from_slice(&tenant_id_len.to_be_bytes());
+        payload.extend_from_slice(tenant_id_bytes);
+        if let Err(e) = stream.write_all(&payload).await {
+            error!("failed to write restore gate payload (error={e:?})");
             return Err(e.into());
         }
 
@@ -451,10 +463,9 @@ impl LinuxDaemon {
     ///
     pub async fn spawn<T: Sync + Send + 'static>(
         args: &LinuxDaemonArgs<T>,
-        control_plane_listener: &mut SocketListener,
         netns_handle: Option<NetnsHandle>,
         snapshot_dir_handle: Option<SnapshotDirHandle>,
-    ) -> Result<Self> {
+    ) -> Result<PendingLinuxDaemon> {
         debug!(
             "spawn(): spawning linux daemon (control-plane={:?}, user-vm={:?}, l2={})",
             args.control_plane_connect_socket_info(),
@@ -555,6 +566,7 @@ impl LinuxDaemon {
                 format!("{}/ch-remote", get_clh_bin_dir(args.toolchain_binary_directory())?);
             if let Err(e) = Self::resume_l2_vm(
                 &netns_handle.netns_info()?,
+                args.tenant_id(),
                 &ch_remote_path,
                 &clh_api_socket_path,
                 &clh_stderr_log_path,
@@ -588,44 +600,8 @@ impl LinuxDaemon {
                 })?
         };
 
-        // After linuxd has started, accept the incoming connection and return the stream for
-        // further use.
-        let control_plane_stream: SocketStream =
-            match timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, control_plane_listener.accept()).await {
-                Ok(Ok(stream)) => stream,
-                Ok(Err(e)) => {
-                    // If linuxd has not accepted the control-plane connection, it means that
-                    // something went wrong during start-up. We kill the process ignoring errors,
-                    // and return an error.
-                    let reason: String =
-                        format!("error connecting control-plane to linuxd (error={e:?})");
-                    error!("spawn(): {reason}");
-
-                    // Use a SIGKILL because the process is already faulty.
-                    Self::send_sigkill_to_child(&child);
-
-                    anyhow::bail!(reason)
-                },
-                Err(e) => {
-                    let reason: String = format!(
-                        "timed-out waiting for linuxd to connect to control-plane (error={e:?})"
-                    );
-                    error!("spawn(): {reason}");
-
-                    // Use a SIGKILL because the process is already faulty.
-                    Self::send_sigkill_to_child(&child);
-
-                    anyhow::bail!(reason)
-                },
-            };
-        debug!("nanvixd received connection from linuxd's control-plane socket");
-
-        Ok(Self {
-            inner: Mutex::new(Some(LinuxDaemonInner {
-                child,
-                control_plane_stream,
-                pending_gateway_ready: HashMap::new(),
-            })),
+        Ok(PendingLinuxDaemon {
+            child,
             netns_handle,
             snapshot_dir_handle,
         })
@@ -798,6 +774,50 @@ impl LinuxDaemon {
             netns_handle: None,
             snapshot_dir_handle: None,
         }
+    }
+}
+
+impl PendingLinuxDaemon {
+    ///
+    /// # Description
+    ///
+    /// Completes Linux daemon startup by attaching the accepted control-plane stream.
+    ///
+    /// # Arguments
+    ///
+    /// - `control_plane_stream`: Accepted control-plane stream for the spawned Linux daemon.
+    ///
+    /// # Returns
+    ///
+    /// Returns the running Linux daemon handle.
+    ///
+    pub fn attach_control_plane(self, control_plane_stream: SocketStream) -> LinuxDaemon {
+        LinuxDaemon {
+            inner: Mutex::new(Some(LinuxDaemonInner {
+                child: self.child,
+                control_plane_stream,
+                pending_gateway_ready: HashMap::new(),
+            })),
+            netns_handle: self.netns_handle,
+            snapshot_dir_handle: self.snapshot_dir_handle,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Aborts a pending Linux daemon startup by forcefully terminating the child process.
+    ///
+    /// # Arguments
+    ///
+    /// This function takes no arguments.
+    ///
+    /// # Returns
+    ///
+    /// This function does not return a value.
+    ///
+    pub async fn abort(self) {
+        LinuxDaemon::send_sigkill_to_child(&self.child);
     }
 }
 

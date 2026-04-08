@@ -49,6 +49,12 @@ pub const CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
 pub const CONTROL_PLANE_ACCEPT_TIMEOUT: Duration = Duration::from_secs(60);
 
 ///
+/// Maximum number of early (unregistered) control-plane connections buffered before eviction.
+///
+#[cfg(not(feature = "standalone"))]
+pub const MAX_EARLY_CONTROL_PLANE_CONNECTIONS: usize = 64;
+
+///
 /// # Description
 ///
 /// Timeout for connecting to gateway.

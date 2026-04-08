@@ -51,10 +51,14 @@
 //!
 //! ```rust,no_run
 //! use ::nanvix_sandbox::{UninitializedSandbox, SandboxConfig, SandboxTag};
-//! use ::syscomm::{SocketListener, SocketType, UnboundSocket};
+//! #[cfg(not(feature = "standalone"))]
+//! use ::nanvix_sandbox::ControlPlaneAcceptor;
+//! use ::syscomm::SocketType;
+//! #[cfg(not(feature = "standalone"))]
+//! use ::syscomm::UnboundSocket;
 //! use ::user_vm_api::UserVmIdentifier;
+//! #[cfg(not(feature = "standalone"))]
 //! use ::std::sync::Arc;
-//! use ::tokio::sync::Mutex;
 //!
 //! # async fn example() -> anyhow::Result<()> {
 //! // Create configuration.
@@ -80,19 +84,26 @@
 //!     Some(false),  // l2
 //! );
 //!
-//! // Create and bind control plane socket.
-//! let control_plane_bind_sockaddr: String = "/tmp/nvx:cp.socket".to_string();
-//! let control_plane_socket: SocketListener =
-//!     UnboundSocket::new(SocketType::Unix).bind(&control_plane_bind_sockaddr).await?;
-//! let control_plane_bind_socket: Arc<Mutex<(SocketListener, String, SocketType)>> =
-//!     Arc::new(Mutex::new((control_plane_socket, control_plane_bind_sockaddr, SocketType::Unix)));
+//! // Create control-plane acceptor.
+//! #[cfg(not(feature = "standalone"))]
+//! let control_plane_acceptor: Arc<ControlPlaneAcceptor> = {
+//!     let control_plane_bind_sockaddr: String = "/tmp/nvx:cp.socket".to_string();
+//!     let control_plane_listener =
+//!         UnboundSocket::new(SocketType::Unix).bind(&control_plane_bind_sockaddr).await?;
+//!     ControlPlaneAcceptor::new(
+//!         control_plane_listener,
+//!         control_plane_bind_sockaddr,
+//!         SocketType::Unix,
+//!     )
+//! };
 //!
 //! // Create and initialize sandbox.
 //! let sandbox = UninitializedSandbox::new(
 //!     "/path/to/guest.elf",
 //!     None,
 //!     None,
-//!     control_plane_bind_socket,
+//!     #[cfg(not(feature = "standalone"))]
+//!     control_plane_acceptor,
 //! )
 //!     .with_config(config)
 //!     .initialize()
@@ -130,6 +141,8 @@
 //==================================================================================================
 
 mod config;
+#[cfg(not(feature = "standalone"))]
+mod control_plane_acceptor;
 mod initialized;
 #[cfg(not(feature = "standalone"))]
 mod linuxd_args;
@@ -182,6 +195,8 @@ pub mod tcp_port;
 pub use self::snapshot_dir_handle::SnapshotDirHandle;
 
 #[cfg(not(feature = "standalone"))]
+pub use self::control_plane_acceptor::ControlPlaneAcceptor;
+#[cfg(not(feature = "standalone"))]
 pub use self::linuxd_args::LinuxDaemonArgs;
 pub use self::{
     initialized::InitializedSandbox,
@@ -194,6 +209,8 @@ pub use self::{
 pub use ::hwloc::HwLoc;
 pub use ::syscomm;
 pub use ::user_vm_api::UserVmIdentifier;
+#[cfg(not(feature = "standalone"))]
+pub use config::CONTROL_PLANE_ACCEPT_TIMEOUT;
 pub use config::{
     control_plane_sockaddr_builder,
     gateway_sockaddr_builder,

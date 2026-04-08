@@ -12,10 +12,7 @@
 //==================================================================================================
 
 use crate::{
-    config::{
-        CONTROL_PLANE_ACCEPT_TIMEOUT,
-        SHUTDOWN_TIMEOUT,
-    },
+    config::SHUTDOWN_TIMEOUT,
     LinuxDaemonArgs,
 };
 use ::anyhow::Result;
@@ -25,7 +22,6 @@ use ::control_plane_api::{
 };
 use ::linuxd::LinuxDaemon as EmbeddedLinuxd;
 use ::log::{
-    debug,
     error,
     trace,
     warn,
@@ -77,6 +73,10 @@ pub struct LinuxDaemon {
     inner: Mutex<Option<LinuxDaemonInner>>,
 }
 
+pub struct PendingLinuxDaemon {
+    linuxd_task: Option<JoinHandle<Result<()>>>,
+}
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
@@ -99,8 +99,7 @@ impl LinuxDaemon {
     ///
     pub async fn spawn<T: Sync + Send + Default + 'static>(
         args: &LinuxDaemonArgs<T>,
-        control_plane_listener: &mut SocketListener,
-    ) -> Result<Self> {
+    ) -> Result<PendingLinuxDaemon> {
         trace!(
             "spawn(): control_plane_connect_socket_address={:?}, user_vm_sockaddr={:?}",
             args.control_plane_connect_socket_info(),
@@ -139,6 +138,7 @@ impl LinuxDaemon {
 
         let linuxd: EmbeddedLinuxd<T> = EmbeddedLinuxd::init(
             syscall_table,
+            args.tenant_id(),
             &args.control_plane_connect_socket_info().0,
             args.control_plane_connect_socket_info().1.to_str(),
             user_vm_listener,
@@ -160,36 +160,8 @@ impl LinuxDaemon {
             })
         });
 
-        // Wait for the linuxd to connect to the control-plane socket.
-        let control_plane_stream: SocketStream =
-            match timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, control_plane_listener.accept()).await {
-                Ok(Ok(stream)) => stream,
-                Ok(Err(error)) => {
-                    linuxd_task.abort();
-                    let reason: String =
-                        format!("error connecting control-plane to linuxd (error={error:?})");
-                    error!("spawn(): {reason}");
-                    anyhow::bail!("{reason}");
-                },
-                Err(elapsed) => {
-                    linuxd_task.abort();
-                    let reason: String = format!(
-                        "timed-out waiting for linuxd to connect the control-plane stream \
-                         (elapsed={elapsed:?})"
-                    );
-                    error!("spawn(): {reason}");
-                    anyhow::bail!("{reason}");
-                },
-            };
-
-        debug!("spawn(): nanvixd received connection from linuxd control-plane socket");
-
-        Ok(Self {
-            inner: Mutex::new(Some(LinuxDaemonInner {
-                linuxd_task,
-                control_plane_stream,
-                pending_gateway_ready: HashMap::new(),
-            })),
+        Ok(PendingLinuxDaemon {
+            linuxd_task: Some(linuxd_task),
         })
     }
 
@@ -320,6 +292,50 @@ impl LinuxDaemon {
                 control_plane_stream,
                 pending_gateway_ready: HashMap::new(),
             })),
+        }
+    }
+}
+
+impl PendingLinuxDaemon {
+    ///
+    /// # Description
+    ///
+    /// Completes Linux daemon startup by attaching the accepted control-plane stream.
+    ///
+    /// # Arguments
+    ///
+    /// - `control_plane_stream`: Accepted control-plane stream for the spawned Linux daemon.
+    ///
+    /// # Returns
+    ///
+    /// Returns the running Linux daemon handle.
+    ///
+    pub fn attach_control_plane(self, control_plane_stream: SocketStream) -> LinuxDaemon {
+        LinuxDaemon {
+            inner: Mutex::new(Some(LinuxDaemonInner {
+                linuxd_task: self.linuxd_task.expect("linuxd task missing"),
+                control_plane_stream,
+                pending_gateway_ready: HashMap::new(),
+            })),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Aborts a pending Linux daemon startup by cancelling its background task.
+    ///
+    /// # Arguments
+    ///
+    /// This function takes no arguments.
+    ///
+    /// # Returns
+    ///
+    /// This function does not return a value.
+    ///
+    pub async fn abort(self) {
+        if let Some(task) = self.linuxd_task {
+            task.abort();
         }
     }
 }
