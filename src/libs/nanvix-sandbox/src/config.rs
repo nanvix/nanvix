@@ -55,6 +55,13 @@ pub const CONTROL_PLANE_ACCEPT_TIMEOUT: Duration = Duration::from_secs(60);
 pub const MAX_EARLY_CONTROL_PLANE_CONNECTIONS: usize = 64;
 
 ///
+/// Maximum number of `yield_now()` retries when upgrading the weak self-reference during acceptor
+/// startup.
+///
+#[cfg(not(feature = "standalone"))]
+pub const MAX_WEAK_UPGRADE_RETRIES: u32 = 100;
+
+///
 /// # Description
 ///
 /// Timeout for connecting to gateway.
