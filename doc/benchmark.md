@@ -42,6 +42,12 @@ most importantly, if you are pinning cores, make sure to also pass the path to y
 > ℹ️ **Note:** All benchmarks require compiling Nanvix with `RELEASE=yes` and `LOG_LEVEL=panic`.
 > ℹ️ **Note:** If you are running the benchmarks with a high number of iterations, consider setting high system limits in the process spawning `nanvix-bench.elf` (i.e. `ulimit -u` and `ulimit -n`).
 
+## Profiling and Performance Analysis
+
+For detailed profiling infrastructure on Windows -- including system tuning,
+WPR/ETW tracing, flamegraph generation, and A/B regression detection -- see the
+**[Profiling Guide (Windows)](profiling-windows.md)**.
+
 ## Benchmarking on Windows
 
 On Windows, `nanvix-bench` supports a subset of benchmarks in standalone mode. The standalone
