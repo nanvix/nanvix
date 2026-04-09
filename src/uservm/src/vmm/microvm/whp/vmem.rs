@@ -92,8 +92,10 @@ struct FileRemap {
     start: usize,
     /// Page-aligned size of the remapped view.
     aligned_len: usize,
-    /// Section handle returned by `CreateFileMappingW`. Set to `HANDLE::default()` when the
-    /// middle segment is committed (non-page-aligned file fallback) instead of file-backed.
+    /// Section handle returned by `CreateFileMappingW`. Set to `HANDLE::default()` (null) when
+    /// the middle segment uses the commit+read fallback (non-page-aligned file) instead of a
+    /// file-backed view. `Drop` uses this to select between `UnmapViewOfFileEx` (file-backed)
+    /// and `VirtualFree` (committed) for cleanup.
     section_handle: HANDLE,
 }
 
@@ -247,10 +249,11 @@ impl VirtualMemory {
     /// Replaces a sub-region of guest memory with a zero-copy, file-backed mapping using
     /// Windows placeholder APIs.
     ///
-    /// The committed region is freed back to a placeholder, split into up to three segments,
-    /// and the file is mapped directly at `self.ptr.add(start)` via `MapViewOfFile3` with
-    /// `MEM_REPLACE_PLACEHOLDER`. The committed non-file segments are restored from a saved
-    /// copy, and all segments are (re-)registered with the WHP partition.
+    /// Only the tail of the committed region (from `start` onward) is freed back to a
+    /// placeholder via `MEM_PRESERVE_PLACEHOLDER`, which splits the committed region in place
+    /// without disturbing preceding memory (kernel, initrd). The file is then mapped directly
+    /// at `self.ptr.add(start)` via `MapViewOfFile3` with `MEM_REPLACE_PLACEHOLDER`, and the
+    /// affected GPA segments are re-registered with the WHP partition.
     ///
     /// # Parameters
     ///
@@ -262,8 +265,21 @@ impl VirtualMemory {
     ///
     /// On success, returns empty. On failure, returns an error.
     ///
+    /// # Note
+    ///
+    /// If this method fails partway through, the guest memory region may be left in an
+    /// inconsistent state (partially unmapped from WHP, partially split). This mirrors the
+    /// Linux `mmap(MAP_FIXED)` semantics where the previous mapping is destroyed before the
+    /// new one is established. Callers should treat a failure as fatal for the VM instance.
+    ///
     pub fn remap_file_at(&mut self, start: usize, len: usize, file: &File) -> Result<()> {
         trace!("remap_file_at(): start={start:#x}, len={len:#x}");
+
+        if self.file_remap.is_some() {
+            let reason: &str = "remap_file_at() has already been called on this VirtualMemory";
+            error!("remap_file_at(): {reason}");
+            anyhow::bail!(reason);
+        }
 
         if len == 0 {
             let reason: &str = "cannot remap zero-sized region";
@@ -294,99 +310,63 @@ impl VirtualMemory {
         // Page-align the size upward: WHP GPA operations require page-aligned sizes, and the
         // file-backed view must cover the full aligned range to avoid exposing unmapped pages.
         let aligned_len: usize = (len + page_size - 1) & !(page_size - 1);
+        if start + aligned_len > self.size {
+            let reason: String = format!(
+                "page-aligned remap [{start:#x}, {:#x}) exceeds memory bounds (size={:#x})",
+                start + aligned_len,
+                self.size
+            );
+            error!("remap_file_at(): {reason}");
+            anyhow::bail!(reason);
+        }
+
         let tail_start: usize = start + aligned_len;
+        let current_process: HANDLE = unsafe { GetCurrentProcess() };
 
-        // ── 1. Save the non-RAMFS memory content ────────────────────────────────────────────
+        // ── 1. Unmap [start..size) from the WHP partition ──────────────────────────────────
         //
-        // Freeing the committed region destroys all data. Save the head [0..start) and
-        // tail [start+aligned_len..size) segments so we can restore them after re-commit.
-        let head_backup: Vec<u8> = if start > 0 {
-            unsafe { slice::from_raw_parts(self.ptr, start).to_vec() }
-        } else {
-            Vec::new()
-        };
-        let tail_backup: Vec<u8> = if tail_start < self.size {
-            unsafe {
-                slice::from_raw_parts(self.ptr.add(tail_start), self.size - tail_start).to_vec()
-            }
-        } else {
-            Vec::new()
-        };
-
-        // ── 2. Unmap the entire GPA range from WHP ─────────────────────────────────────────
-        //
-        // The region was mapped as a single block in `new()`. All of it must be unmapped before
-        // we can free and split the underlying host allocation.
+        // The head [0..start) stays mapped and its committed memory is untouched, avoiding
+        // the cost of backing up and restoring kernel/initrd data.
+        let unmap_size: u64 = (self.size - start) as u64;
         unsafe {
-            WHvUnmapGpaRange(self.partition_handle, 0, self.size as u64).map_err(|e| {
+            WHvUnmapGpaRange(self.partition_handle, start as u64, unmap_size).map_err(|e| {
                 let reason: String = format!(
-                    "failed to unmap GPA range for file remap (size={:#x}, error={e:?})",
-                    self.size
+                    "failed to unmap GPA range for file remap (start={start:#x}, \
+                     size={unmap_size:#x}, error={e:?})"
                 );
                 error!("remap_file_at(): {reason}");
                 anyhow::anyhow!(reason)
             })?;
         }
 
-        // ── 3. Free the committed region and re-reserve as a placeholder ────────────────────
+        // ── 2. Free [start..size) back to a placeholder ────────────────────────────────────
         //
-        // Windows does not support converting a VirtualAlloc2 committed region back to a
-        // placeholder via MEM_PRESERVE_PLACEHOLDER. Instead, we release the committed region
-        // entirely and immediately re-reserve the same address range as a fresh placeholder.
-        let current_process: HANDLE = unsafe { GetCurrentProcess() };
-        unsafe {
-            VirtualFree(self.ptr.cast(), 0, MEM_RELEASE).map_err(|e| {
-                let reason: String = format!("failed to free committed region (error={e:?})");
-                error!("remap_file_at(): {reason}");
-                anyhow::anyhow!(reason)
-            })?;
-        }
-
-        let new_placeholder: *mut u8 = unsafe {
-            VirtualAlloc2(
-                Some(current_process),
-                Some(self.ptr.cast()),
-                self.size,
-                MEM_RESERVE | MEM_RESERVE_PLACEHOLDER,
-                PAGE_NOACCESS.0,
-                None,
-            )
-            .cast::<u8>()
-        };
-
-        if new_placeholder.is_null() || new_placeholder != self.ptr {
-            let reason: String = format!(
-                "failed to re-reserve placeholder at original address (ptr={:?}, \
-                 new_placeholder={new_placeholder:?})",
-                self.ptr
-            );
-            error!("remap_file_at(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        // ── 4. Split the placeholder ────────────────────────────────────────────────────────
-        //
-        // Split into up to three segments: [0..start), [start..tail_start), [tail_start..size).
-        // `VirtualFree(addr, first_half_size, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER)` splits
-        // the placeholder at `addr` into [addr..addr+first_half_size) and the remainder.
+        // `VirtualFree(addr, size, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER)` splits the
+        // committed region in place: [0..start) stays committed, [start..size) becomes a
+        // placeholder. No data is destroyed in the head.
         const MEM_RELEASE_PRESERVE: VIRTUAL_FREE_TYPE =
             VIRTUAL_FREE_TYPE(MEM_RELEASE.0 | 0x2 /* MEM_PRESERVE_PLACEHOLDER */);
-        if start > 0 {
-            unsafe {
-                VirtualFree(self.ptr.cast(), start, MEM_RELEASE_PRESERVE).map_err(|e| {
-                    let reason: String =
-                        format!("failed to split head placeholder (start={start:#x}, error={e:?})");
+        unsafe {
+            VirtualFree(self.ptr.add(start).cast(), self.size - start, MEM_RELEASE_PRESERVE)
+                .map_err(|e| {
+                    let reason: String = format!(
+                        "failed to free tail to placeholder (start={start:#x}, error={e:?})"
+                    );
                     error!("remap_file_at(): {reason}");
                     anyhow::anyhow!(reason)
                 })?;
-            }
         }
+
+        // ── 3. Split the tail placeholder if there is memory after the file region ─────────
+        //
+        // After step 2, [start..size) is a single placeholder. If `tail_start < size`, split
+        // it into [start..tail_start) and [tail_start..size).
         if tail_start < self.size {
             unsafe {
                 VirtualFree(self.ptr.add(start).cast(), aligned_len, MEM_RELEASE_PRESERVE)
                     .map_err(|e| {
                         let reason: String = format!(
-                            "failed to split tail placeholder (start={start:#x}, \
+                            "failed to split file placeholder (start={start:#x}, \
                              aligned_len={aligned_len:#x}, error={e:?})"
                         );
                         error!("remap_file_at(): {reason}");
@@ -395,30 +375,7 @@ impl VirtualMemory {
             }
         }
 
-        // ── 5. Re-commit the head segment ───────────────────────────────────────────────────
-        if start > 0 {
-            let committed: *mut std::ffi::c_void = unsafe {
-                VirtualAlloc2(
-                    Some(current_process),
-                    Some(self.ptr.cast()),
-                    start,
-                    MEM_RESERVE | MEM_COMMIT | MEM_REPLACE_PLACEHOLDER,
-                    PAGE_READWRITE.0,
-                    None,
-                )
-            };
-            if committed.is_null() {
-                let reason: String = format!("failed to re-commit head segment [0..{start:#x})");
-                error!("remap_file_at(): {reason}");
-                anyhow::bail!(reason);
-            }
-            // Restore saved data.
-            unsafe {
-                ptr::copy_nonoverlapping(head_backup.as_ptr(), self.ptr, start);
-            }
-        }
-
-        // ── 6. Map or load the file into the middle placeholder ────────────────────────────
+        // ── 4. Map the file into the middle placeholder ────────────────────────────────────
         //
         // When the file size is an exact multiple of the page size, we can create a
         // PAGE_WRITECOPY section whose size equals `aligned_len` and replace the placeholder
@@ -470,6 +427,10 @@ impl VirtualMemory {
                 anyhow::bail!(reason);
             }
 
+            // The file-backed view uses PAGE_WRITECOPY: reads are served from the OS page
+            // cache (zero-copy), while writes trigger copy-on-write, creating private pages.
+            // This means write_bytes(), snapshot restore, and guest writes into the ramfs
+            // region will silently transition individual pages from shared to private.
             section
         } else {
             // Fallback path: file is not page-aligned — commit and read.
@@ -509,7 +470,7 @@ impl VirtualMemory {
             HANDLE::default()
         };
 
-        // ── 7. Re-commit the tail segment ───────────────────────────────────────────────────
+        // ── 5. Re-commit the tail placeholder (if any) ────────────────────────────────────
         if tail_start < self.size {
             let tail_size: usize = self.size - tail_start;
             let committed: *mut std::ffi::c_void = unsafe {
@@ -528,33 +489,12 @@ impl VirtualMemory {
                 error!("remap_file_at(): {reason}");
                 anyhow::bail!(reason);
             }
-            // Restore saved data.
-            unsafe {
-                ptr::copy_nonoverlapping(tail_backup.as_ptr(), self.ptr.add(tail_start), tail_size);
-            }
         }
 
-        // ── 8. Re-map all segments into the WHP partition ───────────────────────────────────
+        // ── 6. Re-map affected segments into the WHP partition ─────────────────────────────
         //
-        // After placeholder splitting, each segment is a separate host allocation. Register
-        // them individually with the WHP partition.
-        if start > 0 {
-            unsafe {
-                WHvMapGpaRange(
-                    self.partition_handle,
-                    self.ptr as *const std::ffi::c_void,
-                    0,
-                    start as u64,
-                    GPA_RWX,
-                )
-                .map_err(|e| {
-                    let reason: String = format!("failed to re-map head GPA range (error={e:?})");
-                    error!("remap_file_at(): {reason}");
-                    anyhow::anyhow!(reason)
-                })?;
-            }
-        }
-
+        // The head [0..start) was never unmapped from WHP — skip it.
+        // Map the file-backed (or committed) middle segment.
         unsafe {
             WHvMapGpaRange(
                 self.partition_handle,
@@ -573,6 +513,7 @@ impl VirtualMemory {
             })?;
         }
 
+        // Map the tail committed segment (if any).
         if tail_start < self.size {
             let tail_size: usize = self.size - tail_start;
             unsafe {
