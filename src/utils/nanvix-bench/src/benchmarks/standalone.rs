@@ -149,9 +149,21 @@ impl Benchmark {
 
             latencies.push(latency);
 
-            // Accumulate per-phase timing samples.
+            // Accumulate per-phase timing samples and forward raw data to stderr.
             #[cfg(feature = "profile-time")]
-            if let Some(timings) = phase_timings {
+            if let Some(ref timings) = phase_timings {
+                // Re-emit the raw PERF_TIMINGS line so external tools can parse it.
+                // Use pb.suspend() to temporarily clear the progress bar before writing,
+                // preventing interleaving with the bar's carriage-return redraws on stderr.
+                // When stderr is not a tty (redirected to file), suspend() is a no-op and
+                // eprintln! writes cleanly.
+                pb.suspend(|| {
+                    eprintln!(
+                        "{}{}",
+                        ::nanvix::uservm::perf::PERF_TIMINGS_PREFIX,
+                        serde_json::Value::Object(timings.clone())
+                    );
+                });
                 for name in PHASE_NAMES {
                     if let Some(value) = timings.get(*name) {
                         if let Some(samples) = phase_samples.get_mut(*name) {
