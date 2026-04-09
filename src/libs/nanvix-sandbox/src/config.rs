@@ -62,6 +62,12 @@ pub const MAX_EARLY_CONTROL_PLANE_CONNECTIONS: usize = 64;
 pub const MAX_WEAK_UPGRADE_RETRIES: u32 = 100;
 
 ///
+/// Maximum number of concurrent in-flight connection handler tasks in the control-plane acceptor.
+///
+#[cfg(not(feature = "standalone"))]
+pub const MAX_CONCURRENT_CONTROL_PLANE_HANDLERS: usize = 128;
+
+///
 /// # Description
 ///
 /// Timeout for connecting to gateway.
