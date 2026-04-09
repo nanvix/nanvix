@@ -18,6 +18,7 @@ chrono = { workspace = true }
 config = { workspace = true }
 control-plane-api = { workspace = true }
 hwloc = { workspace = true }
+indexmap = { workspace = true }
 linuxd = { workspace = true, optional = true }
 libc = { workspace = true }
 log = { workspace = true }
