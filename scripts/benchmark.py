@@ -1009,6 +1009,7 @@ def run_benchmark(args):
 
         print("[BENCHMARK] Processing benchmark output...")
         raw_stdout = result.stdout.decode("utf-8")
+        raw_stderr = result.stderr.decode("utf-8", errors="replace")
         print(f"[BENCHMARK] Raw stdout length: {len(raw_stdout)} bytes")
         filtered_stdout = filter_benchmark_stdout(args.benchmark, raw_stdout, commit)
         print(f"[BENCHMARK] Filtered stdout length: {len(filtered_stdout)} bytes")
@@ -1016,6 +1017,31 @@ def run_benchmark(args):
         with open(output_file, "w") as fh:
             fh.write(filtered_stdout)
         print("[BENCHMARK] Results written successfully.")
+
+        # Save stderr alongside stdout for PERF_TIMINGS analysis.
+        # When the binary is built with PROFILER=yes (profile-time feature),
+        # stderr contains one PERF_TIMINGS:{json} line per iteration with
+        # per-phase microsecond timings. This data enables distribution
+        # analysis and regression detection via analyze-results.py.
+        stderr_file = output_file.replace(".csv", "-stderr.txt")
+        if raw_stderr:
+            perf_lines = []
+            for line in raw_stderr.splitlines():
+                stripped = line.lstrip()
+                if stripped.startswith("PERF_TIMINGS:"):
+                    perf_lines.append(stripped)
+                    continue
+                # Handle lines where PERF_TIMINGS is embedded after other output.
+                marker_index = line.find("PERF_TIMINGS:")
+                if marker_index != -1:
+                    perf_lines.append(line[marker_index:])
+            if perf_lines:
+                with open(stderr_file, "w") as fh:
+                    fh.write("\n".join(perf_lines) + "\n")
+                print(
+                    f"[BENCHMARK] Saved {len(perf_lines)} PERF_TIMINGS records "
+                    f"to {stderr_file}"
+                )
     else:
         print("[BENCHMARK] Running benchmark without capturing output...")
         try:
