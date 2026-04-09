@@ -598,13 +598,12 @@ endif
 
 # Checks for linting issues in the code.
 ifeq ($(IS_WINDOWS),yes)
-lint-check: rust-lint-check
+lint-check: rust-lint-check python-lint
 else
 lint-check: \
 	rust-lint-check \
-	shell-lint-check
-# Python linting requires a venv, which is not set up on Windows.
-lint-check: python-lint
+	shell-lint-check \
+	python-lint
 endif
 
 # Runs clippy.
@@ -649,9 +648,15 @@ endif
 
 # Source file lists - use git ls-files if in a git repo, fall back to find.
 # This is needed because Docker builds exclude the .git directory.
+# On Windows (no sh.exe), the POSIX shell fallback is unavailable, so use
+# git ls-files directly; the Docker find fallback is Linux-only regardless.
+ifeq ($(IS_WINDOWS),yes)
+PYTHON_FILES := $(shell git ls-files -- "*.py")
+SHELL_FILES  := $(shell git ls-files -- "*.sh")
+else
 PYTHON_FILES := $(shell git ls-files -- "*.py" 2>/dev/null || find . -name "*.py" -not -path "*/venv/*" -not -path "*/.venv/*" -not -path "*/__pycache__/*" -not -path "*/toolchain/*" -not -path "*/target/*" -not -path "*/.cargo/*")
-
 SHELL_FILES := $(shell git ls-files -- "*.sh" 2>/dev/null || find . -name "*.sh" -not -path "*/toolchain/*" -not -path "*/target/*" -not -path "*/.cargo/*")
+endif
 
 # Directories and patterns to skip during spell checking.  Duplicated on the
 # command line with -S because codespell 2.2.x ignores the "skip" key when
@@ -677,21 +682,13 @@ spellcheck:
 
 # Fixes code formatting issues.
 format: \
-	rust-format
-
-# Python formatting requires a venv with black/isort, which is not set up on Windows.
-ifneq ($(IS_WINDOWS),yes)
-format: python-format
-endif
+	rust-format \
+	python-format
 
 # Checks for code formatting issues.
 format-check: \
-	rust-format-check
-
-# Python formatting requires a venv with black/isort, which is not set up on Windows.
-ifneq ($(IS_WINDOWS),yes)
-format-check: python-format-check
-endif
+	rust-format-check \
+	python-format-check
 
 # Formats Rust code.
 rust-format: \
@@ -734,35 +731,62 @@ rust-format-check: format-check-nanvix-bench
 endif
 
 # Python lint variables
+PYTHON_VENV_DIRECTORY=$(ROOT_DIR)/.venv
+
+# Detect venv layout: Scripts/ on Windows, bin/ on Linux.
+ifeq ($(IS_WINDOWS),yes)
+PYTHON_VENV_BIN := $(PYTHON_VENV_DIRECTORY)/Scripts
+PYTHON_VENV_PIP := $(PYTHON_VENV_BIN)/pip
+PYTHON_VENV_PYTHON := $(PYTHON_VENV_BIN)/python
+else
+PYTHON_VENV_BIN := $(PYTHON_VENV_DIRECTORY)/bin
+PYTHON_VENV_PIP := $(PYTHON_VENV_BIN)/pip3
+PYTHON_VENV_PYTHON := $(PYTHON_VENV_BIN)/python3
+endif
+
 PY_VERBOSE :=
 ifneq ($(VERBOSE),yes)
+ifneq ($(IS_WINDOWS),yes)
 PY_VERBOSE += >> /dev/null 2>&1
 endif
-PYTHON_VENV_DIRECTORY=$(ROOT_DIR)/.venv
+endif
+
 PYTHON_STAMP=$(PYTHON_VENV_DIRECTORY)/.requirements.stamp
 
 python-init: $(PYTHON_STAMP)
 
+ifeq ($(IS_WINDOWS),yes)
+# On Windows, Make uses bash from Git-for-Windows; use POSIX syntax.
+# Use 'python' (not 'python3') since the Windows Python launcher differs.
 $(PYTHON_STAMP): $(ROOT_DIR)/requirements.txt
-	@if [ ! -f $(PYTHON_VENV_DIRECTORY)/bin/pip3 ]; then \
+	@if [ ! -f "$(PYTHON_VENV_PIP)" ] && [ ! -f "$(PYTHON_VENV_PIP).exe" ]; then \
+		$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY); \
+		python -m venv $(PYTHON_VENV_DIRECTORY); \
+	fi
+	@$(PYTHON_VENV_PIP) install -r $(ROOT_DIR)/requirements.txt $(PY_VERBOSE)
+	@touch $(PYTHON_STAMP)
+else
+$(PYTHON_STAMP): $(ROOT_DIR)/requirements.txt
+	@if [ ! -f $(PYTHON_VENV_PIP) ]; then \
 		$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY); \
 		python3 -m venv $(PYTHON_VENV_DIRECTORY); \
 	fi
-	@$(PYTHON_VENV_DIRECTORY)/bin/pip3 install -r $(ROOT_DIR)/requirements.txt $(PY_VERBOSE)
+	@$(PYTHON_VENV_PIP) install -r $(ROOT_DIR)/requirements.txt $(PY_VERBOSE)
 	@touch $(PYTHON_STAMP)
+endif
 
 python-format: python-init
-	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m black $(PYTHON_FILES) $(PY_VERBOSE)
+	@$(PYTHON_VENV_PYTHON) -m black $(PYTHON_FILES) $(PY_VERBOSE)
 
 python-format-check: python-init
-	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m black --check $(PYTHON_FILES) $(PY_VERBOSE)
+	@$(PYTHON_VENV_PYTHON) -m black --check $(PYTHON_FILES) $(PY_VERBOSE)
 
 python-lint: python-init
-	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m flake8 $(PYTHON_FILES) $(PY_VERBOSE)
+	@$(PYTHON_VENV_PYTHON) -m flake8 $(PYTHON_FILES) $(PY_VERBOSE)
 
 # Runs Python unit tests for the build backend (z.py).
 test-python: python-init
-	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m unittest discover -s tests -p "test_*.py" $(PY_VERBOSE)
+	@$(PYTHON_VENV_PYTHON) -m unittest discover -s tests -p "test_*.py" $(PY_VERBOSE)
 
 # Checks for linting issues in shell scripts.
 shell-lint-check:
