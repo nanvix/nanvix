@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nanvix Benchmark WPR Profile - lightweight VM workload tracing
+  ================================================================
+  Designed for low-overhead profiling during benchmarks.
+  Captures only essential events to avoid the ~95% overhead seen with
+  the full profile (28 stack walks, 10+ Hyper-V providers).
+
+  Providers (8):
+    - NT Kernel: SampledProfile, CSwitch, HardFault (no SystemCall/FileIO)
+    - Hyper-V Hypervisor: VM exits, intercepts, partition ops
+    - Hyper-V VID: GPA mapping, memory partitioning, VP management
+    - Kernel-Memory: VirtualAlloc/Free for GPA backing (vmem_create phase)
+    - Kernel-File: file reads for kernel/initrd/ramfs loading
+    - Kernel-Interrupt: ISR events during VM exit handling
+    - Kernel-DPC: deferred procedure calls during exit/re-entry
+    - Kernel-Process: process create/exit with command lines
+
+  Stack walks (4): SampledProfile, CSwitch, HardFault, ImageLoad
+  System keywords (9): CpuConfig, SampledProfile, CSwitch, ReadyThread,
+    ProcessThread, Loader, HardFaults, DPC, Interrupt
+  Buffers: 1024KB x 96 = 96MB total
+
+  Usage:
+    wpr -start wpr-profile.wprp!NanvixBench -filemode
+    .\bin\nanvix-bench.exe -benchmark cold-start
+    wpr -stop nanvix-bench.etl "Nanvix cold-start benchmark"
+-->
+<WindowsPerformanceRecorder Version="1.0" Author="Nanvix" Copyright="2025" Tag="NanvixBenchLight">
+  <Profiles>
+
+    <!-- ================================================================ -->
+    <!-- Collectors                                                       -->
+    <!-- ================================================================ -->
+
+    <SystemCollector Id="SystemCollector" Name="Nanvix System Collector">
+      <BufferSize Value="1024"/>   <!-- 1 MB per buffer -->
+      <Buffers    Value="64"/>     <!-- 64 MB total — reduced from 256 -->
+    </SystemCollector>
+
+    <EventCollector Id="EventCollector" Name="Nanvix Event Collector">
+      <BufferSize Value="1024"/>
+      <Buffers    Value="48"/>     <!-- 48 MB total (up from 32 for extra providers) -->
+    </EventCollector>
+
+    <!-- ================================================================ -->
+    <!-- System Provider — minimal kernel tracing                         -->
+    <!-- ================================================================ -->
+
+    <SystemProvider Id="SystemProvider">
+      <Keywords>
+        <!-- CPU sampling -->
+        <Keyword Value="CpuConfig"/>
+        <Keyword Value="SampledProfile"/>
+
+        <!-- Scheduling and context switches -->
+        <Keyword Value="CSwitch"/>
+        <Keyword Value="ReadyThread"/>
+        <Keyword Value="ProcessThread"/>
+        <Keyword Value="Loader"/>
+
+        <!-- Memory: hard faults only (no VirtualAllocation, no MemoryInfo) -->
+        <Keyword Value="HardFaults"/>
+
+        <!-- DPC and interrupt servicing (for exit handling latency) -->
+        <Keyword Value="DPC"/>
+        <Keyword Value="Interrupt"/>
+      </Keywords>
+
+      <Stacks>
+        <!-- Only 4 stack walks (vs 28 in full profile) -->
+        <Stack Value="SampledProfile"/>
+        <Stack Value="CSwitch"/>
+        <Stack Value="HardFault"/>
+        <Stack Value="ImageLoad"/>
+      </Stacks>
+    </SystemProvider>
+
+    <!-- ================================================================ -->
+    <!-- ETW Providers — Hyper-V essentials only                          -->
+    <!-- ================================================================ -->
+
+    <!-- Root hypervisor: VM exits/entries, intercepts, partition ops -->
+    <EventProvider Id="HyperVHypervisor"
+                   Name="Microsoft-Windows-Hyper-V-Hypervisor"
+                   Level="5" NonPagedMemory="true">
+      <Keywords><Keyword Value="0xFFFFFFFFFFFFFFFF"/></Keywords>
+    </EventProvider>
+
+    <!-- VID: GPA mapping, memory partitioning, VP management -->
+    <EventProvider Id="HyperVVID"
+                   Name="Microsoft-Windows-Hyper-V-VID"
+                   Level="5">
+      <Keywords><Keyword Value="0xFFFFFFFFFFFFFFFF"/></Keywords>
+    </EventProvider>
+
+    <!-- Process create/exit with command lines -->
+    <EventProvider Id="KernelProcess"
+                   Name="Microsoft-Windows-Kernel-Process"
+                   Level="5">
+      <Keywords><Keyword Value="0x70"/></Keywords>
+    </EventProvider>
+
+    <!-- Host memory: VirtualAlloc/Free backing GPA ranges (vmem_create phase) -->
+    <EventProvider Id="KernelMemory"
+                   Name="Microsoft-Windows-Kernel-Memory"
+                   Level="4">
+      <!-- 0x60: KERNEL_MEM_KEYWORD_VIRTUAL_ALLOC | KERNEL_MEM_KEYWORD_MEMINFO -->
+      <Keywords><Keyword Value="0x60"/></Keywords>
+    </EventProvider>
+
+    <!-- File I/O: kernel ELF, initrd, ramfs reads (kernel_load/initrd_load phases) -->
+    <EventProvider Id="KernelFile"
+                   Name="Microsoft-Windows-Kernel-File"
+                   Level="4">
+      <!-- 0x12: KERNEL_FILE_KEYWORD_READ | KERNEL_FILE_KEYWORD_FILENAME -->
+      <Keywords><Keyword Value="0x12"/></Keywords>
+    </EventProvider>
+
+    <!-- Interrupts: host interrupt servicing during VM exit handling -->
+    <EventProvider Id="KernelInterrupt"
+                   Name="Microsoft-Windows-Kernel-Interrupt"
+                   Level="4">
+      <!-- 0x2: ISR events only (no verbose tracing) -->
+      <Keywords><Keyword Value="0x2"/></Keywords>
+    </EventProvider>
+
+    <!-- DPCs: deferred procedure calls during VM exit/re-entry -->
+    <EventProvider Id="KernelDpc"
+                   Name="Microsoft-Windows-Kernel-DPC"
+                   Level="4">
+      <!-- 0x1: DPC execution events -->
+      <Keywords><Keyword Value="0x1"/></Keywords>
+    </EventProvider>
+
+    <!-- ================================================================ -->
+    <!-- Profile                                                          -->
+    <!-- ================================================================ -->
+
+    <Profile Id="NanvixBench.Verbose.File"
+             LoggingMode="File"
+             Name="NanvixBench"
+             DetailLevel="Verbose"
+             Description="Lightweight trace for Nanvix VM benchmarks: CPU sampling, context switches, hard faults, Hyper-V hypervisor/VID, memory alloc, file I/O, interrupts, and DPCs">
+      <Collectors>
+
+        <SystemCollectorId Value="SystemCollector">
+          <SystemProviderId Value="SystemProvider"/>
+        </SystemCollectorId>
+
+        <EventCollectorId Value="EventCollector">
+          <EventProviders>
+            <EventProviderId Value="HyperVHypervisor"/>
+            <EventProviderId Value="HyperVVID"/>
+            <EventProviderId Value="KernelProcess"/>
+            <EventProviderId Value="KernelMemory"/>
+            <EventProviderId Value="KernelFile"/>
+            <EventProviderId Value="KernelInterrupt"/>
+            <EventProviderId Value="KernelDpc"/>
+          </EventProviders>
+        </EventCollectorId>
+
+      </Collectors>
+    </Profile>
+
+  </Profiles>
+</WindowsPerformanceRecorder>
