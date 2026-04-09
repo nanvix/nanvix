@@ -13,6 +13,7 @@
 
 use crate::config::{
     CONTROL_PLANE_ACCEPT_TIMEOUT,
+    MAX_CONCURRENT_CONTROL_PLANE_HANDLERS,
     MAX_EARLY_CONTROL_PLANE_CONNECTIONS,
     MAX_WEAK_UPGRADE_RETRIES,
 };
@@ -46,6 +47,7 @@ use ::tokio::{
         },
         Mutex,
         MutexGuard,
+        Semaphore,
     },
     task::{
         AbortHandle,
@@ -94,6 +96,8 @@ pub struct ControlPlaneAcceptor {
     _listener_socket_type: SocketType,
     state: Mutex<ControlPlaneAcceptorState>,
     accept_task: AbortHandle,
+    /// Limits the number of concurrent in-flight connection handler tasks.
+    handler_semaphore: Arc<Semaphore>,
 }
 
 //==================================================================================================
@@ -157,6 +161,7 @@ impl ControlPlaneAcceptor {
                 _listener_socket_type: listener_socket_type,
                 state: Mutex::new(ControlPlaneAcceptorState::default()),
                 accept_task: accept_task.abort_handle(),
+                handler_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_CONTROL_PLANE_HANDLERS)),
             }
         })
     }
@@ -303,6 +308,10 @@ impl ControlPlaneAcceptor {
     ///
     /// Runs the background accept loop and routes accepted streams to pending waiters.
     ///
+    /// Each accepted connection is handled in its own spawned task so that a slow or
+    /// half-open connection (one that completes the transport handshake but never sends a
+    /// registration message) cannot block subsequent accepts.
+    ///
     /// # Arguments
     ///
     /// This function does not return under normal operation.
@@ -312,7 +321,7 @@ impl ControlPlaneAcceptor {
             // Accept new connection.
             let accept_result: Result<SocketStream, ::std::io::Error> =
                 self.listener.accept().await;
-            let mut stream: SocketStream = match accept_result {
+            let stream: SocketStream = match accept_result {
                 Ok(stream) => stream,
                 Err(error) => {
                     error!("run(): failed to accept control-plane connection (error={error:?})");
@@ -320,50 +329,85 @@ impl ControlPlaneAcceptor {
                 },
             };
 
-            // Read peer from connection.
-            let peer: ControlPlanePeer =
-                match timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, Self::read_registration(&mut stream))
-                    .await
-                {
-                    Ok(Ok(peer)) => peer,
-                    Ok(Err(error)) => {
-                        warn!(
-                            "run(): dropping control-plane connection with invalid registration \
-                             (error={error:?})"
-                        );
-                        continue;
-                    },
-                    Err(error) => {
-                        warn!(
-                            "run(): dropping control-plane connection after registration timeout \
-                             (error={error:?})"
-                        );
-                        continue;
-                    },
-                };
-
-            // Notify awaiting peer, or store peer in early arrivals.
-            let mut state: MutexGuard<'_, ControlPlaneAcceptorState> = self.state.lock().await;
-            if let Some(waiter) = state.pending.remove(&peer) {
-                if waiter.send(stream).is_err() {
-                    warn!("run(): waiter dropped before control-plane delivery ({peer:?})");
+            // Spawn a task to read the registration and route the stream. This prevents a
+            // single slow connection from blocking the entire accept loop.
+            let permit = match self.handler_semaphore.clone().try_acquire_owned() {
+                Ok(permit) => permit,
+                Err(_) => {
+                    warn!("run(): dropping connection, handler concurrency limit reached");
+                    drop(stream);
+                    continue;
+                },
+            };
+            let acceptor: Weak<Self> = Arc::downgrade(&self);
+            spawn(async move {
+                if let Some(acceptor) = acceptor.upgrade() {
+                    acceptor.handle_connection(stream).await;
                 }
-                continue;
-            }
-
-            // Evict the oldest buffered connection if the early buffer is at capacity.
-            if state.early.len() >= MAX_EARLY_CONTROL_PLANE_CONNECTIONS {
-                if let Some(evicted) = state.early.keys().next().cloned() {
-                    warn!(
-                        "run(): evicting oldest early control-plane connection ({evicted:?}) to \
-                         make room"
-                    );
-                    state.early.remove(&evicted);
-                }
-            }
-            warn!("run(): buffering early control-plane connection ({peer:?})");
-            state.early.insert(peer, stream);
+                drop(permit);
+            });
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reads the registration from an accepted connection and routes it to the appropriate
+    /// pending waiter or the early-arrival buffer.
+    ///
+    /// # Arguments
+    ///
+    /// - `stream`: Newly accepted control-plane stream.
+    ///
+    /// # Returns
+    ///
+    /// This function does not return a value.
+    ///
+    async fn handle_connection(self: Arc<Self>, mut stream: SocketStream) {
+        // Read peer from connection.
+        let peer: ControlPlanePeer =
+            match timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, Self::read_registration(&mut stream)).await
+            {
+                Ok(Ok(peer)) => peer,
+                Ok(Err(error)) => {
+                    warn!(
+                        "handle_connection(): dropping control-plane connection with invalid \
+                         registration (error={error:?})"
+                    );
+                    return;
+                },
+                Err(error) => {
+                    warn!(
+                        "handle_connection(): dropping control-plane connection after \
+                         registration timeout (error={error:?})"
+                    );
+                    return;
+                },
+            };
+
+        // Notify awaiting peer, or store peer in early arrivals.
+        let mut state: MutexGuard<'_, ControlPlaneAcceptorState> = self.state.lock().await;
+        if let Some(waiter) = state.pending.remove(&peer) {
+            if waiter.send(stream).is_err() {
+                warn!(
+                    "handle_connection(): waiter dropped before control-plane delivery ({peer:?})"
+                );
+            }
+            return;
+        }
+
+        // Evict an existing buffered connection if the early buffer is at capacity.
+        if state.early.len() >= MAX_EARLY_CONTROL_PLANE_CONNECTIONS {
+            if let Some(evicted) = state.early.keys().next().cloned() {
+                warn!(
+                    "handle_connection(): evicting buffered early control-plane connection \
+                     ({evicted:?}) to make room"
+                );
+                state.early.remove(&evicted);
+            }
+        }
+        warn!("handle_connection(): buffering early control-plane connection ({peer:?})");
+        state.early.insert(peer, stream);
     }
 
     ///
@@ -506,8 +550,24 @@ mod tests {
             .expect("to_bytes failed");
         let _client: SocketStream = connect_and_register(&addr, &registration).await;
 
-        // Small delay to let the acceptor loop buffer the connection.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        // Wait until the accept loop actually buffers the early connection.
+        timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, async {
+            loop {
+                let buffered: bool = {
+                    let state = acceptor.state.lock().await;
+                    state
+                        .early
+                        .contains_key(&ControlPlanePeer::LinuxDaemon(tenant_id.to_string()))
+                };
+                if buffered {
+                    break;
+                }
+                tokio::task::yield_now().await;
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("timed out waiting for early connection to be buffered");
 
         let rx: Receiver<SocketStream> = acceptor
             .register_linuxd(tenant_id)
@@ -547,8 +607,24 @@ mod tests {
             .expect("to_bytes failed");
         let _client: SocketStream = connect_and_register(&addr, &registration).await;
 
-        // Wait for the connection to be buffered.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        // Wait until the accept loop actually buffers the early connection.
+        timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, async {
+            loop {
+                let buffered: bool = {
+                    let state = acceptor.state.lock().await;
+                    state
+                        .early
+                        .contains_key(&ControlPlanePeer::LinuxDaemon(tenant_id.to_string()))
+                };
+                if buffered {
+                    break;
+                }
+                tokio::task::yield_now().await;
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("timed out waiting for early connection to be buffered");
 
         // Unregister should drop the buffered entry even though nothing was pending.
         acceptor.unregister_linuxd(tenant_id).await;
@@ -562,6 +638,169 @@ mod tests {
         // The channel should not resolve immediately since the early buffer was cleaned.
         let result = tokio::time::timeout(std::time::Duration::from_millis(300), rx).await;
         assert!(result.is_err(), "should timeout because early entry was cleaned");
+    }
+
+    /// Reproduction test for issue #1996: after a successful linuxd register+deliver cycle, a
+    /// second register+deliver for the **same** tenant_id must succeed without timeout.
+    #[tokio::test]
+    async fn reregister_same_tenant_after_delivery_succeeds() {
+        let (acceptor, addr) = setup_acceptor().await;
+        let tenant_id: &str = "runner";
+        let registration: Vec<u8> = ControlPlaneRegistrationMessage::for_linuxd(tenant_id)
+            .expect("for_linuxd failed")
+            .to_bytes()
+            .expect("to_bytes failed");
+
+        // --- First cycle (simulates first nanvixd invocation) ---
+        let rx1: Receiver<SocketStream> = acceptor
+            .register_linuxd(tenant_id)
+            .await
+            .expect("first register failed");
+
+        let _client1: SocketStream = connect_and_register(&addr, &registration).await;
+
+        let stream1: SocketStream = timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, rx1)
+            .await
+            .expect("timed out waiting for first delivery")
+            .expect("channel error on first delivery");
+        // Drop the delivered stream to simulate cleanup / linuxd shutdown.
+        drop(stream1);
+
+        // --- Second cycle (simulates second nanvixd invocation for same tenant) ---
+        let rx2: Receiver<SocketStream> = acceptor
+            .register_linuxd(tenant_id)
+            .await
+            .expect("second register failed");
+
+        let _client2: SocketStream = connect_and_register(&addr, &registration).await;
+
+        let _stream2: SocketStream = timeout(std::time::Duration::from_secs(5), rx2)
+            .await
+            .expect("timed out waiting for second delivery (issue #1996)")
+            .expect("channel error on second delivery");
+    }
+
+    /// Reproduction test for issue #1996 variant: a stale early-buffer entry from the first run
+    /// must not be served to the second register call after the first linuxd was cleaned up.
+    #[tokio::test]
+    async fn stale_early_entry_not_served_after_cleanup() {
+        let (acceptor, addr) = setup_acceptor().await;
+        let tenant_id: &str = "runner";
+        let registration: Vec<u8> = ControlPlaneRegistrationMessage::for_linuxd(tenant_id)
+            .expect("for_linuxd failed")
+            .to_bytes()
+            .expect("to_bytes failed");
+
+        // --- First cycle: normal register + deliver ---
+        let rx1: Receiver<SocketStream> = acceptor
+            .register_linuxd(tenant_id)
+            .await
+            .expect("first register failed");
+
+        let _client1: SocketStream = connect_and_register(&addr, &registration).await;
+
+        let stream1: SocketStream = timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, rx1)
+            .await
+            .expect("timed out waiting for first delivery")
+            .expect("channel error on first delivery");
+
+        // Simulate cleanup: drop the old stream but do NOT call unregister (matches real
+        // SandboxCache::cleanup which does not call unregister_linuxd).
+        drop(stream1);
+
+        // Simulate the old linuxd reconnecting (or a stale connection arriving) before the second
+        // register. This connection should land in the early buffer.
+        let _stale_client: SocketStream = connect_and_register(&addr, &registration).await;
+
+        // Wait until the accept loop actually buffers the early connection.
+        timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, async {
+            loop {
+                let buffered: bool = {
+                    let state = acceptor.state.lock().await;
+                    state
+                        .early
+                        .contains_key(&ControlPlanePeer::LinuxDaemon(tenant_id.to_string()))
+                };
+                if buffered {
+                    break;
+                }
+                tokio::task::yield_now().await;
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("timed out waiting for early connection to be buffered");
+
+        // Unregister simulates what a corrected cleanup path should do.
+        acceptor.unregister_linuxd(tenant_id).await;
+
+        // --- Second cycle ---
+        let rx2: Receiver<SocketStream> = acceptor
+            .register_linuxd(tenant_id)
+            .await
+            .expect("second register failed");
+
+        // Connect the REAL second linuxd.
+        let _client2: SocketStream = connect_and_register(&addr, &registration).await;
+
+        let _stream2: SocketStream = timeout(std::time::Duration::from_secs(5), rx2)
+            .await
+            .expect("timed out waiting for second delivery")
+            .expect("channel error on second delivery");
+    }
+
+    /// Reproduction test for issue #1996 blocking variant: a half-open stale connection that
+    /// blocks the single-threaded accept loop can prevent subsequent registrations from being
+    /// served.
+    #[tokio::test]
+    async fn half_open_stale_connection_does_not_block_new_delivery() {
+        let (acceptor, addr) = setup_acceptor().await;
+        let tenant_id: &str = "runner";
+        let registration: Vec<u8> = ControlPlaneRegistrationMessage::for_linuxd(tenant_id)
+            .expect("for_linuxd failed")
+            .to_bytes()
+            .expect("to_bytes failed");
+
+        // --- First cycle: normal register + deliver ---
+        let rx1: Receiver<SocketStream> = acceptor
+            .register_linuxd(tenant_id)
+            .await
+            .expect("first register failed");
+
+        let _client1: SocketStream = connect_and_register(&addr, &registration).await;
+
+        let stream1: SocketStream = timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, rx1)
+            .await
+            .expect("timed out waiting for first delivery")
+            .expect("channel error on first delivery");
+        drop(stream1);
+
+        // Inject a half-open connection: connect to the acceptor but do NOT send any registration
+        // data. This simulates a dying process that completed the TCP handshake but never sent
+        // its registration message.
+        let _half_open: SocketStream = UnboundSocket::new(SocketType::Tcp)
+            .connect(&addr)
+            .await
+            .expect("half-open connect failed");
+
+        // --- Second cycle: must not be blocked by the half-open connection ---
+        let rx2: Receiver<SocketStream> = acceptor
+            .register_linuxd(tenant_id)
+            .await
+            .expect("second register failed");
+
+        let _client2: SocketStream = connect_and_register(&addr, &registration).await;
+
+        // Use a 5-second timeout — well under the 60-second read_registration timeout.
+        // If the accept loop is single-threaded and blocked by the half-open connection,
+        // this will fail.
+        let _stream2: SocketStream = timeout(std::time::Duration::from_secs(5), rx2)
+            .await
+            .expect(
+                "timed out waiting for second delivery — accept loop likely blocked by half-open \
+                 connection (issue #1996)",
+            )
+            .expect("channel error on second delivery");
     }
 
     #[tokio::test]
