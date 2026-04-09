@@ -431,6 +431,12 @@ impl ControlPlaneAcceptor {
             header[ControlPlaneRegistrationMessage::TENANT_ID_LEN_OFFSET],
             header[ControlPlaneRegistrationMessage::TENANT_ID_LEN_OFFSET + 1],
         ]));
+        if tenant_id_len > ControlPlaneRegistrationMessage::MAX_TENANT_ID_LEN {
+            anyhow::bail!(
+                "tenant_id length {tenant_id_len} exceeds maximum {}",
+                ControlPlaneRegistrationMessage::MAX_TENANT_ID_LEN
+            );
+        }
         let mut tenant_id_bytes: Vec<u8> = vec![0u8; tenant_id_len];
         if tenant_id_len > 0 {
             stream.read_exact(&mut tenant_id_bytes).await?;
@@ -474,7 +480,10 @@ impl Drop for ControlPlaneAcceptor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ::control_plane_api::ControlPlaneRegistrationMessage;
+    use ::control_plane_api::{
+        ControlPlanePeerKind,
+        ControlPlaneRegistrationMessage,
+    };
     use ::syscomm::{
         SocketType,
         UnboundSocket,
@@ -839,5 +848,55 @@ mod tests {
             .await
             .expect("timed out B")
             .expect("channel error B");
+    }
+
+    #[tokio::test]
+    async fn oversized_tenant_id_rejected() {
+        let (acceptor, addr) = setup_acceptor().await;
+
+        // Build a raw registration message with tenant_id_len exceeding MAX_TENANT_ID_LEN.
+        let oversized_len: u16 =
+            (ControlPlaneRegistrationMessage::MAX_TENANT_ID_LEN as u16).saturating_add(1);
+        let mut header: [u8; ControlPlaneRegistrationMessage::HEADER_SIZE] =
+            [0u8; ControlPlaneRegistrationMessage::HEADER_SIZE];
+        // Peer kind = LinuxDaemon.
+        header[ControlPlaneRegistrationMessage::PEER_KIND_OFFSET] =
+            ControlPlanePeerKind::LinuxDaemon.into();
+        // tenant_id_len in little-endian.
+        let len_bytes: [u8; 2] = oversized_len.to_le_bytes();
+        header[ControlPlaneRegistrationMessage::TENANT_ID_LEN_OFFSET] = len_bytes[0];
+        header[ControlPlaneRegistrationMessage::TENANT_ID_LEN_OFFSET + 1] = len_bytes[1];
+
+        let tenant_id_payload: Vec<u8> = vec![b'x'; oversized_len as usize];
+        let mut wire: Vec<u8> = Vec::with_capacity(header.len() + tenant_id_payload.len());
+        wire.extend_from_slice(&header);
+        wire.extend_from_slice(&tenant_id_payload);
+
+        let _client: SocketStream = connect_and_register(&addr, &wire).await;
+
+        // Small delay so the acceptor has time to process (and reject) the connection.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // A subsequent valid registration must still succeed, proving the acceptor was not
+        // disrupted by the oversized message.
+        let tenant_id: &str = "tenant-valid";
+        let registration: Vec<u8> = ControlPlaneRegistrationMessage::for_linuxd(tenant_id)
+            .expect("for_linuxd failed")
+            .to_bytes()
+            .expect("to_bytes failed");
+        let _client2: SocketStream = connect_and_register(&addr, &registration).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        let rx: Receiver<SocketStream> = acceptor
+            .register_linuxd(tenant_id)
+            .await
+            .expect("register failed");
+
+        let delivered: SocketStream = timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, rx)
+            .await
+            .expect("timed out waiting for delivery")
+            .expect("channel error");
+        drop(delivered);
     }
 }
