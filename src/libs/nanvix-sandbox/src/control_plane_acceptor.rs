@@ -14,6 +14,7 @@
 use crate::config::{
     CONTROL_PLANE_ACCEPT_TIMEOUT,
     MAX_EARLY_CONTROL_PLANE_CONNECTIONS,
+    MAX_WEAK_UPGRADE_RETRIES,
 };
 use ::anyhow::Result;
 use ::control_plane_api::ControlPlaneRegistrationMessage;
@@ -126,14 +127,28 @@ impl ControlPlaneAcceptor {
         Arc::new_cyclic(|weak_self: &Weak<Self>| {
             let weak_self: Weak<Self> = weak_self.clone();
             let accept_task: JoinHandle<()> = spawn(async move {
-                // Yield once so that `Arc::new_cyclic` finishes setting the strong reference
-                // count before we attempt to upgrade the weak reference. Without this yield, a
-                // worker thread may poll this future before `new_cyclic` returns, causing
-                // `upgrade()` to return `None` and the accept loop to silently never start.
-                tokio::task::yield_now().await;
+                // Try to upgrade immediately in case `Arc::new_cyclic` already finished
+                // setting the strong reference count before this task was first polled.
                 if let Some(acceptor) = weak_self.upgrade() {
                     acceptor.run().await;
+                    return;
                 }
+
+                // Yield until `Arc::new_cyclic` finishes setting the strong reference count. A
+                // single yield is not enough: in a multi-threaded runtime a different worker
+                // thread can re-poll this future before the originating thread completes
+                // `new_cyclic`, causing `upgrade()` to return `None`.
+                for _ in 0..MAX_WEAK_UPGRADE_RETRIES {
+                    tokio::task::yield_now().await;
+                    if let Some(acceptor) = weak_self.upgrade() {
+                        acceptor.run().await;
+                        return;
+                    }
+                }
+                error!(
+                    "accept loop failed to start: could not upgrade weak reference after \
+                     {MAX_WEAK_UPGRADE_RETRIES} yield cycles"
+                );
             });
 
             Self {
