@@ -19,6 +19,7 @@ use crate::config::{
 };
 use ::anyhow::Result;
 use ::control_plane_api::ControlPlaneRegistrationMessage;
+use ::indexmap::IndexMap;
 use ::log::{
     debug,
     error,
@@ -81,8 +82,8 @@ enum ControlPlanePeer {
 struct ControlPlaneAcceptorState {
     /// Registered peers pending to connect to the sandbox cache.
     pending: HashMap<ControlPlanePeer, Sender<SocketStream>>,
-    /// Peers that arrived before a request to register them.
-    early: HashMap<ControlPlanePeer, SocketStream>,
+    /// Peers that arrived before a request to register them (insertion-ordered for FIFO eviction).
+    early: IndexMap<ControlPlanePeer, SocketStream>,
 }
 
 ///
@@ -264,7 +265,7 @@ impl ControlPlaneAcceptor {
 
         // If the notification from the peer arrived early, still return a oneshot channel but
         // immediately send the result.
-        if let Some(stream) = state.early.remove(&peer) {
+        if let Some(stream) = state.early.shift_remove(&peer) {
             if tx.send(stream).is_err() {
                 let reason: String =
                     format!("failed to deliver buffered control-plane connection ({peer:?})");
@@ -298,7 +299,7 @@ impl ControlPlaneAcceptor {
         if state.pending.remove(peer).is_some() {
             debug!("unregister(): removed pending control-plane waiter ({peer:?})");
         }
-        if state.early.remove(peer).is_some() {
+        if state.early.shift_remove(peer).is_some() {
             debug!("unregister(): dropped buffered early control-plane connection ({peer:?})");
         }
     }
@@ -396,14 +397,16 @@ impl ControlPlaneAcceptor {
             return;
         }
 
-        // Evict an existing buffered connection if the early buffer is at capacity.
-        if state.early.len() >= MAX_EARLY_CONTROL_PLANE_CONNECTIONS {
-            if let Some(evicted) = state.early.keys().next().cloned() {
+        // Evict the oldest buffered connection if the early buffer is at capacity and the
+        // incoming peer is not already present.
+        if state.early.len() >= MAX_EARLY_CONTROL_PLANE_CONNECTIONS
+            && !state.early.contains_key(&peer)
+        {
+            if let Some((evicted, _)) = state.early.shift_remove_index(0) {
                 warn!(
-                    "handle_connection(): evicting buffered early control-plane connection \
+                    "handle_connection(): evicting oldest early control-plane connection \
                      ({evicted:?}) to make room"
                 );
-                state.early.remove(&evicted);
             }
         }
         warn!("handle_connection(): buffering early control-plane connection ({peer:?})");
@@ -898,5 +901,79 @@ mod tests {
             .expect("timed out waiting for delivery")
             .expect("channel error");
         drop(delivered);
+    }
+
+    #[tokio::test]
+    async fn early_buffer_full_evicts_oldest_peer() {
+        let (acceptor, addr) = setup_acceptor().await;
+
+        // Pre-fill the early buffer to capacity with synthetic peers.  We use the internal state
+        // directly so we do not need MAX_EARLY_CONTROL_PLANE_CONNECTIONS real TCP connections.
+        {
+            let mut state = acceptor.state.lock().await;
+            for i in 0..MAX_EARLY_CONTROL_PLANE_CONNECTIONS {
+                let peer = ControlPlanePeer::UserVm(UserVmIdentifier::new(i as u32));
+                // We need a dummy SocketStream; create a loopback pair and use one end.
+                let listener = UnboundSocket::new(SocketType::Tcp)
+                    .bind("127.0.0.1:0")
+                    .await
+                    .expect("bind failed");
+                let dummy_addr: String = match &listener {
+                    SocketListener::Tcp { listener, .. } => {
+                        let bound = listener.local_addr().expect("local_addr failed");
+                        format!("127.0.0.1:{}", bound.port())
+                    },
+                    #[cfg(unix)]
+                    _ => unreachable!(),
+                };
+                let connect_fut = UnboundSocket::new(SocketType::Tcp).connect(&dummy_addr);
+                let accept_fut = listener.accept();
+                let (client, server) = tokio::join!(connect_fut, accept_fut);
+                let _client = client.expect("connect failed");
+                let server_stream = server.expect("accept failed");
+                state.early.insert(peer, server_stream);
+            }
+            assert_eq!(state.early.len(), MAX_EARLY_CONTROL_PLANE_CONNECTIONS);
+        }
+
+        // Connect one more peer through the real accept loop — this should evict peer 0 (the
+        // oldest insertion).
+        let new_tenant: &str = "tenant-overflow";
+        let registration: Vec<u8> = ControlPlaneRegistrationMessage::for_linuxd(new_tenant)
+            .expect("for_linuxd failed")
+            .to_bytes()
+            .expect("to_bytes failed");
+        let _client = connect_and_register(&addr, &registration).await;
+
+        // Wait for the acceptor loop to process the connection.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // Verify state: the oldest peer (UserVm 0) should have been evicted, and the new peer
+        // should be present.
+        let state = acceptor.state.lock().await;
+        assert_eq!(
+            state.early.len(),
+            MAX_EARLY_CONTROL_PLANE_CONNECTIONS,
+            "buffer should still be at capacity after eviction + insertion"
+        );
+        assert!(
+            !state
+                .early
+                .contains_key(&ControlPlanePeer::UserVm(UserVmIdentifier::new(0))),
+            "oldest peer (UserVm 0) should have been evicted"
+        );
+        // The second-oldest should still be present.
+        assert!(
+            state
+                .early
+                .contains_key(&ControlPlanePeer::UserVm(UserVmIdentifier::new(1))),
+            "second peer (UserVm 1) should still be buffered"
+        );
+        assert!(
+            state
+                .early
+                .contains_key(&ControlPlanePeer::LinuxDaemon(new_tenant.to_string())),
+            "newly arrived peer should be buffered"
+        );
     }
 }
