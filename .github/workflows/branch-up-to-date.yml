@@ -164,7 +164,7 @@ jobs:
 
       - name: "Comment on PR when branch is behind or contains merge commits"
         if: ${{ github.event_name == 'pull_request' && steps.final_status.outputs.up_to_date == 'false' }}
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const number = context.payload.pull_request.number;
