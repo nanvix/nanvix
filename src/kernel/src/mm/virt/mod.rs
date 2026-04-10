@@ -44,6 +44,7 @@ use ::arch::{
             PageTableEntryFlags,
             PageWriteThroughFlag,
             PresentFlag,
+            PteWord,
             ReadWriteFlag,
             UserSupervisorFlag,
         },
@@ -94,7 +95,7 @@ const PAGE_TABLE_LENGTH: usize = mem::PAGE_SIZE / PageTableEntry::SIZE;
 /// Page-aligned BSS storage for boot page tables and the root page directory.
 #[repr(align(4096))]
 struct BootPageTableStorage {
-    tables: [[u32; PAGE_TABLE_LENGTH]; NUM_BOOT_SLOTS],
+    tables: [[PteWord; PAGE_TABLE_LENGTH]; NUM_BOOT_SLOTS],
 }
 
 ::static_assert::assert_eq_align!(BootPageTableStorage, mem::PAGE_SIZE);
@@ -146,7 +147,7 @@ pub(crate) unsafe fn seal_boot_allocator() {
 /// Allocates the next page-aligned boot slot from BSS storage.
 ///
 /// This is a simple bump allocator used during early kernel initialization before the kernel page
-/// pool is available. Each slot is exactly one page (4096 bytes) of `[u32; 1024]`.
+/// pool is available. Each slot is exactly one page (4096 bytes) of `[PteWord; PAGE_TABLE_LENGTH]`.
 ///
 /// # Panics
 ///
@@ -156,7 +157,7 @@ pub(crate) unsafe fn seal_boot_allocator() {
 ///
 /// This function mutates global state and must only be called during single-threaded kernel init.
 ///
-pub(crate) unsafe fn alloc_boot_slot() -> &'static mut [u32; PAGE_TABLE_LENGTH] {
+pub(crate) unsafe fn alloc_boot_slot() -> &'static mut [PteWord; PAGE_TABLE_LENGTH] {
     assert!(!*BOOT_SEALED.0.get(), "boot allocator is sealed; allocations are no longer allowed");
     let next: *mut usize = BOOT_SLOT_NEXT.0.get();
     let idx: usize = *next;
@@ -171,19 +172,19 @@ pub(crate) unsafe fn alloc_boot_slot() -> &'static mut [u32; PAGE_TABLE_LENGTH] 
 
 pub enum PageTableStorage {
     /// Boot-time BSS-backed storage, allocated via `alloc_boot_slot()`.
-    Bss(&'static mut [u32; PAGE_TABLE_LENGTH]),
+    Bss(&'static mut [PteWord; PAGE_TABLE_LENGTH]),
     /// Runtime storage backed by a kernel page from the page pool.
     KernelPage(KernelPage),
 }
 
 impl Deref for PageTableStorage {
-    type Target = [u32];
+    type Target = [PteWord];
 
     fn deref(&self) -> &Self::Target {
         match self {
             Self::Bss(entries) => entries.as_slice(),
             Self::KernelPage(page) => {
-                let base: *const u32 = page.base().into_raw_value() as *const u32;
+                let base: *const PteWord = page.base().into_raw_value() as *const PteWord;
                 unsafe { core::slice::from_raw_parts(base, PAGE_TABLE_LENGTH) }
             },
         }
@@ -195,7 +196,7 @@ impl DerefMut for PageTableStorage {
         match self {
             Self::Bss(entries) => entries.as_mut_slice(),
             Self::KernelPage(page) => {
-                let base: *mut u32 = page.base().into_raw_value() as *mut u32;
+                let base: *mut PteWord = page.base().into_raw_value() as *mut PteWord;
                 unsafe { core::slice::from_raw_parts_mut(base, PAGE_TABLE_LENGTH) }
             },
         }
@@ -204,7 +205,7 @@ impl DerefMut for PageTableStorage {
 
 pub enum PageDirectoryStorage {
     /// Boot-time BSS-backed storage, allocated via `alloc_boot_slot()`.
-    Bss(&'static mut [u32; PAGE_TABLE_LENGTH]),
+    Bss(&'static mut [PteWord; PAGE_TABLE_LENGTH]),
     /// Runtime storage backed by a kernel page from the page pool.
     KernelPage(KernelPage),
 }
@@ -228,13 +229,13 @@ impl PageDirectoryStorage {
 }
 
 impl Deref for PageDirectoryStorage {
-    type Target = [u32];
+    type Target = [PteWord];
 
     fn deref(&self) -> &Self::Target {
         match self {
             Self::Bss(entries) => entries.as_slice(),
             Self::KernelPage(page) => {
-                let base: *const u32 = page.base().into_raw_value() as *const u32;
+                let base: *const PteWord = page.base().into_raw_value() as *const PteWord;
                 unsafe { core::slice::from_raw_parts(base, PAGE_TABLE_LENGTH) }
             },
         }
@@ -246,7 +247,7 @@ impl DerefMut for PageDirectoryStorage {
         match self {
             Self::Bss(entries) => entries.as_mut_slice(),
             Self::KernelPage(page) => {
-                let base: *mut u32 = page.base().into_raw_value() as *mut u32;
+                let base: *mut PteWord = page.base().into_raw_value() as *mut PteWord;
                 unsafe { core::slice::from_raw_parts_mut(base, PAGE_TABLE_LENGTH) }
             },
         }

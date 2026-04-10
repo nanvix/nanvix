@@ -23,6 +23,7 @@ use ::arch::mem::paging::{
     PageSizeFlag,
     PageWriteThroughFlag,
     PresentFlag,
+    PteWord,
     ReadWriteFlag,
     UserSupervisorFlag,
 };
@@ -41,7 +42,7 @@ use ::sys::error::{
 ///
 /// A type that represents a page directory.
 ///
-pub struct PageDirectory<T: DerefMut<Target = [u32]>> {
+pub struct PageDirectory<T: DerefMut<Target = [PteWord]>> {
     /// Entries.
     entries: T,
 }
@@ -50,7 +51,7 @@ pub struct PageDirectory<T: DerefMut<Target = [u32]>> {
 // Implementations
 //==================================================================================================
 
-impl<T: DerefMut<Target = [u32]>> PageDirectory<T> {
+impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
     pub fn new(entries: T) -> Self {
         let mut pgdir: PageDirectory<T> = PageDirectory { entries };
         pgdir.clean();
