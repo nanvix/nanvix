@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::{
-    mem,
+    mem::{
+        self,
+        paging::TableEntry,
+    },
     x86::mem::paging::{
         flags::{
             AccessedFlag,
@@ -363,5 +366,15 @@ impl PageTableEntry {
     ///
     pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
         self.flags.set_user_supervisor(user_supervisor);
+    }
+}
+
+impl TableEntry for PageTableEntry {
+    fn from_raw(raw: PteWord) -> Option<Self> {
+        Self::from_raw_value(raw)
+    }
+
+    fn raw(self) -> PteWord {
+        self.into_raw_value()
     }
 }
