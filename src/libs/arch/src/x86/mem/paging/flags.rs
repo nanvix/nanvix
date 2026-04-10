@@ -2,6 +2,12 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Imports
+//==================================================================================================
+
+use super::PteWord;
+
+//==================================================================================================
 // Enumerations
 //==================================================================================================
 
@@ -96,138 +102,170 @@ pub enum DirtyFlag {
     Dirty = (1 << Self::SHIFT),
 }
 
+///
+/// # Description
+///
+/// A type that represents the page size flag of a page directory entry.
+/// When set, the entry maps a large page (4 MiB on x86).
+///
+#[derive(Clone, Copy, Debug)]
+pub enum PageSizeFlag {
+    /// Standard page size (4 KiB page table reference).
+    Standard = 0,
+    /// Large page (PS bit set).
+    Large = (1 << Self::SHIFT),
+}
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
 impl PresentFlag {
     /// Bit shift of the present flag in the page table entry.
-    const SHIFT: u32 = 0;
+    const SHIFT: PteWord = 0;
     /// Bit mask of the present flag in the page table entry.
-    const MASK: u32 = (1 << Self::SHIFT);
+    const MASK: PteWord = (1 << Self::SHIFT);
 
-    pub fn from_raw_value(value: u32) -> Self {
+    pub fn from_raw_value(value: PteWord) -> Self {
         match value & Self::MASK {
             0 => PresentFlag::NotPresent,
             _ => PresentFlag::Present,
         }
     }
 
-    pub fn into_raw_value(self) -> u32 {
-        self as u32
+    pub fn into_raw_value(self) -> PteWord {
+        self as PteWord
     }
 
     /// Checks if the present bit is set in a raw page table entry value.
     #[inline(always)]
-    pub fn is_set(raw_entry: u32) -> bool {
+    pub fn is_set(raw_entry: PteWord) -> bool {
         raw_entry & Self::MASK != 0
     }
 }
 
 impl ReadWriteFlag {
     /// Bit shift of the read/write flag in the page table entry.
-    const SHIFT: u32 = 1;
+    const SHIFT: PteWord = 1;
     /// Bit mask of the read/write flag in the page table entry.
-    const MASK: u32 = (1 << Self::SHIFT);
+    const MASK: PteWord = (1 << Self::SHIFT);
 
-    pub fn from_raw_value(value: u32) -> Self {
+    pub fn from_raw_value(value: PteWord) -> Self {
         match value & Self::MASK {
             0 => ReadWriteFlag::ReadOnly,
             _ => ReadWriteFlag::ReadWrite,
         }
     }
 
-    pub fn into_raw_value(self) -> u32 {
-        self as u32
+    pub fn into_raw_value(self) -> PteWord {
+        self as PteWord
     }
 }
 
 impl UserSupervisorFlag {
     /// Bit shift of the user/supervisor flag in the page table entry.
-    const SHIFT: u32 = 2;
+    const SHIFT: PteWord = 2;
     /// Bit mask of the user/supervisor flag in the page table entry.
-    const MASK: u32 = (1 << Self::SHIFT);
+    const MASK: PteWord = (1 << Self::SHIFT);
 
-    pub fn from_raw_value(value: u32) -> Self {
+    pub fn from_raw_value(value: PteWord) -> Self {
         match value & Self::MASK {
             0 => UserSupervisorFlag::Supervisor,
             _ => UserSupervisorFlag::User,
         }
     }
 
-    pub fn into_raw_value(self) -> u32 {
-        self as u32
+    pub fn into_raw_value(self) -> PteWord {
+        self as PteWord
     }
 }
 
 impl PageWriteThroughFlag {
     /// Bit shift of the page write-through flag in the page table entry.
-    const SHIFT: u32 = 3;
+    const SHIFT: PteWord = 3;
     /// Bit mask of the page write-through flag in the page table entry.
-    const MASK: u32 = (1 << Self::SHIFT);
+    const MASK: PteWord = (1 << Self::SHIFT);
 
-    pub fn from_raw_value(value: u32) -> Self {
+    pub fn from_raw_value(value: PteWord) -> Self {
         match value & Self::MASK {
             0 => PageWriteThroughFlag::NotWriteThrough,
             _ => PageWriteThroughFlag::WriteThrough,
         }
     }
 
-    pub fn into_raw_value(self) -> u32 {
-        self as u32
+    pub fn into_raw_value(self) -> PteWord {
+        self as PteWord
     }
 }
 
 impl PageCacheDisableFlag {
     /// Bit shift of the page cache disable flag in the page table entry.
-    const SHIFT: u32 = 4;
+    const SHIFT: PteWord = 4;
     /// Bit mask of the page cache disable flag in the page table entry.
-    const MASK: u32 = (1 << Self::SHIFT);
+    const MASK: PteWord = (1 << Self::SHIFT);
 
-    pub fn from_raw_value(value: u32) -> Self {
+    pub fn from_raw_value(value: PteWord) -> Self {
         match value & Self::MASK {
             0 => PageCacheDisableFlag::CacheEnabled,
             _ => PageCacheDisableFlag::CacheDisabled,
         }
     }
 
-    pub fn into_raw_value(self) -> u32 {
-        self as u32
+    pub fn into_raw_value(self) -> PteWord {
+        self as PteWord
     }
 }
 
 impl AccessedFlag {
     /// Bit shift of the accessed flag in the page table entry.
-    const SHIFT: u32 = 5;
+    const SHIFT: PteWord = 5;
     /// Bit mask of the accessed flag in the page table entry.
-    const MASK: u32 = (1 << Self::SHIFT);
+    const MASK: PteWord = (1 << Self::SHIFT);
 
-    pub fn from_raw_value(value: u32) -> Self {
+    pub fn from_raw_value(value: PteWord) -> Self {
         match value & Self::MASK {
             0 => AccessedFlag::NotAccessed,
             _ => AccessedFlag::Accessed,
         }
     }
 
-    pub fn into_raw_value(self) -> u32 {
-        self as u32
+    pub fn into_raw_value(self) -> PteWord {
+        self as PteWord
     }
 }
 
 impl DirtyFlag {
     /// Bit shift of the dirty flag in the page table entry.
-    const SHIFT: u32 = 6;
+    const SHIFT: PteWord = 6;
     /// Bit mask of the dirty flag in the page table entry.
-    const MASK: u32 = (1 << Self::SHIFT);
+    const MASK: PteWord = (1 << Self::SHIFT);
 
-    pub fn from_raw_value(value: u32) -> Self {
+    pub fn from_raw_value(value: PteWord) -> Self {
         match value & Self::MASK {
             0 => DirtyFlag::NotDirty,
             _ => DirtyFlag::Dirty,
         }
     }
 
-    pub fn into_raw_value(self) -> u32 {
-        self as u32
+    pub fn into_raw_value(self) -> PteWord {
+        self as PteWord
+    }
+}
+
+impl PageSizeFlag {
+    /// Bit shift of the page size flag in the page directory entry.
+    const SHIFT: PteWord = 7;
+    /// Bit mask of the page size flag in the page directory entry.
+    const MASK: PteWord = (1 << Self::SHIFT);
+
+    pub fn from_raw_value(value: PteWord) -> Self {
+        match value & Self::MASK {
+            0 => PageSizeFlag::Standard,
+            _ => PageSizeFlag::Large,
+        }
+    }
+
+    pub fn into_raw_value(self) -> PteWord {
+        self as PteWord
     }
 }

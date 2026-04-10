@@ -20,8 +20,10 @@ use ::arch::mem::paging::{
     PageCacheDisableFlag,
     PageDirectoryEntry,
     PageDirectoryEntryFlags,
+    PageSizeFlag,
     PageWriteThroughFlag,
     PresentFlag,
+    PteWord,
     ReadWriteFlag,
     UserSupervisorFlag,
 };
@@ -40,7 +42,7 @@ use ::sys::error::{
 ///
 /// A type that represents a page directory.
 ///
-pub struct PageDirectory<T: DerefMut<Target = [u32]>> {
+pub struct PageDirectory<T: DerefMut<Target = [PteWord]>> {
     /// Entries.
     entries: T,
 }
@@ -49,7 +51,7 @@ pub struct PageDirectory<T: DerefMut<Target = [u32]>> {
 // Implementations
 //==================================================================================================
 
-impl<T: DerefMut<Target = [u32]>> PageDirectory<T> {
+impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
     pub fn new(entries: T) -> Self {
         let mut pgdir: PageDirectory<T> = PageDirectory { entries };
         pgdir.clean();
@@ -98,6 +100,7 @@ impl<T: DerefMut<Target = [u32]>> PageDirectory<T> {
                 PageCacheDisableFlag::CacheDisabled,
                 AccessedFlag::NotAccessed,
                 DirtyFlag::NotDirty,
+                PageSizeFlag::Standard,
             ),
             paddr.into_frame_number(),
         );
@@ -141,7 +144,7 @@ impl<T: DerefMut<Target = [u32]>> PageDirectory<T> {
         }
 
         // Retrieve frame address.
-        let paddr: FrameAddress = FrameAddress::from_frame_number(pde.frame())?;
+        let paddr: FrameAddress = FrameAddress::from_frame_number(pde.frame_number())?;
 
         // Construct page directory entry.
         let pde: PageDirectoryEntry = PageDirectoryEntry::new(
@@ -153,6 +156,7 @@ impl<T: DerefMut<Target = [u32]>> PageDirectory<T> {
                 PageCacheDisableFlag::CacheDisabled,
                 AccessedFlag::NotAccessed,
                 DirtyFlag::NotDirty,
+                PageSizeFlag::Standard,
             ),
             FrameNumber::NULL,
         );
