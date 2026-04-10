@@ -17,3 +17,25 @@ pub use flags::*;
 pub use frame::FrameNumber;
 pub use pde::*;
 pub use pte::*;
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Flushes the TLB entry for the page containing `vaddr`.
+///
+/// # Safety
+///
+/// Must be called from kernel mode (ring 0).
+///
+#[inline]
+pub unsafe fn invlpg(vaddr: usize) {
+    core::arch::asm!(
+        "invlpg ({0})",
+        in(reg) vaddr,
+        options(nostack, preserves_flags, att_syntax)
+    );
+}
