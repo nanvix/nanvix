@@ -18,6 +18,7 @@ use crate::{
             UserSupervisorFlag,
         },
         frame::FrameNumber,
+        PteWord,
     },
 };
 
@@ -101,7 +102,7 @@ impl PageTableEntryFlags {
     ///
     /// A [`PageTableEntryFlags`].
     ///
-    pub(crate) fn from_raw_value(value: u32) -> Self {
+    fn from_raw_value(value: PteWord) -> Self {
         Self {
             present: PresentFlag::from_raw_value(value),
             read_write: ReadWriteFlag::from_raw_value(value),
@@ -122,8 +123,8 @@ impl PageTableEntryFlags {
     ///
     /// The raw value.
     ///
-    pub(crate) fn into_raw_value(self) -> u32 {
-        let mut value: u32 = 0;
+    fn into_raw_value(self) -> PteWord {
+        let mut value: PteWord = 0;
 
         value |= self.present.into_raw_value();
         value |= self.read_write.into_raw_value();
@@ -225,8 +226,8 @@ pub struct PageTableEntry {
 }
 
 impl PageTableEntry {
-    /// Size in bytes of the hardware page table entry representation (32-bit encoded value).
-    pub const SIZE: usize = ::core::mem::size_of::<u32>();
+    /// Size in bytes of the hardware page table entry representation.
+    pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
 
     ///
     /// # Description
@@ -260,7 +261,7 @@ impl PageTableEntry {
     /// - `Some(`[`PageTableEntry`]`)`: If the raw value is valid.
     /// - `None`: Otherwise.
     ///
-    pub fn from_raw_value(value: u32) -> Option<Self> {
+    pub fn from_raw_value(value: PteWord) -> Option<Self> {
         Some(Self {
             flags: PageTableEntryFlags::from_raw_value(value),
             frame: FrameNumber::from_raw_value(value as usize >> mem::FRAME_SHIFT)?,
@@ -276,11 +277,11 @@ impl PageTableEntry {
     ///
     /// The raw value.
     ///
-    pub fn into_raw_value(self) -> u32 {
-        let mut value: u32 = 0;
+    pub fn into_raw_value(self) -> PteWord {
+        let mut value: PteWord = 0;
 
         value |= self.flags.into_raw_value();
-        value |= (self.frame.into_raw_value() << crate::mem::FRAME_SHIFT) as u32;
+        value |= (self.frame.into_raw_value() << crate::mem::FRAME_SHIFT) as PteWord;
 
         value
     }

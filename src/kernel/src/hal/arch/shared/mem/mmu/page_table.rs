@@ -22,6 +22,7 @@ use ::arch::mem::paging::{
     PageTableEntryFlags,
     PageWriteThroughFlag,
     PresentFlag,
+    PteWord,
     ReadWriteFlag,
     UserSupervisorFlag,
 };
@@ -39,7 +40,7 @@ use ::sys::error::{
 ///
 /// A type that represents a page table.
 ///
-pub struct PageTable<T: DerefMut<Target = [u32]>> {
+pub struct PageTable<T: DerefMut<Target = [PteWord]>> {
     /// Number of pages mapped in the page table.
     nmapped: usize,
     /// Entries.
@@ -50,7 +51,7 @@ pub struct PageTable<T: DerefMut<Target = [u32]>> {
 // Implementations
 //==================================================================================================
 
-impl<T: DerefMut<Target = [u32]>> PageTable<T> {
+impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
     pub fn new(entries: T) -> Self {
         let mut page_table: Self = Self {
             nmapped: 0,
