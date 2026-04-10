@@ -101,7 +101,7 @@ impl PageTableEntryFlags {
     ///
     /// A [`PageTableEntryFlags`].
     ///
-    fn from_raw_value(value: u32) -> Self {
+    pub(crate) fn from_raw_value(value: u32) -> Self {
         Self {
             present: PresentFlag::from_raw_value(value),
             read_write: ReadWriteFlag::from_raw_value(value),
@@ -122,7 +122,7 @@ impl PageTableEntryFlags {
     ///
     /// The raw value.
     ///
-    fn into_raw_value(self) -> u32 {
+    pub(crate) fn into_raw_value(self) -> u32 {
         let mut value: u32 = 0;
 
         value |= self.present.into_raw_value();
@@ -147,10 +147,63 @@ impl PageTableEntryFlags {
     ///
     #[inline(always)]
     pub fn is_present(&self) -> bool {
-        match self.present {
-            PresentFlag::Present => true,
-            PresentFlag::NotPresent => false,
-        }
+        matches!(self.present, PresentFlag::Present)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the user flag is set (i.e., user-mode access is allowed).
+    ///
+    /// # Returns
+    ///
+    /// `true` if the user flag is set, `false` otherwise.
+    ///
+    #[inline(always)]
+    pub fn is_user(&self) -> bool {
+        matches!(self.user_supervisor, UserSupervisorFlag::User)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the read/write flag is set (i.e., the page is writable).
+    ///
+    /// # Returns
+    ///
+    /// `true` if the page is writable, `false` otherwise.
+    ///
+    #[inline(always)]
+    pub fn is_writable(&self) -> bool {
+        matches!(self.read_write, ReadWriteFlag::ReadWrite)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets read/write flag.
+    ///
+    /// # Parameters
+    ///
+    /// - `read_write`: The read/write flag.
+    ///
+    #[inline(always)]
+    pub fn set_read_write(&mut self, read_write: ReadWriteFlag) {
+        self.read_write = read_write;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets user/supervisor flag.
+    ///
+    /// # Parameters
+    ///
+    /// - `user_supervisor`: The user/supervisor flag.
+    ///
+    #[inline(always)]
+    pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
+        self.user_supervisor = user_supervisor;
     }
 }
 
@@ -163,7 +216,7 @@ impl PageTableEntryFlags {
 ///
 /// A type that represents a page table entry.
 ///
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct PageTableEntry {
     /// Flags.
     flags: PageTableEntryFlags,
@@ -227,9 +280,22 @@ impl PageTableEntry {
         let mut value: u32 = 0;
 
         value |= self.flags.into_raw_value();
-        value |= (self.frame.into_raw_value() << mem::FRAME_SHIFT) as u32;
+        value |= (self.frame.into_raw_value() << crate::mem::FRAME_SHIFT) as u32;
 
         value
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the flags associated with the target page table entry.
+    ///
+    /// # Returns
+    ///
+    /// The flags.
+    ///
+    pub fn flags(&self) -> PageTableEntryFlags {
+        self.flags
     }
 
     ///
@@ -248,6 +314,19 @@ impl PageTableEntry {
     ///
     /// # Description
     ///
+    /// Returns the physical address (frame number × frame size) of the page frame.
+    ///
+    /// # Returns
+    ///
+    /// The physical address.
+    ///
+    pub fn frame_address(&self) -> usize {
+        self.frame.into_raw_value() << crate::mem::FRAME_SHIFT
+    }
+
+    ///
+    /// # Description
+    ///
     /// Checks if the target page table entry is marked as present.
     ///
     /// # Returns
@@ -256,10 +335,7 @@ impl PageTableEntry {
     /// `false`: Otherwise.
     ///
     pub fn is_present(&self) -> bool {
-        match self.flags.present {
-            PresentFlag::Present => true,
-            PresentFlag::NotPresent => false,
-        }
+        self.flags.is_present()
     }
 
     ///
@@ -272,7 +348,7 @@ impl PageTableEntry {
     /// - `read_write`: The read/write flag.
     ///
     pub fn set_read_write(&mut self, read_write: ReadWriteFlag) {
-        self.flags.read_write = read_write;
+        self.flags.set_read_write(read_write);
     }
 
     ///
@@ -285,6 +361,6 @@ impl PageTableEntry {
     /// - `user_supervisor`: The user/supervisor flag.
     ///
     pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
-        self.flags.user_supervisor = user_supervisor;
+        self.flags.set_user_supervisor(user_supervisor);
     }
 }

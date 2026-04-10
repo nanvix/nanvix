@@ -20,6 +20,7 @@ use ::arch::mem::paging::{
     PageCacheDisableFlag,
     PageDirectoryEntry,
     PageDirectoryEntryFlags,
+    PageSizeFlag,
     PageWriteThroughFlag,
     PresentFlag,
     ReadWriteFlag,
@@ -98,6 +99,7 @@ impl<T: DerefMut<Target = [u32]>> PageDirectory<T> {
                 PageCacheDisableFlag::CacheDisabled,
                 AccessedFlag::NotAccessed,
                 DirtyFlag::NotDirty,
+                PageSizeFlag::Standard,
             ),
             paddr.into_frame_number(),
         );
@@ -141,7 +143,7 @@ impl<T: DerefMut<Target = [u32]>> PageDirectory<T> {
         }
 
         // Retrieve frame address.
-        let paddr: FrameAddress = FrameAddress::from_frame_number(pde.frame())?;
+        let paddr: FrameAddress = FrameAddress::from_frame_number(pde.frame_number())?;
 
         // Construct page directory entry.
         let pde: PageDirectoryEntry = PageDirectoryEntry::new(
@@ -153,6 +155,7 @@ impl<T: DerefMut<Target = [u32]>> PageDirectory<T> {
                 PageCacheDisableFlag::CacheDisabled,
                 AccessedFlag::NotAccessed,
                 DirtyFlag::NotDirty,
+                PageSizeFlag::Standard,
             ),
             FrameNumber::NULL,
         );
