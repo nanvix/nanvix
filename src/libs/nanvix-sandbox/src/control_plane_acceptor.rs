@@ -15,7 +15,6 @@ use crate::config::{
     CONTROL_PLANE_ACCEPT_TIMEOUT,
     MAX_CONCURRENT_CONTROL_PLANE_HANDLERS,
     MAX_EARLY_CONTROL_PLANE_CONNECTIONS,
-    MAX_WEAK_UPGRADE_RETRIES,
 };
 use ::anyhow::Result;
 use ::control_plane_api::ControlPlaneRegistrationMessage;
@@ -96,7 +95,7 @@ pub struct ControlPlaneAcceptor {
     _listener_sockaddr: String,
     _listener_socket_type: SocketType,
     state: Mutex<ControlPlaneAcceptorState>,
-    accept_task: AbortHandle,
+    accept_task: std::sync::OnceLock<AbortHandle>,
     /// Limits the number of concurrent in-flight connection handler tasks.
     handler_semaphore: Arc<Semaphore>,
 }
@@ -126,45 +125,34 @@ impl ControlPlaneAcceptor {
         listener_sockaddr: String,
         listener_socket_type: SocketType,
     ) -> Arc<Self> {
-        // We need a new_cyclic here in order to be able to start the acceptor task as part of the
-        // call to `new`. The acceptor task requires a reference to self, hence the cyclic
-        // dependency.
-        Arc::new_cyclic(|weak_self: &Weak<Self>| {
-            let weak_self: Weak<Self> = weak_self.clone();
-            let accept_task: JoinHandle<()> = spawn(async move {
-                // Try to upgrade immediately in case `Arc::new_cyclic` already finished
-                // setting the strong reference count before this task was first polled.
-                if let Some(acceptor) = weak_self.upgrade() {
-                    acceptor.run().await;
-                    return;
-                }
+        // Build the Arc first so that the strong reference count is non-zero before spawning the
+        // accept loop. The previous `Arc::new_cyclic` approach had a race: the spawned task could
+        // be polled on another worker thread before `new_cyclic` finished setting the strong count,
+        // causing `Weak::upgrade()` to return `None` and the accept loop to never start.
+        let acceptor: Arc<Self> = Arc::new(Self {
+            listener,
+            _listener_sockaddr: listener_sockaddr,
+            _listener_socket_type: listener_socket_type,
+            state: Mutex::new(ControlPlaneAcceptorState::default()),
+            accept_task: std::sync::OnceLock::new(),
+            handler_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_CONTROL_PLANE_HANDLERS)),
+        });
 
-                // Yield until `Arc::new_cyclic` finishes setting the strong reference count. A
-                // single yield is not enough: in a multi-threaded runtime a different worker
-                // thread can re-poll this future before the originating thread completes
-                // `new_cyclic`, causing `upgrade()` to return `None`.
-                for _ in 0..MAX_WEAK_UPGRADE_RETRIES {
-                    tokio::task::yield_now().await;
-                    if let Some(acceptor) = weak_self.upgrade() {
-                        acceptor.run().await;
-                        return;
-                    }
-                }
-                error!(
-                    "accept loop failed to start: could not upgrade weak reference after \
-                     {MAX_WEAK_UPGRADE_RETRIES} yield cycles"
-                );
-            });
-
-            Self {
-                listener,
-                _listener_sockaddr: listener_sockaddr,
-                _listener_socket_type: listener_socket_type,
-                state: Mutex::new(ControlPlaneAcceptorState::default()),
-                accept_task: accept_task.abort_handle(),
-                handler_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_CONTROL_PLANE_HANDLERS)),
+        // Spawn the accept loop now that the Arc is fully constructed.
+        let weak_self: Weak<Self> = Arc::downgrade(&acceptor);
+        let accept_task: JoinHandle<()> = spawn(async move {
+            if let Some(acceptor) = weak_self.upgrade() {
+                acceptor.run().await;
+            } else {
+                debug!("accept loop did not start: acceptor was dropped before task was polled");
             }
-        })
+        });
+        acceptor
+            .accept_task
+            .set(accept_task.abort_handle())
+            .expect("control-plane acceptor abort handle must be initialized exactly once");
+
+        acceptor
     }
 
     ///
@@ -472,7 +460,9 @@ impl Drop for ControlPlaneAcceptor {
     /// This function does not return a value.
     ///
     fn drop(&mut self) {
-        self.accept_task.abort();
+        if let Some(handle) = self.accept_task.get() {
+            handle.abort();
+        }
     }
 }
 
