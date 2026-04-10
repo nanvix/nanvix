@@ -305,6 +305,12 @@ impl ControlPlaneRegistrationMessage {
     /// Byte offset of the tenant-id-length field within the wire header.
     pub const TENANT_ID_LEN_OFFSET: usize = Self::USER_VM_ID_OFFSET + mem::size_of::<u32>();
 
+    /// Maximum allowed length (in bytes) for a tenant identifier. Tenant identifiers are short
+    /// human-readable strings (e.g., UUIDs, project slugs). A 256-byte ceiling is well above any
+    /// realistic identifier while still preventing a malicious peer from triggering large allocations
+    /// through the 2-byte (`u16`) wire-length field.
+    pub const MAX_TENANT_ID_LEN: usize = 256;
+
     ///
     /// # Description
     ///
@@ -321,7 +327,8 @@ impl ControlPlaneRegistrationMessage {
     ///
     /// # Errors
     ///
-    /// Returns [`ErrorKind::InvalidInput`] if `tenant_id` is empty.
+    /// Returns [`ErrorKind::InvalidInput`] if `tenant_id` is empty or exceeds
+    /// [`Self::MAX_TENANT_ID_LEN`] bytes.
     ///
     pub fn for_linuxd(tenant_id: &str) -> Result<Self, Error> {
         if tenant_id.is_empty() {
@@ -329,6 +336,15 @@ impl ControlPlaneRegistrationMessage {
                 ErrorKind::InvalidInput,
                 "tenant_id cannot be empty for Linux daemon registration",
             ));
+        }
+        if tenant_id.len() > Self::MAX_TENANT_ID_LEN {
+            let reason: String = format!(
+                "tenant_id length {} exceeds maximum {}",
+                tenant_id.len(),
+                Self::MAX_TENANT_ID_LEN
+            );
+            error!("for_linuxd(): {reason}");
+            return Err(Error::new(ErrorKind::InvalidInput, reason));
         }
 
         Ok(Self {
@@ -500,6 +516,14 @@ impl ControlPlaneRegistrationMessage {
             header[Self::TENANT_ID_LEN_OFFSET],
             header[Self::TENANT_ID_LEN_OFFSET + 1],
         ]));
+        if tenant_id_len > Self::MAX_TENANT_ID_LEN {
+            let reason: String = format!(
+                "tenant_id length {tenant_id_len} exceeds maximum {}",
+                Self::MAX_TENANT_ID_LEN
+            );
+            error!("try_from_parts(): {reason}");
+            return Err(Error::new(ErrorKind::InvalidData, reason));
+        }
         if tenant_id_len != tenant_id_bytes.len() {
             let reason: String = format!(
                 "tenant identifier length mismatch (header={tenant_id_len}, payload={})",
