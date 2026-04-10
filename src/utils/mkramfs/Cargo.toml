@@ -19,6 +19,7 @@ name = "mkramfs"
 path = "src/lib.rs"
 
 [dependencies]
+arch = { workspace = true, features = ["std"] }
 fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
 
 [lints]
