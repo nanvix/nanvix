@@ -27,6 +27,7 @@ use crate::{
         mem::{
             MemoryRegion,
             MemoryRegionType,
+            PageAligned,
             PhysicalAddress,
             TruncatedMemoryRegion,
         },
@@ -35,7 +36,12 @@ use crate::{
             madt::MadtInfo,
             peb::ProcessEnvironmentBlock,
             region_names::RAMFS_REGION_NAME,
-            region_tags::RAMFS_MMIO_TAG,
+            region_tags::{
+                INPUT_BUF_MMIO_TAG,
+                OUTPUT_BUF_MMIO_TAG,
+                PEB_MMIO_TAG,
+                RAMFS_MMIO_TAG,
+            },
         },
     },
     kmod::KernelModule,
@@ -530,30 +536,31 @@ pub fn init(
             error!("init(): {reason} (kernel_end_addr={kernel_end_addr:#x})");
             Error::new(ErrorCode::BadAddress, reason)
         })?;
-    let peb: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+    let peb: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
         "peb",
-        VirtualAddress::from_raw_value(peb_base),
+        PageAligned::from_raw_value(peb_base)?,
         PEB_SIZE,
         MemoryRegionType::Mmio,
         AccessPermission::RDWR,
     )?;
-    memory_regions.push_back(peb);
+    ioaddresses.register(PEB_MMIO_TAG, peb.clone())?;
+    mmio_regions.push_back(peb);
 
-    // Register input data buffer.
     // Register input data buffer (directly after PEB in v0.13.0+).
     let input_data_base: usize = peb_base.checked_add(PEB_SIZE).ok_or_else(|| {
         let reason: &str = "input data buffer base address overflow";
         error!("init(): {}", reason);
         Error::new(ErrorCode::OutOfMemory, reason)
     })?;
-    let input_data_buffer: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+    let input_data_buffer: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
         "input data buffer",
-        VirtualAddress::from_raw_value(input_data_base),
+        PageAligned::from_raw_value(input_data_base)?,
         INPUT_DATA_BUFFER_SIZE,
         MemoryRegionType::Mmio,
         AccessPermission::RDWR,
     )?;
-    memory_regions.push_back(input_data_buffer);
+    ioaddresses.register(INPUT_BUF_MMIO_TAG, input_data_buffer.clone())?;
+    mmio_regions.push_back(input_data_buffer);
 
     // Register output data buffer.
     let output_data_base: usize = input_data_base
@@ -563,14 +570,15 @@ pub fn init(
             error!("init(): {}", reason);
             Error::new(ErrorCode::OutOfMemory, reason)
         })?;
-    let output_data_buffer: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+    let output_data_buffer: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
         "output data buffer",
-        VirtualAddress::from_raw_value(output_data_base),
+        PageAligned::from_raw_value(output_data_base)?,
         OUTPUT_DATA_BUFFER_SIZE,
         MemoryRegionType::Mmio,
         AccessPermission::RDWR,
     )?;
-    memory_regions.push_back(output_data_buffer);
+    ioaddresses.register(OUTPUT_BUF_MMIO_TAG, output_data_buffer.clone())?;
+    mmio_regions.push_back(output_data_buffer);
 
     // Compute heap padding between output data buffer and kernel pool.
     let heap_padding_base: usize = output_data_base
