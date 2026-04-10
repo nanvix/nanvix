@@ -96,6 +96,20 @@ pub enum DirtyFlag {
     Dirty = (1 << Self::SHIFT),
 }
 
+///
+/// # Description
+///
+/// A type that represents the page size flag of a page directory entry.
+/// When set, the entry maps a large page (4 MiB on x86).
+///
+#[derive(Clone, Copy, Debug)]
+pub enum PageSizeFlag {
+    /// Standard page size (4 KiB page table reference).
+    Standard = 0,
+    /// Large page (PS bit set).
+    Large = (1 << Self::SHIFT),
+}
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
@@ -224,6 +238,24 @@ impl DirtyFlag {
         match value & Self::MASK {
             0 => DirtyFlag::NotDirty,
             _ => DirtyFlag::Dirty,
+        }
+    }
+
+    pub fn into_raw_value(self) -> u32 {
+        self as u32
+    }
+}
+
+impl PageSizeFlag {
+    /// Bit shift of the page size flag in the page directory entry.
+    const SHIFT: u32 = 7;
+    /// Bit mask of the page size flag in the page directory entry.
+    const MASK: u32 = (1 << Self::SHIFT);
+
+    pub fn from_raw_value(value: u32) -> Self {
+        match value & Self::MASK {
+            0 => PageSizeFlag::Standard,
+            _ => PageSizeFlag::Large,
         }
     }
 
