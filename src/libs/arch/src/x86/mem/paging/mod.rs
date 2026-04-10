@@ -8,6 +8,7 @@ mod flags;
 mod frame;
 mod pde;
 mod pte;
+mod table;
 
 //==================================================================================================
 // Exports
@@ -17,3 +18,37 @@ pub use flags::*;
 pub use frame::FrameNumber;
 pub use pde::*;
 pub use pte::*;
+pub use table::*;
+
+//==================================================================================================
+// Types
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Word type for page table entries (32-bit on x86).
+///
+pub type PteWord = u32;
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Flushes the TLB entry for the page containing `vaddr`.
+///
+/// # Safety
+///
+/// Must be called from kernel mode (ring 0).
+///
+#[inline]
+pub unsafe fn invlpg(vaddr: usize) {
+    core::arch::asm!(
+        "invlpg ({0})",
+        in(reg) vaddr,
+        options(nostack, preserves_flags, att_syntax)
+    );
+}

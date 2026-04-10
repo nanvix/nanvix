@@ -581,7 +581,7 @@ impl Vmem {
         }
 
         // Get corresponding page table.
-        let pgtab_addr: FrameAddress = FrameAddress::from_frame_number(pde.frame())?;
+        let pgtab_addr: FrameAddress = FrameAddress::from_frame_number(pde.frame_number())?;
 
         // Find corresponding page table.
         let mut page_table: Option<Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>> =
