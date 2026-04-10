@@ -19,8 +19,8 @@ use super::PteWord;
 /// The raw representation uses [`PteWord`] — `u32` on x86.
 ///
 pub trait TableEntry: Copy {
-    /// Creates from a raw [`PteWord`].
-    fn from_raw(raw: PteWord) -> Self;
+    /// Creates from a raw [`PteWord`], returning `None` if the value is invalid.
+    fn from_raw(raw: PteWord) -> Option<Self>;
     /// Returns the raw [`PteWord`] representation.
     fn raw(self) -> PteWord;
 }
