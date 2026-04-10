@@ -35,7 +35,11 @@ use crate::{
             bootinfo::BootInfo,
             madt::MadtInfo,
             region_names::RAMFS_REGION_NAME,
-            region_tags::RAMFS_MMIO_TAG,
+            region_tags::{
+                MICROVM_CTRL_MMIO_TAG,
+                PVCLOCK_MMIO_TAG,
+                RAMFS_MMIO_TAG,
+            },
         },
     },
     kmod::KernelModule,
@@ -500,7 +504,7 @@ fn register_pit_ports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
 pub fn init(
     ioports: &mut IoPortAllocator,
     ioaddresses: &mut IoMemoryAllocator,
-    memory_regions: &mut LinkedList<MemoryRegion<VirtualAddress>>,
+    _memory_regions: &mut LinkedList<MemoryRegion<VirtualAddress>>,
     mmio_regions: &mut LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
     madt: &Option<MadtInfo>,
     _mem_lower: Option<usize>,
@@ -516,24 +520,26 @@ pub fn init(
     register_pic_ioports(ioports)?;
 
     // Register MicroVM control registers.
-    let scratch_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+    let scratch_region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
         "microvm-ctrl-registers",
-        VirtualAddress::from_raw_value(::config::microvm::DEFAULT_MICROVM_CTRL_BASE),
+        PageAligned::from_raw_value(::config::microvm::DEFAULT_MICROVM_CTRL_BASE)?,
         mem::PAGE_SIZE,
         MemoryRegionType::Mmio,
         AccessPermission::RDONLY,
     )?;
-    memory_regions.push_back(scratch_region);
+    ioaddresses.register(MICROVM_CTRL_MMIO_TAG, scratch_region.clone())?;
+    mmio_regions.push_back(scratch_region);
 
     // Register pvclock page so the kernel can read TSC calibration data.
-    let pvclock_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+    let pvclock_region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
         "pvclock-page",
-        VirtualAddress::from_raw_value(::config::microvm::DEFAULT_PVCLOCK_PAGE),
+        PageAligned::from_raw_value(::config::microvm::DEFAULT_PVCLOCK_PAGE)?,
         mem::PAGE_SIZE,
         MemoryRegionType::Mmio,
         AccessPermission::RDONLY,
     )?;
-    memory_regions.push_back(pvclock_region);
+    ioaddresses.register(PVCLOCK_MMIO_TAG, pvclock_region.clone())?;
+    mmio_regions.push_back(pvclock_region);
 
     // Register the LAPIC MMIO page only for the WHP microvm backend.
     // The guest uses this page to enable LAPIC software delivery and to
