@@ -25,10 +25,7 @@ use ::std::{
         Write,
     },
     mem,
-    os::unix::io::{
-        AsRawFd,
-        RawFd,
-    },
+    os::unix::io::AsRawFd,
     path::Path,
 };
 use kvm_ioctls::{
@@ -193,20 +190,13 @@ impl VirtualMemory {
     /// - `start`: Byte offset into guest memory (must be page-aligned).
     /// - `len`: Size of the region to remap.
     /// - `fd`: File descriptor of the backing file.
-    /// - `file_offset`: Byte offset into the file.
     ///
     /// # Returns
     ///
     /// Upon success, returns empty. Otherwise, returns an error.
     ///
-    pub fn remap_file_at(
-        &self,
-        start: usize,
-        len: usize,
-        fd: RawFd,
-        file_offset: ::libc::off_t,
-    ) -> Result<()> {
-        self.mapping.remap_file_at(start, len, fd, file_offset)
+    pub fn remap_file_at(&mut self, start: usize, len: usize, file: &File) -> Result<()> {
+        self.mapping.remap_file_at(start, len, file.as_raw_fd(), 0)
     }
 
     ///

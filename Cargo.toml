@@ -218,6 +218,8 @@ vstd = { version = "=0.0.0-2026-04-05-0114", default-features = false }
 vmm-sys-util = { version = "0.15.0", default-features = false }
 wasmi = { version = "1.0.9", default-features = false }
 windows = { version = "0.62", features = [
+        "Win32_Foundation",
+        "Win32_Security",
         "Win32_System_Hypervisor",
         "Win32_System_Memory",
         "Win32_System_Threading",
