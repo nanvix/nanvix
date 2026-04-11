@@ -402,7 +402,7 @@ all-nanvix: \
 	all-snapshot
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test
+all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
 # The containerd shim is not needed in standalone mode.
 ifneq ($(DEPLOYMENT_MODE),standalone)
 all-nanvix: all-nanvix-shim
@@ -433,7 +433,7 @@ clean: \
 	image-clean
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-test
+clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-test clean-test-kernel-ramfs
 ifneq ($(IS_WINDOWS),yes)
 clean: clean-nanvix-shim
 endif
@@ -826,6 +826,30 @@ run: image
 # Runs system in debug mode.
 debug: image
 	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -toolchain-bin-dir $(CLH_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
+
+#===================================================================================================
+# Build Rules for Test Kernel RAMFS Image
+#===================================================================================================
+
+# Seed directory used to build the test-kernel-ramfs.img.
+TEST_KERNEL_RAMFS_SEED := $(BINARIES_DIR)/test-kernel-ramfs-seed
+TEST_KERNEL_RAMFS_IMG  := $(BINARIES_DIR)/test-kernel-ramfs.img
+
+# Generates a FAT32 RAMFS image for the test-kernel and test-mmio-fault regression tests.
+# The image is created from a small seed directory using mkramfs.
+.PHONY: all-test-kernel-ramfs clean-test-kernel-ramfs
+all-test-kernel-ramfs: $(TEST_KERNEL_RAMFS_IMG)
+
+$(TEST_KERNEL_RAMFS_IMG): $(TEST_KERNEL_RAMFS_SEED)/marker.txt all-host-binaries-mkramfs
+	$(MKRAMFS) -o $(TEST_KERNEL_RAMFS_IMG) $(TEST_KERNEL_RAMFS_SEED)
+
+$(TEST_KERNEL_RAMFS_SEED)/marker.txt:
+	@$(MKDIR_CMD) $(TEST_KERNEL_RAMFS_SEED)
+	@echo "test-kernel ramfs marker" > $@
+
+clean-test-kernel-ramfs:
+	$(FORCE_RM_CMD) $(TEST_KERNEL_RAMFS_SEED)
+	$(RM_CMD) $(TEST_KERNEL_RAMFS_IMG)
 
 #===================================================================================================
 # Build Rules for System Image
