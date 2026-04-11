@@ -100,7 +100,7 @@ base64 = "0.22.1"
 bitmap = { path = "src/libs/bitmap", default-features = false }
 build-utils = { path = "src/libs/build-utils" }
 bytes = "1.11.1"
-cc = "1.2.59"
+cc = "1.2.60"
 cfg-if = "1.0.4"
 chrono = "0.4.44"
 clap = { version = "4.6.0", default-features = false, features = [
@@ -124,7 +124,7 @@ globset = { version = "0.4.18", default-features = false }
 gdbstub = { version = "0.7", default-features = false, features = ["std"] }
 gdbstub_arch = { version = "0.3", default-features = false }
 goblin = { version = "0.10.5", default-features = false }
-indexmap = "2.9.0"
+indexmap = "2.14.0"
 indicatif = "0.18.4"
 http = "1.4.0"
 http-body-util = "0.1.3"
