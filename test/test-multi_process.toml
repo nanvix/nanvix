@@ -42,7 +42,7 @@ iterations = 2
 [[tests]]
 executor = "http"
 program = "./bin/test-kernel.elf"
-extra_nanvixd_args = "-ramfs README.md"
+extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
@@ -50,7 +50,7 @@ expected_exit_code = 13
 [[tests]]
 executor = "http"
 program = "./bin/test-mmio-fault.elf"
-extra_nanvixd_args = "-ramfs README.md"
+extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 3
@@ -142,7 +142,7 @@ expected_output = "Hello, world!"
 [[tests]]
 executor = "terminal"
 program = "./bin/test-kernel.elf"
-extra_nanvixd_args = "-ramfs README.md"
+extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
@@ -150,7 +150,7 @@ expected_exit_code = 13
 [[tests]]
 executor = "terminal"
 program = "./bin/test-mmio-fault.elf"
-extra_nanvixd_args = "-ramfs README.md"
+extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 3
