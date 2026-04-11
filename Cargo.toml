@@ -49,6 +49,7 @@ members = [
         "src/libs/libc_stdlib",
         "src/libs/libc_string",
         "src/libs/multibin",
+        "src/libs/mmio-tag",
         "src/libs/sys",
         "src/libs/type-safe",
         "src/libs/user-vm-api",
@@ -192,6 +193,7 @@ spin = { git = "https://github.com/nanvix/spin-rs", package = "spin", branch = "
 static_assert = { path = "src/libs/static_assert", default-features = false }
 libc_stdlib = { path = "src/libs/libc_stdlib", default-features = false }
 libc_string = { path = "src/libs/libc_string", default-features = false }
+mmio-tag = { path = "src/libs/mmio-tag", default-features = false }
 sys = { path = "src/libs/sys", default-features = false }
 sysapi = { path = "src/libs/sysapi", default-features = false }
 sysalloc = { path = "src/libs/sysalloc", default-features = false }
