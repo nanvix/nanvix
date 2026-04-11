@@ -198,6 +198,15 @@ impl RamFs {
         let ramfs_size: usize = self.ramfs_size();
         let memory_size: usize = vmem.get_size();
 
+        if !ramfs_size.is_multiple_of(PAGE_SIZE) {
+            let reason: String = format!(
+                "ramfs image size is not page-aligned (ramfs_size={ramfs_size}, \
+                 page_size={PAGE_SIZE})"
+            );
+            error!("RamFs::load_into_virtual_memory(): {reason}");
+            anyhow::bail!(reason)
+        }
+
         if ramfs_size > memory_size {
             let reason: String = format!(
                 "ramfs image exceeds guest memory size (ramfs_size={ramfs_size}, memory_size={})",
@@ -225,7 +234,7 @@ impl RamFs {
             anyhow::bail!(reason)
         }
 
-        let ramfs_base_unaligned: usize = match memory_size.checked_sub(ramfs_size) {
+        let ramfs_base: usize = match memory_size.checked_sub(ramfs_size) {
             Some(base) => base,
             None => {
                 let reason: String = format!(
@@ -237,7 +246,10 @@ impl RamFs {
             },
         };
 
-        let ramfs_base: usize = ramfs_base_unaligned - (ramfs_base_unaligned % PAGE_SIZE);
+        debug_assert!(
+            ramfs_base.is_multiple_of(PAGE_SIZE),
+            "ramfs_base ({ramfs_base:#x}) must be page-aligned"
+        );
 
         if ramfs_base < min_available_base {
             let available: usize = match memory_size.checked_sub(min_available_base) {
