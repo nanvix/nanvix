@@ -17,6 +17,7 @@ crate-type = ["lib"]
 cfg-if = { workspace = true }
 core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { workspace = true, optional = true }
+mmio-tag = { workspace = true }
 
 [features]
 default = []
