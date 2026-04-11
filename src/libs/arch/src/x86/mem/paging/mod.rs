@@ -31,6 +31,13 @@ pub use table::*;
 ///
 pub type PteWord = u32;
 
+///
+/// # Description
+///
+/// Log2 of the size of [`PteWord`] in bytes.
+///
+pub const PTE_WORD_SIZE_LOG2: usize = ::core::mem::size_of::<PteWord>().trailing_zeros() as usize;
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
