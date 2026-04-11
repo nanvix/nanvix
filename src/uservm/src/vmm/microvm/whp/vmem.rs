@@ -278,8 +278,7 @@ impl VirtualMemory {
     /// # Parameters
     ///
     /// - `start`: Byte offset from the start of guest memory (must be page-aligned).
-    /// - `len`: Size of the region to remap (must be page-aligned).
-    /// - `file`: File to map from (must be at least `len` bytes).
+    /// - `file`: File to map from (size must be page-aligned).
     ///
     /// # Returns
     ///
@@ -292,7 +291,23 @@ impl VirtualMemory {
     /// Linux `mmap(MAP_FIXED)` semantics where the previous mapping is destroyed before the
     /// new one is established. Callers should treat a failure as fatal for the VM instance.
     ///
-    pub fn remap_file_at(&mut self, start: usize, len: usize, file: &File) -> Result<()> {
+    pub fn remap_file_at(&mut self, start: usize, file: &File) -> Result<()> {
+        let len: usize = {
+            let file_len: u64 = file
+                .metadata()
+                .map_err(|e| {
+                    let reason: String = format!("failed to query file metadata (error={e:?})");
+                    error!("remap_file_at(): {reason}");
+                    anyhow::anyhow!(reason)
+                })?
+                .len();
+            usize::try_from(file_len).map_err(|_| {
+                let reason: String =
+                    format!("file size exceeds platform address space (size={file_len})");
+                error!("remap_file_at(): {reason}");
+                anyhow::anyhow!(reason)
+            })?
+        };
         trace!("remap_file_at(): start={start:#x}, len={len:#x}");
 
         if self.file_remap.is_some() {

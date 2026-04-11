@@ -270,7 +270,7 @@ impl RamFs {
         }
 
         // Transfer RAMFS data into guest memory.
-        self.map_file_into_guest(vmem, ramfs_base, ramfs_size)?;
+        self.map_file_into_guest(vmem, ramfs_base)?;
 
         trace!(
             "RamFs::load_into_virtual_memory(): loaded ramfs (path={:?}, base={:#010x}, \
@@ -354,29 +354,12 @@ impl RamFs {
     /// On Linux, the file is remapped via `mmap(MAP_FIXED)`.
     /// On Windows, the file is mapped via `MapViewOfFile3` with `MEM_REPLACE_PLACEHOLDER`.
     ///
-    fn map_file_into_guest(
-        &self,
-        vmem: &mut VirtualMemory,
-        base: usize,
-        length: usize,
-    ) -> Result<()> {
-        trace!(
-            "RamFs::map_file_into_guest(): path={:?}, base={:#010x}, length={length}",
-            self.path, base
-        );
+    fn map_file_into_guest(&self, vmem: &mut VirtualMemory, base: usize) -> Result<()> {
+        trace!("RamFs::map_file_into_guest(): path={:?}, base={:#010x}", self.path, base);
 
-        if length > self.size {
-            let reason: String = format!(
-                "requested ramfs mapping larger than file (requested={length}, size={})",
-                self.size
-            );
-            error!("RamFs::map_file_into_guest(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Remap [base, base + length) of guest memory to be file-backed by the RAMFS image,
+        // Remap [base, base + file_size) of guest memory to be file-backed by the RAMFS image,
         // replacing the anonymous pages covering that range while leaving the rest untouched.
-        vmem.remap_file_at(base, length, &self.file).map_err(|e| {
+        vmem.remap_file_at(base, &self.file).map_err(|e| {
             let reason: String = format!(
                 "failed to map ramfs image into guest memory (path={:?}, error={e})",
                 self.path
