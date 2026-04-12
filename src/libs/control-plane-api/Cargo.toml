@@ -19,6 +19,8 @@ user-vm-api = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["std"] }
 
 [features]
 default = []
