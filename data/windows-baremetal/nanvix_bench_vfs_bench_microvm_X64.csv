@@ -782,3 +782,20 @@ d761b8f729c9ca98c80455f2b41c663d6c6b234d,Read-only mount,open+close,100,1883,259
 d761b8f729c9ca98c80455f2b41c663d6c6b234d,Read-only mount,readdir,100,1947,2607,3103
 d761b8f729c9ca98c80455f2b41c663d6c6b234d,Read-only mount,seq_read,100,155,956,34345
 >>>>>>> Stashed changes
+c7f16e6ca90679af7ec058d19935021f3eab73c0,VM setup,ramfs_load,10,2712,2730,2730
+c7f16e6ca90679af7ec058d19935021f3eab73c0,Writable mount,protocol,100,3891,3948,4015
+c7f16e6ca90679af7ec058d19935021f3eab73c0,Writable mount,stat,100,2137,2275,2560
+c7f16e6ca90679af7ec058d19935021f3eab73c0,Writable mount,open+close,100,2136,2713,12464
+c7f16e6ca90679af7ec058d19935021f3eab73c0,Writable mount,readdir,100,2140,2270,2476
+c7f16e6ca90679af7ec058d19935021f3eab73c0,Writable mount,create_scratch,100,103,171,15571
+c7f16e6ca90679af7ec058d19935021f3eab73c0,Writable mount,seq_read,100,82,316,29680
+c7f16e6ca90679af7ec058d19935021f3eab73c0,Writable mount,create+close+unlink,100,3,92,366
+c7f16e6ca90679af7ec058d19935021f3eab73c0,Writable mount,mkdir+rmdir,100,12,75,138
+c7f16e6ca90679af7ec058d19935021f3eab73c0,Writable mount,create+close+rename,100,18,77,142
+c7f16e6ca90679af7ec058d19935021f3eab73c0,Writable mount,write+flush,100,92,197,16235
+c7f16e6ca90679af7ec058d19935021f3eab73c0,VM setup,ramfs_load,5,2715,2726,2726
+c7f16e6ca90679af7ec058d19935021f3eab73c0,Read-only mount,protocol,100,3948,4003,4038
+c7f16e6ca90679af7ec058d19935021f3eab73c0,Read-only mount,stat,100,2109,2255,2563
+c7f16e6ca90679af7ec058d19935021f3eab73c0,Read-only mount,open+close,100,2127,2252,2819
+c7f16e6ca90679af7ec058d19935021f3eab73c0,Read-only mount,readdir,100,2131,2284,2742
+c7f16e6ca90679af7ec058d19935021f3eab73c0,Read-only mount,seq_read,100,65,313,29531
