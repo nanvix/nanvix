@@ -403,7 +403,7 @@ jobs:
           set -Eeuo pipefail
           echo "Running shim integration tests with NANVIX_DIR=${NANVIX_DIR}"
           cargo test --no-default-features \
-            -p containerd-shim-nanvix-v1 --test integration -- --nocapture
+            -p containerd-shim-nanvix-v1 --test integration -- --nocapture --test-threads=1
 
       - name: "Post-Cleanup Dangling Resources"
         if: always()
