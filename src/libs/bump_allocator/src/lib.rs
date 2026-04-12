@@ -58,8 +58,9 @@
 //!     }
 //! }
 //!
+//! // SAFETY: single allocator instance for `MyBackend`.
 //! static ALLOCATOR: FixedSizeBumpAllocator<UNIT_SIZE, UNIT_ALIGN, MyBackend> =
-//!     FixedSizeBumpAllocator::new();
+//!     unsafe { FixedSizeBumpAllocator::new() };
 //!
 //! // Allocate raw byte slots.
 //! let slot_a: &mut [u8; UNIT_SIZE] = ALLOCATOR.alloc().expect("slot a");
@@ -107,13 +108,16 @@ use ::core::{
 /// # Parameters
 ///
 /// - `value`: Value to align.
-/// - `alignment`: Alignment boundary (must be non-zero).
+/// - `alignment`: Alignment boundary.
 ///
 /// # Returns
 ///
-/// Returns the aligned value.
+/// Returns the aligned value, or `None` if `alignment` is zero or the computation overflows.
 ///
 pub const fn align_up(value: usize, alignment: usize) -> Option<usize> {
+    if alignment == 0 {
+        return None;
+    }
     value.div_ceil(alignment).checked_mul(alignment)
 }
 
@@ -206,7 +210,14 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     ///
     /// Returns a new allocator.
     ///
-    pub const fn new() -> Self {
+    /// # Safety
+    ///
+    /// The caller must ensure that only **one** `FixedSizeBumpAllocator` instance exists for a
+    /// given `S: BssStorage` backend at any time. Creating multiple allocators over the same
+    /// backend causes independent bump counters, which leads to overlapping slot reservations
+    /// and undefined behavior (multiple `&'static mut` references to the same memory).
+    ///
+    pub const unsafe fn new() -> Self {
         Self {
             next_slot: AtomicUsize::new(0),
             _storage: PhantomData,
@@ -236,9 +247,10 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
             if current >= S::NUM_UNITS {
                 return Err(BumpAllocError::Exhausted);
             }
+            let next: usize = current.checked_add(1).ok_or(BumpAllocError::Overflow)?;
             if self
                 .next_slot
-                .compare_exchange(current, current + 1, Ordering::AcqRel, Ordering::Acquire)
+                .compare_exchange(current, next, Ordering::AcqRel, Ordering::Acquire)
                 .is_ok()
             {
                 break current;
@@ -249,8 +261,12 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
         let offset: usize = idx.checked_mul(stride).ok_or(BumpAllocError::Overflow)?;
 
         let base: usize = S::as_mut_ptr() as usize;
-        let ptr: usize = base + offset;
-        if ptr + N > base + S::STORAGE_SIZE {
+        let ptr: usize = base.checked_add(offset).ok_or(BumpAllocError::Overflow)?;
+        let end: usize = ptr.checked_add(N).ok_or(BumpAllocError::Overflow)?;
+        let storage_end: usize = base
+            .checked_add(S::STORAGE_SIZE)
+            .ok_or(BumpAllocError::Overflow)?;
+        if end > storage_end {
             return Err(BumpAllocError::OutOfBounds);
         }
         if !ptr.is_multiple_of(A) {
@@ -298,7 +314,8 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
 
 impl<const N: usize, const A: usize, S: BssStorage> Default for FixedSizeBumpAllocator<N, A, S> {
     fn default() -> Self {
-        Self::new()
+        // SAFETY: caller is responsible for the singleton invariant.
+        unsafe { Self::new() }
     }
 }
 
@@ -335,7 +352,8 @@ mod tests {
         }
     }
 
-    static ALLOC_A: FixedSizeBumpAllocator<8, 8, BackendA> = FixedSizeBumpAllocator::new();
+    static ALLOC_A: FixedSizeBumpAllocator<8, 8, BackendA> =
+        unsafe { FixedSizeBumpAllocator::new() };
 
     #[test]
     fn alloc_returns_distinct_slots() {
@@ -362,15 +380,15 @@ mod tests {
         }
     }
 
-    static ALLOC_B: FixedSizeBumpAllocator<8, 4, BackendB> = FixedSizeBumpAllocator::new();
+    static ALLOC_B: FixedSizeBumpAllocator<8, 4, BackendB> =
+        unsafe { FixedSizeBumpAllocator::new() };
 
     #[test]
     fn alloc_as_allows_typed_access() {
         let slot: &mut core::mem::MaybeUninit<[u32; 2]> =
             unsafe { ALLOC_B.alloc_as::<[u32; 2]>().expect("alloc_as failed") };
+        slot.write([7, 11]);
         let typed: &mut [u32; 2] = unsafe { slot.assume_init_mut() };
-        typed[0] = 7;
-        typed[1] = 11;
         let values: Vec<u32> = Vec::from(*typed);
         assert_eq!(values, vec![7, 11]);
     }
@@ -393,7 +411,8 @@ mod tests {
         }
     }
 
-    static ALLOC_C: FixedSizeBumpAllocator<8, 8, BackendC> = FixedSizeBumpAllocator::new();
+    static ALLOC_C: FixedSizeBumpAllocator<8, 8, BackendC> =
+        unsafe { FixedSizeBumpAllocator::new() };
 
     #[test]
     fn alloc_returns_exhausted_error() {
