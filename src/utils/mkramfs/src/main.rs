@@ -57,6 +57,10 @@ fn main() {
         },
     };
 
+    // Round up to page size so the guest VMM can use zero-copy file-backed mappings.
+    let page_size: u64 = arch::mem::PAGE_SIZE as u64;
+    let image_size: u64 = (image_size + page_size - 1) & !(page_size - 1);
+
     eprintln!(
         "mkramfs: source={} content={}B image={}B output={}",
         source_dir.display(),

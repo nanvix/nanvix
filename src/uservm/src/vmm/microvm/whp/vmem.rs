@@ -8,7 +8,6 @@
 use crate::vmm::microvm::whp::partition::WhpPartition;
 use ::anyhow::Result;
 use ::log::{
-    debug,
     error,
     trace,
     warn,
@@ -17,8 +16,6 @@ use ::std::{
     fs::File,
     io::{
         Read,
-        Seek,
-        SeekFrom,
         Write,
     },
     mem,
@@ -90,19 +87,18 @@ pub struct VirtualMemory {
 /// # Description
 ///
 /// Tracks the coordinates of a remap performed by `remap_file_at()`. The middle segment
-/// is either file-backed (via `MapViewOfFile3` with `MEM_REPLACE_PLACEHOLDER`) when the file
-/// is page-aligned, or committed (via `VirtualAlloc2` with `MEM_REPLACE_PLACEHOLDER`) when
-/// the file is not page-aligned. Used by `Drop` to correctly tear down the split region.
+/// is file-backed via `MapViewOfFile3` with `MEM_REPLACE_PLACEHOLDER`.
+/// Used by `Drop` to correctly tear down the split region.
 ///
 struct FileRemap {
     /// Byte offset of the remapped view within the guest memory region.
     start: usize,
     /// Page-aligned size of the remapped view.
-    aligned_len: usize,
+    len: usize,
     /// Section handle returned by `CreateFileMappingW`. Set to `HANDLE::default()` (null) when
-    /// the middle segment uses the commit+read fallback (non-page-aligned file) instead of a
-    /// file-backed view. `Drop` uses this to select between `UnmapViewOfFileEx` (file-backed)
-    /// and `VirtualFree` (committed) for cleanup.
+    /// `remap_file_at()` failed before `map_file_view()` completed, leaving the middle segment
+    /// as a placeholder. `Drop` uses this to select between `UnmapViewOfFileEx` (file-backed)
+    /// and `VirtualFree` (placeholder) for cleanup.
     section_handle: HANDLE,
 }
 
@@ -282,8 +278,7 @@ impl VirtualMemory {
     /// # Parameters
     ///
     /// - `start`: Byte offset from the start of guest memory (must be page-aligned).
-    /// - `len`: Size of the region to remap (in bytes).
-    /// - `file`: File to map from.
+    /// - `file`: File to map from (size must be page-aligned).
     ///
     /// # Returns
     ///
@@ -296,7 +291,23 @@ impl VirtualMemory {
     /// Linux `mmap(MAP_FIXED)` semantics where the previous mapping is destroyed before the
     /// new one is established. Callers should treat a failure as fatal for the VM instance.
     ///
-    pub fn remap_file_at(&mut self, start: usize, len: usize, file: &File) -> Result<()> {
+    pub fn remap_file_at(&mut self, start: usize, file: &File) -> Result<()> {
+        let len: usize = {
+            let file_len: u64 = file
+                .metadata()
+                .map_err(|e| {
+                    let reason: String = format!("failed to query file metadata (error={e:?})");
+                    error!("remap_file_at(): {reason}");
+                    anyhow::anyhow!(reason)
+                })?
+                .len();
+            usize::try_from(file_len).map_err(|_| {
+                let reason: String =
+                    format!("file size exceeds platform address space (size={file_len})");
+                error!("remap_file_at(): {reason}");
+                anyhow::anyhow!(reason)
+            })?
+        };
         trace!("remap_file_at(): start={start:#x}, len={len:#x}");
 
         if self.file_remap.is_some() {
@@ -330,13 +341,9 @@ impl VirtualMemory {
             anyhow::bail!(reason);
         }
 
-        let aligned_len: usize = (len + page_size - 1) & !(page_size - 1);
-        if start + aligned_len > self.size {
-            let reason: String = format!(
-                "page-aligned remap [{start:#x}, {:#x}) exceeds memory bounds (size={:#x})",
-                start + aligned_len,
-                self.size
-            );
+        if !len.is_multiple_of(page_size) {
+            let reason: String =
+                format!("length is not page-aligned (len={len:#x}, page_size={page_size:#x})");
             error!("remap_file_at(): {reason}");
             anyhow::bail!(reason);
         }
@@ -345,29 +352,30 @@ impl VirtualMemory {
         let current_process: HANDLE = unsafe { GetCurrentProcess() };
 
         // Phase 1: Unmap the GPA tail from WHP and split the committed region into
-        //          placeholders: [start..start+aligned_len) and [start+aligned_len..size).
-        self.prepare_placeholders(start, aligned_len)?;
+        //          placeholders: [start..start+len) and [start+len..size).
+        self.prepare_placeholders(start, len)?;
 
         // Record the split immediately so `Drop` can clean up the placeholders if a later
-        // phase fails.  The section handle starts as null (placeholder / committed fallback)
-        // and is updated to the real handle after a successful zero-copy map.
+        // phase fails.  The section handle starts as null (placeholder) and is updated to the
+        // real handle after a successful zero-copy map.
         self.file_remap = Some(FileRemap {
             start,
-            aligned_len,
+            len,
             section_handle: HANDLE::default(),
         });
 
-        // Phase 2: Replace the middle placeholder [start..start+aligned_len) with a
-        //          file-backed view (zero-copy) or committed memory (fallback).
+        // Phase 2: Replace the middle placeholder [start..start+len) with a zero-copy
+        //          file-backed view via MapViewOfFile3.
+        let file_handle: HANDLE = HANDLE(file.as_raw_handle());
         let section_handle: HANDLE =
-            self.replace_placeholder_with_file(start, len, aligned_len, file, current_process)?;
+            self.map_file_view(start, len, file_handle, current_process)?;
 
         // Update the section handle now that the file view is established.
         self.file_remap.as_mut().unwrap().section_handle = section_handle;
 
         // Phase 3: Re-commit the tail placeholder and re-register all affected GPA segments
         //          with the WHP partition.
-        self.commit_and_map_tail(start, aligned_len, current_process)?;
+        self.commit_and_map_tail(start, len, current_process)?;
 
         Ok(())
     }
@@ -377,11 +385,11 @@ impl VirtualMemory {
     ///
     /// Unmaps the GPA range `[start..size)` from the WHP partition and converts the committed
     /// host memory in that range back to placeholders, splitting the region into up to two
-    /// placeholders: `[start..start+aligned_len)` for the file view and
-    /// `[start+aligned_len..size)` for the tail.
+    /// placeholders: `[start..start+len)` for the file view and
+    /// `[start+len..size)` for the tail.
     ///
-    fn prepare_placeholders(&mut self, start: usize, aligned_len: usize) -> Result<()> {
-        let tail_start: usize = start + aligned_len;
+    fn prepare_placeholders(&mut self, start: usize, len: usize) -> Result<()> {
+        let tail_start: usize = start + len;
 
         // ── 1. Unmap [start..size) from the WHP partition ──────────────────────────────────
         //
@@ -428,82 +436,50 @@ impl VirtualMemory {
         // it into [start..tail_start) and [tail_start..size).
         if tail_start < self.size {
             // SAFETY: After step 2, [start..size) is a single placeholder.
-            // `self.ptr.add(start)` is the base of that placeholder, and `aligned_len` is
+            // `self.ptr.add(start)` is the base of that placeholder, and `len` is
             // within it.  This splits it into [start..tail_start) and [tail_start..size).
             unsafe {
-                VirtualFree(self.ptr.add(start).cast(), aligned_len, MEM_RELEASE_PRESERVE)
-                    .map_err(|e| {
+                VirtualFree(self.ptr.add(start).cast(), len, MEM_RELEASE_PRESERVE).map_err(
+                    |e| {
                         let reason: String = format!(
-                            "failed to split file placeholder (start={start:#x}, \
-                             aligned_len={aligned_len:#x}, error={e:?})"
+                            "failed to split file placeholder (start={start:#x}, len={len:#x}, \
+                             error={e:?})"
                         );
                         error!("prepare_placeholders(): {reason}");
                         anyhow::anyhow!(reason)
-                    })?;
+                    },
+                )?;
             }
         }
 
         Ok(())
     }
 
+    /// Creates a `PAGE_WRITECOPY` section backed by the file and maps it into the placeholder
+    /// at `[start..start+len)` via `MapViewOfFile3`.
     ///
-    /// # Description
-    ///
-    /// Replaces the placeholder at `[start..start+aligned_len)` with a file-backed view.
-    ///
-    /// When the file size (`len`) is page-aligned, a true zero-copy `PAGE_WRITECOPY` section
-    /// is created and mapped via `MapViewOfFile3`. When the file size is NOT page-aligned,
-    /// the placeholder is committed via `VirtualAlloc2` and the file content is read into it.
-    ///
-    /// Returns the section handle for the file-backed path, or `HANDLE::default()` for the
-    /// commit+read fallback (used by `Drop` to choose the correct cleanup).
-    ///
-    fn replace_placeholder_with_file(
+    /// Returns the section handle on success.
+    fn map_file_view(
         &mut self,
         start: usize,
         len: usize,
-        aligned_len: usize,
-        file: &File,
-        current_process: HANDLE,
-    ) -> Result<HANDLE> {
-        let page_size: usize = ::arch::mem::PAGE_SIZE;
-        let file_handle: HANDLE = HANDLE(file.as_raw_handle());
-
-        if len.is_multiple_of(page_size) {
-            self.map_file_view_zero_copy(start, aligned_len, file_handle, current_process)
-        } else {
-            self.map_file_view_commit_read(start, len, aligned_len, file, current_process)
-        }
-    }
-
-    /// Zero-copy path: creates a `PAGE_WRITECOPY` section backed by the file and maps it into
-    /// the placeholder at `[start..start+aligned_len)` via `MapViewOfFile3`.
-    ///
-    /// Returns the section handle on success.
-    fn map_file_view_zero_copy(
-        &mut self,
-        start: usize,
-        aligned_len: usize,
         file_handle: HANDLE,
         current_process: HANDLE,
     ) -> Result<HANDLE> {
-        let size_high: u32 = (aligned_len >> 32) as u32;
-        let size_low: u32 = aligned_len as u32;
-
-        // SAFETY: `file_handle` comes from a valid open `File`. Size parameters are
-        // derived from `aligned_len` which does not exceed the region bounds.
+        // SAFETY: `file_handle` comes from a valid open `File`.  Passing size 0 lets the
+        // OS derive the section's maximum size from the file's current size.  Both the
+        // file and `len` are page-aligned (enforced by `remap_file_at()`), so the section
+        // size matches the placeholder exactly.
         let section: HANDLE = unsafe {
-            CreateFileMappingW(file_handle, None, PAGE_WRITECOPY, size_high, size_low, None)
-                .map_err(|e| {
-                    let reason: String =
-                        format!("failed to create file mapping section (error={e:?})");
-                    error!("map_file_view_zero_copy(): {reason}");
-                    anyhow::anyhow!(reason)
-                })?
+            CreateFileMappingW(file_handle, None, PAGE_WRITECOPY, 0, 0, None).map_err(|e| {
+                let reason: String = format!("failed to create file mapping section (error={e:?})");
+                error!("map_file_view(): {reason}");
+                anyhow::anyhow!(reason)
+            })?
         };
 
         // SAFETY: `section` is a valid handle from `CreateFileMappingW`.
-        // `self.ptr.add(start)` targets a placeholder of exactly `aligned_len` bytes
+        // `self.ptr.add(start)` targets a placeholder of exactly `len` bytes
         // created by `prepare_placeholders()`.  `MEM_REPLACE_PLACEHOLDER` atomically
         // replaces it with a file-backed view.
         let view: MEMORY_MAPPED_VIEW_ADDRESS = unsafe {
@@ -512,7 +488,7 @@ impl VirtualMemory {
                 Some(current_process),
                 Some(self.ptr.add(start).cast()),
                 0,
-                aligned_len,
+                len,
                 MEM_REPLACE_PLACEHOLDER,
                 PAGE_WRITECOPY.0,
                 None,
@@ -525,16 +501,14 @@ impl VirtualMemory {
             // SAFETY: `section` is a valid handle that must be closed on this error path.
             unsafe {
                 if CloseHandle(section).is_err() {
-                    warn!(
-                        "map_file_view_zero_copy(): CloseHandle() failed while cleaning up section"
-                    );
+                    warn!("map_file_view(): CloseHandle() failed while cleaning up section");
                 }
             }
             let reason: String = format!(
-                "MapViewOfFile3 returned null (start={start:#x}, aligned_len={aligned_len:#x}, \
+                "MapViewOfFile3 returned null (start={start:#x}, len={len:#x}, \
                  win32_error={win_err})"
             );
-            error!("map_file_view_zero_copy(): {reason}");
+            error!("map_file_view(): {reason}");
             anyhow::bail!(reason);
         }
 
@@ -543,77 +517,19 @@ impl VirtualMemory {
         Ok(section)
     }
 
-    /// Fallback path for non-page-aligned files: commits the placeholder at
-    /// `[start..start+aligned_len)` and reads the file content directly into it.
-    ///
-    /// Returns `HANDLE::default()` to signal this is a committed region, not file-mapped.
-    fn map_file_view_commit_read(
-        &mut self,
-        start: usize,
-        len: usize,
-        aligned_len: usize,
-        file: &File,
-        current_process: HANDLE,
-    ) -> Result<HANDLE> {
-        debug!(
-            "map_file_view_commit_read(): file size ({len:#x}) is not page-aligned, using \
-             commit+read fallback"
-        );
-
-        // SAFETY: `self.ptr.add(start)` targets a placeholder of `aligned_len` bytes.
-        // `MEM_REPLACE_PLACEHOLDER` replaces it with committed memory.
-        let committed: *mut std::ffi::c_void = unsafe {
-            VirtualAlloc2(
-                Some(current_process),
-                Some(self.ptr.add(start).cast()),
-                aligned_len,
-                MEM_RESERVE | MEM_COMMIT | MEM_REPLACE_PLACEHOLDER,
-                PAGE_READWRITE.0,
-                None,
-            )
-        };
-        if committed.is_null() {
-            let reason: String = format!(
-                "failed to commit file placeholder [{start:#x}..{:#x})",
-                start + aligned_len
-            );
-            error!("map_file_view_commit_read(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        // Read the file content directly into the committed guest memory.
-        // Seek to the start of the file in case a previous operation advanced the cursor.
-        (&*file).seek(SeekFrom::Start(0)).map_err(|e| {
-            let reason: String = format!("failed to seek to start of file (error={e:?})");
-            error!("map_file_view_commit_read(): {reason}");
-            anyhow::anyhow!(reason)
-        })?;
-
-        // SAFETY: The `VirtualAlloc2` above succeeded, so `self.ptr.add(start)` points to
-        // `aligned_len` bytes of committed memory. `len <= aligned_len` (checked by caller).
-        let dest: &mut [u8] = unsafe { slice::from_raw_parts_mut(self.ptr.add(start), len) };
-        (&*file).read_exact(dest).map_err(|e| {
-            let reason: String = format!("failed to read file into committed region (error={e:?})");
-            error!("map_file_view_commit_read(): {reason}");
-            anyhow::anyhow!(reason)
-        })?;
-
-        Ok(HANDLE::default())
-    }
-
     ///
     /// # Description
     ///
-    /// Re-commits the tail placeholder `[start+aligned_len..size)` (if any) and re-registers
+    /// Re-commits the tail placeholder `[start+len..size)` (if any) and re-registers
     /// the file-backed middle segment and the tail committed segment with the WHP partition.
     ///
     fn commit_and_map_tail(
         &mut self,
         start: usize,
-        aligned_len: usize,
+        len: usize,
         current_process: HANDLE,
     ) -> Result<()> {
-        let tail_start: usize = start + aligned_len;
+        let tail_start: usize = start + len;
 
         // Re-commit the tail placeholder (if any).
         if tail_start < self.size {
@@ -638,22 +554,22 @@ impl VirtualMemory {
             }
         }
 
-        // Re-map the file-backed (or committed) middle segment into the WHP partition.
+        // Re-map the file-backed middle segment into the WHP partition.
         // The head [0..start) was never unmapped — skip it.
         // Use RW-only permissions: RAMFS data does not contain executable code.
-        // SAFETY: `self.ptr.add(start)` points to the file-backed (or committed) view of
-        // `aligned_len` bytes established by `replace_placeholder_with_file()`.
+        // SAFETY: `self.ptr.add(start)` points to the file-backed view of `len` bytes
+        // established by `map_file_view()`.
         unsafe {
             WHvMapGpaRange(
                 self.partition_handle,
                 self.ptr.add(start) as *const std::ffi::c_void,
                 start as u64,
-                aligned_len as u64,
+                len as u64,
                 GPA_RW,
             )
             .map_err(|e| {
                 let reason: String = format!(
-                    "failed to map file-backed GPA range (start={start:#x}, len={aligned_len:#x}, \
+                    "failed to map file-backed GPA range (start={start:#x}, len={len:#x}, \
                      error={e:?})"
                 );
                 error!("commit_and_map_tail(): {reason}");
@@ -1076,14 +992,14 @@ impl Drop for VirtualMemory {
             Some(remap) => {
                 // The region was split into up to three segments by `remap_file_at()`.
                 // Free each segment individually: committed segments via VirtualFree,
-                // the file view via UnmapViewOfFileEx (or VirtualFree if committed), and
-                // the section handle via CloseHandle (when file-mapped).
+                // the file view via UnmapViewOfFileEx, and the section handle via
+                // CloseHandle (when file-mapped).
                 //
                 // This also handles partial-failure states: if `remap_file_at()` failed
                 // after `prepare_placeholders()` but before completing all phases, some
                 // segments may still be placeholders. `VirtualFree(MEM_RELEASE)` releases
                 // both committed regions and placeholders, so cleanup is safe either way.
-                let tail_start: usize = remap.start + remap.aligned_len;
+                let tail_start: usize = remap.start + remap.len;
 
                 // Free the head committed segment.
                 if remap.start > 0 {
@@ -1098,14 +1014,12 @@ impl Drop for VirtualMemory {
 
                 // Release the middle segment.
                 if remap.section_handle == HANDLE::default() {
-                    // Middle is committed memory, a placeholder (partial failure), or
-                    // the commit+read fallback (non-page-aligned file). VirtualFree
-                    // handles all three cases.
+                    // Middle is a placeholder (partial failure). VirtualFree handles this.
                     // SAFETY: `self.ptr.add(remap.start)` is the base of a standalone
                     // region created during `remap_file_at()`.
                     unsafe {
                         if VirtualFree(self.ptr.add(remap.start).cast(), 0, MEM_RELEASE).is_err() {
-                            error!("VirtualFree() failed for committed middle segment");
+                            error!("VirtualFree() failed for middle placeholder segment");
                         }
                     }
                 } else {

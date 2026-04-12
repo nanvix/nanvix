@@ -188,14 +188,29 @@ impl VirtualMemory {
     /// # Parameters
     ///
     /// - `start`: Byte offset into guest memory (must be page-aligned).
-    /// - `len`: Size of the region to remap.
-    /// - `fd`: File descriptor of the backing file.
+    /// - `file`: File to map from (size must be page-aligned).
     ///
     /// # Returns
     ///
     /// Upon success, returns empty. Otherwise, returns an error.
     ///
-    pub fn remap_file_at(&mut self, start: usize, len: usize, file: &File) -> Result<()> {
+    pub fn remap_file_at(&mut self, start: usize, file: &File) -> Result<()> {
+        let len: usize = {
+            let file_len: u64 = file
+                .metadata()
+                .map_err(|e| {
+                    let reason: String = format!("failed to query file metadata (error={e:?})");
+                    error!("remap_file_at(): {reason}");
+                    anyhow::anyhow!(reason)
+                })?
+                .len();
+            usize::try_from(file_len).map_err(|_| {
+                let reason: String =
+                    format!("file size exceeds platform address space (size={file_len})");
+                error!("remap_file_at(): {reason}");
+                anyhow::anyhow!(reason)
+            })?
+        };
         self.mapping.remap_file_at(start, len, file.as_raw_fd(), 0)
     }
 
