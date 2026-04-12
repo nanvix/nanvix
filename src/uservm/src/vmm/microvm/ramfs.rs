@@ -198,6 +198,15 @@ impl RamFs {
         let ramfs_size: usize = self.ramfs_size();
         let memory_size: usize = vmem.get_size();
 
+        if !ramfs_size.is_multiple_of(PAGE_SIZE) {
+            let reason: String = format!(
+                "ramfs image size is not page-aligned (ramfs_size={ramfs_size}, \
+                 page_size={PAGE_SIZE})"
+            );
+            error!("RamFs::load_into_virtual_memory(): {reason}");
+            anyhow::bail!(reason)
+        }
+
         if ramfs_size > memory_size {
             let reason: String = format!(
                 "ramfs image exceeds guest memory size (ramfs_size={ramfs_size}, memory_size={})",
@@ -225,7 +234,7 @@ impl RamFs {
             anyhow::bail!(reason)
         }
 
-        let ramfs_base_unaligned: usize = match memory_size.checked_sub(ramfs_size) {
+        let ramfs_base: usize = match memory_size.checked_sub(ramfs_size) {
             Some(base) => base,
             None => {
                 let reason: String = format!(
@@ -237,7 +246,10 @@ impl RamFs {
             },
         };
 
-        let ramfs_base: usize = ramfs_base_unaligned - (ramfs_base_unaligned % PAGE_SIZE);
+        debug_assert!(
+            ramfs_base.is_multiple_of(PAGE_SIZE),
+            "ramfs_base ({ramfs_base:#x}) must be page-aligned"
+        );
 
         if ramfs_base < min_available_base {
             let available: usize = match memory_size.checked_sub(min_available_base) {
@@ -258,7 +270,7 @@ impl RamFs {
         }
 
         // Transfer RAMFS data into guest memory.
-        self.map_file_into_guest(vmem, ramfs_base, ramfs_size)?;
+        self.map_file_into_guest(vmem, ramfs_base)?;
 
         trace!(
             "RamFs::load_into_virtual_memory(): loaded ramfs (path={:?}, base={:#010x}, \
@@ -342,29 +354,12 @@ impl RamFs {
     /// On Linux, the file is remapped via `mmap(MAP_FIXED)`.
     /// On Windows, the file is mapped via `MapViewOfFile3` with `MEM_REPLACE_PLACEHOLDER`.
     ///
-    fn map_file_into_guest(
-        &self,
-        vmem: &mut VirtualMemory,
-        base: usize,
-        length: usize,
-    ) -> Result<()> {
-        trace!(
-            "RamFs::map_file_into_guest(): path={:?}, base={:#010x}, length={length}",
-            self.path, base
-        );
+    fn map_file_into_guest(&self, vmem: &mut VirtualMemory, base: usize) -> Result<()> {
+        trace!("RamFs::map_file_into_guest(): path={:?}, base={:#010x}", self.path, base);
 
-        if length > self.size {
-            let reason: String = format!(
-                "requested ramfs mapping larger than file (requested={length}, size={})",
-                self.size
-            );
-            error!("RamFs::map_file_into_guest(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Remap [base, base + length) of guest memory to be file-backed by the RAMFS image,
+        // Remap [base, base + file_size) of guest memory to be file-backed by the RAMFS image,
         // replacing the anonymous pages covering that range while leaving the rest untouched.
-        vmem.remap_file_at(base, length, &self.file).map_err(|e| {
+        vmem.remap_file_at(base, &self.file).map_err(|e| {
             let reason: String = format!(
                 "failed to map ramfs image into guest memory (path={:?}, error={e})",
                 self.path
