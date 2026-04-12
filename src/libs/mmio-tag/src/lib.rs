@@ -1,17 +1,19 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+#![cfg_attr(not(feature = "std"), no_std)]
+
 //==================================================================================================
 // Modules
 //==================================================================================================
 
-mod allocator;
-mod region;
+mod tag;
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-pub use ::mmio_tag::MmioTag;
-pub use allocator::IoMemoryAllocator;
-pub use region::IoMemoryRegion;
+pub use tag::{
+    MmioTag,
+    TAG_LENGTH,
+};
