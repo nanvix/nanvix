@@ -492,7 +492,7 @@ impl ExecutionMode for StandaloneMode {
             // Give the app a moment to start before sending KILL.
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
-            let kill_body: String = format!(r#"{{"user_vm_id":{}}}"#, vm_id);
+            let kill_body: String = format!(r#"{{"user_vm_id":{{"value":{}}}}}"#, vm_id);
 
             // Use a simple TCP request to send KILL (replicating http_post logic).
             use tokio::io::{
@@ -557,7 +557,7 @@ impl ExecutionMode for StandaloneMode {
         let vm_id = *self.user_vm_id.lock().await;
 
         if let (Some(addr), Some(id)) = (http_addr, vm_id) {
-            let kill_body: String = format!(r#"{{"user_vm_id":{}}}"#, id);
+            let kill_body: String = format!(r#"{{"user_vm_id":{{"value":{}}}}}"#, id);
 
             match self.http_post(&addr, "KILL", &kill_body).await {
                 Ok(response) => {
