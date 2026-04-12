@@ -1,0 +1,18 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "bump-allocator"
+version.workspace = true
+license-file.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "Generic fixed-size bump allocator"
+homepage.workspace = true
+
+[features]
+default = []
+std = []
+
+[lints]
+workspace = true

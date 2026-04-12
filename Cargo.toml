@@ -18,6 +18,7 @@ members = [
         "src/kernel",
         "src/libs/arch",
         "src/libs/bitmap",
+        "src/libs/bump_allocator",
         "src/libs/build-utils",
         "src/libs/config",
         "src/libs/control-plane-api",
@@ -99,6 +100,7 @@ anyhow = "1.0.102"
 async-trait = "0.1.89"
 base64 = "0.22.1"
 bitmap = { path = "src/libs/bitmap", default-features = false }
+bump-allocator = { path = "src/libs/bump_allocator", default-features = false }
 build-utils = { path = "src/libs/build-utils" }
 bytes = "1.11.1"
 cc = "1.2.60"
