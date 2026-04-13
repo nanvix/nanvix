@@ -277,6 +277,83 @@ impl VirtualMemory {
     ///
     /// # Description
     ///
+    /// Pre-populates host-side backing pages for the given GPA ranges using
+    /// `madvise(MADV_POPULATE_WRITE)`. This faults in host pages before guest execution so that
+    /// KVM's EPT fault path only needs to install SLAT entries without also incurring host page
+    /// faults, reducing cold-start latency.
+    ///
+    /// Pre-populating moves page-fault costs to partition setup time where they are measured
+    /// separately and do not inflate guest execution latency.
+    ///
+    /// # Parameters
+    ///
+    /// - `gpa_ranges`: Slice of `(gpa, size)` pairs. Each GPA and size must be page-aligned
+    ///   and the range must lie within the mapped guest RAM. Zero-sized entries are skipped.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn populate_ept(&self, gpa_ranges: &[(u64, u64)]) -> Result<()> {
+        trace!("populate_ept(): {} range(s)", gpa_ranges.len());
+
+        let page_size: u64 = PAGE_SIZE as u64;
+        let ram_size: u64 = self.mapping.size() as u64;
+
+        for &(gpa, size) in gpa_ranges {
+            if size == 0 {
+                continue;
+            }
+
+            if gpa % page_size != 0 || size % page_size != 0 {
+                let reason: String =
+                    format!("gpa and size must be page-aligned (gpa={gpa:#x}, size={size:#x})");
+                error!("populate_ept(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            }
+
+            if gpa.checked_add(size).is_none_or(|end| end > ram_size) {
+                let reason: String = format!(
+                    "range exceeds mapped guest RAM (gpa={gpa:#x}, size={size:#x}, \
+                     ram_size={ram_size:#x})"
+                );
+                error!("populate_ept(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            }
+
+            // Compute host virtual address for this GPA offset.
+            // SAFETY: bounds checked above — `gpa + size <= ram_size` and `ram_size` equals the
+            // mapping length, so `ptr.add(gpa)` through `ptr.add(gpa + size - 1)` are within the
+            // allocated region.
+            let gpa_offset: usize = usize::try_from(gpa)
+                .map_err(|_| anyhow::anyhow!("gpa {gpa:#x} exceeds usize range"))?;
+            let host_addr: *mut u8 = unsafe { self.mapping.ptr().add(gpa_offset) };
+
+            // SAFETY: `host_addr` points into the anonymous mapping and the range
+            // `[host_addr, host_addr + size)` lies within the mapping (bounds checked above).
+            // `MADV_POPULATE_WRITE` faults in pages with write access, ensuring the host kernel
+            // allocates backing pages so subsequent KVM EPT faults only need to install SLAT
+            // entries.
+            let range_len: usize = usize::try_from(size)
+                .map_err(|_| anyhow::anyhow!("size {size:#x} exceeds usize range"))?;
+            let ret: i32 =
+                unsafe { ::libc::madvise(host_addr.cast(), range_len, libc::MADV_POPULATE_WRITE) };
+            if ret != 0 {
+                let reason: String = format!(
+                    "madvise(MADV_POPULATE_WRITE) failed (gpa={gpa:#x}, size={size:#x}, error={})",
+                    ::std::io::Error::last_os_error()
+                );
+                error!("populate_ept(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            }
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Reads bytes from the virtual memory.
     ///
     /// # Parameters
