@@ -5,19 +5,22 @@
 // Imports
 //==================================================================================================
 
-use crate::x86::mem::paging::{
-    flags::{
-        AccessedFlag,
-        DirtyFlag,
-        PageCacheDisableFlag,
-        PageSizeFlag,
-        PageWriteThroughFlag,
-        PresentFlag,
-        ReadWriteFlag,
-        UserSupervisorFlag,
+use crate::{
+    mem::paging::TableEntry,
+    x86::mem::paging::{
+        flags::{
+            AccessedFlag,
+            DirtyFlag,
+            PageCacheDisableFlag,
+            PageSizeFlag,
+            PageWriteThroughFlag,
+            PresentFlag,
+            ReadWriteFlag,
+            UserSupervisorFlag,
+        },
+        frame::FrameNumber,
+        PteWord,
     },
-    frame::FrameNumber,
-    PteWord,
 };
 
 //==================================================================================================
@@ -422,5 +425,15 @@ impl PageDirectoryEntry {
     ///
     pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
         self.flags.set_user_supervisor(user_supervisor);
+    }
+}
+
+impl TableEntry for PageDirectoryEntry {
+    fn from_raw(raw: PteWord) -> Option<Self> {
+        Self::from_raw_value(raw)
+    }
+
+    fn raw(self) -> PteWord {
+        self.into_raw_value()
     }
 }
