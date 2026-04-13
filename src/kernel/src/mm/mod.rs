@@ -263,9 +263,6 @@ pub fn init(
 
     let mut vmem: Vmem = VirtMemoryManager::init(kernel_pages, kernel_page_tables, physman)?;
 
-    // SAFETY: called during single-threaded kernel init, after all boot page tables are allocated.
-    unsafe { virt::seal_boot_allocator() };
-
     // Map virtual memory regions that lie outside the physical memory.
     while let Some(region) = other_virtual_memory_regions.pop_front() {
         info!("mapping: {:?}", region);

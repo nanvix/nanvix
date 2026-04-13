@@ -47,17 +47,6 @@ pub mod system {
 }
 
 //==================================================================================================
-// Platform-Specific Constants
-//==================================================================================================
-
-pub mod platform {
-    /// Number of extra boot page tables for memory-mapped I/O regions above physical
-    /// memory. On microvm and hyperlight, all MMIO is within physical memory, so no
-    /// extra page tables are needed.
-    pub const NUM_MMIO_BOOT_PAGE_TABLES: usize = 0;
-}
-
-//==================================================================================================
 // User Memory Layout
 //==================================================================================================
 
