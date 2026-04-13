@@ -75,6 +75,8 @@ use ::arch::{
     mem::PAGE_SIZE,
 };
 use ::config::memory_layout::{
+    USER_MMAP_BASE_RAW,
+    USER_MMAP_END_RAW,
     USER_STACK_MIN_SIZE,
     USER_STACK_SIZE,
     USER_STACK_TOP_RAW,
@@ -1909,33 +1911,42 @@ impl ProcessManager {
         let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let state: &mut ProcessState = process.state_mut();
 
-        // Map all pages in the MMIO region.
-        let vmem: &mut Vmem = state.vmem_mut();
-        let base: usize = region.base().into_raw_value();
-        let end: usize = base.checked_add(region.size()).ok_or_else(|| {
-            let reason: &str = "mmio region end address overflow";
-            error!("{reason} (base={base:#x}, size={:#?})", region.size());
-            Error::new(ErrorCode::ValueOverflow, reason)
-        })?;
-        let perm: AccessPermission = region.perm();
+        // On Hyperlight, MMIO regions are already identity-mapped by mm::init()
+        // (which writes PTEs directly to the hardware PD/PTs). The
+        // VirtMemoryManager does not track these entries, so kctrl() would fail
+        // with "page table not found". Skip the mapping step.
+        #[cfg(not(feature = "hyperlight"))]
+        {
+            let vmem: &mut Vmem = state.vmem_mut();
+            let base: usize = region.base().into_raw_value();
+            let end: usize = base.checked_add(region.size()).ok_or_else(|| {
+                let reason: &str = "mmio region end address overflow";
+                error!("{reason} (base={base:#x}, size={:#?})", region.size());
+                Error::new(ErrorCode::ValueOverflow, reason)
+            })?;
+            let perm: AccessPermission = region.perm();
 
-        if cfg!(feature = "nightly-performance-optimizations") {
-            // Single pass: apply permission changes directly.
-            for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
-                let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
-                vmem.kctrl(vaddr, perm, false)?;
-            }
-        } else {
-            // Two-pass: validate that every page can be mapped before modifying any state.
-            for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
-                let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
-                vmem.kctrl(vaddr, perm, true)?;
-            }
+            if cfg!(feature = "nightly-performance-optimizations") {
+                // Single pass: apply permission changes directly.
+                for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
+                    let vaddr: PageAligned<VirtualAddress> =
+                        PageAligned::from_raw_value(raw_vaddr)?;
+                    vmem.kctrl(vaddr, perm, false)?;
+                }
+            } else {
+                // Two-pass: validate that every page can be mapped before modifying any state.
+                for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
+                    let vaddr: PageAligned<VirtualAddress> =
+                        PageAligned::from_raw_value(raw_vaddr)?;
+                    vmem.kctrl(vaddr, perm, true)?;
+                }
 
-            // All validations passed — apply the permission changes for real.
-            for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
-                let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
-                vmem.kctrl(vaddr, perm, false)?;
+                // All validations passed — apply the permission changes for real.
+                for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
+                    let vaddr: PageAligned<VirtualAddress> =
+                        PageAligned::from_raw_value(raw_vaddr)?;
+                    vmem.kctrl(vaddr, perm, false)?;
+                }
             }
         }
 
@@ -2099,22 +2110,99 @@ impl ProcessManager {
     ///   a page-not-present fault from user mode.
     /// - `Err(...)` if page allocation failed.
     ///
+    /// Returns the number of ready processes.
+    #[cfg(feature = "hyperlight")]
+    #[allow(dead_code)]
+    pub fn ready_count(&self) -> usize {
+        self.ready.len()
+    }
+
+    /// Resets all ready processes' admission times so the scheduler picks
+    /// them correctly after snapshot restore (the clock may have reset).
+    #[cfg(feature = "hyperlight")]
+    pub fn reset_ready_admission_times(&mut self) {
+        for proc in self.ready.iter_mut() {
+            proc.reset_admission_times();
+        }
+    }
+
+    /// Switches the running process's Vmem PD to the hardware CR3.
+    /// Called during dispatch to assign each process its per-process PD
+    /// rebuilt by the host in scratch. PD[i] = pt_base_gpa + i * PAGE_SIZE,
+    /// matching the order from iter_process_cr3s() (running first, then ready).
+    ///
+    /// Also updates each thread's ContextInformation.cr3 so that
+    /// context_switch loads the correct PD for each process.
+    #[cfg(feature = "hyperlight")]
+    pub fn adopt_per_process_pds(&mut self, pt_base_gpa: u32) {
+        let page_size = 4096u32;
+        let mut idx: u32 = 0;
+        if let Some(ref mut running) = self.running {
+            let pd_gpa = pt_base_gpa + idx * page_size;
+            running.state_mut().vmem_mut().adopt_pd(pd_gpa);
+            running.set_running_thread_cr3(pd_gpa);
+            idx += 1;
+        }
+        for proc in self.ready.iter_mut() {
+            let pd_gpa = pt_base_gpa + idx * page_size;
+            proc.state_mut().vmem_mut().adopt_pd(pd_gpa);
+            proc.set_all_threads_cr3(pd_gpa);
+            idx += 1;
+        }
+    }
+
+    /// Returns an iterator over (pid, cr3) pairs for all non-kernel processes.
+    #[cfg(feature = "hyperlight")]
+    pub fn iter_process_cr3s(&self) -> alloc::vec::Vec<(ProcessIdentifier, u32)> {
+        use crate::mm::Vmem;
+        let mut result = alloc::vec::Vec::new();
+        // Running process (the kernel at snapshot time).
+        if let Some(ref running) = self.running {
+            let pid = running.state().pid();
+            if let Ok(cr3) = running.state().vmem().pgdir().physical_address() {
+                // Resolve the VA through hardware page tables to get the
+                // CoW-resolved PA (the VA may point to snapshot memory but
+                // the actual data may have been CoW'd to scratch).
+                let resolved = Vmem::resolve_pa(cr3.into_raw_value());
+                result.push((pid, if resolved != 0 { resolved } else { cr3.into_raw_value() as u32 }));
+            }
+        }
+        // Ready processes (user processes created but not yet scheduled).
+        for proc in self.ready.iter() {
+            let pid = proc.state().pid();
+            if let Ok(cr3) = proc.state().vmem().pgdir().physical_address() {
+                let resolved = Vmem::resolve_pa(cr3.into_raw_value());
+                result.push((pid, if resolved != 0 { resolved } else { cr3.into_raw_value() as u32 }));
+            }
+        }
+        result
+    }
+
     pub fn handle_stack_page_fault(
         &mut self,
         mm: &mut VirtMemoryManager,
         fault_addr: usize,
         error_code: excp::ErrorCode,
     ) -> Result<bool, Error> {
-        // Only handle page-not-present faults from user mode.
-        if error_code.is_present() || !error_code.is_user() {
+        // Only handle page-not-present faults.
+        if error_code.is_present() {
+            return Ok(false);
+        }
+        // On Hyperlight (shared PD), the kernel accesses user VAs directly,
+        // so demand-page faults can occur in supervisor mode too.
+        #[cfg(not(feature = "hyperlight"))]
+        if !error_code.is_user() {
             return Ok(false);
         }
 
-        // Check if the faulting address falls within the main-thread user stack region.
-        // The stack occupies [USER_STACK_TOP_RAW, USER_STACK_TOP_RAW + USER_STACK_SIZE).
-        const STACK_REGION_START: usize = USER_STACK_TOP_RAW;
-        const STACK_REGION_END: usize = STACK_REGION_START + USER_STACK_SIZE;
-        if !(STACK_REGION_START..STACK_REGION_END).contains(&fault_addr) {
+        // Check if the faulting address falls within a demand-pageable user region:
+        // - Stack: [USER_STACK_TOP_RAW, USER_STACK_TOP_RAW + USER_STACK_SIZE)
+        // - Mmap/heap: [USER_MMAP_BASE_RAW, USER_MMAP_END_RAW)
+        const STACK_START: usize = USER_STACK_TOP_RAW;
+        const STACK_END: usize = STACK_START + USER_STACK_SIZE;
+        if !(STACK_START..STACK_END).contains(&fault_addr)
+            && !(USER_MMAP_BASE_RAW..USER_MMAP_END_RAW).contains(&fault_addr)
+        {
             return Ok(false);
         }
 

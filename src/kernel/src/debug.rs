@@ -31,8 +31,11 @@ fn do_debug(buf: &[u8]) -> Result<(), Error> {
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         },
     };
-    // SAFETY: the standard output device is present, initialized, and accessed
-    // exclusively from a single core with interrupts disabled.
+    // On Hyperlight, write directly to DebugPrint port (bypass klog buffer
+    // which has stale CoW state after snapshot restore).
+    #[cfg(feature = "hyperlight")]
+    ::hyperlight_guest::exit::debug_print(message);
+    #[cfg(not(feature = "hyperlight"))]
     unsafe { crate::klog::puts(message) };
 
     Ok(())
@@ -53,6 +56,7 @@ fn do_debug(buf: &[u8]) -> Result<(), Error> {
 ///
 /// A [`KcallResult`] indicating success or the error code.
 ///
+#[cfg_attr(feature = "hyperlight", allow(unused_variables))]
 pub fn debug(pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult {
     // SAFETY: the process manager is initialized and access is synchronized.
     let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
@@ -79,14 +83,31 @@ pub fn debug(pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult {
     let src: VirtualAddress = VirtualAddress::new(user_buffer);
     let dst: VirtualAddress = VirtualAddress::new(kernel_buffer.as_mut_ptr() as usize);
 
-    if let Err(e) = pm.vmcopy_from_user(pid, dst, src, size) {
-        return KcallResult::Error(e.code.into());
+    // On Hyperlight (shared PD), user VAs are directly accessible.
+    // Skip vmcopy_from_user (uses __phys_memcpy which breaks after CoW
+    // because GPAs are stale). Just read the user buffer directly.
+    #[cfg(feature = "hyperlight")]
+    {
+        let user_buf: &[u8] = unsafe {
+            core::slice::from_raw_parts(user_buffer as *const u8, size)
+        };
+        return match do_debug(user_buf) {
+            Ok(()) => KcallResult::ok(),
+            Err(e) => KcallResult::Error(e.code.into()),
+        };
     }
 
-    let buf: &[u8] = unsafe { core::slice::from_raw_parts(kernel_buffer.as_ptr(), size) };
+    #[cfg(not(feature = "hyperlight"))]
+    {
+        if let Err(e) = pm.vmcopy_from_user(pid, dst, src, size) {
+            return KcallResult::Error(e.code.into());
+        }
 
-    match do_debug(buf) {
-        Ok(()) => KcallResult::ok(),
-        Err(e) => KcallResult::Error(e.code.into()),
+        let buf: &[u8] = unsafe { core::slice::from_raw_parts(kernel_buffer.as_ptr(), size) };
+
+        match do_debug(buf) {
+            Ok(()) => KcallResult::ok(),
+            Err(e) => KcallResult::Error(e.code.into()),
+        }
     }
 }

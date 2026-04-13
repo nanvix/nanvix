@@ -229,6 +229,16 @@ impl Vmm {
 
         let memory_size: usize = ::config::kernel::MEMORY_SIZE;
 
+        // Pre-compute the RAMFS file size (if any) so we can embed it in the
+        // init_data blob. The kernel reads this during parse_bootinfo() to
+        // register the RAMFS MMIO region with the correct size.
+        let ramfs_file_size: u64 = args
+            .ramfs_filename
+            .as_ref()
+            .and_then(|path| std::fs::metadata(path).ok())
+            .map(|m| m.len())
+            .unwrap_or(0);
+
         let guest_env: GuestEnvironment = if let Some(initrd_filename) = &args.initrd_filename {
             match std::fs::read(initrd_filename) {
                 Ok(bytes) => {
@@ -259,14 +269,18 @@ impl Vmm {
                         padded.extend_from_slice(&(initrd_size as u64).to_le_bytes());
                         padded.extend_from_slice(&bytes);
                         padded.extend_from_slice(&initrd_args_bytes);
+                        // Append RAMFS file size as a u64 trailer so the kernel
+                        // can register the correct MMIO region size.
+                        padded.extend_from_slice(&ramfs_file_size.to_le_bytes());
 
                         debug!(
                             "initrd blob: {} bytes total ({} byte header + {} bytes data + {} \
-                             bytes args)",
+                             bytes args + 8 bytes ramfs_size={})",
                             padded.len(),
                             ::config::hyperlight::INITRD_SIZE_BYTES,
                             initrd_size,
                             initrd_args_bytes.len(),
+                            ramfs_file_size,
                         );
 
                         padded
@@ -311,10 +325,16 @@ impl Vmm {
         // we use memory_size as an upper bound. Hyperlight will allocate only what's needed.
         let mut config: SandboxConfiguration = SandboxConfiguration::default();
 
-        // Set heap large enough to cover from after kernel structures through end of memory.
-        // The actual heap start depends on the kernel loaded size, PEB, and I/O buffers.
-        // We request enough heap so that the heap region extends well beyond KPOOL_BASE + KPOOL_SIZE.
-        let heap_size: usize = memory_size;
+        // i686 guests need a large scratch region for CoW page copies,
+        // frame allocations during dispatch, and RAMFS CoW pages.
+        config.set_scratch_size(128 * 1024 * 1024);
+
+        // The Hyperlight heap size controls how much guest memory is allocated
+        // before init_data. Hyperlight layout: code + PEB/IO + heap + init_data.
+        // We subtract overhead (~2MB for code/PEB/IO) so that shared_mem stays
+        // within MEMORY_SIZE, allowing the RAMFS (placed after shared_mem) to
+        // also fit within the frame allocator's addressable range.
+        let heap_size: usize = memory_size.saturating_sub(2 * 1024 * 1024);
         config.set_heap_size(heap_size as u64);
 
         // Creates Hyperlight sandbox.
@@ -326,13 +346,13 @@ impl Vmm {
 
         // Map RAMFS file into sandbox memory if provided.
         // The file is mapped copy-on-write at the first GPA after the sandbox's
-        // shared memory slot. With nanvix-unstable, BASE_ADDRESS is 0x0 so the
-        // shared memory occupies GPA [0, shared_mem_size). The file mapping
-        // metadata is automatically written to the PEB during evolve(), so the
-        // guest kernel can discover and identity-map the RAMFS region during boot.
+        // shared memory slot. The shared memory occupies GPA
+        // [BASE_ADDRESS, BASE_ADDRESS + shared_mem_size). The RAMFS goes right after.
         if let Some(ramfs_filename) = &args.ramfs_filename {
             let ramfs_path: &Path = Path::new(ramfs_filename);
-            let ramfs_gpa: u64 = sandbox.shared_mem_size() as u64;
+            // Hyperlight's BASE_ADDRESS (0x1000) + shared_mem_size gives the
+            // first GPA after shared memory.
+            let ramfs_gpa: u64 = 0x1000 + sandbox.shared_mem_size() as u64;
             let ramfs_size: u64 = sandbox
                 .map_file_cow(ramfs_path, ramfs_gpa, Some(RAMFS_LABEL))
                 .map_err(|e| {
@@ -356,6 +376,10 @@ impl Vmm {
         let vmem: Arc<Mutex<VirtualMemory>> = Arc::new(Mutex::new(VirtualMemory { counter }));
 
         let guest: Arc<Mutex<Guest>> = Arc::new(Mutex::new(guest));
+
+        // Publish handles for the standalone I/O handler so it can increment
+        // the guest credit counter when sending IKC responses.
+        let _ = crate::STANDALONE_CREDIT_HANDLES.set((guest.clone(), vmem.clone()));
 
         // Redirect process stderr to the custom file when configured, so that DebugPrint VM-exit
         // output (sent via `eprint!` in the hyperlight SDK) reaches the intended destination.
@@ -457,8 +481,97 @@ impl Vmm {
                 .ok_or_else(|| anyhow::anyhow!("sandbox already evolved"))?
         };
 
-        // Run the sandbox.
-        let result: Result<MultiUseSandbox, HyperlightError> = uninit.evolve();
+        // Phase 1: Evolve — boot kernel, initialize, spawn processes.
+        // The kernel halts with the dispatch function address in EAX.
+        let mut sandbox: MultiUseSandbox = match uninit.evolve() {
+            Ok(s) => s,
+            Err(error) => {
+                self.inner.blocking_lock()._stderr_redirect.take();
+                if let Err(e) = self
+                    .inner
+                    .blocking_lock()
+                    .control_tx
+                    .blocking_send(VcpuControlResponse::Shutdown)
+                {
+                    error!("run(): failed to notify vmm thread (error={e:?})");
+                }
+                eprintln!("VMM ERROR (evolve): {error:?}");
+                return Ok(ErrorCode::ConnectionReset.into());
+            },
+        };
+
+        // Register a callback that discovers page table roots from the
+        // guest's scratch bookkeeping area. This keeps the Nanvix-specific
+        // layout knowledge in the embedder, not in hyperlight-host.
+        sandbox.set_pt_root_finder(Box::new(|_snap, scratch, cr3| {
+            // Nanvix scratch bookkeeping layout: the kernel writes PD root
+            // GPAs at these offsets before signaling boot-complete.
+            const PD_ROOTS_COUNT_OFF: usize = 0x28;
+            const PD_ROOTS_ARRAY_OFF: usize = 0x30;
+            const MAX_PD_ROOTS: usize = 32;
+            let scratch_size = scratch.len();
+            let count_off = scratch_size - PD_ROOTS_COUNT_OFF;
+            let array_off = scratch_size - PD_ROOTS_ARRAY_OFF;
+
+            let count = scratch
+                .get(count_off..count_off + 4)
+                .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                .unwrap_or(0) as usize;
+
+            if count == 0 || count > MAX_PD_ROOTS {
+                return vec![cr3];
+            }
+
+            let mut roots = Vec::with_capacity(count);
+            for i in 0..count {
+                let off = array_off + i * 4;
+                if let Some(b) = scratch.get(off..off + 4) {
+                    let gpa = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+                    if gpa != 0 {
+                        roots.push(gpa as u64);
+                    }
+                }
+            }
+            if roots.is_empty() {
+                roots.push(cr3);
+            }
+            roots
+        }));
+
+        // Phase 2: Snapshot — capture post-boot state for restore+call cycles.
+        let evolve_time = std::time::Instant::now();
+        let snapshot = sandbox.snapshot().map_err(|e| {
+            anyhow::anyhow!("snapshot failed: {e:?}")
+        })?;
+        let snapshot_time = evolve_time.elapsed();
+        eprintln!("snapshot: {:.3}ms", snapshot_time.as_secs_f64() * 1000.0);
+
+        // Phase 3: Restore + Call — repeat N+1 times (default once).
+        let repeat: usize = std::env::var("NANVIX_REPEAT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        let total_calls = repeat + 1;
+        let mut call_result: Result<(), HyperlightError> = Ok(());
+        for i in 0..total_calls {
+            let restore_start = std::time::Instant::now();
+            sandbox.restore(snapshot.clone()).map_err(|e| {
+                anyhow::anyhow!("restore failed: {e:?}")
+            })?;
+            let restore_time = restore_start.elapsed();
+
+            let call_start = std::time::Instant::now();
+            call_result = sandbox.call("run", ());
+            let call_time = call_start.elapsed();
+
+            eprintln!(
+                "run {}/{}: restore={:.3}ms call={:.3}ms",
+                i + 1,
+                total_calls,
+                restore_time.as_secs_f64() * 1000.0,
+                call_time.as_secs_f64() * 1000.0,
+            );
+        }
 
         // Drop the stderr redirect guard to restore the original stderr fd.
         self.inner.blocking_lock()._stderr_redirect.take();
@@ -471,17 +584,21 @@ impl Vmm {
             .blocking_send(VcpuControlResponse::Shutdown)
         {
             error!("run(): failed to notify vmm thread (error={error:?})");
-            // Don't bail as we are shutting down anyway.
         }
 
         // Parse result.
-        // NOTE: The kernel uses abort_with_code() for all exit codes (including 0) rather
-        // than halt() to avoid a race condition with SIGKILL. See issue #1010.
-        // During evolve(), GuestAborted is wrapped in HyperlightVmError(Initialize(...))
-        // so we must extract it from the nested error chain.
-        match result {
-            Ok(_multiuse_sandbox) => {
-                debug!("run(): vmm exited normally");
+        // The dispatch handler halts via VmAction::Halt (port 108), which produces
+        // VmExit::Halt on the host. Hyperlight then tries to read a guest function
+        // return value from the PEB output buffer, which fails with "Stack pointer
+        // is out of bounds" because the dispatch handler doesn't use Hyperlight's
+        // guest function return convention. We treat this specific error as success.
+        match call_result {
+            Ok(()) => {
+                debug!("run(): guest call completed normally");
+                Ok(0)
+            },
+            Err(ref error) if format!("{error:?}").contains("Stack pointer is out of bounds") => {
+                debug!("run(): guest halted cleanly (Halt path, no return value in PEB)");
                 Ok(0)
             },
             Err(error) => match Self::extract_guest_abort(&error) {
@@ -494,6 +611,7 @@ impl Vmm {
                     Ok(code as u16)
                 },
                 None => {
+                    eprintln!("VMM ERROR (call): {error:?}");
                     error!("run(): vmm aborted (debug={error:?}, display={error})");
                     Ok(ErrorCode::ConnectionReset.into())
                 },

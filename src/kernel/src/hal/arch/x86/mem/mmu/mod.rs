@@ -21,6 +21,7 @@ pub mod page_table;
 //==================================================================================================
 
 #[inline(never)]
+#[cfg_attr(feature = "hyperlight", allow(dead_code))]
 pub unsafe fn load_page_directory(cr3: usize) {
     arch::asm!(
         "mov {0}, %eax",

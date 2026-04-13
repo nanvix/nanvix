@@ -214,4 +214,10 @@ impl ReadyThread {
     pub fn admission_time(&self) -> SystemTime {
         self.admission_time
     }
+
+    /// Sets the admission time (used after snapshot restore to fix stale times).
+    #[cfg(feature = "hyperlight")]
+    pub fn set_admission_time(&mut self, time: SystemTime) {
+        self.admission_time = time;
+    }
 }

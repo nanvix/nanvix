@@ -280,6 +280,21 @@ impl StandaloneVmHandle {
 ///
 /// # Description
 ///
+/// Increments the guest credit counter so that the kernel's `get_credits()` sees the pending
+/// response and issues a `VmbusRead` to consume it.
+///
+#[cfg(feature = "hyperlight")]
+async fn add_standalone_credit() {
+    if let Some((guest_arc, vmem_arc)) = crate::STANDALONE_CREDIT_HANDLES.get() {
+        let mut guest = guest_arc.lock().await;
+        let mut vmem = vmem_arc.lock().await;
+        let _ = guest.add_credit(&mut vmem);
+    }
+}
+
+///
+/// # Description
+///
 /// Extracts the [`ThreadIdentifier`] from a message sender field.
 ///
 /// Write/Read requests encode the originating thread as a negative value in the
@@ -323,9 +338,7 @@ async fn standalone_io_handler(
     let mut input_buffer: VecDeque<u8> = VecDeque::new();
     let mut input_closed: bool = false;
 
-    trace!("standalone io_handler: entering receive loop");
     while let Some(frame) = vm_stdout_rx.recv().await {
-        trace!("standalone io_handler: received frame (type={})", frame.frame_type_byte());
         match frame {
             IkcFrame::Message(msg) => {
                 let ldm: LinuxDaemonMessage = match LinuxDaemonMessage::try_from_bytes(msg.payload)
@@ -408,6 +421,8 @@ async fn handle_write_request(
             );
             let response: Message = WriteResponse::build(tid, 0);
             counters.increment_io_thread_messages_received();
+            #[cfg(feature = "hyperlight")]
+            add_standalone_credit().await;
             if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
                 error!(
                     "standalone io_handler: failed to send WriteResponse (VM input channel closed)"
@@ -422,6 +437,8 @@ async fn handle_write_request(
         warn!("standalone io_handler: rejecting write to unsupported fd={fd} (tid={tid:?})");
         let response: Message = WriteResponse::build(tid, -1);
         counters.increment_io_thread_messages_received();
+        #[cfg(feature = "hyperlight")]
+        add_standalone_credit().await;
         if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
             error!("standalone io_handler: failed to send WriteResponse (VM input channel closed)");
         }
@@ -434,6 +451,8 @@ async fn handle_write_request(
             error!("standalone io_handler: write size overflows i32 (len={})", data.len());
             let response: Message = WriteResponse::build(tid, -1);
             counters.increment_io_thread_messages_received();
+            #[cfg(feature = "hyperlight")]
+            add_standalone_credit().await;
             if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
                 error!(
                     "standalone io_handler: failed to send WriteResponse (VM input channel closed)"
@@ -450,6 +469,8 @@ async fn handle_write_request(
         trace!("standalone io_handler: output channel closed, discarding write data");
         let response: Message = WriteResponse::build(tid, -1);
         counters.increment_io_thread_messages_received();
+        #[cfg(feature = "hyperlight")]
+        add_standalone_credit().await;
         if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
             error!("standalone io_handler: failed to send WriteResponse (VM input channel closed)");
         }
@@ -460,6 +481,8 @@ async fn handle_write_request(
     let response: Message = WriteResponse::build(tid, written);
     trace!("standalone io_handler: sending WriteResponse (written={written}, tid={tid:?})");
     counters.increment_io_thread_messages_received();
+    #[cfg(feature = "hyperlight")]
+    add_standalone_credit().await;
     if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
         error!("standalone io_handler: failed to send WriteResponse (VM input channel closed)");
     }
@@ -497,6 +520,8 @@ async fn handle_read_request(
             );
             let response: Message = ReadResponse::eof(tid);
             counters.increment_io_thread_messages_received();
+            #[cfg(feature = "hyperlight")]
+            add_standalone_credit().await;
             if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
                 error!(
                     "standalone io_handler: failed to send ReadResponse (VM input channel closed)"
@@ -521,12 +546,16 @@ async fn handle_read_request(
         let error_bulk: DataChunk = DataChunk::new(error_header, Vec::new());
         counters.increment_io_thread_messages_received();
         counters.increment_io_thread_messages_received();
+        #[cfg(feature = "hyperlight")]
+        add_standalone_credit().await;
         if vm_stdin_tx.send(IkcFrame::Bulk(error_bulk)).await.is_err() {
             error!("standalone io_handler: failed to send bulk response (VM input channel closed)");
             return;
         }
         let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
         let response: Message = ReadResponse::build(tid, -1, empty_buf);
+        #[cfg(feature = "hyperlight")]
+        add_standalone_credit().await;
         if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
             error!("standalone io_handler: failed to send ReadResponse (VM input channel closed)");
         }
@@ -555,6 +584,8 @@ async fn handle_read_request(
             let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
             let response: Message = ReadResponse::build(tid, -1, empty_buf);
             counters.increment_io_thread_messages_received();
+            #[cfg(feature = "hyperlight")]
+            add_standalone_credit().await;
             if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
                 error!(
                     "standalone io_handler: failed to send ReadResponse (VM input channel closed)"
@@ -580,6 +611,8 @@ async fn handle_read_request(
     // Increment once for the bulk frame and once for the message response that follow.
     counters.increment_io_thread_messages_received();
     counters.increment_io_thread_messages_received();
+    #[cfg(feature = "hyperlight")]
+    add_standalone_credit().await;
     if vm_stdin_tx
         .send(IkcFrame::Bulk(response_bulk))
         .await
@@ -593,6 +626,8 @@ async fn handle_read_request(
     // transferred via the bulk frame above.
     let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
     let response: Message = ReadResponse::build(tid, actual_len.cast_signed(), empty_buf);
+    #[cfg(feature = "hyperlight")]
+    add_standalone_credit().await;
     if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
         error!("standalone io_handler: failed to send ReadResponse (VM input channel closed)");
     }

@@ -49,6 +49,9 @@ unsafe extern "C" {
     fn _do_excp13();
     /// Page Fault.
     fn _do_excp14();
+    /// CoW page fault handler (hyperlight only, uses scratch exception stack).
+    #[cfg(feature = "hyperlight")]
+    fn _cow_pf_handler();
     /// Reserved.
     fn _do_excp15();
     /// Floating Point Exception.
@@ -132,6 +135,7 @@ pub const IDT_SIZE: usize = IDT_LEN * mem::size_of::<Idte>();
 // Global Variables
 //==================================================================================================
 
+#[no_mangle]
 static mut IDT: [Idte; IDT_LEN] = unsafe { mem::zeroed() };
 
 static mut IDTR: Idtr = unsafe { mem::zeroed() };

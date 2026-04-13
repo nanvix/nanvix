@@ -281,6 +281,23 @@ impl Gdt {
     /// It is safe to use this function if and only if the processor is running in privileged mode.
     ///
     pub unsafe fn set_thread_data_area_base(tda_base: u32) {
+        // On Hyperlight, the CPU's GDT is in scratch (at 0xFFFDF000),
+        // not at the static GDT[] address. Write to the ACTIVE GDT.
+        #[cfg(feature = "hyperlight")]
+        {
+            let mut gdtr: [u8; 8] = [0; 8];
+            core::arch::asm!(
+                "sgdt [{}]",
+                in(reg) gdtr.as_mut_ptr(),
+                options(nostack)
+            );
+            let gdt_base = u32::from_le_bytes([gdtr[2], gdtr[3], gdtr[4], gdtr[5]]);
+            let entry_offset = (GdtEntries::UserThreadDataArea as usize) * 8;
+            let entry_ptr = (gdt_base as usize + entry_offset) as *mut Gdte;
+            (*entry_ptr).set_base(tda_base);
+            return;
+        }
+        #[cfg(not(feature = "hyperlight"))]
         GDT[GdtEntries::UserThreadDataArea as usize].set_base(tda_base);
     }
 

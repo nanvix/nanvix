@@ -67,6 +67,19 @@ pub mod vmm;
 mod handles;
 
 //==================================================================================================
+// Standalone Credit Handles
+//==================================================================================================
+
+/// Global handles used by the standalone I/O handler to increment the guest credit counter
+/// when sending IKC responses back to the guest. Without this, the kernel's `get_credits()`
+/// never sees new credits and never calls `VmbusRead` to consume the response.
+#[cfg(feature = "hyperlight")]
+pub(crate) static STANDALONE_CREDIT_HANDLES: std::sync::OnceLock<(
+    std::sync::Arc<tokio::sync::Mutex<crate::vmm::guest::Guest>>,
+    std::sync::Arc<tokio::sync::Mutex<crate::vmm::VirtualMemory>>,
+)> = std::sync::OnceLock::new();
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -705,7 +718,15 @@ pub fn build_input_fn(
     let input = move || -> Result<Vec<u8>, hyperlight_host::HyperlightError> {
         on_input_function_called(&counters);
         match input_queue.blocking_recv() {
-            Some(IkcFrame::Message(mut msg)) => {
+            None => {
+                let reason: String = "channel has been disconnected".to_string();
+                error!("input(): {reason}");
+                return Err(hyperlight_host::HyperlightError::AnyhowError(
+                    anyhow::Error::msg(reason),
+                ));
+            },
+            Some(frame) => match frame {
+            IkcFrame::Message(mut msg) => {
                 // Label: uservm::lib::vm_input::vm_exit()
                 profiler::timestamp_message!(
                     &mut msg.payload,
@@ -743,7 +764,7 @@ pub fn build_input_fn(
                 locked_guest.consume_credit(&mut locked_vmem)?;
                 Ok(msg.to_bytes().to_vec())
             },
-            Some(IkcFrame::Bulk(mut bulk)) => {
+            IkcFrame::Bulk(mut bulk) => {
                 // Handle data chunk transfer: store the bulk payload in the shared
                 // pending_bulk_data buffer and return only the PullResponse notification
                 // message (64 bytes). The kernel will then call VmbusBulkRead in a loop
@@ -815,14 +836,8 @@ pub fn build_input_fn(
                 locked_guest.consume_credit(&mut locked_vmem)?;
                 Ok(completion_msg.to_bytes().to_vec())
             },
-
-            // Channel has disconnected.
-            None => {
-                let reason: String = "channel has been disconnected".to_string();
-                error!("input(): {reason}");
-                Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)))
-            },
-        }
+        } // match frame
+        } // match blocking_recv
     };
 
     Box::new(input)

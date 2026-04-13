@@ -238,11 +238,38 @@ fn main() {
 
     let linker_template: String =
         fs::read_to_string(&linker_template_path).expect("Failed to read linker script template");
+    // Hyperlight loads the guest binary at GPA BASE_ADDRESS (0x1000).
+    // All absolute addresses in the linker script must be offset by this amount.
+    let hyperlight_base: &str = if cfg!(feature = "hyperlight") {
+        "0x1000"
+    } else {
+        "0x0"
+    };
+
+    // Hyperlight starts the guest in 32-bit protected mode with paging and
+    // CoW page tables. _hyperlight_entry sets up a minimal IDT with a CoW
+    // #PF handler, then jumps to _do_start2. For microvm, we use the
+    // real-mode trampoline _do_start.
+    let entry_point: &str = if cfg!(feature = "hyperlight") {
+        "_hyperlight_entry"
+    } else {
+        "_do_start"
+    };
+
     let linker_script: String = linker_template
         .replace("@MACHINE_RESERVED@", &machine_reserved)
-        .replace("@KPOOL_BASE@", &format!("{:#x}", kpool_base));
+        .replace("@KPOOL_BASE@", &format!("{:#x}", kpool_base))
+        .replace("@HYPERLIGHT_BASE@", hyperlight_base)
+        .replace("@ENTRY_POINT@", entry_point);
     fs::write(&linker_output_path, linker_script).expect("Failed to write linker script");
 
     println!("cargo::rerun-if-changed={}", linker_template_path.display());
     println!("cargo::rustc-link-arg=-T{}", linker_output_path.display());
+
+    // Override the target JSON's --entry=_do_start with the correct entry point.
+    // For hyperlight: _hyperlight_entry (sets up CoW IDT before bootstrap).
+    // For microvm: _do_start (real-mode trampoline).
+    if cfg!(feature = "hyperlight") {
+        println!("cargo::rustc-link-arg=--entry=_hyperlight_entry");
+    }
 }

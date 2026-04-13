@@ -6,7 +6,7 @@
 //==================================================================================================
 
 mod dispatcher;
-mod handler;
+pub(crate) mod handler;
 mod kcall_error;
 mod kcall_result;
 mod kcall_success;

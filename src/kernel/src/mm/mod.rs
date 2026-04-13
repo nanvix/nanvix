@@ -12,8 +12,8 @@
 //==================================================================================================
 
 pub mod elf;
-mod phys;
-mod virt;
+pub(crate) mod phys;
+pub(crate) mod virt;
 
 #[cfg(feature = "hyperlight")]
 pub(crate) use virt::memcpy;
@@ -29,10 +29,11 @@ use ::arch::mem::{
 };
 pub use virt::{
     KernelPage,
-    PageTableStorage,
     VirtMemoryManager,
     Vmem,
 };
+#[cfg_attr(feature = "hyperlight", allow(unused_imports))]
+pub use virt::PageTableStorage;
 pub mod kstack;
 pub mod ustack;
 
@@ -43,19 +44,22 @@ pub mod kredzone;
 // Imports
 //==================================================================================================
 
+#[cfg(not(feature = "hyperlight"))]
+use crate::hal::{
+    arch::x86::mem::mmu::page_table::PageTable,
+    mem::{
+        Address,
+        PageAligned,
+        PageTableAddress,
+    },
+};
 use crate::{
-    hal::{
-        arch::x86::mem::mmu::page_table::PageTable,
-        mem::{
-            Address,
-            MemoryRegion,
-            MemoryRegionType,
-            PageAligned,
-            PageTableAddress,
-            PhysicalAddress,
-            TruncatedMemoryRegion,
-            VirtualAddress,
-        },
+    hal::mem::{
+        MemoryRegion,
+        MemoryRegionType,
+        PhysicalAddress,
+        TruncatedMemoryRegion,
+        VirtualAddress,
     },
     kimage::KernelImage,
     mm::phys::PhysMemoryManager,
@@ -243,14 +247,7 @@ pub fn init(
 ) -> Result<Vmem, Error> {
     info!("initializing the memory manager ...");
 
-    type VirtMemRegions = LinkedList<TruncatedMemoryRegion<VirtualAddress>>;
-    type PhysMemRegions = LinkedList<TruncatedMemoryRegion<PhysicalAddress>>;
-
-    let (mut other_virtual_memory_regions, virtual_memory_regions, physical_memory_regions): (
-        VirtMemRegions,
-        VirtMemRegions,
-        PhysMemRegions,
-    ) = parse_memory_regions(memory_regions)?;
+    let (_other_virt, _virt, physical_memory_regions) = parse_memory_regions(memory_regions)?;
 
     let physman: PhysMemoryManager = phys::init(
         TruncatedMemoryRegion::from_virtual_memory_region(kimage.kpool())?,
@@ -258,53 +255,70 @@ pub fn init(
         &mmio_regions,
     )?;
 
-    // FIXME: the initial list of kernel pages should be spit out by the initialization.
-    let (kernel_pages, kernel_page_tables): (
-        LinkedList<KernelPage>,
-        LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
-    ) = (LinkedList::new(), virt::init(virtual_memory_regions, mmio_regions)?);
+    #[cfg(feature = "hyperlight")]
+    {
+        let (other_virt, virt) = (_other_virt, _virt);
+        crate::hal::platform::init_virtual_memory(virt, other_virt, mmio_regions, physman)
+    }
+    #[cfg(not(feature = "hyperlight"))]
+    {
+        let virtual_memory_regions = _virt;
+        let mut other_virtual_memory_regions = _other_virt;
 
-    let mut vmem: Vmem = VirtMemoryManager::init(kernel_pages, kernel_page_tables, physman)?;
+        // FIXME: the initial list of kernel pages should be spit out by the initialization.
+        let (kernel_pages, kernel_page_tables): (
+            LinkedList<KernelPage>,
+            LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
+        ) = (LinkedList::new(), virt::init(virtual_memory_regions, mmio_regions)?);
 
-    // Map virtual memory regions that lie outside the physical memory.
-    while let Some(region) = other_virtual_memory_regions.pop_front() {
-        info!("mapping: {:?}", region);
-        let mut vaddr: PageAligned<VirtualAddress> = region.start();
-        let end: VirtualAddress =
-            VirtualAddress::new(region.start().into_raw_value() + (region.size() - 1));
+        let mut vmem: Vmem =
+            VirtMemoryManager::init(kernel_pages, kernel_page_tables, physman)?;
 
-        {
-            while vaddr.into_inner() < end {
-                // NOTE: each `VirtMemoryManager::get_mut()` borrow is scoped to its own inner
-                // block so that the mutable reference is dropped before any subsequent borrow,
-                // including the borrow that may occur when `page_table_allocator` is invoked
-                // inside `map_kpage`.
-                let kpage: KernelPage = {
-                    // SAFETY: the memory manager is initialized and access is synchronized.
-                    let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
-                    mm.alloc_kpage(false)?
-                };
+        // Map virtual memory regions that lie outside the physical memory.
+        while let Some(region) = other_virtual_memory_regions.pop_front() {
+            info!("mapping: {:?}", region);
+            let mut vaddr: PageAligned<VirtualAddress> = region.start();
+            let end: VirtualAddress =
+                VirtualAddress::new(region.start().into_raw_value() + (region.size() - 1));
 
-                let page_table_allocator = || {
+            {
+                while vaddr.into_inner() < end {
+                    // NOTE: each `VirtMemoryManager::get_mut()` borrow is scoped to its own
+                    // inner block so that the mutable reference is dropped before any
+                    // subsequent borrow, including the borrow that may occur when
+                    // `page_table_allocator` is invoked inside `map_kpage`.
                     let kpage: KernelPage = {
                         // SAFETY: the memory manager is initialized and access is synchronized.
-                        let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
-                        mm.alloc_kpage(true)?
+                        let mm: &mut VirtMemoryManager =
+                            unsafe { VirtMemoryManager::get_mut() };
+                        mm.alloc_kpage(false)?
                     };
-                    let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
-                    let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
-                    Ok(page_table)
-                };
 
-                vmem.map_kpage(kpage, vaddr, page_table_allocator)?;
+                    let page_table_allocator = || {
+                        let kpage: KernelPage = {
+                            // SAFETY: the memory manager is initialized and access is
+                            // synchronized.
+                            let mm: &mut VirtMemoryManager =
+                                unsafe { VirtMemoryManager::get_mut() };
+                            mm.alloc_kpage(true)?
+                        };
+                        let pgtable_storage: PageTableStorage =
+                            PageTableStorage::KernelPage(kpage);
+                        let page_table: PageTable<PageTableStorage> =
+                            PageTable::new(pgtable_storage);
+                        Ok(page_table)
+                    };
 
-                match vaddr.into_raw_value().checked_add(mem::PAGE_SIZE) {
-                    Some(raw_addr) => vaddr = PageAligned::from_raw_value(raw_addr)?,
-                    None => break,
-                };
+                    vmem.map_kpage(kpage, vaddr, page_table_allocator)?;
+
+                    match vaddr.into_raw_value().checked_add(mem::PAGE_SIZE) {
+                        Some(raw_addr) => vaddr = PageAligned::from_raw_value(raw_addr)?,
+                        None => break,
+                    };
+                }
             }
         }
-    }
 
-    Ok(vmem)
+        Ok(vmem)
+    }
 }

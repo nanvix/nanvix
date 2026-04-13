@@ -123,6 +123,13 @@ impl ThreadState {
         self.context.as_mut().get_mut() as *mut ContextInformation
     }
 
+    /// Sets the CR3 value in this thread's execution context.
+    #[cfg(feature = "hyperlight")]
+    pub fn set_context_cr3(&mut self, cr3: u32) {
+        // SAFETY: context_mut returns a valid pointer.
+        unsafe { (*self.context_mut()).set_cr3(cr3) };
+    }
+
     ///
     /// # Description
     ///

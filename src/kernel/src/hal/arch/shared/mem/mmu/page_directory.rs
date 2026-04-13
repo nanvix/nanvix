@@ -12,6 +12,7 @@ use crate::hal::mem::{
     PageAligned,
     PageTableAddress,
     PhysicalAddress,
+    VirtualAddress,
 };
 use ::arch::mem::paging::{
     AccessedFlag,
@@ -56,6 +57,13 @@ impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
         let mut pgdir: PageDirectory<T> = PageDirectory { entries };
         pgdir.clean();
         pgdir
+    }
+
+    /// Wraps existing storage without zeroing it.
+    /// Used to adopt a page directory that was already populated (e.g., by a host VMM).
+    #[cfg_attr(not(feature = "hyperlight"), allow(dead_code))]
+    pub fn from_existing(entries: T) -> Self {
+        PageDirectory { entries }
     }
 
     pub fn map(
@@ -184,8 +192,16 @@ impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
     }
 
     pub fn physical_address(&self) -> Result<FrameAddress, Error> {
-        Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(
-            self.entries.as_ptr() as usize,
-        )?)?))
+        let addr: usize = self.entries.as_ptr() as usize;
+        let phys = if addr >= ::config::kernel::MEMORY_SIZE {
+            // Scratch/MMIO memory: bypass the MEMORY_SIZE check.
+            // SAFETY: scratch memory is identity-mapped; the virtual address equals the
+            // physical address.
+            let vaddr = VirtualAddress::from_raw_value(addr);
+            unsafe { PhysicalAddress::from_mmio_address(vaddr)? }
+        } else {
+            PhysicalAddress::from_raw_value(addr)?
+        };
+        Ok(FrameAddress::new(PageAligned::from_address(phys)?))
     }
 }

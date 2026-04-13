@@ -40,7 +40,9 @@ pub struct PhysicalAddress(VirtualAddress);
 
 impl PhysicalAddress {
     pub fn from_virtual_address(addr: VirtualAddress) -> Result<Self, Error> {
-        // Check if `addr` lies outside of the physical address space.
+        if crate::hal::platform::skip_phys_bounds_check() {
+            return Ok(Self(addr));
+        }
         if addr >= VirtualAddress::from_raw_value(config::kernel::MEMORY_SIZE) {
             return Err(Error::new(
                 ErrorCode::BadAddress,

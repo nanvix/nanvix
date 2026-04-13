@@ -66,9 +66,38 @@ pub fn kcall_handler() -> ExitStatus {
         panic!("failed to initialize event manager: {:?}", e);
     }
 
-    // Signal the VMM that kernel boot is complete and user-space is about to start.
+    // Write all active process PD roots to the scratch bookkeeping area
+    // so the host can walk every page directory during snapshot creation.
+    #[cfg(feature = "hyperlight")]
+    {
+        use ::hyperlight_common::layout::{
+            MAX_GVA, MAX_PD_ROOTS, SCRATCH_TOP_PD_ROOTS_ARRAY_OFFSET,
+            SCRATCH_TOP_PD_ROOTS_COUNT_OFFSET,
+        };
+        let cr3s = pm!().iter_process_cr3s();
+        let count = cr3s.len().min(MAX_PD_ROOTS);
+        let count_gva = (MAX_GVA - SCRATCH_TOP_PD_ROOTS_COUNT_OFFSET as usize + 1) as *mut u32;
+        let array_gva = (MAX_GVA - SCRATCH_TOP_PD_ROOTS_ARRAY_OFFSET as usize + 1) as *mut u32;
+        unsafe {
+            core::ptr::write_volatile(count_gva, count as u32);
+            for (i, (_pid, cr3)) in cr3s.iter().enumerate().take(count) {
+                core::ptr::write_volatile(array_gva.add(i), *cr3);
+            }
+        }
+    }
+
+    // Signal the VMM that kernel boot is complete and user-space is about
+    // to start. On Hyperlight, this halts the VM — the snapshot captures
+    // the state with processes CREATED but NOT yet scheduled.
     crate::hal::platform::signal_boot_complete();
 
+    // Run the event loop. User processes execute via giveup().
+    kcall_event_loop()
+}
+
+/// The kernel event loop. Runs until the init daemon process exits.
+/// This is also called from the dispatch handler during restore+call.
+pub fn kcall_event_loop() -> ExitStatus {
     let status: ExitStatus = loop {
         // Check if inter-kernel communication messages are available.
         let message_received: bool = poll_ikc_messages();
@@ -100,11 +129,9 @@ pub fn kcall_handler() -> ExitStatus {
             },
         }
 
-        // No work to do, so yield the CPU.
+        // No work to do.
         if !message_received && !harvested_process {
             // Flush the kernel log buffer.
-            // SAFETY: the standard output device is present, initialized, and accessed
-            // exclusively from a single core with interrupts disabled.
             unsafe { crate::klog::flush() };
 
             // SAFETY: the kernel process does not hold any resources.
@@ -117,6 +144,10 @@ pub fn kcall_handler() -> ExitStatus {
     while let Ok(Some((pid, status))) = pm!().harvest_zombies(mm!()) {
         info!("harvested zombie process: pid={:?}, status={:?}", pid, status);
     }
+
+    // Final flush of the kernel log buffer before returning. The event loop
+    // breaks without flushing when the init process is harvested.
+    unsafe { crate::klog::flush() };
 
     status
 }

@@ -73,6 +73,7 @@ impl KernelPage {
     ///
     /// The frame address of the target kernel page.
     ///
+    #[cfg_attr(feature = "hyperlight", allow(dead_code))]
     pub fn frame_address(&self) -> FrameAddress {
         self.kframe.base()
     }

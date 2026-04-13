@@ -81,16 +81,14 @@ impl ProcessEnvironmentBlock {
     /// # Safety
     /// This function is unsafe because it dereferences a raw pointer.
     pub unsafe fn get_credits() -> Result<u64, Error> {
-        // Credits are stored at a fixed offset from the top of scratch memory.
-        // The host writes here via GuestCounter; we read via volatile read.
-        // GVA = MAX_GVA - SCRATCH_TOP_GUEST_COUNTER_OFFSET + 1
         use ::hyperlight_common::layout::{
             MAX_GVA,
             SCRATCH_TOP_GUEST_COUNTER_OFFSET,
         };
         let credits_gva: usize = MAX_GVA - SCRATCH_TOP_GUEST_COUNTER_OFFSET as usize + 1;
         let credits_ptr: *const u64 = credits_gva as *const u64;
-        Ok(::core::ptr::read_volatile(credits_ptr))
+        let val = ::core::ptr::read_volatile(credits_ptr);
+        Ok(val)
     }
 
     /// Writes a message to the guest's standard output.

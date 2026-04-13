@@ -4,7 +4,7 @@
  */
 
 OUTPUT_FORMAT("elf32-i386")
-ENTRY(_do_start)
+ENTRY(@ENTRY_POINT@)
 
 /*
  * Page Size (4 KB)
@@ -12,14 +12,22 @@ ENTRY(_do_start)
 PAGE_SIZE = 0x1000;
 
 /*
+ * Hyperlight BASE_ADDRESS offset.
+ * On Hyperlight, the guest binary is loaded at GPA BASE_ADDRESS (0x1000).
+ * All absolute addresses must account for this offset.
+ * On microvm, this is 0 (loaded at GPA 0x0).
+ */
+HYPERLIGHT_BASE = @HYPERLIGHT_BASE@;
+
+/*
  * Boot Address
  */
-BOOT_ADDR = 0x00100000;
+BOOT_ADDR = 0x00100000 + HYPERLIGHT_BASE;
 
 /*
  * Trampoline Address
  */
-TRAMPOLINE_ADDR = 0x00008000;
+TRAMPOLINE_ADDR = 0x00008000 + HYPERLIGHT_BASE;
 
 /*
  * Kernel Pool Base Address
@@ -39,9 +47,12 @@ MACHINE_RESERVED = @MACHINE_RESERVED@;
 
 SECTIONS
 {
-	/* Pad with zeroes. */
+	/* Start at Hyperlight BASE_ADDRESS (0x1000 for hyperlight, 0x0 for microvm). */
+	. = HYPERLIGHT_BASE;
+
+	/* Pad with zeroes up to the trampoline. */
 	.zero : {
-		. = . + TRAMPOLINE_ADDR;
+		. = . + (TRAMPOLINE_ADDR - HYPERLIGHT_BASE);
 	} = 0
 
     /* Trampoline section. */

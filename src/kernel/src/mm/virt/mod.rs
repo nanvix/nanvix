@@ -9,7 +9,7 @@ mod identity_map;
 mod kpage;
 mod manager;
 mod page_table_allocator;
-mod vmem;
+pub(crate) mod vmem;
 
 #[cfg(feature = "hyperlight")]
 pub(crate) use identity_map::memcpy;
@@ -86,7 +86,14 @@ pub enum PageTableStorage {
     Bss(&'static mut [PteWord; PAGE_TABLE_LENGTH]),
     /// Runtime storage backed by a kernel page from the page pool.
     KernelPage(KernelPage),
+    /// Scratch memory storage (always writable, identity-mapped).
+    /// Used on Hyperlight to wrap existing page tables built by the host.
+    #[allow(dead_code)]
+    Scratch(*mut [u32; PAGE_TABLE_LENGTH]),
 }
+
+// SAFETY: Scratch pointers reference stable, process-global scratch memory.
+unsafe impl Send for PageTableStorage {}
 
 impl Deref for PageTableStorage {
     type Target = [PteWord];
@@ -98,6 +105,7 @@ impl Deref for PageTableStorage {
                 let base: *const PteWord = page.base().into_raw_value() as *const PteWord;
                 unsafe { core::slice::from_raw_parts(base, PAGE_TABLE_LENGTH) }
             },
+            Self::Scratch(ptr) => unsafe { &**ptr },
         }
     }
 }
@@ -110,6 +118,7 @@ impl DerefMut for PageTableStorage {
                 let base: *mut PteWord = page.base().into_raw_value() as *mut PteWord;
                 unsafe { core::slice::from_raw_parts_mut(base, PAGE_TABLE_LENGTH) }
             },
+            Self::Scratch(ptr) => unsafe { &mut **ptr },
         }
     }
 }
@@ -119,7 +128,25 @@ pub enum PageDirectoryStorage {
     Bss(&'static mut [PteWord; PAGE_TABLE_LENGTH]),
     /// Runtime storage backed by a kernel page from the page pool.
     KernelPage(KernelPage),
+    /// Scratch memory storage (always writable, identity-mapped).
+    /// Used on Hyperlight to wrap the existing page directory built by the host.
+    #[allow(dead_code)]
+    Scratch(*mut [u32; PAGE_TABLE_LENGTH]),
 }
+
+// SAFETY: Scratch pointers reference stable, process-global scratch memory.
+unsafe impl Send for PageDirectoryStorage {}
+
+impl PageDirectoryStorage {
+    /// Wraps the existing Hyperlight-built page directory at the given CR3 physical address.
+    /// The address must point to identity-mapped scratch memory.
+    #[cfg(feature = "hyperlight")]
+    #[allow(dead_code)]
+    pub fn from_cr3(cr3: u32) -> Self {
+        Self::Scratch(cr3 as *mut [u32; PAGE_TABLE_LENGTH])
+    }
+}
+
 
 impl Deref for PageDirectoryStorage {
     type Target = [PteWord];
@@ -131,6 +158,7 @@ impl Deref for PageDirectoryStorage {
                 let base: *const PteWord = page.base().into_raw_value() as *const PteWord;
                 unsafe { core::slice::from_raw_parts(base, PAGE_TABLE_LENGTH) }
             },
+            Self::Scratch(ptr) => unsafe { &**ptr },
         }
     }
 }
@@ -143,6 +171,7 @@ impl DerefMut for PageDirectoryStorage {
                 let base: *mut PteWord = page.base().into_raw_value() as *mut PteWord;
                 unsafe { core::slice::from_raw_parts_mut(base, PAGE_TABLE_LENGTH) }
             },
+            Self::Scratch(ptr) => unsafe { &mut **ptr },
         }
     }
 }
@@ -152,6 +181,7 @@ impl DerefMut for PageDirectoryStorage {
 //==================================================================================================
 
 // FIXME: this function is too long and complex.
+#[allow(dead_code)]
 pub fn init(
     mut virtual_memory_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
     mut mmio_memory_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
@@ -333,4 +363,73 @@ pub fn init(
     }
 
     Ok(root_pagetables)
+}
+
+///
+/// # Description
+///
+/// Reads the current CR3 register, walks the Hyperlight-built page directory,
+/// and wraps the existing page tables in Scratch-backed storage. The PTs stay
+/// in scratch memory (always writable) so the guest CoW page fault handler can
+/// modify PTEs. The host rebuilds these PTs on each restore via
+/// `update_scratch_bookkeeping()`.
+///
+/// # Returns
+///
+/// A tuple of:
+/// - The Scratch-backed page directory storage (wrapping Hyperlight's PD in scratch).
+/// - A list of `(PageTableAddress, PageTable<PageTableStorage>)` for every present PDE.
+///
+/// # Safety
+///
+/// Must only be called during single-threaded kernel init.
+///
+#[cfg(feature = "hyperlight")]
+pub fn from_hyperlight_cr3() -> Result<
+    (
+        PageDirectoryStorage,
+        LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
+    ),
+    Error,
+> {
+    let cr3: u32 = unsafe {
+        let val: u32;
+        core::arch::asm!("mov {0:e}, cr3", out(reg) val);
+        val
+    };
+
+    let pd_ptr: *mut [u32; PAGE_TABLE_LENGTH] = cr3 as *mut [u32; PAGE_TABLE_LENGTH];
+    let pd: &[u32; PAGE_TABLE_LENGTH] = unsafe { &*pd_ptr };
+
+    let mut page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)> =
+        LinkedList::new();
+
+    for pdi in 0..1024u32 {
+        let pde = pd[pdi as usize];
+        if (pde & 1) == 0 {
+            continue; // Not present.
+        }
+
+        let pt_phys = pde & 0xFFFFF000;
+        let pt_ptr: *mut [u32; PAGE_TABLE_LENGTH] = pt_phys as *mut [u32; PAGE_TABLE_LENGTH];
+        let pt: &[u32; PAGE_TABLE_LENGTH] = unsafe { &*pt_ptr };
+
+        // Count mapped (present) pages in this PT.
+        let nmapped = pt.iter().filter(|&&e| (e & 1) != 0).count();
+
+        // Wrap the scratch-resident PT directly — no copy needed.
+        // Scratch memory is always writable, so CoW PTE updates work.
+        let storage = PageTableStorage::Scratch(pt_ptr);
+        let page_table = PageTable::from_existing(storage, nmapped);
+
+        let va = (pdi << 22) as usize;
+        let pt_addr = PageTableAddress::new(PageTableAligned::from_address(
+            VirtualAddress::new(va),
+        )?);
+
+        page_tables.push_back((pt_addr, page_table));
+    }
+
+    let pd_storage = PageDirectoryStorage::Scratch(pd_ptr);
+    Ok((pd_storage, page_tables))
 }

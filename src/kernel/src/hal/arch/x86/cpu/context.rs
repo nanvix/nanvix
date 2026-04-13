@@ -97,6 +97,12 @@ impl ContextInformation {
     /// Size of the hardware-saved portion of the context (bytes from `err` onward).
     pub const CONTEXT_HW_SIZE: u32 = core::mem::size_of::<Self>() as u32 - Self::CONTEXT_ERR;
 
+    /// Sets the CR3 (page directory base) for this context.
+    #[cfg(feature = "hyperlight")]
+    pub fn set_cr3(&mut self, cr3: u32) {
+        self.cr3 = cr3;
+    }
+
     pub fn new(cr3: u32, esp: u32, esp0: u32) -> Self {
         Self {
             esp0,

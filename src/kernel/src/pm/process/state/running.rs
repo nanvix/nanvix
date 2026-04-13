@@ -96,6 +96,12 @@ impl RunningProcess {
         &mut self.state
     }
 
+    /// Sets the CR3 in the running thread's context.
+    #[cfg(feature = "hyperlight")]
+    pub fn set_running_thread_cr3(&mut self, cr3: u32) {
+        self.running.thread_state_mut().set_context_cr3(cr3);
+    }
+
     ///
     /// # Description
     ///

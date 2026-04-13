@@ -97,6 +97,7 @@ impl VirtMemoryManager {
     /// - `kernel_page_tables`: Kernel page tables.
     /// - `physman`: Physical memory manager.
     ///
+    #[cfg_attr(feature = "hyperlight", allow(dead_code))]
     pub fn init(
         kernel_pages: LinkedList<KernelPage>,
         kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
@@ -115,6 +116,25 @@ impl VirtMemoryManager {
         MEMORY_MANAGER_INIT.store(true, ORDER);
 
         Ok(root)
+    }
+
+    /// Initializes the virtual memory manager by adopting an existing `Vmem` (e.g., one built
+    /// from Hyperlight's page tables). No new page directory is created and no CR3 switch occurs.
+    #[cfg(feature = "hyperlight")]
+    pub fn init_from_existing(vmem: Vmem, physman: PhysMemoryManager) -> Result<Vmem, Error> {
+        if unlikely(MEMORY_MANAGER_INIT.load(ORDER)) {
+            panic!("memory manager was already initialized");
+        }
+
+        let manager = VirtMemoryManager {
+            physman: Rc::new(RefCell::new(physman)),
+        };
+
+        // SAFETY: This happens during kernel initialization and no other threads are running.
+        unsafe { MEMORY_MANAGER.write(manager) };
+        MEMORY_MANAGER_INIT.store(true, ORDER);
+
+        Ok(vmem)
     }
 
     ///
@@ -176,6 +196,7 @@ impl VirtMemoryManager {
     /// - `kernel_page_tables`: Kernel page tables.
     /// - `physman`: Physical memory manager.
     ///
+    #[cfg_attr(feature = "hyperlight", allow(dead_code))]
     fn new(
         kernel_pages: LinkedList<KernelPage>,
         kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
@@ -199,8 +220,6 @@ impl VirtMemoryManager {
         // Allocate a kernel page for the new page directory.
         let pgdir_page: KernelPage = match self.physman.try_borrow_mut() {
             Ok(mut physman) => {
-                // The page directory initialization logic (PageDirectory::new/clean)
-                // will zero the page; no need to clear the frame here.
                 let kframe: KernelFrame = physman.alloc_kernel_frame(false)?;
                 KernelPage::new(kframe)
             },

@@ -97,7 +97,26 @@ pub struct Vmem {
 }
 
 impl Vmem {
+    /// Allocates a fresh 4KB page from the scratch bump allocator.
+    /// Returns the GPA of the new page, or 0 if out of scratch memory.
+    #[cfg(feature = "hyperlight")]
+    pub fn alloc_scratch_page() -> u32 {
+        const ALLOCATOR_GVA: u32 = 0xFFFF_FFF0;
+        const GDT_LIMIT: u32 = 0xFFFD_F000;
+        unsafe {
+            let alloc_ptr = ALLOCATOR_GVA as *mut u32;
+            let current = core::ptr::read_volatile(alloc_ptr);
+            if current >= GDT_LIMIT {
+                return 0;
+            }
+            let new_val = current + 4096;
+            core::ptr::write_volatile(alloc_ptr, new_val);
+            current
+        }
+    }
+
     /// Initializes a new virtual memory space.
+    #[cfg_attr(feature = "hyperlight", allow(dead_code))]
     pub fn new(
         mut kernel_pages: LinkedList<KernelPage>,
         mut kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
@@ -161,6 +180,72 @@ impl Vmem {
     }
 
     /// Clones the target virtual memory space.
+    /// Creates a Vmem that shares the parent's page directory.
+    /// User-space pages mapped through this Vmem go into the shared PD.
+    /// Only safe when there's a single user process (Hyperlight).
+    #[cfg(feature = "hyperlight")]
+    #[allow(dead_code)]
+    pub fn share_pd(from: &Vmem) -> Result<Vmem, Error> {
+        let pa = from.pgdir.physical_address()?;
+        let shared_storage = PageDirectoryStorage::from_cr3(pa.into_raw_value() as u32);
+        Ok(Self {
+            pgdir: PageDirectory::from_existing(shared_storage),
+            kernel_page_tables: from.kernel_page_tables.clone(),
+            kernel_pages: from.kernel_pages.clone(),
+            private_kernel_pages: LinkedList::new(),
+            user_page_tables: LinkedList::new(),
+        })
+    }
+
+    /// Switches the Vmem's page directory to the given PD GPA in scratch.
+    /// After snapshot restore, each process gets its own rebuilt PD.
+    /// Also updates kernel page table pointers to match the new PD's entries.
+    #[cfg(feature = "hyperlight")]
+    pub fn adopt_pd(&mut self, pd_gpa: u32) {
+        self.pgdir = PageDirectory::from_existing(PageDirectoryStorage::from_cr3(pd_gpa));
+
+        // Update kernel page tables — point each stored PT's storage
+        // to the corresponding scratch PT page (from the adopted PD).
+        let pd_ptr = pd_gpa as *const u32;
+        for pt_entry in self.kernel_page_tables.iter_mut() {
+            let mut borrowed = pt_entry.borrow_mut();
+            let pt_vaddr = borrowed.0;
+            let pdi = pt_vaddr.get_pde_index();
+            let pde = unsafe { core::ptr::read_volatile(pd_ptr.add(pdi)) };
+            if (pde & 1) != 0 {
+                let pt_gpa = pde & 0xFFFFF000;
+                let nmapped = borrowed.1.nmapped();
+                borrowed.1 = PageTable::from_existing(
+                    PageTableStorage::Scratch(pt_gpa as *mut [u32; 1024]),
+                    nmapped,
+                );
+            }
+        }
+    }
+
+    /// Resolves a virtual address to its physical address by walking the
+    /// hardware page table (CR3 → PD → PT → frame). After CoW, the frame's
+    /// PA may differ from the identity-mapped VA. Returns 0 if unmapped.
+    #[cfg(feature = "hyperlight")]
+    #[allow(dead_code)]
+    pub fn resolve_pa(va: usize) -> u32 {
+        // SAFETY: caller runs at privilege level 0.
+        let cr3: ::arch::cpu::cr3::Cr3Register = unsafe { ::arch::cpu::cr3::Cr3Register::read() };
+        let pd_pa: u32 = cr3.paging_structure_base_address.address();
+        unsafe {
+            let pd = pd_pa as *const u32;
+            let pdi = (va >> 22) & 0x3FF;
+            let pde = core::ptr::read_volatile(pd.add(pdi));
+            if (pde & 1) == 0 { return 0; }
+            let pt = (pde & 0xFFFFF000) as *const u32;
+            let pti = (va >> 12) & 0x3FF;
+            let pte = core::ptr::read_volatile(pt.add(pti));
+            if (pte & 1) == 0 { return 0; }
+            pte & 0xFFFFF000
+        }
+    }
+
+
     pub fn clone(from: &Vmem, pgdir_page: KernelPage) -> Result<Vmem, Error> {
         // Create a clean page directory backed by a kernel page from the pool.
         let mut pgdir: PageDirectory<PageDirectoryStorage> =
@@ -192,9 +277,49 @@ impl Vmem {
         })
     }
 
+    /// Creates a virtual memory space from BSS-backed storage that was populated
+    /// from Hyperlight's page tables. Switches CR3 to the new BSS-backed page directory
+    /// so that the mappings survive snapshot restore.
+    #[cfg(feature = "hyperlight")]
+    pub fn from_existing(
+        pd_storage: PageDirectoryStorage,
+        mut kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
+    ) -> Result<Self, Error> {
+        // Wrap the scratch-resident PD without zeroing — entries already populated
+        // by the host. CR3 already points to this PD; no reload needed.
+        let pgdir: PageDirectory<PageDirectoryStorage> =
+            PageDirectory::from_existing(pd_storage);
+
+        // Convert page tables into Rc<RefCell<...>> for shared ownership.
+        let mut kpage_tables: LinkedList<
+            Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>,
+        > = LinkedList::new();
+        while let Some(entry) = kernel_page_tables.pop_front() {
+            kpage_tables.push_back(Rc::new(RefCell::new(entry)));
+        }
+
+        Ok(Self {
+            pgdir,
+            kernel_page_tables: kpage_tables,
+            kernel_pages: LinkedList::new(),
+            private_kernel_pages: LinkedList::new(),
+            user_page_tables: LinkedList::new(),
+        })
+    }
+
+    #[cfg_attr(feature = "hyperlight", allow(dead_code))]
     pub fn load(&self) -> Result<(), Error> {
         let pgdir_addr: FrameAddress = self.pgdir.physical_address()?;
-        unsafe { mmu::load_page_directory(pgdir_addr.into_raw_value()) };
+        let pd_pa = pgdir_addr.into_raw_value();
+        // On Hyperlight with PTE_COW, the PD page may have been CoW'd to
+        // scratch. Resolve the VA through hardware PTs to find where the
+        // actual populated PD data lives.
+        #[cfg(feature = "hyperlight")]
+        let pd_pa = {
+            let resolved = Self::resolve_pa(pd_pa) as usize;
+            if resolved != 0 { resolved } else { pd_pa }
+        };
+        unsafe { mmu::load_page_directory(pd_pa) };
         Ok(())
     }
 
@@ -216,6 +341,7 @@ impl Vmem {
     ///
     /// Upon success, empty is returned. Upon failure, an error code is returned instead.
     ///
+    #[cfg_attr(feature = "hyperlight", allow(dead_code))]
     pub fn map_kpage<T: Fn() -> Result<PageTable<PageTableStorage>, Error>>(
         &mut self,
         kpage: KernelPage,
@@ -339,7 +465,15 @@ impl Vmem {
         };
 
         // Map the page to the target virtual address space.
-        page_table.map(PageAddress::new(vaddr), uframe.address(), false, false, true, access)?;
+        // On Hyperlight, the frame allocator already redirects to scratch GPAs.
+        let frame_addr = uframe.address();
+        page_table.map(PageAddress::new(vaddr), frame_addr, false, false, true, access)?;
+
+        // Flush TLB for this page after remapping.
+        unsafe {
+            let va = vaddr.into_raw_value();
+            core::arch::asm!("invlpg [{}]", in(reg) va, options(nostack));
+        }
 
         //=============================================================
         // NOTE: if we fail beyond this point we should unmap the page.
@@ -528,6 +662,7 @@ impl Vmem {
     fn lookup_kernel_page_table(
         &mut self,
         pde: &PageDirectoryEntry,
+        _pgtable_vaddr: PageTableAddress,
     ) -> Result<Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>, Error> {
         // Check if corresponding page table does not exist.
         if !pde.is_present() {
@@ -543,7 +678,16 @@ impl Vmem {
         let mut page_table: Option<Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>> =
             None;
         for pt in self.kernel_page_tables.iter_mut() {
-            if pt.borrow().1.physical_address()? == pgtab_addr {
+            // On Hyperlight after restore, PT pages are rebuilt in scratch.
+            // The stored PT's PA (kpool) differs from the PDE's frame (scratch).
+            // Match by the VA range the PT covers instead.
+            let matches = if crate::hal::platform::use_va_copies() {
+                pt.borrow().0 == _pgtable_vaddr
+            } else {
+                pt.borrow().1.physical_address()? == pgtab_addr
+            };
+
+            if matches {
                 page_table = Some(pt.clone());
                 break;
             }
@@ -728,15 +872,36 @@ impl Vmem {
                 let offset: usize = src.into_raw_value() - vaddr.into_raw_value();
                 let copy_size: usize = usize::min(size, mem::PAGE_SIZE - offset);
 
-                let src_frame: FrameAddress = self.find_user_frame(vaddr)?;
-
-                if !dry_run {
-                    // Copy memory from user space to kernel space.
-                    super::identity_map::memcpy(
-                        dst.into_raw_value() as *mut u8,
-                        (src_frame.into_raw_value() + offset) as *const u8,
-                        copy_size,
-                    )?;
+                if crate::hal::platform::use_va_copies() {
+                    if !dry_run {
+                        // Hyperlight: source is a user VA. Switch CR3 to the
+                        // CoW-resolved user PD so the VA resolves correctly,
+                        // then do a VA-level copy. Any PTE_COW page traps via
+                        // the #PF handler and gets cloned to scratch.
+                        #[cfg(feature = "hyperlight")]
+                        let _cr3_guard = unsafe { cr3_switch_to_user_pd(&self.pgdir) };
+                        unsafe {
+                            core::ptr::copy_nonoverlapping(
+                                src.into_raw_value() as *const u8,
+                                dst.into_raw_value() as *mut u8,
+                                copy_size,
+                            );
+                        }
+                    }
+                } else {
+                    let src_frame: FrameAddress = self.find_user_frame(vaddr)?;
+                    if !dry_run {
+                        // Copy memory from user space to kernel space.
+                        // SAFETY: The following conditions are guaranteed:
+                        // - `dst.into_raw_value()` is a valid kernel-space address for `copy_size` bytes.
+                        // - `src_frame.into_raw_value() + offset` is a valid user-space address for `copy_size` bytes.
+                        // - Both regions are non-overlapping and accessible for the operation.
+                        super::identity_map::memcpy(
+                            dst.into_raw_value() as *mut u8,
+                            (src_frame.into_raw_value() + offset) as *const u8,
+                            copy_size,
+                        )?;
+                    }
                 }
 
                 size -= copy_size;
@@ -854,7 +1019,9 @@ impl Vmem {
             let src_phys_addr_raw: usize = src.into_raw_value();
 
             // Check if [src_phys_addr_raw, src_phys_addr_raw + copy_size) does not lie within physical memory.
-            if !Self::is_physical_region(src_phys_addr_raw, copy_size) {
+            // Skip on Hyperlight after CoW (identity mapping broken).
+            let src_in_bounds = crate::hal::platform::use_va_copies() || Self::is_physical_region(src_phys_addr_raw, copy_size);
+            if !src_in_bounds {
                 let reason: &str = "source memory region does not lie within physical memory";
                 if !dry_run {
                     panic!(
@@ -885,7 +1052,8 @@ impl Vmem {
 
                 let dst_phys_addr_raw: usize = dst_frame.into_raw_value() + offset;
                 // Check if [dst_phys_addr_raw, dst_phys_addr_raw + copy_size) does not lie within physical memory.
-                if !Self::is_physical_region(dst_phys_addr_raw, copy_size) {
+                let dst_in_bounds = crate::hal::platform::use_va_copies() || Self::is_physical_region(dst_phys_addr_raw, copy_size);
+                if !dst_in_bounds {
                     let reason: &str =
                         "destination memory region does not lie within physical memory";
                     panic!(
@@ -895,16 +1063,34 @@ impl Vmem {
                 }
 
                 // Copy memory from kernel space to user space.
-                let dst: *mut u8 = (dst_frame.into_raw_value() + offset) as *mut u8;
-                let src: *const u8 = src.into_raw_value() as *const u8;
-                let copy_result: Result<(), Error> =
-                    super::identity_map::memcpy(dst, src, copy_size);
-                if let Err(error) = copy_result {
-                    let reason: &str = "failed to perform physical memory copy";
-                    panic!(
-                        "copy_to_user_unaligned_unchecked(): {reason} (error={error:?}, \
-                         dst={dst:?}, src={src:?}, size={size:?})"
-                    );
+                if crate::hal::platform::use_va_copies() {
+                    // Hyperlight: switch CR3 to the CoW-resolved user PD so user
+                    // VAs resolve correctly, clear CR0.WP so the kernel can write
+                    // into PTE-readonly user code pages, do the VA-level copy,
+                    // restore both. PTE_COW pages trap via the #PF handler.
+                    #[cfg(feature = "hyperlight")]
+                    let _cr3_guard = unsafe { cr3_switch_to_user_pd(&self.pgdir) };
+                    #[cfg(feature = "hyperlight")]
+                    let _wp_guard = unsafe { cr0_disable_write_protect() };
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(
+                            src.into_raw_value() as *const u8,
+                            dst.into_raw_value() as *mut u8,
+                            copy_size,
+                        );
+                    }
+                } else {
+                    let dst: *mut u8 = (dst_frame.into_raw_value() + offset) as *mut u8;
+                    let src: *const u8 = src.into_raw_value() as *const u8;
+                    let copy_result: Result<(), Error> =
+                        super::identity_map::memcpy(dst, src, copy_size);
+                    if let Err(error) = copy_result {
+                        let reason: &str = "failed to perform physical memory copy";
+                        panic!(
+                            "copy_to_user_unaligned_unchecked(): {reason} (error={error:?}, \
+                             dst={dst:?}, src={src:?}, size={size:?})"
+                        );
+                    }
                 }
             }
 
@@ -1082,11 +1268,25 @@ impl Vmem {
     /// Upon success, empty is returned. Upon failure, an error code is returned instead.
     ///
     pub fn memset(&mut self, dst: PageAligned<VirtualAddress>, value: u32) -> Result<(), Error> {
-        // Get corresponding user page.
-        let uframe: FrameAddress = self.find_user_frame(dst)?;
-        let dst: PageAligned<PhysicalAddress> = uframe.into_physical_address();
-        let base: *mut u8 = dst.into_raw_value() as *mut u8;
+        if crate::hal::platform::use_va_copies() {
+            // Hyperlight: VA-level memset via CR3 switch + CR0.WP toggle.
+            #[cfg(feature = "hyperlight")]
+            let _cr3_guard = unsafe { cr3_switch_to_user_pd(&self.pgdir) };
+            #[cfg(feature = "hyperlight")]
+            let _wp_guard = unsafe { cr0_disable_write_protect() };
+            unsafe {
+                core::ptr::write_bytes(
+                    dst.into_raw_value() as *mut u8,
+                    value as u8,
+                    mem::PAGE_SIZE,
+                );
+            }
+            return Ok(());
+        }
 
+        let uframe: FrameAddress = self.find_user_frame(dst)?;
+        let phys_dst: PageAligned<PhysicalAddress> = uframe.into_physical_address();
+        let base: *mut u8 = phys_dst.into_raw_value() as *mut u8;
         super::identity_map::memset(base, value as u8, mem::PAGE_SIZE)?;
 
         Ok(())
@@ -1263,6 +1463,7 @@ impl Vmem {
     /// - [`ErrorCode::NoSuchEntry`]: The corresponding page table is not present.
     /// - [`ErrorCode::NoSuchEntry`]: The page table entry was not found (dry run only).
     ///
+    #[cfg_attr(feature = "hyperlight", allow(dead_code))]
     pub fn kctrl(
         &mut self,
         vaddr: PageAligned<VirtualAddress>,
@@ -1300,7 +1501,7 @@ impl Vmem {
                 return Err(Error::new(ErrorCode::NoSuchEntry, reason));
             };
 
-            self.lookup_kernel_page_table(&pde)?
+            self.lookup_kernel_page_table(&pde, PageTableAddress::new(vaddr))?
         };
 
         let page_address: PageAddress = PageAddress::new(vaddr);
@@ -1316,6 +1517,110 @@ impl Vmem {
 
         Ok(())
     }
+}
+
+//==================================================================================================
+// Hyperlight RAII guards for VA-based user copies
+//==================================================================================================
+
+///
+/// RAII guard that restores the original CR3 on drop. Used by Hyperlight copy
+/// paths that temporarily switch to a user process's PD so that VA-level copies
+/// resolve user VAs correctly.
+///
+#[cfg(feature = "hyperlight")]
+pub(super) struct Cr3Guard {
+    saved: ::arch::cpu::cr3::Cr3Register,
+    switched: bool,
+}
+
+#[cfg(feature = "hyperlight")]
+impl Drop for Cr3Guard {
+    fn drop(&mut self) {
+        if self.switched {
+            // SAFETY: caller runs at privilege level 0; `saved` is a CR3 value read
+            // earlier in the same call path.
+            unsafe { self.saved.write() };
+        }
+    }
+}
+
+///
+/// Switches CR3 to the CoW-resolved physical address of `pgdir`, returning an
+/// RAII guard that restores the previous CR3 on drop. If `pgdir` cannot be
+/// resolved (e.g., stale PA that no longer maps to anything), no switch is
+/// performed.
+///
+/// # Safety
+///
+/// Caller must run at privilege level 0 and must ensure that the resolved PA
+/// points at a populated page directory.
+///
+#[cfg(feature = "hyperlight")]
+pub(super) unsafe fn cr3_switch_to_user_pd(
+    pgdir: &PageDirectory<PageDirectoryStorage>,
+) -> Cr3Guard {
+    let old: ::arch::cpu::cr3::Cr3Register = unsafe { ::arch::cpu::cr3::Cr3Register::read() };
+    let pd_va: u32 = pgdir
+        .physical_address()
+        .ok()
+        .map(|f| f.into_raw_value() as u32)
+        .unwrap_or(0);
+    if pd_va == 0 {
+        return Cr3Guard { saved: old, switched: false };
+    }
+    let resolved_pa: u32 = Vmem::resolve_pa(pd_va as usize);
+    if resolved_pa == 0 || resolved_pa == old.paging_structure_base_address.address() {
+        return Cr3Guard { saved: old, switched: false };
+    }
+    // SAFETY: resolved_pa was obtained from the currently active page tables and is page-aligned.
+    let new_base: ::arch::cpu::cr3::PagingStructureBaseAddress =
+        ::arch::cpu::cr3::PagingStructureBaseAddress::new(resolved_pa)
+            .expect("resolve_pa returned a page-aligned address");
+    let new_cr3: ::arch::cpu::cr3::Cr3Register = ::arch::cpu::cr3::Cr3Register {
+        page_level_write_through: old.page_level_write_through,
+        page_level_cache_disable: old.page_level_cache_disable,
+        paging_structure_base_address: new_base,
+    };
+    // SAFETY: caller at CPL 0; new CR3 holds a valid, resolved PD PA.
+    unsafe { new_cr3.write() };
+    Cr3Guard { saved: old, switched: true }
+}
+
+///
+/// RAII guard that restores the original CR0.WP value on drop. Used by
+/// Hyperlight copy paths that need to write into PTE-readonly user code pages
+/// from ring 0 while CR0.WP is set.
+///
+#[cfg(feature = "hyperlight")]
+pub(super) struct Cr0WpGuard {
+    saved: ::arch::cpu::cr0::Cr0Register,
+}
+
+#[cfg(feature = "hyperlight")]
+impl Drop for Cr0WpGuard {
+    fn drop(&mut self) {
+        // SAFETY: caller runs at privilege level 0.
+        unsafe { self.saved.write() };
+    }
+}
+
+///
+/// Clears CR0.WP so ring-0 writes bypass PTE read-only enforcement, returning a
+/// guard that restores the original CR0 on drop.
+///
+/// # Safety
+///
+/// Caller must run at privilege level 0.
+///
+#[cfg(feature = "hyperlight")]
+pub(super) unsafe fn cr0_disable_write_protect() -> Cr0WpGuard {
+    let saved: ::arch::cpu::cr0::Cr0Register = unsafe { ::arch::cpu::cr0::Cr0Register::read() };
+    let mut disabled: ::arch::cpu::cr0::Cr0Register = saved;
+    disabled.write_protect = ::arch::cpu::cr0::WriteProtectFlag::Disabled;
+    // SAFETY: caller at CPL 0.
+    unsafe { disabled.write() };
+    Cr0WpGuard { saved }
 }
 
 impl Drop for Vmem {

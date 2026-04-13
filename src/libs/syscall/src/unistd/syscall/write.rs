@@ -52,6 +52,7 @@ use ::sysapi::{
 /// Upon successful completion, the number of bytes written is returned. Otherwise, an
 /// error is returned.
 ///
+#[cfg_attr(all(feature = "standalone", feature = "hyperlight"), allow(dead_code))]
 fn write_chunk(
     tid: ThreadIdentifier,
     fd: RawFileDescriptor,
@@ -149,16 +150,24 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
     write_via_ikc(fd, buffer)
 }
 
-/// Standalone-mode write: routes stdout/stderr through IKC to the host-side I/O handler.
+/// Standalone-mode write: routes stdout/stderr through the debug kcall on
+/// Hyperlight (IKC deadlocks with multi-threaded guests), or IKC otherwise.
 #[cfg(feature = "standalone")]
 fn write_standalone(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
     if fd == STDOUT_FILENO || fd == STDERR_FILENO {
+        #[cfg(feature = "hyperlight")]
+        {
+            let _ = ::sys::kcall::debug::debug(buffer.as_ptr(), buffer.len());
+            return Ok(buffer.len() as c_size_t);
+        }
+        #[cfg(not(feature = "hyperlight"))]
         return write_via_ikc(fd, buffer);
     }
     Err(Error::new(ErrorCode::OperationNotSupported, "write not supported in standalone mode"))
 }
 
 /// Forwards a write request via IKC, splitting the buffer into page-aligned chunks.
+#[cfg_attr(all(feature = "standalone", feature = "hyperlight"), allow(dead_code))]
 fn write_via_ikc(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 

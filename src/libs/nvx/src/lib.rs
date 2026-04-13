@@ -177,6 +177,8 @@ pub unsafe extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
     }
 
     // Cleans up the system runtime.
+    // Skip on Hyperlight — the VM halts after exit, no cleanup needed.
+    #[cfg(not(feature = "hyperlight"))]
     cleanup();
 
     // Exits the runtime.
@@ -340,6 +342,7 @@ fn init() {
 }
 
 /// Cleans up system runtime.
+#[cfg_attr(feature = "hyperlight", allow(dead_code))]
 fn cleanup() {
     #[cfg(any(target_os = "none", target_os = "nanvix"))]
     if let Err(error) = ::sysalloc::tda::cleanup() {
@@ -395,11 +398,13 @@ fn vfs_init_ramfs() {
 
     // Attempt to allocate and mount the RAMFS MMIO region.
     let mounted: bool = (|| -> bool {
-        if ::sys::kcall::mm::mmio_alloc(RAMFS_MMIO_TAG).is_err() {
-            // No RAMFS region available — the guest was simply not launched with `-ramfs`.
+        ::syslog::trace!("vfs_init_ramfs(): attempting mmio_alloc");
+        if let Err(e) = ::sys::kcall::mm::mmio_alloc(RAMFS_MMIO_TAG) {
+            ::syslog::warn!("vfs_init_ramfs(): mmio_alloc failed: {:?}", e);
             return false;
         }
 
+        ::syslog::trace!("vfs_init_ramfs(): mmio_alloc succeeded, querying info");
         let info: ::sys::mm::MmioRegionInfo = match ::sys::kcall::mm::mmio_info(RAMFS_MMIO_TAG) {
             Ok(i) => i,
             Err(_) => {
@@ -411,26 +416,15 @@ fn vfs_init_ramfs() {
         let total_size: usize = info.size();
 
         // On hyperlight, the MMIO region is mapped read-only + execute by map_file_cow.
-        // The VFS needs read-write access, so copy the FAT image into a heap buffer.
-        // FIXME (#1760): this doubles memory footprint; need writable file mappings from hyperlight.
-        #[cfg(feature = "hyperlight")]
-        let (mount_ptr, free_mmio_early) = {
-            let base_ptr: *const u8 = info.base().into_raw_value() as *const u8;
-            let mut buf: alloc::vec::Vec<u8> = alloc::vec![0u8; total_size];
-            unsafe { core::ptr::copy_nonoverlapping(base_ptr, buf.as_mut_ptr(), total_size) };
-            let rw_ptr: *mut u8 = buf.as_mut_ptr();
-            core::mem::forget(buf);
-            let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
-            (rw_ptr, true)
-        };
-
-        // On other platforms the MMIO region is writable — mount directly.
-        #[cfg(not(feature = "hyperlight"))]
+        // Mount the RAMFS directly from the MMIO region.
+        // On Hyperlight, the MMIO is read-only in EPT — writes to the FAT
+        // image will trigger CoW (resolved by the guest CoW handler).
         let (mount_ptr, free_mmio_early) = {
             let base_ptr: *mut u8 = info.base().into_raw_value() as *mut u8;
             (base_ptr, false)
         };
 
+        ::syslog::trace!("vfs_init_ramfs(): mounting at {:p} size={:#x}", mount_ptr, total_size);
         if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, mount_ptr, total_size, false) }.is_err() {
             ::syslog::warn!("vfs_init_ramfs(): failed to mount RAMFS image");
             if !free_mmio_early {

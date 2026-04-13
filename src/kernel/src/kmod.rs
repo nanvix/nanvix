@@ -12,6 +12,7 @@ use ::alloc::string::String;
 // Structures
 //==================================================================================================
 
+#[derive(Clone)]
 pub struct KernelModule {
     /// Start address.
     start: PhysicalAddress,

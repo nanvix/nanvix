@@ -12,6 +12,7 @@ use crate::hal::mem::{
     PageAddress,
     PageAligned,
     PhysicalAddress,
+    VirtualAddress,
 };
 use ::arch::mem::paging::{
     AccessedFlag,
@@ -61,6 +62,20 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
         page_table
     }
 
+    /// Wraps existing storage without zeroing it.
+    /// Used to adopt page tables that were already populated (e.g., by a host VMM).
+    #[cfg_attr(not(feature = "hyperlight"), allow(dead_code))]
+    pub fn from_existing(entries: T, nmapped: usize) -> Self {
+        Self { nmapped, entries }
+    }
+
+    /// Returns the virtual address of the first entry (used to resolve the
+    /// CoW-resolved physical address via hardware PD walk on Hyperlight).
+    #[allow(dead_code)]
+    pub fn base_va(&self) -> usize {
+        self.entries.as_ptr() as usize
+    }
+
     /// Returns the number of pages mapped in the page table.
     pub fn nmapped(&self) -> usize {
         self.nmapped
@@ -92,6 +107,11 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
 
         // Check if page table entry is busy.
         if pte.is_present() {
+            // After restore, CoW pages from the snapshot are already present.
+            // Skip re-mapping — the existing PTE will be resolved on first write.
+            if crate::hal::platform::skip_phys_bounds_check() {
+                return Ok(());
+            }
             let reason: &str = "page table entry is busy";
             error!(
                 "map(): {} (vaddr={:?}, paddr={:?}, supervisor={:?}, writethrough={:?}, \
@@ -426,9 +446,27 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
         self.entries[pte_idx] = pte.into_raw_value();
     }
 
+    /// Returns a raw pointer to the PTE for the given page address.
+    /// Used on Hyperlight to directly manipulate PTE flags for CoW.
+    #[cfg(feature = "hyperlight")]
+    #[allow(dead_code)]
+    pub fn pte_ptr(&mut self, vaddr: PageAddress) -> *mut u32 {
+        let pte_idx: usize = vaddr.get_pte_index();
+        &mut self.entries[pte_idx] as *mut u32
+    }
+
     pub fn physical_address(&self) -> Result<FrameAddress, Error> {
-        Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(
-            self.entries.as_ptr() as usize,
-        )?)?))
+        let addr: usize = self.entries.as_ptr() as usize;
+        let phys = if addr >= ::config::kernel::MEMORY_SIZE {
+            // Scratch/MMIO memory: bypass the MEMORY_SIZE check.
+            // SAFETY: scratch memory is identity-mapped; the virtual address equals the
+            // physical address. This path is used for Hyperlight-built page tables that
+            // live in scratch memory above MEMORY_SIZE.
+            let vaddr = VirtualAddress::from_raw_value(addr);
+            unsafe { PhysicalAddress::from_mmio_address(vaddr)? }
+        } else {
+            PhysicalAddress::from_raw_value(addr)?
+        };
+        Ok(FrameAddress::new(PageAligned::from_address(phys)?))
     }
 }

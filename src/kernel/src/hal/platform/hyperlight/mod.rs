@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+pub(crate) mod cow_entry;
 pub mod frame;
 pub mod kpool;
 pub(crate) mod peb;
@@ -42,7 +43,6 @@ use crate::{
                 INPUT_BUF_MMIO_TAG,
                 OUTPUT_BUF_MMIO_TAG,
                 PEB_MMIO_TAG,
-                RAMFS_MMIO_TAG,
             },
         },
     },
@@ -65,13 +65,7 @@ use ::config::hyperlight::{
     OUTPUT_DATA_BUFFER_SIZE,
     PEB_SIZE,
 };
-use ::hyperlight_common::{
-    layout::MAX_GVA,
-    mem::{
-        FileMappingInfo,
-        HyperlightPEB,
-    },
-};
+use ::hyperlight_common::mem::HyperlightPEB;
 use ::sys::{
     config::memory_layout,
     error::{
@@ -94,6 +88,154 @@ use ::sys::{
 #[unsafe(no_mangle)]
 #[used]
 static KERNEL_PADDING: [u8; 2 * 1024 * 1024] = [0u8; 2 * 1024 * 1024];
+
+/// After snapshot restore, identity mapping (VA==PA) is broken because CoW
+/// compaction relocates pages. This flag gates all post-restore behavior:
+/// frame redirection to scratch, VA-based copies, and PA bounds-check skipping.
+static POST_RESTORE: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
+
+/// Mark the platform as post-restore. Called by the dispatch handler after
+/// snapshot restore when identity mapping is no longer valid.
+pub(crate) fn enter_post_restore() {
+    POST_RESTORE.store(true, core::sync::atomic::Ordering::Relaxed);
+}
+
+/// Always redirect frame allocations to EPT-writable scratch memory.
+/// With PTE_COW from first boot, the host's mmap doesn't see __phys_memcpy
+/// writes to original PAs, so we must allocate user data in scratch where
+/// the host CAN observe it for snapshot compaction.
+pub fn adjust_frame(addr: &mut crate::hal::mem::FrameAddress) {
+    let scratch_gpa = crate::mm::Vmem::alloc_scratch_page();
+    if scratch_gpa != 0 {
+        let phys = unsafe {
+            crate::hal::mem::PhysicalAddress::from_mmio_address(
+                crate::hal::mem::VirtualAddress::from_raw_value(scratch_gpa as usize),
+            )
+        };
+        if let Ok(phys) = phys {
+            if let Ok(aligned) = crate::hal::mem::PageAligned::from_address(phys) {
+                *addr = crate::hal::mem::FrameAddress::new(aligned);
+            }
+        }
+    }
+}
+
+/// Always use VA-based copies on Hyperlight.
+pub fn use_va_copies() -> bool {
+    true
+}
+
+/// Always skip PA bounds checks on Hyperlight (frames may be in scratch).
+pub fn skip_phys_bounds_check() -> bool {
+    true
+}
+
+/// RAMFS file size (set during parse_bootinfo from the init_data trailer).
+/// Zero means no RAMFS was mapped.
+static mut RAMFS_FILE_SIZE: usize = 0;
+
+/// Patch the kernel's IDT with the CoW #PF handler. Must be called after
+/// Hal::init() (which installs the kernel IDT) and before any writes to
+/// CoW-protected memory (heap, kpool, frame allocator bitmap, etc.).
+pub fn patch_kernel_idt_with_cow_handler() {
+    extern "C" {
+        static IDT: u8;
+        fn _cow_pf_handler();
+    }
+    unsafe {
+        let src = &IDT as *const u8;
+        let dst = 0xFFFE_0000 as *mut u8;
+        core::ptr::copy_nonoverlapping(src, dst, 2048);
+
+        let entry14 = (dst as *mut u8).add(14 * 8);
+        let handler_addr = _cow_pf_handler as *const () as u32;
+        *(entry14.add(0) as *mut u16) = handler_addr as u16;
+        *(entry14.add(2) as *mut u16) = 0x08;
+        *(entry14.add(4) as *mut u16) = 0x8E00;
+        *(entry14.add(6) as *mut u16) = (handler_addr >> 16) as u16;
+
+        core::arch::asm!(
+            "sub esp, 8",
+            "mov word ptr [esp], 2047",
+            "mov dword ptr [esp+2], {idt}",
+            "lidt [esp]",
+            "add esp, 8",
+            idt = in(reg) 0xFFFE_0000u32,
+            options(nostack)
+        );
+    }
+}
+
+/// Adopt the host-built page tables and initialize the virtual memory manager.
+pub fn init_virtual_memory(
+    _virtual_memory_regions: ::alloc::collections::LinkedList<
+        crate::hal::mem::TruncatedMemoryRegion<crate::hal::mem::VirtualAddress>,
+    >,
+    _other_virtual_memory_regions: ::alloc::collections::LinkedList<
+        crate::hal::mem::TruncatedMemoryRegion<crate::hal::mem::VirtualAddress>,
+    >,
+    mmio_regions: ::alloc::collections::LinkedList<
+        crate::hal::mem::TruncatedMemoryRegion<crate::hal::mem::VirtualAddress>,
+    >,
+    physman: crate::mm::phys::PhysMemoryManager,
+) -> Result<crate::mm::Vmem, ::sys::error::Error> {
+    use crate::hal::mem::Address;
+    use crate::mm::{Vmem, VirtMemoryManager};
+
+    info!("adopting Hyperlight page tables into BSS storage");
+
+    let (pd_storage, kernel_page_tables) = crate::mm::virt::from_hyperlight_cr3()?;
+    let vmem = Vmem::from_existing(pd_storage, kernel_page_tables)?;
+
+    let vmem = VirtMemoryManager::init_from_existing(vmem, physman)?;
+
+    for region in mmio_regions.into_iter() {
+        let region_base = region.start().into_raw_value();
+        if region_base < ::config::kernel::MEMORY_SIZE || region_base >= 0xF0000000 {
+            continue;
+        }
+        info!(
+            "identity-mapping MMIO: base={:#x} size={:#x}",
+            region.start().into_raw_value(), region.size()
+        );
+        let cr3: u32;
+        unsafe { core::arch::asm!("mov {0:e}, cr3", out(reg) cr3, options(nomem, nostack)); }
+        let pd = cr3 as *mut u32;
+
+        let mut va = region.start().into_raw_value();
+        let end = va + region.size();
+        while va < end {
+            let pdi = (va >> 22) & 0x3FF;
+            let pti = (va >> 12) & 0x3FF;
+
+            let pde = unsafe { core::ptr::read_volatile(pd.add(pdi)) };
+            let pt_gpa = if (pde & 1) == 0 {
+                let scratch_gpa = crate::mm::Vmem::alloc_scratch_page();
+                if scratch_gpa == 0 { break; }
+                unsafe { core::ptr::write_bytes(scratch_gpa as *mut u8, 0, 4096); }
+                let new_pde: u32 = scratch_gpa | 1 | 2 | 4 | (1 << 5);
+                unsafe { core::ptr::write_volatile(pd.add(pdi), new_pde); }
+                scratch_gpa
+            } else {
+                let updated_pde = pde | 4;
+                if updated_pde != pde {
+                    unsafe { core::ptr::write_volatile(pd.add(pdi), updated_pde); }
+                }
+                pde & 0xFFFFF000
+            };
+
+            let pt = pt_gpa as *mut u32;
+            let pte: u32 = (va as u32) | 1 | 4 | (1 << 5) | (1 << 9);
+            unsafe { core::ptr::write_volatile(pt.add(pti), pte); }
+
+            va += ::arch::mem::PAGE_SIZE;
+        }
+        unsafe { core::arch::asm!("mov eax, cr3", "mov cr3, eax", options(nostack)); }
+    }
+
+    Ok(vmem)
+}
 
 //==================================================================================================
 // Structures
@@ -347,23 +489,151 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
 /// This function never returns.
 ///
 pub(in crate::hal::platform) fn do_shutdown(status: usize) -> ! {
-    // Pass the low 8 bits of status as the exit code to the VMM.
+    // Use VmAction::Halt (port 108) for clean VM exit. This produces
+    // VmExit::Halt on the host — a clean return path without error parsing.
     let code: u8 = (status & 0xFF) as u8;
-    // NOTE: We use abort_with_code() for all exit codes (including 0) rather than halt() because
-    // halt() takes longer to propagate through hyperlight's host machinery. Due to issue #1010,
-    // the orchestrator sends SIGKILL immediately upon receiving a shutdown command, which can
-    // kill the vCPU thread before halt() completes. Using abort_with_code() is faster and avoids
-    // this race condition.
-    ::hyperlight_guest::exit::abort_with_code(&[code]);
+    unsafe {
+        core::arch::asm!(
+            "mov dx, 0x6c",  // VmAction::Halt = port 108
+            "out dx, al",
+            in("al") code,
+            options(nostack, nomem)
+        );
+    }
+    loop {
+        unsafe { core::arch::asm!("hlt") };
+    }
 }
 
 ///
 /// # Description
 ///
 /// Signals the VMM that the kernel has finished booting and user-space
-/// applications are about to start. No-op on the Hyperlight platform.
+/// applications are about to start.
 ///
-pub fn signal_boot_complete() {}
+/// On Hyperlight, this halts the VM with the dispatch function address
+/// in EAX. The VMM captures this address and uses it for subsequent
+/// `call()` invocations in the evolve→snapshot→restore→call lifecycle.
+///
+/// After the VMM calls `restore()` + `call()`, the guest re-enters at
+/// the dispatch function, which continues with the event loop.
+/// Dispatch handler called by `_nanvix_dispatch` after restore+call.
+///
+/// Re-enters the kernel event loop, runs user applications until the init
+/// process exits, then returns the exit status as a u32.
+#[unsafe(no_mangle)]
+pub extern "C" fn nanvix_dispatch_handler() -> u32 {
+    // Re-program PIT + PIC + PV timer for interrupt delivery after restore.
+    unsafe {
+        // Re-initialize PIC (KVM in-kernel irqchip state lost on restore).
+        core::arch::asm!("out dx, al", in("dx") 0x20u16, in("al") 0x11u8, options(nomem, nostack));
+        core::arch::asm!("out dx, al", in("dx") 0xA0u16, in("al") 0x11u8, options(nomem, nostack));
+        core::arch::asm!("out dx, al", in("dx") 0x21u16, in("al") 0x20u8, options(nomem, nostack));
+        core::arch::asm!("out dx, al", in("dx") 0xA1u16, in("al") 0x28u8, options(nomem, nostack));
+        core::arch::asm!("out dx, al", in("dx") 0x21u16, in("al") 4u8, options(nomem, nostack));
+        core::arch::asm!("out dx, al", in("dx") 0xA1u16, in("al") 2u8, options(nomem, nostack));
+        core::arch::asm!("out dx, al", in("dx") 0x21u16, in("al") 1u8, options(nomem, nostack));
+        core::arch::asm!("out dx, al", in("dx") 0xA1u16, in("al") 1u8, options(nomem, nostack));
+        core::arch::asm!("out dx, al", in("dx") 0x21u16, in("al") 0xFEu8, options(nomem, nostack));
+        core::arch::asm!("out dx, al", in("dx") 0xA1u16, in("al") 0xFFu8, options(nomem, nostack));
+
+        // Arm PV timer (host-side timer thread + irqfd for IRQ0).
+        let period_us: u32 = 1_000_000 / config::kernel::TIMER_FREQ as u32;
+        core::arch::asm!(
+            "out dx, eax",
+            in("dx") 107u16,
+            in("eax") period_us,
+            options(nomem, nostack)
+        );
+    }
+
+    // Load the kernel's IDT with CoW handler patched into entry #14.
+    extern "C" {
+        static IDT: u8;
+        fn _cow_pf_handler();
+    }
+    unsafe {
+        let src = &IDT as *const u8;
+        let dst = 0xFFFE_0000 as *mut u8;
+        core::ptr::copy_nonoverlapping(src, dst, 2048);
+
+        // Patch entry #14 (#PF) with the CoW handler that falls through
+        // to _do_excp14 for non-CoW faults (demand paging, etc.).
+        let entry14 = (dst as *mut u8).add(14 * 8);
+        let handler_addr = _cow_pf_handler as *const () as u32;
+        *(entry14.add(0) as *mut u16) = handler_addr as u16;
+        *(entry14.add(2) as *mut u16) = 0x08;
+        *(entry14.add(4) as *mut u16) = 0x8E00;
+        *(entry14.add(6) as *mut u16) = (handler_addr >> 16) as u16;
+
+        core::arch::asm!(
+            "sub esp, 8",
+            "mov word ptr [esp], 2047",
+            "mov dword ptr [esp+2], {idt}",
+            "lidt [esp]",
+            "add esp, 8",
+            idt = in(reg) 0xFFFE_0000u32,
+            options(nostack)
+        );
+    }
+
+    // Fix kernel state after snapshot restore: assign each process its
+    // per-process PD from scratch. PD[i] = pt_base_gpa + i * PAGE_SIZE.
+    unsafe {
+        let pm = crate::pm::ProcessManager::get_mut();
+        let pt_base_gpa = {
+            let gva = ::hyperlight_common::layout::MAX_GVA
+                - ::hyperlight_common::layout::SCRATCH_TOP_SNAPSHOT_PT_GPA_BASE_OFFSET as usize
+                + 1;
+            core::ptr::read_volatile(gva as *const u64) as u32
+        };
+        pm.adopt_per_process_pds(pt_base_gpa);
+        pm.reset_ready_admission_times();
+    }
+    // Enter post-restore mode: enables frame redirection to scratch,
+    // VA-based copies, and skips PA bounds checks (identity mapping
+    // broken after CoW compaction).
+    enter_post_restore();
+
+    // Enable CPU interrupts.
+    unsafe { ::arch::cpu::sti() };
+
+    // Run the event loop — user processes execute via giveup().
+    let status = crate::kcall::handler::kcall_event_loop();
+
+    // Halt via port 108 (VmAction::Halt).
+    let code: u8 = (Into::<usize>::into(status) & 0xFF) as u8;
+    unsafe {
+        core::arch::asm!(
+            "mov dx, 0x6c",
+            "out dx, al",
+            in("al") code,
+            options(nostack, nomem)
+        );
+    }
+    loop {
+        unsafe { core::arch::asm!("hlt") };
+    }
+}
+
+pub fn signal_boot_complete() {
+
+    extern "C" {
+        fn _nanvix_dispatch();
+    }
+    let dispatch_addr: u32 = _nanvix_dispatch as *const () as u32;
+    unsafe {
+        core::arch::asm!(
+            "mov eax, {0:e}",
+            "mov dx, 0x6c",
+            "out dx, al",
+            in(reg) dispatch_addr,
+            out("eax") _,
+            out("edx") _,
+            options(nostack, nomem),
+        );
+    }
+}
 
 ///
 /// # Description
@@ -521,6 +791,18 @@ pub fn init(
 ) -> Result<Platform, Error> {
     register_pic_ioports(ioports)?;
 
+    // Reserve the null guard page (GPA 0x0-0xFFF). Hyperlight's BASE_ADDRESS
+    // is 0x1000, leaving the first page unmapped as a null-pointer trap. We
+    // must book it in the frame allocator so it is never allocated.
+    let null_guard: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+        "null guard",
+        VirtualAddress::from_raw_value(0),
+        mem::PAGE_SIZE,
+        MemoryRegionType::Reserved,
+        AccessPermission::RDONLY,
+    )?;
+    memory_regions.push_back(null_guard);
+
     extern "C" {
         static __KERNEL_END: u8;
     }
@@ -648,51 +930,71 @@ pub fn init(
     memory_regions.push_back(guest_user_stack);
 
     // Register RAMFS region as MMIO for identity mapping, if present.
-    // The host writes file mapping metadata into the PEB's file_mappings array
-    // during evolve(). We scan the entries for the "ramfs" label and, if found,
-    // register an MMIO region so the kernel's page tables will identity-map the
-    // file-backed memory.
+    // The host maps the RAMFS file via map_file_cow at BASE_ADDRESS + shared_mem_size.
+    // Layout: Code → PEB → Heap → Init Data → Page Tables (then RAMFS after shared mem).
+    // Compute shared_mem_end: init_data_end + page_table_total_size.
     {
         let peb_ptr: *const HyperlightPEB = peb_base as *const HyperlightPEB;
-        let count: usize = unsafe { (*peb_ptr).file_mappings.size } as usize;
-        let array_ptr: *const FileMappingInfo =
-            unsafe { (*peb_ptr).file_mappings.ptr } as *const FileMappingInfo;
+        let init_data_ptr: usize = unsafe { (*peb_ptr).init_data.ptr } as usize;
+        let init_data_size: usize = unsafe { (*peb_ptr).init_data.size } as usize;
+        let init_data_end: usize =
+            ::sys::mm::align_up(init_data_ptr + init_data_size, PAGE_ALIGNMENT)
+                .unwrap_or(init_data_ptr + init_data_size);
 
-        if count > 0 && !array_ptr.is_null() {
-            for i in 0..count {
-                let entry: &FileMappingInfo = unsafe { &*array_ptr.add(i) };
-
-                // Only register entries whose label matches "ramfs".
-                let label_len: usize = entry
-                    .label
-                    .iter()
-                    .position(|&b| b == 0)
-                    .unwrap_or(entry.label.len());
-                let label: &str = core::str::from_utf8(&entry.label[..label_len]).unwrap_or("");
-                if label != "ramfs" {
-                    continue;
-                }
-
-                let ramfs_base: usize = entry.guest_addr as usize;
-                let ramfs_size: usize = entry.size as usize;
-
-                if ramfs_base != 0 && ramfs_size != 0 {
-                    info!(
-                        "file mapping [{}]: base={:#010x}, size={:#x}",
-                        i, ramfs_base, ramfs_size
-                    );
-                    let ramfs_region: TruncatedMemoryRegion<VirtualAddress> =
-                        TruncatedMemoryRegion::from_memory_region(MemoryRegion::new(
-                            RAMFS_REGION_NAME,
-                            VirtualAddress::from_raw_value(ramfs_base),
-                            ramfs_size,
-                            MemoryRegionType::Mmio,
-                            AccessPermission::RDWR,
-                        )?)?;
-                    ioaddresses.register(RAMFS_MMIO_TAG, ramfs_region.clone())?;
-                    mmio_regions.push_back(ramfs_region);
-                }
+        // Count PT pages by walking the page directory (in scratch via CR3).
+        let cr3: usize = unsafe {
+            let val: u32;
+            core::arch::asm!("mov {0:e}, cr3", out(reg) val);
+            val as usize
+        };
+        let mut pt_page_count: usize = 1; // 1 for the PD itself
+        for i in 0..1024 {
+            let pde: u32 = unsafe { core::ptr::read_volatile((cr3 + i * 4) as *const u32) };
+            if (pde & 1) != 0 {
+                pt_page_count += 1;
             }
+        }
+        let shared_mem_end: usize = init_data_end + pt_page_count * mem::PAGE_SIZE;
+
+        // The RAMFS (if any) is mapped at shared_mem_end. We don't know the
+        // exact size, but we can use memory_size as an upper bound (the kernel
+        // config value matches the heap_size the VMM requested, which determines
+        // shared_mem_size). The actual mapped file may be smaller; the FAT
+        // driver reads only what it needs.
+        let ramfs_base: usize = shared_mem_end;
+        let peb_ptr: *const HyperlightPEB = peb_base as *const HyperlightPEB;
+        let input_gva: usize = unsafe { (*peb_ptr).input_stack.ptr } as usize;
+
+        debug!(
+            "ramfs detection: cr3={:#010x}, pt_pages={}, \
+             shared_mem_end={:#010x}, input_gva={:#010x}",
+            cr3, pt_page_count, shared_mem_end, input_gva
+        );
+
+        // Check if there's actually something mapped between shared_mem_end
+        // and scratch. If ramfs_base equals input_gva (or is too close), no
+        // RAMFS was mapped.
+        // The RAMFS file size is stored by the kernel during parse_bootinfo()
+        // in a global variable. If non-zero, a RAMFS was mapped at shared_mem_end.
+        let ramfs_file_size: usize = unsafe { RAMFS_FILE_SIZE };
+        if ramfs_file_size > 0 && ramfs_base < input_gva {
+            let ramfs_size_aligned: usize =
+                ::sys::mm::align_up(ramfs_file_size, PAGE_ALIGNMENT).unwrap_or(ramfs_file_size);
+
+            info!("ramfs: base={:#010x}, size={:#x}", ramfs_base, ramfs_size_aligned);
+            let ramfs_region: TruncatedMemoryRegion<VirtualAddress> =
+                TruncatedMemoryRegion::from_memory_region(MemoryRegion::new(
+                    RAMFS_REGION_NAME,
+                    VirtualAddress::from_raw_value(ramfs_base),
+                    ramfs_size_aligned,
+                    MemoryRegionType::Mmio,
+                    AccessPermission::RDWR,
+                )?)?;
+            ioaddresses.register(
+                crate::hal::io::MmioTag::from_name("RAMFS   "),
+                ramfs_region.clone(),
+            )?;
+            mmio_regions.push_back(ramfs_region);
         }
     }
 
@@ -704,12 +1006,13 @@ pub fn init(
     let input_gva = unsafe { (*peb_ptr).input_stack.ptr } as usize;
 
     if input_gva >= config::kernel::MEMORY_SIZE {
-        // Extend the scratch I/O region to cover all the way up to (but not including)
-        // the last page of the address space. This includes the I/O buffers AND the
-        // bookkeeping area (scratch size, allocator, exception stack, guest counter).
-        // We stop one page short of MAX_GVA because the last page (frame 0xfffff)
-        // exceeds FrameNumber::MAX and cannot be booked by the frame allocator.
-        let scratch_end: usize = MAX_GVA - mem::PAGE_SIZE;
+        // Register the full scratch region as MMIO for identity mapping. This
+        // covers I/O buffers, the CoW page allocator area, the exception stack,
+        // and the guest counter (used for IKC credits). We stop one page short
+        // of MAX_GVA because the last frame exceeds FrameNumber::MAX and cannot
+        // be booked. Frame booking errors for pages above MEMORY_SIZE are
+        // expected and handled gracefully (InvalidArgument → skip).
+        let scratch_end: usize = ::hyperlight_common::layout::MAX_GVA - mem::PAGE_SIZE;
         let scratch_io_size = scratch_end - input_gva + 1;
         let scratch_io_region: TruncatedMemoryRegion<VirtualAddress> =
             TruncatedMemoryRegion::from_memory_region(MemoryRegion::new(
@@ -924,6 +1227,24 @@ unsafe fn read_initrd_cmdline(
             return Err(Error::new(ErrorCode::BadFile, reason));
         },
     };
+
+    // Read the trailing RAMFS file size (u64, little-endian) if present.
+    // The VMM appends this 8-byte value after the args string.
+    let ramfs_trailer_offset: usize = args_bytes_offset + args_payload_size;
+    let remaining: usize = args_section_size.saturating_sub(1 + args_payload_size);
+    if remaining >= 8 {
+        let ramfs_size_bytes: [u8; 8] = core::ptr::read_unaligned(
+            ramfs_trailer_offset as *const [u8; 8],
+        );
+        let ramfs_size: u64 = u64::from_le_bytes(ramfs_size_bytes);
+        if ramfs_size > 0 {
+            RAMFS_FILE_SIZE = ramfs_size as usize;
+            debug!(
+                "read_initrd_cmdline(): ramfs_file_size={:#x}",
+                ramfs_size
+            );
+        }
+    }
 
     Ok((args_len, args_str.to_string()))
 }

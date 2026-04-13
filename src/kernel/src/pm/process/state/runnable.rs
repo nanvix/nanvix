@@ -89,7 +89,7 @@ impl RunnableProcess {
         &self.state
     }
 
-    pub(super) fn state_mut(&mut self) -> &mut ProcessState {
+    pub(crate) fn state_mut(&mut self) -> &mut ProcessState {
         &mut self.state
     }
 
@@ -198,6 +198,22 @@ impl RunnableProcess {
             }
         } else {
             Err(self)
+        }
+    }
+
+    /// Resets all ready threads' admission times to now.
+    #[cfg(feature = "hyperlight")]
+    pub fn reset_admission_times(&mut self) {
+        for thread in self.ready_threads.iter_mut() {
+            thread.set_admission_time(crate::pm::clock::now());
+        }
+    }
+
+    /// Sets the CR3 value in every thread's ContextInformation.
+    #[cfg(feature = "hyperlight")]
+    pub fn set_all_threads_cr3(&mut self, cr3: u32) {
+        for thread in self.ready_threads.iter_mut() {
+            thread.thread_state_mut().set_context_cr3(cr3);
         }
     }
 

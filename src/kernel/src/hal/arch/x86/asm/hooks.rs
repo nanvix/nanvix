@@ -28,6 +28,11 @@ const EXCEPTION_SKIP: i32 = -(ContextInformation::CONTEXT_SW_SIZE as i32)
 /// to conditionally compile the stack-overflow guard macro body.
 const MICROVM: u32 = if cfg!(feature = "microvm") { 1 } else { 0 };
 
+/// Whether the hyperlight feature is enabled (1) or not (0).
+/// Each process now has its own PD, so CR3 save/restore is enabled on all platforms.
+#[allow(dead_code)]
+const HYPERLIGHT: u32 = if cfg!(feature = "hyperlight") { 1 } else { 0 };
+
 /// VMM ACPI power-management I/O port (microvm only; dummy value when disabled).
 #[cfg(feature = "microvm")]
 const VMM_PORT: u32 = ::config::microvm::DEFAULT_VMM_PORT as u32;
@@ -300,6 +305,7 @@ global_asm!(
     "    movl {EXCEPTION_ERR}(%esp), %ebx",
     "    movl %ebx, {CONTEXT_ERR}(%eax)",
     "    movl %esp, %ebx",
+
 
     // Call high-level exception dispatcher.
     "    pushl %eax", // Execution context.

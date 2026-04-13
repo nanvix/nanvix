@@ -215,6 +215,17 @@ fn test() {
 ///
 /// The number of servers that were successfully spawned.
 ///
+/// Saved kernel module metadata for re-spawning during dispatch.
+#[cfg(feature = "hyperlight")]
+static mut KERNEL_MODULES: Option<LinkedList<KernelModule>> = None;
+
+/// Re-spawns user processes from saved kernel modules. Called during dispatch.
+#[cfg(feature = "hyperlight")]
+pub fn respawn_servers() -> usize {
+    let kmods = unsafe { KERNEL_MODULES.as_ref().expect("no kernel modules saved") };
+    spawn_servers(unsafe { VirtMemoryManager::get_mut() }, kmods)
+}
+
 fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &LinkedList<KernelModule>) -> usize {
     // SAFETY: the process manager is initialized, this is a single-core system, interrupts are
     // disabled, and the resulting `&mut ProcessManager` does not alias `mm`.
@@ -321,6 +332,11 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         panic!("failed to initialize hardware abstraction layer: {:?}", err);
     }
 
+    // Patch the kernel IDT with the CoW page fault handler (Hyperlight only).
+    // Must happen after Hal::init (which installs the kernel IDT) and before
+    // any writes to CoW-protected memory.
+    crate::hal::platform::patch_kernel_idt_with_cow_handler();
+
     // Initialize the memory manager.
     let root: Vmem = match mm::init(&kimage, memory_regions, mmio_regions) {
         Ok(root) => root,
@@ -420,6 +436,10 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     // Print number of cores online.
     let cores_online: usize = CORES_ONLINE.load(Ordering::Acquire);
     info!("number of cores online: {}", cores_online);
+
+    // Save kernel modules for re-spawning during dispatch.
+    #[cfg(feature = "hyperlight")]
+    unsafe { KERNEL_MODULES = Some(kernel_modules.clone()) };
 
     // SAFETY: the memory manager is initialized and access is synchronized.
     let status: ExitStatus =
@@ -530,6 +550,14 @@ pub extern "C" fn do_ap_start(_coreid: u32) {
 /// This function never returns.
 ///
 pub fn kernel_magic_string(status: ExitStatus) -> ! {
-    debug!("hello, world!");
+    // Debug: use DebugPrint to show exit status before shutdown
+    #[cfg(feature = "hyperlight")]
+    unsafe {
+        let code: usize = status.into();
+        let msg = [b'X', b'=', b'0' + ((code / 100) as u8 % 10), b'0' + ((code / 10) as u8 % 10), b'0' + (code as u8 % 10), b'\n'];
+        for &c in &msg {
+            core::arch::asm!("out dx, al", in("dx") 103u16, in("al") c, options(nomem, nostack));
+        }
+    }
     hal::platform::shutdown(status.into());
 }

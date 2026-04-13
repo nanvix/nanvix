@@ -9,7 +9,7 @@ mod aligned;
 mod frame;
 mod page;
 mod pd;
-mod phys;
+pub(crate) mod phys;
 
 #[cfg(test)]
 mod test;
