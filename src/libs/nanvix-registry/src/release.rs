@@ -14,6 +14,7 @@ use crate::{
         RateLimiter,
     },
     tarball::Tarball,
+    target::Target,
     tempfile::TemporaryFile,
 };
 use ::anyhow::Result;
@@ -50,6 +51,8 @@ const GITHUB_API_URL: &str = "https://api.github.com/repos/nanvix/nanvix/release
 /// Represents the latest release from the Nanvix GitHub repository.
 ///
 pub(crate) struct LatestRelease {
+    /// Target architecture for the release.
+    target: Target,
     /// Deployment type for the release.
     deployment: Deployment,
     /// Target machine type for the release.
@@ -68,22 +71,29 @@ impl LatestRelease {
     ///
     /// # Description
     ///
-    /// Creates a new handle for a latest release for the specified deployment, machine type, and
-    /// memory size.
+    /// Creates a new handle for a latest release for the specified target architecture,
+    /// deployment, machine type, and memory size.
     ///
     /// # Parameters
     ///
+    /// - `target`: The target architecture.
     /// - `deployment`: The deployment type.
     /// - `machine`: The target machine type.
     /// - `memory_size_mb`: The memory size in megabytes.
     ///
     /// # Returns
     ///
-    /// A new handle for a latest release for the specified deployment, machine type, and memory
-    /// size.
+    /// A new handle for a latest release for the specified target architecture, deployment,
+    /// machine type, and memory size.
     ///
-    pub(crate) fn new(deployment: Deployment, machine: Machine, memory_size_mb: u32) -> Self {
+    pub(crate) fn new(
+        target: Target,
+        deployment: Deployment,
+        machine: Machine,
+        memory_size_mb: u32,
+    ) -> Self {
         Self {
+            target,
             deployment,
             machine,
             memory_size_mb,
@@ -203,8 +213,8 @@ impl LatestRelease {
         };
 
         let release_pattern: String = format!(
-            "nanvix-{}-{}-release-{}mb-",
-            self.machine, self.deployment, self.memory_size_mb
+            "nanvix-{}-{}-{}-release-{}mb-",
+            self.target, self.machine, self.deployment, self.memory_size_mb
         );
 
         // Search for the matching asset.
@@ -240,10 +250,12 @@ mod tests {
     ///
     #[test]
     fn test_new() {
+        let target: Target = Target::X86;
         let deployment: Deployment = Deployment::SingleProcess;
         let machine: Machine = Machine::Microvm;
-        let release: LatestRelease = LatestRelease::new(deployment, machine, 128);
+        let release: LatestRelease = LatestRelease::new(target, deployment, machine, 128);
 
+        assert!(matches!(release.target, Target::X86));
         assert!(matches!(release.deployment, Deployment::SingleProcess));
         assert!(matches!(release.machine, Machine::Microvm));
         assert_eq!(release.memory_size_mb, 128);
@@ -256,18 +268,22 @@ mod tests {
     ///
     #[test]
     fn test_release_pattern() {
+        let target: Target = Target::X86;
         let deployment: Deployment = Deployment::MultiProcess;
         let machine: Machine = Machine::Hyperlight;
 
-        let pattern: String = format!("nanvix-{}-{}-release-{}mb-", machine, deployment, 128);
-        assert_eq!(pattern, "nanvix-hyperlight-multi-process-release-128mb-");
+        let pattern: String =
+            format!("nanvix-{}-{}-{}-release-{}mb-", target, machine, deployment, 128);
+        assert_eq!(pattern, "nanvix-x86-hyperlight-multi-process-release-128mb-");
 
         // Verify the pattern matches the memory-size archive name format.
-        let name_128: &str = "nanvix-hyperlight-multi-process-release-128mb-abc123def456.tar.bz2";
+        let name_128: &str =
+            "nanvix-x86-hyperlight-multi-process-release-128mb-abc123def456.tar.bz2";
         assert!(name_128.contains(&pattern));
 
         // Verify the pattern does NOT match a different memory size.
-        let name_1024: &str = "nanvix-hyperlight-multi-process-release-1024mb-abc123def456.tar.bz2";
+        let name_1024: &str =
+            "nanvix-x86-hyperlight-multi-process-release-1024mb-abc123def456.tar.bz2";
         assert!(!name_1024.contains(&pattern));
     }
 
@@ -290,18 +306,23 @@ mod tests {
     ///
     #[test]
     fn test_all_release_patterns() {
+        let targets: [Target; 1] = [Target::X86];
         let deployments: [Deployment; 2] = [Deployment::SingleProcess, Deployment::MultiProcess];
         let machines: [Machine; 2] = [Machine::Hyperlight, Machine::Microvm];
         let memory_sizes: [u32; 4] = [128, 256, 512, 1024];
 
-        for deployment in &deployments {
-            for machine in &machines {
-                for memory_size_mb in &memory_sizes {
-                    let pattern: String =
-                        format!("nanvix-{}-{}-release-{}mb-", machine, deployment, memory_size_mb);
-                    assert!(pattern.contains("nanvix-"));
-                    assert!(pattern.contains("-release-"));
-                    assert!(pattern.ends_with("mb-"));
+        for target in &targets {
+            for deployment in &deployments {
+                for machine in &machines {
+                    for memory_size_mb in &memory_sizes {
+                        let pattern: String = format!(
+                            "nanvix-{}-{}-{}-release-{}mb-",
+                            target, machine, deployment, memory_size_mb
+                        );
+                        assert!(pattern.contains("nanvix-"));
+                        assert!(pattern.contains("-release-"));
+                        assert!(pattern.ends_with("mb-"));
+                    }
                 }
             }
         }

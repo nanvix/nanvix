@@ -48,7 +48,7 @@
 //!
 //!     // Get a cached binary (downloads if not already cached).
 //!     let binary_path: String = registry
-//!         .get_cached_binary("microvm", "single-process", 128, "kernel.elf")
+//!         .get_cached_binary("x86", "microvm", "single-process", 128, "kernel.elf")
 //!         .await?;
 //!
 //!     println!("Binary path: {}", binary_path);
@@ -73,7 +73,7 @@
 //!     // This will automatically download openssl, zlib, and other required packages.
 //!     // Use `true` to fall back to latest version if compatible version not found.
 //!     let install_path: String = registry
-//!         .install("microvm", "single-process", 128, "python", true)
+//!         .install("x86", "microvm", "single-process", 128, "python", true)
 //!         .await?;
 //!
 //!     println!("Python installed to: {}", install_path);
@@ -96,7 +96,7 @@
 //!
 //!     // Use the registry normally - it will use the custom directory.
 //!     let binary_path: String = registry
-//!         .get_cached_binary("hyperlight", "multi-process", 128, "kernel.elf")
+//!         .get_cached_binary("x86", "hyperlight", "multi-process", 128, "kernel.elf")
 //!         .await?;
 //!
 //!     Ok(())
@@ -184,6 +184,7 @@ mod progress;
 mod rate_limiter;
 mod release;
 mod tarball;
+mod target;
 mod tempfile;
 
 //==================================================================================================
@@ -200,6 +201,7 @@ pub use crate::{
         ProgressCallback,
         SharedProgress,
     },
+    target::Target,
 };
 
 //==================================================================================================
@@ -254,6 +256,8 @@ const BINARY_DIRECTORY_NAME: &str = "bin";
 /// reducing the number of function arguments and improving code maintainability.
 ///
 struct InstallContext<'a> {
+    /// Target architecture.
+    target: Target,
     /// Target machine type.
     machine: Machine,
     /// Deployment type.
@@ -271,6 +275,11 @@ struct InstallContext<'a> {
 }
 
 impl<'a> InstallContext<'a> {
+    /// Returns the target architecture.
+    fn target(&self) -> Target {
+        self.target
+    }
+
     /// Returns the target machine type.
     fn machine(&self) -> Machine {
         self.machine
@@ -327,7 +336,7 @@ impl<'a> InstallContext<'a> {
 ///
 ///     // Get the kernel binary for microvm single-process deployment.
 ///     let kernel_path: String = registry
-///         .get_cached_binary("microvm", "single-process", 128, "kernel.elf")
+///         .get_cached_binary("x86", "microvm", "single-process", 128, "kernel.elf")
 ///         .await?;
 ///
 ///     Ok(())
@@ -386,6 +395,8 @@ impl Registry {
     ///
     /// # Parameters
     ///
+    /// - `target`: Target architecture. Supported values:
+    ///   - `"x86"`: x86 architecture.
     /// - `machine`: Target machine type. Supported values:
     ///   - `"hyperlight"`: Hyperlight machine type.
     ///   - `"microvm"`: microvm machine type.
@@ -402,6 +413,7 @@ impl Registry {
     /// # Errors
     ///
     /// This function returns an error if:
+    /// - The target architecture is not recognized.
     /// - The machine type is not recognized.
     /// - The deployment type is not recognized.
     /// - The GitHub API request fails.
@@ -420,7 +432,7 @@ impl Registry {
     ///
     ///     // Get the QuickJS binary for hyperlight multi-process deployment.
     ///     let qjs_path: String = registry
-    ///         .get_cached_binary("hyperlight", "multi-process", 128, "qjs")
+    ///         .get_cached_binary("x86", "hyperlight", "multi-process", 128, "qjs")
     ///         .await?;
     ///
     ///     println!("QuickJS binary: {}", qjs_path);
@@ -431,6 +443,7 @@ impl Registry {
     ///
     pub async fn get_cached_binary(
         &self,
+        target: &str,
         machine: &str,
         deployment: &str,
         memory_size_mb: u32,
@@ -438,6 +451,7 @@ impl Registry {
     ) -> Result<String> {
         // Use get_cached_artifact to search for the binary within the "bin" directory.
         self.get_cached_artifact(
+            target,
             machine,
             deployment,
             memory_size_mb,
@@ -458,6 +472,8 @@ impl Registry {
     ///
     /// # Parameters
     ///
+    /// - `target`: Target architecture. Supported values:
+    ///   - `"x86"`: x86 architecture.
     /// - `machine`: Target machine type. Supported values:
     ///   - `"hyperlight"`: Hyperlight machine type.
     ///   - `"microvm"`: microvm machine type.
@@ -477,6 +493,7 @@ impl Registry {
     /// # Errors
     ///
     /// This function returns an error if:
+    /// - The target architecture is not recognized.
     /// - The machine type is not recognized.
     /// - The deployment type is not recognized.
     /// - The GitHub API request fails.
@@ -495,12 +512,12 @@ impl Registry {
     ///
     ///     // Search for a configuration file from the cache directory root.
     ///     let config_path: String = registry
-    ///         .get_cached_artifact("hyperlight", "multi-process", 128, "config.json", None)
+    ///         .get_cached_artifact("x86", "hyperlight", "multi-process", 128, "config.json", None)
     ///         .await?;
     ///
     ///     // Search for a library file in a specific subdirectory.
     ///     let lib_path: String = registry
-    ///         .get_cached_artifact("microvm", "single-process", 128, "libssl.so", Some("lib"))
+    ///         .get_cached_artifact("x86", "microvm", "single-process", 128, "libssl.so", Some("lib"))
     ///         .await?;
     ///
     ///     println!("Configuration file: {}", config_path);
@@ -512,6 +529,7 @@ impl Registry {
     ///
     pub async fn get_cached_artifact(
         &self,
+        target: &str,
         machine: &str,
         deployment: &str,
         memory_size_mb: u32,
@@ -522,6 +540,9 @@ impl Registry {
 
         let cache_dir: PathBuf = self.get_cache_dir().await?;
 
+        // Convert target from string representation.
+        let target: Target = Target::try_from(target)?;
+
         // Convert machine from string representation.
         let machine: Machine = Machine::try_from(machine)?;
 
@@ -529,7 +550,8 @@ impl Registry {
         let deployment: Deployment = Deployment::try_from(deployment)?;
 
         // Create release handle for checking latest release.
-        let release: LatestRelease = LatestRelease::new(deployment, machine, memory_size_mb);
+        let release: LatestRelease =
+            LatestRelease::new(target, deployment, machine, memory_size_mb);
 
         // Get the latest release URL.
         let latest_url: String = release.get_url().await?;
@@ -547,9 +569,9 @@ impl Registry {
             },
         };
 
-        // Construct the subdirectory name: <machine>-<deployment>-<memory_size>mb-<commit_id>.
+        // Construct the subdirectory name: <target>-<machine>-<deployment>-<memory_size>mb-<commit_id>.
         let subdir_name: String =
-            format!("{}-{}-{}mb-{}", machine, deployment, memory_size_mb, commit_id);
+            format!("{}-{}-{}-{}mb-{}", target, machine, deployment, memory_size_mb, commit_id);
         let artifact_cache_dir: PathBuf = cache_dir.join(&subdir_name);
 
         // Load or create the release registry.
@@ -569,36 +591,39 @@ impl Registry {
         };
 
         // Check if we need to download this specific configuration.
-        let needs_download: bool =
-            if let Some(cached_entry) = registry.get_release(machine, deployment, memory_size_mb) {
-                if cached_entry.commit_id() != commit_id.as_str() {
-                    info!(
-                        "New release detected for {}-{}-{}mb (cached: {}, latest: {})",
-                        machine,
-                        deployment,
-                        memory_size_mb,
-                        cached_entry.commit_id(),
-                        commit_id
-                    );
-                    true
-                } else {
-                    debug!(
-                        "Using cached release for {}-{}-{}mb: {}",
-                        machine,
-                        deployment,
-                        memory_size_mb,
-                        cached_entry.commit_id()
-                    );
-                    false
-                }
-            } else {
-                // Configuration not in registry, need to download.
+        let needs_download: bool = if let Some(cached_entry) =
+            registry.get_release(target, machine, deployment, memory_size_mb)
+        {
+            if cached_entry.commit_id() != commit_id.as_str() {
                 info!(
-                    "Configuration {}-{}-{}mb not cached, downloading...",
-                    machine, deployment, memory_size_mb
+                    "New release detected for {}-{}-{}-{}mb (cached: {}, latest: {})",
+                    target,
+                    machine,
+                    deployment,
+                    memory_size_mb,
+                    cached_entry.commit_id(),
+                    commit_id
                 );
                 true
-            };
+            } else {
+                debug!(
+                    "Using cached release for {}-{}-{}-{}mb: {}",
+                    target,
+                    machine,
+                    deployment,
+                    memory_size_mb,
+                    cached_entry.commit_id()
+                );
+                false
+            }
+        } else {
+            // Configuration not in registry, need to download.
+            info!(
+                "Configuration {}-{}-{}-{}mb not cached, downloading...",
+                target, machine, deployment, memory_size_mb
+            );
+            true
+        };
 
         if needs_download {
             // Create the artifact cache directory.
@@ -612,7 +637,14 @@ impl Registry {
             let downloaded_url: String = release.download(&artifact_cache_dir).await?;
 
             // Update the registry with the new release.
-            registry.set_release(machine, deployment, memory_size_mb, downloaded_url, commit_id);
+            registry.set_release(
+                target,
+                machine,
+                deployment,
+                memory_size_mb,
+                downloaded_url,
+                commit_id,
+            );
             registry.save(&cache_dir).await?;
         }
 
@@ -646,6 +678,8 @@ impl Registry {
     ///
     /// # Parameters
     ///
+    /// - `target`: Target architecture. Supported values:
+    ///   - `"x86"`: x86 architecture.
     /// - `machine`: Target machine type. Supported values:
     ///   - `"hyperlight"`: Hyperlight machine type.
     ///   - `"microvm"`: microvm machine type.
@@ -671,6 +705,7 @@ impl Registry {
     /// # Errors
     ///
     /// This function returns an error if:
+    /// - The target architecture is not recognized.
     /// - The machine type is not recognized.
     /// - The deployment type is not recognized.
     /// - The package name is not recognized.
@@ -691,12 +726,12 @@ impl Registry {
     ///
     ///     // Install CPython and its dependencies (strict mode - requires compatible version).
     ///     let install_path: String = registry
-    ///         .install("microvm", "single-process", 128, "python", false)
+    ///         .install("x86", "microvm", "single-process", 128, "python", false)
     ///         .await?;
     ///
     ///     // Install with fallback to latest if compatible version not found.
     ///     let install_path: String = registry
-    ///         .install("microvm", "single-process", 128, "python", true)
+    ///         .install("x86", "microvm", "single-process", 128, "python", true)
     ///         .await?;
     ///
     ///     println!("Package installed to: {}", install_path);
@@ -707,6 +742,7 @@ impl Registry {
     ///
     pub async fn install(
         &self,
+        target: &str,
         machine: &str,
         deployment: &str,
         memory_size_mb: u32,
@@ -714,6 +750,7 @@ impl Registry {
         use_latest_fallback: bool,
     ) -> Result<String> {
         self.install_with_progress(
+            target,
             machine,
             deployment,
             memory_size_mb,
@@ -734,6 +771,7 @@ impl Registry {
     ///
     /// # Parameters
     ///
+    /// - `target`: Target architecture (see [`install`](Self::install) for supported values).
     /// - `machine`: Target machine type (see [`install`](Self::install) for supported values).
     /// - `deployment`: Deployment type (see [`install`](Self::install) for supported values).
     /// - `memory_size_mb`: Memory size in megabytes for selecting the correct release archive.
@@ -761,7 +799,7 @@ impl Registry {
     ///     let progress = Arc::new(LoggingProgress);
     ///
     ///     let install_path: String = registry
-    ///         .install_with_progress("microvm", "single-process", 128, "python", true, progress)
+    ///         .install_with_progress("x86", "microvm", "single-process", 128, "python", true, progress)
     ///         .await?;
     ///
     ///     println!("Package installed to: {}", install_path);
@@ -770,8 +808,11 @@ impl Registry {
     /// }
     /// ```
     ///
+    // TODO: Consolidate parameters into a config/builder struct to reduce argument count.
+    #[allow(clippy::too_many_arguments)]
     pub async fn install_with_progress(
         &self,
+        target: &str,
         machine: &str,
         deployment: &str,
         memory_size_mb: u32,
@@ -783,6 +824,9 @@ impl Registry {
 
         let cache_dir: PathBuf = self.get_cache_dir().await?;
 
+        // Convert target from string representation.
+        let target: Target = Target::try_from(target)?;
+
         // Convert machine from string representation.
         let machine: Machine = Machine::try_from(machine)?;
 
@@ -793,7 +837,8 @@ impl Registry {
         let package: Package = Package::try_from(package_name)?;
 
         // First, ensure we have the Nanvix release cached to get the commit ID.
-        let release: LatestRelease = LatestRelease::new(deployment, machine, memory_size_mb);
+        let release: LatestRelease =
+            LatestRelease::new(target, deployment, machine, memory_size_mb);
         let latest_url: String = release.get_url().await?;
 
         let commit_id: String = match Self::extract_commit_id(&latest_url) {
@@ -825,6 +870,7 @@ impl Registry {
 
         // Install the package (and dependencies) recursively.
         let context: InstallContext<'_> = InstallContext {
+            target,
             machine,
             deployment,
             memory_size_mb,
@@ -877,13 +923,15 @@ impl Registry {
 
         // Check if package is already installed for this configuration.
         if registry.is_package_installed(
+            context.target(),
             context.machine(),
             context.deployment(),
             package,
             context.commit_id(),
         ) {
             let subdir_name: String = format!(
-                "{}-{}-{}mb-{}",
+                "{}-{}-{}-{}mb-{}",
+                context.target(),
                 context.machine(),
                 context.deployment(),
                 context.memory_size_mb(),
@@ -891,8 +939,9 @@ impl Registry {
             );
             let package_dir: PathBuf = context.cache_dir().join(&subdir_name);
             info!(
-                "Package {} already installed for {}-{}-{}mb-{}",
+                "Package {} already installed for {}-{}-{}-{}mb-{}",
                 package,
+                context.target(),
                 context.machine(),
                 context.deployment(),
                 context.memory_size_mb(),
@@ -940,7 +989,8 @@ impl Registry {
 
         // Now install the package itself.
         let subdir_name: String = format!(
-            "{}-{}-{}mb-{}",
+            "{}-{}-{}-{}mb-{}",
+            context.target(),
             context.machine(),
             context.deployment(),
             context.memory_size_mb(),
@@ -956,8 +1006,9 @@ impl Registry {
         }
 
         info!(
-            "Installing package {} for {}-{}-{}mb-{}",
+            "Installing package {} for {}-{}-{}-{}mb-{}",
             package,
+            context.target(),
             context.machine(),
             context.deployment(),
             context.memory_size_mb(),
@@ -979,6 +1030,7 @@ impl Registry {
         // Update and save the registry with the installed package.
         // We save after each package to persist partial progress on failure.
         registry.set_package(
+            context.target(),
             context.machine(),
             context.deployment(),
             package,
@@ -1333,13 +1385,32 @@ mod tests {
     ///
     /// # Description
     ///
+    /// Tests that invalid target architecture returns error.
+    ///
+    #[tokio::test]
+    async fn test_invalid_target() {
+        let registry: Registry = Registry::new(None);
+        let result = registry
+            .get_cached_binary("invalid-target", "microvm", "single-process", 128, "kernel.elf")
+            .await;
+
+        assert!(result.is_err());
+        assert!(result
+            .expect_err("should fail")
+            .to_string()
+            .contains("Unknown target architecture"));
+    }
+
+    ///
+    /// # Description
+    ///
     /// Tests that invalid machine type returns error.
     ///
     #[tokio::test]
     async fn test_invalid_machine() {
         let registry: Registry = Registry::new(None);
         let result = registry
-            .get_cached_binary("invalid-machine", "single-process", 128, "kernel.elf")
+            .get_cached_binary("x86", "invalid-machine", "single-process", 128, "kernel.elf")
             .await;
 
         assert!(result.is_err());
@@ -1358,7 +1429,7 @@ mod tests {
     async fn test_invalid_deployment() {
         let registry: Registry = Registry::new(None);
         let result = registry
-            .get_cached_binary("microvm", "invalid-deployment", 128, "kernel.elf")
+            .get_cached_binary("x86", "microvm", "invalid-deployment", 128, "kernel.elf")
             .await;
 
         assert!(result.is_err());
@@ -1385,13 +1456,46 @@ mod tests {
     ///
     /// # Description
     ///
+    /// Tests that invalid target architecture returns error for get_cached_artifact.
+    ///
+    #[tokio::test]
+    async fn test_get_cached_artifact_invalid_target() {
+        let registry: Registry = Registry::new(None);
+        let result: Result<String> = registry
+            .get_cached_artifact(
+                "invalid-target",
+                "microvm",
+                "single-process",
+                128,
+                "config.json",
+                None,
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert!(result
+            .expect_err("should fail")
+            .to_string()
+            .contains("Unknown target architecture"));
+    }
+
+    ///
+    /// # Description
+    ///
     /// Tests that invalid machine type returns error for get_cached_artifact.
     ///
     #[tokio::test]
     async fn test_get_cached_artifact_invalid_machine() {
         let registry: Registry = Registry::new(None);
         let result: Result<String> = registry
-            .get_cached_artifact("invalid-machine", "single-process", 128, "config.json", None)
+            .get_cached_artifact(
+                "x86",
+                "invalid-machine",
+                "single-process",
+                128,
+                "config.json",
+                None,
+            )
             .await;
 
         assert!(result.is_err());
@@ -1410,7 +1514,7 @@ mod tests {
     async fn test_get_cached_artifact_invalid_deployment() {
         let registry: Registry = Registry::new(None);
         let result: Result<String> = registry
-            .get_cached_artifact("microvm", "invalid-deployment", 128, "config.json", None)
+            .get_cached_artifact("x86", "microvm", "invalid-deployment", 128, "config.json", None)
             .await;
 
         assert!(result.is_err());
@@ -1469,13 +1573,20 @@ mod tests {
 
         // Test with None (searches from cache root) - should fail gracefully since no actual cache exists.
         let result: Result<String> = registry
-            .get_cached_artifact("microvm", "single-process", 128, "nonexistent.txt", None)
+            .get_cached_artifact("x86", "microvm", "single-process", 128, "nonexistent.txt", None)
             .await;
         assert!(result.is_err());
 
         // Test with Some custom directory - should also fail gracefully since no actual cache exists.
         let result: Result<String> = registry
-            .get_cached_artifact("microvm", "single-process", 128, "nonexistent.txt", Some("lib"))
+            .get_cached_artifact(
+                "x86",
+                "microvm",
+                "single-process",
+                128,
+                "nonexistent.txt",
+                Some("lib"),
+            )
             .await;
         assert!(result.is_err());
     }
@@ -1542,19 +1653,19 @@ mod tests {
     #[test]
     fn test_extract_commit_id() {
         // Test valid URL with commit ID and memory size.
-        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-128mb-abc123def456.tar.bz2";
+        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-x86-hyperlight-multi-process-release-128mb-abc123def456.tar.bz2";
         let commit_id: Option<String> = Registry::extract_commit_id(url);
         assert!(commit_id.is_some());
         assert_eq!(commit_id.expect("failed"), "abc123def456");
 
         // Test another valid URL format with different memory size.
-        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-microvm-single-process-release-256mb-1a2b3c4d5e6f.tar.bz2";
+        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-x86-microvm-single-process-release-256mb-1a2b3c4d5e6f.tar.bz2";
         let commit_id: Option<String> = Registry::extract_commit_id(url);
         assert!(commit_id.is_some());
         assert_eq!(commit_id.expect("failed"), "1a2b3c4d5e6f");
 
         // Test valid URL with .tar.gz extension.
-        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-128mb-abc123def456.tar.gz";
+        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-x86-hyperlight-multi-process-release-128mb-abc123def456.tar.gz";
         let commit_id: Option<String> = Registry::extract_commit_id(url);
         assert!(commit_id.is_some());
         assert_eq!(commit_id.expect("failed"), "abc123def456");
@@ -1585,13 +1696,27 @@ mod tests {
     ///
     /// # Description
     ///
+    /// Tests that install returns error for invalid target architecture.
+    ///
+    #[tokio::test]
+    async fn test_install_invalid_target() {
+        let registry: Registry = Registry::new(None);
+        let result: Result<String> = registry
+            .install("invalid-target", "microvm", "single-process", 128, "openssl", false)
+            .await;
+        assert!(result.is_err());
+    }
+
+    ///
+    /// # Description
+    ///
     /// Tests that install returns error for invalid machine type.
     ///
     #[tokio::test]
     async fn test_install_invalid_machine() {
         let registry: Registry = Registry::new(None);
         let result: Result<String> = registry
-            .install("invalid-machine", "single-process", 128, "openssl", false)
+            .install("x86", "invalid-machine", "single-process", 128, "openssl", false)
             .await;
         assert!(result.is_err());
     }
@@ -1605,7 +1730,7 @@ mod tests {
     async fn test_install_invalid_deployment() {
         let registry: Registry = Registry::new(None);
         let result: Result<String> = registry
-            .install("microvm", "invalid-deployment", 128, "openssl", false)
+            .install("x86", "microvm", "invalid-deployment", 128, "openssl", false)
             .await;
         assert!(result.is_err());
     }
@@ -1619,7 +1744,7 @@ mod tests {
     async fn test_install_invalid_package() {
         let registry: Registry = Registry::new(None);
         let result: Result<String> = registry
-            .install("microvm", "single-process", 128, "invalid-package", false)
+            .install("x86", "microvm", "single-process", 128, "invalid-package", false)
             .await;
         assert!(result.is_err());
     }
@@ -1659,7 +1784,7 @@ mod tests {
 
                 // Attempt to install the package.
                 let result: Result<String> = registry
-                    .install("microvm", "single-process", 128, package_name, true)
+                    .install("x86", "microvm", "single-process", 128, package_name, true)
                     .await;
 
                 // Verify installation succeeded.
