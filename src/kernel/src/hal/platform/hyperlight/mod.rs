@@ -89,18 +89,6 @@ use ::sys::{
 #[used]
 static KERNEL_PADDING: [u8; 2 * 1024 * 1024] = [0u8; 2 * 1024 * 1024];
 
-/// After snapshot restore, identity mapping (VA==PA) is broken because CoW
-/// compaction relocates pages. This flag gates all post-restore behavior:
-/// frame redirection to scratch, VA-based copies, and PA bounds-check skipping.
-static POST_RESTORE: core::sync::atomic::AtomicBool =
-    core::sync::atomic::AtomicBool::new(false);
-
-/// Mark the platform as post-restore. Called by the dispatch handler after
-/// snapshot restore when identity mapping is no longer valid.
-pub(crate) fn enter_post_restore() {
-    POST_RESTORE.store(true, core::sync::atomic::Ordering::Relaxed);
-}
-
 /// Always redirect frame allocations to EPT-writable scratch memory.
 /// With PTE_COW from first boot, the host's mmap doesn't see __phys_memcpy
 /// writes to original PAs, so we must allocate user data in scratch where
@@ -590,10 +578,6 @@ pub extern "C" fn nanvix_dispatch_handler() -> u32 {
         pm.adopt_per_process_pds(pt_base_gpa);
         pm.reset_ready_admission_times();
     }
-    // Enter post-restore mode: enables frame redirection to scratch,
-    // VA-based copies, and skips PA bounds checks (identity mapping
-    // broken after CoW compaction).
-    enter_post_restore();
 
     // Enable CPU interrupts.
     unsafe { ::arch::cpu::sti() };
