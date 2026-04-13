@@ -13,7 +13,11 @@ homepage.workspace = true
 [lib]
 crate-type = ["lib"]
 
+[package.metadata.verus]
+verify = true
+
 [dependencies]
+vstd = { workspace = true }
 
 [features]
 default = []
