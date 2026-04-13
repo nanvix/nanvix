@@ -75,19 +75,21 @@ fn test_insert_single() {
 #[test]
 fn test_insert_maintains_order() {
     let mut sv: SortedVec<i32> = SortedVec::new();
-    sv.insert(30);
-    sv.insert(10);
-    sv.insert(20);
+    assert!(sv.insert(30).is_none());
+    assert!(sv.insert(10).is_none());
+    assert!(sv.insert(20).is_none());
     assert_eq!(sv.as_slice(), &[10, 20, 30]);
 }
 
 #[test]
 fn test_insert_duplicate_replaces() {
     let mut sv: SortedVec<KeyValue> = SortedVec::new();
-    sv.insert(KeyValue {
-        key: 10,
-        payload: "first",
-    });
+    assert!(sv
+        .insert(KeyValue {
+            key: 10,
+            payload: "first",
+        })
+        .is_none());
     let old: Option<KeyValue> = sv.insert(KeyValue {
         key: 10,
         payload: "second",
@@ -110,7 +112,7 @@ fn test_insert_duplicate_replaces() {
 fn test_insert_ascending() {
     let mut sv: SortedVec<i32> = SortedVec::new();
     for i in 0..10 {
-        sv.insert(i);
+        assert!(sv.insert(i).is_none());
     }
     let expected: Vec<i32> = (0..10).collect();
     assert_eq!(sv.as_slice(), expected.as_slice());
@@ -120,7 +122,7 @@ fn test_insert_ascending() {
 fn test_insert_descending() {
     let mut sv: SortedVec<i32> = SortedVec::new();
     for i in (0..10).rev() {
-        sv.insert(i);
+        assert!(sv.insert(i).is_none());
     }
     let expected: Vec<i32> = (0..10).collect();
     assert_eq!(sv.as_slice(), expected.as_slice());
@@ -133,9 +135,9 @@ fn test_insert_descending() {
 #[test]
 fn test_remove_existing() {
     let mut sv: SortedVec<i32> = SortedVec::new();
-    sv.insert(10);
-    sv.insert(20);
-    sv.insert(30);
+    assert!(sv.insert(10).is_none());
+    assert!(sv.insert(20).is_none());
+    assert!(sv.insert(30).is_none());
     let removed: Option<i32> = sv.remove(&20);
     assert_eq!(removed, Some(20));
     assert_eq!(sv.len(), 2);
@@ -145,7 +147,7 @@ fn test_remove_existing() {
 #[test]
 fn test_remove_nonexistent() {
     let mut sv: SortedVec<i32> = SortedVec::new();
-    sv.insert(10);
+    assert!(sv.insert(10).is_none());
     let removed: Option<i32> = sv.remove(&99);
     assert!(removed.is_none());
     assert_eq!(sv.len(), 1);
@@ -161,9 +163,9 @@ fn test_remove_from_empty() {
 #[test]
 fn test_remove_by_existing() {
     let mut sv: SortedVec<(i32, &str)> = SortedVec::new();
-    sv.insert((1, "one"));
-    sv.insert((2, "two"));
-    sv.insert((3, "three"));
+    assert!(sv.insert((1, "one")).is_none());
+    assert!(sv.insert((2, "two")).is_none());
+    assert!(sv.insert((3, "three")).is_none());
     let removed: Option<(i32, &str)> = sv.remove_by(&2, |&(k, _)| k);
     assert_eq!(removed, Some((2, "two")));
     assert_eq!(sv.len(), 2);
@@ -173,8 +175,8 @@ fn test_remove_by_existing() {
 #[test]
 fn test_remove_by_not_found() {
     let mut sv: SortedVec<(i32, &str)> = SortedVec::new();
-    sv.insert((1, "one"));
-    sv.insert((3, "three"));
+    assert!(sv.insert((1, "one")).is_none());
+    assert!(sv.insert((3, "three")).is_none());
     let removed: Option<(i32, &str)> = sv.remove_by(&2, |&(k, _)| k);
     assert!(removed.is_none());
     assert_eq!(sv.len(), 2);
@@ -187,8 +189,8 @@ fn test_remove_by_not_found() {
 #[test]
 fn test_contains() {
     let mut sv: SortedVec<i32> = SortedVec::new();
-    sv.insert(5);
-    sv.insert(15);
+    assert!(sv.insert(5).is_none());
+    assert!(sv.insert(15).is_none());
     assert!(sv.contains(&5));
     assert!(sv.contains(&15));
     assert!(!sv.contains(&10));
@@ -197,7 +199,7 @@ fn test_contains() {
 #[test]
 fn test_get_existing() {
     let mut sv: SortedVec<i32> = SortedVec::new();
-    sv.insert(42);
+    assert!(sv.insert(42).is_none());
     assert_eq!(sv.get(&42), Some(&42));
 }
 
@@ -214,9 +216,9 @@ fn test_get_nonexistent() {
 #[test]
 fn test_lookup() {
     let mut sv: SortedVec<i32> = SortedVec::new();
-    sv.insert(10);
-    sv.insert(20);
-    sv.insert(30);
+    assert!(sv.insert(10).is_none());
+    assert!(sv.insert(20).is_none());
+    assert!(sv.insert(30).is_none());
     let result: Option<&i32> = sv.lookup_by(&20, |x| *x);
     assert_eq!(result, Some(&20));
 }
@@ -224,8 +226,8 @@ fn test_lookup() {
 #[test]
 fn test_lookup_not_found() {
     let mut sv: SortedVec<i32> = SortedVec::new();
-    sv.insert(10);
-    sv.insert(30);
+    assert!(sv.insert(10).is_none());
+    assert!(sv.insert(30).is_none());
     let result: Option<&i32> = sv.lookup_by(&20, |x| *x);
     assert!(result.is_none());
 }
@@ -233,9 +235,9 @@ fn test_lookup_not_found() {
 #[test]
 fn test_lookup_by_key() {
     let mut sv: SortedVec<(i32, &str)> = SortedVec::new();
-    sv.insert((1, "one"));
-    sv.insert((2, "two"));
-    sv.insert((3, "three"));
+    assert!(sv.insert((1, "one")).is_none());
+    assert!(sv.insert((2, "two")).is_none());
+    assert!(sv.insert((3, "three")).is_none());
     let result: Option<&(i32, &str)> = sv.lookup_by(&2, |&(k, _)| k);
     assert_eq!(result, Some(&(2, "two")));
 }
@@ -243,8 +245,8 @@ fn test_lookup_by_key() {
 #[test]
 fn test_lookup_by_key_not_found() {
     let mut sv: SortedVec<(i32, &str)> = SortedVec::new();
-    sv.insert((1, "one"));
-    sv.insert((3, "three"));
+    assert!(sv.insert((1, "one")).is_none());
+    assert!(sv.insert((3, "three")).is_none());
     let result: Option<&(i32, &str)> = sv.lookup_by(&2, |&(k, _)| k);
     assert!(result.is_none());
 }
@@ -256,9 +258,9 @@ fn test_lookup_by_key_not_found() {
 #[test]
 fn test_first_last() {
     let mut sv: SortedVec<i32> = SortedVec::new();
-    sv.insert(30);
-    sv.insert(10);
-    sv.insert(20);
+    assert!(sv.insert(30).is_none());
+    assert!(sv.insert(10).is_none());
+    assert!(sv.insert(20).is_none());
     assert_eq!(sv.first(), Some(&10));
     assert_eq!(sv.last(), Some(&30));
 }
@@ -277,9 +279,9 @@ fn test_first_last_empty() {
 #[test]
 fn test_clear() {
     let mut sv: SortedVec<i32> = SortedVec::new();
-    sv.insert(1);
-    sv.insert(2);
-    sv.insert(3);
+    assert!(sv.insert(1).is_none());
+    assert!(sv.insert(2).is_none());
+    assert!(sv.insert(3).is_none());
     sv.clear();
     assert!(sv.is_empty());
     assert_eq!(sv.len(), 0);
@@ -309,9 +311,9 @@ fn test_from_empty_vec() {
 #[test]
 fn test_iter() {
     let mut sv: SortedVec<i32> = SortedVec::new();
-    sv.insert(30);
-    sv.insert(10);
-    sv.insert(20);
+    assert!(sv.insert(30).is_none());
+    assert!(sv.insert(10).is_none());
+    assert!(sv.insert(20).is_none());
     let collected: Vec<&i32> = sv.iter().collect();
     assert_eq!(collected, vec![&10, &20, &30]);
 }
@@ -319,9 +321,9 @@ fn test_iter() {
 #[test]
 fn test_into_iter() {
     let mut sv: SortedVec<i32> = SortedVec::new();
-    sv.insert(3);
-    sv.insert(1);
-    sv.insert(2);
+    assert!(sv.insert(3).is_none());
+    assert!(sv.insert(1).is_none());
+    assert!(sv.insert(2).is_none());
     let collected: Vec<i32> = sv.into_iter().collect();
     assert_eq!(collected, vec![1, 2, 3]);
 }
@@ -329,9 +331,9 @@ fn test_into_iter() {
 #[test]
 fn test_ref_into_iter() {
     let mut sv: SortedVec<i32> = SortedVec::new();
-    sv.insert(3);
-    sv.insert(1);
-    sv.insert(2);
+    assert!(sv.insert(3).is_none());
+    assert!(sv.insert(1).is_none());
+    assert!(sv.insert(2).is_none());
     let collected: Vec<&i32> = (&sv).into_iter().collect();
     assert_eq!(collected, vec![&1, &2, &3]);
 }
@@ -343,7 +345,7 @@ fn test_ref_into_iter() {
 #[test]
 fn test_single_element() {
     let mut sv: SortedVec<i32> = SortedVec::new();
-    sv.insert(42);
+    assert!(sv.insert(42).is_none());
     assert_eq!(sv.first(), Some(&42));
     assert_eq!(sv.last(), Some(&42));
     assert!(sv.contains(&42));
@@ -352,10 +354,10 @@ fn test_single_element() {
 #[test]
 fn test_insert_remove_reinsert() {
     let mut sv: SortedVec<i32> = SortedVec::new();
-    sv.insert(10);
-    sv.remove(&10);
+    assert!(sv.insert(10).is_none());
+    assert_eq!(sv.remove(&10), Some(10));
     assert!(sv.is_empty());
-    sv.insert(10);
+    assert!(sv.insert(10).is_none());
     assert_eq!(sv.len(), 1);
     assert!(sv.contains(&10));
 }
@@ -364,7 +366,7 @@ fn test_insert_remove_reinsert() {
 fn test_large_insertion() {
     let mut sv: SortedVec<i32> = SortedVec::new();
     for i in (0..100).rev() {
-        sv.insert(i);
+        assert!(sv.insert(i).is_none());
     }
     assert_eq!(sv.len(), 100);
     for i in 0..100 {
@@ -375,8 +377,8 @@ fn test_large_insertion() {
 #[test]
 fn test_clone() {
     let mut sv: SortedVec<i32> = SortedVec::new();
-    sv.insert(1);
-    sv.insert(2);
+    assert!(sv.insert(1).is_none());
+    assert!(sv.insert(2).is_none());
     let cloned: SortedVec<i32> = sv.clone();
     assert_eq!(sv.as_slice(), cloned.as_slice());
 }
