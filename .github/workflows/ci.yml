@@ -1834,7 +1834,7 @@ jobs:
 
   # Create release archives for all applicable configurations.
   release-archive:
-    name: "Release Archive (${{ matrix.machine-type }}, ${{ matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
+    name: "Release Archive (${{ matrix.target-arch }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
     needs:
       [
         ci-test,
@@ -1858,6 +1858,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        target-arch: [x86]
         machine-type: [microvm, hyperlight]
         deployment-type: [standalone, single-process, multi-process]
         memory-size: [128, 256]
@@ -1878,6 +1879,7 @@ jobs:
         id: release-archive
         uses: ./.github/actions/release-package
         with:
+          target-arch: "${{ matrix.target-arch }}"
           machine-type: "${{ matrix.machine-type }}"
           deployment-type: "${{ matrix.deployment-type }}"
           memory-size: "${{ matrix.memory-size }}"
@@ -1885,14 +1887,14 @@ jobs:
       - name: "Upload Release Artifact"
         uses: actions/upload-artifact@v7
         with:
-          name: release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.memory-size }}mb
+          name: release-${{ matrix.target-arch }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.memory-size }}mb
           path: ${{ steps.release-archive.outputs.archive-path }}
           overwrite: true
 
   # Package Windows standalone binaries into a release archive (.zip).
   # Windows only supports standalone deployment mode.
   windows-release-archive:
-    name: "Windows Release Archive (${{ matrix.machine-type }}, ${{ matrix.memory-size }}mb)"
+    name: "Windows Release Archive (${{ matrix.target-arch }}, ${{ matrix.machine-type }}, ${{ matrix.memory-size }}mb)"
     needs:
       [
         windows-integration-test,
@@ -1918,6 +1920,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        target-arch: [x86]
         machine-type: [microvm, hyperlight]
         memory-size: [128, 256]
     runs-on: ubuntu-24.04
@@ -1938,7 +1941,7 @@ jobs:
         shell: bash
         run: |
           commit_id="${GITHUB_SHA}"
-          archive_name="nanvix-windows-${{ matrix.machine-type }}-standalone-release-${{ matrix.memory-size }}mb-${commit_id}.zip"
+          archive_name="nanvix-windows-${{ matrix.target-arch }}-${{ matrix.machine-type }}-standalone-release-${{ matrix.memory-size }}mb-${commit_id}.zip"
 
           # Create the zip archive from the downloaded Windows binaries.
           cd windows-bin
@@ -1952,7 +1955,7 @@ jobs:
       - name: "Upload Release Artifact"
         uses: actions/upload-artifact@v7
         with:
-          name: release-windows-${{ matrix.machine-type }}-standalone-${{ matrix.memory-size }}mb
+          name: release-windows-${{ matrix.target-arch }}-${{ matrix.machine-type }}-standalone-${{ matrix.memory-size }}mb
           path: ${{ steps.package.outputs.archive-path }}
           overwrite: true
 
