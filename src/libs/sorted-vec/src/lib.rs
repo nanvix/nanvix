@@ -26,6 +26,22 @@ use ::alloc::vec::Vec;
 // Structures
 //==================================================================================================
 
+/// Wraps `mem::replace`, hiding the reborrowing (`&mut Vec<T>` → `&mut T`)
+/// that Verus cannot verify.
+#[inline]
+#[allow(clippy::ptr_arg)]
+fn vec_replace<T>(v: &mut Vec<T>, index: usize, value: T) -> T {
+    ::core::mem::replace(&mut v[index], value)
+}
+
+/// Wraps `sort_unstable`, hiding the `DerefMut` coercion
+/// (`&mut Vec<T>` → `&mut [T]`) that Verus cannot verify.
+#[inline]
+#[allow(clippy::ptr_arg)]
+fn vec_sort_unstable<T: Ord>(v: &mut Vec<T>) {
+    v.sort_unstable();
+}
+
 ///
 /// # Description
 ///
@@ -143,8 +159,8 @@ impl<T: Ord> SortedVec<T> {
     pub fn insert(&mut self, value: T) -> Option<T> {
         match self.inner.binary_search(&value) {
             Ok(index) => {
-                let old: T = ::core::mem::replace(&mut self.inner[index], value);
-                Some(old)
+                let old_val: T = vec_replace(&mut self.inner, index, value);
+                Some(old_val)
             },
             Err(index) => {
                 self.inner.insert(index, value);
@@ -338,8 +354,9 @@ impl<T: Ord> From<Vec<T>> for SortedVec<T> {
     /// Creates a [`SortedVec`] from an unsorted [`Vec`]. The vector is sorted and duplicates
     /// are removed.
     ///
-    fn from(mut vec: Vec<T>) -> Self {
-        vec.sort_unstable();
+    fn from(vec: Vec<T>) -> Self {
+        let mut vec = vec;
+        vec_sort_unstable(&mut vec);
         vec.dedup();
         Self { inner: vec }
     }
