@@ -17,6 +17,7 @@ path = "src/kmain.rs"
 [dependencies]
 arch = { workspace = true }
 bitmap = { workspace = true }
+bump-allocator = { workspace = true }
 cfg-if = { workspace = true }
 config = { workspace = true, optional = true }
 elf = { workspace = true }

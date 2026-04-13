@@ -38,6 +38,15 @@ pub type PteWord = u32;
 ///
 pub const PTE_WORD_SIZE_LOG2: usize = ::core::mem::size_of::<PteWord>().trailing_zeros() as usize;
 
+///
+/// # Description
+///
+/// Number of page-sized pages reserved for the root paging hierarchy on x86.
+///
+/// On 32-bit x86 with non-PAE paging, this corresponds to one page directory.
+///
+pub const NUM_HIERARCHY_PAGES: usize = 1;
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================

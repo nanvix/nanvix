@@ -20,6 +20,7 @@ use crate::{
             FrameAddress,
             PageAddress,
             PageAligned,
+            PageDirectoryAddress,
             PageTableAddress,
             PageTableAligned,
             PhysicalAddress,
@@ -30,6 +31,7 @@ use crate::{
         phys::UserFrame,
         virt::{
             kpage::KernelPage,
+            page_table_allocator::PAGE_TABLE_ALLOCATOR,
             PageDirectoryStorage,
             PageTableStorage,
         },
@@ -39,11 +41,23 @@ use ::alloc::{
     collections::LinkedList,
     rc::Rc,
 };
-use ::arch::mem::{
-    self,
-    paging::PageDirectoryEntry,
-    PAGE_ALIGNMENT,
-    PGTAB_ALIGNMENT,
+use ::arch::{
+    cpu::cr3::{
+        Cr3Register,
+        PageDirectoryBaseAddress as Cr3PageDirectoryBaseAddress,
+        PageLevelCacheDisableFlag,
+        PageLevelWriteThroughFlag,
+    },
+    mem::{
+        self,
+        paging::{
+            PageDirectoryEntry,
+            PteWord,
+        },
+        PAGE_ALIGNMENT,
+        PAGE_TABLE_LENGTH,
+        PGTAB_ALIGNMENT,
+    },
 };
 use ::config::kernel::MEMORY_SIZE;
 use ::core::cell::RefCell;
@@ -66,89 +80,6 @@ use ::sys::{
 //==================================================================================================
 // Virtual Memory Space
 //==================================================================================================
-
-unsafe extern "C" {
-    ///
-    /// # Description
-    ///
-    /// Performs a physical memory copy.
-    ///
-    /// # Parameters
-    ///
-    /// - `dst`: Destination address.
-    /// - `src`: Source address.
-    /// - `size`: Number of bytes to copy.
-    ///
-    /// # Safety
-    ///
-    /// This function is marked as unsafe because it disables paging and performs a physical memory
-    /// copy.
-    ///
-    /// It is safe to call this function if and only if all the following conditions are met:
-    /// - `src` points to a physical memory address that is valid and safe to read from.
-    /// - `dst` points to a physical memory address that is valid and safe to write to.
-    ///
-    /// If the copy size is zero, this function does nothing.
-    ///
-    fn __phys_memcpy(dst: *mut u8, src: *const u8, size: usize);
-
-    ///
-    /// # Description
-    ///
-    /// Performs a physical memory copy using 32-bit stores.
-    ///
-    /// - **x86**: temporarily disables paging to access physical memory directly.
-    /// - **x86_64**: requires both regions to be identity-mapped.
-    ///
-    /// # Parameters
-    ///
-    /// - `dst`: Destination address.
-    /// - `src`: Source address.
-    /// - `size`: Number of bytes to copy.
-    ///
-    /// # Safety
-    ///
-    /// This function is marked as unsafe because it performs a raw physical memory copy (x86:
-    /// temporarily disables paging; x86_64: requires identity-mapped physical addresses).
-    ///
-    /// It is safe to call this function if and only if all the following conditions are met:
-    /// - `src` points to a physical memory address that is valid and safe to read from.
-    /// - `dst` points to a physical memory address that is valid and safe to write to.
-    /// - `size` is a multiple of 4 bytes.
-    ///
-    /// If the copy size is zero, this function does nothing.
-    ///
-    fn __phys_memcpy32(dst: *mut u8, src: *const u8, size: usize);
-
-    ///
-    /// # Description
-    ///
-    /// Fills a physical memory region with the provided byte value using 32-bit stores. The byte
-    /// value is replicated across all four bytes of each 32-bit word.
-    ///
-    /// - **x86**: temporarily disables paging to access physical memory directly.
-    /// - **x86_64**: requires the target region to be identity-mapped.
-    ///
-    /// If the size is zero, this function does nothing.
-    ///
-    /// # Parameters
-    ///
-    /// - `base`: Base physical address of the memory region.
-    /// - `value`: Byte value to fill the memory region with.
-    /// - `size`: Size of the memory region in bytes.
-    ///
-    /// # Safety
-    ///
-    /// This function is marked as unsafe because it performs a raw physical memory write (x86:
-    /// temporarily disables paging; x86_64: requires identity-mapped physical addresses).
-    ///
-    /// It is safe to call this function if and only if all the following conditions are met:
-    /// - `base` points to a physical memory address that is valid and safe to write to.
-    /// - `base` is 4-byte aligned.
-    /// - `size` is a multiple of 4 bytes.
-    ///
-    fn __phys_memset32(base: *mut u8, value: u8, size: usize);
-}
 
 /// A type that represents a virtual memory space.
 pub struct Vmem {
@@ -175,8 +106,17 @@ impl Vmem {
 
         // Create a clean page directory.
         let mut pgdir: PageDirectory<PageDirectoryStorage> =
-            // SAFETY: this constructor is only used during early single-threaded init.
-            PageDirectory::new(unsafe { PageDirectoryStorage::new_bss() });
+            // SAFETY: this constructor is only used during early single-threaded init;
+            // BSS is zero-initialized, so assume_init_mut() is sound for integer arrays.
+            PageDirectory::new(PageDirectoryStorage::Bss(unsafe {
+                PAGE_TABLE_ALLOCATOR
+                    .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
+                    .map_err(|e| {
+                        error!("Vmem::new(): page directory allocation failed: {}", e);
+                        Error::new(ErrorCode::OutOfMemory, "BSS page directory allocation failed")
+                    })?
+                    .assume_init_mut()
+            }));
 
         // Map and store root page tables.
         let mut kpage_tables: LinkedList<
@@ -188,6 +128,22 @@ impl Vmem {
             pgdir.map(vaddr, page_table_address, false, AccessPermission::RDWR)?;
             kpage_tables.push_back(Rc::new(RefCell::new((vaddr, page_table))));
         }
+
+        // Register kernel PD for lazy identity mapping. On x86, the PD is also the CR3 root.
+        let pd_paddr_raw: usize = pgdir.physical_address()?.into_raw_value();
+        let pd_paddr: PageDirectoryAddress = PageDirectoryAddress::from_raw_value(pd_paddr_raw)?;
+        let kernel_cr3: Cr3Register = Cr3Register {
+            page_level_write_through: PageLevelWriteThroughFlag::Disabled,
+            page_level_cache_disable: PageLevelCacheDisableFlag::Enabled,
+            paging_structure_base_address: Cr3PageDirectoryBaseAddress::new(pd_paddr_raw as u32)
+                .ok_or_else(|| {
+                    Error::new(
+                        ErrorCode::BadAddress,
+                        "kernel page directory address is not 4 KB aligned",
+                    )
+                })?,
+        };
+        super::identity_map::init(pd_paddr, kernel_cr3);
 
         // Store root pages.
         let mut kpages: LinkedList<Rc<RefCell<KernelPage>>> = LinkedList::new();
@@ -208,7 +164,7 @@ impl Vmem {
     pub fn clone(from: &Vmem, pgdir_page: KernelPage) -> Result<Vmem, Error> {
         // Create a clean page directory backed by a kernel page from the pool.
         let mut pgdir: PageDirectory<PageDirectoryStorage> =
-            PageDirectory::new(PageDirectoryStorage::new_from_kpage(pgdir_page));
+            PageDirectory::new(PageDirectoryStorage::KernelPage(pgdir_page));
 
         // Map and store root page tables.
         let mut kernel_page_tables: LinkedList<
@@ -780,13 +736,11 @@ impl Vmem {
                     // - `dst.into_raw_value()` is a valid kernel-space address for `copy_size` bytes.
                     // - `src_frame.into_raw_value() + offset` is a valid user-space address for `copy_size` bytes.
                     // - Both regions are non-overlapping and accessible for the operation.
-                    unsafe {
-                        __phys_memcpy(
-                            dst.into_raw_value() as *mut u8,
-                            (src_frame.into_raw_value() + offset) as *const u8,
-                            copy_size,
-                        )
-                    };
+                    super::identity_map::phys_memcpy(
+                        dst.into_raw_value() as *mut u8,
+                        (src_frame.into_raw_value() + offset) as *const u8,
+                        copy_size,
+                    )?;
                 }
 
                 size -= copy_size;
@@ -949,17 +903,24 @@ impl Vmem {
                 // - `dst_frame.into_raw_value() + offset` is a valid user-space address for `copy_size` bytes.
                 // - `src.into_raw_value()` is a valid kernel-space address for `copy_size` bytes.
                 // - Both regions lie in physical memory.
-                unsafe {
-                    let dst: *mut u8 = (dst_frame.into_raw_value() + offset) as *mut u8;
-                    let src: *const u8 = src.into_raw_value() as *const u8;
-                    let phys_memcpy_fn: unsafe extern "C" fn(*mut u8, *const u8, usize) =
-                        if copy_size.is_multiple_of(::core::mem::size_of::<u32>()) {
-                            __phys_memcpy32
-                        } else {
-                            __phys_memcpy
-                        };
-                    phys_memcpy_fn(dst, src, copy_size)
+                let dst: *mut u8 = (dst_frame.into_raw_value() + offset) as *mut u8;
+                let src: *const u8 = src.into_raw_value() as *const u8;
+                let word_size: usize = ::core::mem::size_of::<u32>();
+                let copy_result: Result<(), Error> = if copy_size.is_multiple_of(word_size)
+                    && dst_phys_addr_raw.is_multiple_of(word_size)
+                    && src_phys_addr_raw.is_multiple_of(word_size)
+                {
+                    super::identity_map::phys_memcpy32(dst, src, copy_size)
+                } else {
+                    super::identity_map::phys_memcpy(dst, src, copy_size)
                 };
+                if let Err(error) = copy_result {
+                    let reason: &str = "failed to perform physical memory copy";
+                    panic!(
+                        "copy_to_user_unaligned_unchecked(): {reason} (error={error:?}, \
+                         dst={dst:?}, src={src:?}, size={size:?})"
+                    );
+                }
             }
 
             size -= copy_size;
@@ -1089,16 +1050,15 @@ impl Vmem {
                 let dst_frame: FrameAddress = dst_vmem.find_user_frame(dst_page)?;
 
                 if !dry_run {
-                    // Copy memory from source frame to destination frame.
-                    // SAFETY: both frame addresses are valid physical addresses obtained from
-                    // page table lookups, and the regions do not overlap (different processes).
-                    unsafe {
-                        __phys_memcpy(
-                            (dst_frame.into_raw_value() + dst_offset) as *mut u8,
-                            (src_frame.into_raw_value() + src_offset) as *const u8,
-                            copy_size,
-                        );
-                    }
+                    // The wrapper switches to the kernel address space and ensures identity
+                    // mappings for the full source and destination ranges before copying.
+                    let src_phys_addr: usize = src_frame.into_raw_value() + src_offset;
+                    let dst_phys_addr: usize = dst_frame.into_raw_value() + dst_offset;
+                    super::identity_map::phys_memcpy(
+                        dst_phys_addr as *mut u8,
+                        src_phys_addr as *const u8,
+                        copy_size,
+                    )?;
                 }
 
                 remaining -= copy_size;
@@ -1147,9 +1107,7 @@ impl Vmem {
         //   so it points to a valid, writable physical memory location.
         // - `base` is page-aligned, which satisfies the 4-byte alignment requirement.
         // - `mem::PAGE_SIZE` is a multiple of 4 bytes, satisfying the size requirement.
-        unsafe {
-            __phys_memset32(base, value as u8, mem::PAGE_SIZE);
-        }
+        super::identity_map::phys_memset32(base, value as u8, mem::PAGE_SIZE)?;
 
         Ok(())
     }

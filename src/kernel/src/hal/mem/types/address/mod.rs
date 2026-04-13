@@ -8,6 +8,7 @@
 mod aligned;
 mod frame;
 mod page;
+mod pd;
 mod phys;
 
 #[cfg(test)]
@@ -24,6 +25,7 @@ pub use ::sys::mm::{
 pub use aligned::*;
 pub use frame::*;
 pub use page::*;
+pub use pd::*;
 pub use phys::*;
 
 //==================================================================================================

@@ -207,11 +207,9 @@ pub unsafe fn vmbus_write(addr: *const u8) {
         );
         let _ = ProcessEnvironmentBlock::vmbus_write(message_data);
     } else {
-        // Bulk: read header, then copy payload from the user GPA using
-        // __phys_memcpy (paging-disabled physical copy) because the GPA
-        // points to a user frame that is not identity-mapped in the
-        // kernel's page tables.
-        // FIXME (#1730): replace __phys_memcpy workaround with proper paging support.
+        // Bulk: read header, then copy payload from the user GPA.
+        // The GPA points to a user frame that may not be identity-mapped in the
+        // kernel's page tables, so use the lazy identity mapper to ensure mappings.
         let header: ::sys::ipc::DataChunkHeader = core::ptr::read_unaligned(
             vmbus_msg.message_addr() as *const ::sys::ipc::DataChunkHeader,
         );
@@ -219,10 +217,6 @@ pub unsafe fn vmbus_write(addr: *const u8) {
 
         let data_gpa: usize = header.data_addr() as usize;
         let data_len: usize = header.data_len() as usize;
-
-        extern "C" {
-            fn __phys_memcpy(dst: *mut u8, src: *const u8, size: usize);
-        }
 
         // Send header + payload in a single VmbusBulkWrite call.
         // The host-side bulk_output_fn expects [DataChunkHeader][payload] combined.
@@ -233,7 +227,9 @@ pub unsafe fn vmbus_write(addr: *const u8) {
         if data_len > 0 {
             let payload_dst: *mut u8 =
                 unsafe { buf.as_mut_ptr().add(::sys::ipc::DataChunkHeader::SIZE) };
-            __phys_memcpy(payload_dst, data_gpa as *const u8, data_len);
+            if let Err(e) = crate::mm::phys_memcpy(payload_dst, data_gpa as *const u8, data_len) {
+                error!("vmbus_write(): phys_memcpy failed: {:?}", e);
+            }
         }
 
         let _ = ProcessEnvironmentBlock::vmbus_bulk_write(&buf);
@@ -286,11 +282,6 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
         // Check if this is a PullResponse that has bulk data to fetch.
         // Parse the DataChunkHeader from the message payload to determine the destination GPA
         // and total data length, then read the data in chunks via VmbusBulkRead.
-        // FIXME (#1730): replace __phys_memcpy workaround with proper paging support.
-        extern "C" {
-            fn __phys_memcpy(dst: *mut u8, src: *const u8, size: usize);
-        }
-
         let header_offset: usize = ::sys::ipc::Message::HEADER_SIZE;
         if msg_size >= header_offset + ::sys::ipc::DataChunkHeader::SIZE && bytes.len() >= msg_size
         {
@@ -318,11 +309,14 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
                                     dest_gpa,
                                     offset
                                 );
-                                __phys_memcpy(
+                                if let Err(e) = crate::mm::phys_memcpy(
                                     (dest_gpa + offset) as *mut u8,
                                     chunk.as_ptr(),
                                     chunk_len,
-                                );
+                                ) {
+                                    error!("vmbus_read(): phys_memcpy failed: {:?}", e);
+                                    break;
+                                }
                                 offset += chunk_len;
                             },
                             Err(e) => {
