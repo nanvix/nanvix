@@ -21,6 +21,13 @@ pub const WORD_SIZE: usize = ::core::mem::size_of::<u32>();
 ///
 /// # Description
 ///
+/// Log2 WORD_SIZE
+///
+pub const WORD_SHIFT: usize = WORD_SIZE.trailing_zeros() as usize;
+
+///
+/// # Description
+///
 /// Log2 PAGE_SIZE
 ///
 pub const PAGE_SHIFT: usize = 12;

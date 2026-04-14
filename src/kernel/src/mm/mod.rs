@@ -16,7 +16,7 @@ mod phys;
 mod virt;
 
 #[cfg(feature = "hyperlight")]
-pub(crate) use virt::phys_memcpy;
+pub(crate) use virt::memcpy;
 
 //==================================================================================================
 // Exports
