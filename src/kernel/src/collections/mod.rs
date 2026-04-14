@@ -8,3 +8,4 @@
 pub use ::bitmap::*;
 pub use ::raw_array::*;
 pub use ::slab::*;
+pub use ::sparse_bitmap::*;
