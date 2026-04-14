@@ -20,11 +20,17 @@
 //==================================================================================================
 
 use super::page_table_allocator::PAGE_TABLE_ALLOCATOR;
-use crate::hal::mem::{
-    Address,
-    PageAligned,
-    PageDirectoryAddress,
-    PhysicalAddress,
+use crate::hal::{
+    arch::x86::{
+        fast_memcpy,
+        fast_memset,
+    },
+    mem::{
+        Address,
+        PageAligned,
+        PageDirectoryAddress,
+        PhysicalAddress,
+    },
 };
 use ::arch::{
     cpu::cr3::Cr3Register,
@@ -155,13 +161,10 @@ pub(crate) fn phys_memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(
         let (dst_start, dst_size) = page_aligned_cover(dst_addr, size)?;
         ensure_identity_mapped_range(dst_start, dst_size)?;
 
-        // SAFETY: both ranges are identity-mapped, so virtual == physical.
-        // Caller guarantees valid, non-overlapping physical ranges for `size` bytes.
-        // NOTE: use the intrinsic directly to avoid the debug null-pointer assertion in
-        // `core::ptr::copy_nonoverlapping`. Physical address 0 is a valid kernel address
-        // but becomes a null pointer when cast to `*const u8`.
+        // SAFETY: both `src` and `dst` are identity-mapped (virtual == physical) and
+        // valid for `size` bytes. The overlap check above guarantees non-overlapping ranges.
         unsafe {
-            core::intrinsics::copy_nonoverlapping(src, dst, size);
+            fast_memcpy(dst, src, size);
         }
         Ok(())
     })
@@ -231,17 +234,10 @@ pub(crate) fn phys_memcpy32(dst: *mut u8, src: *const u8, size: usize) -> Result
         let (dst_start, dst_size) = page_aligned_cover(dst_addr, size)?;
         ensure_identity_mapped_range(dst_start, dst_size)?;
 
-        // SAFETY: both ranges are identity-mapped, so virtual == physical.
-        // Caller guarantees valid, non-overlapping physical ranges and 4-byte aligned size.
-        // NOTE: use the intrinsic directly to avoid the debug null-pointer assertion in
-        // `core::ptr::copy_nonoverlapping`. Physical address 0 is a valid kernel address
-        // but becomes a null pointer when cast to `*const u32`.
+        // SAFETY: both `src` and `dst` are identity-mapped (virtual == physical) and
+        // valid for `size` bytes. The overlap check above guarantees non-overlapping ranges.
         unsafe {
-            core::intrinsics::copy_nonoverlapping(
-                src as *const u32,
-                dst as *mut u32,
-                size / core::mem::size_of::<u32>(),
-            );
+            fast_memcpy(dst, src, size);
         }
         Ok(())
     })
@@ -290,19 +286,10 @@ pub(crate) fn phys_memset32(base: *mut u8, value: u8, size: usize) -> Result<(),
         let (base_start, base_size) = page_aligned_cover(base_addr, size)?;
         ensure_identity_mapped_range(base_start, base_size)?;
 
-        // SAFETY: the range is identity-mapped, so virtual == physical.
-        // Caller guarantees a valid writable physical range, 4-byte aligned base and size.
-        // NOTE: use write_volatile to avoid the debug null-pointer assertion in
-        // `core::ptr::write`. Physical address 0 is a valid kernel address but becomes
-        // a null pointer when cast to `*mut u32`.
+        // SAFETY: `base` is identity-mapped (virtual == physical) and valid for
+        // writes of `size` bytes.
         unsafe {
-            let word: u32 = (value as u32) * 0x0101_0101;
-            let base_addr: usize = base as usize;
-            let num_words: usize = size / core::mem::size_of::<u32>();
-            for i in 0..num_words {
-                let addr: *mut u32 = (base_addr + i * core::mem::size_of::<u32>()) as *mut u32;
-                core::ptr::write_volatile(addr, word);
-            }
+            fast_memset(base, value, size);
         }
         Ok(())
     })
