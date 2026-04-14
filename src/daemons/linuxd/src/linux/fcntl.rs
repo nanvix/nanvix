@@ -350,6 +350,9 @@ pub fn do_renameat<T>(
 // do_fstatat
 //==================================================================================================
 
+// The try_into() calls for tv_nsec are needed when c_long differs from libc::c_long,
+// but are identity conversions when both are i64 (native x86_64 host).
+#[allow(clippy::useless_conversion)]
 pub fn do_fstat_at<T>(
     syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
@@ -557,6 +560,7 @@ pub fn do_posix_fadvise<T>(
 // do_fstat()
 //==================================================================================================
 
+#[allow(clippy::useless_conversion)]
 pub fn do_fstat<T>(
     syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,

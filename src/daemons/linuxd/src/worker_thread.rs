@@ -902,7 +902,7 @@ impl WorkerThreadHandle {
             },
             LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
                 let request: UpdateFileAccessTimeRequest =
-                    UpdateFileAccessTimeRequest::from_bytes(message.payload);
+                    UpdateFileAccessTimeRequest::from_bytes(message.payload)?;
                 fcntl::do_futimens(&syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::PipeRequest => {
