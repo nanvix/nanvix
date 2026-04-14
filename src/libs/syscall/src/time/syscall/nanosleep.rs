@@ -13,6 +13,7 @@ use ::sys::{
     },
     time::SystemTime,
 };
+use ::sysapi::ffi::c_long;
 use sysapi::time::timespec;
 
 //==================================================================================================
@@ -98,7 +99,7 @@ pub fn nanosleep(req: &timespec, rem: &mut Option<&mut timespec>) -> Result<(), 
             rem.tv_nsec = 0;
         } else {
             rem.tv_sec = (later.seconds() - now.seconds()) as i64;
-            rem.tv_nsec = (later.nanoseconds() - now.nanoseconds()) as i32;
+            rem.tv_nsec = (later.nanoseconds() - now.nanoseconds()) as c_long;
         }
     }
 
