@@ -19,3 +19,4 @@ pub use crate::x86_64::mem::gdtr;
 pub mod paging;
 
 pub use constants::*;
+pub use paging::PteWord;

@@ -5,24 +5,18 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    mem::{
-        self,
-        paging::TableEntry,
+use crate::x86::mem::paging::{
+    flags::{
+        AccessedFlag,
+        DirtyFlag,
+        PageCacheDisableFlag,
+        PageWriteThroughFlag,
+        PresentFlag,
+        ReadWriteFlag,
+        UserSupervisorFlag,
     },
-    x86::mem::paging::{
-        flags::{
-            AccessedFlag,
-            DirtyFlag,
-            PageCacheDisableFlag,
-            PageWriteThroughFlag,
-            PresentFlag,
-            ReadWriteFlag,
-            UserSupervisorFlag,
-        },
-        frame::FrameNumber,
-        PteWord,
-    },
+    frame::FrameNumber,
+    PteWord,
 };
 
 //==================================================================================================
@@ -105,7 +99,7 @@ impl PageTableEntryFlags {
     ///
     /// A [`PageTableEntryFlags`].
     ///
-    fn from_raw_value(value: PteWord) -> Self {
+    pub(crate) fn from_raw_value(value: PteWord) -> Self {
         Self {
             present: PresentFlag::from_raw_value(value),
             read_write: ReadWriteFlag::from_raw_value(value),
@@ -126,7 +120,7 @@ impl PageTableEntryFlags {
     ///
     /// The raw value.
     ///
-    fn into_raw_value(self) -> PteWord {
+    pub(crate) fn into_raw_value(self) -> PteWord {
         let mut value: PteWord = 0;
 
         value |= self.present.into_raw_value();
@@ -229,9 +223,6 @@ pub struct PageTableEntry {
 }
 
 impl PageTableEntry {
-    /// Size in bytes of the hardware page table entry representation.
-    pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
-
     ///
     /// # Description
     ///
@@ -248,45 +239,6 @@ impl PageTableEntry {
     ///
     pub fn new(flags: PageTableEntryFlags, frame: FrameNumber) -> Self {
         Self { flags, frame }
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Constructs a [`PageTableEntry`] from a raw value.
-    ///
-    /// # Parameters
-    ///
-    /// - `value`: The raw value.
-    ///
-    /// # Returns
-    ///
-    /// - `Some(`[`PageTableEntry`]`)`: If the raw value is valid.
-    /// - `None`: Otherwise.
-    ///
-    pub fn from_raw_value(value: PteWord) -> Option<Self> {
-        Some(Self {
-            flags: PageTableEntryFlags::from_raw_value(value),
-            frame: FrameNumber::from_raw_value(value as usize >> mem::FRAME_SHIFT)?,
-        })
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Converts a [`PageTableEntry`] into a raw value.
-    ///
-    /// # Returns
-    ///
-    /// The raw value.
-    ///
-    pub fn into_raw_value(self) -> PteWord {
-        let mut value: PteWord = 0;
-
-        value |= self.flags.into_raw_value();
-        value |= (self.frame.into_raw_value() << crate::mem::FRAME_SHIFT) as PteWord;
-
-        value
     }
 
     ///
@@ -369,7 +321,58 @@ impl PageTableEntry {
     }
 }
 
-impl TableEntry for PageTableEntry {
+//==================================================================================================
+// Raw Value Serialization
+//==================================================================================================
+
+impl PageTableEntry {
+    /// Size in bytes of the hardware page table entry representation.
+    pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
+
+    ///
+    /// # Description
+    ///
+    /// Constructs a [`PageTableEntry`] from a raw value.
+    ///
+    /// # Parameters
+    ///
+    /// - `value`: The raw value.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(`[`PageTableEntry`]`)`: If the raw value is valid.
+    /// - `None`: Otherwise.
+    ///
+    pub fn from_raw_value(value: PteWord) -> Option<Self> {
+        use crate::x86::mem::paging::PHYS_ADDR_MASK;
+        Some(Self {
+            flags: PageTableEntryFlags::from_raw_value(value),
+            frame: FrameNumber::from_raw_value(
+                (value & PHYS_ADDR_MASK) as usize >> crate::mem::FRAME_SHIFT,
+            )?,
+        })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Converts a [`PageTableEntry`] into a raw value.
+    ///
+    /// # Returns
+    ///
+    /// The raw value.
+    ///
+    pub fn into_raw_value(self) -> PteWord {
+        let mut value: PteWord = 0;
+
+        value |= self.flags.into_raw_value();
+        value |= (self.frame.into_raw_value() << crate::mem::FRAME_SHIFT) as PteWord;
+
+        value
+    }
+}
+
+impl crate::x86::mem::paging::table::TableEntry for PageTableEntry {
     fn from_raw(raw: PteWord) -> Option<Self> {
         Self::from_raw_value(raw)
     }
