@@ -24,6 +24,7 @@ You will need to save this JSON file.
 - `concurrent-l2`: same as `concurrent`, but deploy the one linuxd instance inside an L2 VM.
 - `echo-breakdown`: break down the contribution of each step in the data-path when sending an HTTP echo (requires re-compilation with `TIMESTAMP_MSG=yes`).
 - `round-trip-latency`: measure the latency as we increase the size of the HTTP echo payload.
+- `vfs-bench`: measure VFS operation latencies (stat, open/close, read, write, readdir, create/unlink, mkdir/rmdir, rename) inside the guest VM using a FAT32 image loaded into guest memory via the RAMFS region.
 - `warm-start`: measure only the latency to send a fixed-size HTTP echo.
 - `warm-start-vmm`: same as above, but excluding `nanvixd`.
 
@@ -79,6 +80,7 @@ This builds all components including `nanvix-bench.exe` with the standalone and 
 |-------------------|--------------------------------------------------------|
 | `boot-time`       | Start a user VM (no nanvixd)                           |
 | `cold-start`      | Spawn nanvixd + VM + echo round-trip (standalone mode) |
+| `vfs-bench`       | VFS operation latencies (FAT32 image via RAMFS region) |
 | `warm-start-vmm`  | Raw round-trip latency inside the user VM              |
 
 ### Running Benchmarks on Windows
