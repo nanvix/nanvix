@@ -31,18 +31,12 @@ use ::windows::Win32::{
     },
     System::{
         Hypervisor::{
-            WHV_ADVISE_GPA_RANGE_POPULATE,
-            WHV_ADVISE_GPA_RANGE_POPULATE_FLAGS,
             WHV_MAP_GPA_RANGE_FLAGS,
-            WHV_MEMORY_RANGE_ENTRY,
             WHV_PARTITION_HANDLE,
-            WHvAdviseGpaRange,
-            WHvAdviseGpaRangeCodePopulate,
             WHvMapGpaRange,
             WHvMapGpaRangeFlagExecute,
             WHvMapGpaRangeFlagRead,
             WHvMapGpaRangeFlagWrite,
-            WHvMemoryAccessWrite,
             WHvUnmapGpaRange,
         },
         Memory::{
@@ -602,101 +596,6 @@ impl VirtualMemory {
                     anyhow::anyhow!(reason)
                 })?;
             }
-        }
-
-        Ok(())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Pre-populates EPT (Extended Page Table) entries for the given GPA ranges using a single
-    /// `WHvAdviseGpaRange` call with `WHvAdviseGpaRangeCodePopulate`. This faults in SLAT entries
-    /// from the host side before guest execution, avoiding costly EPT violations during
-    /// `WHvRunVirtualProcessor`.
-    ///
-    /// Pre-populating moves this cost to partition setup time where it is measured separately and
-    /// does not inflate guest execution latency.
-    ///
-    /// Issuing a single call for all ranges lets the hypervisor batch the SLAT walk instead of
-    /// re-entering the kernel per range.
-    ///
-    /// # Parameters
-    ///
-    /// - `gpa_ranges`: Slice of `(gpa, size)` pairs. Each GPA and size must be page-aligned
-    ///   and the range must lie within the mapped guest RAM. Zero-sized entries are skipped.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
-    ///
-    pub fn populate_ept(&self, gpa_ranges: &[(u64, u64)]) -> Result<()> {
-        trace!("populate_ept(): {} range(s)", gpa_ranges.len());
-
-        let page_size: u64 = ::arch::mem::PAGE_SIZE as u64;
-        let ram_size: u64 = self.size as u64;
-
-        // Validate every range and collect non-empty entries.
-        let mut ranges: Vec<WHV_MEMORY_RANGE_ENTRY> = Vec::with_capacity(gpa_ranges.len());
-        for &(gpa, size) in gpa_ranges {
-            if size == 0 {
-                continue;
-            }
-
-            if gpa % page_size != 0 || size % page_size != 0 {
-                let reason: String =
-                    format!("gpa and size must be page-aligned (gpa={gpa:#x}, size={size:#x})");
-                error!("populate_ept(): {reason}");
-                return Err(anyhow::anyhow!(reason));
-            }
-
-            if gpa.checked_add(size).is_none_or(|end| end > ram_size) {
-                let reason: String = format!(
-                    "range exceeds mapped guest RAM (gpa={gpa:#x}, size={size:#x}, \
-                     ram_size={ram_size:#x})"
-                );
-                error!("populate_ept(): {reason}");
-                return Err(anyhow::anyhow!(reason));
-            }
-
-            ranges.push(WHV_MEMORY_RANGE_ENTRY {
-                GuestAddress: gpa,
-                SizeInBytes: size,
-            });
-        }
-
-        if ranges.is_empty() {
-            return Ok(());
-        }
-
-        let populate: WHV_ADVISE_GPA_RANGE_POPULATE = WHV_ADVISE_GPA_RANGE_POPULATE {
-            Flags: WHV_ADVISE_GPA_RANGE_POPULATE_FLAGS { AsUINT32: 0 },
-            // Pre-fault with write access so the first guest write does not
-            // incur an additional fault. This advisory access type does not
-            // imply execute permission.
-            AccessType: WHvMemoryAccessWrite,
-        };
-
-        // SAFETY: `self.partition_handle` is a valid WHP handle from `new()`. Every GPA range
-        // in `ranges` lies within the mapped region (bounds checked above). `ranges` and
-        // `populate` are stack-local data with the correct layout expected by the API.
-        // The buffer pointer and size match `WHV_ADVISE_GPA_RANGE_POPULATE`.
-        unsafe {
-            WHvAdviseGpaRange(
-                self.partition_handle,
-                &ranges,
-                WHvAdviseGpaRangeCodePopulate,
-                (&populate as *const WHV_ADVISE_GPA_RANGE_POPULATE).cast::<std::ffi::c_void>(),
-                mem::size_of::<WHV_ADVISE_GPA_RANGE_POPULATE>() as u32,
-            )
-            .map_err(|e| {
-                let reason: String = format!(
-                    "WHvAdviseGpaRange(Populate) failed ({} range(s), error={e:?})",
-                    ranges.len()
-                );
-                error!("populate_ept(): {reason}");
-                anyhow::anyhow!(reason)
-            })?;
         }
 
         Ok(())

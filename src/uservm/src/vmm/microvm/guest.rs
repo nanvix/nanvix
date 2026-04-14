@@ -52,6 +52,8 @@ pub struct Guest {
     credits: u32,
     /// Entry point of the guest.
     entry: usize,
+    /// Whether the guest is 64-bit (ELFCLASS64).
+    is_64bit: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -64,6 +66,9 @@ pub struct GuestState {
     credits: u32,
     // Entry point of the guest.
     entry: usize,
+    // Whether the guest is 64-bit.
+    #[serde(default)]
+    is_64bit: bool,
 }
 
 //==================================================================================================
@@ -94,6 +99,13 @@ impl Guest {
         let elf: FileMapping = FileMapping::mmap(kernel_filename)?;
         #[cfg(target_os = "windows")]
         let elf: FileMapping = FileMapping::open(kernel_filename)?;
+
+        // Detect ELF class from the EI_CLASS byte in e_ident.
+        let elf_bytes: &[u8] = unsafe { std::slice::from_raw_parts(elf.ptr(), elf.size()) };
+        if elf_bytes.len() > ::elf::elf32::EI_CLASS {
+            self.is_64bit = elf_bytes[::elf::elf32::EI_CLASS] == ::elf::elf32::ELFCLASS64;
+        }
+
         let (entry, first_address, size): (usize, usize, usize) =
             unsafe { elf::load(ptr.cast::<::std::ffi::c_void>(), elf.ptr(), size)? };
 
@@ -233,57 +245,6 @@ impl Guest {
     ///
     pub fn initrd_region(&self) -> Option<(usize, usize)> {
         self.initrd
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Computes GPA ranges that should be pre-populated in the EPT/SLAT before guest execution.
-    /// The returned ranges cover the kernel image, initrd, kpool, and optionally the RAMFS region.
-    ///
-    /// Each region is listed individually so that future memory layout changes do not silently
-    /// leave a region un-populated.
-    ///
-    /// # Parameters
-    ///
-    /// - `ramfs_region`: Optional `(base, size)` for the file-backed RAMFS region.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, this method returns the list of `(gpa, size)` ranges.
-    /// Otherwise, it returns an error.
-    ///
-    pub fn ept_populate_ranges(
-        &self,
-        ramfs_region: Option<(usize, usize)>,
-    ) -> Result<Vec<(u64, u64)>> {
-        // Each region is listed explicitly for defensive programming so that future memory
-        // layout changes do not silently leave a region un-populated.
-        let mut ranges: Vec<(u64, u64)> = Vec::new();
-
-        // Helper: align a (base, size) pair to page boundaries.
-        // Rounds base down and extends size to cover the original range after alignment.
-        let page_align = |base: usize, size: usize| -> (u64, u64) {
-            let aligned_base: usize = base & !(PAGE_SIZE - 1);
-            let end: usize = (base + size + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
-            (aligned_base as u64, (end - aligned_base) as u64)
-        };
-
-        if let Some((base, size)) = self.kernel {
-            ranges.push(page_align(base, size));
-        }
-
-        if let Some((base, size)) = self.initrd {
-            ranges.push(page_align(base, size));
-        }
-
-        ranges.push((::config::kernel::KPOOL_BASE_RAW as u64, ::config::kernel::KPOOL_SIZE as u64));
-
-        if let Some((base, size)) = ramfs_region {
-            ranges.push(page_align(base, size));
-        }
-
-        Ok(ranges)
     }
 
     /// # Description
@@ -445,7 +406,7 @@ impl Guest {
         let rbx: u64 =
             (initrd_base & !((1 << nzeros) - 1)) | ((initrd_size >> 12) & ((1 << nzeros) - 1));
 
-        vcpu.reset(self.entry as u64, rax, rbx)
+        vcpu.reset(self.entry as u64, rax, rbx, self.is_64bit, vmem)
     }
 
     ///
@@ -523,6 +484,7 @@ impl Guest {
             initrd: self.initrd,
             credits: self.credits,
             entry: self.entry,
+            is_64bit: self.is_64bit,
         })
     }
 
@@ -532,6 +494,7 @@ impl Guest {
         self.initrd = state.initrd;
         self.credits = state.credits;
         self.entry = state.entry;
+        self.is_64bit = state.is_64bit;
         Ok(())
     }
 }

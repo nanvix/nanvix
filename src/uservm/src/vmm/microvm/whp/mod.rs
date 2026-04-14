@@ -509,18 +509,6 @@ impl Vmm {
             #[cfg(feature = "profile-time")]
             perf_timings.set_vcpu_reset(vcpu_reset_start.elapsed().as_micros() as u64);
 
-            // Phase: EPT pre-population.
-            // Pre-populate EPT entries for the kernel, initrd, and ramfs regions so the
-            // hypervisor resolves SLAT entries from the host side before guest execution.  This
-            // avoids costly EPT violations during WHvRunVirtualProcessor.
-            #[cfg(feature = "profile-time")]
-            let ept_populate_start: Instant = Instant::now();
-
-            vmem.populate_ept(&guest.ept_populate_ranges(ramfs_region)?)?;
-
-            #[cfg(feature = "profile-time")]
-            perf_timings.set_ept_populate(ept_populate_start.elapsed().as_micros() as u64);
-
             Arc::new(Mutex::new(guest))
         };
 

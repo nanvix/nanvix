@@ -58,8 +58,6 @@ pub struct PerfTimings {
     ramfs_load_us: Arc<AtomicU64>,
     /// vCPU reset and pvclock setup time.
     vcpu_reset_us: Arc<AtomicU64>,
-    /// EPT pre-population time.
-    ept_populate_us: Arc<AtomicU64>,
     /// Memory thread, VMM thread, and orchestrator spawn time.
     thread_spawn_us: Arc<AtomicU64>,
     /// Cumulative time spent executing guest code (inside the VMM run loop).
@@ -96,7 +94,6 @@ impl PerfTimings {
             initrd_load_us: Arc::new(AtomicU64::new(0)),
             ramfs_load_us: Arc::new(AtomicU64::new(0)),
             vcpu_reset_us: Arc::new(AtomicU64::new(0)),
-            ept_populate_us: Arc::new(AtomicU64::new(0)),
             thread_spawn_us: Arc::new(AtomicU64::new(0)),
             guest_exec_us: Arc::new(AtomicU64::new(0)),
             exit_handling_us: Arc::new(AtomicU64::new(0)),
@@ -144,11 +141,6 @@ impl PerfTimings {
         self.vcpu_reset_us.store(us, Ordering::Release);
     }
 
-    /// Records EPT pre-population time.
-    pub fn set_ept_populate(&self, us: u64) {
-        self.ept_populate_us.store(us, Ordering::Release);
-    }
-
     /// Records thread spawning time.
     pub fn set_thread_spawn(&self, us: u64) {
         self.thread_spawn_us.store(us, Ordering::Release);
@@ -184,7 +176,6 @@ impl PerfTimings {
             "initrd_load_us": self.initrd_load_us.load(Ordering::Acquire),
             "ramfs_load_us": self.ramfs_load_us.load(Ordering::Acquire),
             "vcpu_reset_us": self.vcpu_reset_us.load(Ordering::Acquire),
-            "ept_populate_us": self.ept_populate_us.load(Ordering::Acquire),
             "thread_spawn_us": self.thread_spawn_us.load(Ordering::Acquire),
             "guest_exec_us": self.guest_exec_us.load(Ordering::Acquire),
             "exit_handling_us": self.exit_handling_us.load(Ordering::Acquire),
