@@ -54,6 +54,17 @@ On Windows, `nanvix-bench` supports a subset of benchmarks in standalone mode. T
 cold-start benchmark spawns a fresh `nanvixd` process per iteration in interactive mode and
 measures the time from process spawn to the first echo response.
 
+### Windows Defender Exclusion
+
+Windows Defender may quarantine unsigned executables in `bin/`. To prevent this,
+run the following in an **elevated** (Administrator) PowerShell:
+
+```powershell
+Add-MpPreference -ExclusionPath "C:\path\to\nanvix\bin"
+```
+
+This exclusion is recursive and covers all files and subdirectories under `bin/`.
+
 ### Building for Benchmarks on Windows
 
 ```powershell
