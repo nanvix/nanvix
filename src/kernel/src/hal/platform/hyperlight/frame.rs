@@ -3,18 +3,13 @@
 
 //! Hyperlight-side frame allocator implementation.
 //!
-//! Mirrors the microvm implementation: a single-chunk [`SparseBitmap`]
-//! over the identity-mapped physical address range. The
-//! Hyperlight-specific scratch-bump alloc path lands with the rest of
-//! the Nanvix-on-Hyperlight feature; until then this module exists so
-//! the platform dispatch in `mm/phys/{kpool,frame}.rs` resolves cleanly
-//! when the kernel is built with `--features hyperlight`.
-//!
-//! FIXME: temporary scaffolding. Replaced wholesale by the scratch-backed
-//! implementation when Nanvix-on-Hyperlight (CoW snapshot/restore) lands
-//! upstream; at that point `alloc()` draws from the scratch bump cursor
-//! and books frames via [`SparseBitmap::add_chunk`] + [`SparseBitmap::set`]
-//! instead of picking from the dense bitmap.
+//! Bookkeeping is the same shape as the microvm allocator: a single
+//! [`SparseBitmap`] with a dense chunk at offset 0 covering identity-
+//! mapped RAM, plus chunks added on demand for foreign-address frames
+//! (scratch). The difference is `alloc()` — on Hyperlight the dense
+//! range is EPT-read-only, so allocations come from the scratch bump
+//! cursor rather than the dense bitmap, and are tracked via
+//! [`SparseBitmap::add_chunk`] + [`SparseBitmap::set`].
 
 //==================================================================================================
 // Imports
@@ -33,10 +28,7 @@ use crate::{
         TruncatedMemoryRegion,
     },
 };
-use ::arch::mem::{
-    self,
-    paging::FrameNumber,
-};
+use ::arch::mem;
 use ::config::constants;
 use ::sys::{
     error::{
@@ -47,11 +39,19 @@ use ::sys::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Default chunk size (in bits) for chunks added on demand as scratch
+/// frames are booked. Sized to cover the entire scratch region in a
+/// single chunk (~16 MB / 4 KB = 4096 frames).
+const FOREIGN_CHUNK_BITS: usize = 4096;
+
+//==================================================================================================
 // Backing storage
 //==================================================================================================
 
-/// Static byte array backing the dense identity-range bitmap. Sized for
-/// `MEMORY_SIZE` worth of frames (one bit per frame).
+/// Static byte array backing the dense identity-range bitmap.
 static mut FRAME_ALLOCATOR_STORAGE: [u8; config::kernel::MEMORY_SIZE
     / (mem::FRAME_SIZE * u8::BITS as usize)] =
     [0; config::kernel::MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)];
@@ -60,21 +60,19 @@ static mut FRAME_ALLOCATOR_STORAGE: [u8; config::kernel::MEMORY_SIZE
 // Inner
 //==================================================================================================
 
-/// Microvm-side frame allocator inner state. Owned directly by
+/// Hyperlight-side frame allocator inner state. Owned directly by
 /// [`crate::mm::phys::FrameAllocator`].
 #[derive(Debug)]
 pub struct Inner {
     bitmap: SparseBitmap,
-    /// Cached capacity of the dense identity-range chunk at offset 0,
-    /// in frames. Used to fast-classify frame addresses as "in the
-    /// dense range" without walking chunks.
+    /// Cached capacity of the dense identity-range chunk at offset 0.
+    /// Used to fast-classify frame addresses as inside or outside the
+    /// dense range.
     #[allow(dead_code)]
     dense_range_frames: usize,
 }
 
 impl Inner {
-    /// Constructs the allocator from the BSS-backed storage. Must be
-    /// called exactly once during boot.
     pub fn new() -> Result<Self, Error> {
         let storage: RawArray<u8> = unsafe {
             let (ptr, len): (*mut u8, usize) =
@@ -96,42 +94,38 @@ impl Inner {
         })
     }
 
+    /// On Hyperlight, the frame comes from the scratch bump cursor
+    /// (the dense identity range is EPT-read-only). The result is
+    /// booked in the sparse bitmap so a later [`Self::free`] can
+    /// release it.
     pub fn alloc(&mut self) -> Result<FrameAddress, Error> {
-        let raw_index: usize = match self.bitmap.alloc() {
-            Ok(index) => index,
-            Err(error) => {
-                error!("{error:?}");
-                return Err(error);
-            },
-        };
-        let frame_number: FrameNumber = match FrameNumber::from_raw_value(raw_index) {
-            Some(frame_number) => frame_number,
-            None => {
-                let reason: &str = "frame number is out of bounds";
-                error!("{reason:?}");
-                return Err(Error::new(ErrorCode::OutOfMemory, reason));
-            },
-        };
-        match FrameAddress::from_frame_number(frame_number) {
-            Ok(frame_address) => Ok(frame_address),
-            Err(error) => {
-                error!("{error:?}");
-                Err(error)
-            },
+        let frame: FrameAddress = crate::mm::Vmem::alloc_scratch_frame()?;
+        let index: usize = frame.into_raw_value() / mem::PAGE_SIZE;
+        if self.bitmap.find_chunk(index).is_none() {
+            let chunk_offset: usize = (index / FOREIGN_CHUNK_BITS) * FOREIGN_CHUNK_BITS;
+            self.bitmap
+                .add_chunk(chunk_offset, Bitmap::new(FOREIGN_CHUNK_BITS)?)?;
         }
+        self.bitmap.set(index)?;
+        Ok(frame)
     }
 
+    /// Frees a frame. Untracked addresses are silently ignored —
+    /// scratch is wiped on every snapshot restore so any leak is
+    /// harmless.
     pub fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
-        let frame_number: usize = frame.into_frame_number().into_raw_value();
-        if let Err(error) = self.bitmap.clear(frame_number) {
-            error!("{error:?} (frame={frame:?})");
-            return Err(error);
+        let frame_number: usize = frame.into_raw_value() / mem::PAGE_SIZE;
+        match self.bitmap.clear(frame_number) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                trace!("free(): {error:?} (frame={frame:?})");
+                Ok(())
+            },
         }
-        Ok(())
     }
 
     pub fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
-        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+        let frame_number: usize = phys_addr.into_raw_value() / mem::PAGE_SIZE;
         match self.bitmap.set(frame_number) {
             Ok(()) => Ok(()),
             Err(error) => {
@@ -145,7 +139,7 @@ impl Inner {
         &mut self,
         region: &TruncatedMemoryRegion<PhysicalAddress>,
     ) -> Result<(), Error> {
-        let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+        let start_frame_number: usize = region.start().into_raw_value() / mem::PAGE_SIZE;
         let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
 
         for index in start_frame_number..=end_frame_number {
