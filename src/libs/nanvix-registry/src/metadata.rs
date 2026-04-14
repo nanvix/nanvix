@@ -9,7 +9,6 @@ use crate::{
     deployment::Deployment,
     machine::Machine,
     package::Package,
-    target::Target,
 };
 use ::anyhow::Result;
 use ::log::{
@@ -72,19 +71,17 @@ pub(crate) struct PackageEntry {
 ///
 /// Registry metadata tracking multiple machine-deployment configurations.
 ///
-/// This structure maintains a map where keys are in the format
-/// "<target>-<machine>-<deployment>-<memory>mb" and values are `ReleaseEntry` instances
-/// containing the URL and commit ID of the most recent release for that configuration.
+/// This structure maintains a map where keys are in the format "<machine>-<deployment>"
+/// and values are `ReleaseEntry` instances containing the URL and commit ID of the
+/// most recent release for that configuration.
 ///
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub(crate) struct ReleaseRegistry {
-    /// Map of target-machine-deployment configurations to their release entries.
-    /// Key format: "<target>-<machine>-<deployment>-<memory>mb"
-    /// (e.g., "x86-microvm-single-process-128mb").
+    /// Map of machine-deployment configurations to their release entries.
+    /// Key format: "<machine>-<deployment>" (e.g., "microvm-single-process").
     releases: HashMap<String, ReleaseEntry>,
     /// Map of installed packages to their entries.
-    /// Key format: "<target>-<machine>-<deployment>-<package>"
-    /// (e.g., "x86-microvm-single-process-openssl").
+    /// Key format: "<machine>-<deployment>-<package>" (e.g., "microvm-single-process-openssl").
     #[serde(default)]
     packages: HashMap<String, PackageEntry>,
 }
@@ -210,27 +207,24 @@ impl ReleaseRegistry {
     ///
     /// # Description
     ///
-    /// Adds or updates a release entry for a specific target-machine-deployment configuration.
+    /// Adds or updates a release entry for a specific machine-deployment configuration.
     ///
     /// # Parameters
     ///
-    /// - `target`: The target architecture.
     /// - `machine`: The target machine type.
     /// - `deployment`: The deployment type.
-    /// - `memory_size_mb`: The memory size in megabytes.
     /// - `url`: The URL of the release tarball.
     /// - `commit_id`: The commit ID extracted from the release URL.
     ///
     pub(crate) fn set_release(
         &mut self,
-        target: Target,
         machine: Machine,
         deployment: Deployment,
         memory_size_mb: u32,
         url: String,
         commit_id: String,
     ) {
-        let key: String = format!("{}-{}-{}-{}mb", target, machine, deployment, memory_size_mb);
+        let key: String = format!("{}-{}-{}mb", machine, deployment, memory_size_mb);
         let entry: ReleaseEntry = ReleaseEntry::new(url, commit_id);
         self.releases.insert(key, entry);
     }
@@ -238,14 +232,12 @@ impl ReleaseRegistry {
     ///
     /// # Description
     ///
-    /// Gets the release entry for a specific target-machine-deployment configuration.
+    /// Gets the release entry for a specific machine-deployment configuration.
     ///
     /// # Parameters
     ///
-    /// - `target`: The target architecture.
     /// - `machine`: The target machine type.
     /// - `deployment`: The deployment type.
-    /// - `memory_size_mb`: The memory size in megabytes.
     ///
     /// # Returns
     ///
@@ -253,12 +245,11 @@ impl ReleaseRegistry {
     ///
     pub(crate) fn get_release(
         &self,
-        target: Target,
         machine: Machine,
         deployment: Deployment,
         memory_size_mb: u32,
     ) -> Option<&ReleaseEntry> {
-        let key: String = format!("{}-{}-{}-{}mb", target, machine, deployment, memory_size_mb);
+        let key: String = format!("{}-{}-{}mb", machine, deployment, memory_size_mb);
         self.releases.get(&key)
     }
 
@@ -293,12 +284,10 @@ impl ReleaseRegistry {
     ///
     /// # Description
     ///
-    /// Adds or updates a package entry for a specific target-machine-deployment-package
-    /// configuration.
+    /// Adds or updates a package entry for a specific machine-deployment-package configuration.
     ///
     /// # Parameters
     ///
-    /// - `target`: The target architecture.
     /// - `machine`: The target machine type.
     /// - `deployment`: The deployment type.
     /// - `package`: The package being installed.
@@ -307,14 +296,13 @@ impl ReleaseRegistry {
     ///
     pub(crate) fn set_package(
         &mut self,
-        target: Target,
         machine: Machine,
         deployment: Deployment,
         package: Package,
         url: String,
         nanvix_commit_id: String,
     ) {
-        let key: String = format!("{}-{}-{}-{}", target, machine, deployment, package);
+        let key: String = format!("{}-{}-{}", machine, deployment, package);
         let entry: PackageEntry = PackageEntry::new(url, nanvix_commit_id);
         self.packages.insert(key, entry);
     }
@@ -322,11 +310,10 @@ impl ReleaseRegistry {
     ///
     /// # Description
     ///
-    /// Gets the package entry for a specific target-machine-deployment-package configuration.
+    /// Gets the package entry for a specific machine-deployment-package configuration.
     ///
     /// # Parameters
     ///
-    /// - `target`: The target architecture.
     /// - `machine`: The target machine type.
     /// - `deployment`: The deployment type.
     /// - `package`: The package to look up.
@@ -337,24 +324,22 @@ impl ReleaseRegistry {
     ///
     pub(crate) fn get_package(
         &self,
-        target: Target,
         machine: Machine,
         deployment: Deployment,
         package: Package,
     ) -> Option<&PackageEntry> {
-        let key: String = format!("{}-{}-{}-{}", target, machine, deployment, package);
+        let key: String = format!("{}-{}-{}", machine, deployment, package);
         self.packages.get(&key)
     }
 
     ///
     /// # Description
     ///
-    /// Checks whether a package is installed for a specific target-machine-deployment
-    /// configuration and matches the given Nanvix commit ID.
+    /// Checks whether a package is installed for a specific machine-deployment configuration
+    /// and matches the given Nanvix commit ID.
     ///
     /// # Parameters
     ///
-    /// - `target`: The target architecture.
     /// - `machine`: The target machine type.
     /// - `deployment`: The deployment type.
     /// - `package`: The package to check.
@@ -366,13 +351,12 @@ impl ReleaseRegistry {
     ///
     pub(crate) fn is_package_installed(
         &self,
-        target: Target,
         machine: Machine,
         deployment: Deployment,
         package: Package,
         nanvix_commit_id: &str,
     ) -> bool {
-        if let Some(entry) = self.get_package(target, machine, deployment, package) {
+        if let Some(entry) = self.get_package(machine, deployment, package) {
             entry.nanvix_commit_id() == nanvix_commit_id
         } else {
             false
@@ -559,7 +543,6 @@ mod tests {
 
         // Set a release.
         registry.set_release(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             128,
@@ -569,7 +552,7 @@ mod tests {
 
         // Get the release.
         let entry: Option<&ReleaseEntry> =
-            registry.get_release(Target::X86, Machine::Microvm, Deployment::SingleProcess, 128);
+            registry.get_release(Machine::Microvm, Deployment::SingleProcess, 128);
         assert!(entry.is_some());
 
         let entry: &ReleaseEntry = entry.expect("failed");
@@ -588,7 +571,6 @@ mod tests {
 
         // Add multiple configurations.
         registry.set_release(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             128,
@@ -597,7 +579,6 @@ mod tests {
         );
 
         registry.set_release(
-            Target::X86,
             Machine::Microvm,
             Deployment::MultiProcess,
             128,
@@ -606,7 +587,6 @@ mod tests {
         );
 
         registry.set_release(
-            Target::X86,
             Machine::Hyperlight,
             Deployment::SingleProcess,
             128,
@@ -619,17 +599,17 @@ mod tests {
 
         // Verify each entry.
         let entry: &ReleaseEntry = registry
-            .get_release(Target::X86, Machine::Microvm, Deployment::SingleProcess, 128)
+            .get_release(Machine::Microvm, Deployment::SingleProcess, 128)
             .expect("failed");
         assert_eq!(entry.commit_id(), "abc111def");
 
         let entry: &ReleaseEntry = registry
-            .get_release(Target::X86, Machine::Microvm, Deployment::MultiProcess, 128)
+            .get_release(Machine::Microvm, Deployment::MultiProcess, 128)
             .expect("failed");
         assert_eq!(entry.commit_id(), "abc222def");
 
         let entry: &ReleaseEntry = registry
-            .get_release(Target::X86, Machine::Hyperlight, Deployment::SingleProcess, 128)
+            .get_release(Machine::Hyperlight, Deployment::SingleProcess, 128)
             .expect("failed");
         assert_eq!(entry.commit_id(), "abc333def");
     }
@@ -645,7 +625,6 @@ mod tests {
 
         // Add initial release.
         registry.set_release(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             128,
@@ -657,7 +636,6 @@ mod tests {
 
         // Update with new release.
         registry.set_release(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             128,
@@ -669,7 +647,7 @@ mod tests {
         assert_eq!(registry.len(), 1);
 
         let entry: &ReleaseEntry = registry
-            .get_release(Target::X86, Machine::Microvm, Deployment::SingleProcess, 128)
+            .get_release(Machine::Microvm, Deployment::SingleProcess, 128)
             .expect("failed");
         assert_eq!(entry.url(), "https://test.com/new.tar.bz2");
         assert_eq!(entry.commit_id(), "abc222def");
@@ -684,7 +662,6 @@ mod tests {
     fn test_serialization() {
         let mut registry: ReleaseRegistry = ReleaseRegistry::new();
         registry.set_release(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             128,
@@ -694,7 +671,7 @@ mod tests {
 
         let json: String = serde_json::to_string(&registry).expect("failed");
         assert!(json.contains("releases"));
-        assert!(json.contains("x86-microvm-single-process-128mb"));
+        assert!(json.contains("microvm-single-process-128mb"));
         assert!(json.contains("https://example.com/release.tar.bz2"));
         assert!(json.contains("abc123def456"));
     }
@@ -706,11 +683,11 @@ mod tests {
     ///
     #[test]
     fn test_deserialization() {
-        let json: &str = r#"{"releases":{"x86-microvm-single-process-128mb":{"url":"https://example.com/release.tar.bz2","commit_id":"abc123def456"}}}"#;
+        let json: &str = r#"{"releases":{"microvm-single-process-128mb":{"url":"https://example.com/release.tar.bz2","commit_id":"abc123def456"}}}"#;
         let registry: ReleaseRegistry = serde_json::from_str(json).expect("failed");
 
         let entry: &ReleaseEntry = registry
-            .get_release(Target::X86, Machine::Microvm, Deployment::SingleProcess, 128)
+            .get_release(Machine::Microvm, Deployment::SingleProcess, 128)
             .expect("failed");
         assert_eq!(entry.url(), "https://example.com/release.tar.bz2");
         assert_eq!(entry.commit_id(), "abc123def456");
@@ -729,7 +706,6 @@ mod tests {
 
         let mut original: ReleaseRegistry = ReleaseRegistry::new();
         original.set_release(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             128,
@@ -737,7 +713,6 @@ mod tests {
             "abc111def".to_string(),
         );
         original.set_release(
-            Target::X86,
             Machine::Hyperlight,
             Deployment::MultiProcess,
             128,
@@ -757,12 +732,12 @@ mod tests {
         assert_eq!(loaded.len(), 2);
 
         let entry: &ReleaseEntry = loaded
-            .get_release(Target::X86, Machine::Microvm, Deployment::SingleProcess, 128)
+            .get_release(Machine::Microvm, Deployment::SingleProcess, 128)
             .expect("failed");
         assert_eq!(entry.commit_id(), "abc111def");
 
         let entry: &ReleaseEntry = loaded
-            .get_release(Target::X86, Machine::Hyperlight, Deployment::MultiProcess, 128)
+            .get_release(Machine::Hyperlight, Deployment::MultiProcess, 128)
             .expect("failed");
         assert_eq!(entry.commit_id(), "abc222def");
 
@@ -797,7 +772,6 @@ mod tests {
 
         let mut registry: ReleaseRegistry = ReleaseRegistry::new();
         registry.set_release(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             128,
@@ -826,7 +800,6 @@ mod tests {
 
         let mut registry: ReleaseRegistry = ReleaseRegistry::new();
         registry.set_release(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             128,
@@ -888,7 +861,6 @@ mod tests {
 
         // Set a package.
         registry.set_package(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             Package::OpenSSL,
@@ -897,12 +869,8 @@ mod tests {
         );
 
         // Get the package.
-        let entry: Option<&PackageEntry> = registry.get_package(
-            Target::X86,
-            Machine::Microvm,
-            Deployment::SingleProcess,
-            Package::OpenSSL,
-        );
+        let entry: Option<&PackageEntry> =
+            registry.get_package(Machine::Microvm, Deployment::SingleProcess, Package::OpenSSL);
         assert!(entry.is_some());
 
         let entry: &PackageEntry = entry.expect("package entry should exist");
@@ -921,7 +889,6 @@ mod tests {
         let nanvix_commit_id: String = "abc123def456".to_string();
 
         registry.set_package(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             Package::OpenSSL,
@@ -930,7 +897,6 @@ mod tests {
         );
 
         assert!(registry.is_package_installed(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             Package::OpenSSL,
@@ -948,7 +914,6 @@ mod tests {
         let registry: ReleaseRegistry = ReleaseRegistry::new();
 
         assert!(!registry.is_package_installed(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             Package::OpenSSL,
@@ -966,7 +931,6 @@ mod tests {
         let mut registry: ReleaseRegistry = ReleaseRegistry::new();
 
         registry.set_package(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             Package::OpenSSL,
@@ -976,7 +940,6 @@ mod tests {
 
         // Check with different commit ID.
         assert!(!registry.is_package_installed(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             Package::OpenSSL,
@@ -996,7 +959,6 @@ mod tests {
 
         // Add multiple packages.
         registry.set_package(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             Package::OpenSSL,
@@ -1005,7 +967,6 @@ mod tests {
         );
 
         registry.set_package(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             Package::Zlib,
@@ -1014,7 +975,6 @@ mod tests {
         );
 
         registry.set_package(
-            Target::X86,
             Machine::Hyperlight,
             Deployment::MultiProcess,
             Package::CPython,
@@ -1024,7 +984,6 @@ mod tests {
 
         // Verify all packages are installed.
         assert!(registry.is_package_installed(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             Package::OpenSSL,
@@ -1032,7 +991,6 @@ mod tests {
         ));
 
         assert!(registry.is_package_installed(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             Package::Zlib,
@@ -1040,7 +998,6 @@ mod tests {
         ));
 
         assert!(registry.is_package_installed(
-            Target::X86,
             Machine::Hyperlight,
             Deployment::MultiProcess,
             Package::CPython,
@@ -1049,7 +1006,6 @@ mod tests {
 
         // Verify non-installed package returns false.
         assert!(!registry.is_package_installed(
-            Target::X86,
             Machine::Microvm,
             Deployment::SingleProcess,
             Package::QuickJS,

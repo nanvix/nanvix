@@ -145,7 +145,7 @@ MEMORY_SIZE_MB = $(shell echo $$(($(MEMORY_SIZE_BYTES) / 1048576)))
 # VFS benchmark image filename.
 export VFS_BENCH_IMG ?= vfs-bench.img
 
-RELEASE_ARCHIVE := nanvix-$(RELEASE_VERSION)-$(TARGET)-$(MACHINE)-$(RELEASE_DEPLOYMENT_MODE)-$(RELEASE_BUILD_MODE)-$(LOG_LEVEL)-$(MEMORY_SIZE_MB)mb.tar.bz2
+RELEASE_ARCHIVE := nanvix-$(RELEASE_VERSION)-$(MACHINE)-$(RELEASE_DEPLOYMENT_MODE)-$(RELEASE_BUILD_MODE)-$(LOG_LEVEL)-$(MEMORY_SIZE_MB)mb.tar.bz2
 MANIFEST_FILE := $(SYSROOT_DIR)/manifest.json
 
 #===================================================================================================
