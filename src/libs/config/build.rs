@@ -79,6 +79,8 @@ fn load_toml(toml_path: &Path) -> HashMap<String, String> {
 fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_path: &Path) {
     let kernel_config_toml: HashMap<String, String> = load_toml(kernel_config_toml_path);
 
+    let memory_size_bytes: usize = build_utils::memory_size();
+
     /// Helper to retrieve a required key from the kernel config, panicking with a clear message if
     /// missing.
     fn required_key<'a>(config: &'a HashMap<String, String>, key: &str) -> &'a String {
@@ -91,20 +93,17 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
     let mut constants = String::new();
     constants.push_str("pub mod kernel {\n");
 
-    let val: usize =
-        parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "memory_size"), "memory_size");
     // Hyperlight imposes a hard 1 GiB guest-memory ceiling. Fail the build if the configured
     // memory_size exceeds the hyperlight sandbox budget so the mismatch is caught immediately.
     if env::var("CARGO_FEATURE_HYPERLIGHT").is_ok() {
         const HYPERLIGHT_MEMORY_CEILING: usize = 1024 * 1024 * 1024;
         assert!(
-            val <= HYPERLIGHT_MEMORY_CEILING,
-            "memory_size ({val}) exceeds the Hyperlight guest-memory ceiling \
-             ({HYPERLIGHT_MEMORY_CEILING}). Reduce memory_size in kernel_config.toml for \
-             hyperlight builds.",
+            memory_size_bytes <= HYPERLIGHT_MEMORY_CEILING,
+            "memory_size ({memory_size_bytes}) exceeds the Hyperlight guest-memory ceiling \
+             ({HYPERLIGHT_MEMORY_CEILING}). Reduce MEMORY_SIZE for hyperlight builds.",
         );
     }
-    constants.push_str(&format!("pub const MEMORY_SIZE: usize = {val};\n"));
+    constants.push_str(&format!("pub const MEMORY_SIZE: usize = {memory_size_bytes};\n"));
 
     let val: usize = parse_hex_or_decimal_usize(
         required_key(&kernel_config_toml, "num_processors"),
@@ -196,9 +195,6 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
     // Build-Time Assertions
     //==============================================================================================
 
-    // Re-read constants needed for cross-validation.
-    let memory_size: usize =
-        parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "memory_size"), "memory_size");
     let kpool_base: usize =
         parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "kpool_base"), "kpool_base");
     let kpool_size: usize =
@@ -224,12 +220,12 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
         ),
     };
     assert!(
-        kpool_end <= memory_size,
+        kpool_end <= memory_size_bytes,
         "kpool_base ({:#x}) + kpool_size ({:#x}) = {:#x} exceeds memory_size ({:#x})",
         kpool_base,
         kpool_size,
         kpool_end,
-        memory_size,
+        memory_size_bytes,
     );
 
     // kpool_base must be page-table aligned (4 MB boundary).
@@ -574,6 +570,7 @@ fn main() {
     println!("cargo::rerun-if-changed=build/linuxd_config.toml");
     println!("cargo::rerun-if-changed=build/hyperlight_constants.toml");
     println!("cargo::rerun-if-changed=build/hyperlight_config.rs.template");
+    println!("cargo::rerun-if-env-changed=MEMORY_SIZE_BYTES");
 }
 
 //==================================================================================================
