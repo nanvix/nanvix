@@ -36,7 +36,10 @@ use ::nanvix::{
     config::{
         constants::MEGABYTE,
         kernel::MEMORY_SIZE,
-        system::DEFAULT_MACHINE_NAME,
+        system::{
+            DEFAULT_MACHINE_NAME,
+            DEFAULT_TARGET_NAME,
+        },
     },
     registry::Registry,
     sandbox::NAMED_RESOURCE_PREFIX,
@@ -379,7 +382,13 @@ async fn ensure_all_binaries_available(
     let memory_size_mb: u32 = (MEMORY_SIZE / MEGABYTE) as u32;
 
     let kernel_cached_path: String = registry
-        .get_cached_binary(machine, deployment, memory_size_mb, KERNEL_BINARY_NAME)
+        .get_cached_binary(
+            DEFAULT_TARGET_NAME,
+            machine,
+            deployment,
+            memory_size_mb,
+            KERNEL_BINARY_NAME,
+        )
         .await?;
     log_info!("using registry binary {}: {}", KERNEL_BINARY_NAME, kernel_cached_path);
 
@@ -389,12 +398,24 @@ async fn ensure_all_binaries_available(
     #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     {
         let linuxd_cached_path: String = registry
-            .get_cached_binary(machine, deployment, memory_size_mb, LINUXD_BINARY_NAME)
+            .get_cached_binary(
+                DEFAULT_TARGET_NAME,
+                machine,
+                deployment,
+                memory_size_mb,
+                LINUXD_BINARY_NAME,
+            )
             .await?;
         log_info!("using registry binary {}: {}", LINUXD_BINARY_NAME, linuxd_cached_path);
 
         let uservm_cached_path: String = registry
-            .get_cached_binary(machine, deployment, memory_size_mb, USERVM_BINARY_NAME)
+            .get_cached_binary(
+                DEFAULT_TARGET_NAME,
+                machine,
+                deployment,
+                memory_size_mb,
+                USERVM_BINARY_NAME,
+            )
             .await?;
         log_info!("using registry binary {}: {}", USERVM_BINARY_NAME, uservm_cached_path);
 
