@@ -15,6 +15,7 @@ import platform
 import re
 import signal
 import subprocess
+import sys
 from typing import Optional
 
 # ======================================================================
@@ -804,6 +805,103 @@ def ci_summary(args):
         fh.write(bench_summary)
 
 
+def ci_gate(args) -> int:
+    """
+    Check benchmark results for performance regressions against baseline.
+
+    Compares the p50 value of each benchmark CSV in target-dir against the
+    corresponding baseline in dev-dir. Exits non-zero if any benchmark
+    regresses beyond the configured threshold.
+
+    Only percentile benchmarks (commit,p50,p95,p99) are checked. Benchmarks
+    with missing baseline or missing results are skipped with a warning.
+    """
+    threshold = args.regression_threshold
+    benchmarks = args.benchmarks.split(",")
+    machines = args.machine_types.split(",")
+    archs = args.archs.split(",")
+
+    regressions = []
+    checked = 0
+
+    for benchmark in benchmarks:
+        if benchmark not in PERCENTILE_BENCHMARKS:
+            print(f"SKIP: '{benchmark}' is not a percentile benchmark")
+            continue
+
+        for machine, arch in itertools.product(machines, archs):
+            csv_name = gen_filename_for_benchmark(benchmark, machine, arch)
+            dev_path = os.path.join(args.dev_dir, csv_name)
+            tgt_path = os.path.join(args.target_dir, csv_name)
+
+            # Read baseline p50
+            dev_vals = read_benchmark_values_from_file(benchmark, dev_path)
+            if dev_vals.get("p50", NA) == NA:
+                print(f"SKIP: no baseline for {benchmark} ({machine}/{arch})")
+                continue
+
+            # Read current p50
+            tgt_vals = read_benchmark_values_from_file(benchmark, tgt_path)
+            if tgt_vals.get("p50", NA) == NA:
+                print(f"SKIP: no results for {benchmark} ({machine}/{arch})")
+                continue
+
+            try:
+                dev_p50 = float(dev_vals["p50"])
+                tgt_p50 = float(tgt_vals["p50"])
+            except (ValueError, TypeError) as e:
+                print(
+                    f"SKIP: invalid p50 value for {benchmark} ({machine}/{arch}): {e}"
+                )
+                continue
+
+            checked += 1
+
+            if dev_p50 == 0:
+                continue
+
+            delta_pct = (tgt_p50 - dev_p50) / dev_p50 * 100
+
+            if delta_pct > threshold:
+                regressions.append(
+                    {
+                        "benchmark": benchmark,
+                        "machine": machine,
+                        "arch": arch,
+                        "dev_p50": dev_p50,
+                        "tgt_p50": tgt_p50,
+                        "delta_pct": round(delta_pct, 1),
+                    }
+                )
+                print(
+                    f"REGRESSION: {benchmark} ({machine}/{arch}): "
+                    f"p50 {dev_p50} -> {tgt_p50} "
+                    f"(+{round(delta_pct, 1)}%, threshold: {threshold}%)"
+                )
+            else:
+                status = f"+{delta_pct:.1f}%" if delta_pct > 0 else f"{delta_pct:.1f}%"
+                print(
+                    f"OK: {benchmark} ({machine}/{arch}): "
+                    f"p50 {dev_p50} -> {tgt_p50} ({status})"
+                )
+
+    print(
+        f"\nChecked {checked} benchmark(s), "
+        f"found {len(regressions)} regression(s) "
+        f"(threshold: >{threshold}% p50)."
+    )
+
+    if regressions:
+        print(
+            f"\nFAILED: {len(regressions)} benchmark(s) exceeded "
+            f"the {threshold}% regression threshold."
+        )
+        return 1
+
+    print("PASSED: No regressions detected.")
+    return 0
+
+
 def _kill_process_tree(proc: subprocess.Popen) -> None:
     """Forcefully terminate a process and all its descendants.
 
@@ -1307,6 +1405,38 @@ if __name__ == "__main__":
     )
     ci_summary_parser.set_defaults(func=ci_summary)
 
+    # Command-line arguments for the ci-gate command.
+    ci_gate_parser = sub_parser.add_parser(
+        "ci-gate",
+        help="Check benchmark results for performance regressions against baseline",
+    )
+    ci_gate_parser.add_argument(
+        "--dev-dir", required=True, help="Directory with baseline results from dev"
+    )
+    ci_gate_parser.add_argument(
+        "--target-dir", required=True, help="Directory with current benchmark results"
+    )
+    ci_gate_parser.add_argument(
+        "--benchmarks",
+        required=True,
+        help="Comma-separated list of benchmarks to check",
+    )
+    ci_gate_parser.add_argument(
+        "--machine-types",
+        required=True,
+        help="Comma-separated list of machine types",
+    )
+    ci_gate_parser.add_argument(
+        "--archs", required=True, help="Comma-separated list of architectures"
+    )
+    ci_gate_parser.add_argument(
+        "--regression-threshold",
+        type=float,
+        default=50,
+        help="Fail if any benchmark p50 regresses more than this percentage (default: 50)",
+    )
+    ci_gate_parser.set_defaults(func=ci_gate)
+
     # Command-line arguments for the persist command.
     persist_parser.add_argument(
         "--source-dir", required=True, help="Directory with single-run result files"
@@ -1339,4 +1469,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     # Dispatch the arguments to the selected top-level command.
-    args.func(args)
+    result = args.func(args)
+    if isinstance(result, int) and result != 0:
+        sys.exit(result)

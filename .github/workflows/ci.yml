@@ -1348,6 +1348,13 @@ jobs:
         run: |
           .\z.ps1 build -- all MACHINE=$env:MACHINE_TYPE RELEASE=yes LOG_LEVEL=panic PROFILER=yes
 
+      - name: "Benchmark Setup"
+        # Requires admin privileges. The self-hosted benchmark runners are
+        # configured to run the Actions runner service as Administrator.
+        shell: pwsh
+        run: |
+          .\scripts\bench\bench-setup.ps1 -SaveState
+
       - name: "Run Micro-Benchmarks"
         shell: pwsh
         env:
@@ -1369,6 +1376,12 @@ jobs:
               exit $LASTEXITCODE
             }
           }
+
+      - name: "Benchmark Teardown"
+        if: always()
+        shell: pwsh
+        run: |
+          .\scripts\bench\bench-teardown.ps1 -KeepDefenderExclusion
 
       - name: "Upload Benchmark Results"
         if: always() && !cancelled()
@@ -1433,6 +1446,23 @@ jobs:
           dev-dir: "data/baremetal"
           runner-label: "self-hosted"
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Gate on Performance Regressions"
+        if: github.ref_name != 'dev'
+        shell: bash
+        # vfs-bench and echo-breakdown are excluded: they use different CSV schemas
+        # (not percentile-based). round-trip-latency is also excluded (multi-row).
+        # The 50% threshold is intentionally generous for initial rollout to avoid
+        # false positives while baseline stability is established.
+        run: |
+          python3 ./scripts/benchmark.py \
+            ci-gate \
+            --dev-dir "data/baremetal" \
+            --target-dir "$(pwd)" \
+            --benchmarks "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,snapshot-restore,warm-start,warm-start-l2,warm-start-vmm" \
+            --machine-types "microvm" \
+            --archs "X64" \
+            --regression-threshold 50
 
       - name: "Persist results on dev"
         if: github.ref_name == 'dev'
@@ -1499,6 +1529,22 @@ jobs:
           dev-dir: "data/windows-baremetal"
           runner-label: "windows-baremetal"
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Gate on Performance Regressions"
+        if: github.ref_name != 'dev'
+        shell: bash
+        # vfs-bench is excluded: it uses a different CSV schema (not percentile-based).
+        # The 50% threshold is intentionally generous for initial rollout to avoid
+        # false positives while baseline stability is established.
+        run: |
+          python3 ./scripts/benchmark.py \
+            ci-gate \
+            --dev-dir "data/windows-baremetal" \
+            --target-dir "$(pwd)" \
+            --benchmarks "boot-time,cold-start,snapshot-restore,warm-start-vmm" \
+            --machine-types "microvm" \
+            --archs "X64" \
+            --regression-threshold 50
 
       - name: "Persist results on dev"
         if: github.ref_name == 'dev'
@@ -1743,6 +1789,23 @@ jobs:
           runner-label: "github-hosted"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: "Gate on Performance Regressions"
+        if: github.ref_name != 'dev'
+        shell: bash
+        # vfs-bench and echo-breakdown are excluded: they use different CSV schemas
+        # (not percentile-based). round-trip-latency is also excluded (multi-row).
+        # The 50% threshold is intentionally generous for initial rollout to avoid
+        # false positives while baseline stability is established.
+        run: |
+          python3 ./scripts/benchmark.py \
+            ci-gate \
+            --dev-dir "data/github" \
+            --target-dir "$(pwd)" \
+            --benchmarks "boot-time,cold-start,cold-start-uvm,snapshot-restore,warm-start,warm-start-vmm" \
+            --machine-types "microvm" \
+            --archs "X64" \
+            --regression-threshold 50
+
       - name: "Persist results on dev"
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
@@ -1813,6 +1876,24 @@ jobs:
           dev-dir: "data/windows-github"
           runner-label: "windows-github-hosted"
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Gate on Performance Regressions"
+        if: github.ref_name != 'dev' && steps.check-results.outputs.has_results == 'true'
+        shell: bash
+        # vfs-bench is excluded: it uses a different CSV schema (not percentile-based).
+        # The 50% threshold is intentionally generous for initial rollout to avoid
+        # false positives while baseline stability is established.
+        # No bench-setup/teardown on github-hosted: runners lack admin privileges
+        # required for system tuning (power plan, Defender exclusions, etc.).
+        run: |
+          python3 ./scripts/benchmark.py \
+            ci-gate \
+            --dev-dir "data/windows-github" \
+            --target-dir "$(pwd)" \
+            --benchmarks "boot-time,cold-start,snapshot-restore,warm-start-vmm" \
+            --machine-types "microvm" \
+            --archs "X64" \
+            --regression-threshold 50
 
       - name: "Persist results on dev"
         if: github.ref_name == 'dev' && steps.check-results.outputs.has_results == 'true'
