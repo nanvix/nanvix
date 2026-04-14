@@ -95,7 +95,7 @@ Matrix coverage in GitHub Actions:
 ./z build -- release
 
 # The archive name follows this pattern:
-# nanvix-<ver>-<target>-<machine>-<deploy>-<mode>-<log>-<memory>mb.tar.bz2
+# nanvix-<ver>-<machine>-<deploy>-<mode>-<log>.tar.bz2
 ```
 
 Minor releases can be created with:
