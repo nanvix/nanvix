@@ -8,15 +8,15 @@ use crate::hal::mem::types::address::{
 };
 use ::sys::error::Error;
 
-/// Physical address of a page directory.
+/// Physical address of a PML4 (Page Map Level 4) table.
 ///
-/// A thin wrapper around `PageAligned<PhysicalAddress>` that provides type safety for PD
-/// physical addresses, preventing accidental use where a PML4 or PDPT address is expected.
+/// A thin wrapper around `PageAligned<PhysicalAddress>` that provides type safety for PML4
+/// physical addresses, preventing accidental use where a PDPT or PD address is expected.
 #[derive(Debug, Clone, Copy)]
-pub struct PageDirectoryAddress(PageAligned<PhysicalAddress>);
+pub struct Pml4Address(PageAligned<PhysicalAddress>);
 
-impl PageDirectoryAddress {
-    /// Creates a new page directory address from a raw physical address.
+impl Pml4Address {
+    /// Creates a new PML4 address from a raw physical address.
     pub fn from_raw_value(value: usize) -> Result<Self, Error> {
         Ok(Self(PageAligned::from_address(PhysicalAddress::from_raw_value(value)?)?))
     }
@@ -27,27 +27,27 @@ impl PageDirectoryAddress {
     }
 }
 
-impl From<PageDirectoryAddress> for usize {
-    fn from(addr: PageDirectoryAddress) -> usize {
+impl From<Pml4Address> for usize {
+    fn from(addr: Pml4Address) -> usize {
         addr.into_raw_value()
     }
 }
 
-impl PartialEq for PageDirectoryAddress {
+impl PartialEq for Pml4Address {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
 
-impl Eq for PageDirectoryAddress {}
+impl Eq for Pml4Address {}
 
-impl PartialOrd for PageDirectoryAddress {
+impl PartialOrd for Pml4Address {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for PageDirectoryAddress {
+impl Ord for Pml4Address {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.0.cmp(&other.0)
     }

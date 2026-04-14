@@ -7,9 +7,13 @@
 
 mod aligned;
 mod frame;
-mod page;
 mod pd;
+#[cfg(target_arch = "x86_64")]
+mod pdpt;
+mod pg;
 mod phys;
+#[cfg(target_arch = "x86_64")]
+mod pml4;
 
 #[cfg(test)]
 mod test;
@@ -24,9 +28,15 @@ pub use ::sys::mm::{
 };
 pub use aligned::*;
 pub use frame::*;
-pub use page::*;
+#[allow(unused_imports)]
 pub use pd::*;
+#[cfg(target_arch = "x86_64")]
+#[allow(unused_imports)]
+pub use pdpt::*;
+pub use pg::*;
 pub use phys::*;
+#[cfg(target_arch = "x86_64")]
+pub use pml4::*;
 
 //==================================================================================================
 // Standalone Functions
