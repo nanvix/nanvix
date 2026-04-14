@@ -732,11 +732,7 @@ impl Vmem {
 
                 if !dry_run {
                     // Copy memory from user space to kernel space.
-                    // SAFETY: The following conditions are guaranteed:
-                    // - `dst.into_raw_value()` is a valid kernel-space address for `copy_size` bytes.
-                    // - `src_frame.into_raw_value() + offset` is a valid user-space address for `copy_size` bytes.
-                    // - Both regions are non-overlapping and accessible for the operation.
-                    super::identity_map::phys_memcpy(
+                    super::identity_map::memcpy(
                         dst.into_raw_value() as *mut u8,
                         (src_frame.into_raw_value() + offset) as *const u8,
                         copy_size,
@@ -902,7 +898,7 @@ impl Vmem {
                 let dst: *mut u8 = (dst_frame.into_raw_value() + offset) as *mut u8;
                 let src: *const u8 = src.into_raw_value() as *const u8;
                 let copy_result: Result<(), Error> =
-                    super::identity_map::phys_memcpy(dst, src, copy_size);
+                    super::identity_map::memcpy(dst, src, copy_size);
                 if let Err(error) = copy_result {
                     let reason: &str = "failed to perform physical memory copy";
                     panic!(
@@ -1043,7 +1039,7 @@ impl Vmem {
                     // mappings for the full source and destination ranges before copying.
                     let src_phys_addr: usize = src_frame.into_raw_value() + src_offset;
                     let dst_phys_addr: usize = dst_frame.into_raw_value() + dst_offset;
-                    super::identity_map::phys_memcpy(
+                    super::identity_map::memcpy(
                         dst_phys_addr as *mut u8,
                         src_phys_addr as *const u8,
                         copy_size,
@@ -1091,7 +1087,7 @@ impl Vmem {
         let dst: PageAligned<PhysicalAddress> = uframe.into_physical_address();
         let base: *mut u8 = dst.into_raw_value() as *mut u8;
 
-        super::identity_map::phys_memset(base, value as u8, mem::PAGE_SIZE)?;
+        super::identity_map::memset(base, value as u8, mem::PAGE_SIZE)?;
 
         Ok(())
     }

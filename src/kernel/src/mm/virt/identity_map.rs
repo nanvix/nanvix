@@ -108,8 +108,8 @@ pub(crate) fn init(kernel_pd_paddr: PageDirectoryAddress, kernel_cr3: Cr3Registe
 ///
 /// # Description
 ///
-/// Copies bytes between two physical memory regions after ensuring that both ranges are
-/// identity-mapped in the kernel address space.
+/// Copies bytes between two memory regions, after ensuring that both ranges are identity-mapped in
+/// the kernel address space.
 ///
 /// # Parameters
 ///
@@ -130,7 +130,7 @@ pub(crate) fn init(kernel_pd_paddr: PageDirectoryAddress, kernel_cr3: Cr3Registe
 ///
 /// If `size == 0`, this function is a no-op and returns success.
 ///
-pub(crate) fn phys_memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(), Error> {
+pub(crate) fn memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(), Error> {
     // Check if copy size is zero.
     if size == 0 {
         return Ok(());
@@ -139,17 +139,23 @@ pub(crate) fn phys_memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(
     let dst_start: usize = dst as usize;
     let src_start: usize = src as usize;
     let dst_end: usize = dst_start.checked_add(size).ok_or_else(|| {
-        Error::new(ErrorCode::BadAddress, "phys_memcpy(): destination range overflows")
+        error!("memcpy(): destination range overflows (dst={dst_start:#x}, size={size:#x})");
+        Error::new(ErrorCode::BadAddress, "memcpy(): destination range overflows")
     })?;
     let src_end: usize = src_start.checked_add(size).ok_or_else(|| {
-        Error::new(ErrorCode::BadAddress, "phys_memcpy(): source range overflows")
+        error!("memcpy(): source range overflows (src={src_start:#x}, size={size:#x})");
+        Error::new(ErrorCode::BadAddress, "memcpy(): source range overflows")
     })?;
 
     // Check if copy ranges overlap.
     if (dst_start..dst_end).contains(&src_start) || (src_start..src_end).contains(&dst_start) {
+        error!(
+            "memcpy(): source and destination ranges overlap (dst={dst_start:#x}, \
+             src={src_start:#x}, size={size:#x})"
+        );
         return Err(Error::new(
             ErrorCode::BadAddress,
-            "phys_memcpy(): source and destination ranges overlap",
+            "memcpy(): source and destination ranges overlap",
         ));
     }
 
@@ -173,7 +179,7 @@ pub(crate) fn phys_memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(
 ///
 /// # Description
 ///
-/// Fills a physical memory range with a byte value, after ensuring that the full target range is
+/// Fills bytes in a memory range with a byte value, after ensuring that the full target range is
 /// identity-mapped in the kernel address space.
 ///
 /// # Parameters
@@ -195,11 +201,18 @@ pub(crate) fn phys_memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(
 ///
 /// If `size == 0`, this function is a no-op and returns success.
 ///
-pub(crate) fn phys_memset(base: *mut u8, value: u8, size: usize) -> Result<(), Error> {
+pub(crate) fn memset(base: *mut u8, value: u8, size: usize) -> Result<(), Error> {
     // Check if fill size is zero.
     if size == 0 {
         return Ok(());
     }
+
+    let base_start: usize = base as usize;
+    // Check if fill range overflows.
+    base_start.checked_add(size).ok_or_else(|| {
+        error!("memset(): target range overflows (base={base_start:#x}, size={size:#x})");
+        Error::new(ErrorCode::BadAddress, "memset(): target range overflows")
+    })?;
 
     with_kernel_address_space(|| {
         let base_addr: PhysicalAddress = PhysicalAddress::from_raw_value(base as usize)?;

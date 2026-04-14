@@ -227,8 +227,8 @@ pub unsafe fn vmbus_write(addr: *const u8) {
         if data_len > 0 {
             let payload_dst: *mut u8 =
                 unsafe { buf.as_mut_ptr().add(::sys::ipc::DataChunkHeader::SIZE) };
-            if let Err(e) = crate::mm::phys_memcpy(payload_dst, data_gpa as *const u8, data_len) {
-                error!("vmbus_write(): phys_memcpy failed: {:?}", e);
+            if let Err(e) = crate::mm::memcpy(payload_dst, data_gpa as *const u8, data_len) {
+                error!("vmbus_write(): memcpy failed: {:?}", e);
             }
         }
 
@@ -309,12 +309,12 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
                                     dest_gpa,
                                     offset
                                 );
-                                if let Err(e) = crate::mm::phys_memcpy(
+                                if let Err(e) = crate::mm::memcpy(
                                     (dest_gpa + offset) as *mut u8,
                                     chunk.as_ptr(),
                                     chunk_len,
                                 ) {
-                                    error!("vmbus_read(): phys_memcpy failed: {:?}", e);
+                                    error!("vmbus_read(): memcpy failed: {:?}", e);
                                     break;
                                 }
                                 offset += chunk_len;
