@@ -119,9 +119,7 @@ impl Default for IoMemoryAllocator {
 impl Drop for IoMemoryAllocator {
     fn drop(&mut self) {
         // Reclaim any pending regions before dropping.
-        if let Err(e) = self.reclaim() {
-            error!("failed to reclaim regions during drop: {:?}", e);
-        }
+        self.reclaim();
     }
 }
 //==================================================================================================
@@ -174,7 +172,7 @@ impl IoMemoryAllocator {
         trace!("tag={:?}, region={:?}", tag, region);
 
         // Reclaim any pending returned regions first.
-        self.reclaim()?;
+        self.reclaim();
 
         // Check if tag already registered in available or allocated collections.
         if self.available.lookup_by(&tag, |entry| entry.tag).is_some()
@@ -200,11 +198,7 @@ impl IoMemoryAllocator {
             }
         }
 
-        if self.available.insert(MmioEntry { tag, region }).is_some() {
-            let reason: &str = "tag already registered";
-            error!("{reason}");
-            return Err(Error::new(ErrorCode::EntryExists, reason));
-        }
+        self.available.insert(MmioEntry { tag, region });
         trace!("registered mmio region: tag={:?}", tag);
 
         Ok(())
@@ -231,17 +225,13 @@ impl IoMemoryAllocator {
     ///
     pub fn allocate(&mut self, tag: MmioTag) -> Result<IoMemoryRegion, Error> {
         // Reclaim any pending returned regions first.
-        self.reclaim()?;
+        self.reclaim();
 
         // Try to move region from available to allocated.
         match self.available.remove_by(&tag, |entry| entry.tag) {
             Some(entry) => {
                 let region: TruncatedMemoryRegion<VirtualAddress> = entry.region.clone();
-                if self.allocated.insert(entry).is_some() {
-                    let reason: &str = "tag already allocated";
-                    error!("{reason}");
-                    return Err(Error::new(ErrorCode::EntryExists, reason));
-                }
+                self.allocated.insert(entry);
                 Ok(IoMemoryRegion::new(tag, region, Rc::clone(&self.return_channel)))
             },
             None => {
@@ -267,12 +257,7 @@ impl IoMemoryAllocator {
     /// This function processes all pending returned regions and moves them back to the available
     /// pool. It is called automatically during allocation and registration operations.
     ///
-    /// # Errors
-    ///
-    /// - [`ErrorCode::NoSuchEntry`]: A returned region was not found in the allocated set.
-    /// - [`ErrorCode::EntryExists`]: A returned region already exists in the available set.
-    ///
-    fn reclaim(&mut self) -> Result<(), Error> {
+    fn reclaim(&mut self) {
         let mut channel: core::cell::RefMut<
             '_,
             VecDeque<(MmioTag, TruncatedMemoryRegion<VirtualAddress>)>,
@@ -280,18 +265,9 @@ impl IoMemoryAllocator {
         while let Some((tag, region)) = channel.pop_front() {
             trace!("reclaiming region: tag={:?}", tag);
             // Remove from allocated and add back to available.
-            if self.allocated.remove_by(&tag, |entry| entry.tag).is_none() {
-                let reason: &str = "region not found in allocated";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::NoSuchEntry, reason));
-            }
-            if self.available.insert(MmioEntry { tag, region }).is_some() {
-                let reason: &str = "region already in available";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::EntryExists, reason));
-            }
+            self.allocated.remove_by(&tag, |entry| entry.tag);
+            self.available.insert(MmioEntry { tag, region });
         }
-        Ok(())
     }
 
     ///

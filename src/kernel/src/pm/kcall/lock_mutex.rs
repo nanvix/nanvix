@@ -73,7 +73,9 @@ pub unsafe fn lock_mutex(
     );
     // Unpack kernel call arguments.
     let mutex_addr: MutexAddress = MutexAddress::from(mutex_addr);
-    let timeout: Option<SystemTime> = if timeout_s == usize::MAX && timeout_ns == usize::MAX {
+    let timeout: Option<SystemTime> = if timeout_s == u32::MAX as usize
+        && timeout_ns == u32::MAX as usize
+    {
         None
     } else {
         match SystemTime::new(timeout_s as u64, timeout_ns as u32) {

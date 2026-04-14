@@ -48,7 +48,7 @@ use crate::{
     kimage::KernelImage,
     kmod::KernelModule,
     mm::{
-        elf::Elf32Fhdr,
+        elf,
         kheap,
         VirtMemoryManager,
         Vmem,
@@ -223,16 +223,20 @@ fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &LinkedList<KernelModule>) -
     let mut count: usize = 0;
     // Spawn all servers.
     for kmod in kmods.iter() {
-        // SAFETY: `kmod.start()` points to a valid, page-aligned ELF image loaded by the
-        // bootloader that remains in memory for the lifetime of the kernel.
-        let elf: &Elf32Fhdr = unsafe { Elf32Fhdr::from_address(kmod.start().into_raw_value()) };
+        let elf_class: elf::ElfClass = match elf::detect_elf_class(kmod.start().into_raw_value()) {
+            Ok(ec) => ec,
+            Err(err) => {
+                warn!("failed to detect ELF class: {:?}", err);
+                continue;
+            },
+        };
         let pid: ProcessIdentifier = {
             // Split command line into arguments an environment variables using ";" as the delimiter.
             let cmdline: Vec<&str> = kmod.cmdline().split(';').collect();
             let args: &&str = cmdline.first().unwrap_or(&"");
             let env: &&str = cmdline.get(1).unwrap_or(&"");
 
-            match pm.create_process(mm, elf, args, env) {
+            match pm.create_process(mm, elf_class, args, env) {
                 Ok(pid) => {
                     count += 1;
                     pid
@@ -274,14 +278,16 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     );
     let (madt, mem_lower, mut memory_regions, mut mmio_regions, mut ioaddresses, kernel_modules):
         KernelArgs = match kargs.parse() {
-            Ok(bootinfo) => (
+            Ok(bootinfo) => {
+                (
                 bootinfo.madt,
                 bootinfo.mem_lower,
                 bootinfo.memory_regions,
                 bootinfo.mmio_regions,
                 bootinfo.ioaddresses,
                 bootinfo.kernel_modules,
-            ),
+                )
+            },
             Err(err) => {
                 panic!("failed to parse kernel arguments: {:?}", err);
             },

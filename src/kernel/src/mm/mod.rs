@@ -13,7 +13,7 @@
 
 pub mod elf;
 mod phys;
-mod virt;
+pub(crate) mod virt;
 
 #[cfg(feature = "hyperlight")]
 pub(crate) use virt::phys_memcpy;
@@ -27,6 +27,7 @@ use ::arch::mem::{
     PAGE_ALIGNMENT,
     PGTAB_ALIGNMENT,
 };
+
 pub use virt::{
     KernelPage,
     PageTableStorage,
@@ -44,18 +45,16 @@ pub mod kredzone;
 //==================================================================================================
 
 use crate::{
-    hal::{
-        arch::x86::mem::mmu::page_table::PageTable,
-        mem::{
-            Address,
-            MemoryRegion,
-            MemoryRegionType,
-            PageAligned,
-            PageTableAddress,
-            PhysicalAddress,
-            TruncatedMemoryRegion,
-            VirtualAddress,
-        },
+    hal::mem::{
+        Address,
+        FrameAddress,
+        MemoryRegion,
+        MemoryRegionType,
+        PageAligned,
+        PageTableAligned,
+        PhysicalAddress,
+        TruncatedMemoryRegion,
+        VirtualAddress,
     },
     kimage::KernelImage,
     mm::phys::PhysMemoryManager,
@@ -75,12 +74,14 @@ use ::sys::error::Error;
 // Ensure that the kernel pool size is multiple of a page size.
 ::static_assert::assert_eq!(config::kernel::KPOOL_SIZE.is_multiple_of(PAGE_ALIGNMENT as usize));
 // Ensure that the kernel pool size fits in a single page table.
+#[cfg(target_arch = "x86")]
 ::static_assert::assert_eq!(config::kernel::KPOOL_SIZE <= mem::PGTAB_SIZE);
 // Ensure that the kernel stack size is multiple of a page size.
 ::static_assert::assert_eq!(config::kernel::KSTACK_SIZE.is_multiple_of(PAGE_ALIGNMENT as usize));
 // Ensure that the kernel stack size is at least two pages (one guard page + one usable page).
 ::static_assert::assert_eq!(config::kernel::KSTACK_SIZE >= 2 * mem::PAGE_SIZE);
 // Ensure that the kernel stack size fits in a single page table.
+#[cfg(target_arch = "x86")]
 ::static_assert::assert_eq!(config::kernel::KSTACK_SIZE <= mem::PGTAB_SIZE);
 // Ensure that the kernel base address is aligned to a page boundary.
 ::static_assert::assert_eq!(
@@ -191,6 +192,8 @@ use ::sys::error::Error;
 //==================================================================================================
 
 // Splits memory regions into virtual and physical.
+// Only Reserved regions are processed — MMIO regions are handled separately
+// in phase 2 via mmio_regions.
 type VirtMemRegion = LinkedList<TruncatedMemoryRegion<VirtualAddress>>;
 type PhysMemRegion = LinkedList<TruncatedMemoryRegion<PhysicalAddress>>;
 
@@ -211,17 +214,15 @@ fn parse_memory_regions(
         LinkedList::new();
 
     while let Some(region) = memory_regions.pop_front() {
-        if region.typ() == MemoryRegionType::Reserved || region.typ() == MemoryRegionType::Mmio {
+        if region.typ() == MemoryRegionType::Reserved {
             if PhysicalAddress::from_virtual_address(region.start()).is_ok() {
-                if region.typ() != MemoryRegionType::Usable {
-                    match TruncatedMemoryRegion::from_virtual_memory_region(region.clone()) {
-                        Ok(region) => physical_memory_regions.push_back(region),
-                        // TODO: make memory regions a truncated list so round logic is handled when region is created.
-                        Err(err) => panic!(
-                            "failed to create physical memory region {:?} (error={:?})",
-                            region, err
-                        ),
-                    }
+                match TruncatedMemoryRegion::from_virtual_memory_region(region.clone()) {
+                    Ok(region) => physical_memory_regions.push_back(region),
+                    // TODO: make memory regions a truncated list so round logic is handled when region is created.
+                    Err(err) => panic!(
+                        "failed to create physical memory region {:?} (error={:?})",
+                        region, err
+                    ),
                 }
                 virtual_memory_regions
                     .push_back(TruncatedMemoryRegion::from_memory_region(region)?);
@@ -258,13 +259,47 @@ pub fn init(
         &mmio_regions,
     )?;
 
-    // FIXME: the initial list of kernel pages should be spit out by the initialization.
+    // Phase 1: map memory regions using BSS boot allocator.
     let (kernel_pages, kernel_page_tables): (
         LinkedList<KernelPage>,
-        LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
-    ) = (LinkedList::new(), virt::init(virtual_memory_regions, mmio_regions)?);
+        LinkedList<(PageTableAligned<VirtualAddress>, PageTableStorage)>,
+    ) = (LinkedList::new(), virt::init(virtual_memory_regions)?);
 
     let mut vmem: Vmem = VirtMemoryManager::init(kernel_pages, kernel_page_tables, physman)?;
+
+    // Phase 2: map MMIO regions using the kernel page pool allocator.
+    // PTs for [0, MEMORY_SIZE) are pre-installed with empty PTEs, so MMIO pages
+    // within that range will have their PTEs filled without conflict.
+    for region in mmio_regions.iter() {
+        info!("mapping mmio: {:?}", region);
+        let mut raw_vaddr: usize = region.start().into_raw_value();
+        let end: usize = raw_vaddr + (region.size() - 1);
+
+        while raw_vaddr < end {
+            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
+            let mmio_addr: VirtualAddress = VirtualAddress::from_raw_value(raw_vaddr);
+            // FIXME: ensure safety here.
+            let phys_addr: PhysicalAddress =
+                unsafe { PhysicalAddress::from_mmio_address(mmio_addr)? };
+            let frame: FrameAddress = FrameAddress::new(PageAligned::from_address(phys_addr)?);
+
+            let page_table_allocator = || {
+                let kpage: KernelPage = {
+                    // SAFETY: the memory manager is initialized and access is synchronized.
+                    let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+                    mm.alloc_kpage(true)?
+                };
+                Ok(PageTableStorage::KernelPage(kpage))
+            };
+
+            vmem.map_mmio_page(frame, vaddr, page_table_allocator)?;
+
+            match raw_vaddr.checked_add(mem::PAGE_SIZE) {
+                Some(next) => raw_vaddr = next,
+                None => break,
+            };
+        }
+    }
 
     // Map virtual memory regions that lie outside the physical memory.
     while let Some(region) = other_virtual_memory_regions.pop_front() {
@@ -291,9 +326,7 @@ pub fn init(
                         let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
                         mm.alloc_kpage(true)?
                     };
-                    let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
-                    let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
-                    Ok(page_table)
+                    Ok(PageTableStorage::KernelPage(kpage))
                 };
 
                 vmem.map_kpage(kpage, vaddr, page_table_allocator)?;

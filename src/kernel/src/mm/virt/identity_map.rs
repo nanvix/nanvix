@@ -53,7 +53,6 @@ use ::arch::{
     },
 };
 use ::core::sync::atomic::{
-    AtomicU32,
     AtomicUsize,
     Ordering,
 };
@@ -67,36 +66,28 @@ use arch::mem::PAGE_ALIGNMENT;
 //==================================================================================================
 
 /// Physical address of the kernel page directory (set once during boot by [`init`]).
+///
+/// On x86, this is the single PD.
+/// On x86_64, this is the kernel PD (PDPT\[0\] entry), not the PML4.
 static KERNEL_PD_PADDR: AtomicUsize = AtomicUsize::new(0);
 
-/// Raw value of the kernel CR3 register for address-space switching.
-static KERNEL_CR3: AtomicU32 = AtomicU32::new(0);
+/// Physical address of the kernel root paging structure for CR3 switching.
+///
+/// On x86, this equals `KERNEL_PD_PADDR` (PD is the root).
+/// On x86_64, this is the PML4 address (the root that CR3 loads).
+static KERNEL_CR3: AtomicUsize = AtomicUsize::new(0);
 
 //==================================================================================================
 // Public API
 //==================================================================================================
 
+/// Records the kernel PD and CR3 physical addresses. Called once from `PageMap::new_boot()`.
 ///
-/// # Description
-///
-/// Records the kernel page-directory and root paging-structure physical addresses used by the
-/// lazy identity mapper.
-///
-/// # Parameters
-///
-/// - `kernel_pd_paddr`: Physical address of the kernel page directory.
-/// - `kernel_cr3`: CR3 register value for the kernel root paging structure used for CR3 switching.
-///
-/// # Returns
-///
-/// This function returns no value.
-///
-/// # Notes
-///
-/// On x86, `kernel_cr3` equals `kernel_pd_paddr` (the page directory is the CR3 root).
-pub(crate) fn init(kernel_pd_paddr: PageDirectoryAddress, kernel_cr3: Cr3Register) {
+/// On x86, `kernel_cr3` equals `kernel_pd_paddr` (PD is the root paging structure).
+/// On x86_64, `kernel_cr3` is the PML4 address.
+pub(crate) fn init(kernel_pd_paddr: PageDirectoryAddress, kernel_cr3: impl Into<usize>) {
     KERNEL_PD_PADDR.store(kernel_pd_paddr.into_raw_value(), Ordering::Release);
-    KERNEL_CR3.store(kernel_cr3.into_u32(), Ordering::Release);
+    KERNEL_CR3.store(kernel_cr3.into(), Ordering::Release);
 }
 
 ///
@@ -352,7 +343,7 @@ fn with_kernel_address_space<F, R>(f: F) -> R
 where
     F: FnOnce() -> R,
 {
-    let kernel_cr3_raw: u32 = KERNEL_CR3.load(Ordering::Acquire);
+    let kernel_cr3_raw: usize = KERNEL_CR3.load(Ordering::Acquire);
     // Check if the kernel CR3 has been initialized.
     if kernel_cr3_raw == 0 {
         return f();
@@ -362,9 +353,9 @@ where
     let old_cr3: Cr3Register = unsafe { Cr3Register::read() };
 
     // If we are already in the kernel address space, no switch needed.
-    // SAFETY: `kernel_cr3_raw` was produced by `Cr3Register::into_u32()` during `init()`,
-    // so it is guaranteed to have no reserved bits set.
-    let kernel_cr3: Cr3Register = unsafe { Cr3Register::from_u32_unchecked(kernel_cr3_raw) };
+    // SAFETY: `kernel_cr3_raw` was stored from a valid root-paging-structure address during
+    // `init()`, so the truncation to u32 is correct for addresses below 4 GiB.
+    let kernel_cr3: Cr3Register = unsafe { Cr3Register::from_u32_unchecked(kernel_cr3_raw as u32) };
     if old_cr3 == kernel_cr3 {
         return f();
     }

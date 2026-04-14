@@ -7,19 +7,19 @@
 
 use crate::{
     hal::{
-        arch::x86::mem::mmu::page_table::PageTable,
+        arch::x86::mem::mmu::PAGE_MAP_CLONE_PAGES,
         mem::{
             AccessPermission,
             Address,
             PageAligned,
-            PageTableAddress,
+            PageTableAligned,
             VirtualAddress,
         },
     },
     mm::{
         elf::{
             self,
-            Elf32Fhdr,
+            ElfClass,
         },
         phys::{
             KernelFrame,
@@ -52,6 +52,12 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+
+//==================================================================================================
+// Static Assertions
+//==================================================================================================
+
+::static_assert::assert_eq!(PAGE_MAP_CLONE_PAGES > 0);
 
 //==================================================================================================
 // Constants
@@ -99,7 +105,7 @@ impl VirtMemoryManager {
     ///
     pub fn init(
         kernel_pages: LinkedList<KernelPage>,
-        kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
+        kernel_page_tables: LinkedList<(PageTableAligned<VirtualAddress>, PageTableStorage)>,
         physman: PhysMemoryManager,
     ) -> Result<Vmem, Error> {
         // Check if the memory manager is already initialized.
@@ -178,7 +184,7 @@ impl VirtMemoryManager {
     ///
     fn new(
         kernel_pages: LinkedList<KernelPage>,
-        kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
+        kernel_page_tables: LinkedList<(PageTableAligned<VirtualAddress>, PageTableStorage)>,
         physman: PhysMemoryManager,
     ) -> Result<(Vmem, Self), Error> {
         let root: Vmem = Vmem::new(kernel_pages, kernel_page_tables)?;
@@ -196,13 +202,12 @@ impl VirtMemoryManager {
 
     /// Creates a new virtual address space, based on root.
     pub fn new_vmem(&self, vmem: &Vmem) -> Result<Vmem, Error> {
-        // Allocate a kernel page for the new page directory.
-        let pgdir_page: KernelPage = match self.physman.try_borrow_mut() {
+        // Allocate kernel pages for the new page map (page directory + arch-specific tables).
+        let pages: LinkedList<KernelPage> = match self.physman.try_borrow_mut() {
             Ok(mut physman) => {
-                // The page directory initialization logic (PageDirectory::new/clean)
-                // will zero the page; no need to clear the frame here.
-                let kframe: KernelFrame = physman.alloc_kernel_frame(false)?;
-                KernelPage::new(kframe)
+                let kframes: Vec<KernelFrame> =
+                    physman.alloc_many_kernel_frames(true, PAGE_MAP_CLONE_PAGES)?;
+                kframes.into_iter().map(KernelPage::new).collect()
             },
             Err(_) => {
                 let reason: &str = "failed to borrow physical memory manager";
@@ -211,13 +216,9 @@ impl VirtMemoryManager {
             },
         };
 
-        let new_vmem: Vmem = Vmem::clone(vmem, pgdir_page)?;
+        let new_vmem: Vmem = Vmem::clone(vmem, pages)?;
 
-        trace!(
-            "new_vmem={:?}, old_vmem={:?}",
-            new_vmem.pgdir().physical_address(),
-            vmem.pgdir().physical_address()
-        );
+        trace!("new_vmem={:?}, old_vmem={:?}", new_vmem, vmem);
 
         Ok(new_vmem)
     }
@@ -305,9 +306,7 @@ impl VirtMemoryManager {
                 },
             };
             let kpage: KernelPage = KernelPage::new(kframe);
-            let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
-            let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
-            Ok(page_table)
+            Ok(PageTableStorage::KernelPage(kpage))
         };
 
         let uframes: Vec<UserFrame> = match self.physman.try_borrow_mut() {
@@ -448,12 +447,15 @@ impl VirtMemoryManager {
         Ok(pages)
     }
 
-    /// Load an ELF image into a virtual address space.
+    /// Load an ELF image (32-bit or 64-bit) into a virtual address space.
     pub fn load_elf(
         &mut self,
         vmem: &mut Vmem,
-        elf: &Elf32Fhdr,
+        elf_class: ElfClass,
     ) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
-        elf::elf32_load(self, vmem, elf)
+        match elf_class {
+            ElfClass::Elf32(elf) => elf::elf32_load(self, vmem, elf),
+            ElfClass::Elf64(elf) => elf::elf64_load(self, vmem, elf),
+        }
     }
 }

@@ -84,7 +84,9 @@ pub unsafe fn wait_cond(
     // Unpack kernel call arguments.
     let cond_addr: ConditionAddress = ConditionAddress::from(cond_addr);
     let mutex_addr: MutexAddress = MutexAddress::from(mutex_addr);
-    let alarm: Option<SystemTime> = if timeout_s == usize::MAX && timeout_ns == usize::MAX {
+    let alarm: Option<SystemTime> = if timeout_s == u32::MAX as usize
+        && timeout_ns == u32::MAX as usize
+    {
         None
     } else {
         match SystemTime::new(timeout_s as u64, timeout_ns as u32) {

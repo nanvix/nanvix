@@ -14,6 +14,7 @@ mod pg;
 mod phys;
 #[cfg(target_arch = "x86_64")]
 mod pml4;
+mod pt;
 
 #[cfg(test)]
 mod test;
@@ -37,6 +38,8 @@ pub use pg::*;
 pub use phys::*;
 #[cfg(target_arch = "x86_64")]
 pub use pml4::*;
+#[allow(unused_imports)]
+pub use pt::*;
 
 //==================================================================================================
 // Standalone Functions
