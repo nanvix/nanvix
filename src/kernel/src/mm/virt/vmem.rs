@@ -97,8 +97,35 @@ pub struct Vmem {
 }
 
 impl Vmem {
+    /// Allocates a fresh 4KB scratch page and returns it wrapped as a
+    /// [`crate::hal::mem::FrameAddress`] so callers (frame allocator,
+    /// kpool) don't each have to repeat the GPA-to-FrameAddress dance.
+    #[cfg(feature = "hyperlight")]
+    #[allow(dead_code)]
+    pub fn alloc_scratch_frame() -> Result<crate::hal::mem::FrameAddress, Error> {
+        use crate::hal::mem::{FrameAddress, PageAligned, PhysicalAddress, VirtualAddress};
+        let gpa: u32 = Self::alloc_scratch_page();
+        if gpa == 0 {
+            return Err(Error::new(
+                ErrorCode::OutOfMemory,
+                "scratch bump allocator exhausted",
+            ));
+        }
+        let phys: PhysicalAddress = unsafe {
+            PhysicalAddress::from_mmio_address(VirtualAddress::from_raw_value(gpa as usize))?
+        };
+        let aligned: PageAligned<PhysicalAddress> = PageAligned::from_address(phys)?;
+        Ok(FrameAddress::new(aligned))
+    }
+
     /// Allocates a fresh 4KB page from the scratch bump allocator.
     /// Returns the GPA of the new page, or 0 if out of scratch memory.
+    ///
+    /// The cursor lives in the host-published slot inside scratch itself
+    /// (at `ALLOCATOR_GVA = 0xFFFFFFF0`). Keeping it in scratch (rather
+    /// than kernel BSS) avoids a bootstrap recursion on HL with
+    /// PTE_COW-from-boot: a BSS-hosted cursor would CoW on first write,
+    /// and the CoW handler itself needs to call `alloc_scratch_page`.
     #[cfg(feature = "hyperlight")]
     pub fn alloc_scratch_page() -> u32 {
         const ALLOCATOR_GVA: u32 = 0xFFFF_FFF0;
