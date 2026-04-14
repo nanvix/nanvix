@@ -15,11 +15,6 @@
 # Memory Layout
 #==================================================================================================
 
-# Total size of physical memory (in bytes).
-# Constraints
-# - Must be large enough to hold the kernel image plus the kernel pool.
-memory_size = 134217728
-
 # Number of processors.
 num_processors = 1
 

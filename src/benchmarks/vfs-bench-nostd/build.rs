@@ -119,7 +119,7 @@ fn main() {
     generate_dense_fat_image(&img_path, build_utils::memory_size() / 2);
 
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=build/kernel_config.toml");
+    println!("cargo:rerun-if-env-changed=MEMORY_SIZE_BYTES");
 }
 
 //==================================================================================================

@@ -56,38 +56,18 @@ pub fn find_workspace_root() -> PathBuf {
 ///
 /// # Description
 ///
-/// Returns the `memory_size` value (in bytes) from `build/kernel_config.toml`.
-/// The file is located relative to the workspace root. Both decimal and `0x`-prefixed hexadecimal
-/// values are accepted.
+/// Returns the `memory_size` value (in bytes) from the `MEMORY_SIZE_BYTES` environment variable
+/// exported by the Makefile.
 ///
 /// # Returns
 ///
 /// The memory size in bytes.
 ///
 pub fn memory_size() -> usize {
-    let root = find_workspace_root();
-    let toml_path = root.join("build/kernel_config.toml");
-    let contents = fs::read_to_string(&toml_path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", toml_path.display()));
-    for line in contents.lines() {
-        let line = line.trim();
-        if line.starts_with('#') || line.is_empty() {
-            continue;
-        }
-        if let Some(rest) = line.strip_prefix("memory_size") {
-            let rest = rest
-                .trim()
-                .strip_prefix('=')
-                .expect("malformed memory_size line")
-                .trim();
-            return if let Some(hex) = rest.strip_prefix("0x").or_else(|| rest.strip_prefix("0X")) {
-                usize::from_str_radix(hex, 16).expect("bad hex memory_size")
-            } else {
-                rest.parse().expect("bad decimal memory_size")
-            };
-        }
-    }
-    panic!("memory_size not found in {}", toml_path.display());
+    let val: String = ::std::env::var("MEMORY_SIZE_BYTES")
+        .expect("MEMORY_SIZE_BYTES env var is required (set MEMORY_SIZE in the Makefile)");
+    val.parse()
+        .unwrap_or_else(|_| panic!("Invalid MEMORY_SIZE_BYTES value: '{val}'"))
 }
 
 //==================================================================================================
