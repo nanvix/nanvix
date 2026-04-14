@@ -27,9 +27,9 @@ use std::{
 /// Minimum image size in bytes (1 MiB).
 const MIN_IMAGE_SIZE: u64 = 1024 * 1024;
 
-/// Extra headroom added to the computed image size to leave free space for
-/// guest-created temporary files at runtime.
-const HEADROOM_FACTOR: f64 = 2.0;
+/// Extra headroom added to the computed image size to leave free space for guest-created temporary
+/// files at runtime.
+const HEADROOM_FACTOR: f64 = 1.5;
 
 /// Exit code for invalid command-line usage.
 const EXIT_USAGE: i32 = 1;
