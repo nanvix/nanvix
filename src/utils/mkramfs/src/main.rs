@@ -73,7 +73,7 @@ struct FileEntry {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    let (output, size_override, source_dir) = match parse_args(&args) {
+    let (output, size_override, headroom, source_dir) = match parse_args(&args) {
         Ok(v) => v,
         Err(msg) => {
             eprintln!("error: {msg}");
@@ -87,7 +87,8 @@ fn main() {
     let image_size: u64 = match size_override {
         Some(s) => s,
         None => {
-            let computed: u64 = (content_size as f64 * HEADROOM_FACTOR) as u64;
+            let factor: f64 = headroom.unwrap_or(HEADROOM_FACTOR);
+            let computed: u64 = (content_size as f64 * factor) as u64;
             computed.max(MIN_IMAGE_SIZE)
         },
     };
@@ -250,10 +251,11 @@ fn dir_size(dir: &Path) -> u64 {
 
 /// Parses command-line arguments.
 ///
-/// Returns `(output_path, optional_size, source_dir)`.
-fn parse_args(args: &[String]) -> Result<(PathBuf, Option<u64>, PathBuf), String> {
+/// Returns `(output_path, optional_size, optional_headroom, source_dir)`.
+fn parse_args(args: &[String]) -> Result<(PathBuf, Option<u64>, Option<f64>, PathBuf), String> {
     let mut output: Option<PathBuf> = None;
     let mut size: Option<u64> = None;
+    let mut headroom: Option<f64> = None;
     let mut source: Option<PathBuf> = None;
     let mut i: usize = 1;
 
@@ -279,6 +281,19 @@ fn parse_args(args: &[String]) -> Result<(PathBuf, Option<u64>, PathBuf), String
                 }
                 size = Some(bytes);
             },
+            "-f" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("-f requires an argument".into());
+                }
+                let factor: f64 = args[i]
+                    .parse()
+                    .map_err(|_| format!("invalid headroom factor: {}", args[i]))?;
+                if factor < 1.0 {
+                    return Err("headroom factor must be at least 1.0".into());
+                }
+                headroom = Some(factor);
+            },
             "-h" | "--help" => {
                 return Err("help requested".into());
             },
@@ -302,21 +317,25 @@ fn parse_args(args: &[String]) -> Result<(PathBuf, Option<u64>, PathBuf), String
         return Err(format!("{} is not a directory", source.display()));
     }
 
-    Ok((output, size, source))
+    Ok((output, size, headroom, source))
 }
 
 /// Prints usage information.
 fn usage(program: &str) {
-    eprintln!("Usage: {program} -o <output> [-s <size>] <source-dir>");
+    eprintln!("Usage: {program} -o <output> [-s <size>] [-f <factor>] <source-dir>");
     eprintln!();
     eprintln!("Creates a FAT32 RAM filesystem image from a host directory.");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  -o <output>      Output image file path (required)");
     eprintln!("  -s <size>        Image size in bytes (default: auto-calculated)");
+    eprintln!(
+        "  -f <factor>      Headroom factor for auto-calculated size (default: {HEADROOM_FACTOR})"
+    );
     eprintln!("  -h, --help       Show this help message");
     eprintln!();
     eprintln!("Examples:");
     eprintln!("  {program} -o rootfs.img ./rootfs-seed/");
     eprintln!("  {program} -o rootfs.img -s 2097152 ./rootfs-seed/");
+    eprintln!("  {program} -o rootfs.img -f {HEADROOM_FACTOR} ./rootfs-seed/");
 }
