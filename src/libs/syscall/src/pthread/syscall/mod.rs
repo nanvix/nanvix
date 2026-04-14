@@ -42,10 +42,14 @@ use ::spin::{
 };
 use ::sys::{
     error::Error,
-    kcall::pm::{
-        create_thread,
-        exit_thread,
-        join_thread,
+    kcall::{
+        arch,
+        pm::{
+            create_thread,
+            exit_thread,
+            gettid,
+            join_thread,
+        },
     },
     mm::VirtualAddress,
     pm::{
@@ -53,12 +57,16 @@ use ::sys::{
         ThreadIdentifier,
     },
 };
+use ::sysalloc::tda::{
+    TDA_TID_OFFSET,
+    TDA_TID_UNSET,
+};
+use ::sysapi::sys_types::pthread_t;
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-use ::sysapi::sys_types::pthread_t;
 pub use cond::*;
 pub use mutex::*;
 pub use pthread_attr_destroy::*;
@@ -204,8 +212,38 @@ pub fn pthread_exit(retval: usize) -> Result<!, Error> {
 /// - The thread identifier returned by the kernel is not valid.
 ///
 pub fn pthread_self() -> pthread_t {
-    ::sys::kcall::pm::gettid()
-        .expect("a thread must be able to get its own identifier")
+    // Fast path: read the cached thread ID from the TDA via segment register.
+    //
+    // Safety: `is_initialized()` is process-wide but sound here because:
+    // - It is set only after `set_thread_data_area()` succeeds (main thread init).
+    // - Child threads always have a valid TDA configured by the kernel before first execution.
+    // - `cleanup()` resets the flag before clearing the segment base and then diverges.
+    if ::sysalloc::tda::is_initialized() {
+        let tid: u32 = unsafe { arch::read_tda_u32(TDA_TID_OFFSET as u32) };
+
+        // Check if the TDA slot contains a valid thread ID.
+        if tid != TDA_TID_UNSET {
+            return tid as pthread_t;
+        }
+
+        // Cache miss: the TDA slot still holds the TDA_TID_UNSET sentinel because tda::alloc()
+        // cannot know the child's TID at allocation time. Resolve via kcall and cache for future
+        // calls.
+        let real_tid: pthread_t = gettid()
+            .expect("pthread_self(): gettid kcall failed (TDA cache-miss path)")
+            .try_into()
+            .expect("pthread_self(): invalid thread identifier from kernel (TDA cache-miss path)");
+
+        unsafe {
+            arch::write_tda_u32(TDA_TID_OFFSET as u32, real_tid);
+        }
+
+        return real_tid;
+    }
+
+    // Fallback: TDA not yet initialized (early startup).
+    gettid()
+        .expect("pthread_self(): gettid kcall failed (early-startup path)")
         .try_into()
-        .expect("thread identifiers returned by the kernel must be valid")
+        .expect("pthread_self(): invalid thread identifier from kernel (early-startup path)")
 }
