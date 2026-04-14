@@ -670,10 +670,18 @@ jobs:
         shell: pwsh
         run: |
           # Prevent Defender from quarantining unsigned executables extracted
-          # from the build artifact.
+          # from the build artifact. If the Defender service is not running
+          # (error 0x800106ba on some runner images), the exclusion is
+          # unnecessary — skip gracefully.
           $binDir = Join-Path $env:GITHUB_WORKSPACE "bin"
-          Add-MpPreference -ExclusionPath $binDir
-          Write-Host "Added Defender exclusion for $binDir"
+          try {
+            Add-MpPreference -ExclusionPath $binDir
+            Write-Host "Added Defender exclusion for $binDir"
+          } catch {
+            $errorMessage = $_.Exception.Message
+            Write-Host "::warning::Could not add Defender exclusion: $errorMessage"
+            Write-Host "Full Defender exclusion error: $_"
+          }
 
       - name: "Verify Build Artifacts"
         shell: pwsh
@@ -825,9 +833,17 @@ jobs:
       - name: "Exclude bin/ from Windows Defender"
         shell: pwsh
         run: |
+          # If the Defender service is not running (error 0x800106ba on some
+          # runner images), the exclusion is unnecessary — skip gracefully.
           $binDir = Join-Path $env:GITHUB_WORKSPACE "bin"
-          Add-MpPreference -ExclusionPath $binDir
-          Write-Host "Added Defender exclusion for $binDir"
+          try {
+            Add-MpPreference -ExclusionPath $binDir
+            Write-Host "Added Defender exclusion for $binDir"
+          } catch {
+            $errorMessage = $_.Exception.Message
+            Write-Host "::warning::Could not add Defender exclusion: $errorMessage"
+            Write-Host "Full Defender exclusion error: $_"
+          }
 
       - name: "Check Windows Hypervisor Platform"
         id: whp-check
