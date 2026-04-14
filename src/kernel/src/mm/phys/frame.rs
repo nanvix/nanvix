@@ -1,213 +1,56 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//! Platform-agnostic facade over the frame allocator. The inner state
+//! type lives in [`crate::hal::platform::frame::Inner`] (per platform);
+//! this module owns it directly (no `Rc<RefCell<_>>` here — the
+//! allocator is single-owner: the upool consumes it during init and
+//! never shares the handle).
+
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::{
-    collections::{
-        Bitmap,
-        RawArray,
-    },
-    hal::mem::{
+use crate::hal::{
+    mem::{
         FrameAddress,
         PageAligned,
         PhysicalAddress,
         TruncatedMemoryRegion,
     },
+    platform::frame::Inner,
 };
-use ::arch::mem::{
-    self,
-    paging::FrameNumber,
-};
-use ::config::constants;
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    mm::Address,
-};
+use ::sys::error::Error;
 
 //==================================================================================================
-// Structures
+// Frame Allocator
 //==================================================================================================
 
-///
-/// # Description
-///
-/// Frame allocator.
-///
 #[derive(Debug)]
-pub struct FrameAllocator {
-    /// A bitmap that keeps track of free/used frames.
-    bitmap: Bitmap,
-}
-
-//==================================================================================================
-// Implementations
-//==================================================================================================
+pub struct FrameAllocator(Inner);
 
 impl FrameAllocator {
-    ///
-    /// # Description
-    ///
-    /// Instantiates a frame allocator.
-    ///
-    /// # Parameters
-    ///
-    /// - `bitmap`: A bitmap to keeps track of free/used frames.
-    ///
-    pub fn new(bitmap: Bitmap) -> Self {
-        let frame_allocator: FrameAllocator = Self { bitmap };
-
-        info!(
-            "frame allocator capacity: {} frames, {} MB",
-            frame_allocator.bitmap.number_of_bits(),
-            frame_allocator.bitmap.number_of_bits() * mem::FRAME_SIZE / constants::MEGABYTE
-        );
-
-        frame_allocator
+    /// Initializes the underlying platform frame allocator.
+    pub fn init() -> Result<Self, Error> {
+        Ok(Self(Inner::new()?))
     }
 
-    pub fn from_raw_storage(storage: RawArray<u8>) -> Result<Self, Error> {
-        Ok(Self::new(Bitmap::from_raw_array(storage)?))
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Allocates a frame.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, the index of the allocated frame is returned. Upon failure, an error is
-    /// returned instead.
-    ///
     pub fn alloc(&mut self) -> Result<FrameAddress, Error> {
-        let frame_number: usize = match self.bitmap.alloc() {
-            Ok(frame_number) => frame_number,
-            Err(error) => {
-                error!("{error:?}");
-                return Err(error);
-            },
-        };
-        let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
-            Some(frame_number) => frame_number,
-            None => {
-                let reason: &str = "frame number is out of bounds";
-                error!("{reason:?}");
-                return Err(Error::new(ErrorCode::OutOfMemory, reason));
-            },
-        };
-
-        // Attempt to convert the frame number to a frame address.
-        match FrameAddress::from_frame_number(frame_number) {
-            Ok(frame_address) => Ok(frame_address),
-            Err(error) => {
-                error!("{error:?}");
-                Err(error)
-            },
-        }
+        self.0.alloc()
     }
 
-    ///
-    /// # Description
-    ///
-    /// Frees a frame that was previous allocated.
-    ///
-    /// # Parameters
-    ///
-    /// - `frame`: Index of the frame to free.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
-    ///
     pub fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
-        let frame_number: usize = frame.into_frame_number().into_raw_value();
-        match self.bitmap.clear(frame_number) {
-            Ok(()) => Ok(()),
-            Err(error) => {
-                error!("{error:?} (frame={frame:?})");
-                Err(error)
-            },
-        }
+        self.0.free(frame)
     }
 
-    ///
-    /// # Description
-    ///
-    /// Books a frame that was previously allocated.
-    ///
-    /// # Parameters
-    ///
-    /// - `phys_addr`: Physical address of the frame to book.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
-    ///
     pub fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
-        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
-        match self.bitmap.set(frame_number) {
-            Ok(()) => Ok(()),
-            Err(error) => {
-                error!("{error:?} (phys_addr={phys_addr:?})");
-                Err(error)
-            },
-        }
+        self.0.book(phys_addr)
     }
 
-    ///
-    /// # Description
-    ///
-    /// Allocates all frames in the range `[start, end]`.
-    ///
-    /// # Parameters
-    ///
-    /// - `start`: Start page frame address.
-    /// - `end`: End page frame address.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
-    ///
     pub fn alloc_range(
         &mut self,
         region: &TruncatedMemoryRegion<PhysicalAddress>,
     ) -> Result<(), Error> {
-        let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
-        let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
-
-        // Check if all frames in the range are free.
-        for index in start_frame_number..=end_frame_number {
-            match self.bitmap.test(index) {
-                Ok(false) => continue,
-                Ok(true) => {
-                    let conflicting_addr: usize = index * mem::FRAME_SIZE;
-                    let region_start: usize = region.start().into_raw_value();
-                    let region_end: usize = region_start.saturating_add(region.size());
-                    let reason: &str = "frame is already allocated";
-                    error!(
-                        "{} (frame={:#010x}, region_start={:#010x}, region_end={:#010x})",
-                        reason, conflicting_addr, region_start, region_end
-                    );
-                    return Err(Error::new(ErrorCode::OutOfMemory, reason));
-                },
-                Err(err) => return Err(err),
-            }
-        }
-
-        // Book all frames in the range.
-        for index in start_frame_number..=end_frame_number {
-            if let Err(error) = self.bitmap.set(index) {
-                error!("{error:?} (region={region:?})");
-                return Err(error);
-            }
-        }
-
-        Ok(())
+        self.0.alloc_range(region)
     }
 }
