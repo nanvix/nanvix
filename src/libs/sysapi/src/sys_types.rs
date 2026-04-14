@@ -34,7 +34,6 @@ use ::config::memory_layout::{
 };
 use ::core::mem::size_of;
 
-#[cfg(target_pointer_width = "32")]
 use crate::sys_uio::iovec;
 
 //==================================================================================================
@@ -132,6 +131,7 @@ pub struct pthread_attr_t {
     pub detachstate: c_int,
 }
 // Serialized size may differ from sizeof on 64-bit targets due to alignment padding.
+// ::static_assert::assert_eq_size!(pthread_attr_t, pthread_attr_t::_SIZE);
 
 impl pthread_attr_t {
     /// Size of the `is_initialized` field.
@@ -196,6 +196,7 @@ pub struct pthread_condattr_t {
     clock: clock_t,
 }
 // Serialized size may differ from sizeof on 64-bit targets due to alignment padding.
+// ::static_assert::assert_eq_size!(pthread_condattr_t, pthread_condattr_t::SIZE);
 
 impl pthread_condattr_t {
     // Size of the `is_initialized` field.
@@ -350,6 +351,26 @@ impl msghdr {
         + Self::SIZE_OF_MSG_CONTROL
         + Self::SIZE_OF_MSG_CONTROLLEN
         + Self::SIZE_OF_MSG_FLAGS;
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+#[cfg(target_pointer_width = "64")]
+pub struct msghdr {
+    /// Optional address.
+    pub msg_name: *mut c_void,
+    // Size of the address.
+    pub msg_namelen: socklen_t,
+    // Scatter/gather array of message blocks.
+    pub msg_iov: *mut iovec,
+    /// Number of member in `msg_iov`.
+    pub msg_iovlen: c_int,
+    /// Ancillary data.
+    pub msg_control: *mut c_void,
+    /// Ancillary data buffer length.
+    pub msg_controllen: socklen_t,
+    /// Flags.
+    pub msg_flags: c_int,
 }
 
 /// Header for ancililary data data objects in msg_control buffer in `msghdr`.
