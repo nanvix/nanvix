@@ -173,13 +173,13 @@ pub(crate) fn phys_memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(
 ///
 /// # Description
 ///
-/// Fills a physical memory range using 32-bit stores, after ensuring that the full target range is
+/// Fills a physical memory range with a byte value, after ensuring that the full target range is
 /// identity-mapped in the kernel address space.
 ///
 /// # Parameters
 ///
 /// - `base`: Starting physical address of the target range.
-/// - `value`: Byte value to replicate across each 32-bit store.
+/// - `value`: Byte value to fill.
 /// - `size`: Number of bytes to fill.
 ///
 /// # Returns
@@ -191,22 +191,15 @@ pub(crate) fn phys_memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(
 /// - [`ErrorCode::BadAddress`]: The target range is invalid or overflows.
 /// - Any error propagated by the lazy identity mapper while preparing the range.
 ///
-/// # Safety Notes
-///
-/// Callers should ensure that `base` is 4-byte aligned and `size` is a multiple of 4 bytes.
-///
 /// # Notes
 ///
 /// If `size == 0`, this function is a no-op and returns success.
 ///
-pub(crate) fn phys_memset32(base: *mut u8, value: u8, size: usize) -> Result<(), Error> {
+pub(crate) fn phys_memset(base: *mut u8, value: u8, size: usize) -> Result<(), Error> {
     // Check if fill size is zero.
     if size == 0 {
         return Ok(());
     }
-
-    debug_assert!(size.is_multiple_of(::core::mem::size_of::<u32>()));
-    debug_assert!((base as usize).is_multiple_of(::core::mem::size_of::<u32>()));
 
     with_kernel_address_space(|| {
         let base_addr: PhysicalAddress = PhysicalAddress::from_raw_value(base as usize)?;
