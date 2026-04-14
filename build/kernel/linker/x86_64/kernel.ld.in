@@ -17,6 +17,11 @@ PAGE_SIZE = 0x1000;
 BOOT_ADDR = 0x00100000;
 
 /*
+ * Trampoline Address
+ */
+TRAMPOLINE_ADDR = 0x00008000;
+
+/*
  * Kernel Pool Base Address
  *
  * This value is set by build.rs from kpool_base in build/kernel_config.toml,
@@ -34,6 +39,17 @@ MACHINE_RESERVED = @MACHINE_RESERVED@;
 
 SECTIONS
 {
+	/* Pad with zeroes. */
+	.zero : {
+		. = . + TRAMPOLINE_ADDR;
+	} = 0
+
+	/* Trampoline section. */
+	.trampoline :
+	{
+		KEEP(*(.trampoline))
+	}
+
 	. = BOOT_ADDR;
 
 	__KERNEL_START = .;
