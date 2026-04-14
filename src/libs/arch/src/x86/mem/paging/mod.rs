@@ -20,6 +20,10 @@ pub use pde::*;
 pub use pte::*;
 pub use table::*;
 
+// Re-export x86_64-specific paging types so they are accessible at `arch::mem::paging::*`.
+#[cfg(target_arch = "x86_64")]
+pub use crate::x86_64::mem::paging::*;
+
 //==================================================================================================
 // Types
 //==================================================================================================
