@@ -899,21 +899,10 @@ impl Vmem {
                 }
 
                 // Copy memory from kernel space to user space.
-                // SAFETY: The following conditions are guaranteed:
-                // - `dst_frame.into_raw_value() + offset` is a valid user-space address for `copy_size` bytes.
-                // - `src.into_raw_value()` is a valid kernel-space address for `copy_size` bytes.
-                // - Both regions lie in physical memory.
                 let dst: *mut u8 = (dst_frame.into_raw_value() + offset) as *mut u8;
                 let src: *const u8 = src.into_raw_value() as *const u8;
-                let word_size: usize = ::core::mem::size_of::<u32>();
-                let copy_result: Result<(), Error> = if copy_size.is_multiple_of(word_size)
-                    && dst_phys_addr_raw.is_multiple_of(word_size)
-                    && src_phys_addr_raw.is_multiple_of(word_size)
-                {
-                    super::identity_map::phys_memcpy32(dst, src, copy_size)
-                } else {
-                    super::identity_map::phys_memcpy(dst, src, copy_size)
-                };
+                let copy_result: Result<(), Error> =
+                    super::identity_map::phys_memcpy(dst, src, copy_size);
                 if let Err(error) = copy_result {
                     let reason: &str = "failed to perform physical memory copy";
                     panic!(
