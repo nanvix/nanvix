@@ -15,7 +15,6 @@ mod upool;
 //==================================================================================================
 
 use crate::{
-    collections::RawArray,
     hal::mem::{
         Address,
         PageAligned,
@@ -47,15 +46,6 @@ pub use self::{
     manager::PhysMemoryManager,
     upool::UserFrame,
 };
-
-//==================================================================================================
-// Global Variables
-//==================================================================================================
-
-/// Frame allocator storage.
-static mut FRAME_ALLOCATOR_STORAGE: [u8; config::kernel::MEMORY_SIZE
-    / (mem::FRAME_SIZE * u8::BITS as usize)] =
-    [0; config::kernel::MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)];
 
 //==================================================================================================
 // Standalone Functions
@@ -119,15 +109,7 @@ pub fn init(
 ) -> Result<PhysMemoryManager, Error> {
     // Initialize frame allocator.
     info!("initializing the frame allocator ...");
-    let mut frame_allocator: FrameAllocator = {
-        // Safety: the frame allocator storage is valid and has a static lifetime.
-        let storage: RawArray<u8> = unsafe {
-            let (ptr, len): (*mut u8, usize) =
-                (FRAME_ALLOCATOR_STORAGE.as_mut_ptr(), FRAME_ALLOCATOR_STORAGE.len());
-            RawArray::from_raw_parts(ptr, len)?
-        };
-        FrameAllocator::from_raw_storage(storage)?
-    };
+    let mut frame_allocator: FrameAllocator = FrameAllocator::init()?;
     book_physical_memory_regions(&mut frame_allocator, physical_memory_regions)?;
 
     book_mmio_regions(&mut frame_allocator, mmio_regions)?;

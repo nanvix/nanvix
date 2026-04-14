@@ -1,19 +1,22 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//! Platform-agnostic facade over the kernel page pool. The inner state
+//! type lives in [`crate::hal::platform::kpool::Inner`] (per platform);
+//! this module wraps it in the shared `Rc<RefCell<_>>` shape that
+//! callers and `KernelFrame::Drop` rely on for safe re-entrant access.
+
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::{
-    collections::Bitmap,
-    hal::mem::{
-        Address,
+use crate::hal::{
+    mem::{
         FrameAddress,
-        PageAligned,
         PhysicalAddress,
         TruncatedMemoryRegion,
     },
+    platform::kpool::Inner,
 };
 use ::alloc::{
     rc::Rc,
@@ -30,105 +33,17 @@ use ::core::{
 use ::sys::error::Error;
 
 //==================================================================================================
-// Kernel Page Pool Inner
-//==================================================================================================
-
-#[derive(Debug)]
-struct KpoolInner {
-    /// Size of the kernel pool.
-    region: TruncatedMemoryRegion<PhysicalAddress>,
-    /// Bitmap of free pages.
-    bitmap: Bitmap,
-}
-
-impl KpoolInner {
-    fn new(region: TruncatedMemoryRegion<PhysicalAddress>) -> Result<Self, Error> {
-        trace!("region={region:?}");
-        debug_assert_eq!(
-            region.size() % mem::PAGE_SIZE,
-            0,
-            "kernel pool size must be a multiple of page size"
-        );
-        let bitmap: Bitmap = Bitmap::new(region.size() / (mem::PAGE_SIZE))?;
-        Ok(Self { region, bitmap })
-    }
-
-    fn alloc(&mut self) -> Result<FrameAddress, Error> {
-        let index: usize = match self.bitmap.alloc() {
-            Ok(index) => index,
-            Err(error) => {
-                error!("{error:?}");
-                return Err(error);
-            },
-        };
-        let addr: usize = self.region.start().into_raw_value() + index * mem::PAGE_SIZE;
-        Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(addr)?)?))
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Allocates a contiguous range of pages in the kernel page pool.
-    ///
-    /// # Parameters
-    ///
-    /// - `count`: Number of frames to allocate.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, a vector of page-aligned addresses is returned. Upon failure, an error code is
-    /// returned instead.
-    ///
-    fn alloc_range(&mut self, count: usize) -> Result<Vec<FrameAddress>, Error> {
-        // Attempt to allocate a range of pages.
-        let index: usize = match self.bitmap.alloc_range(count) {
-            Ok(index) => index,
-            Err(error) => {
-                error!("{error:?} (count={count})");
-                return Err(error);
-            },
-        };
-
-        // Create a vector of page-aligned addresses.
-        let base_addr: usize = self.region.start().into_raw_value() + index * mem::PAGE_SIZE;
-        let mut pages: Vec<FrameAddress> = Vec::new();
-        for i in 0..count {
-            let addr: usize = base_addr + i * mem::PAGE_SIZE;
-            let page: FrameAddress = FrameAddress::new(PageAligned::from_address(
-                PhysicalAddress::from_raw_value(addr)?,
-            )?);
-            pages.push(page);
-        }
-
-        Ok(pages)
-    }
-
-    /// Frees a page in the kernel pool.
-    fn free(&mut self, addr: FrameAddress) -> Result<(), Error> {
-        let index: usize =
-            (addr.into_raw_value() - self.region.start().into_raw_value()) / mem::PAGE_SIZE;
-        match self.bitmap.clear(index) {
-            Ok(()) => Ok(()),
-            Err(error) => {
-                error!("{error:?} (addr={addr:?})");
-                Err(error)
-            },
-        }
-    }
-}
-
-//==================================================================================================
-// Kernel Page
+// Kernel Frame
 //==================================================================================================
 
 #[derive(Debug)]
 pub struct KernelFrame {
-    kpool: Rc<RefCell<KpoolInner>>,
+    kpool: Rc<RefCell<Inner>>,
     base: FrameAddress,
 }
 
 impl KernelFrame {
-    fn new(kpool: Rc<RefCell<KpoolInner>>, base: FrameAddress) -> Self {
+    fn new(kpool: Rc<RefCell<Inner>>, base: FrameAddress) -> Self {
         Self { kpool, base }
     }
 
@@ -136,11 +51,6 @@ impl KernelFrame {
         self.base
     }
 
-    ///
-    /// # Description
-    ///
-    /// Clears the target kernel page.
-    ///
     fn clear(&mut self) {
         self.deref_mut().fill(0);
     }
@@ -167,7 +77,7 @@ impl DerefMut for KernelFrame {
 impl Drop for KernelFrame {
     fn drop(&mut self) {
         if let Err(e) = self.kpool.borrow_mut().free(self.base) {
-            error!("failed to free kernel page pool: {:?}", e)
+            error!("failed to free kernel page pool: {e:?}");
         }
     }
 }
@@ -178,30 +88,16 @@ impl Drop for KernelFrame {
 
 #[derive(Debug)]
 pub struct Kpool {
-    inner: Rc<RefCell<KpoolInner>>,
+    inner: Rc<RefCell<Inner>>,
 }
 
 impl Kpool {
-    /// Initializes the kernel pool.
     pub fn new(region: TruncatedMemoryRegion<PhysicalAddress>) -> Result<Self, Error> {
         Ok(Self {
-            inner: Rc::new(RefCell::new(KpoolInner::new(region)?)),
+            inner: Rc::new(RefCell::new(Inner::new(region)?)),
         })
     }
 
-    ///
-    /// # Description
-    ///
-    /// Allocates a kernel frame from the kernel frame pool.
-    ///
-    /// # Parameters
-    ///
-    /// - `clear`: Clear page?
-    ///
-    /// # Return Values
-    ///
-    /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
-    ///
     pub fn alloc(&mut self, clear: bool) -> Result<KernelFrame, Error> {
         let frame: FrameAddress = self.inner.borrow_mut().alloc()?;
         let mut kframe: KernelFrame = KernelFrame::new(self.inner.clone(), frame);
@@ -211,26 +107,8 @@ impl Kpool {
         Ok(kframe)
     }
 
-    ///
-    /// # Description
-    ///
-    /// Allocates a contiguous range of frames from the kernel frame pool.
-    ///
-    /// # Parameters
-    ///
-    /// - `clear`: Clear pages?
-    /// - `count`: Number of pages to allocate.
-    ///
-    /// # Return Values
-    ///
-    /// Upon success, a vector of kernel frames is returned. Upon failure, an error is returned
-    /// instead.
-    ///
     pub fn alloc_many(&mut self, clear: bool, count: usize) -> Result<Vec<KernelFrame>, Error> {
-        // Attempt to allocate pages.
         let mut kframes: Vec<FrameAddress> = self.inner.borrow_mut().alloc_range(count)?;
-
-        // Create a vector of kernel pages.
         let mut kpages: Vec<KernelFrame> = Vec::new();
         while let Some(kframe) = kframes.pop() {
             let mut kframe: KernelFrame = KernelFrame::new(self.inner.clone(), kframe);
@@ -239,7 +117,6 @@ impl Kpool {
             }
             kpages.push(kframe);
         }
-
         Ok(kpages)
     }
 }
