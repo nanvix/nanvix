@@ -79,7 +79,7 @@ pub static ARGC: AtomicI32 = AtomicI32::new(0);
 // Standalone Functions
 //==================================================================================================
 
-#[cfg(not(feature = "staticlib"))]
+#[cfg(all(not(feature = "staticlib"), target_arch = "x86"))]
 core::arch::global_asm!(
     r#"
     .extern _start
@@ -121,6 +121,9 @@ core::arch::global_asm!(
     1:  jmp 1b
     "#
 );
+
+#[cfg(all(not(feature = "staticlib"), target_arch = "x86_64"))]
+mod crt0_x86_64;
 
 ///
 /// # Description
