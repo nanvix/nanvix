@@ -1091,12 +1091,7 @@ impl Vmem {
         let dst: PageAligned<PhysicalAddress> = uframe.into_physical_address();
         let base: *mut u8 = dst.into_raw_value() as *mut u8;
 
-        // Safety:
-        // - `base` is obtained from `find_user_frame()`, which resolves a mapped user page,
-        //   so it points to a valid, writable physical memory location.
-        // - `base` is page-aligned, which satisfies the 4-byte alignment requirement.
-        // - `mem::PAGE_SIZE` is a multiple of 4 bytes, satisfying the size requirement.
-        super::identity_map::phys_memset32(base, value as u8, mem::PAGE_SIZE)?;
+        super::identity_map::phys_memset(base, value as u8, mem::PAGE_SIZE)?;
 
         Ok(())
     }
