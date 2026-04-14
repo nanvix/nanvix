@@ -2,5 +2,12 @@
 // Licensed under the MIT License.
 
 mod constants;
+mod fast_memcpy;
+mod fast_memset;
 mod hooks;
 mod start;
+
+pub(crate) use self::{
+    fast_memcpy::fast_memcpy,
+    fast_memset::fast_memset,
+};
