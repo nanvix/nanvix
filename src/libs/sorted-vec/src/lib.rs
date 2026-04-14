@@ -140,7 +140,6 @@ impl<T: Ord> SortedVec<T> {
     ///
     /// `Some(old_value)` if the value was already present, `None` otherwise.
     ///
-    #[must_use = "ignoring the return value may hide an unintended replacement"]
     pub fn insert(&mut self, value: T) -> Option<T> {
         match self.inner.binary_search(&value) {
             Ok(index) => {
@@ -167,7 +166,6 @@ impl<T: Ord> SortedVec<T> {
     ///
     /// `Some(removed_value)` if found, `None` otherwise.
     ///
-    #[must_use = "ignoring the return value may hide a failed removal"]
     pub fn remove(&mut self, value: &T) -> Option<T> {
         match self.inner.binary_search(value) {
             Ok(index) => Some(self.inner.remove(index)),
@@ -193,7 +191,6 @@ impl<T: Ord> SortedVec<T> {
     ///
     /// `Some(removed_value)` if found, `None` otherwise.
     ///
-    #[must_use = "ignoring the return value may hide a failed removal"]
     pub fn remove_by<K, F>(&mut self, key: &K, f: F) -> Option<T>
     where
         K: Ord,
