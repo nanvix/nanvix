@@ -13,8 +13,8 @@
 //! FIXME: temporary scaffolding. Replaced wholesale by the scratch-backed
 //! implementation when Nanvix-on-Hyperlight (CoW snapshot/restore) lands
 //! upstream; at that point `alloc()` draws from the scratch bump cursor
-//! and books frames via [`SparseBitmap::set_or_add_chunk`] instead of
-//! picking from the dense bitmap.
+//! and books frames via [`SparseBitmap::add_chunk`] + [`SparseBitmap::set`]
+//! instead of picking from the dense bitmap.
 
 //==================================================================================================
 // Imports

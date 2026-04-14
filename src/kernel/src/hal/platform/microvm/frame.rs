@@ -7,8 +7,8 @@
 //! frame range the allocator tracks. The typical configuration is one
 //! dense chunk at offset 0 covering the identity-mapped physical address
 //! range. Foreign-address registration is supported via
-//! [`SparseBitmap::set_or_add_chunk`] for callers that hand out frames
-//! outside the dense range.
+//! [`SparseBitmap::add_chunk`] + [`SparseBitmap::set`] for callers that
+//! hand out frames outside the dense range.
 
 //==================================================================================================
 // Imports
