@@ -20,11 +20,17 @@
 //==================================================================================================
 
 use super::page_table_allocator::PAGE_TABLE_ALLOCATOR;
-use crate::hal::mem::{
-    Address,
-    PageAligned,
-    PageDirectoryAddress,
-    PhysicalAddress,
+use crate::hal::{
+    arch::x86::{
+        fast_memcpy,
+        fast_memset,
+    },
+    mem::{
+        Address,
+        PageAligned,
+        PageDirectoryAddress,
+        PhysicalAddress,
+    },
 };
 use ::arch::{
     cpu::cr3::Cr3Register,
@@ -102,8 +108,8 @@ pub(crate) fn init(kernel_pd_paddr: PageDirectoryAddress, kernel_cr3: Cr3Registe
 ///
 /// # Description
 ///
-/// Copies bytes between two physical memory regions after ensuring that both ranges are
-/// identity-mapped in the kernel address space.
+/// Copies bytes between two memory regions, after ensuring that both ranges are identity-mapped in
+/// the kernel address space.
 ///
 /// # Parameters
 ///
@@ -124,7 +130,7 @@ pub(crate) fn init(kernel_pd_paddr: PageDirectoryAddress, kernel_cr3: Cr3Registe
 ///
 /// If `size == 0`, this function is a no-op and returns success.
 ///
-pub(crate) fn phys_memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(), Error> {
+pub(crate) fn memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(), Error> {
     // Check if copy size is zero.
     if size == 0 {
         return Ok(());
@@ -133,17 +139,23 @@ pub(crate) fn phys_memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(
     let dst_start: usize = dst as usize;
     let src_start: usize = src as usize;
     let dst_end: usize = dst_start.checked_add(size).ok_or_else(|| {
-        Error::new(ErrorCode::BadAddress, "phys_memcpy(): destination range overflows")
+        error!("memcpy(): destination range overflows (dst={dst_start:#x}, size={size:#x})");
+        Error::new(ErrorCode::BadAddress, "memcpy(): destination range overflows")
     })?;
     let src_end: usize = src_start.checked_add(size).ok_or_else(|| {
-        Error::new(ErrorCode::BadAddress, "phys_memcpy(): source range overflows")
+        error!("memcpy(): source range overflows (src={src_start:#x}, size={size:#x})");
+        Error::new(ErrorCode::BadAddress, "memcpy(): source range overflows")
     })?;
 
     // Check if copy ranges overlap.
     if (dst_start..dst_end).contains(&src_start) || (src_start..src_end).contains(&dst_start) {
+        error!(
+            "memcpy(): source and destination ranges overlap (dst={dst_start:#x}, \
+             src={src_start:#x}, size={size:#x})"
+        );
         return Err(Error::new(
             ErrorCode::BadAddress,
-            "phys_memcpy(): source and destination ranges overlap",
+            "memcpy(): source and destination ranges overlap",
         ));
     }
 
@@ -155,13 +167,10 @@ pub(crate) fn phys_memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(
         let (dst_start, dst_size) = page_aligned_cover(dst_addr, size)?;
         ensure_identity_mapped_range(dst_start, dst_size)?;
 
-        // SAFETY: both ranges are identity-mapped, so virtual == physical.
-        // Caller guarantees valid, non-overlapping physical ranges for `size` bytes.
-        // NOTE: use the intrinsic directly to avoid the debug null-pointer assertion in
-        // `core::ptr::copy_nonoverlapping`. Physical address 0 is a valid kernel address
-        // but becomes a null pointer when cast to `*const u8`.
+        // SAFETY: both `src` and `dst` are identity-mapped (virtual == physical) and
+        // valid for `size` bytes. The overlap check above guarantees non-overlapping ranges.
         unsafe {
-            core::intrinsics::copy_nonoverlapping(src, dst, size);
+            fast_memcpy(dst, src, size);
         }
         Ok(())
     })
@@ -170,93 +179,13 @@ pub(crate) fn phys_memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(
 ///
 /// # Description
 ///
-/// Copies bytes between two physical memory regions using 32-bit stores, after ensuring that both
-/// ranges are identity-mapped in the kernel address space.
-///
-/// # Parameters
-///
-/// - `dst`: Destination physical address.
-/// - `src`: Source physical address.
-/// - `size`: Number of bytes to copy.
-///
-/// # Returns
-///
-/// Upon success, empty is returned. Upon failure, an error is returned instead.
-///
-/// # Errors
-///
-/// - [`ErrorCode::BadAddress`]: One of the physical ranges is invalid or overflows.
-/// - Any error propagated by the lazy identity mapper while preparing the ranges.
-///
-/// # Safety Notes
-///
-/// Callers should ensure that `size` is a multiple of 4 bytes.
-///
-/// # Notes
-///
-/// If `size == 0`, this function is a no-op and returns success.
-///
-pub(crate) fn phys_memcpy32(dst: *mut u8, src: *const u8, size: usize) -> Result<(), Error> {
-    // Check if copy size is zero.
-    if size == 0 {
-        return Ok(());
-    }
-
-    let dst_start: usize = dst as usize;
-    let src_start: usize = src as usize;
-    let dst_end: usize = dst_start.checked_add(size).ok_or_else(|| {
-        Error::new(ErrorCode::BadAddress, "phys_memcpy32(): destination range overflows")
-    })?;
-    let src_end: usize = src_start.checked_add(size).ok_or_else(|| {
-        Error::new(ErrorCode::BadAddress, "phys_memcpy32(): source range overflows")
-    })?;
-
-    // Check if copy ranges overlap.
-    if (dst_start..dst_end).contains(&src_start) || (src_start..src_end).contains(&dst_start) {
-        return Err(Error::new(
-            ErrorCode::BadAddress,
-            "phys_memcpy32(): source and destination ranges overlap",
-        ));
-    }
-
-    debug_assert!(size.is_multiple_of(::core::mem::size_of::<u32>()));
-    debug_assert!((dst as usize).is_multiple_of(::core::mem::size_of::<u32>()));
-    debug_assert!((src as usize).is_multiple_of(::core::mem::size_of::<u32>()));
-
-    with_kernel_address_space(|| {
-        let src_addr: PhysicalAddress = PhysicalAddress::from_raw_value(src as usize)?;
-        let (src_start, src_size) = page_aligned_cover(src_addr, size)?;
-        ensure_identity_mapped_range(src_start, src_size)?;
-        let dst_addr: PhysicalAddress = PhysicalAddress::from_raw_value(dst as usize)?;
-        let (dst_start, dst_size) = page_aligned_cover(dst_addr, size)?;
-        ensure_identity_mapped_range(dst_start, dst_size)?;
-
-        // SAFETY: both ranges are identity-mapped, so virtual == physical.
-        // Caller guarantees valid, non-overlapping physical ranges and 4-byte aligned size.
-        // NOTE: use the intrinsic directly to avoid the debug null-pointer assertion in
-        // `core::ptr::copy_nonoverlapping`. Physical address 0 is a valid kernel address
-        // but becomes a null pointer when cast to `*const u32`.
-        unsafe {
-            core::intrinsics::copy_nonoverlapping(
-                src as *const u32,
-                dst as *mut u32,
-                size / core::mem::size_of::<u32>(),
-            );
-        }
-        Ok(())
-    })
-}
-
-///
-/// # Description
-///
-/// Fills a physical memory range using 32-bit stores, after ensuring that the full target range is
+/// Fills bytes in a memory range with a byte value, after ensuring that the full target range is
 /// identity-mapped in the kernel address space.
 ///
 /// # Parameters
 ///
 /// - `base`: Starting physical address of the target range.
-/// - `value`: Byte value to replicate across each 32-bit store.
+/// - `value`: Byte value to fill.
 /// - `size`: Number of bytes to fill.
 ///
 /// # Returns
@@ -268,41 +197,32 @@ pub(crate) fn phys_memcpy32(dst: *mut u8, src: *const u8, size: usize) -> Result
 /// - [`ErrorCode::BadAddress`]: The target range is invalid or overflows.
 /// - Any error propagated by the lazy identity mapper while preparing the range.
 ///
-/// # Safety Notes
-///
-/// Callers should ensure that `base` is 4-byte aligned and `size` is a multiple of 4 bytes.
-///
 /// # Notes
 ///
 /// If `size == 0`, this function is a no-op and returns success.
 ///
-pub(crate) fn phys_memset32(base: *mut u8, value: u8, size: usize) -> Result<(), Error> {
+pub(crate) fn memset(base: *mut u8, value: u8, size: usize) -> Result<(), Error> {
     // Check if fill size is zero.
     if size == 0 {
         return Ok(());
     }
 
-    debug_assert!(size.is_multiple_of(::core::mem::size_of::<u32>()));
-    debug_assert!((base as usize).is_multiple_of(::core::mem::size_of::<u32>()));
+    let base_start: usize = base as usize;
+    // Check if fill range overflows.
+    base_start.checked_add(size).ok_or_else(|| {
+        error!("memset(): target range overflows (base={base_start:#x}, size={size:#x})");
+        Error::new(ErrorCode::BadAddress, "memset(): target range overflows")
+    })?;
 
     with_kernel_address_space(|| {
         let base_addr: PhysicalAddress = PhysicalAddress::from_raw_value(base as usize)?;
         let (base_start, base_size) = page_aligned_cover(base_addr, size)?;
         ensure_identity_mapped_range(base_start, base_size)?;
 
-        // SAFETY: the range is identity-mapped, so virtual == physical.
-        // Caller guarantees a valid writable physical range, 4-byte aligned base and size.
-        // NOTE: use write_volatile to avoid the debug null-pointer assertion in
-        // `core::ptr::write`. Physical address 0 is a valid kernel address but becomes
-        // a null pointer when cast to `*mut u32`.
+        // SAFETY: `base` is identity-mapped (virtual == physical) and valid for
+        // writes of `size` bytes.
         unsafe {
-            let word: u32 = (value as u32) * 0x0101_0101;
-            let base_addr: usize = base as usize;
-            let num_words: usize = size / core::mem::size_of::<u32>();
-            for i in 0..num_words {
-                let addr: *mut u32 = (base_addr + i * core::mem::size_of::<u32>()) as *mut u32;
-                core::ptr::write_volatile(addr, word);
-            }
+            fast_memset(base, value, size);
         }
         Ok(())
     })

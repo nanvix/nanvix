@@ -12,7 +12,7 @@ mod page_table_allocator;
 mod vmem;
 
 #[cfg(feature = "hyperlight")]
-pub(crate) use identity_map::phys_memcpy;
+pub(crate) use identity_map::memcpy;
 
 //==================================================================================================
 // Imports
