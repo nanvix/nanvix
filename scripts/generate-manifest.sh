@@ -8,6 +8,9 @@
 #
 # Run './generate-manifest.sh --help' for usage information.
 #
+# Environment Variables:
+#   MEMORY_SIZE_BYTES - Memory size in bytes (required, exported by the Makefile).
+#
 # Arguments:
 #   $1 - output-file      Path to the manifest JSON file to generate.
 #   $2 - version          Release version string.
@@ -16,7 +19,6 @@
 #   $5 - deployment_mode  Deployment mode.
 #   $6 - build_mode       Build mode (debug or release).
 #   $7 - log_level        Log level.
-#   $8 - kernel-config    Path to the kernel configuration TOML file.
 #
 
 #===================================================================================================
@@ -51,7 +53,10 @@ print_help() {
     cat << EOF
 Generates a JSON manifest file with build metadata and git information.
 
-Usage: $0 <output-file> <version> <machine> <target> <deployment_mode> <build_mode> <log_level> <kernel-config>
+Usage: $0 <output-file> <version> <machine> <target> <deployment_mode> <build_mode> <log_level>
+
+Environment Variables:
+  MEMORY_SIZE_BYTES  Memory size in bytes (required, exported by the Makefile).
 
 Arguments:
   output-file      Path to the manifest JSON file to generate.
@@ -61,7 +66,6 @@ Arguments:
   deployment_mode  Deployment mode.
   build_mode       Build mode (debug or release).
   log_level        Log level.
-  kernel-config    Path to the kernel configuration TOML file.
 EOF
 }
 
@@ -82,9 +86,14 @@ if [[ "${1:-}" == "--help" ]]; then
     exit 0
 fi
 
-if [[ $# -ne 8 ]]; then
-    print_error "Expected 8 arguments, got $#."
+if [[ $# -ne 7 ]]; then
+    print_error "Expected 7 arguments, got $#."
     print_help >&2
+    exit 1
+fi
+
+if [[ -z "${MEMORY_SIZE_BYTES:-}" ]]; then
+    print_error "MEMORY_SIZE_BYTES environment variable is required but not set."
     exit 1
 fi
 
@@ -95,7 +104,6 @@ TARGET="$4"
 DEPLOYMENT_MODE="$5"
 BUILD_MODE="$6"
 LOG_LEVEL="$7"
-KERNEL_CONFIG="$8"
 
 TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # Get git commit hash, or "unknown" if we're not in a git repository.
@@ -108,8 +116,8 @@ fi
 # Ensure the output directory exists.
 mkdir -p "$(dirname "${OUTPUT_FILE}")"
 
-# Extract memory_size from the kernel configuration.
-MEMORY_SIZE="$(get_value_from_toml "${KERNEL_CONFIG}" "memory_size")"
+# Use MEMORY_SIZE_BYTES from the environment.
+MEMORY_SIZE="${MEMORY_SIZE_BYTES}"
 
 # Generate the manifest using jq to safely escape all values.
 # Write to a temporary file and move into place for an atomic update. If jq fails unexpectedly, we
