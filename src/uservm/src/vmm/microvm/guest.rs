@@ -239,24 +239,17 @@ impl Guest {
     /// # Description
     ///
     /// Computes GPA ranges that should be pre-populated in the EPT/SLAT before guest execution.
-    /// The returned ranges cover the kernel image, initrd, kpool, and optionally the RAMFS region.
+    /// The returned ranges cover the kernel image, initrd, and kpool.
     ///
     /// Each region is listed individually so that future memory layout changes do not silently
     /// leave a region un-populated.
-    ///
-    /// # Parameters
-    ///
-    /// - `ramfs_region`: Optional `(base, size)` for the file-backed RAMFS region.
     ///
     /// # Returns
     ///
     /// Upon successful completion, this method returns the list of `(gpa, size)` ranges.
     /// Otherwise, it returns an error.
     ///
-    pub fn ept_populate_ranges(
-        &self,
-        ramfs_region: Option<(usize, usize)>,
-    ) -> Result<Vec<(u64, u64)>> {
+    pub fn ept_populate_ranges(&self) -> Result<Vec<(u64, u64)>> {
         // Each region is listed explicitly for defensive programming so that future memory
         // layout changes do not silently leave a region un-populated.
         let mut ranges: Vec<(u64, u64)> = Vec::new();
@@ -278,10 +271,6 @@ impl Guest {
         }
 
         ranges.push((::config::kernel::KPOOL_BASE_RAW as u64, ::config::kernel::KPOOL_SIZE as u64));
-
-        if let Some((base, size)) = ramfs_region {
-            ranges.push(page_align(base, size));
-        }
 
         Ok(ranges)
     }
