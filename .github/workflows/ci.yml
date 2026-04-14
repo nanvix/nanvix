@@ -275,11 +275,6 @@ jobs:
       - name: "Setup"
         uses: ./.github/actions/native-setup
 
-      - name: "Patch memory_size in kernel config"
-        uses: ./.github/actions/patch-memory-size
-        with:
-          memory-size: "${{ matrix.memory-size }}"
-
       - name: "Setup sccache"
         uses: Mozilla-Actions/sccache-action@v0.0.9
         with:
@@ -300,7 +295,8 @@ jobs:
             VERBOSE=yes \
             BUILD_OPT=yes \
             ${RELEASE_FLAG} \
-            "DEPLOYMENT_MODE=${{ matrix.deployment-type }}"
+            "DEPLOYMENT_MODE=${{ matrix.deployment-type }}" \
+            "MEMORY_SIZE=${{ matrix.memory-size }}"
 
       - name: "Upload Build Artifacts"
         uses: actions/upload-artifact@v7
@@ -626,18 +622,13 @@ jobs:
           echo "CARGO_HOME=$isolatedCargo" >> $env:GITHUB_ENV
           Write-Host "Isolated CARGO_HOME to $isolatedCargo"
 
-      - name: "Patch memory_size in kernel config"
-        uses: ./.github/actions/patch-memory-size
-        with:
-          memory-size: "${{ matrix.memory-size }}"
-
       - name: "Build & Unit Test"
         shell: pwsh
         env:
           LOG_LEVEL: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
           RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
         run: |
-          .\z.ps1 build -- all run-unit-tests $env:RELEASE_FLAG MACHINE=$env:MACHINE_TYPE LOG_LEVEL=$env:LOG_LEVEL
+          .\z.ps1 build -- all run-unit-tests $env:RELEASE_FLAG MACHINE=$env:MACHINE_TYPE LOG_LEVEL=$env:LOG_LEVEL MEMORY_SIZE=${{ matrix.memory-size }}
 
       - name: "Upload Build Artifacts"
         uses: actions/upload-artifact@v7

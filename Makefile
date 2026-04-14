@@ -58,6 +58,10 @@ export IMAGE ?= nanvix.img
 # Enable WHP backend?
 export WHP ?= no
 
+# Memory size in megabytes. Exported as MEMORY_SIZE_BYTES for build.rs scripts.
+# Example: make all MEMORY_SIZE=256
+export MEMORY_SIZE ?= 128
+
 #===================================================================================================
 # OS Detection
 #===================================================================================================
@@ -138,9 +142,18 @@ RELEASE_DEPLOYMENT_MODE := $(subst -,_,$(DEPLOYMENT_MODE))
 RELEASE_BUILD_MODE := $(if $(filter yes,$(RELEASE)),release,debug)
 RELEASE_VERSION := $(strip $(shell cargo metadata --no-deps --format-version 1 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' | head -n1))
 
-# Extract memory_size (bytes) from kernel config and convert to megabytes.
-MEMORY_SIZE_BYTES = $(strip $(shell sed -nE 's/^[[:space:]]*memory_size[[:space:]]*=[[:space:]]*(0x[0-9a-fA-F]+|[0-9]+).*/\1/p' $(BUILD_DIR)/kernel_config.toml | head -n1))
-MEMORY_SIZE_MB = $(shell echo $$(($(MEMORY_SIZE_BYTES) / 1048576)))
+# Validate MEMORY_SIZE.
+MEMORY_SIZE_MB := $(strip $(MEMORY_SIZE))
+ifeq ($(MEMORY_SIZE_MB),)
+$(error Invalid MEMORY_SIZE '$(MEMORY_SIZE)'. Expected a positive integer value in MB)
+endif
+ifneq ($(shell printf '%s\n' '$(MEMORY_SIZE_MB)' | grep -E '^[1-9][0-9]*$$'),$(MEMORY_SIZE_MB))
+$(error Invalid MEMORY_SIZE '$(MEMORY_SIZE)'. Expected a positive integer value in MB)
+endif
+
+# Derive memory size in bytes and megabytes from MEMORY_SIZE (MB).
+# Exported so that build.rs scripts read it via the MEMORY_SIZE_BYTES env var.
+export MEMORY_SIZE_BYTES := $(shell echo $$(($(MEMORY_SIZE_MB) * 1048576)))
 
 # VFS benchmark image filename.
 export VFS_BENCH_IMG ?= vfs-bench.img
@@ -485,13 +498,15 @@ endif
 # Generates a JSON manifest with build metadata and git info.
 .PHONY: release-generate-manifest
 release-generate-manifest:
+	@test -n "$(MEMORY_SIZE_MB)" || { echo "ERROR: MEMORY_SIZE is not set"; exit 1; }
+	@test -n "$(MEMORY_SIZE_BYTES)" || { echo "ERROR: MEMORY_SIZE_BYTES is not set"; exit 1; }
 	@echo "Generating manifest $(MANIFEST_FILE)..."
-	@bash $(SCRIPTS_DIR)/generate-manifest.sh $(MANIFEST_FILE) \
-		$(RELEASE_VERSION) $(MACHINE) $(TARGET) $(DEPLOYMENT_MODE) $(RELEASE_BUILD_MODE) $(LOG_LEVEL) \
-		$(BUILD_DIR)/kernel_config.toml
+	@MEMORY_SIZE_MB="$(MEMORY_SIZE_MB)" MEMORY_SIZE_BYTES="$(MEMORY_SIZE_BYTES)" \
+		bash $(SCRIPTS_DIR)/generate-manifest.sh $(MANIFEST_FILE) \
+		$(RELEASE_VERSION) $(MACHINE) $(TARGET) $(DEPLOYMENT_MODE) $(RELEASE_BUILD_MODE) $(LOG_LEVEL)
 
 release: all install release-generate-manifest
-	@test -n "$(MEMORY_SIZE_MB)" || { echo "ERROR: Failed to extract memory_size from kernel_config.toml"; exit 1; }
+	@test -n "$(MEMORY_SIZE_MB)" || { echo "ERROR: MEMORY_SIZE is not set"; exit 1; }
 	@echo "Creating release archive ${RELEASE_ARCHIVE} from ${SYSROOT_DIR}..."
 	@$(RM_CMD) ${RELEASE_ARCHIVE}
 	@tar -cjf ${RELEASE_ARCHIVE} --exclude=./src -C ${SYSROOT_DIR} .
@@ -539,6 +554,7 @@ help:
 	@echo "  TARGET           Target architecture (default: $(TARGET))"
 	@echo "  TIMEOUT          Execution timeout in seconds (default: $(TIMEOUT))"
 	@echo "  CLH_DIR          Cloud-hypervisor installation directory (default: $(CLH_DIR))"
+	@echo "  MEMORY_SIZE      Memory size in megabytes (default: $(MEMORY_SIZE))"
 	@echo "  VERUS_EXECUTABLE_DIR  Path to directory containing the verus binary (unset: skip verification)"
 	@echo ""
 	@echo "Parameter Values"

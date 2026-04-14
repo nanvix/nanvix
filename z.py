@@ -46,6 +46,7 @@ DEFAULT_DEPLOYMENT_MODE_WINDOWS = "standalone"
 DEFAULT_LOG_LEVEL_DEBUG = "trace"
 DEFAULT_LOG_LEVEL_RELEASE = "warn"
 DEFAULT_TIMEOUT = 600
+DEFAULT_MEMORY_SIZE = 128
 DEFAULT_IMAGE = "nanvix.img"
 DEFAULT_RUN_PROGRAM = "bin/hello-rust-nostd.elf"
 
@@ -68,6 +69,7 @@ KNOWN_MAKE_VARS: frozenset[str] = frozenset(
         "WASM_BINARY_ARGS",
         "WASMD_SOCKADDR",
         "MAKE_NO_PRINT",
+        "MEMORY_SIZE",
         "MESSAGE_FORMAT",
         "VERBOSE",
         "SCCACHE",
@@ -267,6 +269,7 @@ class BuildConfig:
     wasmd_sockaddr: str = ""
 
     image: str = ""
+    memory_size: str = ""
     message_format: str = ""
     verbose: bool = False
 
@@ -342,6 +345,18 @@ def _parse_make_var(config: BuildConfig, key: str, val: str) -> None:
             config.wasmd_sockaddr = val
         case "IMAGE":
             config.image = val
+        case "MEMORY_SIZE":
+            try:
+                mb = int(val)
+                if mb <= 0:
+                    die(
+                        f"Invalid MEMORY_SIZE={val}. Must be a positive integer (megabytes)."
+                    )
+            except ValueError:
+                die(
+                    f"Invalid MEMORY_SIZE={val}. Must be a positive integer (megabytes)."
+                )
+            config.memory_size = val
         case "MESSAGE_FORMAT":
             if val not in VALID_MESSAGE_FORMATS:
                 die(
@@ -985,6 +1000,7 @@ Build Parameters (after --):
   TIMEOUT=SECONDS                Execution timeout (default: 600).
   WHP=yes|no                     Windows Hypervisor Platform.
   HOST_CPU=CPU                   Target CPU for host builds.
+  MEMORY_SIZE=MB                 Memory size in megabytes (default: 128).
   TIMESTAMP_MSG=yes|no           Enable message timestamping.
 
 Run Options (after --):
