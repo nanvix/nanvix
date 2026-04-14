@@ -179,11 +179,11 @@ struct EventManagerInner {
     nevents: usize,
     wait: Option<Condvar>,
     waiting_threads: VecDeque<(ProcessIdentifier, ThreadIdentifier)>,
-    interrupt_ownership: [Option<ProcessIdentifier>; usize::BITS as usize],
-    pending_interrupts: [LinkedList<EventDescriptor>; usize::BITS as usize],
-    exception_ownership: [Option<ProcessIdentifier>; usize::BITS as usize],
-    pending_exceptions:
-        [LinkedList<(EventDescriptor, ExceptionEventInformation, Condvar)>; usize::BITS as usize],
+    interrupt_ownership: [Option<ProcessIdentifier>; InterruptEvent::NUMBER_EVENTS],
+    pending_interrupts: [LinkedList<EventDescriptor>; InterruptEvent::NUMBER_EVENTS],
+    exception_ownership: [Option<ProcessIdentifier>; ExceptionEvent::NUMBER_EVENTS],
+    pending_exceptions: [LinkedList<(EventDescriptor, ExceptionEventInformation, Condvar)>;
+        ExceptionEvent::NUMBER_EVENTS],
     scheduling_ownership: [Option<ProcessIdentifier>; SchedulingEvent::NUMBER_EVENTS],
     pending_scheduling:
         [LinkedList<(EventDescriptor, ProcessTerminationInfo)>; SchedulingEvent::NUMBER_EVENTS],
@@ -404,10 +404,9 @@ impl EventManagerInner {
             // Check if any interrupts were triggered.
             if (self.nevents + i).is_multiple_of(Self::NUMBER_EVENTS) {
                 // FIXME: starvation.
-                for i in 0..usize::BITS {
+                for i in 0..InterruptEvent::NUMBER_EVENTS {
                     if (interrupts & (1 << i)) != 0 {
-                        let idx: usize = i as usize;
-                        if let Some(_event) = self.pending_interrupts[idx].pop_front() {
+                        if let Some(_event) = self.pending_interrupts[i].pop_front() {
                             let message: Message = Message {
                                 source: MessageSender::from(ProcessIdentifier::KERNEL),
                                 destination: MessageReceiver::from(pid),
@@ -423,10 +422,9 @@ impl EventManagerInner {
             // Check if any exceptions were triggered.
             if ((self.nevents + i) % Self::NUMBER_EVENTS) == 1 {
                 // FIXME: starvation.
-                for i in 0..usize::BITS {
+                for i in 0..ExceptionEvent::NUMBER_EVENTS {
                     if (exceptions & (1 << i)) != 0 {
-                        let idx: usize = i as usize;
-                        if let Some(entry) = self.pending_exceptions[idx].pop_front() {
+                        if let Some(entry) = self.pending_exceptions[i].pop_front() {
                             let mut info: EventInformation = EventInformation::default();
                             info.id = entry.0.clone();
                             info.pid = entry.1.pid;
@@ -439,7 +437,7 @@ impl EventManagerInner {
                             message.destination = MessageReceiver::from(pid);
                             message.message_type = MessageType::Exception;
 
-                            self.pending_exceptions[idx].push_back(entry);
+                            self.pending_exceptions[i].push_back(entry);
 
                             return Ok(Some(message));
                         }
@@ -836,13 +834,12 @@ impl EventManager {
     ) -> Result<Message, SleepError> {
         // Get the interrupts that the process owns.
         let mut interrupts: usize = 0;
-        for i in 0..usize::BITS {
-            let idx: usize = i as usize;
+        for i in 0..InterruptEvent::NUMBER_EVENTS {
             if let Some(p) = EventManager::get()
                 .map_err(SleepError::Generic)?
                 .try_borrow_mut()
                 .map_err(SleepError::Generic)?
-                .interrupt_ownership[idx]
+                .interrupt_ownership[i]
             {
                 if p == pid {
                     interrupts |= 1 << i;
@@ -852,13 +849,12 @@ impl EventManager {
 
         // Get the exceptions that the process owns.
         let mut exceptions: usize = 0;
-        for i in 0..usize::BITS {
-            let idx: usize = i as usize;
+        for i in 0..ExceptionEvent::NUMBER_EVENTS {
             if let Some(p) = EventManager::get()
                 .map_err(SleepError::Generic)?
                 .try_borrow_mut()
                 .map_err(SleepError::Generic)?
-                .exception_ownership[idx]
+                .exception_ownership[i]
             {
                 if p == pid {
                     exceptions |= 1 << i;
@@ -1073,12 +1069,13 @@ fn do_exception_handler(
         let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
         let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
 
+        // On x86_64, code() returns u64 while ErrorCode::new() takes u32.
+        // The cast is architecturally correct (x86 error codes are 32-bit)
+        // but redundant on x86 where code() already returns u32.
+        #[allow(clippy::unnecessary_cast)]
+        let error_code = ::arch::cpu::excp::ErrorCode::new(info.code() as u32);
         if pm
-            .handle_stack_page_fault(
-                mm,
-                info.addr() as usize,
-                ::arch::cpu::excp::ErrorCode::new(info.code()),
-            )
+            .handle_stack_page_fault(mm, info.addr() as usize, error_code)
             .map_err(SleepError::Generic)?
         {
             return Ok(());
@@ -1140,25 +1137,25 @@ fn exception_handler(info: &ExceptionInformation, ctx: &ContextInformation) {
 }
 
 pub fn init() -> Result<(), Error> {
-    let mut pending_interrupts: [LinkedList<EventDescriptor>; usize::BITS as usize] =
+    let mut pending_interrupts: [LinkedList<EventDescriptor>; InterruptEvent::NUMBER_EVENTS] =
         unsafe { mem::zeroed() };
     for list in pending_interrupts.iter_mut() {
         *list = LinkedList::default();
     }
 
-    let mut interrupt_ownership: [Option<ProcessIdentifier>; usize::BITS as usize] =
+    let mut interrupt_ownership: [Option<ProcessIdentifier>; InterruptEvent::NUMBER_EVENTS] =
         unsafe { mem::zeroed() };
     for entry in interrupt_ownership.iter_mut() {
         *entry = None;
     }
 
     let mut pending_exceptions: [LinkedList<(EventDescriptor, ExceptionEventInformation, Condvar)>;
-        usize::BITS as usize] = unsafe { mem::zeroed() };
+        ExceptionEvent::NUMBER_EVENTS] = unsafe { mem::zeroed() };
     for list in pending_exceptions.iter_mut() {
         *list = LinkedList::default();
     }
 
-    let mut exception_ownership: [Option<ProcessIdentifier>; usize::BITS as usize] =
+    let mut exception_ownership: [Option<ProcessIdentifier>; ExceptionEvent::NUMBER_EVENTS] =
         unsafe { mem::zeroed() };
     for entry in exception_ownership.iter_mut() {
         *entry = None;
