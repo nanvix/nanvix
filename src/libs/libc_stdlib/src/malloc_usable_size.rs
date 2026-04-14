@@ -66,11 +66,12 @@ pub unsafe extern "C" fn malloc_usable_size(ptr: *mut c_void) -> c_size_t {
         // On all 32-bit platforms, the following cast is safe.
             #[allow(clippy::cast_possible_truncation)]
             size as c_size_t
-        } else if #[cfg(test)] {
-            // When testing, the following cast is acceptable.
-            size.try_into().unwrap_or(c_size_t::MAX)
         } else {
-            compile_error!("malloc_usable_size is only supported on 32-bit platforms");
+            // On 64-bit platforms, truncate to c_size_t.
+            match c_size_t::try_from(size) {
+                Ok(v) => v,
+                Err(_) => c_size_t::MAX,
+            }
         }
     }
 }
