@@ -73,20 +73,30 @@ type TdaBuffer = Box<[u32; TDA_SLOTS]>;
 
 /// # Description
 ///
-/// Reads the 32-bit value at `%gs:0x0` using inline assembly.
+/// Reads the 32-bit value at the TDA segment offset `0x0` using inline assembly.
+///
+/// On x86, the TDA is accessed via the `%gs` segment register (GDT-based).
+/// On x86_64, the TDA is accessed via the `%fs` segment register (FS_BASE MSR).
 ///
 /// # Safety
 ///
-/// The caller must ensure that the `%gs` segment register points to a valid,
+/// The caller must ensure that the TDA segment register points to a valid,
 /// readable memory region of at least 4 bytes.
 // NOTE: `#[inline(never)]` prevents the compiler from inlining this function,
-// ensuring the `%gs:0x0` read is not reordered relative to the preceding
+// ensuring the TDA segment read is not reordered relative to the preceding
 // `write_volatile` and `set_thread_data_area` calls.
 #[inline(never)]
 unsafe fn read_gs_offset_0() -> u32 {
     let value: u32;
+    #[cfg(target_arch = "x86")]
     core::arch::asm!(
         "movl %gs:0x0, {out:e}",
+        out = out(reg) value,
+        options(nostack, preserves_flags, att_syntax),
+    );
+    #[cfg(target_arch = "x86_64")]
+    core::arch::asm!(
+        "movl %fs:0x0, {out:e}",
         out = out(reg) value,
         options(nostack, preserves_flags, att_syntax),
     );
@@ -95,20 +105,31 @@ unsafe fn read_gs_offset_0() -> u32 {
 
 /// # Description
 ///
-/// Reads the 32-bit value at `%gs:<offset>` for an arbitrary byte offset.
+/// Reads the 32-bit value at the TDA segment at an arbitrary byte offset.
+///
+/// On x86, the TDA is accessed via the `%gs` segment register (GDT-based).
+/// On x86_64, the TDA is accessed via the `%fs` segment register (FS_BASE MSR).
 ///
 /// # Safety
 ///
-/// The caller must ensure that the `%gs` segment register points to a valid,
+/// The caller must ensure that the TDA segment register points to a valid,
 /// readable memory region that covers at least `offset + 4` bytes.
 // NOTE: The offset is added to the base at runtime, so the function cannot be
 // constant-folded away.
 #[inline(never)]
 unsafe fn read_gs_at(offset: u32) -> u32 {
     let value: u32;
+    #[cfg(target_arch = "x86")]
     core::arch::asm!(
         "movl %gs:({off}), {out:e}",
         off = in(reg) offset,
+        out = out(reg) value,
+        options(nostack, preserves_flags, att_syntax),
+    );
+    #[cfg(target_arch = "x86_64")]
+    core::arch::asm!(
+        "movl %fs:({off}), {out:e}",
+        off = in(reg) offset as u64,
         out = out(reg) value,
         options(nostack, preserves_flags, att_syntax),
     );
