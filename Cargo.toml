@@ -40,6 +40,7 @@ members = [
         "src/libs/raw-array",
         "src/libs/slab",
         "src/libs/sorted-vec",
+        "src/libs/sparse-bitmap",
         "src/libs/static_assert",
         "src/libs/sysalloc",
         "src/libs/sysapi",
@@ -191,6 +192,7 @@ shell-words = "1.1"
 signal-hook = "0.4.4"
 slab = { path = "src/libs/slab", default-features = false }
 sorted-vec = { path = "src/libs/sorted-vec", default-features = false }
+sparse-bitmap = { path = "src/libs/sparse-bitmap", default-features = false }
 spin = { git = "https://github.com/nanvix/spin-rs", package = "spin", branch = "nanvix/v0.10.0", default-features = false }
 static_assert = { path = "src/libs/static_assert", default-features = false }
 libc_stdlib = { path = "src/libs/libc_stdlib", default-features = false }
