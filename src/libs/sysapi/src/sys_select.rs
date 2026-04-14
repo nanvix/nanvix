@@ -25,10 +25,10 @@ use ::core::mem::size_of;
 //==================================================================================================
 
 /// Microseconds in a second.
-const MICROSECONDS_PER_SECOND: i32 = 1_000_000;
+const MICROSECONDS_PER_SECOND: suseconds_t = 1_000_000;
 
 /// Nanoseconds in a second.
-const NANOSECONDS_PER_SECOND: i32 = 1_000_000_000;
+const NANOSECONDS_PER_SECOND: suseconds_t = 1_000_000_000;
 
 /// Maximum number of file descriptors tracked by [`fd_set`].
 pub const FD_SETSIZE: usize = 64;

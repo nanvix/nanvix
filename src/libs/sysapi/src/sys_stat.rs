@@ -168,7 +168,7 @@ pub enum StatError {
 
 /// File status structure.
 #[derive(Default, Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct stat {
     /// Device ID.
     pub st_dev: dev_t,
@@ -197,7 +197,8 @@ pub struct stat {
     /// Number of blocks allocated.
     pub st_blocks: blkcnt_t,
 }
-::static_assert::assert_eq_size!(stat, stat::SIZE);
+// The serialized size (stat::SIZE) is the packed wire format without padding.
+// The in-memory size (sizeof stat) may differ due to alignment padding on 64-bit targets.
 
 impl stat {
     /// Size of the device ID field.
