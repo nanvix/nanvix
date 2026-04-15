@@ -109,7 +109,7 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
     );
 
     // Check if thread-local storage is empty.
-    if allocation_size == 0 {
+    if tls_size == 0 {
         return Ok(None);
     }
 
