@@ -195,3 +195,68 @@ pub unsafe fn kcall4(kcall_nr: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u32) 
 
     ((high_ret as i64) << 32) | (low_ret as i64)
 }
+
+//==================================================================================================
+// Thread Data Area Helpers
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Reads a `u32` value from the Thread Data Area (TDA) via the `%gs` segment register.
+///
+/// # Parameters
+///
+/// - `offset`: Byte offset within the TDA.
+///
+/// # Returns
+///
+/// The `u32` value stored at `gs:[offset]`.
+///
+/// # Safety
+///
+/// The caller must ensure:
+/// - The `%gs` segment base has been configured via `set_thread_data_area()`.
+/// - `offset` refers to a valid, properly aligned `u32` slot within the TDA.
+///
+#[inline(always)]
+pub unsafe fn read_tda_u32(offset: u32) -> u32 {
+    let val: u32;
+    unsafe {
+        arch::asm!(
+            "mov {0:e}, gs:[{1:e}]",
+            out(reg) val,
+            in(reg) offset,
+            options(nostack, readonly, preserves_flags),
+        );
+    }
+    val
+}
+
+///
+/// # Description
+///
+/// Writes a `u32` value to the Thread Data Area (TDA) via the `%gs` segment register.
+///
+/// # Parameters
+///
+/// - `offset`: Byte offset within the TDA.
+/// - `val`: The `u32` value to store at `gs:[offset]`.
+///
+/// # Safety
+///
+/// The caller must ensure:
+/// - The `%gs` segment base has been configured via `set_thread_data_area()`.
+/// - `offset` refers to a valid, properly aligned `u32` slot within the TDA.
+///
+#[inline(always)]
+pub unsafe fn write_tda_u32(offset: u32, val: u32) {
+    unsafe {
+        arch::asm!(
+            "mov gs:[{0:e}], {1:e}",
+            in(reg) offset,
+            in(reg) val,
+            options(nostack, preserves_flags),
+        );
+    }
+}
