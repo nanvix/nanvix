@@ -89,26 +89,6 @@ use ::sys::{
 #[used]
 static KERNEL_PADDING: [u8; 2 * 1024 * 1024] = [0u8; 2 * 1024 * 1024];
 
-/// Always redirect frame allocations to EPT-writable scratch memory.
-/// With PTE_COW from first boot, the host's mmap doesn't see __phys_memcpy
-/// writes to original PAs, so we must allocate user data in scratch where
-/// the host CAN observe it for snapshot compaction.
-pub fn adjust_frame(addr: &mut crate::hal::mem::FrameAddress) {
-    let scratch_gpa = crate::mm::Vmem::alloc_scratch_page();
-    if scratch_gpa != 0 {
-        let phys = unsafe {
-            crate::hal::mem::PhysicalAddress::from_mmio_address(
-                crate::hal::mem::VirtualAddress::from_raw_value(scratch_gpa as usize),
-            )
-        };
-        if let Ok(phys) = phys {
-            if let Ok(aligned) = crate::hal::mem::PageAligned::from_address(phys) {
-                *addr = crate::hal::mem::FrameAddress::new(aligned);
-            }
-        }
-    }
-}
-
 /// Always use VA-based copies on Hyperlight.
 pub fn use_va_copies() -> bool {
     true

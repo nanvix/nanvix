@@ -129,17 +129,49 @@ impl Vmem {
     #[cfg(feature = "hyperlight")]
     pub fn alloc_scratch_page() -> u32 {
         const ALLOCATOR_GVA: u32 = 0xFFFF_FFF0;
-        const GDT_LIMIT: u32 = 0xFFFD_F000;
         unsafe {
             let alloc_ptr = ALLOCATOR_GVA as *mut u32;
             let current = core::ptr::read_volatile(alloc_ptr);
-            if current >= GDT_LIMIT {
+            if current >= Self::SCRATCH_TOP_GPA {
                 return 0;
             }
             let new_val = current + 4096;
             core::ptr::write_volatile(alloc_ptr, new_val);
             current
         }
+    }
+
+    /// First byte of scratch memory that is NOT available for frame
+    /// allocation — scratch GPAs `[scratch_base, SCRATCH_TOP_GPA)` are
+    /// what the allocator hands out. The GDT sits at `SCRATCH_TOP_GPA`
+    /// and the CoW bookkeeping slots (scratch_size, allocator cursor)
+    /// sit above that.
+    #[cfg(feature = "hyperlight")]
+    const SCRATCH_TOP_GPA: u32 = 0xFFFD_F000;
+
+    /// Returns `(first_frame_index, frame_count)` describing the scratch
+    /// region as it exists in the *global frame-number* coordinate space
+    /// used by the sparse bitmap (frame index = `gpa / PAGE_SIZE`).
+    ///
+    /// `scratch_size` is read from the host-published slot at
+    /// `SCRATCH_SIZE_GVA = 0xFFFF_FFF8` — the same slot the CoW entry
+    /// stub consults to decide whether CoW is active. The returned
+    /// frame count is rounded up to a multiple of 8 to satisfy
+    /// [`::bitmap::Bitmap::new`]'s alignment requirement; unused
+    /// bits at the tail are never addressed by real allocations because
+    /// [`Self::alloc_scratch_page`] stops at [`Self::SCRATCH_TOP_GPA`].
+    #[cfg(feature = "hyperlight")]
+    pub fn scratch_range_in_frames() -> (usize, usize) {
+        const SCRATCH_SIZE_GVA: u32 = 0xFFFF_FFF8;
+        let scratch_size: u64 =
+            unsafe { core::ptr::read_volatile(SCRATCH_SIZE_GVA as *const u64) };
+        let scratch_base_gpa: u32 = (u32::MAX as u64 - scratch_size + 1) as u32;
+        let frame_count_unaligned: usize =
+            ((Self::SCRATCH_TOP_GPA - scratch_base_gpa) / ::arch::mem::PAGE_SIZE as u32) as usize;
+        // Bitmap::new requires a multiple of 8 bits. Round up.
+        let frame_count: usize = frame_count_unaligned.next_multiple_of(8);
+        let first_frame_index: usize = scratch_base_gpa as usize / ::arch::mem::PAGE_SIZE;
+        (first_frame_index, frame_count)
     }
 
     /// Initializes a new virtual memory space.

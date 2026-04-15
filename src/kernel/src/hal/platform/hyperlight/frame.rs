@@ -3,13 +3,13 @@
 
 //! Hyperlight-side frame allocator implementation.
 //!
-//! Bookkeeping is the same shape as the microvm allocator: a single
-//! [`SparseBitmap`] with a dense chunk at offset 0 covering identity-
-//! mapped RAM, plus chunks added on demand for foreign-address frames
-//! (scratch). The difference is `alloc()` — on Hyperlight the dense
-//! range is EPT-read-only, so allocations come from the scratch bump
-//! cursor rather than the dense bitmap, and are tracked via
-//! [`SparseBitmap::add_chunk`] + [`SparseBitmap::set`].
+//! Two-chunk [`SparseBitmap`] pre-provisioned at init: a dense chunk at
+//! offset 0 covering identity-mapped RAM, plus a scratch chunk at
+//! `scratch_base / PAGE_SIZE` covering the full scratch region. Both
+//! are declared up front via `SparseBitmap::new` — the bitmap shape is
+//! fixed after construction. `alloc()` pulls from the scratch bump
+//! cursor (the dense range is EPT-read-only) and records the result
+//! with a plain `bitmap.set`.
 
 //==================================================================================================
 // Imports
@@ -37,15 +37,6 @@ use ::sys::{
     },
     mm::Address,
 };
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-/// Default chunk size (in bits) for chunks added on demand as scratch
-/// frames are booked. Sized to cover the entire scratch region in a
-/// single chunk (~16 MB / 4 KB = 4096 frames).
-const FOREIGN_CHUNK_BITS: usize = 4096;
 
 //==================================================================================================
 // Backing storage
@@ -88,24 +79,29 @@ impl Inner {
             dense_range_frames * mem::FRAME_SIZE / constants::MEGABYTE
         );
 
+        // Scratch chunk: pre-provisioned at init so `alloc()` can just
+        // `bitmap.set(frame_index)` against the scratch bump cursor's
+        // result without ever growing the bitmap.
+        let (scratch_offset, scratch_frames) = crate::mm::Vmem::scratch_range_in_frames();
+        let scratch_bitmap: Bitmap = Bitmap::new(scratch_frames)?;
+
         Ok(Self {
-            bitmap: SparseBitmap::new(::alloc::vec![(0, dense)])?,
+            bitmap: SparseBitmap::new(::alloc::vec![
+                (0, dense),
+                (scratch_offset, scratch_bitmap),
+            ])?,
             dense_range_frames,
         })
     }
 
     /// On Hyperlight, the frame comes from the scratch bump cursor
-    /// (the dense identity range is EPT-read-only). The result is
-    /// booked in the sparse bitmap so a later [`Self::free`] can
-    /// release it.
+    /// (the dense identity range is EPT-read-only). The resulting GPA
+    /// is booked in the scratch chunk of the sparse bitmap — the chunk
+    /// was pre-provisioned by [`Self::new`], so the `bitmap.set`
+    /// never needs to grow state.
     pub fn alloc(&mut self) -> Result<FrameAddress, Error> {
         let frame: FrameAddress = crate::mm::Vmem::alloc_scratch_frame()?;
         let index: usize = frame.into_raw_value() / mem::PAGE_SIZE;
-        if self.bitmap.find_chunk(index).is_none() {
-            let chunk_offset: usize = (index / FOREIGN_CHUNK_BITS) * FOREIGN_CHUNK_BITS;
-            self.bitmap
-                .add_chunk(chunk_offset, Bitmap::new(FOREIGN_CHUNK_BITS)?)?;
-        }
         self.bitmap.set(index)?;
         Ok(frame)
     }
@@ -124,15 +120,23 @@ impl Inner {
         }
     }
 
+    /// Books a frame. Only the dense identity-range chunk is eligible:
+    /// the scratch chunk is populated exclusively by [`Self::alloc`] as
+    /// the bump cursor hands GPAs out, so pre-booking scratch addresses
+    /// (as `book_mmio_regions` does when it walks the HL "SCRATCHIO"
+    /// region) would mark every scratch frame allocated and starve
+    /// later `alloc()` calls. Addresses outside the dense range return
+    /// `InvalidArgument` quietly — the MMIO booker already tolerates
+    /// that for frames that fall outside its tracked range.
     pub fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
         let frame_number: usize = phys_addr.into_raw_value() / mem::PAGE_SIZE;
-        match self.bitmap.set(frame_number) {
-            Ok(()) => Ok(()),
-            Err(error) => {
-                trace!("{error:?} (phys_addr={phys_addr:?})");
-                Err(error)
-            },
+        if frame_number >= self.dense_range_frames {
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "frame lies outside the dense identity range",
+            ));
         }
+        self.bitmap.set(frame_number)
     }
 
     pub fn alloc_range(

@@ -3,12 +3,9 @@
 
 //! Microvm-side frame allocator implementation.
 //!
-//! Backed by a single [`SparseBitmap`] whose chunks cover every physical
-//! frame range the allocator tracks. The typical configuration is one
-//! dense chunk at offset 0 covering the identity-mapped physical address
-//! range. Foreign-address registration is supported via
-//! [`SparseBitmap::add_chunk`] + [`SparseBitmap::set`] for callers that
-//! hand out frames outside the dense range.
+//! Backed by a single-chunk [`SparseBitmap`] covering the identity-mapped
+//! physical address range at offset 0. Chunks are declared up front via
+//! `SparseBitmap::new` — the bitmap shape is fixed after construction.
 
 //==================================================================================================
 // Imports

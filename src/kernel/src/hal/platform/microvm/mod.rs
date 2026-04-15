@@ -506,9 +506,6 @@ fn register_pit_ports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
 /// No-op on microvm — no CoW handler to install.
 pub fn patch_kernel_idt_with_cow_handler() {}
 
-/// Microvm uses standard frame allocation — no adjustment needed.
-pub fn adjust_frame(_addr: &mut crate::hal::mem::FrameAddress) {}
-
 /// Microvm always uses PA-based copies (identity mapping is always intact).
 #[allow(dead_code)]
 pub fn use_va_copies() -> bool {

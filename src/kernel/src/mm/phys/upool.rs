@@ -137,9 +137,6 @@ impl UserFrame {
         self.addr
     }
 
-    pub fn address_mut(&mut self) -> &mut FrameAddress {
-        &mut self.addr
-    }
 }
 
 //==================================================================================================

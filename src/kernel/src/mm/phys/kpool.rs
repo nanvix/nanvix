@@ -51,10 +51,6 @@ impl KernelFrame {
         self.base
     }
 
-    pub fn base_mut(&mut self) -> &mut FrameAddress {
-        &mut self.base
-    }
-
     fn clear(&mut self) {
         self.deref_mut().fill(0);
     }

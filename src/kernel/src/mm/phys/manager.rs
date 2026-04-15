@@ -33,11 +33,7 @@ impl PhysMemoryManager {
     }
 
     pub fn alloc_many_user_frames(&mut self, nframes: usize) -> Result<Vec<UserFrame>, Error> {
-        let mut frames = self.upool.alloc_many(nframes)?;
-        for frame in frames.iter_mut() {
-            crate::hal::platform::adjust_frame(frame.address_mut());
-        }
-        Ok(frames)
+        self.upool.alloc_many(nframes)
     }
 
     ///
@@ -54,9 +50,7 @@ impl PhysMemoryManager {
     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
     ///
     pub fn alloc_kernel_frame(&mut self, clear: bool) -> Result<KernelFrame, Error> {
-        let mut frame = self.kpool.alloc(clear)?;
-        crate::hal::platform::adjust_frame(frame.base_mut());
-        Ok(frame)
+        self.kpool.alloc(clear)
     }
 
     ///
