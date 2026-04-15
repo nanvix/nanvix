@@ -1348,6 +1348,13 @@ jobs:
         run: |
           .\z.ps1 build -- all MACHINE=$env:MACHINE_TYPE RELEASE=yes LOG_LEVEL=panic PROFILER=yes
 
+      - name: "Benchmark Setup"
+        # Requires admin privileges. The self-hosted benchmark runners are
+        # configured to run the Actions runner service as Administrator.
+        shell: pwsh
+        run: |
+          .\scripts\bench\bench-setup.ps1 -SaveState
+
       - name: "Run Micro-Benchmarks"
         shell: pwsh
         env:
@@ -1369,6 +1376,12 @@ jobs:
               exit $LASTEXITCODE
             }
           }
+
+      - name: "Benchmark Teardown"
+        if: always()
+        shell: pwsh
+        run: |
+          .\scripts\bench\bench-teardown.ps1 -KeepDefenderExclusion
 
       - name: "Upload Benchmark Results"
         if: always() && !cancelled()
