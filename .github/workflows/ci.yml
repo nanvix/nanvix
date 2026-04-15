@@ -1434,6 +1434,24 @@ jobs:
           runner-label: "self-hosted"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: "Gate on Performance Regressions"
+        if: github.ref_name != 'dev'
+        shell: bash
+        # vfs-bench and echo-breakdown are excluded: they use different CSV schemas
+        # (not percentile-based). round-trip-latency is also excluded (multi-row).
+        run: |
+          git fetch origin dev --quiet
+          git checkout origin/dev -- data/baremetal
+          python3 ./scripts/benchmark.py \
+            ci-gate \
+            --dev-dir "data/baremetal" \
+            --target-dir "$(pwd)" \
+            --benchmarks "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,snapshot-restore,warm-start,warm-start-l2,warm-start-vmm" \
+            --machine-types "microvm" \
+            --archs "X64" \
+            --regression-threshold 40 \
+            --baseline-window 10
+
       - name: "Persist results on dev"
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
@@ -1499,6 +1517,23 @@ jobs:
           dev-dir: "data/windows-baremetal"
           runner-label: "windows-baremetal"
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Gate on Performance Regressions"
+        if: github.ref_name != 'dev'
+        shell: bash
+        # vfs-bench is excluded: it uses a different CSV schema (not percentile-based).
+        run: |
+          git fetch origin dev --quiet
+          git checkout origin/dev -- data/windows-baremetal
+          python3 ./scripts/benchmark.py \
+            ci-gate \
+            --dev-dir "data/windows-baremetal" \
+            --target-dir "$(pwd)" \
+            --benchmarks "boot-time,cold-start,snapshot-restore,warm-start-vmm" \
+            --machine-types "microvm" \
+            --archs "X64" \
+            --regression-threshold 40 \
+            --baseline-window 10
 
       - name: "Persist results on dev"
         if: github.ref_name == 'dev'
@@ -1743,6 +1778,24 @@ jobs:
           runner-label: "github-hosted"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: "Gate on Performance Regressions"
+        if: github.ref_name != 'dev'
+        shell: bash
+        # vfs-bench and echo-breakdown are excluded: they use different CSV schemas
+        # (not percentile-based). round-trip-latency is also excluded (multi-row).
+        run: |
+          git fetch origin dev --quiet
+          git checkout origin/dev -- data/github
+          python3 ./scripts/benchmark.py \
+            ci-gate \
+            --dev-dir "data/github" \
+            --target-dir "$(pwd)" \
+            --benchmarks "boot-time,cold-start,cold-start-uvm,snapshot-restore,warm-start,warm-start-vmm" \
+            --machine-types "microvm" \
+            --archs "X64" \
+            --regression-threshold 40 \
+            --baseline-window 10
+
       - name: "Persist results on dev"
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
@@ -1813,6 +1866,23 @@ jobs:
           dev-dir: "data/windows-github"
           runner-label: "windows-github-hosted"
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Gate on Performance Regressions"
+        if: github.ref_name != 'dev' && steps.check-results.outputs.has_results == 'true'
+        shell: bash
+        # vfs-bench is excluded: it uses a different CSV schema (not percentile-based).
+        run: |
+          git fetch origin dev --quiet
+          git checkout origin/dev -- data/windows-github
+          python3 ./scripts/benchmark.py \
+            ci-gate \
+            --dev-dir "data/windows-github" \
+            --target-dir "$(pwd)" \
+            --benchmarks "boot-time,cold-start,snapshot-restore,warm-start-vmm" \
+            --machine-types "microvm" \
+            --archs "X64" \
+            --regression-threshold 40 \
+            --baseline-window 10
 
       - name: "Persist results on dev"
         if: github.ref_name == 'dev' && steps.check-results.outputs.has_results == 'true'
