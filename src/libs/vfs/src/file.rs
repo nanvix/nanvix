@@ -521,6 +521,12 @@ impl DirEntry {
 /// - [`Fat32Error::NotFound`] if parent directory doesn't exist.
 pub fn mkdir(path: &str) -> Result<(), Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(path)?;
+
+    // Root of a mount always exists — return AlreadyExists (mirrors stat()).
+    if relative_path.is_empty() {
+        return Err(Fat32Error::NotFound);
+    }
+
     check_writable(mount_idx)?;
 
     state::with_vfs_mut(|vfs| {
@@ -544,6 +550,12 @@ pub fn mkdir(path: &str) -> Result<(), Fat32Error> {
 /// - [`Fat32Error::NotADirectory`] if path is a file.
 pub fn rmdir(path: &str) -> Result<(), Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(path)?;
+
+    // Cannot remove the root of a mount.
+    if relative_path.is_empty() {
+        return Err(Fat32Error::NotFound);
+    }
+
     check_writable(mount_idx)?;
 
     state::with_vfs_mut(|vfs| {
@@ -566,6 +578,12 @@ pub fn rmdir(path: &str) -> Result<(), Fat32Error> {
 /// - [`Fat32Error::NotAFile`] if path is a directory.
 pub fn unlink(path: &str) -> Result<(), Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(path)?;
+
+    // Root of a mount is a directory, not a file.
+    if relative_path.is_empty() {
+        return Err(Fat32Error::NotFound);
+    }
+
     check_writable(mount_idx)?;
 
     state::with_vfs_mut(|vfs| {
@@ -630,6 +648,11 @@ pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, Fat32Error> {
 pub fn rename(old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
     let (old_idx, old_rel) = resolve_path(old_path)?;
     let (new_idx, new_rel) = resolve_path(new_path)?;
+
+    // Cannot rename mount roots.
+    if old_rel.is_empty() || new_rel.is_empty() {
+        return Err(Fat32Error::NotFound);
+    }
 
     // Both must be on the same mount.
     if old_idx != new_idx {
@@ -739,6 +762,11 @@ fn open_with_options(
     truncate: bool,
 ) -> Result<File, Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(path)?;
+
+    // Root of a mount is a directory, not a file — cannot be opened as a file.
+    if relative_path.is_empty() {
+        return Err(Fat32Error::NotFound);
+    }
 
     // Reject write/create/truncate on read-only mounts.
     // NOTE: This gate is also what keeps the negative cache consistent —
