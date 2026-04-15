@@ -318,6 +318,12 @@ impl Fat {
     /// - [`Fat32Error::AlreadyExists`] if directory already exists.
     /// - [`Fat32Error::NotFound`] if parent directory doesn't exist.
     pub fn mkdir(&self, path: &str) -> Result<(), Fat32Error> {
+        // Empty path means the caller resolved to the root — reject
+        // before reaching fatfs, which would panic on an empty name.
+        if path.is_empty() {
+            return Err(Fat32Error::NotFound);
+        }
+
         let root = self.fs.root_dir();
 
         // fatfs::Dir::create_dir does NOT fail if the directory exists — it
@@ -342,6 +348,12 @@ impl Fat {
     /// - [`Fat32Error::NotEmpty`] if directory is not empty.
     /// - [`Fat32Error::NotADirectory`] if path is a file.
     pub fn rmdir(&self, path: &str) -> Result<(), Fat32Error> {
+        // Empty path means the caller resolved to the root — reject
+        // before reaching fatfs, which would panic on an empty name.
+        if path.is_empty() {
+            return Err(Fat32Error::NotFound);
+        }
+
         let root = self.fs.root_dir();
 
         // Verify it is a directory, not a file.
@@ -366,6 +378,12 @@ impl Fat {
     /// - [`Fat32Error::NotFound`] if file doesn't exist.
     /// - [`Fat32Error::NotAFile`] if path is a directory.
     pub fn unlink(&self, path: &str) -> Result<(), Fat32Error> {
+        // Empty path means the caller resolved to the root — reject
+        // before reaching fatfs, which would panic on an empty name.
+        if path.is_empty() {
+            return Err(Fat32Error::NotFound);
+        }
+
         let root = self.fs.root_dir();
 
         // Verify it is a file, not a directory.
@@ -391,6 +409,12 @@ impl Fat {
     /// - [`Fat32Error::NotFound`] if source doesn't exist.
     /// - [`Fat32Error::AlreadyExists`] if destination already exists.
     pub fn rename(&self, old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
+        // Empty path means the caller resolved to the root — reject
+        // before reaching fatfs, which would panic on an empty name.
+        if old_path.is_empty() || new_path.is_empty() {
+            return Err(Fat32Error::NotFound);
+        }
+
         let root = self.fs.root_dir();
         root.rename(old_path, &root, new_path)
             .map_err(map_fatfs_error)
