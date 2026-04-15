@@ -680,6 +680,14 @@ mod tests {
         assert_eq!(result.unwrap_err(), Fat32Error::AlreadyExists);
     }
 
+    /// Tests that mkdir with an empty path returns NotFound (defense-in-depth).
+    #[test]
+    fn mkdir_empty_path_fails() {
+        let fat: FatHandle = FatHandle::new();
+        let result: Result<(), Fat32Error> = fat.mkdir("");
+        assert_eq!(result.unwrap_err(), Fat32Error::NotFound);
+    }
+
     /// Tests removing an empty directory.
     #[test]
     fn rmdir_empty() {
@@ -703,6 +711,14 @@ mod tests {
         }
         let result: Result<(), Fat32Error> = fat.rmdir("file-a.txt");
         assert_eq!(result.unwrap_err(), Fat32Error::NotADirectory);
+    }
+
+    /// Tests that rmdir with an empty path returns NotFound (defense-in-depth).
+    #[test]
+    fn rmdir_empty_path_fails() {
+        let fat: FatHandle = FatHandle::new();
+        let result: Result<(), Fat32Error> = fat.rmdir("");
+        assert_eq!(result.unwrap_err(), Fat32Error::NotFound);
     }
 
     // -- unlink tests ------------------------------------------------------------
@@ -729,6 +745,14 @@ mod tests {
         fat.mkdir("adir").expect("mkdir should succeed");
         let result: Result<(), Fat32Error> = fat.unlink("adir");
         assert_eq!(result.unwrap_err(), Fat32Error::NotAFile);
+    }
+
+    /// Tests that unlink with an empty path returns NotFound (defense-in-depth).
+    #[test]
+    fn unlink_empty_path_fails() {
+        let fat: FatHandle = FatHandle::new();
+        let result: Result<(), Fat32Error> = fat.unlink("");
+        assert_eq!(result.unwrap_err(), Fat32Error::NotFound);
     }
 
     // -- read_dir tests ----------------------------------------------------------
@@ -782,6 +806,23 @@ mod tests {
         let info: FatStat = fat.stat("new.txt").expect("stat new.txt should succeed");
         assert!(!info.is_dir);
         assert_eq!(info.size, 7);
+    }
+
+    /// Tests that rename with an empty old path returns NotFound.
+    #[test]
+    fn rename_empty_old_path_fails() {
+        let fat: FatHandle = FatHandle::new();
+        let result: Result<(), Fat32Error> = fat.rename("", "new.txt");
+        assert_eq!(result.unwrap_err(), Fat32Error::NotFound);
+    }
+
+    /// Tests that rename with an empty new path returns NotFound.
+    #[test]
+    fn rename_empty_new_path_fails() {
+        let fat: FatHandle = FatHandle::new();
+        fat.mkdir("src").expect("mkdir should succeed");
+        let result: Result<(), Fat32Error> = fat.rename("src", "");
+        assert_eq!(result.unwrap_err(), Fat32Error::NotFound);
     }
 
     // -- file_raw_region tests ---------------------------------------------------
