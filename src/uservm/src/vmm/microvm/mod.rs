@@ -512,13 +512,13 @@ impl Vmm {
             perf_timings.set_vcpu_reset(vcpu_reset_start.elapsed().as_micros() as u64);
 
             // Phase: EPT pre-population.
-            // Pre-populate host pages for the kernel, initrd, and ramfs regions so that
-            // KVM's EPT fault path only needs to install SLAT entries without host page faults.
-            // This moves page-fault costs from guest execution time to setup time.
+            // Pre-populate host pages for the kernel and initrd regions so that KVM's EPT fault
+            // path only needs to install SLAT entries without host page faults.  This moves
+            // page-fault costs from guest execution time to setup time.
             #[cfg(feature = "profile-time")]
             let ept_populate_start: Instant = Instant::now();
 
-            vmem.populate_ept(&guest.ept_populate_ranges(ramfs_region)?)?;
+            vmem.populate_ept(&guest.ept_populate_ranges()?)?;
 
             #[cfg(feature = "profile-time")]
             perf_timings.set_ept_populate(ept_populate_start.elapsed().as_micros() as u64);
