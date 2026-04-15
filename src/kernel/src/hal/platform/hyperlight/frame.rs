@@ -59,7 +59,6 @@ pub struct Inner {
     /// Cached capacity of the dense identity-range chunk at offset 0.
     /// Used to fast-classify frame addresses as inside or outside the
     /// dense range.
-    #[allow(dead_code)]
     dense_range_frames: usize,
 }
 
