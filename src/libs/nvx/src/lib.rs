@@ -324,6 +324,7 @@ fn init() {
             if let Err(error) = ::sys::kcall::pm::set_thread_data_area(tda_ptr) {
                 panic!("init(): failed to set thread data area (error={error:?})");
             }
+            sysalloc::tda::mark_initialized();
         },
         core::prelude::v1::Ok(None) => {
             // No thread-local storage to set.
