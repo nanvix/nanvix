@@ -1,0 +1,22 @@
+[package] # Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name = "cache"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Bounded LRU cache collection for Nanvix"
+homepage.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+
+[features]
+default = []
+std = []
+
+[lints]
+workspace = true
