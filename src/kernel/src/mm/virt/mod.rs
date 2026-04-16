@@ -22,10 +22,10 @@ use self::page_table_allocator::PAGE_TABLE_ALLOCATOR;
 use crate::hal::{
     arch::x86::mem::mmu::page_table::PageTable,
     mem::{
-        AccessPermission,
         Address,
         FrameAddress,
         MemoryRegionType,
+        MmioCachePolicy,
         PageAddress,
         PageAligned,
         PageTableAddress,
@@ -307,14 +307,16 @@ pub fn init(
                 )?);
             } else {
                 // MMIO: per-page mapping with address translation.
-                // FIXME: do not be so open about permissions and caching.
+                let cache_policy: MmioCachePolicy = region
+                    .cache_policy()
+                    .unwrap_or(MmioCachePolicy::UNCACHEABLE);
                 page_table.map(
                     PageAddress::new(PageAligned::from_raw_value(raw_vaddr)?),
                     paddr,
                     true,
-                    true,
-                    false,
-                    AccessPermission::RDWR,
+                    cache_policy.write_through(),
+                    cache_policy.cache_enabled(),
+                    region.perm(),
                 )?;
                 root_pagetables.push_back((page_table_addr, page_table));
                 if raw_vaddr == (config::kernel::MEMORY_SIZE - mem::PAGE_SIZE) {
