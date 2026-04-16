@@ -26,6 +26,22 @@ use ::fat32::{
 use ::sysapi::unistd::file_seek;
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Path component separator.
+const VFS_PATH_SEPARATOR: char = '/';
+
+/// Current directory name.
+const VFS_CURRENT_DIRECTORY: &str = ".";
+
+/// Parent directory name.
+const VFS_PARENT_DIRECTORY: &str = "..";
+
+/// Root directory path.
+const VFS_ROOT_DIRECTORY: &str = "/";
+
+//==================================================================================================
 // OpenOptions
 //==================================================================================================
 
@@ -391,16 +407,33 @@ pub fn open(path: &str) -> Result<File, Fat32Error> {
 /// # Parameters
 ///
 /// - `path`: The path to the file.
+///
+/// # TODOs
+///
+/// - TODO (#2065): Cache negative results for read-only mounts.
+///
 pub fn file_raw_region(path: &str) -> Option<(*const u8, usize)> {
-    let (mount_idx, relative_path): (usize, String) = resolve_path(path).ok()?;
-    state::with_vfs(|vfs| {
+    // Normalize the path so the cache key is stable across cwd changes and different spellings.
+    let normalized_path: String = normalize_for_cache(path).ok()?;
+
+    // Check cache first, using the normalized path as the key.
+    if let Some(cached) = crate::cache::get_raw_region(&normalized_path) {
+        return Some(cached);
+    }
+
+    let (mount_idx, relative_path): (usize, String) = resolve_path(&normalized_path).ok()?;
+    let result = state::with_vfs(|vfs| {
         let mount: &crate::mount::Mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
-        mount
-            .fat()
-            .file_raw_region(&relative_path)
-            .ok_or(Fat32Error::NotFound)
+        Ok(mount.fat().file_raw_region(&relative_path))
     })
-    .ok()
+    .ok()?;
+
+    // Only cache positive results.
+    if result.is_some() {
+        crate::cache::put_raw_region(&normalized_path, result);
+    }
+
+    result
 }
 
 /// File metadata.
@@ -450,19 +483,50 @@ impl Stat {
 ///
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
 /// - [`Fat32Error::NotFound`] if the path doesn't exist.
+///
+/// # TODOs
+///
+/// - TODO (#2065): Cache negative results for read-only mounts.
+///
 pub fn stat(path: &str) -> Result<Stat, Fat32Error> {
-    let (mount_idx, relative_path) = resolve_path(path)?;
+    // Normalize the path so the cache key is stable across cwd changes and different spellings.
+    let normalized_path: String = normalize_for_cache(path)?;
+
+    // Check stat cache.
+    if let Some(cached) = crate::cache::get_stat(&normalized_path) {
+        return Ok(cached);
+    }
+
+    let result: Result<(usize, String), Fat32Error> = resolve_path(&normalized_path);
+    let (mount_idx, relative_path) = match result {
+        Ok(v) => v,
+        // NotFound from resolve_path means no mount matches this path,
+        // not that the file is missing. Do not negative-cache here.
+        Err(Fat32Error::NotFound) => return Err(Fat32Error::NotFound),
+        Err(e) => return Err(e),
+    };
 
     // Handle root of mount specially.
     if relative_path.is_empty() {
-        return Ok(Stat::new(0, true));
+        let s = Stat::new(0, true);
+        crate::cache::put_stat(&normalized_path, s);
+        return Ok(s);
     }
 
-    state::with_vfs(|vfs| {
+    let result: Result<Stat, Fat32Error> = state::with_vfs(|vfs| {
         let mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
         let fat_stat = mount.fat().stat(&relative_path)?;
         Ok(Stat::new(fat_stat.size, fat_stat.is_dir))
-    })
+    });
+
+    match result {
+        Ok(s) => {
+            crate::cache::put_stat(&normalized_path, s);
+            Ok(s)
+        },
+        Err(Fat32Error::NotFound) => Err(Fat32Error::NotFound),
+        Err(e) => Err(e),
+    }
 }
 
 /// Directory entry returned by [`read_dir()`].
@@ -529,10 +593,17 @@ pub fn mkdir(path: &str) -> Result<(), Fat32Error> {
 
     check_writable(mount_idx)?;
 
-    state::with_vfs_mut(|vfs| {
+    let result = state::with_vfs_mut(|vfs| {
         let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
         mount.fat_mut().mkdir(&relative_path)
-    })
+    });
+
+    if result.is_ok() {
+        if let Ok(normalized) = crate::normalize(path) {
+            crate::cache::invalidate_path(&normalized);
+        }
+    }
+    result
 }
 
 /// Removes an empty directory.
@@ -558,10 +629,17 @@ pub fn rmdir(path: &str) -> Result<(), Fat32Error> {
 
     check_writable(mount_idx)?;
 
-    state::with_vfs_mut(|vfs| {
+    let result = state::with_vfs_mut(|vfs| {
         let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
         mount.fat_mut().rmdir(&relative_path)
-    })
+    });
+
+    if result.is_ok() {
+        if let Ok(normalized) = crate::normalize(path) {
+            crate::cache::invalidate_path(&normalized);
+        }
+    }
+    result
 }
 
 /// Deletes a file.
@@ -586,10 +664,17 @@ pub fn unlink(path: &str) -> Result<(), Fat32Error> {
 
     check_writable(mount_idx)?;
 
-    state::with_vfs_mut(|vfs| {
+    let result = state::with_vfs_mut(|vfs| {
         let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
         mount.fat_mut().unlink(&relative_path)
-    })
+    });
+
+    if result.is_ok() {
+        if let Ok(normalized) = crate::normalize(path) {
+            crate::cache::invalidate_path(&normalized);
+        }
+    }
+    result
 }
 
 /// Lists the contents of a directory.
@@ -614,7 +699,7 @@ pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, Fat32Error> {
         let mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
 
         let fat_path: &str = if relative_path.is_empty() {
-            "."
+            VFS_CURRENT_DIRECTORY
         } else {
             &relative_path
         };
@@ -661,10 +746,20 @@ pub fn rename(old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
 
     check_writable(old_idx)?;
 
-    state::with_vfs(|vfs| {
+    let result: Result<(), Fat32Error> = state::with_vfs(|vfs| {
         let mount = vfs.get_mount(old_idx).ok_or(Fat32Error::NotFound)?;
         mount.fat().rename(&old_rel, &new_rel)
-    })
+    });
+
+    if result.is_ok() {
+        if let Ok(old_normalized) = crate::normalize(old_path) {
+            crate::cache::invalidate_path(&old_normalized);
+        }
+        if let Ok(new_normalized) = crate::normalize(new_path) {
+            crate::cache::invalidate_path(&new_normalized);
+        }
+    }
+    result
 }
 
 /// Gets the current working directory.
@@ -716,6 +811,100 @@ pub fn normalize(path: &str) -> Result<String, Fat32Error> {
 //==================================================================================================
 // Internal Functions
 //==================================================================================================
+
+///
+/// # Description
+///
+/// Normalizes a path for use as a cache key, avoiding the VFS lock for
+/// absolute paths.
+///
+/// Absolute paths are normalized in-place without VFS state. Relative paths
+/// fall back to [`normalize()`], which requires the CWD (and thus the VFS
+/// lock).
+///
+/// # Parameters
+///
+/// - `path`: The path to normalize.
+///
+/// # Returns
+///
+/// The normalized absolute path.
+///
+/// # Errors
+///
+/// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized
+///   and the path is relative.
+/// - [`Fat32Error::InvalidPath`] if the path is malformed.
+fn normalize_for_cache(path: &str) -> Result<String, Fat32Error> {
+    if path.starts_with(VFS_PATH_SEPARATOR) {
+        normalize_absolute(path)
+    } else {
+        normalize(path)
+    }
+}
+
+///
+/// # Description
+///
+/// Resolves `.` and `..` components in an absolute path without VFS state.
+///
+/// # Parameters
+///
+/// - `path`: The absolute path to normalize (must start with `/`).
+///
+/// # Returns
+///
+/// The normalized absolute path.
+///
+/// # Errors
+///
+/// - [`Fat32Error::InvalidPath`] if the path is empty, has too many `..`
+///   components, or contains empty components (e.g., consecutive separators
+///   like `//`).
+fn normalize_absolute(path: &str) -> Result<String, Fat32Error> {
+    if path.is_empty() {
+        return Err(Fat32Error::InvalidPath);
+    }
+
+    // Strip the leading separator (guaranteed by caller) and any trailing
+    // separators so they do not produce spurious empty components.
+    let inner: &str = path
+        .strip_prefix(VFS_PATH_SEPARATOR)
+        .unwrap_or(path)
+        .trim_end_matches(VFS_PATH_SEPARATOR);
+
+    // Root path: only separators.
+    if inner.is_empty() {
+        return Ok(String::from(VFS_ROOT_DIRECTORY));
+    }
+
+    let mut components: Vec<&str> = Vec::new();
+    for component in inner.split(VFS_PATH_SEPARATOR) {
+        match component {
+            "" => return Err(Fat32Error::InvalidPath),
+            VFS_CURRENT_DIRECTORY => {},
+            VFS_PARENT_DIRECTORY => {
+                if components.pop().is_none() {
+                    return Err(Fat32Error::InvalidPath);
+                }
+            },
+            other => {
+                components.push(other);
+            },
+        }
+    }
+
+    if components.is_empty() {
+        Err(Fat32Error::InvalidPath)
+    } else {
+        let mut result: String = String::new();
+        for component in components {
+            result.push(VFS_PATH_SEPARATOR);
+            result.push_str(component);
+        }
+        Ok(result)
+    }
+}
 
 /// Resolves a path through the VFS to determine which mount handles it.
 ///
@@ -769,10 +958,10 @@ fn open_with_options(
     }
 
     // Reject write/create/truncate on read-only mounts.
-    // NOTE: This gate is also what keeps the negative cache consistent —
-    // negative entries are only populated for read-only mounts, so any
-    // O_CREAT that could create a file is blocked here before it reaches
-    // the FAT layer, preventing stale negative-cache entries.
+    // NOTE: This gate also preserves cache consistency — cached entries are
+    // only populated for read-only mounts' paths, so any O_CREAT that could
+    // create a file is blocked here before it reaches the FAT layer,
+    // preventing stale cache entries.
     if write || create || create_new || truncate {
         check_writable(mount_idx)?;
     }

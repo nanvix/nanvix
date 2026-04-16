@@ -265,6 +265,9 @@ pub fn create_mount(mount_path: &str, size: usize) -> Result<(), Fat32Error> {
     // Mount succeeded — disarm the guard so memory is not freed.
     guard.disarm();
 
+    // A new mount may shadow previously-resolved paths, so invalidate all cached entries.
+    crate::cache::invalidate_all();
+
     // Track this as a guest-created mount (separate lock).
     GUEST_MOUNTS.lock().push(GuestMountInfo {
         path: String::from(mount_path),
@@ -352,9 +355,13 @@ pub fn unmount(mount_path: &str) -> Result<(), Fat32Error> {
         return Err(e);
     }
 
+    // Invalidate all caches before freeing the mount's memory to prevent dangling pointers in the
+    // raw region cache.
+    crate::cache::invalidate_all();
+
     // Free the memory.
-    // SAFETY: info.memory_ptr was created from Box::into_raw in
-    // create_mount().
+    // SAFETY: info.memory_ptr was created from Box::into_raw in create_mount(). All cached raw
+    // pointers into this memory have been invalidated above.
     unsafe {
         let _ =
             Box::from_raw(core::ptr::slice_from_raw_parts_mut(info.memory_ptr, info.memory_size));

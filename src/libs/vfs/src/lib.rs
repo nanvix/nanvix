@@ -59,6 +59,9 @@ extern crate alloc;
 // Modules
 //==================================================================================================
 
+/// VFS metadata cache for accelerating repeated path lookups.
+pub(crate) mod cache;
+
 /// FAT32 backend: translates VFS operations to `fat32` crate calls.
 pub mod fat32_backend;
 
