@@ -14,6 +14,10 @@ pub(crate) mod peb;
 #[cfg(feature = "pit")]
 use crate::hal::platform::pit::Pit;
 use crate::{
+    collections::{
+        Bitmap,
+        RawArray,
+    },
     hal::{
         arch::x86::{
             self,
@@ -54,6 +58,7 @@ use ::alloc::{
         String,
         ToString,
     },
+    vec,
 };
 use ::arch::{
     mem,
@@ -85,6 +90,7 @@ use ::hyperlight_common::{
     outb::VmAction,
 };
 use ::hyperlight_guest::guest_handle::handle::GuestHandle;
+use ::sparse_bitmap::SparseBitmap;
 use ::sys::{
     config::memory_layout,
     error::{
@@ -175,7 +181,19 @@ pub struct Platform {
     pub arch: Arch,
     #[cfg(feature = "pit")]
     pub _pit: Pit,
+    /// A sparse bitmap representing the physical memory layout, owned by the platform and consumed
+    /// by the memory manager during system initialization.
+    pub physical_memory_layout: Option<SparseBitmap>,
 }
+
+//==================================================================================================
+// Global Variables
+//==================================================================================================
+
+/// Frame allocator storage.
+static mut FRAME_ALLOCATOR_STORAGE: [u8; config::kernel::MEMORY_SIZE
+    / (mem::FRAME_SIZE * u8::BITS as usize)] =
+    [0; config::kernel::MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)];
 
 //==================================================================================================
 // Standalone Functions
@@ -744,6 +762,24 @@ fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
     Pit::new(ioports, ::config::kernel::TIMER_FREQ)
 }
 
+///
+/// # Description
+///
+/// Initializes the hyperlight platform.
+///
+/// # Parameters
+///
+/// - `ioports`: I/O port allocator.
+/// - `ioaddresses`: I/O memory allocator.
+/// - `memory_regions`: Memory regions.
+/// - `mmio_regions`: MMIO regions.
+/// - `madt`: MADT information.
+/// - `_mem_lower`: Lower memory size.
+///
+/// # Returns
+///
+/// Upon success, the initialized platform is returned. Upon failure, an error is returned instead.
+///
 pub fn init(
     ioports: &mut IoPortAllocator,
     ioaddresses: &mut IoMemoryAllocator,
@@ -961,10 +997,23 @@ pub fn init(
         mmio_regions.push_back(scratch_io_region);
     }
 
+    // Build a sparse bitmap representing the physical memory layout.
+    let physical_memory_layout: SparseBitmap = {
+        // Safety: the frame allocator storage is valid and has a static lifetime.
+        let storage: RawArray<u8> = unsafe {
+            let (ptr, len): (*mut u8, usize) =
+                (FRAME_ALLOCATOR_STORAGE.as_mut_ptr(), FRAME_ALLOCATOR_STORAGE.len());
+            RawArray::from_raw_parts(ptr, len)?
+        };
+        let bitmap: Bitmap = Bitmap::from_raw_array(storage)?;
+        SparseBitmap::new(vec![(0, bitmap)])?
+    };
+
     Ok(Platform {
         arch: x86::init(ioports, ioaddresses, madt)?,
         #[cfg(feature = "pit")]
         _pit: register_pit(ioports)?,
+        physical_memory_layout: Some(physical_memory_layout),
     })
 }
 
