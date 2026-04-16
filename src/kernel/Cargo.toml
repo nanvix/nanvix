@@ -18,6 +18,7 @@ path = "src/kmain.rs"
 arch = { workspace = true }
 bitmap = { workspace = true }
 bump-allocator = { workspace = true }
+sparse-bitmap = { workspace = true }
 cfg-if = { workspace = true }
 config = { workspace = true, optional = true }
 elf = { workspace = true }
