@@ -70,14 +70,19 @@ mod handles;
 // Standalone Credit Handles
 //==================================================================================================
 
+/// Type alias for the standalone credit handles tuple.
+#[cfg(feature = "hyperlight")]
+type StandaloneCreditHandlesTuple = (
+    std::sync::Arc<tokio::sync::Mutex<crate::vmm::guest::Guest>>,
+    std::sync::Arc<tokio::sync::Mutex<crate::vmm::VirtualMemory>>,
+);
+
 /// Global handles used by the standalone I/O handler to increment the guest credit counter
 /// when sending IKC responses back to the guest. Without this, the kernel's `get_credits()`
 /// never sees new credits and never calls `VmbusRead` to consume the response.
 #[cfg(feature = "hyperlight")]
-pub(crate) static STANDALONE_CREDIT_HANDLES: std::sync::OnceLock<(
-    std::sync::Arc<tokio::sync::Mutex<crate::vmm::guest::Guest>>,
-    std::sync::Arc<tokio::sync::Mutex<crate::vmm::VirtualMemory>>,
-)> = std::sync::OnceLock::new();
+pub(crate) static STANDALONE_CREDIT_HANDLES: std::sync::OnceLock<StandaloneCreditHandlesTuple> =
+    std::sync::OnceLock::new();
 
 //==================================================================================================
 // Imports
@@ -721,122 +726,132 @@ pub fn build_input_fn(
             None => {
                 let reason: String = "channel has been disconnected".to_string();
                 error!("input(): {reason}");
-                return Err(hyperlight_host::HyperlightError::AnyhowError(
-                    anyhow::Error::msg(reason),
-                ));
+                Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)))
             },
             Some(frame) => match frame {
-            IkcFrame::Message(mut msg) => {
-                // Label: uservm::lib::vm_input::vm_exit()
-                profiler::timestamp_message!(
-                    &mut msg.payload,
-                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                        + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
-                );
+                IkcFrame::Message(mut msg) => {
+                    // Label: uservm::lib::vm_input::vm_exit()
+                    profiler::timestamp_message!(
+                        &mut msg.payload,
+                        std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                            + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                    );
 
-                on_message_received_from_memory_thread(&counters);
-                msg.message_type = MessageType::Ikc;
+                    on_message_received_from_memory_thread(&counters);
+                    msg.message_type = MessageType::Ikc;
 
-                let guest_arc: Arc<Mutex<Guest>> = handles.get_guest_handle().ok_or_else(|| {
-                    let reason: &str = "guest handle not set in UserVmHandles";
-                    error!("input(): {reason}");
-                    hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-                })?;
+                    let guest_arc: Arc<Mutex<Guest>> =
+                        handles.get_guest_handle().ok_or_else(|| {
+                            let reason: &str = "guest handle not set in UserVmHandles";
+                            error!("input(): {reason}");
+                            hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(
+                                reason,
+                            ))
+                        })?;
 
-                let mut locked_guest: MutexGuard<'_, Guest> = guest_arc.blocking_lock();
+                    let mut locked_guest: MutexGuard<'_, Guest> = guest_arc.blocking_lock();
 
-                let vmem_arc: Arc<Mutex<VirtualMemory>> =
-                    handles.get_vmem_handle().ok_or_else(|| {
-                        let reason: &str = "vmem handle not set in UserVmHandles";
+                    let vmem_arc: Arc<Mutex<VirtualMemory>> =
+                        handles.get_vmem_handle().ok_or_else(|| {
+                            let reason: &str = "vmem handle not set in UserVmHandles";
+                            error!("input(): {reason}");
+                            hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(
+                                reason,
+                            ))
+                        })?;
+
+                    let mut locked_vmem: MutexGuard<'_, VirtualMemory> = vmem_arc.blocking_lock();
+
+                    // Label: uservm::lib::vm_input::vm_write_bytes()
+                    profiler::timestamp_message!(
+                        &mut msg.payload,
+                        std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                            + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                    );
+
+                    locked_guest.consume_credit(&mut locked_vmem)?;
+                    Ok(msg.to_bytes().to_vec())
+                },
+                IkcFrame::Bulk(mut bulk) => {
+                    // Handle data chunk transfer: store the bulk payload in the shared
+                    // pending_bulk_data buffer and return only the PullResponse notification
+                    // message (64 bytes). The kernel will then call VmbusBulkRead in a loop
+                    // to retrieve the bulk data in small chunks that fit in the slab allocator.
+                    on_message_received_from_memory_thread(&counters);
+
+                    // Label: uservm::lib::vm_input::vmexit()
+                    profiler::timestamp_message!(bulk.data_mut(), 0);
+
+                    let guest_arc: Arc<Mutex<Guest>> =
+                        handles.get_guest_handle().ok_or_else(|| {
+                            let reason: &str = "guest handle not set in UserVmHandles";
+                            error!("input(): {reason}");
+                            hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(
+                                reason,
+                            ))
+                        })?;
+                    let vmem_arc: Arc<Mutex<VirtualMemory>> =
+                        handles.get_vmem_handle().ok_or_else(|| {
+                            let reason: &str = "vmem handle not set in UserVmHandles";
+                            error!("input(): {reason}");
+                            hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(
+                                reason,
+                            ))
+                        })?;
+
+                    let mut locked_guest: MutexGuard<'_, Guest> = guest_arc.blocking_lock();
+                    let mut locked_vmem: MutexGuard<'_, VirtualMemory> = vmem_arc.blocking_lock();
+
+                    let actual_len: usize = bulk.data().len();
+                    trace!("input(): storing {actual_len} bulk bytes for VmbusBulkRead");
+
+                    // Extract header fields before consuming the bulk data.
+                    let source_pid: ProcessIdentifier = bulk.header().source_pid();
+                    let source_tid: ThreadIdentifier = bulk.header().source_tid();
+                    let dest_pid: ProcessIdentifier = bulk.header().destination_pid();
+                    let dest_tid: ThreadIdentifier = bulk.header().destination_tid();
+                    let data_addr: u32 = bulk.header().data_addr();
+
+                    // Store the bulk data in the shared buffer for VmbusBulkRead to consume.
+                    {
+                        let mut buf = pending_bulk_data.lock().map_err(|e| {
+                            let reason: String = format!("failed to lock pending_bulk_data: {e}");
+                            error!("input(): {reason}");
+                            hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(
+                                reason,
+                            ))
+                        })?;
+                        *buf = bulk.into_data();
+                    }
+
+                    // Construct a PullResponse notification message (fits in Slab128).
+                    let actual_len_u32: u32 = u32::try_from(actual_len).map_err(|e| {
+                        let reason: String = format!("bulk data length exceeds u32: {e}");
                         error!("input(): {reason}");
                         hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
                     })?;
+                    let completion_header: DataChunkHeader = DataChunkHeader::new(
+                        source_pid,
+                        source_tid,
+                        dest_pid,
+                        dest_tid,
+                        data_addr,
+                        actual_len_u32,
+                    );
+                    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
+                    payload[..DataChunkHeader::SIZE].copy_from_slice(&completion_header.to_bytes());
+                    let completion_msg: Message = Message::new(
+                        MessageSender::KERNEL,
+                        MessageReceiver::KERNEL,
+                        MessageType::PullResponse,
+                        None,
+                        payload,
+                    );
 
-                let mut locked_vmem: MutexGuard<'_, VirtualMemory> = vmem_arc.blocking_lock();
-
-                // Label: uservm::lib::vm_input::vm_write_bytes()
-                profiler::timestamp_message!(
-                    &mut msg.payload,
-                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                        + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
-                );
-
-                locked_guest.consume_credit(&mut locked_vmem)?;
-                Ok(msg.to_bytes().to_vec())
-            },
-            IkcFrame::Bulk(mut bulk) => {
-                // Handle data chunk transfer: store the bulk payload in the shared
-                // pending_bulk_data buffer and return only the PullResponse notification
-                // message (64 bytes). The kernel will then call VmbusBulkRead in a loop
-                // to retrieve the bulk data in small chunks that fit in the slab allocator.
-                on_message_received_from_memory_thread(&counters);
-
-                // Label: uservm::lib::vm_input::vmexit()
-                profiler::timestamp_message!(bulk.data_mut(), 0);
-
-                let guest_arc: Arc<Mutex<Guest>> = handles.get_guest_handle().ok_or_else(|| {
-                    let reason: &str = "guest handle not set in UserVmHandles";
-                    error!("input(): {reason}");
-                    hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-                })?;
-                let vmem_arc: Arc<Mutex<VirtualMemory>> =
-                    handles.get_vmem_handle().ok_or_else(|| {
-                        let reason: &str = "vmem handle not set in UserVmHandles";
-                        error!("input(): {reason}");
-                        hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-                    })?;
-
-                let mut locked_guest: MutexGuard<'_, Guest> = guest_arc.blocking_lock();
-                let mut locked_vmem: MutexGuard<'_, VirtualMemory> = vmem_arc.blocking_lock();
-
-                let actual_len: usize = bulk.data().len();
-                trace!("input(): storing {actual_len} bulk bytes for VmbusBulkRead");
-
-                // Extract header fields before consuming the bulk data.
-                let source_pid: ProcessIdentifier = bulk.header().source_pid();
-                let source_tid: ThreadIdentifier = bulk.header().source_tid();
-                let dest_pid: ProcessIdentifier = bulk.header().destination_pid();
-                let dest_tid: ThreadIdentifier = bulk.header().destination_tid();
-                let data_addr: u32 = bulk.header().data_addr();
-
-                // Store the bulk data in the shared buffer for VmbusBulkRead to consume.
-                {
-                    let mut buf = pending_bulk_data.lock().map_err(|e| {
-                        let reason: String = format!("failed to lock pending_bulk_data: {e}");
-                        error!("input(): {reason}");
-                        hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-                    })?;
-                    *buf = bulk.into_data();
-                }
-
-                // Construct a PullResponse notification message (fits in Slab128).
-                let actual_len_u32: u32 = u32::try_from(actual_len).map_err(|e| {
-                    let reason: String = format!("bulk data length exceeds u32: {e}");
-                    error!("input(): {reason}");
-                    hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-                })?;
-                let completion_header: DataChunkHeader = DataChunkHeader::new(
-                    source_pid,
-                    source_tid,
-                    dest_pid,
-                    dest_tid,
-                    data_addr,
-                    actual_len_u32,
-                );
-                let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-                payload[..DataChunkHeader::SIZE].copy_from_slice(&completion_header.to_bytes());
-                let completion_msg: Message = Message::new(
-                    MessageSender::KERNEL,
-                    MessageReceiver::KERNEL,
-                    MessageType::PullResponse,
-                    None,
-                    payload,
-                );
-
-                locked_guest.consume_credit(&mut locked_vmem)?;
-                Ok(completion_msg.to_bytes().to_vec())
-            },
-        } // match frame
+                    locked_guest.consume_credit(&mut locked_vmem)?;
+                    Ok(completion_msg.to_bytes().to_vec())
+                },
+            }, // match frame
         } // match blocking_recv
     };
 

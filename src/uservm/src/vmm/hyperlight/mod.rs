@@ -540,9 +540,9 @@ impl Vmm {
 
         // Phase 2: Snapshot — capture post-boot state for restore+call cycles.
         let evolve_time = std::time::Instant::now();
-        let snapshot = sandbox.snapshot().map_err(|e| {
-            anyhow::anyhow!("snapshot failed: {e:?}")
-        })?;
+        let snapshot = sandbox
+            .snapshot()
+            .map_err(|e| anyhow::anyhow!("snapshot failed: {e:?}"))?;
         let snapshot_time = evolve_time.elapsed();
         eprintln!("snapshot: {:.3}ms", snapshot_time.as_secs_f64() * 1000.0);
 
@@ -555,9 +555,9 @@ impl Vmm {
         let mut call_result: Result<(), HyperlightError> = Ok(());
         for i in 0..total_calls {
             let restore_start = std::time::Instant::now();
-            sandbox.restore(snapshot.clone()).map_err(|e| {
-                anyhow::anyhow!("restore failed: {e:?}")
-            })?;
+            sandbox
+                .restore(snapshot.clone())
+                .map_err(|e| anyhow::anyhow!("restore failed: {e:?}"))?;
             let restore_time = restore_start.elapsed();
 
             let call_start = std::time::Instant::now();
