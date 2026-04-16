@@ -17,11 +17,13 @@ use crate::{
         TruncatedMemoryRegion,
     },
 };
+use ::alloc::vec;
 use ::arch::mem::{
     self,
     paging::FrameNumber,
 };
 use ::config::constants;
+use ::sparse_bitmap::SparseBitmap;
 use ::sys::{
     error::{
         Error,
@@ -41,8 +43,8 @@ use ::sys::{
 ///
 #[derive(Debug)]
 pub struct FrameAllocator {
-    /// A bitmap that keeps track of free/used frames.
-    bitmap: Bitmap,
+    /// A sparse bitmap that keeps track of free/used frames.
+    bitmap: SparseBitmap,
 }
 
 //==================================================================================================
@@ -57,22 +59,38 @@ impl FrameAllocator {
     ///
     /// # Parameters
     ///
-    /// - `bitmap`: A bitmap to keeps track of free/used frames.
+    /// - `bitmap`: A sparse bitmap to keep track of free/used frames.
     ///
-    pub fn new(bitmap: Bitmap) -> Self {
+    pub fn new(bitmap: SparseBitmap) -> Self {
         let frame_allocator: FrameAllocator = Self { bitmap };
 
         info!(
             "frame allocator capacity: {} frames, {} MB",
-            frame_allocator.bitmap.number_of_bits(),
-            frame_allocator.bitmap.number_of_bits() * mem::FRAME_SIZE / constants::MEGABYTE
+            frame_allocator.bitmap.capacity(),
+            (frame_allocator.bitmap.capacity() * mem::FRAME_SIZE) / constants::MEGABYTE
         );
 
         frame_allocator
     }
 
+    ///
+    /// # Description
+    ///
+    /// Instantiates a frame allocator from raw byte storage.
+    ///
+    /// # Parameters
+    ///
+    /// - `storage`: A raw byte array to use as backing storage for the bitmap.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the constructed frame allocator is returned. Upon failure, an error is
+    /// returned instead.
+    ///
     pub fn from_raw_storage(storage: RawArray<u8>) -> Result<Self, Error> {
-        Ok(Self::new(Bitmap::from_raw_array(storage)?))
+        let bitmap: Bitmap = Bitmap::from_raw_array(storage)?;
+        let sparse: SparseBitmap = SparseBitmap::new(vec![(0, bitmap)])?;
+        Ok(Self::new(sparse))
     }
 
     ///
@@ -87,7 +105,7 @@ impl FrameAllocator {
     ///
     pub fn alloc(&mut self) -> Result<FrameAddress, Error> {
         let frame_number: usize = match self.bitmap.alloc() {
-            Ok(frame_number) => frame_number,
+            Ok(index) => index,
             Err(error) => {
                 error!("{error:?}");
                 return Err(error);
@@ -180,6 +198,21 @@ impl FrameAllocator {
     ) -> Result<(), Error> {
         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
         let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
+
+        // When nightly-performance-optimizations is off, verify that every frame index in the
+        // range is covered by the sparse bitmap. SparseBitmap::test() returns Ok(false) for
+        // uncovered indices, which would incorrectly appear as "free" and pass the check below,
+        // only to fail on set(). With the feature enabled this check is elided because
+        // PhysicalAddress construction already guarantees valid physical addresses.
+        #[cfg(not(feature = "nightly-performance-optimizations"))]
+        for index in start_frame_number..=end_frame_number {
+            if self.bitmap.find_chunk(index).is_none() {
+                let uncovered_addr: usize = index * mem::FRAME_SIZE;
+                let reason: &str = "frame index not covered by any bitmap chunk";
+                error!("{} (frame={:#010x}, region={:?})", reason, uncovered_addr, region);
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            }
+        }
 
         // Check if all frames in the range are free.
         for index in start_frame_number..=end_frame_number {
