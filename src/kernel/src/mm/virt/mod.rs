@@ -365,6 +365,13 @@ pub fn init(
     Ok(root_pagetables)
 }
 
+/// Type alias for the return value of [`from_hyperlight_cr3`].
+#[cfg(feature = "hyperlight")]
+type HyperlightCr3Result = (
+    PageDirectoryStorage,
+    LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
+);
+
 ///
 /// # Description
 ///
@@ -385,13 +392,7 @@ pub fn init(
 /// Must only be called during single-threaded kernel init.
 ///
 #[cfg(feature = "hyperlight")]
-pub fn from_hyperlight_cr3() -> Result<
-    (
-        PageDirectoryStorage,
-        LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
-    ),
-    Error,
-> {
+pub fn from_hyperlight_cr3() -> Result<HyperlightCr3Result, Error> {
     let cr3: u32 = unsafe {
         let val: u32;
         core::arch::asm!("mov {0:e}, cr3", out(reg) val);

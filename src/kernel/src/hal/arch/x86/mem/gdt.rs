@@ -295,7 +295,6 @@ impl Gdt {
             let entry_offset = (GdtEntries::UserThreadDataArea as usize) * 8;
             let entry_ptr = (gdt_base as usize + entry_offset) as *mut Gdte;
             (*entry_ptr).set_base(tda_base);
-            return;
         }
         #[cfg(not(feature = "hyperlight"))]
         GDT[GdtEntries::UserThreadDataArea as usize].set_base(tda_base);

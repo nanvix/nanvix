@@ -2164,7 +2164,14 @@ impl ProcessManager {
                 // CoW-resolved PA (the VA may point to snapshot memory but
                 // the actual data may have been CoW'd to scratch).
                 let resolved = Vmem::resolve_pa(cr3.into_raw_value());
-                result.push((pid, if resolved != 0 { resolved } else { cr3.into_raw_value() as u32 }));
+                result.push((
+                    pid,
+                    if resolved != 0 {
+                        resolved
+                    } else {
+                        cr3.into_raw_value() as u32
+                    },
+                ));
             }
         }
         // Ready processes (user processes created but not yet scheduled).
@@ -2172,7 +2179,14 @@ impl ProcessManager {
             let pid = proc.state().pid();
             if let Ok(cr3) = proc.state().vmem().pgdir().physical_address() {
                 let resolved = Vmem::resolve_pa(cr3.into_raw_value());
-                result.push((pid, if resolved != 0 { resolved } else { cr3.into_raw_value() as u32 }));
+                result.push((
+                    pid,
+                    if resolved != 0 {
+                        resolved
+                    } else {
+                        cr3.into_raw_value() as u32
+                    },
+                ));
             }
         }
         result

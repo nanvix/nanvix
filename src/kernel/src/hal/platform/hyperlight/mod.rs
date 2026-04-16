@@ -116,7 +116,7 @@ pub fn patch_kernel_idt_with_cow_handler() {
         let dst = 0xFFFE_0000 as *mut u8;
         core::ptr::copy_nonoverlapping(src, dst, 2048);
 
-        let entry14 = (dst as *mut u8).add(14 * 8);
+        let entry14 = dst.add(14 * 8);
         let handler_addr = _cow_pf_handler as *const () as u32;
         *(entry14.add(0) as *mut u16) = handler_addr as u16;
         *(entry14.add(2) as *mut u16) = 0x08;
@@ -160,7 +160,7 @@ pub fn init_virtual_memory(
 
     for region in mmio_regions.into_iter() {
         let region_base = region.start().into_raw_value();
-        if region_base < ::config::kernel::MEMORY_SIZE || region_base >= 0xF0000000 {
+        if !(::config::kernel::MEMORY_SIZE..0xF0000000).contains(&region_base) {
             continue;
         }
         info!(
@@ -506,7 +506,7 @@ pub extern "C" fn nanvix_dispatch_handler() -> u32 {
         core::arch::asm!("out dx, al", in("dx") 0xA1u16, in("al") 0xFFu8, options(nomem, nostack));
 
         // Arm PV timer (host-side timer thread + irqfd for IRQ0).
-        let period_us: u32 = 1_000_000 / config::kernel::TIMER_FREQ as u32;
+        let period_us: u32 = 1_000_000 / config::kernel::TIMER_FREQ;
         core::arch::asm!(
             "out dx, eax",
             in("dx") 107u16,
@@ -527,7 +527,7 @@ pub extern "C" fn nanvix_dispatch_handler() -> u32 {
 
         // Patch entry #14 (#PF) with the CoW handler that falls through
         // to _do_excp14 for non-CoW faults (demand paging, etc.).
-        let entry14 = (dst as *mut u8).add(14 * 8);
+        let entry14 = dst.add(14 * 8);
         let handler_addr = _cow_pf_handler as *const () as u32;
         *(entry14.add(0) as *mut u16) = handler_addr as u16;
         *(entry14.add(2) as *mut u16) = 0x08;

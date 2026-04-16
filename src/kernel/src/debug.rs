@@ -91,10 +91,10 @@ pub fn debug(pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult {
         let user_buf: &[u8] = unsafe {
             core::slice::from_raw_parts(user_buffer as *const u8, size)
         };
-        return match do_debug(user_buf) {
+        match do_debug(user_buf) {
             Ok(()) => KcallResult::ok(),
             Err(e) => KcallResult::Error(e.code.into()),
-        };
+        }
     }
 
     #[cfg(not(feature = "hyperlight"))]
