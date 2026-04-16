@@ -269,6 +269,18 @@ pub mod microvm {
     pub const DEFAULT_LAPIC_BASE: usize = 0xFEE0_0000;
 }
 
+//==================================================================================================
+// VFS
+//==================================================================================================
+
+pub mod vfs {
+    /// Maximum number of entries in each VFS metadata cache (stat, negative, raw region).
+    ///
+    /// When a cache reaches this capacity, the least-recently-used entry is evicted before
+    /// inserting a new one.
+    pub const CACHE_CAPACITY: usize = 64;
+}
+
 // Hyperlight build-time constants are generated from hyperlight_config.toml.
 #[cfg(feature = "hyperlight")]
 include!(concat!(env!("OUT_DIR"), "/hyperlight_config.rs"));
