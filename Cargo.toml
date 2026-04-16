@@ -50,6 +50,7 @@ members = [
         "src/libs/syslog-macros",
         "src/libs/libc_stdlib",
         "src/libs/libc_string",
+        "src/libs/cache",
         "src/libs/multibin",
         "src/libs/mmio-tag",
         "src/libs/sys",
@@ -153,6 +154,7 @@ kvm-ioctls = "0.24.0"
 libc = "0.2.185"
 linuxd = { path = "src/daemons/linuxd", default-features = false }
 log = "0.4.29"
+cache = { path = "src/libs/cache", default-features = false }
 mkramfs = { path = "src/utils/mkramfs" }
 multibin = { path = "src/libs/multibin", default-features = false }
 nanvix = { path = "src/libs/nanvix", default-features = false }
