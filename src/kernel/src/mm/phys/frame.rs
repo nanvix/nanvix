@@ -199,6 +199,21 @@ impl FrameAllocator {
         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
         let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
 
+        // When nightly-performance-optimizations is off, verify that every frame index in the
+        // range is covered by the sparse bitmap. SparseBitmap::test() returns Ok(false) for
+        // uncovered indices, which would incorrectly appear as "free" and pass the check below,
+        // only to fail on set(). With the feature enabled this check is elided because
+        // PhysicalAddress construction already guarantees valid physical addresses.
+        #[cfg(not(feature = "nightly-performance-optimizations"))]
+        for index in start_frame_number..=end_frame_number {
+            if self.bitmap.find_chunk(index).is_none() {
+                let uncovered_addr: usize = index * mem::FRAME_SIZE;
+                let reason: &str = "frame index not covered by any bitmap chunk";
+                error!("{} (frame={:#010x}, region={:?})", reason, uncovered_addr, region);
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            }
+        }
+
         // Check if all frames in the range are free.
         for index in start_frame_number..=end_frame_number {
             match self.bitmap.test(index) {
