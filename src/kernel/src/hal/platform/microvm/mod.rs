@@ -25,7 +25,7 @@ use crate::{
             AccessPermission,
             Address,
             MemoryRegion,
-            MemoryRegionType,
+            MmioCachePolicy,
             PageAligned,
             PhysicalAddress,
             TruncatedMemoryRegion,
@@ -390,12 +390,12 @@ fn register_ramfs_mmio_region(
     if let Some((ramfs_base, ramfs_size)) = read_ramfs_registers() {
         trace!("ramfs region detected: base={:#010x}, size={:#x}", ramfs_base, ramfs_size);
 
-        let ramfs_region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
+        let ramfs_region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
             RAMFS_REGION_NAME,
             PageAligned::from_raw_value(ramfs_base)?,
             ramfs_size,
-            MemoryRegionType::Mmio,
             AccessPermission::RDWR,
+            MmioCachePolicy::WRITE_BACK,
         )?;
 
         ioaddresses.register(RAMFS_MMIO_TAG, ramfs_region.clone())?;
@@ -520,23 +520,23 @@ pub fn init(
     register_pic_ioports(ioports)?;
 
     // Register MicroVM control registers.
-    let scratch_region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
+    let scratch_region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
         "microvm-ctrl-registers",
         PageAligned::from_raw_value(::config::microvm::DEFAULT_MICROVM_CTRL_BASE)?,
         mem::PAGE_SIZE,
-        MemoryRegionType::Mmio,
         AccessPermission::RDONLY,
+        MmioCachePolicy::UNCACHEABLE,
     )?;
     ioaddresses.register(MICROVM_CTRL_MMIO_TAG, scratch_region.clone())?;
     mmio_regions.push_back(scratch_region);
 
     // Register pvclock page so the kernel can read TSC calibration data.
-    let pvclock_region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
+    let pvclock_region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
         "pvclock-page",
         PageAligned::from_raw_value(::config::microvm::DEFAULT_PVCLOCK_PAGE)?,
         mem::PAGE_SIZE,
-        MemoryRegionType::Mmio,
         AccessPermission::RDONLY,
+        MmioCachePolicy::UNCACHEABLE,
     )?;
     ioaddresses.register(PVCLOCK_MMIO_TAG, pvclock_region.clone())?;
     mmio_regions.push_back(pvclock_region);
@@ -546,12 +546,12 @@ pub fn init(
     // acknowledge interrupts through the WHP LAPIC emulator.
     #[cfg(feature = "whp")]
     {
-        let lapic_region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
+        let lapic_region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
             "lapic-registers",
             PageAligned::from_raw_value(::config::microvm::DEFAULT_LAPIC_BASE)?,
             mem::PAGE_SIZE,
-            MemoryRegionType::Mmio,
             AccessPermission::RDWR,
+            MmioCachePolicy::UNCACHEABLE,
         )?;
         ioaddresses.register(LAPIC_MMIO_TAG, lapic_region.clone())?;
         mmio_regions.push_back(lapic_region);

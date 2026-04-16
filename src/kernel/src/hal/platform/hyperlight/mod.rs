@@ -27,6 +27,7 @@ use crate::{
         mem::{
             MemoryRegion,
             MemoryRegionType,
+            MmioCachePolicy,
             PageAligned,
             PhysicalAddress,
             TruncatedMemoryRegion,
@@ -530,12 +531,12 @@ pub fn init(
             error!("init(): {reason} (kernel_end_addr={kernel_end_addr:#x})");
             Error::new(ErrorCode::BadAddress, reason)
         })?;
-    let peb: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
+    let peb: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
         "peb",
         PageAligned::from_raw_value(peb_base)?,
         PEB_SIZE,
-        MemoryRegionType::Mmio,
         AccessPermission::RDWR,
+        MmioCachePolicy::UNCACHEABLE,
     )?;
     ioaddresses.register(PEB_MMIO_TAG, peb.clone())?;
     mmio_regions.push_back(peb);
@@ -546,12 +547,12 @@ pub fn init(
         error!("init(): {}", reason);
         Error::new(ErrorCode::OutOfMemory, reason)
     })?;
-    let input_data_buffer: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
+    let input_data_buffer: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
         "input data buffer",
         PageAligned::from_raw_value(input_data_base)?,
         INPUT_DATA_BUFFER_SIZE,
-        MemoryRegionType::Mmio,
         AccessPermission::RDWR,
+        MmioCachePolicy::UNCACHEABLE,
     )?;
     ioaddresses.register(INPUT_BUF_MMIO_TAG, input_data_buffer.clone())?;
     mmio_regions.push_back(input_data_buffer);
@@ -564,13 +565,14 @@ pub fn init(
             error!("init(): {}", reason);
             Error::new(ErrorCode::OutOfMemory, reason)
         })?;
-    let output_data_buffer: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
-        "output data buffer",
-        PageAligned::from_raw_value(output_data_base)?,
-        OUTPUT_DATA_BUFFER_SIZE,
-        MemoryRegionType::Mmio,
-        AccessPermission::RDWR,
-    )?;
+    let output_data_buffer: TruncatedMemoryRegion<VirtualAddress> =
+        TruncatedMemoryRegion::new_mmio(
+            "output data buffer",
+            PageAligned::from_raw_value(output_data_base)?,
+            OUTPUT_DATA_BUFFER_SIZE,
+            AccessPermission::RDWR,
+            MmioCachePolicy::UNCACHEABLE,
+        )?;
     ioaddresses.register(OUTPUT_BUF_MMIO_TAG, output_data_buffer.clone())?;
     mmio_regions.push_back(output_data_buffer);
 
@@ -679,14 +681,16 @@ pub fn init(
                         "file mapping [{}]: base={:#010x}, size={:#x}",
                         i, ramfs_base, ramfs_size
                     );
+                    let mut ramfs_mr: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+                        RAMFS_REGION_NAME,
+                        VirtualAddress::from_raw_value(ramfs_base),
+                        ramfs_size,
+                        MemoryRegionType::Mmio,
+                        AccessPermission::RDWR,
+                    )?;
+                    ramfs_mr.set_cache_policy(MmioCachePolicy::WRITE_BACK);
                     let ramfs_region: TruncatedMemoryRegion<VirtualAddress> =
-                        TruncatedMemoryRegion::from_memory_region(MemoryRegion::new(
-                            RAMFS_REGION_NAME,
-                            VirtualAddress::from_raw_value(ramfs_base),
-                            ramfs_size,
-                            MemoryRegionType::Mmio,
-                            AccessPermission::RDWR,
-                        )?)?;
+                        TruncatedMemoryRegion::from_memory_region(ramfs_mr)?;
                     ioaddresses.register(RAMFS_MMIO_TAG, ramfs_region.clone())?;
                     mmio_regions.push_back(ramfs_region);
                 }
@@ -709,14 +713,16 @@ pub fn init(
         // exceeds FrameNumber::MAX and cannot be booked by the frame allocator.
         let scratch_end: usize = MAX_GVA - mem::PAGE_SIZE;
         let scratch_io_size = scratch_end - input_gva + 1;
+        let mut scratch_mr: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+            "scratch io",
+            VirtualAddress::from_raw_value(input_gva),
+            scratch_io_size,
+            MemoryRegionType::Mmio,
+            AccessPermission::RDWR,
+        )?;
+        scratch_mr.set_cache_policy(MmioCachePolicy::UNCACHEABLE);
         let scratch_io_region: TruncatedMemoryRegion<VirtualAddress> =
-            TruncatedMemoryRegion::from_memory_region(MemoryRegion::new(
-                "scratch io",
-                VirtualAddress::from_raw_value(input_gva),
-                scratch_io_size,
-                MemoryRegionType::Mmio,
-                AccessPermission::RDWR,
-            )?)?;
+            TruncatedMemoryRegion::from_memory_region(scratch_mr)?;
         ioaddresses.register(MmioTag::from_name("SCRATCHIO"), scratch_io_region.clone())?;
         mmio_regions.push_back(scratch_io_region);
     }
