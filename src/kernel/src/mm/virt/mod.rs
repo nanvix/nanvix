@@ -22,6 +22,7 @@ use self::page_table_allocator::PAGE_TABLE_ALLOCATOR;
 use crate::hal::{
     arch::x86::mem::mmu::page_table::PageTable,
     mem::{
+        AccessPermission,
         Address,
         FrameAddress,
         MemoryRegionType,
@@ -262,7 +263,6 @@ pub fn init(
 
             if region.typ() != MemoryRegionType::Mmio {
                 // Bulk identity fill: map all pages in this page table at once.
-                // FIXME: do not be so open about permissions and caching.
                 let pgtab_base: usize = ::sys::mm::align_down(raw_vaddr, PGTAB_ALIGNMENT);
                 let start_index: usize = (raw_vaddr - pgtab_base) / mem::PAGE_SIZE;
                 let pgtab_remaining: usize = PAGE_TABLE_LENGTH - start_index;
@@ -275,6 +275,12 @@ pub fn init(
                     break;
                 }
 
+                let rw_flag: ReadWriteFlag = if region.perm() == AccessPermission::RDWR {
+                    ReadWriteFlag::ReadWrite
+                } else {
+                    ReadWriteFlag::ReadOnly
+                };
+
                 let fill_count: usize = page_table
                     .fill(
                         start_index,
@@ -282,7 +288,7 @@ pub fn init(
                         FrameAddress::from_raw_value(raw_vaddr)?,
                         PageTableEntryFlags::new(
                             PresentFlag::Present,
-                            ReadWriteFlag::ReadWrite,
+                            rw_flag,
                             UserSupervisorFlag::Supervisor,
                             PageWriteThroughFlag::NotWriteThrough,
                             PageCacheDisableFlag::CacheEnabled,
