@@ -26,7 +26,6 @@ use crate::{
         io::{
             IoMemoryAllocator,
             IoPortAllocator,
-            MmioTag,
         },
         mem::{
             MemoryRegion,
@@ -46,6 +45,7 @@ use crate::{
                 OUTPUT_BUF_MMIO_TAG,
                 PEB_MMIO_TAG,
                 RAMFS_MMIO_TAG,
+                SCRATCH_IO_MMIO_TAG,
             },
         },
     },
@@ -993,7 +993,7 @@ pub fn init(
         scratch_mr.set_cache_policy(MmioCachePolicy::UNCACHEABLE);
         let scratch_io_region: TruncatedMemoryRegion<VirtualAddress> =
             TruncatedMemoryRegion::from_memory_region(scratch_mr)?;
-        ioaddresses.register(MmioTag::from_name("SCRATCHIO"), scratch_io_region.clone())?;
+        ioaddresses.register(SCRATCH_IO_MMIO_TAG, scratch_io_region.clone())?;
         mmio_regions.push_back(scratch_io_region);
     }
 
