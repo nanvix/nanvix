@@ -148,8 +148,13 @@ pub fn init_virtual_memory(
     >,
     physman: crate::mm::phys::PhysMemoryManager,
 ) -> Result<crate::mm::Vmem, ::sys::error::Error> {
-    use crate::hal::mem::Address;
-    use crate::mm::{Vmem, VirtMemoryManager};
+    use crate::{
+        hal::mem::Address,
+        mm::{
+            VirtMemoryManager,
+            Vmem,
+        },
+    };
 
     info!("adopting Hyperlight page tables into BSS storage");
 
@@ -165,10 +170,13 @@ pub fn init_virtual_memory(
         }
         info!(
             "identity-mapping MMIO: base={:#x} size={:#x}",
-            region.start().into_raw_value(), region.size()
+            region.start().into_raw_value(),
+            region.size()
         );
         let cr3: u32;
-        unsafe { core::arch::asm!("mov {0:e}, cr3", out(reg) cr3, options(nomem, nostack)); }
+        unsafe {
+            core::arch::asm!("mov {0:e}, cr3", out(reg) cr3, options(nomem, nostack));
+        }
         let pd = cr3 as *mut u32;
 
         let mut va = region.start().into_raw_value();
@@ -180,26 +188,38 @@ pub fn init_virtual_memory(
             let pde = unsafe { core::ptr::read_volatile(pd.add(pdi)) };
             let pt_gpa = if (pde & 1) == 0 {
                 let scratch_gpa = crate::mm::Vmem::alloc_scratch_page();
-                if scratch_gpa == 0 { break; }
-                unsafe { core::ptr::write_bytes(scratch_gpa as *mut u8, 0, 4096); }
+                if scratch_gpa == 0 {
+                    break;
+                }
+                unsafe {
+                    core::ptr::write_bytes(scratch_gpa as *mut u8, 0, 4096);
+                }
                 let new_pde: u32 = scratch_gpa | 1 | 2 | 4 | (1 << 5);
-                unsafe { core::ptr::write_volatile(pd.add(pdi), new_pde); }
+                unsafe {
+                    core::ptr::write_volatile(pd.add(pdi), new_pde);
+                }
                 scratch_gpa
             } else {
                 let updated_pde = pde | 4;
                 if updated_pde != pde {
-                    unsafe { core::ptr::write_volatile(pd.add(pdi), updated_pde); }
+                    unsafe {
+                        core::ptr::write_volatile(pd.add(pdi), updated_pde);
+                    }
                 }
                 pde & 0xFFFFF000
             };
 
             let pt = pt_gpa as *mut u32;
             let pte: u32 = (va as u32) | 1 | 4 | (1 << 5) | (1 << 9);
-            unsafe { core::ptr::write_volatile(pt.add(pti), pte); }
+            unsafe {
+                core::ptr::write_volatile(pt.add(pti), pte);
+            }
 
             va += ::arch::mem::PAGE_SIZE;
         }
-        unsafe { core::arch::asm!("mov eax, cr3", "mov cr3, eax", options(nostack)); }
+        unsafe {
+            core::arch::asm!("mov eax, cr3", "mov cr3, eax", options(nostack));
+        }
     }
 
     Ok(vmem)
@@ -581,7 +601,6 @@ pub extern "C" fn nanvix_dispatch_handler() -> u32 {
 }
 
 pub fn signal_boot_complete() {
-
     extern "C" {
         fn _nanvix_dispatch();
     }
@@ -930,8 +949,8 @@ pub fn init(
         let input_gva: usize = unsafe { (*peb_ptr).input_stack.ptr } as usize;
 
         debug!(
-            "ramfs detection: cr3={:#010x}, pt_pages={}, \
-             shared_mem_end={:#010x}, input_gva={:#010x}",
+            "ramfs detection: cr3={:#010x}, pt_pages={}, shared_mem_end={:#010x}, \
+             input_gva={:#010x}",
             cr3, pt_page_count, shared_mem_end, input_gva
         );
 
@@ -954,10 +973,8 @@ pub fn init(
                     MemoryRegionType::Mmio,
                     AccessPermission::RDWR,
                 )?)?;
-            ioaddresses.register(
-                crate::hal::io::MmioTag::from_name("RAMFS   "),
-                ramfs_region.clone(),
-            )?;
+            ioaddresses
+                .register(crate::hal::io::MmioTag::from_name("RAMFS   "), ramfs_region.clone())?;
             mmio_regions.push_back(ramfs_region);
         }
     }
@@ -1197,16 +1214,12 @@ unsafe fn read_initrd_cmdline(
     let ramfs_trailer_offset: usize = args_bytes_offset + args_payload_size;
     let remaining: usize = args_section_size.saturating_sub(1 + args_payload_size);
     if remaining >= 8 {
-        let ramfs_size_bytes: [u8; 8] = core::ptr::read_unaligned(
-            ramfs_trailer_offset as *const [u8; 8],
-        );
+        let ramfs_size_bytes: [u8; 8] =
+            core::ptr::read_unaligned(ramfs_trailer_offset as *const [u8; 8]);
         let ramfs_size: u64 = u64::from_le_bytes(ramfs_size_bytes);
         if ramfs_size > 0 {
             RAMFS_FILE_SIZE = ramfs_size as usize;
-            debug!(
-                "read_initrd_cmdline(): ramfs_file_size={:#x}",
-                ramfs_size
-            );
+            debug!("read_initrd_cmdline(): ramfs_file_size={:#x}", ramfs_size);
         }
     }
 

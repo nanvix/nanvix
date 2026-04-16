@@ -30,10 +30,10 @@ use crate::{
     mm::{
         phys::UserFrame,
         virt::{
-            PageDirectoryStorage,
-            PageTableStorage,
             kpage::KernelPage,
             page_table_allocator::PAGE_TABLE_ALLOCATOR,
+            PageDirectoryStorage,
+            PageTableStorage,
         },
     },
 };
@@ -50,13 +50,13 @@ use ::arch::{
     },
     mem::{
         self,
-        PAGE_ALIGNMENT,
-        PAGE_TABLE_LENGTH,
-        PGTAB_ALIGNMENT,
         paging::{
             PageDirectoryEntry,
             PteWord,
         },
+        PAGE_ALIGNMENT,
+        PAGE_TABLE_LENGTH,
+        PGTAB_ALIGNMENT,
     },
 };
 use ::config::kernel::MEMORY_SIZE;
@@ -379,7 +379,11 @@ impl Vmem {
         #[cfg(feature = "hyperlight")]
         let pd_pa = {
             let resolved = Self::resolve_pa(pd_pa) as usize;
-            if resolved != 0 { resolved } else { pd_pa }
+            if resolved != 0 {
+                resolved
+            } else {
+                pd_pa
+            }
         };
         unsafe { mmu::load_page_directory(pd_pa) };
         Ok(())

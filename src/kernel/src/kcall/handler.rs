@@ -71,7 +71,9 @@ pub fn kcall_handler() -> ExitStatus {
     #[cfg(feature = "hyperlight")]
     {
         use ::hyperlight_common::layout::{
-            MAX_GVA, MAX_PD_ROOTS, SCRATCH_TOP_PD_ROOTS_ARRAY_OFFSET,
+            MAX_GVA,
+            MAX_PD_ROOTS,
+            SCRATCH_TOP_PD_ROOTS_ARRAY_OFFSET,
             SCRATCH_TOP_PD_ROOTS_COUNT_OFFSET,
         };
         let cr3s = pm!().iter_process_cr3s();

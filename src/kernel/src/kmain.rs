@@ -439,7 +439,9 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
 
     // Save kernel modules for re-spawning during dispatch.
     #[cfg(feature = "hyperlight")]
-    unsafe { KERNEL_MODULES = Some(kernel_modules.clone()) };
+    unsafe {
+        KERNEL_MODULES = Some(kernel_modules.clone())
+    };
 
     // SAFETY: the memory manager is initialized and access is synchronized.
     let status: ExitStatus =
@@ -554,7 +556,14 @@ pub fn kernel_magic_string(status: ExitStatus) -> ! {
     #[cfg(feature = "hyperlight")]
     unsafe {
         let code: usize = status.into();
-        let msg = [b'X', b'=', b'0' + ((code / 100) as u8 % 10), b'0' + ((code / 10) as u8 % 10), b'0' + (code as u8 % 10), b'\n'];
+        let msg = [
+            b'X',
+            b'=',
+            b'0' + ((code / 100) as u8 % 10),
+            b'0' + ((code / 10) as u8 % 10),
+            b'0' + (code as u8 % 10),
+            b'\n',
+        ];
         for &c in &msg {
             core::arch::asm!("out dx, al", in("dx") 103u16, in("al") c, options(nomem, nostack));
         }

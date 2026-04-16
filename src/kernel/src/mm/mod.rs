@@ -27,13 +27,13 @@ use ::arch::mem::{
     PAGE_ALIGNMENT,
     PGTAB_ALIGNMENT,
 };
+#[cfg_attr(feature = "hyperlight", allow(unused_imports))]
+pub use virt::PageTableStorage;
 pub use virt::{
     KernelPage,
     VirtMemoryManager,
     Vmem,
 };
-#[cfg_attr(feature = "hyperlight", allow(unused_imports))]
-pub use virt::PageTableStorage;
 pub mod kstack;
 pub mod ustack;
 
@@ -271,8 +271,7 @@ pub fn init(
             LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
         ) = (LinkedList::new(), virt::init(virtual_memory_regions, mmio_regions)?);
 
-        let mut vmem: Vmem =
-            VirtMemoryManager::init(kernel_pages, kernel_page_tables, physman)?;
+        let mut vmem: Vmem = VirtMemoryManager::init(kernel_pages, kernel_page_tables, physman)?;
 
         // Map virtual memory regions that lie outside the physical memory.
         while let Some(region) = other_virtual_memory_regions.pop_front() {
@@ -289,8 +288,7 @@ pub fn init(
                     // `page_table_allocator` is invoked inside `map_kpage`.
                     let kpage: KernelPage = {
                         // SAFETY: the memory manager is initialized and access is synchronized.
-                        let mm: &mut VirtMemoryManager =
-                            unsafe { VirtMemoryManager::get_mut() };
+                        let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
                         mm.alloc_kpage(false)?
                     };
 
@@ -302,8 +300,7 @@ pub fn init(
                                 unsafe { VirtMemoryManager::get_mut() };
                             mm.alloc_kpage(true)?
                         };
-                        let pgtable_storage: PageTableStorage =
-                            PageTableStorage::KernelPage(kpage);
+                        let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
                         let page_table: PageTable<PageTableStorage> =
                             PageTable::new(pgtable_storage);
                         Ok(page_table)

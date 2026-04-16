@@ -36,7 +36,9 @@ fn do_debug(buf: &[u8]) -> Result<(), Error> {
     #[cfg(feature = "hyperlight")]
     ::hyperlight_guest::exit::debug_print(message);
     #[cfg(not(feature = "hyperlight"))]
-    unsafe { crate::klog::puts(message) };
+    unsafe {
+        crate::klog::puts(message)
+    };
 
     Ok(())
 }
@@ -88,9 +90,8 @@ pub fn debug(pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult {
     // because GPAs are stale). Just read the user buffer directly.
     #[cfg(feature = "hyperlight")]
     {
-        let user_buf: &[u8] = unsafe {
-            core::slice::from_raw_parts(user_buffer as *const u8, size)
-        };
+        let user_buf: &[u8] =
+            unsafe { core::slice::from_raw_parts(user_buffer as *const u8, size) };
         match do_debug(user_buf) {
             Ok(()) => KcallResult::ok(),
             Err(e) => KcallResult::Error(e.code.into()),

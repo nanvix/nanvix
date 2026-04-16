@@ -85,10 +85,9 @@ impl Inner {
         let scratch_bitmap: Bitmap = Bitmap::new(scratch_frames)?;
 
         Ok(Self {
-            bitmap: SparseBitmap::new(::alloc::vec![
-                (0, dense),
-                (scratch_offset, scratch_bitmap),
-            ])?,
+            bitmap: SparseBitmap::new(
+                ::alloc::vec![(0, dense), (scratch_offset, scratch_bitmap),],
+            )?,
             dense_range_frames,
         })
     }

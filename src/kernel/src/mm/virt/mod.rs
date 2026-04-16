@@ -147,7 +147,6 @@ impl PageDirectoryStorage {
     }
 }
 
-
 impl Deref for PageDirectoryStorage {
     type Target = [PteWord];
 
@@ -367,10 +366,8 @@ pub fn init(
 
 /// Type alias for the return value of [`from_hyperlight_cr3`].
 #[cfg(feature = "hyperlight")]
-type HyperlightCr3Result = (
-    PageDirectoryStorage,
-    LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
-);
+type HyperlightCr3Result =
+    (PageDirectoryStorage, LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>);
 
 ///
 /// # Description
@@ -424,9 +421,8 @@ pub fn from_hyperlight_cr3() -> Result<HyperlightCr3Result, Error> {
         let page_table = PageTable::from_existing(storage, nmapped);
 
         let va = (pdi << 22) as usize;
-        let pt_addr = PageTableAddress::new(PageTableAligned::from_address(
-            VirtualAddress::new(va),
-        )?);
+        let pt_addr =
+            PageTableAddress::new(PageTableAligned::from_address(VirtualAddress::new(va))?);
 
         page_tables.push_back((pt_addr, page_table));
     }
