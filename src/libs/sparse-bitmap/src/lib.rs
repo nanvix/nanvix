@@ -277,7 +277,7 @@ impl SparseBitmap {
     ///
     /// Thin wrapper over [`Self::alloc_range`] with `count = 1`. Lets
     /// single-bit and range allocation share the same hint-maintenance
-    /// and cross-chunk logic.
+    /// logic.
     ///
     /// # Returns
     ///
@@ -294,25 +294,10 @@ impl SparseBitmap {
     /// Allocates a contiguous range of `count` free bits, sets them,
     /// and returns the global index of the first bit.
     ///
-    /// ## Search order
-    ///
-    /// 1. **Single-chunk pass.** Starting from the cached
-    ///    [`Self::next_chunk_hint`] and wrapping around, try
-    ///    [`Bitmap::alloc_range`] on each chunk whose capacity is at
-    ///    least `count`. Fast path.
-    ///
-    /// 2. **Cross-chunk pass.** If no single chunk fits, walk chunk
-    ///    pairs looking for a run that starts inside one chunk, spans
-    ///    its suffix, and continues into the prefix of the next chunk
-    ///    (and possibly further chunks beyond that). Only *touching*
-    ///    chunks — where `chunk[i].end() == chunk[i+1].offset` — are
-    ///    eligible, since a gap between chunks means the global indices
-    ///    aren't actually contiguous.
-    ///
-    /// The cross-chunk pass preserves the invariant that every returned
-    /// range is genuinely contiguous in the global index space. Callers
-    /// that don't want cross-chunk allocations can pre-provision non-
-    /// touching chunks.
+    /// Starting from the cached [`Self::next_chunk_hint`] and wrapping
+    /// around, tries [`Bitmap::alloc_range`] on each chunk whose
+    /// capacity is at least `count`. The entire range must fit within
+    /// a single chunk; cross-chunk spanning is not supported.
     ///
     /// # Parameters
     ///
@@ -323,7 +308,7 @@ impl SparseBitmap {
     /// Upon success, the global index of the first bit in the allocated
     /// range. Upon failure:
     /// - [`ErrorCode::InvalidArgument`] if `count == 0`.
-    /// - [`ErrorCode::OutOfMemory`] if neither pass can satisfy the
+    /// - [`ErrorCode::OutOfMemory`] if no single chunk can satisfy the
     ///   request.
     ///
     pub fn alloc_range(&mut self, count: usize) -> Result<usize, Error> {
@@ -332,14 +317,12 @@ impl SparseBitmap {
         }
         // By construction (`Self::new` rejects empty input), `chunks`
         // has at least one entry.
-        let n = self.chunks.len();
+        let n: usize = self.chunks.len();
 
-        // Pass 1: single chunk. `next_chunk_hint` is always a valid
-        // index into `chunks` — initialised to 0 at construction and
-        // only ever updated to an index that satisfied a prior
-        // allocation, and the chunk set is fixed, so no clamp is
-        // needed.
-        let start = self.next_chunk_hint;
+        // Start searching from the hint, then wrap around to the front. This amortizes the cost of
+        // scanning past full chunks: a successful alloc updates the hint to the satisfying chunk,
+        // so subsequent allocs resume there rather than re-scanning from the front.
+        let start: usize = self.next_chunk_hint;
         for step in 0..n {
             let idx = (start + step) % n;
             let chunk = &mut self.chunks[idx];
@@ -356,110 +339,7 @@ impl SparseBitmap {
             }
         }
 
-        // Pass 2: cross-chunk over touching neighbours. Scan forward-
-        // only starting from each possible entry chunk; we never wrap
-        // across the Vec end here because a range that "wraps" would by
-        // definition skip whatever sits before index 0.
-        for entry in 0..n {
-            if let Some(global_start) = self.try_alloc_cross_chunk_from(entry, count)? {
-                self.next_chunk_hint = entry;
-                return Ok(global_start);
-            }
-        }
-
-        Err(Error::new(
-            ErrorCode::OutOfMemory,
-            "no contiguous free range of the requested size (tried single-chunk and cross-chunk \
-             passes)",
-        ))
-    }
-
-    /// Attempts a cross-chunk allocation that begins somewhere inside
-    /// chunk `entry` and extends into consecutive touching chunks.
-    /// Returns `Ok(Some(global_start))` on success (bits are already set),
-    /// `Ok(None)` if no such run exists starting here, or a `Bitmap`-
-    /// level error if one is produced during the check walk.
-    ///
-    /// TODO (#2058): the trailing/leading free-bit scan is linear in each
-    /// chunk's capacity, which makes cross-chunk `alloc_range` `O(sum
-    /// of chunk sizes)` — fine for the small, long-lived chunks we
-    /// track today, but it will bite workloads with large chunks or
-    /// hot-path cross-chunk allocations. Cache each chunk's
-    /// `first_set` / `last_set` bit as bits are toggled (we own the
-    /// chunks, so every mutation goes through us) and look them up
-    /// in O(1) instead.
-    fn try_alloc_cross_chunk_from(
-        &mut self,
-        entry: usize,
-        count: usize,
-    ) -> Result<Option<usize>, Error> {
-        // How many free bits does `entry` expose at its tail? Walk
-        // backwards from the last bit until we find a set bit.
-        let entry_cap = self.chunks[entry].bitmap.number_of_bits();
-        let mut trailing_free = 0usize;
-        for bit in (0..entry_cap).rev() {
-            if self.chunks[entry].bitmap.test(bit)? {
-                break;
-            }
-            trailing_free += 1;
-        }
-        if trailing_free == 0 {
-            return Ok(None);
-        }
-
-        // Determine how far we need to reach into subsequent touching
-        // chunks and verify the head of each is free.
-        let mut need: usize = count.saturating_sub(trailing_free);
-        let mut last_chunk: usize = entry;
-        let mut consumed_per_chunk: alloc::vec::Vec<usize> = alloc::vec::Vec::new();
-
-        while need > 0 {
-            let next = last_chunk + 1;
-            if next >= self.chunks.len() {
-                return Ok(None);
-            }
-            if self.chunks[last_chunk].end() != self.chunks[next].offset {
-                // Not touching — global indices aren't contiguous.
-                return Ok(None);
-            }
-            let cap_next = self.chunks[next].bitmap.number_of_bits();
-            let take = need.min(cap_next);
-            for bit in 0..take {
-                if self.chunks[next].bitmap.test(bit)? {
-                    return Ok(None);
-                }
-            }
-            consumed_per_chunk.push(take);
-            need -= take;
-            last_chunk = next;
-        }
-
-        // The check walk above verified every bit in the proposed range
-        // is free, so the following `bitmap.set` calls cannot fail
-        // barring internal-invariant breakage in `Bitmap`. `expect` is
-        // load-bearing here: a mid-commit failure would leave a
-        // partially-allocated run that no single caller-visible free
-        // would clean up, and there is no sound recovery without
-        // re-reading the state we just validated.
-        let take_from_entry = count.min(trailing_free);
-        let start_bit_in_entry = entry_cap - trailing_free;
-        for bit in start_bit_in_entry..(start_bit_in_entry + take_from_entry) {
-            self.chunks[entry]
-                .bitmap
-                .set(bit)
-                .expect("cross-chunk commit on entry chunk: bit was checked free");
-        }
-        let mut cur = entry;
-        for take in consumed_per_chunk {
-            cur += 1;
-            for bit in 0..take {
-                self.chunks[cur]
-                    .bitmap
-                    .set(bit)
-                    .expect("cross-chunk commit on follow chunk: bit was checked free");
-            }
-        }
-        Ok(Some(self.chunks[entry].offset + start_bit_in_entry))
+        Err(Error::new(ErrorCode::OutOfMemory, "no contiguous free range of the requested size"))
     }
 
     ///
@@ -727,43 +607,11 @@ mod tests {
     }
 
     #[test]
-    fn alloc_range_stitches_across_touching_chunks() {
+    fn alloc_range_does_not_span_chunks() {
         let mut s = SparseBitmap::new(vec![(0, make_bitmap(64)), (64, make_bitmap(64))]).unwrap();
-        let start = s.alloc_range(65).expect("touching chunks should stitch");
-        assert_eq!(start, 0);
-        for i in 0..65 {
-            assert!(s.test(i).unwrap());
-        }
-        assert!(!s.test(65).unwrap());
-    }
-
-    #[test]
-    fn alloc_range_refuses_to_stitch_across_gap() {
-        let mut s = SparseBitmap::new(vec![(0, make_bitmap(64)), (128, make_bitmap(64))]).unwrap();
-        let err = s.alloc_range(65).expect_err("gap breaks contiguity");
-        assert_eq!(err.code, ErrorCode::OutOfMemory);
-    }
-
-    #[test]
-    fn alloc_range_stitches_across_three_chunks() {
-        let mut s = SparseBitmap::new(vec![
-            (0, make_bitmap(8)),
-            (8, make_bitmap(8)),
-            (16, make_bitmap(8)),
-        ])
-        .unwrap();
-        let start = s.alloc_range(20).expect("three-chunk stitch");
-        assert_eq!(start, 0);
-        for i in 0..20 {
-            assert!(s.test(i).unwrap());
-        }
-    }
-
-    #[test]
-    fn alloc_range_stitch_requires_free_tail_of_entry() {
-        let mut s = SparseBitmap::new(vec![(0, make_bitmap(8)), (8, make_bitmap(8))]).unwrap();
-        s.set(7).unwrap();
-        let err = s.alloc_range(9).expect_err("no valid entry tail");
+        let err = s
+            .alloc_range(65)
+            .expect_err("cross-chunk spanning not supported");
         assert_eq!(err.code, ErrorCode::OutOfMemory);
     }
 
