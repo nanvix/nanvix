@@ -39,9 +39,12 @@
 extern crate alloc;
 
 use ::alloc::collections::BTreeMap;
-use ::core::ops::{
-    Deref,
-    DerefMut,
+use ::core::{
+    borrow::Borrow,
+    ops::{
+        Deref,
+        DerefMut,
+    },
 };
 
 //==================================================================================================
@@ -136,13 +139,18 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// # Parameters
     ///
-    /// - `key`: The cache key to look up.
+    /// - `key`: The cache key to look up. Accepts borrowed forms of the key
+    ///   (e.g., `&str` for `String` keys) to avoid allocation on lookups.
     ///
     /// # Returns
     ///
     /// An RAII guard providing access to the cached value, or `None` on cache miss.
     ///
-    pub fn get(&mut self, key: &K) -> Option<CacheGuard<'_, V>> {
+    pub fn get<Q>(&mut self, key: &Q) -> Option<CacheGuard<'_, V>>
+    where
+        K: Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
         if let Some(entry) = self.entries.get_mut(key) {
             self.counter += 1;
             entry.last_used = self.counter;
@@ -200,9 +208,14 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// # Parameters
     ///
-    /// - `key`: The cache key to remove.
+    /// - `key`: The cache key to remove. Accepts borrowed forms of the key
+    ///   (e.g., `&str` for `String` keys) to avoid allocation.
     ///
-    pub fn remove(&mut self, key: &K) {
+    pub fn remove<Q>(&mut self, key: &Q)
+    where
+        K: Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
         self.entries.remove(key);
     }
 
@@ -330,5 +343,22 @@ mod tests {
         cache.put("a", 10);
         assert_eq!(*cache.get(&"a").unwrap(), 10);
         assert_eq!(*cache.get(&"b").unwrap(), 2);
+    }
+
+    #[test]
+    fn get_with_borrowed_key() {
+        let mut cache: Cache<String, i32> = Cache::new(4);
+        cache.put(String::from("hello"), 42);
+        // Look up with &str — avoids String allocation.
+        assert_eq!(*cache.get("hello").unwrap(), 42);
+    }
+
+    #[test]
+    fn remove_with_borrowed_key() {
+        let mut cache: Cache<String, i32> = Cache::new(4);
+        cache.put(String::from("hello"), 42);
+        // Remove with &str — avoids String allocation.
+        cache.remove("hello");
+        assert!(cache.get("hello").is_none());
     }
 }
