@@ -26,6 +26,7 @@ use crate::hal::{
         Address,
         FrameAddress,
         MemoryRegionType,
+        MmioCachePolicy,
         PageAddress,
         PageAligned,
         PageTableAddress,
@@ -262,7 +263,6 @@ pub fn init(
 
             if region.typ() != MemoryRegionType::Mmio {
                 // Bulk identity fill: map all pages in this page table at once.
-                // FIXME: do not be so open about permissions and caching.
                 let pgtab_base: usize = ::sys::mm::align_down(raw_vaddr, PGTAB_ALIGNMENT);
                 let start_index: usize = (raw_vaddr - pgtab_base) / mem::PAGE_SIZE;
                 let pgtab_remaining: usize = PAGE_TABLE_LENGTH - start_index;
@@ -275,6 +275,12 @@ pub fn init(
                     break;
                 }
 
+                let rw_flag: ReadWriteFlag = if region.perm() == AccessPermission::RDWR {
+                    ReadWriteFlag::ReadWrite
+                } else {
+                    ReadWriteFlag::ReadOnly
+                };
+
                 let fill_count: usize = page_table
                     .fill(
                         start_index,
@@ -282,10 +288,10 @@ pub fn init(
                         FrameAddress::from_raw_value(raw_vaddr)?,
                         PageTableEntryFlags::new(
                             PresentFlag::Present,
-                            ReadWriteFlag::ReadWrite,
+                            rw_flag,
                             UserSupervisorFlag::Supervisor,
-                            PageWriteThroughFlag::WriteThrough,
-                            PageCacheDisableFlag::CacheDisabled,
+                            PageWriteThroughFlag::NotWriteThrough,
+                            PageCacheDisableFlag::CacheEnabled,
                             AccessedFlag::NotAccessed,
                             DirtyFlag::NotDirty,
                         ),
@@ -307,14 +313,16 @@ pub fn init(
                 )?);
             } else {
                 // MMIO: per-page mapping with address translation.
-                // FIXME: do not be so open about permissions and caching.
+                let cache_policy: MmioCachePolicy = region
+                    .cache_policy()
+                    .unwrap_or(MmioCachePolicy::UNCACHEABLE);
                 page_table.map(
                     PageAddress::new(PageAligned::from_raw_value(raw_vaddr)?),
                     paddr,
                     true,
-                    true,
-                    false,
-                    AccessPermission::RDWR,
+                    cache_policy.write_through(),
+                    cache_policy.cache_enabled(),
+                    region.perm(),
                 )?;
                 root_pagetables.push_back((page_table_addr, page_table));
                 if raw_vaddr == (config::kernel::MEMORY_SIZE - mem::PAGE_SIZE) {
