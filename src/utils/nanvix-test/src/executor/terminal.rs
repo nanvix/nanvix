@@ -327,6 +327,11 @@ pub async fn test_with_terminal_executor(
 ///
 /// Consumes the Nanvix Daemon stdin handle, sends the provided payload, and shuts down the pipe.
 ///
+/// When the nanvixd process exits before all stdin operations complete, the OS closes the read end
+/// of the pipe. On Windows this produces OS error 232 (`ERROR_NO_DATA`), which Rust maps to
+/// [`std::io::ErrorKind::BrokenPipe`]. Because the exit-code validation that runs later will catch
+/// any unexpected termination, broken-pipe errors are demoted to warnings and do not fail the test.
+///
 /// # Parameters
 ///
 /// - `stdin`: Writable handle to Nanvix Daemon stdin that is consumed by this function.
@@ -334,8 +339,8 @@ pub async fn test_with_terminal_executor(
 ///
 /// # Return Value
 ///
-/// Returns `Ok(())` after stdin is written, flushed, and closed successfully; returns an error on
-/// write, flush, or shutdown failures.
+/// Returns `Ok(())` after stdin is written, flushed, and closed successfully, or when the pipe is
+/// broken because nanvixd already exited. Returns an error for non-broken-pipe I/O failures.
 ///
 async fn send_interactive_input(mut stdin: ChildStdin, payload: Option<&str>) -> Result<()> {
     if let Some(data) = payload {
@@ -345,17 +350,38 @@ async fn send_interactive_input(mut stdin: ChildStdin, payload: Option<&str>) ->
         }
 
         if let Err(error) = stdin.write_all(bytes.as_slice()).await {
+            if error.kind() == ::std::io::ErrorKind::BrokenPipe {
+                warn!(
+                    "send_interactive_input(): nanvixd stdin pipe closed during write \
+                     (error={error})"
+                );
+                return Ok(());
+            }
             error!("send_interactive_input(): failed to write payload (error={error})");
             return Err(error.into());
         }
 
         if let Err(error) = stdin.flush().await {
+            if error.kind() == ::std::io::ErrorKind::BrokenPipe {
+                warn!(
+                    "send_interactive_input(): nanvixd stdin pipe closed during flush \
+                     (error={error})"
+                );
+                return Ok(());
+            }
             error!("send_interactive_input(): failed to flush stdin (error={error})");
             return Err(error.into());
         }
     }
 
     if let Err(error) = stdin.shutdown().await {
+        if error.kind() == ::std::io::ErrorKind::BrokenPipe {
+            warn!(
+                "send_interactive_input(): nanvixd stdin pipe closed during shutdown \
+                 (error={error})"
+            );
+            return Ok(());
+        }
         error!("send_interactive_input(): failed to shutdown stdin (error={error})");
         return Err(error.into());
     }
