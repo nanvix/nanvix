@@ -96,8 +96,8 @@ impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
                 } else {
                     UserSupervisorFlag::User
                 },
-                PageWriteThroughFlag::WriteThrough,
-                PageCacheDisableFlag::CacheDisabled,
+                PageWriteThroughFlag::NotWriteThrough,
+                PageCacheDisableFlag::CacheEnabled,
                 AccessedFlag::NotAccessed,
                 DirtyFlag::NotDirty,
                 PageSizeFlag::Standard,
