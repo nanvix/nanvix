@@ -30,10 +30,10 @@ use crate::{
     mm::{
         phys::UserFrame,
         virt::{
-            kpage::KernelPage,
-            page_table_allocator::PAGE_TABLE_ALLOCATOR,
             PageDirectoryStorage,
             PageTableStorage,
+            kpage::KernelPage,
+            page_table_allocator::PAGE_TABLE_ALLOCATOR,
         },
     },
 };
@@ -50,13 +50,13 @@ use ::arch::{
     },
     mem::{
         self,
+        PAGE_ALIGNMENT,
+        PAGE_TABLE_LENGTH,
+        PGTAB_ALIGNMENT,
         paging::{
             PageDirectoryEntry,
             PteWord,
         },
-        PAGE_ALIGNMENT,
-        PAGE_TABLE_LENGTH,
-        PGTAB_ALIGNMENT,
     },
 };
 use ::config::kernel::MEMORY_SIZE;
@@ -103,13 +103,15 @@ impl Vmem {
     #[cfg(feature = "hyperlight")]
     #[allow(dead_code)]
     pub fn alloc_scratch_frame() -> Result<crate::hal::mem::FrameAddress, Error> {
-        use crate::hal::mem::{FrameAddress, PageAligned, PhysicalAddress, VirtualAddress};
+        use crate::hal::mem::{
+            FrameAddress,
+            PageAligned,
+            PhysicalAddress,
+            VirtualAddress,
+        };
         let gpa: u32 = Self::alloc_scratch_page();
         if gpa == 0 {
-            return Err(Error::new(
-                ErrorCode::OutOfMemory,
-                "scratch bump allocator exhausted",
-            ));
+            return Err(Error::new(ErrorCode::OutOfMemory, "scratch bump allocator exhausted"));
         }
         let phys: PhysicalAddress = unsafe {
             PhysicalAddress::from_mmio_address(VirtualAddress::from_raw_value(gpa as usize))?
@@ -163,8 +165,7 @@ impl Vmem {
     #[cfg(feature = "hyperlight")]
     pub fn scratch_range_in_frames() -> (usize, usize) {
         const SCRATCH_SIZE_GVA: u32 = 0xFFFF_FFF8;
-        let scratch_size: u64 =
-            unsafe { core::ptr::read_volatile(SCRATCH_SIZE_GVA as *const u64) };
+        let scratch_size: u64 = unsafe { core::ptr::read_volatile(SCRATCH_SIZE_GVA as *const u64) };
         let scratch_base_gpa: u32 = (u32::MAX as u64 - scratch_size + 1) as u32;
         let frame_count_unaligned: usize =
             ((Self::SCRATCH_TOP_GPA - scratch_base_gpa) / ::arch::mem::PAGE_SIZE as u32) as usize;
@@ -295,15 +296,18 @@ impl Vmem {
             let pd = pd_pa as *const u32;
             let pdi = (va >> 22) & 0x3FF;
             let pde = core::ptr::read_volatile(pd.add(pdi));
-            if (pde & 1) == 0 { return 0; }
+            if (pde & 1) == 0 {
+                return 0;
+            }
             let pt = (pde & 0xFFFFF000) as *const u32;
             let pti = (va >> 12) & 0x3FF;
             let pte = core::ptr::read_volatile(pt.add(pti));
-            if (pte & 1) == 0 { return 0; }
+            if (pte & 1) == 0 {
+                return 0;
+            }
             pte & 0xFFFFF000
         }
     }
-
 
     pub fn clone(from: &Vmem, pgdir_page: KernelPage) -> Result<Vmem, Error> {
         // Create a clean page directory backed by a kernel page from the pool.
@@ -346,8 +350,7 @@ impl Vmem {
     ) -> Result<Self, Error> {
         // Wrap the scratch-resident PD without zeroing — entries already populated
         // by the host. CR3 already points to this PD; no reload needed.
-        let pgdir: PageDirectory<PageDirectoryStorage> =
-            PageDirectory::from_existing(pd_storage);
+        let pgdir: PageDirectory<PageDirectoryStorage> = PageDirectory::from_existing(pd_storage);
 
         // Convert page tables into Rc<RefCell<...>> for shared ownership.
         let mut kpage_tables: LinkedList<
@@ -1079,7 +1082,8 @@ impl Vmem {
 
             // Check if [src_phys_addr_raw, src_phys_addr_raw + copy_size) does not lie within physical memory.
             // Skip on Hyperlight after CoW (identity mapping broken).
-            let src_in_bounds = crate::hal::platform::use_va_copies() || Self::is_physical_region(src_phys_addr_raw, copy_size);
+            let src_in_bounds = crate::hal::platform::use_va_copies()
+                || Self::is_physical_region(src_phys_addr_raw, copy_size);
             if !src_in_bounds {
                 let reason: &str = "source memory region does not lie within physical memory";
                 if !dry_run {
@@ -1111,7 +1115,8 @@ impl Vmem {
 
                 let dst_phys_addr_raw: usize = dst_frame.into_raw_value() + offset;
                 // Check if [dst_phys_addr_raw, dst_phys_addr_raw + copy_size) does not lie within physical memory.
-                let dst_in_bounds = crate::hal::platform::use_va_copies() || Self::is_physical_region(dst_phys_addr_raw, copy_size);
+                let dst_in_bounds = crate::hal::platform::use_va_copies()
+                    || Self::is_physical_region(dst_phys_addr_raw, copy_size);
                 if !dst_in_bounds {
                     let reason: &str =
                         "destination memory region does not lie within physical memory";
@@ -1626,11 +1631,17 @@ pub(super) unsafe fn cr3_switch_to_user_pd(
         .map(|f| f.into_raw_value() as u32)
         .unwrap_or(0);
     if pd_va == 0 {
-        return Cr3Guard { saved: old, switched: false };
+        return Cr3Guard {
+            saved: old,
+            switched: false,
+        };
     }
     let resolved_pa: u32 = Vmem::resolve_pa(pd_va as usize);
     if resolved_pa == 0 || resolved_pa == old.paging_structure_base_address.address() {
-        return Cr3Guard { saved: old, switched: false };
+        return Cr3Guard {
+            saved: old,
+            switched: false,
+        };
     }
     // SAFETY: resolved_pa was obtained from the currently active page tables and is page-aligned.
     let new_base: ::arch::cpu::cr3::PagingStructureBaseAddress =
@@ -1643,7 +1654,10 @@ pub(super) unsafe fn cr3_switch_to_user_pd(
     };
     // SAFETY: caller at CPL 0; new CR3 holds a valid, resolved PD PA.
     unsafe { new_cr3.write() };
-    Cr3Guard { saved: old, switched: true }
+    Cr3Guard {
+        saved: old,
+        switched: true,
+    }
 }
 
 ///
