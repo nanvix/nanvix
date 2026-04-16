@@ -17,11 +17,13 @@ use crate::{
         TruncatedMemoryRegion,
     },
 };
+use ::alloc::vec;
 use ::arch::mem::{
     self,
     paging::FrameNumber,
 };
 use ::config::constants;
+use ::sparse_bitmap::SparseBitmap;
 use ::sys::{
     error::{
         Error,
@@ -41,8 +43,8 @@ use ::sys::{
 ///
 #[derive(Debug)]
 pub struct FrameAllocator {
-    /// A bitmap that keeps track of free/used frames.
-    bitmap: Bitmap,
+    /// A sparse bitmap that keeps track of free/used frames.
+    bitmap: SparseBitmap,
 }
 
 //==================================================================================================
@@ -57,22 +59,38 @@ impl FrameAllocator {
     ///
     /// # Parameters
     ///
-    /// - `bitmap`: A bitmap to keeps track of free/used frames.
+    /// - `bitmap`: A sparse bitmap to keep track of free/used frames.
     ///
-    pub fn new(bitmap: Bitmap) -> Self {
+    pub fn new(bitmap: SparseBitmap) -> Self {
         let frame_allocator: FrameAllocator = Self { bitmap };
 
         info!(
             "frame allocator capacity: {} frames, {} MB",
-            frame_allocator.bitmap.number_of_bits(),
-            frame_allocator.bitmap.number_of_bits() * mem::FRAME_SIZE / constants::MEGABYTE
+            frame_allocator.bitmap.capacity(),
+            (frame_allocator.bitmap.capacity() * mem::FRAME_SIZE) / constants::MEGABYTE
         );
 
         frame_allocator
     }
 
+    ///
+    /// # Description
+    ///
+    /// Instantiates a frame allocator from raw byte storage.
+    ///
+    /// # Parameters
+    ///
+    /// - `storage`: A raw byte array to use as backing storage for the bitmap.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the constructed frame allocator is returned. Upon failure, an error is
+    /// returned instead.
+    ///
     pub fn from_raw_storage(storage: RawArray<u8>) -> Result<Self, Error> {
-        Ok(Self::new(Bitmap::from_raw_array(storage)?))
+        let bitmap: Bitmap = Bitmap::from_raw_array(storage)?;
+        let sparse: SparseBitmap = SparseBitmap::new(vec![(0, bitmap)])?;
+        Ok(Self::new(sparse))
     }
 
     ///
@@ -87,7 +105,7 @@ impl FrameAllocator {
     ///
     pub fn alloc(&mut self) -> Result<FrameAddress, Error> {
         let frame_number: usize = match self.bitmap.alloc() {
-            Ok(frame_number) => frame_number,
+            Ok(index) => index,
             Err(error) => {
                 error!("{error:?}");
                 return Err(error);
