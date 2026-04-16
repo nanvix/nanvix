@@ -12,6 +12,10 @@ pub mod pvclock;
 //==================================================================================================
 
 use crate::{
+    collections::{
+        Bitmap,
+        RawArray,
+    },
     hal::{
         arch::x86::{
             self,
@@ -47,11 +51,13 @@ use crate::{
 use ::alloc::{
     collections::LinkedList,
     string::ToString,
+    vec,
 };
 use ::arch::{
     cpu::pic,
     mem,
 };
+use ::sparse_bitmap::SparseBitmap;
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -71,7 +77,19 @@ pub struct Platform {
     pub arch: Arch,
     #[cfg(all(feature = "pit", not(feature = "whp")))]
     pub _pit: Pit,
+    /// A sparse bitmap representing the physical memory layout, owned by the platform and consumed
+    /// by the memory manager during system initialization.
+    pub physical_memory_layout: Option<SparseBitmap>,
 }
+
+//==================================================================================================
+// Global Variables
+//==================================================================================================
+
+/// Frame allocator storage.
+static mut FRAME_ALLOCATOR_STORAGE: [u8; config::kernel::MEMORY_SIZE
+    / (mem::FRAME_SIZE * u8::BITS as usize)] =
+    [0; config::kernel::MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)];
 
 //==================================================================================================
 // Standalone Functions
@@ -498,6 +516,24 @@ fn register_pit_ports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     Ok(())
 }
 
+///
+/// # Description
+///
+/// Initializes the microvm platform.
+///
+/// # Parameters
+///
+/// - `ioports`: I/O port allocator.
+/// - `ioaddresses`: I/O memory allocator.
+/// - `_memory_regions`: Memory regions.
+/// - `mmio_regions`: MMIO regions.
+/// - `madt`: MADT information.
+/// - `_mem_lower`: Lower memory size.
+///
+/// # Returns
+///
+/// Upon success, the initialized platform is returned. Upon failure, an error is returned instead.
+///
 pub fn init(
     ioports: &mut IoPortAllocator,
     ioaddresses: &mut IoMemoryAllocator,
@@ -564,9 +600,22 @@ pub fn init(
 
     let arch = x86::init(ioports, ioaddresses, madt)?;
 
+    // Build a sparse bitmap representing the physical memory layout.
+    let physical_memory_layout: SparseBitmap = {
+        // Safety: the frame allocator storage is valid and has a static lifetime.
+        let storage: RawArray<u8> = unsafe {
+            let (ptr, len): (*mut u8, usize) =
+                (FRAME_ALLOCATOR_STORAGE.as_mut_ptr(), FRAME_ALLOCATOR_STORAGE.len());
+            RawArray::from_raw_parts(ptr, len)?
+        };
+        let bitmap: Bitmap = Bitmap::from_raw_array(storage)?;
+        SparseBitmap::new(vec![(0, bitmap)])?
+    };
+
     Ok(Platform {
         arch,
         #[cfg(all(feature = "pit", not(feature = "whp")))]
         _pit: register_pit(ioports)?,
+        physical_memory_layout: Some(physical_memory_layout),
     })
 }

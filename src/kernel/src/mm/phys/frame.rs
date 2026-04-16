@@ -14,19 +14,12 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    collections::{
-        Bitmap,
-        RawArray,
-    },
-    hal::mem::{
-        FrameAddress,
-        PageAligned,
-        PhysicalAddress,
-        TruncatedMemoryRegion,
-    },
+use crate::hal::mem::{
+    FrameAddress,
+    PageAligned,
+    PhysicalAddress,
+    TruncatedMemoryRegion,
 };
-use ::alloc::vec;
 use ::arch::mem::{
     self,
     paging::FrameNumber,
@@ -250,24 +243,21 @@ fn instance() -> &'static mut Inner {
 /// # Safety
 ///
 /// Must be called exactly once during boot, before any other function
-/// in this module. `storage` must point to a live region for the
-/// program's lifetime.
-pub(super) unsafe fn init(storage: RawArray<u8>) -> Result<(), Error> {
+/// in this module.
+pub(super) unsafe fn init(bitmap: SparseBitmap) -> Result<(), Error> {
     if unlikely(INSTANCE_INIT.load(ORDER)) {
         return Err(Error::new(ErrorCode::InvalidArgument, "frame allocator already initialized"));
     }
 
-    let bitmap: Bitmap = Bitmap::from_raw_array(storage)?;
-    let sparse: SparseBitmap = SparseBitmap::new(vec![(0, bitmap)])?;
-
     info!(
-        "frame allocator: {} frames, {} MB, 1 chunk(s)",
-        sparse.capacity(),
-        (sparse.capacity() * mem::FRAME_SIZE) / constants::MEGABYTE,
+        "frame allocator: {} frames, {} MB, {} chunk(s)",
+        bitmap.capacity(),
+        (bitmap.capacity() * mem::FRAME_SIZE) / constants::MEGABYTE,
+        bitmap.chunk_count(),
     );
 
     // SAFETY: single-threaded boot; no other reference to `INSTANCE` exists.
-    unsafe { INSTANCE.write(Inner { bitmap: sparse }) };
+    unsafe { INSTANCE.write(Inner { bitmap }) };
     INSTANCE_INIT.store(true, ORDER);
     Ok(())
 }

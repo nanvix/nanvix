@@ -18,7 +18,6 @@ mod test;
 //==================================================================================================
 
 use crate::{
-    collections::RawArray,
     hal::mem::{
         Address,
         PageAligned,
@@ -30,6 +29,7 @@ use crate::{
 };
 use ::alloc::collections::LinkedList;
 use ::arch::mem;
+use ::sparse_bitmap::SparseBitmap;
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -47,15 +47,6 @@ pub use self::{
     manager::PhysMemoryManager,
     upool::UserFrame,
 };
-
-//==================================================================================================
-// Global Variables
-//==================================================================================================
-
-/// Frame allocator storage.
-static mut FRAME_ALLOCATOR_STORAGE: [u8; config::kernel::MEMORY_SIZE
-    / (mem::FRAME_SIZE * u8::BITS as usize)] =
-    [0; config::kernel::MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)];
 
 //==================================================================================================
 // Standalone Functions
@@ -110,23 +101,33 @@ fn book_mmio_regions(
     Ok(())
 }
 
+///
+/// # Description
+///
+/// Initializes the physical memory manager.
+///
+/// # Parameters
+///
+/// - `kpool`: Kernel page pool region.
+/// - `physical_memory_regions`: Physical memory regions to book.
+/// - `mmio_regions`: Memory-mapped I/O regions to book.
+/// - `physical_memory_layout`: Physical memory layout bitmap.
+///
+/// # Returns
+///
+/// Upon success, the physical memory manager is returned. Upon failure, an error is returned
+/// instead.
+///
 pub fn init(
     kpool: TruncatedMemoryRegion<PhysicalAddress>,
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
     mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+    physical_memory_layout: SparseBitmap,
 ) -> Result<(), Error> {
     // Initialize frame allocator singleton.
     info!("initializing the frame allocator ...");
-    {
-        // Safety: the frame allocator storage is valid and has a static lifetime.
-        let storage: RawArray<u8> = unsafe {
-            let (ptr, len): (*mut u8, usize) =
-                (FRAME_ALLOCATOR_STORAGE.as_mut_ptr(), FRAME_ALLOCATOR_STORAGE.len());
-            RawArray::from_raw_parts(ptr, len)?
-        };
-        // Safety: called exactly once during single-threaded boot.
-        unsafe { frame::init(storage)? };
-    }
+    // Safety: called exactly once during single-threaded boot.
+    unsafe { frame::init(physical_memory_layout)? };
     book_physical_memory_regions(physical_memory_regions)?;
 
     book_mmio_regions(mmio_regions)?;
