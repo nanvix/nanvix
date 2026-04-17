@@ -64,11 +64,19 @@ use ::arch::{
     mem,
     mem::PAGE_ALIGNMENT,
 };
-use ::config::hyperlight::{
-    INITRD_SIZE_BYTES,
-    INPUT_DATA_BUFFER_SIZE,
-    OUTPUT_DATA_BUFFER_SIZE,
-    PEB_SIZE,
+use ::config::{
+    hyperlight::{
+        INITRD_SIZE_BYTES,
+        INPUT_DATA_BUFFER_SIZE,
+        OUTPUT_DATA_BUFFER_SIZE,
+        PEB_SIZE,
+    },
+    kernel::MEMORY_SIZE,
+    memory_layout::KERNEL_BASE_RAW,
+};
+use ::core::sync::atomic::{
+    AtomicUsize,
+    Ordering,
 };
 use ::hyperlight_common::{
     flatbuffer_wrappers::{
@@ -191,9 +199,17 @@ pub struct Platform {
 //==================================================================================================
 
 /// Frame allocator storage.
-static mut FRAME_ALLOCATOR_STORAGE: [u8; config::kernel::MEMORY_SIZE
-    / (mem::FRAME_SIZE * u8::BITS as usize)] =
-    [0; config::kernel::MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)];
+static mut FRAME_ALLOCATOR_STORAGE: [u8; MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)] =
+    [0; MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)];
+
+/// Base address of physical memory. Dynamically initialized at the top of `parse_bootinfo()`
+/// (the earliest platform entry point) before any `PhysicalAddress` construction occurs.
+static MEMORY_BASE_ADDRESS: AtomicUsize = AtomicUsize::new(0);
+
+/// End address (exclusive) of physical memory. Dynamically initialized at the top of
+/// `parse_bootinfo()` (the earliest platform entry point) before any `PhysicalAddress`
+/// construction occurs.
+static MEMORY_END_ADDRESS: AtomicUsize = AtomicUsize::new(0);
 
 //==================================================================================================
 // Standalone Functions
@@ -625,6 +641,28 @@ pub fn tsc_base_frequency_mhz() -> u32 {
 ///
 /// # Description
 ///
+/// Checks whether the given virtual address corresponds to a valid physical address on the
+/// Hyperlight platform.
+///
+/// # Parameters
+///
+/// - `addr`: The virtual address to validate.
+///
+/// # Returns
+///
+/// `true` if `addr` falls within a known physical memory region, `false` otherwise.
+///
+#[inline(always)]
+pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
+    let raw: usize = addr.into_raw_value();
+    let memory_base_address: usize = MEMORY_BASE_ADDRESS.load(Ordering::Relaxed);
+    let memory_end_address: usize = MEMORY_END_ADDRESS.load(Ordering::Relaxed);
+    raw >= memory_base_address && raw < memory_end_address
+}
+
+///
+/// # Description
+///
 /// Parses boot information.
 ///
 /// # Parameters
@@ -637,6 +675,10 @@ pub fn tsc_base_frequency_mhz() -> u32 {
 /// A new boot information structure.
 ///
 pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
+    // Initialize physical memory bounds before any PhysicalAddress construction.
+    MEMORY_BASE_ADDRESS.store(KERNEL_BASE_RAW, Ordering::Relaxed);
+    MEMORY_END_ADDRESS.store(KERNEL_BASE_RAW + MEMORY_SIZE, Ordering::Relaxed);
+
     trace!("{magic:?}, {info:?}");
 
     extern "C" {
