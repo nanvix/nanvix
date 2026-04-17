@@ -59,7 +59,6 @@ use ::arch::{
         PGTAB_ALIGNMENT,
     },
 };
-use ::config::kernel::MEMORY_SIZE;
 use ::core::cell::RefCell;
 use ::sys::{
     config,
@@ -460,7 +459,13 @@ impl Vmem {
 
         // Check if the start and end addresses of the region lie within physical memory.
         match start.checked_add(size - 1) {
-            Some(end) => start < MEMORY_SIZE && end < MEMORY_SIZE,
+            Some(end) => {
+                let start_valid: bool =
+                    crate::hal::platform::is_valid_physical_address(VirtualAddress::new(start));
+                let end_valid: bool =
+                    crate::hal::platform::is_valid_physical_address(VirtualAddress::new(end));
+                start_valid && end_valid
+            },
             None => false,
         }
     }
