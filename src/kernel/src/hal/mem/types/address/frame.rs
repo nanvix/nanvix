@@ -13,6 +13,7 @@ use crate::hal::mem::types::address::{
 };
 use ::arch::mem::paging::FrameNumber;
 use ::sys::error::Error;
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Structures
@@ -23,8 +24,38 @@ use ::sys::error::Error;
 ///
 /// A type that represents a frame address.
 ///
+#[verus_verify(external_derive)]
 #[derive(Clone, Copy)]
 pub struct FrameAddress(PageAligned<PhysicalAddress>);
+
+#[cfg(verus_keep_ghost)]
+verus! {
+
+pub uninterp spec fn spec_page_size() -> int;
+
+pub assume_specification[ ::arch::mem::PAGE_SIZE ] -> (result: usize)
+    ensures
+        result == spec_page_size(),
+;
+
+impl View for FrameAddress
+{
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.0@
+    }
+}
+
+impl FrameAddress {
+    pub open spec fn inv(&self) -> bool
+    {
+        self@ % spec_page_size() == 0
+    }
+}
+
+}
 
 //==================================================================================================
 // Implementations

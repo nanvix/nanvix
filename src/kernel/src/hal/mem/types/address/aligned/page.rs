@@ -21,11 +21,13 @@ use ::sys::{
     },
     mm::Alignment,
 };
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Structures
 //==================================================================================================
 
+#[verus_verify(external_derive)]
 #[derive(Clone, Copy)]
 pub struct PageAligned<T: Address>(T);
 
@@ -190,4 +192,33 @@ impl PageAligned<PhysicalAddress> {
         // Safety: the following unwrap is safe because the address is already page-aligned.
         PageAligned::from_address(self.0.into_virtual_address()).unwrap()
     }
+}
+
+//==================================================================================================
+// Material for verification
+//==================================================================================================
+
+#[cfg(verus_keep_ghost)]
+verus! {
+
+use crate::hal::mem::spec_page_size;
+
+impl<T: Address + View<V = int>> View for PageAligned<T>
+{
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.0@
+    }
+}
+
+impl<T: Address + View<V = int>> PageAligned<T>
+{
+    pub open spec fn inv(&self) -> bool
+    {
+        self@ % spec_page_size() == 0
+    }
+}
+
 }

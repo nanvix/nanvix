@@ -60,7 +60,9 @@ macro_rules! extract_function_name {
 /// - `$($arg:tt)*`: Formatted message to be logged.
 ///
 macro_rules! info{
-	( $($arg:tt)* ) => ({
+	( $($arg:tt)* ) => (
+    #[cfg(not(verus_keep_ghost))]
+    {
 		#[cfg(feature = "smp")]
 		use crate::macros::STDOUT_LOCK;
 		use ::core::fmt::Write;

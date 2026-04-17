@@ -23,6 +23,7 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Memory Region Type
@@ -34,6 +35,7 @@ use ::sys::error::{
 /// A type that represents the type of a memory region.
 ///
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[verus_verify]
 pub enum MemoryRegionType {
     /// Usable memory.
     Usable,
@@ -55,6 +57,7 @@ pub enum MemoryRegionType {
 /// Caching policy for MMIO memory regions. Controls the PWT (Page Write-Through) and PCD
 /// (Page Cache Disable) bits in the page table entries that back the region.
 ///
+#[verus_verify(external_derive)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct MmioCachePolicy {
     /// If `true`, the page is mapped with the Write-Through attribute (PWT=1).
@@ -132,6 +135,7 @@ impl MmioCachePolicy {
 ///
 /// A memory region.
 ///
+#[verus_verify(external_derive)]
 #[derive(Debug, Clone)]
 pub struct MemoryRegion<T: Address> {
     name: String,
@@ -268,6 +272,7 @@ impl<T: Address> Ord for MemoryRegion<T> {
 ///
 /// A memory region that has been truncated to a multiple of a page size.
 ///
+#[verus_verify(external_derive)]
 #[derive(Clone)]
 pub struct TruncatedMemoryRegion<T: Address>(MemoryRegion<PageAligned<T>>);
 
@@ -424,3 +429,60 @@ impl TruncatedMemoryRegion<PhysicalAddress> {
         TruncatedMemoryRegion::new(&name, start, size, typ, perm)
     }
 }
+
+//==================================================================================================
+// Material for verification
+//==================================================================================================
+
+#[cfg(verus_keep_ghost)]
+verus! {
+
+use crate::hal::mem::spec_page_size;
+
+pub struct MemoryRegionView
+{
+    pub name: String,
+    pub start: int,
+    pub size: int,
+    pub typ: MemoryRegionType,
+    pub perm: AccessPermission,
+    pub cache_policy: Option<MmioCachePolicy>,
+}
+
+impl<T: Address + View<V = int>> View for MemoryRegion<T>
+{
+    type V = MemoryRegionView;
+
+    closed spec fn view(&self) -> MemoryRegionView
+    {
+        MemoryRegionView{
+            name: self.name,
+            start: self.start@,
+            size: self.size as int,
+            typ: self.typ,
+            perm: self.perm,
+            cache_policy: self.cache_policy,
+        }
+    }
+}
+
+impl<T: Address + View<V = int>> View for TruncatedMemoryRegion<T>
+{
+    type V = MemoryRegionView;
+
+    closed spec fn view(&self) -> MemoryRegionView
+    {
+        self.0@
+    }
+}
+
+impl<T: Address + View<V = int>> TruncatedMemoryRegion<T>
+{
+    pub open spec fn inv(&self) -> bool
+    {
+        &&& self@.start % spec_page_size() == 0
+        &&& self@.size % spec_page_size() == 0
+    }
+}
+
+} // end verus!

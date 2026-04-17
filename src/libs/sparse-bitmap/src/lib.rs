@@ -33,6 +33,7 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Structures
@@ -46,6 +47,7 @@ use ::sys::error::{
 /// [`SparseBitmap::find_chunk`]) only need its boundaries; they go through
 /// [`SparseBitmap::set`] / [`SparseBitmap::clear`] / [`SparseBitmap::test`]
 /// for the actual bits.
+#[verus_verify(external_derive)]
 #[derive(Debug)]
 pub struct Chunk {
     offset: usize,
@@ -109,6 +111,7 @@ impl Chunk {
 /// for uncovered indices rather than an error.
 ///
 #[derive(Debug)]
+#[verus_verify]
 pub struct SparseBitmap {
     /// Chunks, sorted by `offset` and non-overlapping. Populated at
     /// construction time by [`Self::new`]; never mutated afterwards.
