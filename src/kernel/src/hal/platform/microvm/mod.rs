@@ -70,6 +70,17 @@ use crate::hal::platform::region_tags::LAPIC_MMIO_TAG;
 use crate::hal::platform::pit::Pit;
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Number of page tables needed for identity-mapping physical memory regions.
+///
+/// On microvm all physical memory is contiguous starting at GPA 0, so the base count
+/// (one page table per `PGTAB_SIZE` bytes) is sufficient.
+///
+pub const NUM_PAGE_TABLES: usize = config::kernel::MEMORY_SIZE / mem::PGTAB_SIZE;
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 

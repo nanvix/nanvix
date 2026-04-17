@@ -182,6 +182,20 @@ static KERNEL_PADDING: [u8; 2 * 1024 * 1024] = [0u8; 2 * 1024 * 1024];
 static mut GUEST_HANDLE: Option<GuestHandle> = None;
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Number of page tables needed for identity-mapping physical memory regions.
+///
+/// On Hyperlight the physical memory is split across two disjoint VA ranges: the low region
+/// (snapshot + RAMFS) starting near GPA 0 and the scratch region at the top of the 32-bit address
+/// space. Because both ranges occupy separate page directory entries, each can independently
+/// require up to `MEMORY_SIZE / PGTAB_SIZE` page tables. We provision twice the base count to cover
+/// the worst-case split.
+///
+pub const NUM_PAGE_TABLES: usize = 2 * (MEMORY_SIZE / mem::PGTAB_SIZE);
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
