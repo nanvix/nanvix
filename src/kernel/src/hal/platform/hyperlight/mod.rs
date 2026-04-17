@@ -677,6 +677,24 @@ pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
 ///
 /// # Description
 ///
+/// Returns the maximum physical address on the Hyperlight platform.
+///
+/// The physical memory is sparse and spans from low addresses (snapshot) to near the top of
+/// the 32-bit address space (scratch). On i686 `usize::MAX == 0xFFFFFFFF` which matches
+/// `MAX_GVA`.
+///
+/// # Returns
+///
+/// The maximum physical address value.
+///
+#[inline(always)]
+pub fn max_physical_address() -> usize {
+    usize::MAX
+}
+
+///
+/// # Description
+///
 /// Parses boot information.
 ///
 /// # Parameters

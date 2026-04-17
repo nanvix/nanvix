@@ -307,6 +307,22 @@ pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
 ///
 /// # Description
 ///
+/// Returns the maximum physical address on the Microvm platform.
+///
+/// All physical memory is contiguous starting at GPA 0 up to `MEMORY_SIZE`.
+///
+/// # Returns
+///
+/// The maximum physical address value.
+///
+#[inline(always)]
+pub fn max_physical_address() -> usize {
+    config::kernel::MEMORY_SIZE - 1
+}
+
+///
+/// # Description
+///
 /// Parses boot information.
 ///
 /// # Parameters
