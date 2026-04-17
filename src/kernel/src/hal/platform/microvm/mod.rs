@@ -277,6 +277,25 @@ pub fn signal_startup_complete() {
 ///
 /// # Description
 ///
+/// Checks whether the given virtual address corresponds to a valid physical address on the Microvm
+/// platform.
+///
+/// # Parameters
+///
+/// - `addr`: The virtual address to validate.
+///
+/// # Returns
+///
+/// `true` if `addr` falls within the physical address space, `false` otherwise.
+///
+#[inline(always)]
+pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
+    addr < VirtualAddress::from_raw_value(config::kernel::MEMORY_SIZE)
+}
+
+///
+/// # Description
+///
 /// Parses boot information.
 ///
 /// # Parameters
