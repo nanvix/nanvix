@@ -29,6 +29,7 @@ raw-array = { workspace = true }
 slab = { workspace = true }
 sorted-vec = { workspace = true }
 sys = { workspace = true }
+flatbuffers = { workspace = true, optional = true }
 hyperlight-common = { workspace = true, optional = true }
 hyperlight-guest = { workspace = true, optional = true }
 multibin = { workspace = true, optional = true }
@@ -46,6 +47,7 @@ hyperlight = [
     "puts",
     "stdio",
     "pit",
+    "dep:flatbuffers",
     "dep:hyperlight-common",
     "dep:hyperlight-guest",
     "dep:config",
