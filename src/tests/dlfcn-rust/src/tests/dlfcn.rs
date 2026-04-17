@@ -56,7 +56,7 @@ const _: () = assert!(
 
 /// Opens a dynamic load library.
 fn open_library(path: &str) -> Result<DlHandle, Error> {
-    dlopen(path)
+    dlopen(path, false)
 }
 
 /// Closes a dynamic load library.
@@ -154,7 +154,7 @@ fn test_dladdr() -> Result<(), Error> {
     };
     dladdr(addr, &mut info)?;
 
-    // Verify file name matches the library path.
+    // Verify file name matches the library path (canonical form without leading /).
     let fname = unsafe { CStr::from_ptr(info.dli_fname) };
     assert!(fname == c"lib/libmul.so", "dli_fname should match the library path");
 

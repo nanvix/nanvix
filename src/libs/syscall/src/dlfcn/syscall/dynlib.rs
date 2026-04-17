@@ -6,7 +6,6 @@
 //===================================================================================================
 
 use crate::safe::{
-    mem::segment::MemorySegment,
     FileSystem,
     FileSystemAttributes,
     FileSystemPath,
@@ -14,6 +13,7 @@ use crate::safe::{
     RegularFile,
     RegularFileOffset,
     RegularFileOpenFlags,
+    mem::segment::MemorySegment,
 };
 use ::alloc::{
     collections::btree_map::BTreeMap,
@@ -457,43 +457,50 @@ impl DynamicLibrary {
     }
 
     /// Looks up a symbol in the dynamic library.
+    ///
+    /// Search order follows POSIX `dlsym` semantics:
+    /// 1. The library itself (defined symbols).
+    /// 2. The library's DT_NEEDED dependency tree.
+    /// 3. The global symbol table (main executable + RTLD_GLOBAL libraries).
     pub fn lookup(&self, symbol_name: &str) -> Result<Option<(usize, usize)>, Error> {
         ::syslog::trace!("lookup(): symbol={}, dlname={:?}", symbol_name, self.filename);
 
         if let Some(symbol) = self.find(symbol_name) {
-            // Check if symbol is defined in the library or in a dependency.
-            if symbol.is_undefined() {
-                // Symbol is defined in a dependency, search dependencies.
-                for (_dlname, dlfile) in self.dependencies.iter() {
-                    if let Some(dlfile) = dlfile {
-                        // Check if dependency is locked.
-                        if dlfile.is_locked() {
-                            let reason: &str = "circular dependency detected";
-                            ::syslog::error!(
-                                "lookup(): {:?} (symbol_name={:?})",
-                                reason,
-                                symbol_name
-                            );
-                            return Err(Error::new(ErrorCode::BadFile, reason));
-                        }
-
-                        let dlfile: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
-
-                        if let Some((base, symbol_value)) = dlfile.lookup(symbol_name)? {
-                            return Ok(Some((base, symbol_value)));
-                        }
-                    }
-                }
-
-                // Fall back to the global symbol table (symbols from the
-                // main executable, registered via --export-dynamic).
-                if let Some(addr) = super::global_symbol_lookup(symbol_name) {
-                    // Global symbols are absolute addresses, so base is 0.
-                    return Ok(Some((0, addr)));
-                }
-            } else {
+            if !symbol.is_undefined() {
+                // Symbol is defined in this library.
                 return Ok(Some((self.load_address.into_raw_value(), symbol.value() as usize)));
             }
+        }
+
+        // Symbol is either undefined in this library or not in its dynsym at
+        // all. Per POSIX, dlsym must search the full dependency tree regardless
+        // of whether the root library references the symbol.
+        for (_dlname, dlfile) in self.dependencies.iter() {
+            if let Some(dlfile) = dlfile {
+                // Check if dependency is locked.
+                if dlfile.is_locked() {
+                    let reason: &str = "circular dependency detected";
+                    ::syslog::error!(
+                        "lookup(): {:?} (symbol_name={:?})",
+                        reason,
+                        symbol_name
+                    );
+                    return Err(Error::new(ErrorCode::BadFile, reason));
+                }
+
+                let dlfile: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
+
+                if let Some((base, symbol_value)) = dlfile.lookup(symbol_name)? {
+                    return Ok(Some((base, symbol_value)));
+                }
+            }
+        }
+
+        // Fall back to the global symbol table (symbols from the main
+        // executable and RTLD_GLOBAL libraries).
+        if let Some(addr) = super::global_symbol_lookup(symbol_name) {
+            // Global symbols are absolute addresses, so base is 0.
+            return Ok(Some((0, addr)));
         }
 
         Ok(None)
@@ -778,6 +785,32 @@ impl DynamicLibrary {
     /// Returns the file descriptor of the dynamic library.
     pub fn dependencies(&self) -> BTreeMap<String, Option<Arc<Mutex<Self>>>> {
         self.dependencies.clone()
+    }
+
+    /// Returns the handles of all bound dependencies.
+    pub fn dependency_handles(&self) -> Vec<DlHandle> {
+        self.dependencies
+            .values()
+            .filter_map(|dep| dep.as_ref().map(|d| d.lock().handle()))
+            .collect()
+    }
+
+    /// Iterates over all defined (non-undefined) symbols exported by this
+    /// library, yielding `(name, absolute_address)` pairs.
+    pub fn exported_symbols(&self) -> Vec<(&str, usize)> {
+        let mut result = Vec::new();
+        for sym in self.dynsym.iter() {
+            if sym.is_undefined() {
+                continue;
+            }
+            if let Ok(name) = self.dynstr.get_name(sym.name_offset()) {
+                if !name.is_empty() {
+                    let addr = self.load_address.into_raw_value() + sym.value() as usize;
+                    result.push((name, addr));
+                }
+            }
+        }
+        result
     }
 
     /// Binds a dependency to the dynamic library.
