@@ -218,7 +218,7 @@ impl Address for PhysicalAddress {
     /// The maximum [`PhysicalAddress`].
     ///
     fn max_addr() -> usize {
-        config::kernel::MEMORY_SIZE - 1
+        crate::hal::platform::max_physical_address()
     }
 
     fn into_raw_value(self) -> usize {
