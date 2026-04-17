@@ -66,8 +66,8 @@ pub fn kcall_handler() -> ExitStatus {
         panic!("failed to initialize event manager: {:?}", e);
     }
 
-    // Signal the VMM that kernel boot is complete and user-space is about to start.
-    crate::hal::platform::signal_boot_complete();
+    // Signal the VMM that kernel startup is complete and user-space is about to start.
+    crate::hal::platform::signal_startup_complete();
 
     let status: ExitStatus = loop {
         // Check if inter-kernel communication messages are available.

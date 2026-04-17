@@ -22,6 +22,17 @@ use ::core::arch::global_asm;
 /// static data.
 const CLEAR_BSS: u32 = if cfg!(feature = "microvm") { 0 } else { 1 };
 
+/// Whether to run the Hyperlight evolve phase before calling `kmain`.
+///
+/// On Hyperlight, the bootstrap code must halt the VM during `evolve()` before entering `kmain()`.
+/// The host then calls `sandbox.call("kmain", ())` which re-enters the guest at `_nanvix_dispatch`,
+/// restores the boot stack, and calls `kmain()` for real.
+///
+/// Evaluates to 0 on all other platforms; the assembler `.if` directive eliminates the
+/// `call hyperlight_pre_kmain` instruction entirely at compile time.
+///
+const HYPERLIGHT_EVOLVE: u32 = if cfg!(feature = "hyperlight") { 1 } else { 0 };
+
 //==================================================================================================
 // Bootstrap Section — BSP Entry Point
 //==================================================================================================
@@ -85,6 +96,13 @@ global_asm!(
     "    xorl %edi, %edi",
 
     // Call kernel main function.
+    //
+    // On Hyperlight, the evolve phase must halt the VM before kmain runs. `hyperlight_pre_kmain()`
+    // registers the dispatch entry point and halts; it never returns. The host then calls
+    // sandbox.call("kmain", ()) which enters `_nanvix_dispatch` → `kmain``.
+    ".if {HYPERLIGHT_EVOLVE}",
+    "    call hyperlight_pre_kmain",
+    ".endif",
     "    push %esp",
     "    call kmain",
     "    addl $4, %esp",
@@ -97,6 +115,7 @@ global_asm!(
     "    jmp 1b",
 
     CLEAR_BSS = const CLEAR_BSS,
+    HYPERLIGHT_EVOLVE = const HYPERLIGHT_EVOLVE,
     PAGE_SIZE = const PAGE_SIZE,
     CONTEXT_HW_SIZE = const ContextInformation::CONTEXT_HW_SIZE,
     KSTACK_GUARD_PATTERN = const constants::KSTACK_GUARD_PATTERN,
