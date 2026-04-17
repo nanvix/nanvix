@@ -28,7 +28,7 @@ pub struct PhysMemoryManager {
 }
 
 impl PhysMemoryManager {
-    pub fn new(kpool: Kpool, upool: Upool) -> Self {
+    pub(super) fn new(kpool: Kpool, upool: Upool) -> Self {
         PhysMemoryManager { kpool, upool }
     }
 
