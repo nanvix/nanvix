@@ -33,14 +33,20 @@ build parameters.
 
 ## Running System Integration Tests (MicroVM and Hyperlight Only)
 
-> ℹ️ System integration tests are only available on `microvm` and `hyperlight`
-machines. These tests use the `nanvix-test.elf` utility to run programs through
-the Nanvix Daemon.
+> ℹ️ System integration tests are available on `microvm` and `hyperlight`
+machines on both Linux and Windows. On Windows, only standalone mode (`DEPLOYMENT_MODE=standalone`)
+is supported.
 
 The system integration tests can be run directly using:
 
 ```bash
+# Linux
 ./z build -- run-nanvix-tests
+```
+
+```powershell
+# Windows (standalone mode only)
+.\z.ps1 build -- run-nanvix-tests
 ```
 
 The appropriate test configuration is automatically selected based on the
