@@ -969,7 +969,9 @@ impl Vmm {
     /// Enables guest stack profiling. Returns the profiler handle for
     /// reading samples after VM exit.
     pub fn enable_guest_profiler(&mut self) -> crate::guest_profiler::GuestProfiler {
-        let profiler = crate::guest_profiler::GuestProfiler::new(4096);
+        let profiler = crate::guest_profiler::GuestProfiler::new(
+            crate::guest_profiler::DEFAULT_SAMPLE_CAPACITY,
+        );
         self.guest_profiler = Some(profiler.handle());
         profiler
     }

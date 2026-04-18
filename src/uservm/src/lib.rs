@@ -49,8 +49,6 @@ pub mod args;
 pub mod counters;
 /// Library module for manipulating ELF binaries.
 pub mod elf;
-/// Host-side guest flamegraph profiler (stack sampling and folded-stack output).
-#[cfg(feature = "whp")]
 pub mod guest_profiler;
 #[cfg(target_os = "linux")]
 pub mod io_thread;
@@ -109,6 +107,7 @@ use ::anyhow::Result;
 use ::log::{
     error,
     trace,
+    warn,
 };
 #[cfg(feature = "profile-time")]
 use ::std::time::Instant;
@@ -245,8 +244,6 @@ impl UserVm {
         let perf_timings: PerfTimings = args.perf_timings.clone();
 
         let args_guest_profile_path: Option<String> = args.guest_profile_path.clone();
-        #[cfg(not(feature = "whp"))]
-        let _ = &args_guest_profile_path; // Suppress unused warning when WHP is disabled.
 
         #[cfg(feature = "profile-time")]
         let run_start: Instant = Instant::now();
@@ -331,7 +328,6 @@ impl UserVm {
         #[cfg(feature = "profile-time")]
         perf_timings.set_channel_setup(channel_setup_start.elapsed().as_micros() as u64);
 
-        #[allow(unused_mut)] // `mut` needed only with `whp` for enable_guest_profiler().
         let mut microvm: Vmm = Vmm::new(MicroVmArgs {
             input: vmm_stdin_fn,
             output: vmm_stdout_fn,
@@ -363,15 +359,40 @@ impl UserVm {
             microvm.load_snapshot(snapshot_path).await?;
         }
 
-        // Enable guest profiler if requested (WHP only).
-        #[cfg(feature = "whp")]
+        // Enable guest profiler if requested.
         let guest_profiler = if args_guest_profile_path.is_some() {
             Some(microvm.enable_guest_profiler())
         } else {
             None
         };
-        #[cfg(not(feature = "whp"))]
-        let _guest_profiler: Option<()> = None;
+
+        // Start host kernel tracing session if profiling is enabled.
+        // If an error causes an early return below, the session's Drop impl
+        // cancels the trace (via `wpr -cancel`) which is the desired cleanup
+        // behavior — we don't want a stale WPR session left running.
+        let mut kernel_session = if args_guest_profile_path.is_some() {
+            let trace_path = format!(
+                "{}.{}",
+                args_guest_profile_path
+                    .as_deref()
+                    .unwrap_or("guest-profile"),
+                if cfg!(target_os = "windows") {
+                    "etl"
+                } else {
+                    "perf.data"
+                }
+            );
+            let mut session = crate::guest_profiler::HostKernelSession::new(&trace_path);
+            match session.start() {
+                Ok(()) => Some(session),
+                Err(e) => {
+                    warn!("Host kernel tracing failed to start: {e}");
+                    None
+                },
+            }
+        } else {
+            None
+        };
 
         let vmem: Arc<Mutex<VirtualMemory>> = microvm.vmem();
         let guest: Arc<Mutex<Guest>> = microvm.guest();
@@ -464,10 +485,19 @@ impl UserVm {
         #[cfg(feature = "profile-time")]
         perf_timings.set_total(run_start.elapsed().as_micros() as u64);
 
+        // Stop host kernel trace session before post-processing so the
+        // trace does not include symbol resolution / file I/O work.
+        if let Some(ref mut session) = kernel_session {
+            match session.stop() {
+                Ok(trace_path) => {
+                    eprintln!("PROFILER: host trace saved to {}", trace_path);
+                },
+                Err(e) => warn!("Host kernel session stop failed: {e}"),
+            }
+        }
+
         // Write guest profiler folded stacks if profiling was enabled.
-        #[cfg(feature = "whp")]
         if let (Some(profiler), Some(path)) = (guest_profiler, &args_guest_profile_path) {
-            let sample_count = profiler.handle().lock().map(|s| s.len()).unwrap_or(0);
             let mut sym_paths: Vec<std::path::PathBuf> = Vec::new();
             if let Ok(p) = std::env::var("NANVIX_KERNEL_SYMBOLS") {
                 sym_paths.push(std::path::PathBuf::from(p));
@@ -477,10 +507,17 @@ impl UserVm {
             }
             let sym_refs: Vec<&std::path::Path> = sym_paths.iter().map(|p| p.as_path()).collect();
             let resolver = crate::guest_profiler::SymbolResolver::from_elf_files(&sym_refs);
-            if let Err(e) = profiler.write_folded(path, |addr| resolver.resolve(addr)) {
+
+            // Drain samples once and use for both folded output and timestamp log.
+            let guest_sample_vec = profiler.drain_samples();
+
+            // Write folded stacks from the drained samples.
+            if let Err(e) = profiler
+                .write_folded_from_samples(path, &guest_sample_vec, |addr| resolver.resolve(addr))
+            {
                 error!("Failed to write guest profile: {e:?}");
             } else {
-                eprintln!("GUEST_PROFILE: wrote {} samples to {}", sample_count, path);
+                eprintln!("GUEST_PROFILE: wrote {} samples to {}", guest_sample_vec.len(), path);
             }
         }
 

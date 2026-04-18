@@ -12,7 +12,11 @@
 // Modules
 //==================================================================================================
 
+#[cfg(target_os = "windows")]
+pub mod etw;
 mod gva;
+#[cfg(not(target_os = "windows"))]
+mod host_session_stub;
 mod samples;
 mod symbols;
 
@@ -21,7 +25,26 @@ mod symbols;
 //==================================================================================================
 
 pub use samples::{
+    DEFAULT_SAMPLE_CAPACITY,
     GuestProfiler,
     StackSample,
+    timestamp_frequency,
+    timestamp_now,
 };
 pub use symbols::SymbolResolver;
+
+//==================================================================================================
+// Platform-specific host kernel session
+//==================================================================================================
+
+// Re-export the platform's host kernel tracing session and helpers under
+// common names so lib.rs can use a single code path instead of scattered
+// #[cfg] blocks.
+
+#[cfg(target_os = "windows")]
+pub use etw::EtwSession as HostKernelSession;
+
+/// On non-Windows platforms, use the stub until the platform-specific
+/// implementation is added (e.g., perf_linux.rs in the Linux PR).
+#[cfg(not(target_os = "windows"))]
+pub use host_session_stub::HostKernelSession;
