@@ -159,25 +159,51 @@ git_is_configured() {
 
 #
 # DESCRIPTION
+#   Regenerates Cargo.lock to reflect changes in Cargo.toml.
+#
+# ARGUMENTS
+#   $1 - Path to the repository root directory.
+#
+# RETURNS
+#   None. Exits on error.
+#
+# USAGE EXAMPLE
+#   update_cargo_lock "/path/to/repo"
+#
+update_cargo_lock() {
+    local repo_root="$1"
+
+    print_info "Updating workspace crate versions in Cargo.lock..."
+    if ! cargo update --workspace --manifest-path "${repo_root}/Cargo.toml"; then
+        print_error "Failed to update Cargo.lock"
+        exit 1
+    fi
+    print_success "Updated Cargo.lock"
+}
+
+#
+# DESCRIPTION
 #   Commits the version bump to the repository if there are changes.
 #
 # ARGUMENTS
 #   $1 - Path to the Cargo.toml file.
-#   $2 - New version string.
+#   $2 - Path to the Cargo.lock file.
+#   $3 - New version string.
 #
 # USAGE EXAMPLE
-#   git_commit "path/to/Cargo.toml" "1.2.4"
+#   git_commit "path/to/Cargo.toml" "path/to/Cargo.lock" "1.2.4"
 #
 git_commit() {
     local cargo_toml="$1"
-    local new_version="$2"
+    local cargo_lock="$2"
+    local new_version="$3"
 
-    # Check if there are changes to commit
-    if ! git diff --quiet "$cargo_toml"; then
+    # Check if there are changes to commit.
+    if ! git diff --quiet "$cargo_toml" || ! git diff --quiet "$cargo_lock"; then
         print_info "Committing new version..."
 
-        # Add the modified Cargo.toml
-        git add "$cargo_toml"
+        # Add the modified Cargo.toml and Cargo.lock.
+        git add "$cargo_toml" "$cargo_lock"
 
         # Commit with the standardized message format.
         git commit --no-verify -m "Nanvix $new_version"
@@ -336,7 +362,8 @@ main() {
     new_version=$(increment_version "$current_version")
     print_info "Incrementing version: $current_version -> $new_version"
     update_cargo_toml "$CARGO_TOML_FILE_PATH" "$new_version"
-    git_commit "$CARGO_TOML_FILE_PATH" "$new_version"
+    update_cargo_lock "$REPO_ROOT_DIR"
+    git_commit "$CARGO_TOML_FILE_PATH" "$REPO_ROOT_DIR/Cargo.lock" "$new_version"
 
     if $push_flag; then
         git_push
