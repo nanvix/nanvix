@@ -45,13 +45,18 @@ On Windows, unit tests can be run natively through `z.ps1`:
 .\z.ps1 build -- run-unit-tests
 ```
 
-System integration tests (`run-nanvix-tests`) and `nanvixd`-based tests are **Linux-only**.
-The standalone UserVM can be launched on Windows for manual verification, but the automated
-test harness (`nanvix-test`) requires `nanvixd`, which is not available on Windows.
+System integration tests are also available on Windows for standalone mode
+(`DEPLOYMENT_MODE=standalone`) on both `microvm` and `hyperlight` machines:
+
+```powershell
+.\z.ps1 build -- run-nanvix-tests
+```
+
+Single-process, L2 and multi-process deployment modes remain **Linux-only** as they require
+`nanvixd` with network namespace support.
 
 ## Troubleshooting Test Failures
 
 - Ensure the project builds successfully before running tests (see the `build` skill).
 - Use `LOG_LEVEL=trace` or `LOG_LEVEL=debug` for more verbose output when diagnosing failures.
-- Hyperlight does not support ramfs, so standalone integration tests must be excluded for hyperlight.
 - See the `troubleshooting` skill for deeper diagnosis of runtime and test failures.

@@ -117,7 +117,7 @@ Available build parameters:
 .\z.ps1 build -- run-unit-tests
 
 # Run standalone integration tests on Windows.
-.\z.ps1 test -- MACHINE=microvm
+.\z.ps1 build -- run-nanvix-tests
 ```
 
 ## Formal Verification with Verus
