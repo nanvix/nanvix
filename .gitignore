@@ -37,7 +37,6 @@ sysroot
 *.obj
 *.wasm
 .z.cache
-Cargo.lock
 linuxd.stdout
 linuxd.stderr
 
