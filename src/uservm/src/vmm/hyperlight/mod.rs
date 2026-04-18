@@ -229,93 +229,75 @@ impl Vmm {
 
         let memory_size: usize = ::config::kernel::MEMORY_SIZE;
 
-        let guest_env: GuestEnvironment = if let Some(initrd_filename) = &args.initrd_filename {
-            match std::fs::read(initrd_filename) {
-                Ok(bytes) => {
-                    let initrd_size: usize = bytes.len();
-                    debug!("initrd: {} bytes", initrd_size);
+        // Get RAMFS file size (if present) for memory budget calculation.
+        let ramfs_file_size: usize = args
+            .ramfs_filename
+            .as_deref()
+            .map(Self::get_ramfs_size)
+            .transpose()?
+            .unwrap_or(0);
 
-                    // Detect whether this is a multibinary NVMB image or a single ELF.
-                    let is_multibinary: bool = initrd_size >= ::multibin::MAGIC.len()
-                        && bytes[..::multibin::MAGIC.len()] == ::multibin::MAGIC;
+        // Get kernel size for memory layout calculation.
+        let kernel_size: usize = Self::get_kernel_size(&args.kernel_filename).map_err(|e| {
+            error!("new(): failed to determine kernel size: {e:?}");
+            anyhow::anyhow!("failed to determine kernel size: {e:?}")
+        })?;
 
-                    // Build the init_data blob based on the initrd format.
-                    let init_data_bytes: Vec<u8> = if is_multibinary {
-                        // Multibinary: pass raw NVMB image, no wrapping needed.
-                        debug!("initrd: multibinary format detected, passing raw image");
-                        bytes
-                    } else {
-                        // Single ELF: prepend size header and append args (old format).
-                        let initrd_args_bytes: Vec<u8> =
-                            Self::build_args_bytes(initrd_filename, &args.initrd_args)?;
+        // Build the guest environment.
+        let (guest_env, init_data_size): (GuestEnvironment, usize) =
+            Self::build_guest_env(&args.kernel_filename, &args.initrd_filename, &args.initrd_args)?;
 
-                        let mut padded: Vec<u8> = Vec::with_capacity(
-                            ::config::hyperlight::INITRD_SIZE_BYTES
-                                + initrd_size
-                                + initrd_args_bytes.len(),
-                        );
+        // Compute memory layout parameters.
+        let kernel_end: usize = ::config::memory_layout::KERNEL_BASE_RAW + kernel_size;
+        let kpool_start: usize = ::config::kernel::KPOOL_BASE_RAW;
+        let kpool_end: usize = kpool_start + ::config::kernel::KPOOL_SIZE;
 
-                        // Write the actual size as first INITRD_SIZE_BYTES (little-endian).
-                        padded.extend_from_slice(&(initrd_size as u64).to_le_bytes());
-                        padded.extend_from_slice(&bytes);
-                        padded.extend_from_slice(&initrd_args_bytes);
+        let guest_heap_size: usize = Self::calculate_guest_heap_size(kernel_end, kpool_start)?;
 
-                        debug!(
-                            "initrd blob: {} bytes total ({} byte header + {} bytes data + {} \
-                             bytes args)",
-                            padded.len(),
-                            ::config::hyperlight::INITRD_SIZE_BYTES,
-                            initrd_size,
-                            initrd_args_bytes.len(),
-                        );
-
-                        padded
-                    };
-
-                    // Box the data to extend its lifetime.
-                    let boxed_data: Box<[u8]> = init_data_bytes.into_boxed_slice();
-                    let data_ref: &'static [u8] = Box::leak(boxed_data);
-
-                    GuestEnvironment {
-                        guest_binary: GuestBinary::FilePath(args.kernel_filename.to_string()),
-                        init_data: Some(GuestBlob {
-                            data: data_ref,
-                            permissions: MemoryRegionFlags::READ
-                                | MemoryRegionFlags::WRITE
-                                | MemoryRegionFlags::EXECUTE,
-                        }),
-                    }
-                },
-                Err(err) => {
-                    let reason: String = format!("failed to read initrd file {err:?}");
-                    error!("initrd(): {reason} (args={args:?})");
-                    return Err(anyhow::anyhow!("{reason}"));
-                },
-            }
-        } else {
-            GuestEnvironment::new(GuestBinary::FilePath(args.kernel_filename.to_string()), None)
+        // Snapshot budget equation:  MEMORY_SIZE = snapshot_budget_size + ramfs + scratch
+        // With nanvix-unstable, Hyperlight skips guest page-table generation in
+        // Snapshot::from_env(), so snapshot_budget_size equals Hyperlight's get_memory_size()
+        // exactly — there is no PT overhead.
+        let snapshot_budget_size: usize = {
+            let unaligned: usize = kpool_end.checked_add(init_data_size).ok_or_else(|| {
+                error!("new(): kpool_end + init_data_size overflow");
+                anyhow::anyhow!("kpool_end + init_data_size overflow")
+            })?;
+            ::sys::mm::align_up(unaligned, ::sys::mm::Alignment::Align4096).ok_or_else(|| {
+                error!("new(): snapshot budget alignment overflow");
+                anyhow::anyhow!("snapshot budget alignment overflow")
+            })?
         };
 
-        // The hyperlight heap covers everything from after the I/O buffers to the end of the
-        // usable guest physical memory. With `executable_heap` enabled, it is RWX so the kernel
-        // can execute code from the heap (used for process loading).
-        //
-        // The heap must be large enough to cover:
-        //   - Padding from structures_end to KPOOL_BASE
-        //   - KPOOL_SIZE (the kernel pool)
-        //   - Any remaining memory up to memory_size
-        //
-        // We compute heap_size as: memory_size - HYPERLIGHT_BASE_ADDRESS - overhead
-        // where overhead accounts for the kernel code, PEB, and I/O buffers that precede the heap.
-        // Since we don't know the exact kernel code size here (hyperlight computes it internally),
-        // we use memory_size as an upper bound. Hyperlight will allocate only what's needed.
-        let mut config: SandboxConfiguration = SandboxConfiguration::default();
+        // Scratch region: whatever remains after snapshot and ramfs.  This includes the input and
+        // output buffers for VmbusRead/VmbusWrite, the guest counter page, and the last page
+        // (0xFFFFF000) that Hyperlight reserves for bookkeeping (exception stack, allocator state).
+        let scratch_size: usize = memory_size
+            .checked_sub(
+                snapshot_budget_size
+                    .checked_add(ramfs_file_size)
+                    .ok_or_else(|| {
+                        error!("new(): snapshot_budget + ramfs_file_size overflow");
+                        anyhow::anyhow!("snapshot_budget + ramfs_file_size overflow")
+                    })?,
+            )
+            .ok_or_else(|| {
+                error!(
+                    "new(): memory_size ({memory_size:#x}) too small for snapshot_budget \
+                     ({snapshot_budget_size:#x}) + ramfs ({ramfs_file_size:#x})"
+                );
+                anyhow::anyhow!("memory_size too small for snapshot + ramfs")
+            })?;
 
-        // Set heap large enough to cover from after kernel structures through end of memory.
-        // The actual heap start depends on the kernel loaded size, PEB, and I/O buffers.
-        // We request enough heap so that the heap region extends well beyond KPOOL_BASE + KPOOL_SIZE.
-        let heap_size: usize = memory_size;
-        config.set_heap_size(heap_size as u64);
+        debug!(
+            "memory budget: memory_size={:#x}, snapshot_budget={:#x}, ramfs={:#x}, scratch={:#x}, \
+             guest_heap={:#x}",
+            memory_size, snapshot_budget_size, ramfs_file_size, scratch_size, guest_heap_size
+        );
+
+        let mut config: SandboxConfiguration = SandboxConfiguration::default();
+        config.set_heap_size(guest_heap_size as u64);
+        config.set_scratch_size(scratch_size);
 
         // Creates Hyperlight sandbox.
         let mut sandbox: UninitializedSandbox = UninitializedSandbox::new(guest_env, Some(config))
@@ -324,26 +306,89 @@ impl Vmm {
                 anyhow::anyhow!("{e:?}")
             })?;
 
+        // With nanvix-unstable, Hyperlight does not append page tables to the snapshot (the
+        // #[cfg(not(feature = "nanvix-unstable"))] block in Snapshot::from_env() is compiled out),
+        // so shared_mem_size() == snapshot_budget_size and pt_overhead is 0.  The field is kept in
+        // GetMemoryLayout for forward-compatibility.
+        let actual_snapshot: usize = sandbox.shared_mem_size();
+        let pt_overhead: usize = actual_snapshot.saturating_sub(snapshot_budget_size);
+        debug!(
+            "actual layout: snapshot={:#x} (budget={:#x}, pt_overhead={:#x}), ramfs={:#x}, \
+             scratch={:#x}",
+            actual_snapshot, snapshot_budget_size, pt_overhead, ramfs_file_size, scratch_size
+        );
+
         // Map RAMFS file into sandbox memory if provided.
         // The file is mapped copy-on-write at the first GPA after the sandbox's
         // shared memory slot. With nanvix-unstable, BASE_ADDRESS is 0x0 so the
-        // shared memory occupies GPA [0, shared_mem_size). The file mapping
-        // metadata is automatically written to the PEB during evolve(), so the
-        // guest kernel can discover and identity-map the RAMFS region during boot.
+        // shared memory occupies GPA [0, shared_mem_size).
+        let mut layout_ramfs_base: u32 = 0;
+        let mut layout_ramfs_size: u32 = 0;
         if let Some(ramfs_filename) = &args.ramfs_filename {
             let ramfs_path: &Path = Path::new(ramfs_filename);
             let ramfs_gpa: u64 = sandbox.shared_mem_size() as u64;
-            let ramfs_size: u64 = sandbox
+            let mapped_size: u64 = sandbox
                 .map_file_cow(ramfs_path, ramfs_gpa, Some(RAMFS_LABEL))
                 .map_err(|e| {
                     error!("failed to map ramfs file: {e:?}");
                     anyhow::anyhow!("failed to map ramfs file: {e:?}")
                 })?;
+            layout_ramfs_base = u32::try_from(ramfs_gpa).map_err(|_| {
+                error!("new(): ramfs GPA {ramfs_gpa:#x} exceeds u32::MAX");
+                anyhow::anyhow!("ramfs GPA {ramfs_gpa:#x} exceeds u32::MAX")
+            })?;
+            layout_ramfs_size = u32::try_from(mapped_size).map_err(|_| {
+                error!("new(): ramfs mapped size {mapped_size:#x} exceeds u32::MAX");
+                anyhow::anyhow!("ramfs mapped size {mapped_size:#x} exceeds u32::MAX")
+            })?;
+            if layout_ramfs_size as usize != ramfs_file_size {
+                error!(
+                    "new(): ramfs mapped size ({mapped_size:#x}) differs from expected \
+                     ramfs_file_size ({ramfs_file_size:#x})"
+                );
+                return Err(anyhow::anyhow!(
+                    "ramfs mapped size ({mapped_size:#x}) differs from expected ramfs_file_size \
+                     ({ramfs_file_size:#x})"
+                ));
+            }
             debug!(
                 "ramfs: mapped {:?} ({} bytes) at GPA {:#010x}",
-                ramfs_path, ramfs_size, ramfs_gpa
+                ramfs_path, mapped_size, ramfs_gpa
             );
         }
+
+        // Build the memory layout descriptor and register the GetMemoryLayout host function.  The
+        // guest kernel calls this during init() to discover the authoritative snapshot, RAMFS, and
+        // scratch region boundaries instead of inferring them from fragile address calculations.
+        //
+        // pt_overhead is always 0 with nanvix-unstable (no guest page tables in the snapshot).  The
+        // field is preserved for forward-compatibility if upstream Hyperlight re-enables page-table
+        // generation for this feature.
+        let layout_snapshot_budget: u32 = u32::try_from(snapshot_budget_size).map_err(|_| {
+            anyhow::anyhow!("snapshot_budget {snapshot_budget_size:#x} exceeds u32::MAX")
+        })?;
+        let layout_pt_overhead: u32 = u32::try_from(pt_overhead)
+            .map_err(|_| anyhow::anyhow!("pt_overhead {pt_overhead:#x} exceeds u32::MAX"))?;
+        let layout_scratch_size: u32 = u32::try_from(scratch_size)
+            .map_err(|_| anyhow::anyhow!("scratch_size {scratch_size:#x} exceeds u32::MAX"))?;
+        let layout_bytes: Vec<u8> = [
+            layout_snapshot_budget.to_le_bytes(),
+            layout_pt_overhead.to_le_bytes(),
+            layout_ramfs_base.to_le_bytes(),
+            layout_ramfs_size.to_le_bytes(),
+            layout_scratch_size.to_le_bytes(),
+        ]
+        .concat();
+        sandbox.register("GetMemoryLayout", move || -> Vec<u8> { layout_bytes.clone() })?;
+        debug!(
+            "GetMemoryLayout: snapshot_budget={:#x}, pt_overhead={:#x}, ramfs_base={:#x}, \
+             ramfs_size={:#x}, scratch={:#x}",
+            layout_snapshot_budget,
+            layout_pt_overhead,
+            layout_ramfs_base,
+            layout_ramfs_size,
+            layout_scratch_size
+        );
 
         // Create a guest counter backed by a fixed offset in scratch memory.
         // The counter holds its own Arc clones of the mapping handle and RwLock,
@@ -608,5 +653,257 @@ impl Vmm {
         };
 
         Ok([&[args_len], &args_bytes[..]].concat())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the page-aligned size of the kernel after it is loaded in memory.
+    ///
+    /// This is computed as the end address of the highest PT_LOAD segment in the ELF32 binary,
+    /// rounded up to page alignment. The result corresponds to the first GPA after the kernel's
+    /// in-memory image, where Hyperlight places the PEB.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: The file path to the kernel ELF32 binary.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns the page-aligned in-memory size of the kernel. On failure, returns an
+    /// error.
+    ///
+    fn get_kernel_size(path: &str) -> Result<usize> {
+        #[cfg(target_os = "linux")]
+        let mapping: crate::pal::FileMapping = crate::pal::FileMapping::mmap(path)?;
+        #[cfg(target_os = "windows")]
+        let mapping: crate::pal::FileMapping = crate::pal::FileMapping::open(path)?;
+        let footprint: crate::elf::MemoryFootprint =
+            crate::elf::memory_footprint(mapping.as_slice())?;
+        ::sys::mm::align_up(footprint.end(), ::sys::mm::Alignment::Align4096).ok_or_else(|| {
+            error!("get_kernel_size(): ELF end address alignment overflow");
+            anyhow::anyhow!("ELF end address alignment overflow")
+        })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Computes the Hyperlight Guest Heap size needed to bridge the gap between the PEB and the
+    /// end of the Kernel Pool.
+    ///
+    /// Hyperlight lays out the snapshot region (all page-aligned) as:
+    ///   [Kernel code + Data] [PEB Struct] [Guest Heap] [Init Data] [Guest Page Tables]
+    ///
+    /// The Nanvix kernel expects the following physical memory layout:
+    ///   [Kernel Code + Data] [Kernel Pool] [Init RAM Disk]
+    /// Where the base address of the kernel pool (kpool_base) must be aligned to a page-table
+    /// boundary (4 MB).
+    ///
+    /// Because kpool_base is 4 MB-aligned while kernel_end + PEB_SIZE may not be, the Guest Heap
+    /// is split into two parts:
+    ///
+    ///   guest_heap_padding = kpool_start - (kernel_end + PEB_SIZE)
+    ///   KPOOL_SIZE         = size of the kernel page pool
+    ///   guest_heap_size    = guest_heap_padding + KPOOL_SIZE
+    ///
+    /// ```text
+    ///   |<-- Kernel -->|<-PEB->|<- padding ->|<---- kpool ---->|
+    ///                          ^             ^                 ^
+    ///                   guest_heap_start  kpool_start      kpool_end
+    ///                          |<- padding ->|<-- KPOOL_SIZE -->|
+    ///                          |<-------- guest_heap_size ------>|
+    /// ```
+    ///
+    /// # Parameters
+    ///
+    /// - `kernel_end`: The first GPA after the kernel's in-memory image (page-aligned).
+    /// - `kpool_start`: The base address of the kernel pool (page-table-aligned, 4 MB).
+    ///
+    /// # Returns
+    ///
+    /// On success, returns the guest heap size in bytes. On failure (if the PEB overlaps the
+    /// kernel pool), returns an error.
+    ///
+    fn calculate_guest_heap_size(kernel_end: usize, kpool_start: usize) -> Result<usize> {
+        let guest_heap_start: usize = kernel_end + ::config::hyperlight::PEB_SIZE;
+
+        if guest_heap_start > kpool_start {
+            let reason: String = format!(
+                "kernel_end + PEB ({guest_heap_start:#x}) overlaps kpool_start ({kpool_start:#x})"
+            );
+            error!("calculate_guest_heap_size(): {reason}");
+            return Err(anyhow::anyhow!(reason));
+        }
+
+        let guest_heap_padding: usize = kpool_start - guest_heap_start;
+        Ok(guest_heap_padding + ::config::kernel::KPOOL_SIZE)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Builds the guest environment from the kernel and optional initrd files.
+    ///
+    /// If an initrd is provided, it is read into memory and packaged as init_data for the
+    /// sandbox. Multibinary images are passed through as-is; single ELF images are wrapped
+    /// with a size header and argument trailer.
+    ///
+    /// # Parameters
+    ///
+    /// - `kernel_filename`: Path to the kernel ELF binary.
+    /// - `initrd_filename`: Optional path to the initial RAM disk file.
+    /// - `initrd_args`: Optional arguments to pass to the initrd program.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns a tuple of the guest environment and the page-aligned init_data size
+    /// in bytes (0 when no initrd is provided). On failure, returns an error.
+    ///
+    fn build_guest_env(
+        kernel_filename: &str,
+        initrd_filename: &Option<String>,
+        initrd_args: &Option<String>,
+    ) -> Result<(GuestEnvironment<'static, 'static>, usize)> {
+        let Some(initrd_filename) = initrd_filename else {
+            return Ok((
+                GuestEnvironment::new(GuestBinary::FilePath(kernel_filename.to_string()), None),
+                0,
+            ));
+        };
+
+        let bytes: Vec<u8> = std::fs::read(initrd_filename).map_err(|err| {
+            let reason: String = format!("failed to read initrd file {err:?}");
+            error!("build_guest_env(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+
+        let initrd_size: usize = bytes.len();
+        debug!("initrd: {} bytes", initrd_size);
+
+        // Detect whether this is a multibinary image or a single ELF.
+        let is_multibinary: bool = initrd_size >= ::multibin::MAGIC.len()
+            && bytes[..::multibin::MAGIC.len()] == ::multibin::MAGIC;
+
+        // Build the init_data blob based on the initrd format.
+        let init_data_bytes: Vec<u8> = if is_multibinary {
+            // Multibinary: pass raw image, no wrapping needed.
+            debug!("initrd: multibinary format detected, passing raw image");
+            bytes
+        } else {
+            // Single ELF: prepend size header and append args (old format).
+            let initrd_args_bytes: Vec<u8> = Self::build_args_bytes(initrd_filename, initrd_args)?;
+
+            let mut padded: Vec<u8> = Vec::with_capacity(
+                ::config::hyperlight::INITRD_SIZE_BYTES + initrd_size + initrd_args_bytes.len(),
+            );
+
+            // Write the actual size as first INITRD_SIZE_BYTES (little-endian).
+            padded.extend_from_slice(&(initrd_size as u64).to_le_bytes());
+            padded.extend_from_slice(&bytes);
+            padded.extend_from_slice(&initrd_args_bytes);
+
+            debug!(
+                "initrd blob: {} bytes total ({} byte header + {} bytes data + {} bytes args)",
+                padded.len(),
+                ::config::hyperlight::INITRD_SIZE_BYTES,
+                initrd_size,
+                initrd_args_bytes.len(),
+            );
+
+            padded
+        };
+
+        let init_data_blob_size: usize = init_data_bytes.len();
+
+        // Page-align the init_data size (Hyperlight places it at page boundaries).
+        let init_data_size: usize =
+            ::sys::mm::align_up(init_data_blob_size, ::sys::mm::Alignment::Align4096).ok_or_else(
+                || {
+                    error!("build_guest_env(): init_data alignment overflow");
+                    anyhow::anyhow!("init_data alignment overflow")
+                },
+            )?;
+
+        // Intentionally leaked to obtain a `'static` reference required by GuestBlob.
+        // The sandbox owns this memory for the lifetime of the process.
+        let boxed_data: Box<[u8]> = init_data_bytes.into_boxed_slice();
+        let data_ref: &'static [u8] = Box::leak(boxed_data);
+
+        let guest_env: GuestEnvironment = GuestEnvironment {
+            guest_binary: GuestBinary::FilePath(kernel_filename.to_string()),
+            init_data: Some(GuestBlob {
+                data: data_ref,
+                permissions: MemoryRegionFlags::READ
+                    | MemoryRegionFlags::WRITE
+                    | MemoryRegionFlags::EXECUTE,
+            }),
+        };
+
+        Ok((guest_env, init_data_size))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the page-aligned size of a RAMFS file.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: The file path to the RAMFS image.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns the page-aligned file size. On failure, returns an error.
+    ///
+    fn get_ramfs_size(path: &str) -> Result<usize> {
+        let metadata: std::fs::Metadata = std::fs::metadata(path).map_err(|err| {
+            let reason: String = format!("failed to read ramfs metadata for '{path}': {err}");
+            error!("get_ramfs_size(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+
+        let size: usize = usize::try_from(metadata.len()).map_err(|_| {
+            let reason: &str = "ramfs file size exceeds usize";
+            error!("get_ramfs_size(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+
+        // Page-align the RAMFS size (hyperlight maps at page granularity).
+        ::sys::mm::align_up(size, ::sys::mm::Alignment::Align4096).ok_or_else(|| {
+            error!("get_ramfs_size(): ramfs size alignment overflow");
+            anyhow::anyhow!("ramfs size alignment overflow")
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Vmm;
+
+    #[test]
+    fn calculate_guest_heap_size_typical() {
+        // kernel_end well below kpool_start: padding + KPOOL_SIZE.
+        let kernel_end: usize = 0x0020_0000;
+        let kpool_start: usize = 0x0040_0000;
+        let result: usize = Vmm::calculate_guest_heap_size(kernel_end, kpool_start)
+            .expect("should succeed for valid layout");
+        let expected_padding: usize = kpool_start - kernel_end - ::config::hyperlight::PEB_SIZE;
+        assert_eq!(result, expected_padding + ::config::kernel::KPOOL_SIZE);
+    }
+
+    #[test]
+    fn calculate_guest_heap_size_overlap() {
+        // kernel_end + PEB exceeds kpool_start: must fail.
+        let kpool_start: usize = 0x0010_0000;
+        let kernel_end: usize = kpool_start; // PEB would push past kpool_start.
+        let result = Vmm::calculate_guest_heap_size(kernel_end, kpool_start);
+        assert!(result.is_err(), "should fail when PEB overlaps kpool");
+    }
+
+    #[test]
+    fn get_ramfs_size_missing_file() {
+        let result = Vmm::get_ramfs_size("/nonexistent/path/to/ramfs.img");
+        assert!(result.is_err(), "should fail for missing file");
     }
 }

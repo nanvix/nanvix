@@ -40,7 +40,7 @@ pub struct PhysicalAddress(VirtualAddress);
 
 impl PhysicalAddress {
     pub fn from_virtual_address(addr: VirtualAddress) -> Result<Self, Error> {
-        // Delegate to the per-platform validator so that sparse physical memory layouts.
+        // Delegate to the per-platform validator to support sparse physical memory layouts.
         if !crate::hal::platform::is_valid_physical_address(addr) {
             return Err(Error::new(
                 ErrorCode::BadAddress,
