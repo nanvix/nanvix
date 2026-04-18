@@ -286,6 +286,9 @@ pub struct Vmm {
     /// Optional GDB server TCP port (standalone mode only).
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
+    /// Guest profiler handle (used by the run loop to record samples).
+    guest_profiler:
+        Option<std::sync::Arc<std::sync::Mutex<Vec<crate::guest_profiler::StackSample>>>>,
 }
 
 ///
@@ -556,6 +559,7 @@ impl Vmm {
             perf_timings,
             #[cfg(feature = "gdb")]
             gdb_port: args.gdb_port,
+            guest_profiler: None,
         })
     }
 
@@ -769,6 +773,23 @@ impl Vmm {
     ///
     pub fn ikc_notifier(&self) -> IkcNotifier {
         self.ikc_notifier.clone()
+    }
+
+    /// Enable the guest profiler and return ownership of the `GuestProfiler`.
+    ///
+    /// The profiler handle is stored internally so the run loop can record
+    /// samples. The returned `GuestProfiler` owns the sample buffer and is
+    /// used by the caller to drain results after the VM exits.
+    ///
+    /// NOTE: On KVM, guest sampling (timer + SIGUSR2 + register capture) is
+    /// implemented in the Linux-specific PR. This method only wires up the
+    /// profiler data structures so the common code in lib.rs compiles.
+    pub fn enable_guest_profiler(&mut self) -> crate::guest_profiler::GuestProfiler {
+        let guest_profiler = crate::guest_profiler::GuestProfiler::new(
+            crate::guest_profiler::DEFAULT_SAMPLE_CAPACITY,
+        );
+        self.guest_profiler = Some(guest_profiler.handle());
+        guest_profiler
     }
 
     ///
