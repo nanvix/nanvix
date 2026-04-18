@@ -432,6 +432,20 @@ impl FileMapping {
     pub fn size(&self) -> usize {
         self.size
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the mapped file contents as an immutable byte slice.
+    ///
+    /// # Returns
+    ///
+    /// An immutable byte slice covering the entire mapped file.
+    ///
+    pub fn as_slice(&self) -> &[u8] {
+        // SAFETY: The mapping is valid for `self.size` bytes for the lifetime of `self`.
+        unsafe { slice::from_raw_parts(self.ptr.cast::<u8>(), self.size) }
+    }
 }
 
 impl Drop for FileMapping {
@@ -515,6 +529,25 @@ mod tests {
         let result: Result<FileMapping> = FileMapping::mmap(path_string.as_str());
         assert!(result.is_err(), "mmap should fail for zero-length files");
 
+        fs::remove_file(&path)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_file_mapping_as_slice() -> Result<()> {
+        let path: PathBuf = unique_temp_path("nanvix-filemapping-as-slice")?;
+        let content: &[u8] = b"as_slice test content for FileMapping";
+        fs::write(&path, content)?;
+
+        let path_string: ::std::string::String = path.to_string_lossy().into_owned();
+        let mapping: FileMapping = FileMapping::mmap(path_string.as_str())?;
+
+        let slice: &[u8] = mapping.as_slice();
+        assert_eq!(slice.len(), content.len(), "slice length mismatch");
+        assert_eq!(slice, content, "slice contents differ from file contents");
+
+        drop(mapping);
         fs::remove_file(&path)?;
 
         Ok(())
