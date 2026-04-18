@@ -307,6 +307,35 @@ pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
 ///
 /// # Description
 ///
+/// Checks whether the given physical memory region lies entirely within physical memory on the
+/// Microvm platform.
+///
+/// # Parameters
+///
+/// - `start`: Starting physical address of the region.
+/// - `size`: Size of the region in bytes.
+///
+/// # Returns
+///
+/// `true` if the entire region lies within physical memory, `false` otherwise.
+///
+#[inline(always)]
+pub fn is_valid_physical_region(start: usize, size: usize) -> bool {
+    // Reject zero-length regions.
+    if size == 0 {
+        return false;
+    }
+
+    // Compute the exclusive end, guarding against overflow.
+    match start.checked_add(size) {
+        Some(end) => end <= config::kernel::MEMORY_SIZE,
+        None => false,
+    }
+}
+
+///
+/// # Description
+///
 /// Returns the maximum physical address on the Microvm platform.
 ///
 /// All physical memory is contiguous starting at GPA 0 up to `MEMORY_SIZE`.
