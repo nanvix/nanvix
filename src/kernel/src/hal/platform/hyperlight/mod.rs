@@ -65,6 +65,7 @@ use ::arch::{
     mem::PAGE_ALIGNMENT,
 };
 use ::config::{
+    constants::KILOBYTE,
     hyperlight::{
         INITRD_SIZE_BYTES,
         INPUT_DATA_BUFFER_SIZE,
@@ -91,10 +92,7 @@ use ::hyperlight_common::{
         },
     },
     layout::MAX_GVA,
-    mem::{
-        FileMappingInfo,
-        HyperlightPEB,
-    },
+    mem::HyperlightPEB,
     outb::VmAction,
 };
 use ::hyperlight_guest::guest_handle::handle::GuestHandle;
@@ -213,17 +211,30 @@ pub struct Platform {
 //==================================================================================================
 
 /// Frame allocator storage.
-static mut FRAME_ALLOCATOR_STORAGE: [u8; MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)] =
-    [0; MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)];
+/// Sized to hold one bit per frame for the entire `MEMORY_SIZE` address range, plus one extra byte
+/// per chunk (snapshot, ramfs, scratch) so that frame counts that are not multiples of 8 can be
+/// rounded up without overflowing the backing array.  At runtime, sub-slices of this array back the
+/// per-region bitmaps inside a multi-chunk `SparseBitmap`.
+static mut FRAME_ALLOCATOR_STORAGE: [u8; MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize) + 3] =
+    [0; MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize) + 3];
 
-/// Base address of physical memory. Dynamically initialized at the top of `parse_bootinfo()`
-/// (the earliest platform entry point) before any `PhysicalAddress` construction occurs.
-static MEMORY_BASE_ADDRESS: AtomicUsize = AtomicUsize::new(0);
+/// Snapshot region base address (inclusive).
+static SNAPSHOT_BASE: AtomicUsize = AtomicUsize::new(KERNEL_BASE_RAW);
+/// Snapshot region end address (exclusive).
+/// Uses `KERNEL_BASE_RAW + MEMORY_SIZE` as a generous upper bound so that early-boot code
+/// (before `init()`) can construct `PhysicalAddress` values.  Tightened in `init()` once the
+/// actual region boundaries are discovered.
+static SNAPSHOT_END: AtomicUsize = AtomicUsize::new(KERNEL_BASE_RAW + MEMORY_SIZE);
 
-/// End address (exclusive) of physical memory. Dynamically initialized at the top of
-/// `parse_bootinfo()` (the earliest platform entry point) before any `PhysicalAddress`
-/// construction occurs.
-static MEMORY_END_ADDRESS: AtomicUsize = AtomicUsize::new(0);
+/// RAMFS region base address (inclusive). Zero when no RAMFS is present.
+static RAMFS_BASE: AtomicUsize = AtomicUsize::new(0);
+/// RAMFS region end address (exclusive). Zero when no RAMFS is present.
+static RAMFS_END: AtomicUsize = AtomicUsize::new(0);
+
+/// Scratch region base address (inclusive). Zero until `init()` discovers the actual value.
+static SCRATCH_BASE: AtomicUsize = AtomicUsize::new(0);
+/// Scratch region end address (exclusive). Zero until `init()` discovers the actual value.
+static SCRATCH_END: AtomicUsize = AtomicUsize::new(0);
 
 //==================================================================================================
 // Standalone Functions
@@ -669,27 +680,58 @@ pub fn tsc_base_frequency_mhz() -> u32 {
 #[inline(always)]
 pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
     let raw: usize = addr.into_raw_value();
-    let memory_base_address: usize = MEMORY_BASE_ADDRESS.load(Ordering::Relaxed);
-    let memory_end_address: usize = MEMORY_END_ADDRESS.load(Ordering::Relaxed);
-    raw >= memory_base_address && raw < memory_end_address
+
+    // Check snapshot region.
+    let snapshot_base: usize = SNAPSHOT_BASE.load(Ordering::Relaxed);
+    let snapshot_end: usize = SNAPSHOT_END.load(Ordering::Relaxed);
+    if raw >= snapshot_base && raw < snapshot_end {
+        return true;
+    }
+
+    // Check RAMFS region (base == end == 0 means absent).
+    let ramfs_base: usize = RAMFS_BASE.load(Ordering::Relaxed);
+    let ramfs_end: usize = RAMFS_END.load(Ordering::Relaxed);
+    if ramfs_base != ramfs_end && raw >= ramfs_base && raw < ramfs_end {
+        return true;
+    }
+
+    // Check scratch region (base == end == 0 means not yet discovered).
+    let scratch_base: usize = SCRATCH_BASE.load(Ordering::Relaxed);
+    let scratch_end: usize = SCRATCH_END.load(Ordering::Relaxed);
+    if scratch_base != scratch_end && raw >= scratch_base && raw < scratch_end {
+        return true;
+    }
+
+    false
 }
 
 ///
 /// # Description
 ///
-/// Returns the maximum physical address on the Hyperlight platform.
+/// Returns the highest valid physical address on the Hyperlight platform.
 ///
 /// The physical memory is sparse and spans from low addresses (snapshot) to near the top of
-/// the 32-bit address space (scratch). On i686 `usize::MAX == 0xFFFFFFFF` which matches
-/// `MAX_GVA`.
+/// the 32-bit address space (scratch). The highest valid physical address is the last address
+/// before `SCRATCH_END`, since addresses greater than or equal to `SCRATCH_END` are not
+/// considered valid by the platform.
+///
+/// Before `init()` discovers the scratch region, only the snapshot region is known, so the
+/// highest valid address is `SNAPSHOT_END - 1`.
 ///
 /// # Returns
 ///
-/// The maximum physical address value.
+/// The highest valid physical address value.
 ///
 #[inline(always)]
 pub fn max_physical_address() -> usize {
-    usize::MAX
+    let scratch_end: usize = SCRATCH_END.load(Ordering::Relaxed);
+    if scratch_end != 0 {
+        // Post-init: the highest valid address is SCRATCH_END - 1.
+        scratch_end - 1
+    } else {
+        // Pre-init: only the snapshot region is known.
+        SNAPSHOT_END.load(Ordering::Relaxed) - 1
+    }
 }
 
 ///
@@ -707,10 +749,6 @@ pub fn max_physical_address() -> usize {
 /// A new boot information structure.
 ///
 pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
-    // Initialize physical memory bounds before any PhysicalAddress construction.
-    MEMORY_BASE_ADDRESS.store(KERNEL_BASE_RAW, Ordering::Relaxed);
-    MEMORY_END_ADDRESS.store(KERNEL_BASE_RAW + MEMORY_SIZE, Ordering::Relaxed);
-
     trace!("{magic:?}, {info:?}");
 
     extern "C" {
@@ -750,7 +788,7 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
         ));
     }
 
-    // Detect initrd format by checking for NVMB multibinary magic.
+    // Detect initrd format by checking for multibinary magic.
     let init_data: &[u8] =
         unsafe { core::slice::from_raw_parts(current_data_start as *const u8, total_size) };
 
@@ -760,26 +798,12 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
         // Multibinary NVMB format: relocate whole blob, then parse entries.
         info!("parse_bootinfo(): multibinary initrd detected");
 
-        let initrd_base: usize = if current_data_start != ::config::hyperlight::DEFAULT_INITRD_BASE
-        {
-            let src_ptr: *const u8 = current_data_start as *const u8;
-            let dst_ptr: *mut u8 = ::config::hyperlight::DEFAULT_INITRD_BASE as *mut u8;
-            unsafe { core::ptr::copy(src_ptr, dst_ptr, total_size) };
+        let initrd_base: usize = current_data_start;
 
-            debug!(
-                "parse_bootinfo(): multibinary relocated from {current_data_start:#010x} to \
-                 {:#010x}",
-                ::config::hyperlight::DEFAULT_INITRD_BASE
-            );
-            ::config::hyperlight::DEFAULT_INITRD_BASE
-        } else {
-            current_data_start
-        };
-
-        let image_data: &[u8] =
-            unsafe { core::slice::from_raw_parts(initrd_base as *const u8, total_size) };
-
-        kernel_modules.extend(crate::multibin::parse(image_data, initrd_base)?);
+        kernel_modules.extend(crate::multibin::parse(
+            unsafe { core::slice::from_raw_parts(initrd_base as *const u8, total_size) },
+            initrd_base,
+        )?);
     } else {
         // Single-binary format: parse old size-header + args layout.
         info!("parse_bootinfo(): single-binary initrd detected");
@@ -867,6 +891,23 @@ pub fn init(
     extern "C" {
         static __KERNEL_END: u8;
     }
+
+    // Query the host for the authoritative physical memory layout.
+    let (snapshot_budget_size, pt_overhead, ramfs_base, ramfs_size, scratch_size) =
+        unsafe { ProcessEnvironmentBlock::get_memory_layout() }?;
+    info!(
+        "host memory layout: snapshot_budget_size={} KB, pt_overhead={} KB, ramfs_base={:#x}, \
+         ramfs_size={} KB, scratch_size={} KB",
+        snapshot_budget_size / KILOBYTE,
+        pt_overhead / KILOBYTE,
+        ramfs_base,
+        ramfs_size / KILOBYTE,
+        scratch_size / KILOBYTE
+    );
+
+    // Sanity check: the three regions must cover exactly MEMORY_SIZE.
+    check_memory_size(snapshot_budget_size, ramfs_size, scratch_size)?;
+
     // Register PEB structure.
     let kernel_end_addr: usize = unsafe { &__KERNEL_END } as *const u8 as usize;
     let peb_base: usize =
@@ -885,49 +926,12 @@ pub fn init(
     ioaddresses.register(PEB_MMIO_TAG, peb.clone())?;
     mmio_regions.push_back(peb);
 
-    // Register input data buffer (directly after PEB in v0.13.0+).
-    let input_data_base: usize = peb_base.checked_add(PEB_SIZE).ok_or_else(|| {
-        let reason: &str = "input data buffer base address overflow";
+    // Compute padding between PEB and kernel pool.
+    let heap_padding_base: usize = peb_base.checked_add(PEB_SIZE).ok_or_else(|| {
+        let reason: &str = "heap padding base address overflow";
         error!("init(): {}", reason);
         Error::new(ErrorCode::OutOfMemory, reason)
     })?;
-    let input_data_buffer: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
-        "input data buffer",
-        PageAligned::from_raw_value(input_data_base)?,
-        INPUT_DATA_BUFFER_SIZE,
-        AccessPermission::RDWR,
-        MmioCachePolicy::UNCACHEABLE,
-    )?;
-    ioaddresses.register(INPUT_BUF_MMIO_TAG, input_data_buffer.clone())?;
-    mmio_regions.push_back(input_data_buffer);
-
-    // Register output data buffer.
-    let output_data_base: usize = input_data_base
-        .checked_add(INPUT_DATA_BUFFER_SIZE)
-        .ok_or_else(|| {
-            let reason: &str = "output data buffer base address overflow";
-            error!("init(): {}", reason);
-            Error::new(ErrorCode::OutOfMemory, reason)
-        })?;
-    let output_data_buffer: TruncatedMemoryRegion<VirtualAddress> =
-        TruncatedMemoryRegion::new_mmio(
-            "output data buffer",
-            PageAligned::from_raw_value(output_data_base)?,
-            OUTPUT_DATA_BUFFER_SIZE,
-            AccessPermission::RDWR,
-            MmioCachePolicy::UNCACHEABLE,
-        )?;
-    ioaddresses.register(OUTPUT_BUF_MMIO_TAG, output_data_buffer.clone())?;
-    mmio_regions.push_back(output_data_buffer);
-
-    // Compute heap padding between output data buffer and kernel pool.
-    let heap_padding_base: usize = output_data_base
-        .checked_add(OUTPUT_DATA_BUFFER_SIZE)
-        .ok_or_else(|| {
-            let reason: &str = "heap padding base address overflow";
-            error!("init(): {}", reason);
-            Error::new(ErrorCode::OutOfMemory, reason)
-        })?;
     debug!("heap_padding_base={:#010x}", heap_padding_base);
     let kpool_base: usize = memory_layout::KPOOL_BASE.into_raw_value();
     match kpool_base.checked_sub(heap_padding_base) {
@@ -954,133 +958,139 @@ pub fn init(
         },
     }
 
-    // Register kpool guard page.
-    let kpool_guard_base: usize = kpool_base
-        .checked_add(config::kernel::KPOOL_SIZE)
-        .ok_or_else(|| {
-            let reason: &str = "kpool guard base address overflow";
-            error!("init(): {}", reason);
-            Error::new(ErrorCode::OutOfMemory, reason)
-        })?;
-    let kpool_guard_size: usize = mem::PAGE_SIZE;
-    let kpool_guard: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-        "kpool guard",
-        VirtualAddress::from_raw_value(kpool_guard_base),
-        kpool_guard_size,
-        MemoryRegionType::Reserved,
-        AccessPermission::RDONLY,
-    )?;
-    memory_regions.push_back(kpool_guard);
-
-    // Register hyperlight guest user stack.
-    let guest_user_stack_base: usize =
-        kpool_guard_base
-            .checked_add(kpool_guard_size)
-            .ok_or_else(|| {
-                let reason: &str = "guest user stack base address overflow";
-                error!("init(): {}", reason);
-                Error::new(ErrorCode::OutOfMemory, reason)
-            })?;
-    let guest_user_stack_size: usize = mem::PAGE_SIZE;
-    let guest_user_stack: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-        "guest user stack",
-        VirtualAddress::from_raw_value(guest_user_stack_base),
-        guest_user_stack_size,
-        MemoryRegionType::Reserved,
-        AccessPermission::RDONLY,
-    )?;
-    memory_regions.push_back(guest_user_stack);
-
     // Register RAMFS region as MMIO for identity mapping, if present.
-    // The host writes file mapping metadata into the PEB's file_mappings array
-    // during evolve(). We scan the entries for the "ramfs" label and, if found,
-    // register an MMIO region so the kernel's page tables will identity-map the
-    // file-backed memory.
-    {
-        let peb_ptr: *const HyperlightPEB = peb_base as *const HyperlightPEB;
-        let count: usize = unsafe { (*peb_ptr).file_mappings.size } as usize;
-        let array_ptr: *const FileMappingInfo =
-            unsafe { (*peb_ptr).file_mappings.ptr } as *const FileMappingInfo;
-
-        if count > 0 && !array_ptr.is_null() {
-            for i in 0..count {
-                let entry: &FileMappingInfo = unsafe { &*array_ptr.add(i) };
-
-                // Only register entries whose label matches "ramfs".
-                let label_len: usize = entry
-                    .label
-                    .iter()
-                    .position(|&b| b == 0)
-                    .unwrap_or(entry.label.len());
-                let label: &str = core::str::from_utf8(&entry.label[..label_len]).unwrap_or("");
-                if label != "ramfs" {
-                    continue;
-                }
-
-                let ramfs_base: usize = entry.guest_addr as usize;
-                let ramfs_size: usize = entry.size as usize;
-
-                if ramfs_base != 0 && ramfs_size != 0 {
-                    info!(
-                        "file mapping [{}]: base={:#010x}, size={:#x}",
-                        i, ramfs_base, ramfs_size
-                    );
-                    let mut ramfs_mr: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-                        RAMFS_REGION_NAME,
-                        VirtualAddress::from_raw_value(ramfs_base),
-                        ramfs_size,
-                        MemoryRegionType::Mmio,
-                        AccessPermission::RDWR,
-                    )?;
-                    ramfs_mr.set_cache_policy(MmioCachePolicy::WRITE_BACK);
-                    let ramfs_region: TruncatedMemoryRegion<VirtualAddress> =
-                        TruncatedMemoryRegion::from_memory_region(ramfs_mr)?;
-                    ioaddresses.register(RAMFS_MMIO_TAG, ramfs_region.clone())?;
-                    mmio_regions.push_back(ramfs_region);
-                }
-            }
-        }
-    }
-
-    // Register scratch I/O buffers as MMIO regions for identity mapping.
-    // The hyperlight-guest library accesses I/O buffers at scratch GVAs (read from PEB).
-    // When the kernel enables its own paging, these high addresses are unmapped unless
-    // we explicitly register them as MMIO regions for identity mapping.
-    let peb_ptr: *const HyperlightPEB = peb_base as *const HyperlightPEB;
-    let input_gva = unsafe { (*peb_ptr).input_stack.ptr } as usize;
-
-    if input_gva >= config::kernel::MEMORY_SIZE {
-        // Extend the scratch I/O region to cover all the way up to (but not including)
-        // the last page of the address space. This includes the I/O buffers AND the
-        // bookkeeping area (scratch size, allocator, exception stack, guest counter).
-        // We stop one page short of MAX_GVA because the last page (frame 0xfffff)
-        // exceeds FrameNumber::MAX and cannot be booked by the frame allocator.
-        let scratch_end: usize = MAX_GVA - mem::PAGE_SIZE;
-        let scratch_io_size = scratch_end - input_gva + 1;
-        let mut scratch_mr: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-            "scratch io",
-            VirtualAddress::from_raw_value(input_gva),
-            scratch_io_size,
+    if ramfs_base != 0 && ramfs_size != 0 {
+        let mut ramfs_mr: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+            RAMFS_REGION_NAME,
+            VirtualAddress::from_raw_value(ramfs_base),
+            ramfs_size,
             MemoryRegionType::Mmio,
             AccessPermission::RDWR,
         )?;
-        scratch_mr.set_cache_policy(MmioCachePolicy::UNCACHEABLE);
-        let scratch_io_region: TruncatedMemoryRegion<VirtualAddress> =
-            TruncatedMemoryRegion::from_memory_region(scratch_mr)?;
-        ioaddresses.register(SCRATCH_IO_MMIO_TAG, scratch_io_region.clone())?;
-        mmio_regions.push_back(scratch_io_region);
+        ramfs_mr.set_cache_policy(MmioCachePolicy::WRITE_BACK);
+        let ramfs_region: TruncatedMemoryRegion<VirtualAddress> =
+            TruncatedMemoryRegion::from_memory_region(ramfs_mr)?;
+        ioaddresses.register(RAMFS_MMIO_TAG, ramfs_region.clone())?;
+        mmio_regions.push_back(ramfs_region);
     }
 
-    // Build a sparse bitmap representing the physical memory layout.
-    let physical_memory_layout: SparseBitmap = {
-        // Safety: the frame allocator storage is valid and has a static lifetime.
-        let storage: RawArray<u8> = unsafe {
-            let (ptr, len): (*mut u8, usize) =
-                (FRAME_ALLOCATOR_STORAGE.as_mut_ptr(), FRAME_ALLOCATOR_STORAGE.len());
-            RawArray::from_raw_parts(ptr, len)?
+    // Record RAMFS region bounds for is_valid_physical_address.
+    if ramfs_size > 0 {
+        let ramfs_end: usize = match ramfs_base.checked_add(ramfs_size) {
+            Some(ramfs_end) => ramfs_end,
+            None => {
+                return Err(Error::new(
+                    ErrorCode::InvalidArgument,
+                    "host-reported RAMFS bounds overflow",
+                ));
+            },
         };
-        let bitmap: Bitmap = Bitmap::from_raw_array(storage)?;
-        SparseBitmap::new(vec![(0, bitmap)])?
+
+        RAMFS_BASE.store(ramfs_base, Ordering::Relaxed);
+        RAMFS_END.store(ramfs_end, Ordering::Relaxed);
+        info!("ramfs region: [{:#010x}, {:#010x})", ramfs_base, ramfs_end);
+    }
+
+    // Derive scratch region addresses from the host-provided scratch_size.
+    // scratch_size covers the full range [scratch_base, 0xFFFFFFFF] and includes the last
+    // page (0xFFFFF000) that Hyperlight reserves for bookkeeping.  The bitmap excludes that
+    // page because its frame number (0xFFFFF) exceeds FrameNumber::MAX.
+    // Validate that scratch_size is non-zero and large enough to contain the required MMIO
+    // regions (input buffer + output buffer + one top page + excluded last page).
+    let min_scratch_size: usize =
+        INPUT_DATA_BUFFER_SIZE + OUTPUT_DATA_BUFFER_SIZE + 2 * mem::PAGE_SIZE;
+    if scratch_size == 0 || scratch_size < min_scratch_size {
+        let reason: &str = "scratch_size is too small for required MMIO regions";
+        error!(
+            "init(): {} (scratch_size={:#x}, min={:#x})",
+            reason, scratch_size, min_scratch_size
+        );
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+    // scratch_base = MAX_GVA - scratch_size + 1.
+    let scratch_base_address: usize = MAX_GVA - scratch_size + 1;
+    // Bitmap end: stop one page short of MAX_GVA because the last page (frame 0xfffff)
+    // exceeds FrameNumber::MAX and cannot be booked by the frame allocator.
+    let scratch_bitmap_end: usize = MAX_GVA - mem::PAGE_SIZE + 1;
+
+    // Record scratch region bounds for is_valid_physical_address.
+    SCRATCH_BASE.store(scratch_base_address, Ordering::Relaxed);
+    SCRATCH_END.store(scratch_bitmap_end, Ordering::Relaxed);
+    info!(
+        "scratch region: [{:#010x}, {:#010x}) (size={:#x})",
+        scratch_base_address, scratch_bitmap_end, scratch_size
+    );
+
+    // Register only the MMIO-critical portions of the scratch region:
+    //  1. Input data buffer  [scratch_base, scratch_base + INPUT_DATA_BUFFER_SIZE)
+    //  2. Output data buffer [scratch_base + INPUT_DATA_BUFFER_SIZE, + OUTPUT_DATA_BUFFER_SIZE)
+    //  3. Top page (0xFFFFE000): guest counter.
+    // Everything between the output buffer and the top page (page tables, free space) is
+    // intentionally left unregistered  and are available for user-page allocation.  The very last
+    // page (0xFFFFF000) holds scratch metadata accessed only during early boot before paging, and
+    // its frame number (0xFFFFF) exceeds FrameNumber::MAX, so it is excluded entirely.
+    {
+        let scratch_input_base: usize = scratch_base_address;
+        let scratch_input: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
+            "scratch input",
+            PageAligned::from_raw_value(scratch_input_base)?,
+            INPUT_DATA_BUFFER_SIZE,
+            AccessPermission::RDWR,
+            MmioCachePolicy::UNCACHEABLE,
+        )?;
+        ioaddresses.register(INPUT_BUF_MMIO_TAG, scratch_input.clone())?;
+        mmio_regions.push_back(scratch_input);
+    }
+    {
+        let scratch_output_base: usize = scratch_base_address + INPUT_DATA_BUFFER_SIZE;
+        let scratch_output: TruncatedMemoryRegion<VirtualAddress> =
+            TruncatedMemoryRegion::new_mmio(
+                "scratch output",
+                PageAligned::from_raw_value(scratch_output_base)?,
+                OUTPUT_DATA_BUFFER_SIZE,
+                AccessPermission::RDWR,
+                MmioCachePolicy::UNCACHEABLE,
+            )?;
+        ioaddresses.register(OUTPUT_BUF_MMIO_TAG, scratch_output.clone())?;
+        mmio_regions.push_back(scratch_output);
+    }
+    {
+        let scratch_top_page: usize = scratch_bitmap_end - mem::PAGE_SIZE;
+        let scratch_top: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
+            "scratch top",
+            PageAligned::from_raw_value(scratch_top_page)?,
+            mem::PAGE_SIZE,
+            AccessPermission::RDWR,
+            MmioCachePolicy::UNCACHEABLE,
+        )?;
+        ioaddresses.register(SCRATCH_IO_MMIO_TAG, scratch_top.clone())?;
+        mmio_regions.push_back(scratch_top);
+    }
+
+    // Set snapshot region end from the host-provided snapshot budget.
+    // pt_overhead is always 0 with nanvix-unstable (Hyperlight skips PT generation).
+    // The variable is acknowledged here for forward-compatibility.
+    let _ = pt_overhead;
+    let snapshot_end_address: usize = KERNEL_BASE_RAW + snapshot_budget_size;
+    SNAPSHOT_END.store(snapshot_end_address, Ordering::Relaxed);
+    info!("snapshot region: [{:#010x}, {:#010x})", KERNEL_BASE_RAW, snapshot_end_address);
+
+    // Build a sparse bitmap representing the physical memory layout.
+    // Each disjoint physical region (snapshot, RAMFS, scratch) gets its own chunk in the
+    // SparseBitmap.  However, bitmap storage is byte-aligned so the snapshot chunk's last
+    // byte may cover phantom frames beyond snapshot_end.  If the RAMFS starts within that
+    // padded range the two chunks would overlap, so they are merged into a single "low"
+    // chunk.  When the RAMFS is absent or far enough away it becomes a separate chunk.
+    let ramfs_end_address: usize = ramfs_base + ramfs_size;
+    let physical_memory_layout: SparseBitmap = unsafe {
+        build_physical_memory_layout(
+            KERNEL_BASE_RAW,
+            snapshot_end_address,
+            ramfs_base,
+            ramfs_end_address,
+            scratch_base_address,
+            scratch_bitmap_end,
+        )?
     };
 
     Ok(Platform {
@@ -1089,6 +1099,189 @@ pub fn init(
         _pit: register_pit(ioports)?,
         physical_memory_layout: Some(physical_memory_layout),
     })
+}
+
+///
+/// # Description
+///
+/// Validates that the three memory regions (snapshot, RAMFS, scratch) cover exactly
+/// [`MEMORY_SIZE`].
+///
+/// # Parameters
+///
+/// - `snapshot_budget_size`: Size of the snapshot region in bytes.
+/// - `ramfs_size`: Size of the RAMFS region in bytes (0 when absent).
+/// - `scratch_size`: Size of the scratch region in bytes.
+///
+/// # Returns
+///
+/// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+///
+fn check_memory_size(
+    snapshot_budget_size: usize,
+    ramfs_size: usize,
+    scratch_size: usize,
+) -> Result<(), Error> {
+    let total: usize = snapshot_budget_size + ramfs_size + scratch_size;
+    if total != MEMORY_SIZE {
+        let reason: &str = "region budget mismatch";
+        error!(
+            "check_memory_size(): {} snapshot_budget({:#x}) + ramfs({:#x}) + scratch({:#x}) = \
+             {:#x}, expected MEMORY_SIZE={:#x}",
+            reason, snapshot_budget_size, ramfs_size, scratch_size, total, MEMORY_SIZE
+        );
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+    Ok(())
+}
+
+///
+/// # Description
+///
+/// Builds a [`SparseBitmap`] representing the sparse physical memory layout.
+///
+/// Each disjoint physical region (snapshot, RAMFS, scratch) gets its own chunk in the bitmap.
+/// However, bitmap storage is byte-aligned so the snapshot chunk's last byte may cover phantom
+/// frames beyond the snapshot end.  If the RAMFS starts within that padded range the two chunks
+/// would overlap, so they are merged into a single "low" chunk.  When the RAMFS is absent or far
+/// enough away it becomes a separate chunk.
+///
+/// # Parameters
+///
+/// - `snapshot_start_address`: Inclusive start address of the snapshot region.
+/// - `snapshot_end_address`: Exclusive end address of the snapshot region.
+/// - `ramfs_start_address`: Inclusive start address of the RAMFS region (0 when absent).
+/// - `ramfs_end_address`: Exclusive end address of the RAMFS region (0 when absent).
+/// - `scratch_start_address`: Inclusive start address of the scratch region.
+/// - `scratch_end_address`: Exclusive end address of the scratch bitmap region.
+///
+/// # Returns
+///
+/// Upon success, a [`SparseBitmap`] covering all physical memory regions is returned.
+/// Upon failure, an error is returned instead.
+///
+/// # Safety
+///
+/// This function is unsafe because it writes to the mutable static [`FRAME_ALLOCATOR_STORAGE`].
+/// The caller must ensure exclusive access.
+///
+unsafe fn build_physical_memory_layout(
+    snapshot_start_address: usize,
+    snapshot_end_address: usize,
+    ramfs_start_address: usize,
+    ramfs_end_address: usize,
+    scratch_start_address: usize,
+    scratch_end_address: usize,
+) -> Result<SparseBitmap, Error> {
+    // Validate that region ends are not before their starts.
+    if snapshot_end_address < snapshot_start_address
+        || ramfs_end_address < ramfs_start_address
+        || scratch_end_address < scratch_start_address
+    {
+        let reason: &str = "region end address precedes start address";
+        error!("build_physical_memory_layout(): {}", reason);
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+
+    let bits_per_byte: usize = u8::BITS as usize;
+    let snapshot_size: usize = snapshot_end_address - snapshot_start_address;
+    let ramfs_size: usize = ramfs_end_address - ramfs_start_address;
+    let scratch_size: usize = scratch_end_address - scratch_start_address;
+
+    let snapshot_frames: usize = snapshot_size / mem::FRAME_SIZE;
+    let snapshot_padded_end: usize = snapshot_frames.div_ceil(bits_per_byte) * bits_per_byte;
+    let ramfs_start_frame: usize = if ramfs_size > 0 {
+        ramfs_start_address / mem::FRAME_SIZE
+    } else {
+        0
+    };
+    let ramfs_end_frame: usize = if ramfs_size > 0 {
+        ramfs_end_address / mem::FRAME_SIZE
+    } else {
+        0
+    };
+
+    // Merge the RAMFS into the snapshot chunk when its start falls within the
+    // byte-padded range of the snapshot bitmap to avoid an overlap error.
+    let merge_ramfs: bool = ramfs_size > 0 && ramfs_start_frame < snapshot_padded_end;
+
+    // "Low" chunk covers the snapshot and, when merged, the RAMFS as well.
+    let low_end_frame: usize = if merge_ramfs {
+        snapshot_frames.max(ramfs_end_frame)
+    } else {
+        snapshot_frames
+    };
+    let low_bytes: usize = low_end_frame.div_ceil(bits_per_byte);
+    let low_phantom: usize = low_bytes * bits_per_byte - low_end_frame;
+
+    // Separate RAMFS chunk (only when not merged).
+    let ramfs_frames: usize = ramfs_size / mem::FRAME_SIZE;
+    let ramfs_bytes: usize = if !merge_ramfs && ramfs_frames > 0 {
+        ramfs_frames.div_ceil(bits_per_byte)
+    } else {
+        0
+    };
+    let ramfs_phantom: usize = if ramfs_bytes > 0 {
+        ramfs_bytes * bits_per_byte - ramfs_frames
+    } else {
+        0
+    };
+
+    let scratch_frames: usize = scratch_size / mem::FRAME_SIZE;
+    let scratch_bytes: usize = scratch_frames.div_ceil(bits_per_byte);
+    // Phantom bits map to frame numbers beyond FrameNumber::MAX and must be pre-marked
+    // as used so that alloc() never returns an out-of-range frame.
+    let scratch_phantom: usize = scratch_bytes * bits_per_byte - scratch_frames;
+
+    let total_bytes: usize = low_bytes + ramfs_bytes + scratch_bytes;
+
+    // Safety: the frame allocator storage has a static lifetime and is large enough
+    // to cover MEMORY_SIZE worth of frames.
+    let storage_len: usize = FRAME_ALLOCATOR_STORAGE.len();
+    if total_bytes > storage_len {
+        let reason: &str = "frame allocator storage too small for sparse layout";
+        error!(
+            "build_physical_memory_layout(): {} (need={:#x}, have={:#x})",
+            reason, total_bytes, storage_len
+        );
+        return Err(Error::new(ErrorCode::OutOfMemory, reason));
+    }
+
+    let base_ptr: *mut u8 = FRAME_ALLOCATOR_STORAGE.as_mut_ptr();
+    let mut offset: usize = 0;
+
+    // Build a bitmap chunk from the shared storage at the current offset.
+    // `num_bytes` is the byte-aligned storage size, `num_frames` is the real frame count,
+    // and `num_phantom` is the number of trailing padding bits to pre-mark as used.
+    let mut make_chunk =
+        |num_bytes: usize, num_frames: usize, num_phantom: usize| -> Result<Bitmap, Error> {
+            let storage: RawArray<u8> = RawArray::from_raw_parts(base_ptr.add(offset), num_bytes)?;
+            let mut bitmap: Bitmap = Bitmap::from_raw_array(storage)?;
+            for i in 0..num_phantom {
+                bitmap.set(num_frames + i)?;
+            }
+            offset += num_bytes;
+            Ok(bitmap)
+        };
+
+    // Low chunk: snapshot (and optionally RAMFS when merged).
+    let snapshot_start_frame: usize = snapshot_start_address / mem::FRAME_SIZE;
+    let low_bitmap: Bitmap = make_chunk(low_bytes, low_end_frame, low_phantom)?;
+    let mut chunks: vec::Vec<(usize, Bitmap)> = vec![(snapshot_start_frame, low_bitmap)];
+
+    // Separate RAMFS chunk (only when not merged with the snapshot).
+    if ramfs_bytes > 0 {
+        let ramfs_bitmap: Bitmap = make_chunk(ramfs_bytes, ramfs_frames, ramfs_phantom)?;
+        chunks.push((ramfs_start_frame, ramfs_bitmap));
+    }
+
+    // Scratch chunk: frames [scratch_start / FRAME_SIZE, ...).
+    if scratch_frames > 0 {
+        let scratch_bitmap: Bitmap = make_chunk(scratch_bytes, scratch_frames, scratch_phantom)?;
+        chunks.push((scratch_start_address / mem::FRAME_SIZE, scratch_bitmap));
+    }
+
+    SparseBitmap::new(chunks)
 }
 
 ///
@@ -1180,20 +1373,20 @@ unsafe fn parse_initrd_image(
     let initrd_cmdline: (u8, String) =
         read_initrd_cmdline(current_initrd_start, actual_initrd_size, total_allocation_size)?;
 
-    // Relocate initrd to default base address if needed.
-    let initrd_base: usize = if current_initrd_start != ::config::hyperlight::DEFAULT_INITRD_BASE {
+    // The ELF payload sits INITRD_SIZE_BYTES past the page-aligned init_data_start,
+    // so its address is not page-aligned.  Shift it back to init_data_start (the
+    // size header has already been consumed and is no longer needed).  The source
+    // and destination overlap, but core::ptr::copy handles that correctly.
+    let initrd_base: usize = init_data_start;
+    if current_initrd_start != initrd_base {
         let src_ptr: *const u8 = current_initrd_start as *const u8;
-        let dst_ptr: *mut u8 = ::config::hyperlight::DEFAULT_INITRD_BASE as *mut u8;
+        let dst_ptr: *mut u8 = initrd_base as *mut u8;
         core::ptr::copy(src_ptr, dst_ptr, actual_initrd_size);
-
         debug!(
-            "parse_initrd_image(): initrd relocated from {current_initrd_start:#010x} to {:#010x}",
-            ::config::hyperlight::DEFAULT_INITRD_BASE
+            "parse_initrd_image(): initrd shifted from {current_initrd_start:#010x} to \
+             {initrd_base:#010x}"
         );
-        ::config::hyperlight::DEFAULT_INITRD_BASE
-    } else {
-        current_initrd_start
-    };
+    }
 
     Ok((initrd_base, actual_initrd_size, initrd_cmdline))
 }
