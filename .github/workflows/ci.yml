@@ -2120,6 +2120,7 @@ jobs:
     permissions:
       issues: write
       contents: read
+      members: read
 
     steps:
       - name: "Collect Failed or Skipped Jobs"
@@ -2133,6 +2134,22 @@ jobs:
           echo "failed=${failed_jobs}" >> "${GITHUB_OUTPUT}"
           echo "skipped=${skipped_jobs}" >> "${GITHUB_OUTPUT}"
 
+      - name: "Resolve Admin Team Members"
+        id: team
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Attempt to fetch nanvix/admin team members for issue assignment.
+          # Falls back to "ppenna" if the API call fails or returns an empty list.
+          # NOTE: the admin team is small (well under the 30-member default page
+          # size), so pagination is not needed here.
+          ASSIGNEES=$(gh api orgs/nanvix/teams/admin/members --jq '[.[].login] | join(",")' 2>/dev/null || true)
+          if [ -z "${ASSIGNEES}" ]; then
+            echo "::warning::Could not fetch nanvix/admin team members; falling back to ppenna."
+            ASSIGNEES="ppenna"
+          fi
+          echo "assignees=${ASSIGNEES}" >> "${GITHUB_OUTPUT}"
+
       - name: "Create Issue"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -2141,7 +2158,7 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --title "CI/CD pipeline failure on dev (Run #${{ github.run_number }})" \
             --label "devops:ci" \
-            --assignee "ppenna" \
+            --assignee "${{ steps.team.outputs.assignees }}" \
             --body "## CI/CD Release Pipeline Failure
 
           The CI/CD pipeline failed on \`dev\` (event: \`${{ github.event_name }}\`).
@@ -2152,6 +2169,7 @@ jobs:
           **Failed jobs:** ${{ steps.failed.outputs.failed }}
           **Skipped jobs:** ${{ steps.failed.outputs.skipped }}
 
+          /cc @nanvix/admin
           Please investigate the failed and skipped jobs linked above and resolve the issue."
 
   # Bump the patch version on every merge to dev.
