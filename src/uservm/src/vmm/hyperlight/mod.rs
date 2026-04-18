@@ -457,8 +457,51 @@ impl Vmm {
                 .ok_or_else(|| anyhow::anyhow!("sandbox already evolved"))?
         };
 
-        // Run the sandbox.
-        let result: Result<MultiUseSandbox, HyperlightError> = uninit.evolve();
+        // Phase 1: Evolve — boot the kernel through early init. The kernel halts from
+        // hyperlight_pre_kmain() during the pre-kmain evolve phase via VmAction::Halt with the
+        // _nanvix_dispatch address in EAX. This causes evolve() to return Ok(MultiUseSandbox).
+        let mut sandbox: MultiUseSandbox = match uninit.evolve() {
+            Ok(s) => s,
+            Err(error) => {
+                // Drop the stderr redirect guard to restore the original stderr fd.
+                self.inner.blocking_lock()._stderr_redirect.take();
+
+                // Communicate shutdown to orchestrator.
+                if let Err(e) = self
+                    .inner
+                    .blocking_lock()
+                    .control_tx
+                    .blocking_send(VcpuControlResponse::Shutdown)
+                {
+                    error!("run(): failed to notify vmm thread (error={e:?})");
+                }
+
+                // During evolve(), GuestAborted is wrapped in HyperlightVmError(Initialize(...)) so
+                // extract it from the error chain.
+                return match Self::extract_guest_abort(&error) {
+                    Some((code, message)) => {
+                        if message.is_empty() {
+                            debug!("run(): guest exited during evolve (code={code})");
+                        } else {
+                            debug!(
+                                "run(): guest exited during evolve (code={code}, \
+                                 message={message})"
+                            );
+                        }
+                        Ok(code as u16)
+                    },
+                    None => {
+                        error!("run(): vmm aborted during evolve (debug={error:?})");
+                        Ok(ErrorCode::ConnectionReset.into())
+                    },
+                };
+            },
+        };
+
+        debug!("run(): evolve completed, calling sandbox.call(\"kmain\")");
+
+        // Phase 2: Call — re-enter the guest at _nanvix_dispatch to actually run the system.
+        let call_result: Result<(), HyperlightError> = sandbox.call("kmain", ());
 
         // Drop the stderr redirect guard to restore the original stderr fd.
         self.inner.blocking_lock()._stderr_redirect.take();
@@ -475,13 +518,18 @@ impl Vmm {
         }
 
         // Parse result.
-        // NOTE: The kernel uses abort_with_code() for all exit codes (including 0) rather
-        // than halt() to avoid a race condition with SIGKILL. See issue #1010.
-        // During evolve(), GuestAborted is wrapped in HyperlightVmError(Initialize(...))
-        // so we must extract it from the nested error chain.
-        match result {
-            Ok(_multiuse_sandbox) => {
-                debug!("run(): vmm exited normally");
+        // The dispatch handler halts via VmAction::Halt, which produces VmExit::Halt on the host.
+        // Hyperlight then tries to read a guest function return value from the PEB output buffer,
+        // which may fail with "Stack pointer is out of bounds" because the dispatch handler doesn't
+        // use Hyperlight's guest function return convention. We treat this specific error as
+        // success.
+        match call_result {
+            Ok(()) => {
+                debug!("run(): guest call completed normally");
+                Ok(0)
+            },
+            Err(ref error) if Self::is_halt_exit(error) => {
+                debug!("run(): guest halted cleanly (Halt path, no return value in PEB)");
                 Ok(0)
             },
             Err(error) => match Self::extract_guest_abort(&error) {
@@ -498,6 +546,30 @@ impl Vmm {
                     Ok(ErrorCode::ConnectionReset.into())
                 },
             },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks whether the error from `sandbox.call()` represents a clean VM halt.
+    ///
+    /// When the kernel exits via `VmAction::Halt` during a guest call, Hyperlight's dispatch loop
+    /// returns `Ok(())` but then tries to read a guest function return value from the PEB output
+    /// buffer. Since the kernel doesn't use Hyperlight's guest function return convention, this
+    /// read fails with "Stack pointer is out of bounds" (an `AnyhowError` from `shared_mem.rs`).
+    ///
+    /// We detect this by first narrowing to the expected `AnyhowError` variant and then checking
+    /// the inner error's `Display` representation. This avoids treating unrelated
+    /// `HyperlightError` variants as clean halts just because their top-level formatted message
+    /// contains the same substring.
+    ///
+    fn is_halt_exit(error: &HyperlightError) -> bool {
+        match error {
+            HyperlightError::AnyhowError(inner) => {
+                inner.to_string().contains("Stack pointer is out of bounds")
+            },
+            _ => false,
         }
     }
 

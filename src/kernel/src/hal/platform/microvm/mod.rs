@@ -245,12 +245,9 @@ pub fn snapshot() {
 ///
 /// # Description
 ///
-/// Signals the VMM that the kernel has finished booting and user-space
-/// applications are about to start. The VMM uses this to enable
-/// host-side services (e.g., pvclock timer) that should not run during
-/// the boot phase.
+/// Signals the VMM that kernel startup is complete and user-space applications are about to start.
 ///
-pub fn signal_boot_complete() {
+pub fn signal_startup_complete() {
     // SAFETY: The port I/O write targets the VMM control port with a well-known
     // boot-complete command value.
     unsafe {

@@ -49,7 +49,6 @@ use crate::{
     kmod::KernelModule,
     mm::{
         elf::Elf32Fhdr,
-        kheap,
         VirtMemoryManager,
         Vmem,
     },
@@ -67,6 +66,9 @@ use ::sys::{
     pm::ProcessIdentifier,
     ExitStatus,
 };
+
+#[cfg(not(feature = "hyperlight"))]
+use crate::mm::kheap;
 
 #[cfg(feature = "smp")]
 use crate::mm::kredzone;
@@ -255,6 +257,9 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     info!("initializing the kernel...");
 
     // Initialize the kernel heap.
+    // On Hyperlight the heap is already initialized during the evolve phase
+    // (`hyperlight_pre_kmain`) so that FunctionCall deserialization can allocate.
+    #[cfg(not(feature = "hyperlight"))]
     if let Err(e) = unsafe { kheap::init() } {
         panic!("failed to initialize kernel heap: {:?}", e);
     }
