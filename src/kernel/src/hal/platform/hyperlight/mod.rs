@@ -49,6 +49,7 @@ use crate::{
 };
 use ::alloc::{
     collections::linked_list::LinkedList,
+    format,
     string::{
         String,
         ToString,
@@ -65,12 +66,22 @@ use ::config::hyperlight::{
     PEB_SIZE,
 };
 use ::hyperlight_common::{
+    flatbuffer_wrappers::{
+        function_call::FunctionCall,
+        function_types::FunctionCallResult,
+        guest_error::{
+            ErrorCode as GuestErrorCode,
+            GuestError,
+        },
+    },
     layout::MAX_GVA,
     mem::{
         FileMappingInfo,
         HyperlightPEB,
     },
+    outb::VmAction,
 };
+use ::hyperlight_guest::guest_handle::handle::GuestHandle;
 use ::sys::{
     config::memory_layout,
     error::{
@@ -84,6 +95,61 @@ use ::sys::{
     },
 };
 
+// =================================================================================================
+// _nanvix_dispatch — Entry point for guest function calls
+// =================================================================================================
+//
+// Entry point used by guest function calls.
+//
+// How Hyperlight captures and restores the entry point:
+//
+// 1. During `evolve()` (Hyperlight's `initialise`), the VM runs until a HLT.  When
+//    `hyperlight_pre_kmain()` halts via VmAction::Halt, Hyperlight reads the vCPU registers and
+//    stores:
+//      - `self.entrypoint = NextAction::Call(regs.rax)` — the address of
+//        `_nanvix_dispatch`, which the kernel placed in EAX before halting.
+//      - `self.rsp_gva = regs.rsp` — the stack pointer at halt time.
+//
+// 2. When the host calls `sandbox.call("kmain", ())`, Hyperlight serialises the function name and
+//    arguments into the PEB input buffer, then `dispatch_call_from_host()` sets RIP to the stored
+//    dispatch address and resumes the VM.
+//
+// 3. `_nanvix_dispatch` restores the boot stack, reconstructs a `&KernelArguments`
+//    pointer, and calls `nanvix_dispatch_function`. That Rust function reads the
+//    `FunctionCall` from the PEB input buffer, validates the function name, and
+//    dispatches to `kmain`.
+//
+::core::arch::global_asm!(
+    r#".section .text,"ax",@progbits"#,
+    ".code32",
+    ".extern kstack",
+    ".extern nanvix_dispatch_function",
+    ".globl _nanvix_dispatch",
+    "_nanvix_dispatch:",
+    // When Hyperlight's `dispatch_call_from_host()` resumes the VM here, all general-purpose
+    // registers are zeroed except RSP (restored to the value saved during evolve) and RFLAGS (RES1
+    // set; ZF may be set to signal a pending TLB flush). Segment registers are not touched — they
+    // retain whatever state was left after `evolve()`.
+    //
+    // Restore the boot stack. The KernelArguments (magic, info) are still
+    // at kstack-8 from _do_start2's pushes during the evolve phase.
+    //
+    // NOTE: after snapshot/restore support is added, kstack will be CoW-ed
+    // and this simple restore may need updating.
+    "    movl $kstack, %esp",
+    "    movl %esp, %ebp",
+    "    subl $8, %esp",
+    // Push the KernelArguments pointer and call the high-level dispatcher.
+    "    push %esp",
+    "    call nanvix_dispatch_function",
+    "    addl $4, %esp",
+    "    addl $8, %esp",
+    // nanvix_dispatch_function should never return; halt as a safety net.
+    "2:  hlt",
+    "    jmp 2b",
+    options(att_syntax),
+);
+
 //==================================================================================================
 // Global Variables
 //==================================================================================================
@@ -93,6 +159,10 @@ use ::sys::{
 #[unsafe(no_mangle)]
 #[used]
 static KERNEL_PADDING: [u8; 2 * 1024 * 1024] = [0u8; 2 * 1024 * 1024];
+
+/// Guest handle initialised once during `hyperlight_pre_kmain` (evolve phase)
+/// and reused by `nanvix_dispatch_function` on each `sandbox.call()`.
+static mut GUEST_HANDLE: Option<GuestHandle> = None;
 
 //==================================================================================================
 // Structures
@@ -359,10 +429,132 @@ pub(in crate::hal::platform) fn do_shutdown(status: usize) -> ! {
 ///
 /// # Description
 ///
-/// Signals the VMM that the kernel has finished booting and user-space
-/// applications are about to start. No-op on the Hyperlight platform.
+/// Signals the VMM that kernel startup is complete and user-space applications are about to start.
 ///
-pub fn signal_boot_complete() {}
+/// On Hyperlight this is a no-op because the evolve/run lifecycle already
+/// communicates boot readiness to the host.
+///
+pub fn signal_startup_complete() {}
+
+///
+/// # Description
+///
+/// Hyperlight evolve-phase entry point, called from `_do_start2` before `kmain`.
+///
+/// Performs one-time initialization that subsequent `sandbox.call()` invocations depend on:
+///
+/// 1. Initializes the kernel heap (needed for FunctionCall deserialisation).
+/// 2. Computes the PEB base address and stores a [`GuestHandle`] in [`GUEST_HANDLE`] for reuse
+///    by [`nanvix_dispatch_function`].
+/// 3. Halts the VM by writing the `_nanvix_dispatch` address to EAX and issuing `VmAction::Halt`
+///    causing `evolve()` to return on the host with a `MultiUseSandbox`.
+///
+/// Hyperlight captures `regs.rax` as the dispatch entry point when the halt completes — this is how
+/// the host knows where to jump on the next `call()`.  See the comment block above
+/// `_nanvix_dispatch` for the full protocol.
+///
+/// This function never returns — the VM is halted by the `out` instruction and Hyperlight regains
+/// control. The `options(noreturn)` ensures the compiler does not emit a stack epilogue that would
+/// never execute.
+///
+#[unsafe(no_mangle)]
+extern "C" fn hyperlight_pre_kmain() -> ! {
+    extern "C" {
+        fn _nanvix_dispatch();
+        static __KERNEL_END: u8;
+    }
+
+    // Initializes the kernel heap once so FunctionCall deserialisation can allocate on every
+    // subsequent sandbox.call().  On Hyperlight the heap is only initialised here (during evolve);
+    // kmain skips heap init via `#[cfg(not(feature = "hyperlight"))]`.
+    if let Err(_e) = unsafe { crate::mm::kheap::init() } {
+        unsafe {
+            core::arch::asm!("cli", "2: hlt", "jmp 2b", options(noreturn));
+        }
+    }
+
+    // Compute the PEB base address and store a GuestHandle for reuse.
+    let kernel_end: usize = unsafe { &__KERNEL_END as *const u8 as usize };
+    let peb_base: usize = ::sys::mm::align_up(kernel_end, PAGE_ALIGNMENT)
+        .expect("hyperlight_pre_kmain(): PEB align_up overflow");
+    let peb_ptr: *mut HyperlightPEB = peb_base as *mut HyperlightPEB;
+    unsafe {
+        GUEST_HANDLE = Some(GuestHandle::init(peb_ptr));
+    }
+
+    let dispatch_addr: u32 = _nanvix_dispatch as *const () as u32;
+    // SAFETY: Port I/O write targets Hyperlight's VmAction::Halt port with the dispatch address in
+    // EAX. This halts the VM and causes evolve() to return.  ESP must be 16-byte aligned at the
+    // halt point because Hyperlight validates alignment when reading registers after initialise
+    // completes.
+    //
+    // The halt+hlt sequence is entirely in assembly so no Rust stack epilogue is skipped.
+    // options(noreturn) tells the compiler this block diverges.
+    unsafe {
+        core::arch::asm!(
+            "and esp, 0xFFFFFFF0",
+            "mov eax, {0:e}",
+            "mov dx, {HALT_PORT}",
+            "out dx, al",
+            "cli",
+            "2: hlt",
+            "jmp 2b",
+            in(reg) dispatch_addr,
+            HALT_PORT = const VmAction::Halt as u16,
+            options(noreturn),
+        );
+    }
+}
+
+///
+/// # Description
+///
+/// High-level guest function dispatcher called by `_nanvix_dispatch`.
+///
+/// Reads the [`FunctionCall`] that the host serialised into the PEB input
+/// buffer, validates the function name, and dispatches to the corresponding
+/// handler.  Currently the only recognised function is `"kmain"`.
+///
+/// For unrecognised functions a [`GuestError`] is written back to the PEB
+/// output buffer so the host receives a proper error instead of a raw abort.
+///
+/// # Parameters
+///
+/// - `kargs`: Kernel arguments reconstructed by the `_nanvix_dispatch` stub.
+///
+#[unsafe(no_mangle)]
+extern "C" fn nanvix_dispatch_function(kargs: &crate::kargs::KernelArguments) {
+    // SAFETY: GUEST_HANDLE is initialised once in hyperlight_pre_kmain
+    // during the evolve phase and never mutated again. This is a single-core
+    // guest, so there are no data races.
+    let handle: &GuestHandle = unsafe {
+        GUEST_HANDLE
+            .as_ref()
+            .expect("nanvix_dispatch_function(): GUEST_HANDLE not initialised")
+    };
+
+    let function_call = handle
+        .try_pop_shared_input_data_into::<FunctionCall>()
+        .expect("function call deserialization failed");
+
+    match function_call.function_name.as_str() {
+        "kmain" => {
+            drop(function_call);
+            crate::kmain(kargs);
+        },
+        other => {
+            let msg = format!("unknown guest function: {other}");
+            drop(function_call);
+            let guest_error = GuestError::new(GuestErrorCode::GuestError, msg);
+            let fcr = FunctionCallResult::new(Err(guest_error));
+            let mut builder = ::flatbuffers::FlatBufferBuilder::new();
+            let data = fcr.encode(&mut builder);
+            handle
+                .push_shared_output_data(data)
+                .expect("failed to serialize function call error result");
+        },
+    }
+}
 
 ///
 /// # Description
