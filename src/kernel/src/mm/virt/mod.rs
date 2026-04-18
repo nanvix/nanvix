@@ -159,6 +159,9 @@ pub fn init(
 ) -> Result<LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>, Error> {
     info!("booking virtual memory regions ...");
 
+    // Last valid physical address (inclusive).
+    let max_phys_addr: usize = crate::hal::platform::max_physical_address();
+
     let mut root_pagetables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)> =
         LinkedList::new();
 
@@ -267,8 +270,11 @@ pub fn init(
                 let start_index: usize = (raw_vaddr - pgtab_base) / mem::PAGE_SIZE;
                 let pgtab_remaining: usize = PAGE_TABLE_LENGTH - start_index;
                 let region_remaining: usize = (end - raw_vaddr) / mem::PAGE_SIZE + 1;
-                let memory_remaining: usize =
-                    config::kernel::MEMORY_SIZE.saturating_sub(raw_vaddr) / mem::PAGE_SIZE;
+                let memory_remaining: usize = if raw_vaddr > max_phys_addr {
+                    0
+                } else {
+                    (max_phys_addr - raw_vaddr) / mem::PAGE_SIZE + 1
+                };
                 let count: usize = pgtab_remaining.min(region_remaining).min(memory_remaining);
 
                 if count == 0 {
@@ -305,7 +311,7 @@ pub fn init(
                 raw_vaddr += count
                     .checked_mul(mem::PAGE_SIZE)
                     .expect("count * PAGE_SIZE overflow");
-                if raw_vaddr >= config::kernel::MEMORY_SIZE {
+                if raw_vaddr > max_phys_addr || raw_vaddr >= end {
                     break;
                 }
                 paddr = FrameAddress::new(PageAligned::from_address(
@@ -325,7 +331,7 @@ pub fn init(
                     region.perm(),
                 )?;
                 root_pagetables.push_back((page_table_addr, page_table));
-                if raw_vaddr == (config::kernel::MEMORY_SIZE - mem::PAGE_SIZE) {
+                if raw_vaddr == max_phys_addr - (mem::PAGE_SIZE - 1) {
                     break;
                 }
                 raw_vaddr += mem::PAGE_SIZE;
