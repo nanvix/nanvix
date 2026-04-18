@@ -74,7 +74,7 @@ pub const INTERRUPT_SIGNAL: c_int = libc::SIGUSR1;
 pub const KILL_SIGNAL: c_int = libc::SIGKILL;
 
 /// Grace period before sending SIGKILL to the vCPU thread during shutdown.
-/// This allows the kernel's `abort_with_code()` to complete before the thread is killed.
+/// This allows the kernel's `VmAction::Halt` to propagate before the thread is killed.
 /// See issue #1010 for more context on this workaround.
 pub const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_millis(100);
 
@@ -476,32 +476,18 @@ impl Vmm {
                     error!("run(): failed to notify vmm thread (error={e:?})");
                 }
 
-                // During evolve(), GuestAborted is wrapped in HyperlightVmError(Initialize(...)) so
-                // extract it from the error chain.
-                return match Self::extract_guest_abort(&error) {
-                    Some((code, message)) => {
-                        if message.is_empty() {
-                            debug!("run(): guest exited during evolve (code={code})");
-                        } else {
-                            debug!(
-                                "run(): guest exited during evolve (code={code}, \
-                                 message={message})"
-                            );
-                        }
-                        Ok(code as u16)
-                    },
-                    None => {
-                        error!("run(): vmm aborted during evolve (debug={error:?})");
-                        Ok(ErrorCode::ConnectionReset.into())
-                    },
-                };
+                error!("run(): vmm failed during evolve (error={error:?})");
+                return Ok(ErrorCode::ConnectionAborted.into());
             },
         };
 
         debug!("run(): evolve completed, calling sandbox.call(\"kmain\")");
 
         // Phase 2: Call — re-enter the guest at _nanvix_dispatch to actually run the system.
-        let call_result: Result<(), HyperlightError> = sandbox.call("kmain", ());
+        // The kernel writes a FunctionCallResult with the exit code to the PEB output buffer
+        // before halting, so sandbox.call() returns Ok(exit_code) through Hyperlight's normal
+        // guest function return convention (see issue #2088).
+        let call_result: Result<i32, HyperlightError> = sandbox.call("kmain", ());
 
         // Drop the stderr redirect guard to restore the original stderr fd.
         self.inner.blocking_lock()._stderr_redirect.take();
@@ -518,124 +504,16 @@ impl Vmm {
         }
 
         // Parse result.
-        // The dispatch handler halts via VmAction::Halt, which produces VmExit::Halt on the host.
-        // Hyperlight then tries to read a guest function return value from the PEB output buffer,
-        // which may fail with "Stack pointer is out of bounds" because the dispatch handler doesn't
-        // use Hyperlight's guest function return convention. We treat this specific error as
-        // success.
         match call_result {
-            Ok(()) => {
-                debug!("run(): guest call completed normally");
-                Ok(0)
+            Ok(code) => {
+                debug!("run(): guest exited (code={code})");
+                Ok((code & 0xFF) as u16)
             },
-            Err(ref error) if Self::is_halt_exit(error) => {
-                debug!("run(): guest halted cleanly (Halt path, no return value in PEB)");
-                Ok(0)
-            },
-            Err(error) => match Self::extract_guest_abort(&error) {
-                Some((code, message)) => {
-                    if message.is_empty() {
-                        debug!("run(): guest exited (code={code})");
-                    } else {
-                        debug!("run(): guest exited (code={code}, message={message})");
-                    }
-                    Ok(code as u16)
-                },
-                None => {
-                    error!("run(): vmm aborted (debug={error:?}, display={error})");
-                    Ok(ErrorCode::ConnectionReset.into())
-                },
+            Err(error) => {
+                error!("run(): vmm failed during call (error={error:?})");
+                Ok(ErrorCode::ConnectionReset.into())
             },
         }
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Checks whether the error from `sandbox.call()` represents a clean VM halt.
-    ///
-    /// When the kernel exits via `VmAction::Halt` during a guest call, Hyperlight's dispatch loop
-    /// returns `Ok(())` but then tries to read a guest function return value from the PEB output
-    /// buffer. Since the kernel doesn't use Hyperlight's guest function return convention, this
-    /// read fails with "Stack pointer is out of bounds" (an `AnyhowError` from `shared_mem.rs`).
-    ///
-    /// We detect this by first narrowing to the expected `AnyhowError` variant and then checking
-    /// the inner error's `Display` representation. This avoids treating unrelated
-    /// `HyperlightError` variants as clean halts just because their top-level formatted message
-    /// contains the same substring.
-    ///
-    fn is_halt_exit(error: &HyperlightError) -> bool {
-        match error {
-            HyperlightError::AnyhowError(inner) => {
-                inner.to_string().contains("Stack pointer is out of bounds")
-            },
-            _ => false,
-        }
-    }
-
-    /// Extracts the guest exit code from a nested `GuestAborted` error.
-    ///
-    /// The kernel always exits via `abort_with_code()`, which during `evolve()` is wrapped as:
-    /// `HyperlightVmError(Initialize(Run(HandleIo(Outb(GuestAborted { code, message })))))`.
-    /// Since the nested error types are `pub(crate)` in hyperlight, we match the top-level
-    /// `GuestAborted` variant directly and fall back to parsing the `Debug` representation.
-    fn extract_guest_abort(error: &HyperlightError) -> Option<(u8, String)> {
-        // Direct match for top-level GuestAborted (used by DispatchGuestCall path).
-        if let HyperlightError::GuestAborted(code, message) = error {
-            return Some((*code, message.clone()));
-        }
-
-        // For Initialize path, parse the Debug representation.
-        // Format: ...GuestAborted { code: N, message: "..." }...
-        let debug_str = format!("{error:?}");
-        if let Some(result) = Self::parse_guest_aborted_from_debug(&debug_str) {
-            return Some(result);
-        }
-
-        // Fallback: parse the Display representation.
-        // Format: ...Guest aborted: error code N, message: ...
-        let display_str = format!("{error}");
-        Self::parse_guest_aborted_from_display(&display_str)
-    }
-
-    /// Parses a `GuestAborted { code: N, message: "..." }` fragment from a `Debug` string.
-    fn parse_guest_aborted_from_debug(debug_str: &str) -> Option<(u8, String)> {
-        const CODE_PREFIX: &str = "code: ";
-        const MESSAGE_PREFIX: &str = "message: \"";
-
-        let rest = &debug_str[debug_str.find("GuestAborted")?..];
-        let code_str = &rest[rest.find(CODE_PREFIX)? + CODE_PREFIX.len()..];
-        let code_end = code_str.find([',', ' ', '}'])?;
-        let code = code_str[..code_end].parse::<u8>().ok()?;
-
-        let message = rest
-            .find(MESSAGE_PREFIX)
-            .map(|pos| {
-                let msg_str = &rest[pos + MESSAGE_PREFIX.len()..];
-                msg_str
-                    .find('"')
-                    .map(|end| msg_str[..end].to_string())
-                    .unwrap_or_default()
-            })
-            .unwrap_or_default();
-
-        Some((code, message))
-    }
-
-    /// Parses a `Guest aborted: error code N, message: M` fragment from a `Display` string.
-    fn parse_guest_aborted_from_display(display_str: &str) -> Option<(u8, String)> {
-        const PREFIX: &str = "Guest aborted: error code ";
-
-        let rest = &display_str[display_str.find(PREFIX)? + PREFIX.len()..];
-        let code_end = rest.find(',')?;
-        let code = rest[..code_end].trim().parse::<u8>().ok()?;
-
-        let message = rest
-            .find("message: ")
-            .map(|pos| rest[pos + "message: ".len()..].trim().to_string())
-            .unwrap_or_default();
-
-        Some((code, message))
     }
 
     ///
@@ -730,80 +608,5 @@ impl Vmm {
         };
 
         Ok([&[args_len], &args_bytes[..]].concat())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Vmm;
-
-    #[test]
-    fn parse_guest_aborted_typical() {
-        let input = r#"HyperlightVmError(Initialize(Run(HandleIo(Outb(GuestAborted { code: 42, message: "kernel panic" })))))"#;
-        let result = Vmm::parse_guest_aborted_from_debug(input);
-        assert_eq!(result, Some((42, "kernel panic".to_string())));
-    }
-
-    #[test]
-    fn parse_guest_aborted_empty_message() {
-        let input = r#"GuestAborted { code: 1, message: "" }"#;
-        let result = Vmm::parse_guest_aborted_from_debug(input);
-        assert_eq!(result, Some((1, String::new())));
-    }
-
-    #[test]
-    fn parse_guest_aborted_no_message_field() {
-        let input = "GuestAborted { code: 7 }";
-        let result = Vmm::parse_guest_aborted_from_debug(input);
-        assert_eq!(result, Some((7, String::new())));
-    }
-
-    #[test]
-    fn parse_guest_aborted_missing() {
-        let input = "SomeOtherError { reason: \"something\" }";
-        let result = Vmm::parse_guest_aborted_from_debug(input);
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn parse_guest_aborted_invalid_code() {
-        let input = r#"GuestAborted { code: 999, message: "overflow" }"#;
-        let result = Vmm::parse_guest_aborted_from_debug(input);
-        assert_eq!(result, None); // 999 doesn't fit u8
-    }
-
-    #[test]
-    fn parse_guest_aborted_from_display_typical() {
-        let input = "Guest aborted: error code 13, message: kernel exited";
-        let result = Vmm::parse_guest_aborted_from_display(input);
-        assert_eq!(result, Some((13, "kernel exited".to_string())));
-    }
-
-    #[test]
-    fn parse_guest_aborted_from_display_empty_message() {
-        let input = "Guest aborted: error code 1, message: ";
-        let result = Vmm::parse_guest_aborted_from_display(input);
-        assert_eq!(result, Some((1, String::new())));
-    }
-
-    #[test]
-    fn parse_guest_aborted_from_display_nested() {
-        let input = "initialize sandbox: Guest aborted: error code 42, message: test panic";
-        let result = Vmm::parse_guest_aborted_from_display(input);
-        assert_eq!(result, Some((42, "test panic".to_string())));
-    }
-
-    #[test]
-    fn parse_guest_aborted_from_display_missing() {
-        let input = "some unrelated error occurred";
-        let result = Vmm::parse_guest_aborted_from_display(input);
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn parse_guest_aborted_from_display_invalid_code() {
-        let input = "Guest aborted: error code 999, message: overflow";
-        let result = Vmm::parse_guest_aborted_from_display(input);
-        assert_eq!(result, None); // 999 doesn't fit u8
     }
 }

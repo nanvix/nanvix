@@ -68,7 +68,10 @@ use ::config::hyperlight::{
 use ::hyperlight_common::{
     flatbuffer_wrappers::{
         function_call::FunctionCall,
-        function_types::FunctionCallResult,
+        function_types::{
+            FunctionCallResult,
+            ReturnValue,
+        },
         guest_error::{
             ErrorCode as GuestErrorCode,
             GuestError,
@@ -407,6 +410,10 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
 ///
 /// Shuts down the machine.
 ///
+/// Writes a [`FunctionCallResult`] with the exit code to the PEB output buffer so the host can
+/// read it through Hyperlight's normal guest function return convention, then halts the VM via
+/// [`VmAction::Halt`].
+///
 /// # Parameters
 ///
 /// - `status`: The shutdown status code (low 8 bits are passed to the VMM).
@@ -416,14 +423,43 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
 /// This function never returns.
 ///
 pub(in crate::hal::platform) fn do_shutdown(status: usize) -> ! {
-    // Pass the low 8 bits of status as the exit code to the VMM.
-    let code: u8 = (status & 0xFF) as u8;
-    // NOTE: We use abort_with_code() for all exit codes (including 0) rather than halt() because
-    // halt() takes longer to propagate through hyperlight's host machinery. Due to issue #1010,
-    // the orchestrator sends SIGKILL immediately upon receiving a shutdown command, which can
-    // kill the vCPU thread before halt() completes. Using abort_with_code() is faster and avoids
-    // this race condition.
-    ::hyperlight_guest::exit::abort_with_code(&[code]);
+    let code: i32 = (status & 0xFF) as i32;
+
+    // Write a proper FunctionCallResult so the host reads the exit code from the PEB output buffer
+    // via Hyperlight's standard guest return convention.
+    // SAFETY: GUEST_HANDLE is initialised once in hyperlight_pre_kmain during the evolve phase
+    // and never mutated again. This is a single-core guest, so there are no data races.
+    if let Some(handle) = unsafe { GUEST_HANDLE.as_ref() } {
+        let fcr = FunctionCallResult::new(Ok(ReturnValue::Int(code)));
+        let mut builder = ::flatbuffers::FlatBufferBuilder::new();
+        let data = fcr.encode(&mut builder);
+        if handle.push_shared_output_data(data).is_err() {
+            // PEB output write failed — fall back to abort so the host gets a definite error
+            // instead of reading stale data from the output buffer.
+            ::hyperlight_guest::exit::abort_with_code(&[code as u8]);
+        }
+
+        // Halt the VM cleanly via VmAction::Halt so sandbox.call() returns Ok(exit_code).
+        // SAFETY: Port I/O write targets Hyperlight's VmAction::Halt port. This halts the VM and
+        // causes sandbox.call() to return on the host. The hlt loop is a safety net in case the
+        // out instruction does not immediately stop execution.
+        unsafe {
+            core::arch::asm!(
+                "mov dx, {HALT_PORT}",
+                "out dx, al",
+                "cli",
+                "2: hlt",
+                "jmp 2b",
+                HALT_PORT = const VmAction::Halt as u16,
+                options(noreturn),
+            );
+        }
+    } else {
+        // If shutdown happens before Hyperlight guest initialization completes, halting here can
+        // make evolve appear successful and leave the host with an invalid entrypoint. Abort
+        // instead so the evolve phase fails explicitly.
+        ::hyperlight_guest::exit::abort_with_code(&[code as u8]);
+    }
 }
 
 ///
