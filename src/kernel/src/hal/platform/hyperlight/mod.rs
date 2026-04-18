@@ -680,29 +680,78 @@ pub fn tsc_base_frequency_mhz() -> u32 {
 #[inline(always)]
 pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
     let raw: usize = addr.into_raw_value();
+    let snapshot: (usize, usize) =
+        (SNAPSHOT_BASE.load(Ordering::Relaxed), SNAPSHOT_END.load(Ordering::Relaxed));
+    let ramfs: (usize, usize) =
+        (RAMFS_BASE.load(Ordering::Relaxed), RAMFS_END.load(Ordering::Relaxed));
+    let scratch: (usize, usize) =
+        (SCRATCH_BASE.load(Ordering::Relaxed), SCRATCH_END.load(Ordering::Relaxed));
+    // An address is valid when the half-open interval [raw, raw+1) lies inside a region.
+    region_contains(snapshot.0, snapshot.1, raw, raw + 1)
+        || region_contains(ramfs.0, ramfs.1, raw, raw + 1)
+        || region_contains(scratch.0, scratch.1, raw, raw + 1)
+}
 
-    // Check snapshot region.
-    let snapshot_base: usize = SNAPSHOT_BASE.load(Ordering::Relaxed);
-    let snapshot_end: usize = SNAPSHOT_END.load(Ordering::Relaxed);
-    if raw >= snapshot_base && raw < snapshot_end {
-        return true;
+///
+/// # Description
+///
+/// Checks whether the given physical memory region lies entirely within a single contiguous
+/// physical memory region on the Hyperlight platform.
+///
+/// # Parameters
+///
+/// - `start`: Starting physical address of the region.
+/// - `size`: Size of the region in bytes.
+///
+/// # Returns
+///
+/// `true` if the entire region lies within a single physical memory region, `false` otherwise.
+///
+#[inline(always)]
+pub fn is_valid_physical_region(start: usize, size: usize) -> bool {
+    // Reject zero-length regions.
+    if size == 0 {
+        return false;
     }
 
-    // Check RAMFS region (base == end == 0 means absent).
-    let ramfs_base: usize = RAMFS_BASE.load(Ordering::Relaxed);
-    let ramfs_end: usize = RAMFS_END.load(Ordering::Relaxed);
-    if ramfs_base != ramfs_end && raw >= ramfs_base && raw < ramfs_end {
-        return true;
-    }
+    // Compute the exclusive end, guarding against overflow.
+    let end: usize = match start.checked_add(size) {
+        Some(end) => end,
+        None => return false,
+    };
 
-    // Check scratch region (base == end == 0 means not yet discovered).
-    let scratch_base: usize = SCRATCH_BASE.load(Ordering::Relaxed);
-    let scratch_end: usize = SCRATCH_END.load(Ordering::Relaxed);
-    if scratch_base != scratch_end && raw >= scratch_base && raw < scratch_end {
-        return true;
-    }
+    let snapshot: (usize, usize) =
+        (SNAPSHOT_BASE.load(Ordering::Relaxed), SNAPSHOT_END.load(Ordering::Relaxed));
+    let ramfs: (usize, usize) =
+        (RAMFS_BASE.load(Ordering::Relaxed), RAMFS_END.load(Ordering::Relaxed));
+    let scratch: (usize, usize) =
+        (SCRATCH_BASE.load(Ordering::Relaxed), SCRATCH_END.load(Ordering::Relaxed));
 
-    false
+    region_contains(snapshot.0, snapshot.1, start, end)
+        || region_contains(ramfs.0, ramfs.1, start, end)
+        || region_contains(scratch.0, scratch.1, start, end)
+}
+
+///
+/// # Description
+///
+/// Checks whether the half-open interval `[start, end)` is entirely contained within the region
+/// `[region_base, region_end)`. Absent regions (base == end == 0) never contain any interval.
+///
+/// # Parameters
+///
+/// - `region_base`: Inclusive start address of the region.
+/// - `region_end`: Exclusive end address of the region.
+/// - `start`: Inclusive start address of the interval to test.
+/// - `end`: Exclusive end address of the interval to test.
+///
+/// # Returns
+///
+/// `true` if the interval lies within the region, `false` otherwise.
+///
+#[inline(always)]
+fn region_contains(region_base: usize, region_end: usize, start: usize, end: usize) -> bool {
+    region_base != region_end && start >= region_base && end <= region_end
 }
 
 ///
