@@ -10,6 +10,7 @@ use crate::{
     mm::phys::frame,
 };
 use ::alloc::vec::Vec;
+use ::core::mem::ManuallyDrop;
 use ::sys::error::Error;
 
 //==================================================================================================
@@ -57,6 +58,28 @@ impl UserFrame {
     pub fn address(&self) -> FrameAddress {
         self.addr
     }
+
+    ///
+    /// # Description
+    ///
+    /// Consumes the user frame without freeing the underlying physical frame.
+    ///
+    /// # Returns
+    ///
+    /// The frame address.
+    ///
+    pub fn leak(self) -> FrameAddress {
+        let this: ManuallyDrop<Self> = ManuallyDrop::new(self);
+        this.addr
+    }
+}
+
+impl Drop for UserFrame {
+    fn drop(&mut self) {
+        if let Err(e) = frame::free(self.addr) {
+            error!("failed to free user frame: {:?}", e);
+        }
+    }
 }
 
 //==================================================================================================
@@ -93,35 +116,11 @@ impl Upool {
         for _ in 0..nframes {
             match frame::alloc() {
                 Ok(addr) => uframes.push(UserFrame::new(addr)),
-                Err(error) => {
-                    // Roll back: free every frame that was already allocated.
-                    for f in uframes {
-                        if let Err(e) = frame::free(f.address()) {
-                            error!("rollback free failed: {:?}", e);
-                        }
-                    }
-                    return Err(error);
-                },
+                // Rollback is automatic: dropping `uframes` frees all allocated frames.
+                Err(error) => return Err(error),
             }
         }
 
         Ok(uframes)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Frees a frame that was previously allocated from the user frame pool.
-    ///
-    /// # Parameters
-    ///
-    /// - `uframe`: User frame to be freed.
-    ///
-    /// # Returns
-    ///
-    /// On success, empty is returned. On failure, an error is returned instead.
-    ///
-    pub fn free(&mut self, uframe: UserFrame) -> Result<(), Error> {
-        frame::free(uframe.address())
     }
 }

@@ -167,21 +167,4 @@ impl PhysMemoryManager {
     ) -> Result<Vec<KernelFrame>, Error> {
         self.kpool.alloc_many(clear, count)
     }
-
-    ///
-    /// # Description
-    ///
-    /// Frees a kernel frame.
-    ///
-    /// # Parameters
-    ///
-    /// - `frame`: Kernel frame to free.
-    ///
-    /// # Return Values
-    ///
-    /// Upon success, empty is returned. Upon failure, an error is returned instead.
-    ///
-    pub fn free_user_frame(&mut self, frame: UserFrame) -> Result<(), Error> {
-        self.upool.free(frame)
-    }
 }

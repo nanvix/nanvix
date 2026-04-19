@@ -236,14 +236,8 @@ impl VirtMemoryManager {
         vmem: &mut Vmem,
         vaddr: PageAligned<VirtualAddress>,
     ) -> Result<bool, Error> {
-        if let Some(uframe) = vmem.unmap(vaddr)? {
-            // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
-            // concurrent or re-entrant access to the physical memory manager is possible.
-            unsafe { PhysMemoryManager::get_mut() }.free_user_frame(uframe)?;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        // The returned `UserFrame` is dropped here, which frees the underlying physical frame.
+        Ok(vmem.unmap(vaddr)?.is_some())
     }
 
     pub fn alloc_upages(
