@@ -804,6 +804,14 @@ impl DynamicLibrary {
         self.dependencies.clone()
     }
 
+    /// Returns the handles of all bound dependencies.
+    pub fn dependency_handles(&self) -> Vec<DlHandle> {
+        self.dependencies
+            .values()
+            .filter_map(|dep| dep.as_ref().map(|d| d.lock().handle()))
+            .collect()
+    }
+
     /// Binds a dependency to the dynamic library.
     pub fn bind_dependency(
         &mut self,

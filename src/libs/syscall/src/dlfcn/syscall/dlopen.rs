@@ -192,24 +192,91 @@ fn load_all_dependencies(
 
 /// Resolves all relocations for libraries added during this `dlopen` call.
 ///
-/// Every library whose handle is NOT in `handles_before` is a new entry from
-/// the current `dlopen` invocation and needs its relocations patched.
+/// Libraries are resolved in dependency order (leaves first, root last).
+/// This ensures that when a library's relocations reference symbols from
+/// its dependencies, those dependencies are already fully resolved.
 fn resolve_all_symbols(
     dlfiles: &mut MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>>,
     handles_before: &BTreeSet<DlHandle>,
 ) -> Result<(), Error> {
     ::syslog::trace!("resolve_all_symbols()");
 
-    // Resolve relocations for every library added during this dlopen call,
-    // not just the root. This ensures transitive dependencies loaded via
-    // DT_NEEDED also have their relocations patched.
+    // Collect all newly added libraries.
     let new_handles: Vec<DlHandle> = dlfiles
         .keys()
         .filter(|h| !handles_before.contains(h))
         .copied()
         .collect();
 
-    for handle in new_handles {
+    // Build a resolution order: resolve dependencies before their dependents.
+    // A library can be resolved once all its bound dependencies (that are also
+    // new in this dlopen call) have been resolved.
+    let mut resolved: BTreeSet<DlHandle> = BTreeSet::new();
+    let mut ordered: Vec<DlHandle> = Vec::with_capacity(new_handles.len());
+
+    // Iteratively find libraries whose dependencies are all resolved.
+    // This attempts a simple topological ordering for the newly loaded
+    // libraries. If the dependency graph contains a cycle, or if a dependency
+    // cannot be ordered, the no-progress fallback below will warn and resolve
+    // the remaining libraries in arbitrary order.
+    loop {
+        let mut progress: bool = false;
+        for &handle in &new_handles {
+            if resolved.contains(&handle) {
+                continue;
+            }
+
+            // Check if all of this library's dependencies that are new in
+            // this dlopen call have been resolved.
+            let dlfile: &Arc<Mutex<DynamicLibrary>> = match dlfiles.get(&handle) {
+                Some(f) => f,
+                None => {
+                    // Handle came from dlfiles.keys(), so this should not happen.
+                    ::syslog::error!(
+                        "resolve_all_symbols(): handle {:?} missing from registry",
+                        handle
+                    );
+                    continue;
+                },
+            };
+            // Lock the library only long enough to check its dependencies.
+            let all_deps_resolved: bool = {
+                let lib: spin::MutexGuard<'_, DynamicLibrary> = dlfile.lock();
+                lib.dependency_handles().iter().all(|dep_handle| {
+                    // Dependencies that existed before this dlopen are already resolved.
+                    handles_before.contains(dep_handle) || resolved.contains(dep_handle)
+                })
+            };
+
+            if all_deps_resolved {
+                ordered.push(handle);
+                resolved.insert(handle);
+                progress = true;
+            }
+        }
+
+        if resolved.len() == new_handles.len() {
+            break;
+        }
+
+        if !progress {
+            // No progress means a cycle or missing dependency. Fall back to
+            // resolving remaining libraries in arbitrary order.
+            ::syslog::warn!(
+                "resolve_all_symbols(): could not determine dependency order for {} libraries",
+                new_handles.len() - resolved.len()
+            );
+            for &handle in &new_handles {
+                if !resolved.contains(&handle) {
+                    ordered.push(handle);
+                }
+            }
+            break;
+        }
+    }
+
+    // Resolve in dependency order (leaves first).
+    for handle in ordered {
         if let Some(dlfile) = dlfiles.get(&handle) {
             dlfile.lock().resolve_all()?;
         }
