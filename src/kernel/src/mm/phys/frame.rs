@@ -1,6 +1,15 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//! Frame allocator — module-level singleton.
+//!
+//! The frame allocator is backed by a [`SparseBitmap`] and exposed as free functions over a
+//! singleton so every in-kernel caller (upool, kpool, anything else that needs a raw frame) goes
+//! through the same state. No struct-valued handle is passed around.
+//!
+//! Access to the frame allocator is synchronized externally and performed by a single thread, so
+//! the backing bitmap uses non-atomic operations.
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -23,6 +32,14 @@ use ::arch::mem::{
     paging::FrameNumber,
 };
 use ::config::constants;
+use ::core::{
+    hint::unlikely,
+    mem::MaybeUninit,
+    sync::atomic::{
+        AtomicBool,
+        Ordering,
+    },
+};
 use ::sparse_bitmap::SparseBitmap;
 use ::sys::{
     error::{
@@ -33,66 +50,16 @@ use ::sys::{
 };
 
 //==================================================================================================
-// Structures
+// Inner
 //==================================================================================================
 
-///
-/// # Description
-///
-/// Frame allocator.
-///
-#[derive(Debug)]
-pub struct FrameAllocator {
+/// Private state of the frame allocator singleton.
+struct Inner {
     /// A sparse bitmap that keeps track of free/used frames.
     bitmap: SparseBitmap,
 }
 
-//==================================================================================================
-// Implementations
-//==================================================================================================
-
-impl FrameAllocator {
-    ///
-    /// # Description
-    ///
-    /// Instantiates a frame allocator.
-    ///
-    /// # Parameters
-    ///
-    /// - `bitmap`: A sparse bitmap to keep track of free/used frames.
-    ///
-    pub fn new(bitmap: SparseBitmap) -> Self {
-        let frame_allocator: FrameAllocator = Self { bitmap };
-
-        info!(
-            "frame allocator capacity: {} frames, {} MB",
-            frame_allocator.bitmap.capacity(),
-            (frame_allocator.bitmap.capacity() * mem::FRAME_SIZE) / constants::MEGABYTE
-        );
-
-        frame_allocator
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Instantiates a frame allocator from raw byte storage.
-    ///
-    /// # Parameters
-    ///
-    /// - `storage`: A raw byte array to use as backing storage for the bitmap.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, the constructed frame allocator is returned. Upon failure, an error is
-    /// returned instead.
-    ///
-    pub fn from_raw_storage(storage: RawArray<u8>) -> Result<Self, Error> {
-        let bitmap: Bitmap = Bitmap::from_raw_array(storage)?;
-        let sparse: SparseBitmap = SparseBitmap::new(vec![(0, bitmap)])?;
-        Ok(Self::new(sparse))
-    }
-
+impl Inner {
     ///
     /// # Description
     ///
@@ -100,10 +67,10 @@ impl FrameAllocator {
     ///
     /// # Returns
     ///
-    /// Upon success, the index of the allocated frame is returned. Upon failure, an error is
+    /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
-    pub fn alloc(&mut self) -> Result<FrameAddress, Error> {
+    fn alloc(&mut self) -> Result<FrameAddress, Error> {
         let frame_number: usize = match self.bitmap.alloc() {
             Ok(index) => index,
             Err(error) => {
@@ -133,17 +100,17 @@ impl FrameAllocator {
     ///
     /// # Description
     ///
-    /// Frees a frame that was previous allocated.
+    /// Frees a frame that was previously allocated.
     ///
     /// # Parameters
     ///
-    /// - `frame`: Index of the frame to free.
+    /// - `frame`: Address of the frame to free.
     ///
     /// # Returns
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    pub fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+    fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
         let frame_number: usize = frame.into_frame_number().into_raw_value();
         match self.bitmap.clear(frame_number) {
             Ok(()) => Ok(()),
@@ -157,7 +124,7 @@ impl FrameAllocator {
     ///
     /// # Description
     ///
-    /// Books a frame that was previously allocated.
+    /// Books a frame so that it will not be handed out by [`alloc`].
     ///
     /// # Parameters
     ///
@@ -167,7 +134,7 @@ impl FrameAllocator {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    pub fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+    fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
         match self.bitmap.set(frame_number) {
             Ok(()) => Ok(()),
@@ -181,18 +148,17 @@ impl FrameAllocator {
     ///
     /// # Description
     ///
-    /// Allocates all frames in the range `[start, end]`.
+    /// Allocates all frames in the given region.
     ///
     /// # Parameters
     ///
-    /// - `start`: Start page frame address.
-    /// - `end`: End page frame address.
+    /// - `region`: Physical memory region whose frames should be booked.
     ///
     /// # Returns
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    pub fn alloc_range(
+    fn alloc_range(
         &mut self,
         region: &TruncatedMemoryRegion<PhysicalAddress>,
     ) -> Result<(), Error> {
@@ -243,4 +209,85 @@ impl FrameAllocator {
 
         Ok(())
     }
+}
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+// Use relaxed ordering for all atomic operations to mitigate synchronization overhead. It is safe
+// to use this ordering semantics because Nanvix is a single-core system, and the kernel runs with
+// interrupts disabled.
+const ORDER: Ordering = Ordering::Relaxed;
+
+//==================================================================================================
+// Singleton
+//==================================================================================================
+
+/// Module-level singleton storage.
+static mut INSTANCE: MaybeUninit<Inner> = MaybeUninit::uninit();
+
+/// Whether the frame allocator has been initialized.
+static INSTANCE_INIT: AtomicBool = AtomicBool::new(false);
+
+/// Returns a mutable reference to the initialized singleton.
+fn instance() -> &'static mut Inner {
+    if unlikely(!INSTANCE_INIT.load(ORDER)) {
+        panic!("frame allocator used before init()");
+    }
+
+    // SAFETY: `INSTANCE_INIT` is `true`, so `INSTANCE` has been fully written by `init()`.
+    // The kernel is single-threaded with interrupts disabled, so no concurrent access is possible.
+    unsafe { INSTANCE.assume_init_mut() }
+}
+
+//==================================================================================================
+// Public Free Functions
+//==================================================================================================
+
+/// Initialize the frame allocator singleton.
+///
+/// # Safety
+///
+/// Must be called exactly once during boot, before any other function
+/// in this module. `storage` must point to a live region for the
+/// program's lifetime.
+pub(super) unsafe fn init(storage: RawArray<u8>) -> Result<(), Error> {
+    if unlikely(INSTANCE_INIT.load(ORDER)) {
+        return Err(Error::new(ErrorCode::InvalidArgument, "frame allocator already initialized"));
+    }
+
+    let bitmap: Bitmap = Bitmap::from_raw_array(storage)?;
+    let sparse: SparseBitmap = SparseBitmap::new(vec![(0, bitmap)])?;
+
+    info!(
+        "frame allocator: {} frames, {} MB, 1 chunk(s)",
+        sparse.capacity(),
+        (sparse.capacity() * mem::FRAME_SIZE) / constants::MEGABYTE,
+    );
+
+    // SAFETY: single-threaded boot; no other reference to `INSTANCE` exists.
+    unsafe { INSTANCE.write(Inner { bitmap: sparse }) };
+    INSTANCE_INIT.store(true, ORDER);
+    Ok(())
+}
+
+/// Allocate a frame.
+pub(super) fn alloc() -> Result<FrameAddress, Error> {
+    instance().alloc()
+}
+
+/// Free a frame previously returned by [`alloc`].
+pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+    instance().free(frame)
+}
+
+/// Reserve a frame so [`alloc`] will skip it.
+pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+    instance().book(phys_addr)
+}
+
+/// Book every frame in the given physical memory region.
+pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
+    instance().alloc_range(region)
 }
