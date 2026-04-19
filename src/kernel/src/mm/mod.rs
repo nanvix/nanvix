@@ -58,7 +58,6 @@ use crate::{
         },
     },
     kimage::KernelImage,
-    mm::phys::PhysMemoryManager,
 };
 use ::alloc::{
     collections::LinkedList,
@@ -252,7 +251,7 @@ pub fn init(
         PhysMemRegions,
     ) = parse_memory_regions(memory_regions)?;
 
-    let physman: PhysMemoryManager = phys::init(
+    phys::init(
         TruncatedMemoryRegion::from_virtual_memory_region(kimage.kpool())?,
         physical_memory_regions,
         &mmio_regions,
@@ -264,7 +263,7 @@ pub fn init(
         LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
     ) = (LinkedList::new(), virt::init(virtual_memory_regions, mmio_regions)?);
 
-    let mut vmem: Vmem = VirtMemoryManager::init(kernel_pages, kernel_page_tables, physman)?;
+    let mut vmem: Vmem = VirtMemoryManager::init(kernel_pages, kernel_page_tables)?;
 
     // Map virtual memory regions that lie outside the physical memory.
     while let Some(region) = other_virtual_memory_regions.pop_front() {

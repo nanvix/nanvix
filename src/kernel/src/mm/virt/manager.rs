@@ -35,12 +35,10 @@ use crate::{
 };
 use ::alloc::{
     collections::LinkedList,
-    rc::Rc,
     vec::Vec,
 };
 use ::arch::mem;
 use ::core::{
-    cell::RefCell,
     hint::unlikely,
     mem::MaybeUninit,
     sync::atomic::{
@@ -81,10 +79,7 @@ static MEMORY_MANAGER_INIT: AtomicBool = AtomicBool::new(false);
 ///
 /// Memory manager.
 ///
-pub struct VirtMemoryManager {
-    /// Physical memory manager.
-    physman: Rc<RefCell<PhysMemoryManager>>,
-}
+pub struct VirtMemoryManager;
 
 impl VirtMemoryManager {
     ///
@@ -95,12 +90,10 @@ impl VirtMemoryManager {
     /// # Parameters
     /// - `kernel_pages`: Kernel pages.
     /// - `kernel_page_tables`: Kernel page tables.
-    /// - `physman`: Physical memory manager.
     ///
     pub fn init(
         kernel_pages: LinkedList<KernelPage>,
         kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
-        physman: PhysMemoryManager,
     ) -> Result<Vmem, Error> {
         // Check if the memory manager is already initialized.
         if unlikely(MEMORY_MANAGER_INIT.load(ORDER)) {
@@ -108,7 +101,7 @@ impl VirtMemoryManager {
         }
 
         let (root, manager): (Vmem, VirtMemoryManager) =
-            VirtMemoryManager::new(kernel_pages, kernel_page_tables, physman)?;
+            VirtMemoryManager::new(kernel_pages, kernel_page_tables)?;
 
         // SAFETY: This happens during kernel initialization and no other threads are running.
         unsafe { MEMORY_MANAGER.write(manager) };
@@ -174,41 +167,41 @@ impl VirtMemoryManager {
     /// # Parameters
     /// - `kernel_pages`: Kernel pages.
     /// - `kernel_page_tables`: Kernel page tables.
-    /// - `physman`: Physical memory manager.
     ///
     fn new(
         kernel_pages: LinkedList<KernelPage>,
         kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
-        physman: PhysMemoryManager,
     ) -> Result<(Vmem, Self), Error> {
         let root: Vmem = Vmem::new(kernel_pages, kernel_page_tables)?;
 
         // Load root root address space.
         root.load()?;
 
-        Ok((
-            root,
-            Self {
-                physman: Rc::new(RefCell::new(physman)),
-            },
-        ))
+        Ok((root, Self))
     }
 
+    ///
+    /// # Description
+    ///
     /// Creates a new virtual address space, based on root.
+    ///
+    /// # Parameters
+    /// - `vmem`: Virtual address space to clone.
+    ///
+    /// # Return Values
+    /// - `Ok(new_vmem)` if the new virtual address space was successfully created.
+    /// - `Err(_)` if the new virtual address space could not be created.
+    ///
     pub fn new_vmem(&self, vmem: &Vmem) -> Result<Vmem, Error> {
         // Allocate a kernel page for the new page directory.
-        let pgdir_page: KernelPage = match self.physman.try_borrow_mut() {
-            Ok(mut physman) => {
-                // The page directory initialization logic (PageDirectory::new/clean)
-                // will zero the page; no need to clear the frame here.
-                let kframe: KernelFrame = physman.alloc_kernel_frame(false)?;
-                KernelPage::new(kframe)
-            },
-            Err(_) => {
-                let reason: &str = "failed to borrow physical memory manager";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::ResourceBusy, reason));
-            },
+        let pgdir_page: KernelPage = {
+            // The page directory initialization logic (PageDirectory::new/clean)
+            // will zero the page; no need to clear the frame here.
+            // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
+            // concurrent or re-entrant access to the physical memory manager is possible.
+            let kframe: KernelFrame =
+                unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame(false)?;
+            KernelPage::new(kframe)
         };
 
         let new_vmem: Vmem = Vmem::clone(vmem, pgdir_page)?;
@@ -244,7 +237,9 @@ impl VirtMemoryManager {
         vaddr: PageAligned<VirtualAddress>,
     ) -> Result<bool, Error> {
         if let Some(uframe) = vmem.unmap(vaddr)? {
-            self.physman.borrow_mut().free_user_frame(uframe)?;
+            // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
+            // concurrent or re-entrant access to the physical memory manager is possible.
+            unsafe { PhysMemoryManager::get_mut() }.free_user_frame(uframe)?;
             Ok(true)
         } else {
             Ok(false)
@@ -293,38 +288,28 @@ impl VirtMemoryManager {
             )?;
         }
 
-        let physman: Rc<RefCell<PhysMemoryManager>> = self.physman.clone();
-
-        let page_table_allocator = move || {
-            let kframe: KernelFrame = match physman.try_borrow_mut() {
-                Ok(mut physman) => physman.alloc_kernel_frame(true)?,
-                Err(_) => {
-                    let reason: &str = "failed to borrow physical memory manager";
-                    error!("{reason}");
-                    return Err(Error::new(ErrorCode::ResourceBusy, reason));
-                },
-            };
+        let page_table_allocator = || {
+            // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
+            // concurrent or re-entrant access to the physical memory manager is possible.
+            let kframe: KernelFrame =
+                unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame(true)?;
             let kpage: KernelPage = KernelPage::new(kframe);
             let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
             let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
             Ok(page_table)
         };
 
-        let uframes: Vec<UserFrame> = match self.physman.try_borrow_mut() {
-            Ok(mut physman) => physman.alloc_many_user_frames(nframes)?,
-            Err(_) => {
-                let reason: &str = "failed to borrow physical memory manager";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::ResourceBusy, reason));
-            },
-        };
+        // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no concurrent
+        // or re-entrant access to the physical memory manager is possible.
+        let uframes: Vec<UserFrame> =
+            unsafe { PhysMemoryManager::get_mut() }.alloc_many_user_frames(nframes)?;
 
         let start_vaddr: PageAligned<VirtualAddress> = vaddr;
         let mut mapped_count: usize = 0;
         let mut map_error: Result<(), Error> = Ok(());
 
         for uframe in uframes {
-            if let Err(e) = vmem.map(uframe, vaddr, access, &page_table_allocator) {
+            if let Err(e) = vmem.map(uframe, vaddr, access, page_table_allocator) {
                 map_error = Err(e);
                 break;
             }
@@ -404,14 +389,10 @@ impl VirtMemoryManager {
     /// Upon success, a kernel page is returned. Upon failure, an error is returned instead.
     ///
     pub fn alloc_kpage(&mut self, clear: bool) -> Result<KernelPage, Error> {
-        let kframe: KernelFrame = match self.physman.try_borrow_mut() {
-            Ok(mut physman) => physman.alloc_kernel_frame(clear)?,
-            Err(_) => {
-                let reason: &str = "failed to borrow physical memory manager";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::ResourceBusy, reason));
-            },
-        };
+        // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no concurrent
+        // or re-entrant access to the physical memory manager is possible.
+        let kframe: KernelFrame =
+            unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame(clear)?;
         Ok(KernelPage::new(kframe))
     }
 
@@ -431,14 +412,10 @@ impl VirtMemoryManager {
     /// instead.
     ///
     pub fn alloc_kpages(&mut self, clear: bool, count: usize) -> Result<Vec<KernelPage>, Error> {
-        let mut kpages: Vec<KernelFrame> = match self.physman.try_borrow_mut() {
-            Ok(mut physman) => physman.alloc_many_kernel_frames(clear, count)?,
-            Err(_) => {
-                let reason: &str = "failed to borrow physical memory manager";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::ResourceBusy, reason));
-            },
-        };
+        // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no concurrent
+        // or re-entrant access to the physical memory manager is possible.
+        let mut kpages: Vec<KernelFrame> =
+            unsafe { PhysMemoryManager::get_mut() }.alloc_many_kernel_frames(clear, count)?;
 
         let mut pages: Vec<KernelPage> = Vec::new();
         while let Some(kframes) = kpages.pop() {
