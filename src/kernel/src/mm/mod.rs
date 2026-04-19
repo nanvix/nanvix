@@ -257,6 +257,9 @@ pub fn init(
         &mmio_regions,
     )?;
 
+    #[cfg(feature = "test")]
+    phys::test();
+
     // FIXME: the initial list of kernel pages should be spit out by the initialization.
     let (kernel_pages, kernel_page_tables): (
         LinkedList<KernelPage>,
