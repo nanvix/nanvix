@@ -457,42 +457,66 @@ impl DynamicLibrary {
     }
 
     /// Looks up a symbol in the dynamic library.
+    ///
+    /// Search order:
+    /// 1. The library itself (defined symbols).
+    /// 2. The library's DT_NEEDED dependency tree (recursive, no global fallback).
+    /// 3. The global symbol table (main executable symbols).
+    ///
+    /// NOTE: Step 3 is needed for relocation resolution (symbols from the main
+    /// executable). Strictly, POSIX `dlsym(handle, ...)` should only search
+    /// the object's load group (steps 1-2), not the global scope. Separating
+    /// the two lookup paths is tracked in #2130.
     pub fn lookup(&self, symbol_name: &str) -> Result<Option<(usize, usize)>, Error> {
         ::syslog::trace!("lookup(): symbol={}, dlname={:?}", symbol_name, self.filename);
 
+        // Search self and dependency tree without global fallback.
+        if let Some(result) = self.lookup_in_load_group(symbol_name)? {
+            return Ok(Some(result));
+        }
+
+        // Fall back to the global symbol table (symbols from the main
+        // executable, registered via --export-dynamic). This fallback is
+        // performed only once at the top level, not during recursive
+        // dependency traversal.
+        if let Some(addr) = super::global_symbol_lookup(symbol_name) {
+            // Global symbols are absolute addresses, so base is 0.
+            return Ok(Some((0, addr)));
+        }
+
+        Ok(None)
+    }
+
+    /// Searches for a symbol in this library and its dependency tree only.
+    ///
+    /// Does NOT fall back to the global symbol table. This ensures that
+    /// recursive dependency searches do not short-circuit to the global scope
+    /// before the entire dependency tree has been checked.
+    fn lookup_in_load_group(&self, symbol_name: &str) -> Result<Option<(usize, usize)>, Error> {
         if let Some(symbol) = self.find(symbol_name) {
-            // Check if symbol is defined in the library or in a dependency.
-            if symbol.is_undefined() {
-                // Symbol is defined in a dependency, search dependencies.
-                for (_dlname, dlfile) in self.dependencies.iter() {
-                    if let Some(dlfile) = dlfile {
-                        // Check if dependency is locked.
-                        if dlfile.is_locked() {
-                            let reason: &str = "circular dependency detected";
-                            ::syslog::error!(
-                                "lookup(): {:?} (symbol_name={:?})",
-                                reason,
-                                symbol_name
-                            );
-                            return Err(Error::new(ErrorCode::BadFile, reason));
-                        }
-
-                        let dlfile: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
-
-                        if let Some((base, symbol_value)) = dlfile.lookup(symbol_name)? {
-                            return Ok(Some((base, symbol_value)));
-                        }
-                    }
-                }
-
-                // Fall back to the global symbol table (symbols from the
-                // main executable, registered via --export-dynamic).
-                if let Some(addr) = super::global_symbol_lookup(symbol_name) {
-                    // Global symbols are absolute addresses, so base is 0.
-                    return Ok(Some((0, addr)));
-                }
-            } else {
+            if !symbol.is_undefined() {
+                // Symbol is defined in this library.
                 return Ok(Some((self.load_address.into_raw_value(), symbol.value() as usize)));
+            }
+        }
+
+        // Symbol is either undefined in this library or not in its dynsym at
+        // all. Per POSIX, dlsym must search the full dependency tree regardless
+        // of whether the root library references the symbol.
+        for (_dlname, dlfile) in self.dependencies.iter() {
+            if let Some(dlfile) = dlfile {
+                // Check if dependency is locked.
+                if dlfile.is_locked() {
+                    let reason: &str = "circular dependency detected";
+                    ::syslog::error!("lookup(): {:?} (symbol_name={:?})", reason, symbol_name);
+                    return Err(Error::new(ErrorCode::BadFile, reason));
+                }
+
+                let dlfile: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
+
+                if let Some(result) = dlfile.lookup_in_load_group(symbol_name)? {
+                    return Ok(Some(result));
+                }
             }
         }
 
