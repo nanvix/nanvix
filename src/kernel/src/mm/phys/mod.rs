@@ -5,7 +5,7 @@
 // Modules
 //==================================================================================================
 
-mod frame;
+pub(crate) mod frame;
 mod kpool;
 mod manager;
 mod upool;
@@ -23,10 +23,7 @@ use crate::{
         TruncatedMemoryRegion,
         VirtualAddress,
     },
-    mm::phys::{
-        frame::FrameAllocator,
-        upool::Upool,
-    },
+    mm::phys::upool::Upool,
 };
 use ::alloc::collections::LinkedList;
 use ::arch::mem;
@@ -62,7 +59,6 @@ static mut FRAME_ALLOCATOR_STORAGE: [u8; config::kernel::MEMORY_SIZE
 //==================================================================================================
 
 fn book_physical_memory_regions(
-    frame_allocator: &mut FrameAllocator,
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
 ) -> Result<(), Error> {
     info!("booking physical memory regions ...");
@@ -70,14 +66,13 @@ fn book_physical_memory_regions(
     // Book physical memory that is not usable.
     for region in physical_memory_regions.iter() {
         info!("booking: {:?}", region);
-        frame_allocator.alloc_range(region)?;
+        frame::alloc_range(region)?;
     }
 
     Ok(())
 }
 
 fn book_mmio_regions(
-    frame_allocator: &mut FrameAllocator,
     mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
 ) -> Result<(), Error> {
     info!("booking memory-mapped i/o regions ...");
@@ -94,7 +89,7 @@ fn book_mmio_regions(
             })?;
 
             // Attempt to book underlying frame.
-            match frame_allocator.book(phys_addr) {
+            match frame::book(phys_addr) {
                 // Frame successfully booked.
                 Ok(()) => {},
                 // Frame lies outside addressable physical memory.
@@ -116,21 +111,22 @@ pub fn init(
     kpool: TruncatedMemoryRegion<PhysicalAddress>,
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
     mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
-) -> Result<PhysMemoryManager, Error> {
-    // Initialize frame allocator.
+) -> Result<(), Error> {
+    // Initialize frame allocator singleton.
     info!("initializing the frame allocator ...");
-    let mut frame_allocator: FrameAllocator = {
+    {
         // Safety: the frame allocator storage is valid and has a static lifetime.
         let storage: RawArray<u8> = unsafe {
             let (ptr, len): (*mut u8, usize) =
                 (FRAME_ALLOCATOR_STORAGE.as_mut_ptr(), FRAME_ALLOCATOR_STORAGE.len());
             RawArray::from_raw_parts(ptr, len)?
         };
-        FrameAllocator::from_raw_storage(storage)?
-    };
-    book_physical_memory_regions(&mut frame_allocator, physical_memory_regions)?;
+        // Safety: called exactly once during single-threaded boot.
+        unsafe { frame::init(storage)? };
+    }
+    book_physical_memory_regions(physical_memory_regions)?;
 
-    book_mmio_regions(&mut frame_allocator, mmio_regions)?;
+    book_mmio_regions(mmio_regions)?;
 
     // Initialize kernel page pool.
     info!("initializing the kernel page pool ...");
@@ -138,7 +134,11 @@ pub fn init(
 
     // Initialize user page pool.
     info!("initializing the user page pool ...");
-    let upool: Upool = Upool::new(frame_allocator);
+    let upool: Upool = Upool::new();
 
-    Ok(PhysMemoryManager::new(kpool, upool))
+    // Initialize physical memory manager singleton.
+    info!("initializing the physical memory manager ...");
+    PhysMemoryManager::init(kpool, upool)?;
+
+    Ok(())
 }
