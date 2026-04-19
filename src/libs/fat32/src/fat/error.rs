@@ -28,6 +28,8 @@ pub enum MemoryIoError {
     UnexpectedEof,
     /// Write returned zero bytes when more were expected.
     WriteZero,
+    /// Attempted to write to a read-only memory storage.
+    ReadOnly,
 }
 
 //==================================================================================================
@@ -43,6 +45,7 @@ impl fmt::Display for MemoryIoError {
             MemoryIoError::InvalidSeek => write!(f, "invalid seek position"),
             MemoryIoError::UnexpectedEof => write!(f, "unexpected end of file"),
             MemoryIoError::WriteZero => write!(f, "write returned zero bytes"),
+            MemoryIoError::ReadOnly => write!(f, "write to read-only storage"),
         }
     }
 }
@@ -74,8 +77,9 @@ impl ::fatfs::IoError for MemoryIoError {
 /// # Returns
 ///
 /// The corresponding [`Fat32Error`] variant.
-pub fn map_fatfs_error<T>(err: ::fatfs::Error<T>) -> Fat32Error {
+pub fn map_fatfs_error(err: ::fatfs::Error<MemoryIoError>) -> Fat32Error {
     match err {
+        ::fatfs::Error::Io(MemoryIoError::ReadOnly) => Fat32Error::ReadOnly,
         ::fatfs::Error::Io(_) => Fat32Error::IoError,
         ::fatfs::Error::UnexpectedEof => Fat32Error::IoError,
         ::fatfs::Error::WriteZero => Fat32Error::IoError,
@@ -107,6 +111,7 @@ mod tests {
             MemoryIoError::InvalidSeek,
             MemoryIoError::UnexpectedEof,
             MemoryIoError::WriteZero,
+            MemoryIoError::ReadOnly,
         ];
 
         for variant in variants {
@@ -139,44 +144,49 @@ mod tests {
     #[test]
     fn map_fatfs_error_variants() {
         assert_eq!(
-            map_fatfs_error::<MemoryIoError>(::fatfs::Error::NotFound),
+            map_fatfs_error(::fatfs::Error::NotFound),
             Fat32Error::NotFound,
             "NotFound should map to NotFound"
         );
         assert_eq!(
-            map_fatfs_error::<MemoryIoError>(::fatfs::Error::AlreadyExists),
+            map_fatfs_error(::fatfs::Error::AlreadyExists),
             Fat32Error::AlreadyExists,
             "AlreadyExists should map to AlreadyExists"
         );
         assert_eq!(
-            map_fatfs_error::<MemoryIoError>(::fatfs::Error::DirectoryIsNotEmpty),
+            map_fatfs_error(::fatfs::Error::DirectoryIsNotEmpty),
             Fat32Error::NotEmpty,
             "DirectoryIsNotEmpty should map to NotEmpty"
         );
         assert_eq!(
-            map_fatfs_error::<MemoryIoError>(::fatfs::Error::NotEnoughSpace),
+            map_fatfs_error(::fatfs::Error::NotEnoughSpace),
             Fat32Error::NoSpace,
             "NotEnoughSpace should map to NoSpace"
         );
         assert_eq!(
-            map_fatfs_error::<MemoryIoError>(::fatfs::Error::InvalidInput),
+            map_fatfs_error(::fatfs::Error::InvalidInput),
             Fat32Error::InvalidPath,
             "InvalidInput should map to InvalidPath"
         );
         assert_eq!(
-            map_fatfs_error::<MemoryIoError>(::fatfs::Error::CorruptedFileSystem),
+            map_fatfs_error(::fatfs::Error::CorruptedFileSystem),
             Fat32Error::IoError,
             "CorruptedFileSystem should map to IoError"
         );
         assert_eq!(
-            map_fatfs_error::<MemoryIoError>(::fatfs::Error::UnexpectedEof),
+            map_fatfs_error(::fatfs::Error::UnexpectedEof),
             Fat32Error::IoError,
             "UnexpectedEof should map to IoError"
         );
         assert_eq!(
-            map_fatfs_error::<MemoryIoError>(::fatfs::Error::WriteZero),
+            map_fatfs_error(::fatfs::Error::WriteZero),
             Fat32Error::IoError,
             "WriteZero should map to IoError"
+        );
+        assert_eq!(
+            map_fatfs_error(::fatfs::Error::Io(MemoryIoError::ReadOnly)),
+            Fat32Error::ReadOnly,
+            "Io(ReadOnly) should map to ReadOnly"
         );
     }
 }
