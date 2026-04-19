@@ -77,6 +77,63 @@ fn test_user_frame_drop_reclaims_frames() -> bool {
     true
 }
 
+///
+/// # Description
+///
+/// Verifies that [`UserFrame::leak`] prevents `Drop` from freeing the frame, then manually frees
+/// the leaked frame to confirm it was still allocated.
+///
+fn test_user_frame_leak_prevents_drop() -> bool {
+    // Allocate a frame and leak it.
+    let addr = match frame::alloc() {
+        Ok(addr) => addr,
+        Err(e) => {
+            error!("frame allocation failed (error={e:?})");
+            return false;
+        },
+    };
+    let uframe: UserFrame = UserFrame::new(addr);
+    let leaked_addr = uframe.leak();
+
+    // The frame should still be allocated (not freed). Freeing it manually must succeed.
+    match frame::free(leaked_addr) {
+        Ok(()) => true,
+        Err(e) => {
+            error!("failed to free leaked frame (error={e:?}), leak() may have run Drop");
+            false
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Verifies that a normal drop of [`UserFrame`] actually frees the frame by confirming a
+/// double-free fails.
+///
+fn test_user_frame_drop_frees_frame() -> bool {
+    let addr = match frame::alloc() {
+        Ok(addr) => addr,
+        Err(e) => {
+            error!("frame allocation failed (error={e:?})");
+            return false;
+        },
+    };
+
+    // Drop the `UserFrame`, which should free the underlying frame.
+    let uframe: UserFrame = UserFrame::new(addr);
+    drop(uframe);
+
+    // Attempting to free the same frame again must fail because Drop already freed it.
+    match frame::free(addr) {
+        Ok(()) => {
+            error!("double-free succeeded, Drop did not free the frame");
+            false
+        },
+        Err(_) => true,
+    }
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -86,6 +143,8 @@ pub fn test() -> bool {
     let mut passed: bool = true;
 
     passed &= run_test!(test_user_frame_drop_reclaims_frames);
+    passed &= run_test!(test_user_frame_leak_prevents_drop);
+    passed &= run_test!(test_user_frame_drop_frees_frame);
 
     passed
 }
