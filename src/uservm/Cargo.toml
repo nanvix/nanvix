@@ -24,7 +24,7 @@ serde_cbor = { workspace = true }
 cfg-if = { workspace = true }
 config = { workspace = true }
 control-plane-api = { workspace = true }
-elf = { workspace = true }
+elf = { workspace = true, features = ["std"] }
 gdbstub = { workspace = true, optional = true }
 gdbstub_arch = { workspace = true, optional = true }
 hyperlight-host = { workspace = true, optional = true }

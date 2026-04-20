@@ -284,6 +284,7 @@ impl UserVm {
                         gdb_port: None,
                         #[cfg(feature = "profile-time")]
                         perf_timings: ::uservm::perf::PerfTimings::new(),
+                        guest_profile_path: None,
                     });
 
                 // Wait for VMM thread to finish.
