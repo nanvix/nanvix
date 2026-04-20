@@ -94,6 +94,7 @@ impl Benchmark {
                 gdb_port: None,
                 #[cfg(feature = "profile-time")]
                 perf_timings: ::nanvix::uservm::perf::PerfTimings::new(),
+                guest_profile_path: None,
             });
 
             let join_result = user_vm_handle.await;

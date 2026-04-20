@@ -49,6 +49,9 @@ pub mod args;
 pub mod counters;
 /// Library module for manipulating ELF binaries.
 pub mod elf;
+/// Host-side guest flamegraph profiler (stack sampling and folded-stack output).
+#[cfg(feature = "whp")]
+pub mod guest_profiler;
 #[cfg(target_os = "linux")]
 pub mod io_thread;
 pub mod memory_thread;
@@ -201,6 +204,8 @@ pub struct UserVmArgs {
     /// Performance timings collector for fine-grained startup breakdown.
     #[cfg(feature = "profile-time")]
     pub perf_timings: PerfTimings,
+    /// When set, enable guest stack profiling and write folded stacks to this path.
+    pub guest_profile_path: Option<String>,
 }
 
 //==================================================================================================
@@ -238,6 +243,10 @@ impl UserVm {
 
         #[cfg(feature = "profile-time")]
         let perf_timings: PerfTimings = args.perf_timings.clone();
+
+        let args_guest_profile_path: Option<String> = args.guest_profile_path.clone();
+        #[cfg(not(feature = "whp"))]
+        let _ = &args_guest_profile_path; // Suppress unused warning when WHP is disabled.
 
         #[cfg(feature = "profile-time")]
         let run_start: Instant = Instant::now();
@@ -322,7 +331,8 @@ impl UserVm {
         #[cfg(feature = "profile-time")]
         perf_timings.set_channel_setup(channel_setup_start.elapsed().as_micros() as u64);
 
-        let microvm: Vmm = Vmm::new(MicroVmArgs {
+        #[allow(unused_mut)] // `mut` needed only with `whp` for enable_guest_profiler().
+        let mut microvm: Vmm = Vmm::new(MicroVmArgs {
             input: vmm_stdin_fn,
             output: vmm_stdout_fn,
             #[cfg(feature = "hyperlight")]
@@ -352,6 +362,16 @@ impl UserVm {
         if let Some(snapshot_path) = args.snapshot_path {
             microvm.load_snapshot(snapshot_path).await?;
         }
+
+        // Enable guest profiler if requested (WHP only).
+        #[cfg(feature = "whp")]
+        let guest_profiler = if args_guest_profile_path.is_some() {
+            Some(microvm.enable_guest_profiler())
+        } else {
+            None
+        };
+        #[cfg(not(feature = "whp"))]
+        let _guest_profiler: Option<()> = None;
 
         let vmem: Arc<Mutex<VirtualMemory>> = microvm.vmem();
         let guest: Arc<Mutex<Guest>> = microvm.guest();
@@ -443,6 +463,26 @@ impl UserVm {
 
         #[cfg(feature = "profile-time")]
         perf_timings.set_total(run_start.elapsed().as_micros() as u64);
+
+        // Write guest profiler folded stacks if profiling was enabled.
+        #[cfg(feature = "whp")]
+        if let (Some(profiler), Some(path)) = (guest_profiler, &args_guest_profile_path) {
+            let sample_count = profiler.handle().lock().map(|s| s.len()).unwrap_or(0);
+            let mut sym_paths: Vec<std::path::PathBuf> = Vec::new();
+            if let Ok(p) = std::env::var("NANVIX_KERNEL_SYMBOLS") {
+                sym_paths.push(std::path::PathBuf::from(p));
+            }
+            if let Ok(p) = std::env::var("NANVIX_USER_SYMBOLS") {
+                sym_paths.push(std::path::PathBuf::from(p));
+            }
+            let sym_refs: Vec<&std::path::Path> = sym_paths.iter().map(|p| p.as_path()).collect();
+            let resolver = crate::guest_profiler::SymbolResolver::from_elf_files(&sym_refs);
+            if let Err(e) = profiler.write_folded(path, |addr| resolver.resolve(addr)) {
+                error!("Failed to write guest profile: {e:?}");
+            } else {
+                eprintln!("GUEST_PROFILE: wrote {} samples to {}", sample_count, path);
+            }
+        }
 
         exit_code
     }

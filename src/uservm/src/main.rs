@@ -381,6 +381,7 @@ async fn run_managed(
         gdb_port: None,
         #[cfg(feature = "profile-time")]
         perf_timings: ::uservm::perf::PerfTimings::new(),
+        guest_profile_path: std::env::var("NANVIX_GUEST_PROFILE_PATH").ok(),
     });
 
     let vm_exit_status: Result<u16> = vmm_handle.await?;

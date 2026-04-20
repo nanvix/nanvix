@@ -520,6 +520,29 @@ impl VirtualProcessor {
         Ok(unsafe { values[0].Reg64 })
     }
 
+    /// Reads guest EIP, EBP, and CR3 for stack profiling.
+    pub fn get_profile_regs(&self) -> Result<(u32, u32, u32)> {
+        const WHV_X64_REGISTER_RBP: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0x05);
+        const WHV_X64_REGISTER_CR3: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0x1E);
+        let names: [WHV_REGISTER_NAME; 3] = [
+            WHV_X64_REGISTER_RIP,
+            WHV_X64_REGISTER_RBP,
+            WHV_X64_REGISTER_CR3,
+        ];
+        let mut values: [WHV_REGISTER_VALUE; 3] = [unsafe { mem::zeroed() }; 3];
+        unsafe {
+            whp_get_registers(self.partition, self.index, &names, &mut values)
+                .map_err(|e| anyhow::anyhow!("failed to get profile regs (error={e:?})"))?;
+        }
+        let eip = u32::try_from(unsafe { values[0].Reg64 })
+            .map_err(|_| anyhow::anyhow!("RIP value exceeds u32 range"))?;
+        let ebp = u32::try_from(unsafe { values[1].Reg64 })
+            .map_err(|_| anyhow::anyhow!("RBP value exceeds u32 range"))?;
+        let cr3 = u32::try_from(unsafe { values[2].Reg64 })
+            .map_err(|_| anyhow::anyhow!("CR3 value exceeds u32 range"))?;
+        Ok((eip, ebp, cr3))
+    }
+
     /// Sets the RIP register to the given value.
     pub fn set_rip(&mut self, rip: u64) -> Result<()> {
         let names: [WHV_REGISTER_NAME; 1] = [WHV_X64_REGISTER_RIP];
