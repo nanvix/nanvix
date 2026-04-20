@@ -837,7 +837,7 @@ def ci_summary(args):
 
 
 def _read_baseline_moving_avg(
-    benchmark: str, file_path: str, window: int = 10
+    benchmark: str, file_path: str, window: int = 20
 ) -> Optional[float]:
     """
     Read the last ``window`` p50 values from a baseline CSV and return their average.
@@ -1528,8 +1528,8 @@ if __name__ == "__main__":
     ci_gate_parser.add_argument(
         "--baseline-window",
         type=_positive_int,
-        default=10,
-        help="Number of most-recent baseline data points to average (default: 10)",
+        default=20,
+        help="Number of most-recent baseline data points to average (default: 20)",
     )
     ci_gate_parser.set_defaults(func=ci_gate)
 
