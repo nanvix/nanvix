@@ -11,13 +11,15 @@ use super::dynlib::{
 };
 use crate::dlfcn::syscall::DYNAMIC_LIBRARY_REGISTRY;
 use ::alloc::{
-    collections::btree_map::BTreeMap,
+    collections::{
+        btree_map::BTreeMap,
+        btree_set::BTreeSet,
+    },
     string::{
         String,
         ToString,
     },
     sync::Arc,
-    vec,
     vec::Vec,
 };
 use ::spin::{
@@ -52,6 +54,11 @@ pub fn dlopen(filename: &str) -> Result<DlHandle, Error> {
         }
     }
 
+    // Snapshot the registry keys before we start inserting, so we can roll back
+    // all new entries on failure. This ensures a failed dlopen never leaves
+    // stale handles with unpatched relocations in the registry.
+    let handles_before: BTreeSet<DlHandle> = registry.keys().copied().collect();
+
     // Open and pre-load the dynamic library file.
     let new_dlfile: DynamicLibrary = DynamicLibrary::open(filename)?;
     let handle: DlHandle = new_dlfile.handle();
@@ -60,12 +67,37 @@ pub fn dlopen(filename: &str) -> Result<DlHandle, Error> {
     // Insert the opened file into the map.
     registry.insert(handle, new_dlfile.clone());
 
-    load_all_dependencies(&mut registry, new_dlfile)?;
-    resolve_all_symbols(&mut registry, filename)?;
-
-    Ok(handle)
+    // Load dependencies and resolve symbols. If either step fails, remove all
+    // entries that were added during this call (the library itself and any
+    // transitive dependencies) so subsequent dlopen calls start fresh.
+    match load_all_dependencies(&mut registry, new_dlfile)
+        .and_then(|_| resolve_all_symbols(&mut registry, &handles_before))
+    {
+        Ok(()) => Ok(handle),
+        Err(e) => {
+            let new_handles: Vec<DlHandle> = registry
+                .keys()
+                .filter(|h| !handles_before.contains(h))
+                .copied()
+                .collect();
+            ::syslog::error!(
+                "dlopen(): rolling back {} entries after failure (error={:?})",
+                new_handles.len(),
+                e
+            );
+            for h in new_handles {
+                registry.remove(&h);
+            }
+            Err(e)
+        },
+    }
 }
 
+/// Recursively loads all transitive dependencies of a newly opened library.
+///
+/// For each `DT_NEEDED` entry, checks if it is already loaded in the registry,
+/// and if not, opens and inserts it. Recurses into each dependency's own
+/// `DT_NEEDED` entries.
 fn load_all_dependencies(
     dlfiles: &mut MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>>,
     new_dlfile: Arc<Mutex<DynamicLibrary>>,
@@ -142,15 +174,27 @@ fn load_all_dependencies(
     Ok(())
 }
 
+/// Resolves all relocations for libraries added during this `dlopen` call.
+///
+/// Every library whose handle is NOT in `handles_before` is a new entry from
+/// the current `dlopen` invocation and needs its relocations patched.
 fn resolve_all_symbols(
     dlfiles: &mut MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>>,
-    filename: &str,
+    handles_before: &BTreeSet<DlHandle>,
 ) -> Result<(), Error> {
-    ::syslog::trace!("resolve_all_symbols(): filename={}", filename);
-    let mut unresolved_libraries = vec![filename.to_string()];
+    ::syslog::trace!("resolve_all_symbols()");
 
-    while let Some(lib_name) = unresolved_libraries.pop() {
-        if let Some(dlfile) = dlfiles.values().find(|f| f.lock().name() == lib_name) {
+    // Resolve relocations for every library added during this dlopen call,
+    // not just the root. This ensures transitive dependencies loaded via
+    // DT_NEEDED also have their relocations patched.
+    let new_handles: Vec<DlHandle> = dlfiles
+        .keys()
+        .filter(|h| !handles_before.contains(h))
+        .copied()
+        .collect();
+
+    for handle in new_handles {
+        if let Some(dlfile) = dlfiles.get(&handle) {
             dlfile.lock().resolve_all()?;
         }
     }
