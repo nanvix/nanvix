@@ -647,9 +647,15 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
     };
 
     if total_size == 0 {
-        let reason: &str = "init_data is empty";
-        error!("parse_bootinfo(): {reason}");
-        return Err(Error::new(ErrorCode::BadFile, reason));
+        info!("parse_bootinfo(): no init_data provided, booting without kernel modules");
+        return Ok(BootInfo::new(
+            None,
+            None,
+            LinkedList::new(),
+            LinkedList::new(),
+            IoMemoryAllocator::new(),
+            kernel_modules,
+        ));
     }
 
     // Detect initrd format by checking for NVMB multibinary magic.
