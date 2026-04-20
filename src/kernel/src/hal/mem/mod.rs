@@ -21,7 +21,7 @@ pub use self::types::{
 // Standalone Functions
 //==================================================================================================
 
-#[cfg(test)]
+#[cfg(feature = "test")]
 pub fn test() -> bool {
     self::types::address::test()
 }
