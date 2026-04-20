@@ -11,7 +11,7 @@ mod page;
 mod pd;
 mod phys;
 
-#[cfg(test)]
+#[cfg(feature = "test")]
 mod test;
 
 //==================================================================================================
@@ -32,7 +32,7 @@ pub use phys::*;
 // Standalone Functions
 //==================================================================================================
 
-#[cfg(test)]
+#[cfg(feature = "test")]
 pub fn test() -> bool {
     let mut passed = true;
 

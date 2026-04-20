@@ -25,7 +25,7 @@ use ::sys::{
 // Standalone Functions
 //==================================================================================================
 
-/// Tests if [`Address::new()`] successfully instantiates address zero.
+/// Tests if [`Address::from_raw_value()`] successfully instantiates address zero.
 fn test_new_zero_address<T: Address>() -> bool {
     let raw_addr: usize = 0;
     match T::from_raw_value(raw_addr) {
@@ -55,7 +55,7 @@ fn test_page_aligned_physical_address_new_zero_address() -> bool {
     test_new_zero_address::<PageAligned<PhysicalAddress>>()
 }
 
-/// Tests if [`Address::new()`] successfully instantiates the maximum address.
+/// Tests if [`Address::from_raw_value()`] successfully instantiates the maximum address.
 fn test_new_max_address<T: Address>() -> bool {
     let raw_addr: usize = T::max_addr();
     match T::from_raw_value(raw_addr) {
@@ -77,7 +77,33 @@ fn test_physical_address_new_max_address() -> bool {
     test_new_max_address::<PhysicalAddress>()
 }
 
-/// Tests if [`Address::new()`] fails to create an out of range address.
+/// Tests if [`Address::from_raw_value()`] successfully instantiates the maximum page-aligned address.
+///
+/// Unlike `test_new_max_address`, this function cannot delegate to the generic helper because
+/// `PageAligned::max_addr()` returns the inner type's maximum, which is typically not page-aligned.
+/// Instead, it computes the largest page-aligned address that fits within the address space.
+fn test_page_aligned_new_max_address<T: Address>() -> bool {
+    let raw_addr: usize = T::max_addr() & !(PAGE_SIZE - 1);
+    match PageAligned::<T>::from_raw_value(raw_addr) {
+        // The address was successfully created.
+        Ok(_) => true,
+        // Some unexpected error occurred.
+        Err(err) => {
+            error!("failed to create page-aligned max address (err={:?})", err);
+            false
+        },
+    }
+}
+
+fn test_page_aligned_virtual_address_new_max_address() -> bool {
+    test_page_aligned_new_max_address::<VirtualAddress>()
+}
+
+fn test_page_aligned_physical_address_new_max_address() -> bool {
+    test_page_aligned_new_max_address::<PhysicalAddress>()
+}
+
+/// Tests if [`Address::from_raw_value()`] fails to create an out of range address.
 fn test_new_out_of_range_address<T: Address>() -> bool {
     let raw_addr: usize = T::max_addr() + 1;
     match T::from_raw_value(raw_addr) {
@@ -100,7 +126,33 @@ fn test_physical_address_new_out_of_range_address() -> bool {
     test_new_out_of_range_address::<PhysicalAddress>()
 }
 
-/// Tests if [`PageAligned::new()`] fails to create an unaligned virtual address.
+/// Tests if [`PageAligned::from_raw_value()`] fails to create a page-aligned address that is out of range.
+///
+/// Uses the first page-aligned address beyond `T::max_addr()`. This is only applicable to address
+/// types whose maximum is below `usize::MAX` (e.g., `PhysicalAddress`).
+fn test_page_aligned_new_out_of_range_address<T: Address>() -> bool {
+    let raw_addr: usize = (T::max_addr() & !(PAGE_SIZE - 1)) + PAGE_SIZE;
+    match PageAligned::<T>::from_raw_value(raw_addr) {
+        // The address was created and it should not.
+        Ok(addr) => {
+            error!("succeeded to create an out-of-range page-aligned address (addr={:?})", addr);
+            false
+        },
+        // The address was not created as expected.
+        Err(e) if e.code == ErrorCode::BadAddress => true,
+        // Some unexpected error occurred.
+        Err(err) => {
+            error!("unexpected error (err={:?})", err);
+            false
+        },
+    }
+}
+
+fn test_page_aligned_physical_address_new_out_of_range_address() -> bool {
+    test_page_aligned_new_out_of_range_address::<PhysicalAddress>()
+}
+
+/// Tests if [`PageAligned::from_raw_value()`] fails to create an unaligned virtual address.
 fn test_page_aligned_virtual_address_new_unaligned() -> bool {
     let raw_addr: usize = 1;
     match PageAligned::<VirtualAddress>::from_raw_value(raw_addr) {
@@ -119,7 +171,7 @@ fn test_page_aligned_virtual_address_new_unaligned() -> bool {
     }
 }
 
-/// Tests if [`PageAligned::new()`] fails to create an unaligned physical address.
+/// Tests if [`PageAligned::from_raw_value()`] fails to create an unaligned physical address.
 fn test_page_aligned_physical_address_new_unaligned() -> bool {
     let raw_addr: usize = 1;
     match PageAligned::<PhysicalAddress>::from_raw_value(raw_addr) {
@@ -537,33 +589,32 @@ pub fn test() -> bool {
 
     // Tests for `PageAligned<VirtualAddress>`.
     passed &= run_test!(test_page_aligned_virtual_address_new_zero_address);
-    // passed &= run_test!(test_page_aligned_virtual_address_new_max_address);
-    // passed &= run_test!(test_page_aligned_virtual_address_new_out_of_range_address);
+    passed &= run_test!(test_page_aligned_virtual_address_new_max_address);
+    // No test_page_aligned_virtual_address_new_out_of_range_address: VirtualAddress covers full
+    // usize range, so max_addr() + 1 overflows to 0 (valid). Out-of-range is not applicable.
     passed &= run_test!(test_page_aligned_virtual_address_new_unaligned);
     passed &= run_test!(test_page_aligned_virtual_address_is_aligned_aligned);
-    // No test_page_aligned_virtual_address_is_aligned_unaligned
+    // No test_page_aligned_virtual_address_is_aligned_unaligned: PageAligned rejects unaligned
+    // addresses at construction, so an unaligned instance cannot exist.
     passed &= run_test!(test_page_aligned_virtual_address_is_aligned_mismatched_alignment);
-    // No test_page_aligned_virtual_address_align_up_unaligned
+    // No test_page_aligned_virtual_address_align_up_unaligned: same reason as above.
     passed &= run_test!(test_page_aligned_virtual_address_align_up_aligned);
-    // No test_page_aligned_virtual_address_align_down_unaligned
+    // No test_page_aligned_virtual_address_align_down_unaligned: same reason as above.
     passed &= run_test!(test_page_aligned_virtual_address_align_down_aligned);
 
     // Tests for `PageAligned<PhysicalAddress>`.
     passed &= run_test!(test_page_aligned_physical_address_new_zero_address);
-    // passed &= run_test!(test_page_aligned_physical_address_new_max_address);
-    // passed &= run_test!(test_page_aligned_physical_address_new_out_of_range_address);
+    passed &= run_test!(test_page_aligned_physical_address_new_max_address);
+    passed &= run_test!(test_page_aligned_physical_address_new_out_of_range_address);
     passed &= run_test!(test_page_aligned_physical_address_new_unaligned);
     passed &= run_test!(test_page_aligned_physical_address_is_aligned_aligned);
-    // No test_page_aligned_physical_address_is_aligned_unaligned
+    // No test_page_aligned_physical_address_is_aligned_unaligned: PageAligned rejects unaligned
+    // addresses at construction, so an unaligned instance cannot exist.
     passed &= run_test!(test_page_aligned_physical_address_is_aligned_mismatched_alignment);
-    // No test_page_aligned_physical_address_align_up_unaligned
+    // No test_page_aligned_physical_address_align_up_unaligned: same reason as above.
     passed &= run_test!(test_page_aligned_physical_address_align_up_aligned);
-    // No test_page_aligned_physical_address_align_down_unaligned
+    // No test_page_aligned_physical_address_align_down_unaligned: same reason as above.
     passed &= run_test!(test_page_aligned_physical_address_align_down_aligned);
-
-    // TODO: test_get_pte_index
-    // TODO: test_get_pde_index
-    // TODO: make tests generic over `Address`.
 
     passed
 }
