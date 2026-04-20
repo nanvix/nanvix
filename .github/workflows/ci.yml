@@ -1459,7 +1459,7 @@ jobs:
             --machine-types "microvm" \
             --archs "X64" \
             --regression-threshold 40 \
-            --baseline-window 10
+            --baseline-window 20
 
       - name: "Persist results on dev"
         if: github.ref_name == 'dev'
@@ -1542,7 +1542,7 @@ jobs:
             --machine-types "microvm" \
             --archs "X64" \
             --regression-threshold 40 \
-            --baseline-window 10
+            --baseline-window 20
 
       - name: "Persist results on dev"
         if: github.ref_name == 'dev'
@@ -1803,7 +1803,7 @@ jobs:
             --machine-types "microvm" \
             --archs "X64" \
             --regression-threshold 40 \
-            --baseline-window 10
+            --baseline-window 20
 
       - name: "Persist results on dev"
         if: github.ref_name == 'dev'
@@ -1891,7 +1891,7 @@ jobs:
             --machine-types "microvm" \
             --archs "X64" \
             --regression-threshold 40 \
-            --baseline-window 10
+            --baseline-window 20
 
       - name: "Persist results on dev"
         if: github.ref_name == 'dev' && steps.check-results.outputs.has_results == 'true'
