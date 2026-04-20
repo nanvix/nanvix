@@ -18,6 +18,22 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # In-kernel unit tests: build kernel with `test` feature, boot it, and verify
+    # tests pass by waiting for the magic string (tests run before the user binary).
+    - name: "In-Kernel Tests (${{ inputs.machine-type }})"
+      if: inputs.build-type == 'debug'
+      shell: bash
+      env:
+        RUST_LOG: debug
+      run: |
+        set -Eeuo pipefail
+
+        ./z build -- run-kernel-tests \
+            "MACHINE=${{ inputs.machine-type }}" \
+            TARGET=x86 \
+            LOG_LEVEL=trace
+
+        echo "In-kernel tests passed."
 
     # Smoke test that boots nanvixd and checks for the kernel magic string,
     # verifying the multibin initrd (procd, testd, memd).
