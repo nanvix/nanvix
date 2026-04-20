@@ -443,6 +443,7 @@ clean: \
 	clean-guest-binaries \
 	clean-wasmd \
 	clean-kernel \
+	clean-test-kernel \
 	clean-wasm-binaries \
 	clean-snapshot \
 	image-clean
