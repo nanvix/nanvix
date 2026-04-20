@@ -729,6 +729,15 @@ jobs:
           Write-Host "WHP probe succeeded — hypervisor is functional."
           echo "whp_available=true" >> $env:GITHUB_OUTPUT
 
+      - name: "In-Kernel Tests (${{ matrix.machine-type }})"
+        if: steps.whp-check.outputs.whp_available == 'true' && matrix.build-type == 'debug'
+        shell: pwsh
+        env:
+          RUST_LOG: debug
+        run: |
+          .\z.ps1 build -- run-kernel-tests "MACHINE=${{ matrix.machine-type }}" TARGET=x86 LOG_LEVEL=trace
+          Write-Host "In-kernel tests passed."
+
       - name: "Run Integration Tests"
         if: steps.whp-check.outputs.whp_available == 'true'
         shell: pwsh
