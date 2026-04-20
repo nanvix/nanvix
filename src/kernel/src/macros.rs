@@ -195,7 +195,7 @@ macro_rules! error{
 	})
 }
 
-#[cfg(test)]
+#[cfg(feature = "test")]
 macro_rules! run_test {
     ($test_func:ident) => {{
         let result: bool = $test_func();
