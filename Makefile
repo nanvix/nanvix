@@ -284,10 +284,12 @@ ifeq ($(IS_WINDOWS),yes)
 export CP_CMD := cp -f
 export SUDO_CMD :=
 export SETCAP_CMD :=
+export PYTHON := python
 else
 export CP_CMD := cp -f --preserve
 export SUDO_CMD := sudo
 export SETCAP_CMD := setcap
+export PYTHON := python3
 endif
 
 #===================================================================================================
@@ -771,25 +773,13 @@ PYTHON_STAMP=$(PYTHON_VENV_DIRECTORY)/.requirements.stamp
 
 python-init: $(PYTHON_STAMP)
 
-ifeq ($(IS_WINDOWS),yes)
-# On Windows, Make uses bash from Git-for-Windows; use POSIX syntax.
-# Use 'python' (not 'python3') since the Windows Python launcher differs.
 $(PYTHON_STAMP): $(ROOT_DIR)/requirements.txt
 	@if [ ! -f "$(PYTHON_VENV_PIP)" ] && [ ! -f "$(PYTHON_VENV_PIP).exe" ]; then \
 		$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY); \
-		python -m venv $(PYTHON_VENV_DIRECTORY); \
+		$(PYTHON) -m venv $(PYTHON_VENV_DIRECTORY); \
 	fi
 	@$(PYTHON_VENV_PIP) install -r $(ROOT_DIR)/requirements.txt $(PY_VERBOSE)
 	@touch $(PYTHON_STAMP)
-else
-$(PYTHON_STAMP): $(ROOT_DIR)/requirements.txt
-	@if [ ! -f $(PYTHON_VENV_PIP) ]; then \
-		$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY); \
-		python3 -m venv $(PYTHON_VENV_DIRECTORY); \
-	fi
-	@$(PYTHON_VENV_PIP) install -r $(ROOT_DIR)/requirements.txt $(PY_VERBOSE)
-	@touch $(PYTHON_STAMP)
-endif
 
 python-format: python-init
 	@$(PYTHON_VENV_PYTHON) -m black $(PYTHON_FILES) $(PY_VERBOSE)
