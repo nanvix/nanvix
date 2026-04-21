@@ -75,7 +75,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner-label: [ self-hosted, github-hosted ]
+        runner-label: [ self-hosted ]
     steps:
       - name: Download benchmark comment payload
         id: download
