@@ -34,7 +34,7 @@ runs:
             --machine-type "${MACHINE_TYPE}" \
             --hwloc "$HOME/hwloc.json" \
             --iterations "${ITERATIONS}" \
-            --toolchain-bin-dir "$HOME/toolchain/bin" \
+            --clh-bin-path "$HOME/toolchain/bin" \
             --output-dir "$(pwd)" \
             --commit "${{ github.sha }}"
         done

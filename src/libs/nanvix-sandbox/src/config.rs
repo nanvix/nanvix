@@ -147,7 +147,7 @@ pub const UNIX_SOCKET_SUFFIX: &str = ".socket";
 ///
 /// # Parameters
 ///
-/// - `toolchain_bin_dir`: Path to Nanvix's toolchain binary directory.
+/// - `clh_bin_path`: Path to the cloud-hypervisor binary directory.
 ///
 /// # Returns
 ///
@@ -155,14 +155,13 @@ pub const UNIX_SOCKET_SUFFIX: &str = ".socket";
 /// returned instead.
 ///
 #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-pub(crate) fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
-    let clh_bin_dir_path: PathBuf =
-        fs::canonicalize(PathBuf::from(toolchain_bin_dir)).map_err(|e| {
-            let reason: String =
-                format!("error getting clh binary dir (path={toolchain_bin_dir}, error={e:?})");
-            error!("get_clh_bin_dir(): {reason}");
-            anyhow::anyhow!(reason)
-        })?;
+pub(crate) fn get_clh_bin_dir(clh_bin_path: &str) -> Result<String> {
+    let clh_bin_dir_path: PathBuf = fs::canonicalize(PathBuf::from(clh_bin_path)).map_err(|e| {
+        let reason: String =
+            format!("error getting clh binary dir (path={clh_bin_path}, error={e:?})");
+        error!("get_clh_bin_dir(): {reason}");
+        anyhow::anyhow!(reason)
+    })?;
     Ok(format!("{}", clh_bin_dir_path.display()))
 }
 

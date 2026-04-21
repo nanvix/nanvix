@@ -198,7 +198,7 @@ async fn async_main() -> Result<ExitCode> {
         args.hwloc().clone(),
         &kernel_binary_path,
         None,
-        args.toolchain_binary_directory(),
+        args.clh_bin_path(),
         args.log_directory(),
         tmp_directory.path().to_str().ok_or_else(|| {
             let reason: &str = "temporary directory path is not valid UTF-8";
@@ -229,7 +229,7 @@ async fn async_main() -> Result<ExitCode> {
         &kernel_binary_path,
         &linuxd_binary_path,
         &uservm_binary_path,
-        args.toolchain_binary_directory(),
+        args.clh_bin_path(),
         args.log_directory(),
         args.l2(),
         args.l2_snapshot_path(),
