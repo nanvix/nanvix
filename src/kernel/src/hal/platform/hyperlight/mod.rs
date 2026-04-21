@@ -1061,10 +1061,11 @@ pub fn init(
     }
 
     // Derive scratch region addresses from the host-provided scratch_size.
-    // scratch_size covers the full range [scratch_base, MAX_GPA] and includes the last
-    // page that Hyperlight reserves for bookkeeping.  The bitmap excludes that page.
+    // scratch_size covers the full range [scratch_base, scratch_end) and includes the last
+    // page that Hyperlight reserves for bookkeeping.  That page is included in the bitmap
+    // but marked as reserved (used) so the frame allocator never hands it out.
     // Validate that scratch_size is non-zero and large enough to contain the required MMIO
-    // regions (input buffer + output buffer + one top page + excluded last page).
+    // regions (input buffer + output buffer + one top page + one reserved last page).
     let min_scratch_size: usize =
         INPUT_DATA_BUFFER_SIZE + OUTPUT_DATA_BUFFER_SIZE + 2 * mem::PAGE_SIZE;
     if scratch_size == 0 || scratch_size < min_scratch_size {
@@ -1079,26 +1080,32 @@ pub fn init(
     // MAX_GPA (not MAX_GVA) because the guest uses identity mapping (GVA == GPA)
     // and the KVM memory slot is placed relative to MAX_GPA.
     let scratch_base_address: usize = MAX_GPA - scratch_size + 1;
-    // Bitmap end: stop one page short of MAX_GPA because the last page holds
-    // Hyperlight bookkeeping metadata and must not be allocated.
-    let scratch_bitmap_end: usize = MAX_GPA - mem::PAGE_SIZE + 1;
+    // scratch_end is the exclusive end of the full scratch range, including the last page
+    // reserved for Hyperlight bookkeeping metadata.
+    let scratch_end_address: usize =
+        scratch_base_address
+            .checked_add(scratch_size)
+            .ok_or_else(|| {
+                let reason: &str = "scratch region end address overflow";
+                error!("init(): {}", reason);
+                Error::new(ErrorCode::InvalidArgument, reason)
+            })?;
 
     // Record scratch region bounds for is_valid_physical_address.
     SCRATCH_BASE.store(scratch_base_address, Ordering::Relaxed);
-    SCRATCH_END.store(scratch_bitmap_end, Ordering::Relaxed);
+    SCRATCH_END.store(scratch_end_address, Ordering::Relaxed);
     info!(
         "scratch region: [{:#010x}, {:#010x}) (size={:#x})",
-        scratch_base_address, scratch_bitmap_end, scratch_size
+        scratch_base_address, scratch_end_address, scratch_size
     );
 
     // Register only the MMIO-critical portions of the scratch region:
     //  1. Input data buffer  [scratch_base, scratch_base + INPUT_DATA_BUFFER_SIZE)
     //  2. Output data buffer [scratch_base + INPUT_DATA_BUFFER_SIZE, + OUTPUT_DATA_BUFFER_SIZE)
-    //  3. Top page: guest counter.
-    // Everything between the output buffer and the top page (page tables, free space) is
-    // intentionally left unregistered and are available for user-page allocation.  The very
-    // last page holds scratch metadata accessed only during early boot before paging, so it
-    // is excluded from the frame allocator.
+    //  3. Scratch I/O page: guest counter page (second-to-last page).
+    //  4. Scratch reserved page: Hyperlight bookkeeping metadata (last page, not for use).
+    // Everything between the output buffer and the scratch I/O page (page tables, free space) is
+    // intentionally left unregistered and are available for user-page allocation.
     {
         let scratch_input_base: usize = scratch_base_address;
         let scratch_input: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
@@ -1125,16 +1132,27 @@ pub fn init(
         mmio_regions.push_back(scratch_output);
     }
     {
-        let scratch_top_page: usize = scratch_bitmap_end - mem::PAGE_SIZE;
-        let scratch_top: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
-            "scratch top",
-            PageAligned::from_raw_value(scratch_top_page)?,
+        let scratch_io_page: usize = scratch_end_address - 2 * mem::PAGE_SIZE;
+        let scratch_io: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
+            "scratch-io",
+            PageAligned::from_raw_value(scratch_io_page)?,
             mem::PAGE_SIZE,
             AccessPermission::RDWR,
             MmioCachePolicy::UNCACHEABLE,
         )?;
-        ioaddresses.register(SCRATCH_IO_MMIO_TAG, scratch_top.clone())?;
-        mmio_regions.push_back(scratch_top);
+        ioaddresses.register(SCRATCH_IO_MMIO_TAG, scratch_io.clone())?;
+        mmio_regions.push_back(scratch_io);
+    }
+    {
+        let scratch_reserved_page: usize = scratch_end_address - mem::PAGE_SIZE;
+        let scratch_reserved: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+            "scratch reserved",
+            VirtualAddress::from_raw_value(scratch_reserved_page),
+            mem::PAGE_SIZE,
+            MemoryRegionType::Reserved,
+            AccessPermission::RDONLY,
+        )?;
+        memory_regions.push_back(scratch_reserved);
     }
 
     // Set snapshot region end from the host-provided snapshot budget.
@@ -1159,7 +1177,7 @@ pub fn init(
             ramfs_base,
             ramfs_end_address,
             scratch_base_address,
-            scratch_bitmap_end,
+            scratch_end_address,
         )?
     };
 
