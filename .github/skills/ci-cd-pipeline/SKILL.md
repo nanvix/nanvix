@@ -74,8 +74,8 @@ steps for `microvm` and `hyperlight`.
 ## GitHub Actions Workflows
 
 Workflows are defined in `.github/workflows/`. They follow the same quality gates as the local
-pipeline, but matrix coverage is split across multiple jobs (including dedicated L2 jobs) and run on
-pull requests and pushes to `dev`.
+pipeline, but matrix coverage is split across multiple jobs and run on pull requests and pushes to
+`dev`.
 
 Matrix coverage in GitHub Actions:
 
@@ -83,7 +83,8 @@ Matrix coverage in GitHub Actions:
 - `lint`, `verify`, `ci-build`: `microvm` and `hyperlight` with `standalone`,
   `single-process`, and `multi-process`.
 - `ci-test`: same matrix, excluding `hyperlight + standalone`.
-- `ci-l2`: separate L2 jobs for `microvm` and `hyperlight`.
+
+> **Note:** The local pipeline covers the `l2` deployment type, but CI does not run L2 jobs.
 
 > **Note:** The `ci-windows` workflow validates Windows host builds (nanvixd, UserVM, source checks)
 > and runs a smoke test using nanvixd in standalone interactive mode on WHP-enabled runners.
