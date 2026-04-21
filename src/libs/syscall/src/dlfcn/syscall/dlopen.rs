@@ -42,7 +42,12 @@ pub fn dlopen(filename: &str) -> Result<DlHandle, Error> {
     // calls are a no-op.
     super::dlinit();
 
-    // TODO: Normalize filename.
+    // Resolve bare library names (e.g., "libfoo.so") to a canonical path
+    // (e.g., "lib/libfoo.so") using the configured search directories.
+    // Paths with leading "/" are normalized to strip it, ensuring
+    // "/lib/libc.so" and "lib/libc.so" are treated as the same library.
+    let resolved: String = super::resolve_library_path(filename);
+    let filename: &str = resolved.as_str();
 
     let mut registry: MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>> =
         DYNAMIC_LIBRARY_REGISTRY.lock();
@@ -118,13 +123,21 @@ fn load_all_dependencies(
 
         // Bind to already loaded dependencies and remove them from the list.
         dependencies.retain(|dependency| {
+            // Resolve bare name so we can match against loaded libraries
+            // that were opened with a full path.
+            let resolved_dep: String = super::resolve_library_path(dependency);
             for (dlhandle, dlfile) in dlfiles.iter() {
                 // Check if need to skip the dynamic library itself.
                 if dlhandle == new_dlhandle {
                     continue;
                 }
 
-                if dlfile.lock().name() == dependency.as_str() {
+                let is_match: bool = {
+                    let loaded_file: spin::MutexGuard<'_, DynamicLibrary> = dlfile.lock();
+                    let loaded_name: &str = loaded_file.name();
+                    loaded_name == dependency.as_str() || loaded_name == resolved_dep
+                };
+                if is_match {
                     ::syslog::debug!(
                         "load_all_dependencies_recursive(): already loaded dependency '{}' \
                          (handle={:?})",
@@ -147,8 +160,11 @@ fn load_all_dependencies(
 
         // Load remaining dependencies.
         while let Some(dependency) = dependencies.pop() {
+            // Resolve bare library names to full paths using search directories.
+            let resolved_dep: String = super::resolve_library_path(&dependency);
+
             // Open and pre-load the dynamic library file.
-            let dep_dlfile: DynamicLibrary = DynamicLibrary::open(&dependency)?;
+            let dep_dlfile: DynamicLibrary = DynamicLibrary::open(&resolved_dep)?;
             let handle: DlHandle = dep_dlfile.handle();
             let dep_dlfile: Arc<Mutex<DynamicLibrary>> = Arc::new(Mutex::new(dep_dlfile));
 
