@@ -124,8 +124,42 @@ impl PhysMemoryManager {
         PHYS_MEMORY_MANAGER.assume_init_mut()
     }
 
-    pub fn alloc_many_user_frames(&mut self, nframes: usize) -> Result<Vec<UserFrame>, Error> {
-        self.upool.alloc_many(nframes)
+    ///
+    /// # Description
+    ///
+    /// Allocates user frames into caller-provided storage, filling up to the vector's remaining
+    /// capacity.
+    ///
+    /// The returned frames are not guaranteed to be physically contiguous.
+    ///
+    /// # Parameters
+    ///
+    /// - `frames`: Mutable reference to a pre-allocated vector. The number of frames allocated
+    ///   equals `frames.capacity() - frames.len()`.
+    ///
+    /// # Return Values
+    ///
+    /// Upon success, `Ok(())` is returned and `frames` is filled to capacity. Upon failure, an
+    /// error is returned and any frames allocated by this call are dropped by truncating `frames`
+    /// back to empty.
+    ///
+    pub fn alloc_many_user_frames(&mut self, frames: &mut Vec<UserFrame>) -> Result<(), Error> {
+        if !frames.is_empty() {
+            let reason: &str = "frames vector is not empty";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        for _ in 0..frames.capacity() {
+            match self.upool.alloc() {
+                Ok(frame) => frames.push(frame),
+                Err(error) => {
+                    frames.clear();
+                    return Err(error);
+                },
+            }
+        }
+        Ok(())
     }
 
     ///

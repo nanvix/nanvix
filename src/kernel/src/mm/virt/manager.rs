@@ -240,15 +240,42 @@ impl VirtMemoryManager {
         Ok(vmem.unmap(vaddr)?.is_some())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Allocates and maps user pages into a virtual address space.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Virtual memory space where pages are mapped.
+    /// - `vaddr`: Starting virtual address for the mapping.
+    /// - `access`: Access permissions for the mapped pages.
+    /// - `clear`: Clear pages after mapping?
+    /// - `uframes`: Mutable reference to a pre-allocated vector for temporary frame storage.
+    ///   The number of pages allocated equals `uframes.capacity()`.
+    ///
+    /// # Return Values
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, all successfully mapped pages are rolled
+    /// back and an error is returned instead.
+    ///
     pub fn alloc_upages(
         &mut self,
         vmem: &mut Vmem,
         mut vaddr: PageAligned<VirtualAddress>,
-        nframes: usize,
         access: AccessPermission,
         clear: bool,
+        uframes: &mut Vec<UserFrame>,
     ) -> Result<(), Error> {
+        let nframes: usize = uframes.capacity();
         trace!("vaddr={:?}, nframes={}", vaddr, nframes);
+
+        // The caller-supplied buffer must be empty; stale frames would cause double-mapping.
+        if !uframes.is_empty() {
+            let reason: &str = "caller-supplied uframes vector is not empty";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
 
         // Validate that nframes is positive and the full range lies in user space.
         let range_size: usize = nframes.checked_mul(mem::PAGE_SIZE).ok_or_else(|| {
@@ -296,14 +323,18 @@ impl VirtMemoryManager {
 
         // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no concurrent
         // or re-entrant access to the physical memory manager is possible.
-        let uframes: Vec<UserFrame> =
-            unsafe { PhysMemoryManager::get_mut() }.alloc_many_user_frames(nframes)?;
+        let alloc_result: Result<(), Error> =
+            unsafe { PhysMemoryManager::get_mut() }.alloc_many_user_frames(uframes);
+        if let Err(e) = alloc_result {
+            uframes.clear();
+            return Err(e);
+        }
 
         let start_vaddr: PageAligned<VirtualAddress> = vaddr;
         let mut mapped_count: usize = 0;
         let mut map_error: Result<(), Error> = Ok(());
 
-        for uframe in uframes {
+        for uframe in uframes.drain(..) {
             if let Err(e) = vmem.map(uframe, vaddr, access, page_table_allocator) {
                 map_error = Err(e);
                 break;
