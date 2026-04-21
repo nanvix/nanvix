@@ -87,13 +87,14 @@ impl ProcessEnvironmentBlock {
     pub unsafe fn get_credits() -> Result<u64, Error> {
         // Credits are stored at a fixed offset from the top of scratch memory.
         // The host writes here via GuestCounter; we read via volatile read.
-        // GVA = MAX_GVA - SCRATCH_TOP_GUEST_COUNTER_OFFSET + 1
+        // Use MAX_GPA (not MAX_GVA) because the guest runs with identity mapping
+        // (GVA == GPA) and the scratch KVM slot is placed relative to MAX_GPA.
         use ::hyperlight_common::layout::{
-            MAX_GVA,
+            MAX_GPA,
             SCRATCH_TOP_GUEST_COUNTER_OFFSET,
         };
-        let credits_gva: usize = MAX_GVA - SCRATCH_TOP_GUEST_COUNTER_OFFSET as usize + 1;
-        let credits_ptr: *const u64 = credits_gva as *const u64;
+        let credits_gpa: usize = MAX_GPA - SCRATCH_TOP_GUEST_COUNTER_OFFSET as usize + 1;
+        let credits_ptr: *const u64 = credits_gpa as *const u64;
         Ok(::core::ptr::read_volatile(credits_ptr))
     }
 

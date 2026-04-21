@@ -271,7 +271,7 @@ impl Vmm {
 
         // Scratch region: whatever remains after snapshot and ramfs.  This includes the input and
         // output buffers for VmbusRead/VmbusWrite, the guest counter page, and the last page
-        // (0xFFFFF000) that Hyperlight reserves for bookkeeping (exception stack, allocator state).
+        // that Hyperlight reserves for bookkeeping (exception stack, allocator state).
         let scratch_size: usize = memory_size
             .checked_sub(
                 snapshot_budget_size
