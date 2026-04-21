@@ -115,8 +115,7 @@ fn book_mmio_regions(
 ///
 /// # Returns
 ///
-/// Upon success, the physical memory manager is returned. Upon failure, an error is returned
-/// instead.
+/// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
 ///
 pub fn init(
     kpool: TruncatedMemoryRegion<PhysicalAddress>,
@@ -132,9 +131,10 @@ pub fn init(
 
     book_mmio_regions(mmio_regions)?;
 
-    // Initialize kernel page pool.
+    // Initialize kernel page pool singleton.
     info!("initializing the kernel page pool ...");
-    let kpool: Kpool = Kpool::new(kpool)?;
+    // Safety: called exactly once during single-threaded boot.
+    let kpool: Kpool = unsafe { kpool::init(kpool)? };
 
     // Initialize user page pool.
     info!("initializing the user page pool ...");
