@@ -18,6 +18,7 @@ mod test;
 //==================================================================================================
 
 use crate::{
+    collections::Bitmap,
     hal::mem::{
         Address,
         PageAligned,
@@ -108,20 +109,22 @@ fn book_mmio_regions(
 ///
 /// # Parameters
 ///
-/// - `kpool`: Kernel page pool region.
+/// - `kpool_base`: Base address of the kernel page pool.
 /// - `physical_memory_regions`: Physical memory regions to book.
 /// - `mmio_regions`: Memory-mapped I/O regions to book.
 /// - `physical_memory_layout`: Physical memory layout bitmap.
+/// - `kpool_bitmap`: Bitmap for the kernel page pool.
 ///
 /// # Returns
 ///
 /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
 ///
 pub fn init(
-    kpool: TruncatedMemoryRegion<PhysicalAddress>,
+    kpool_base: PageAligned<PhysicalAddress>,
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
     mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
     physical_memory_layout: SparseBitmap,
+    kpool_bitmap: Bitmap,
 ) -> Result<(), Error> {
     // Initialize frame allocator singleton.
     info!("initializing the frame allocator ...");
@@ -134,7 +137,7 @@ pub fn init(
     // Initialize kernel page pool singleton.
     info!("initializing the kernel page pool ...");
     // Safety: called exactly once during single-threaded boot.
-    let kpool: Kpool = unsafe { kpool::init(kpool)? };
+    let kpool: Kpool = unsafe { kpool::init(kpool_base, kpool_bitmap)? };
 
     // Initialize user page pool.
     info!("initializing the user page pool ...");

@@ -16,12 +16,14 @@
 
 use crate::{
     collections::Bitmap,
-    hal::mem::{
-        Address,
-        FrameAddress,
-        PageAligned,
-        PhysicalAddress,
-        TruncatedMemoryRegion,
+    hal::{
+        mem::{
+            Address,
+            FrameAddress,
+            PageAligned,
+            PhysicalAddress,
+        },
+        platform::is_valid_physical_region,
     },
 };
 use ::alloc::vec::Vec;
@@ -49,9 +51,9 @@ use ::sys::error::{
 
 /// Private state of the kernel pool singleton.
 struct Inner {
-    /// Physical memory region backing the kernel pool.
-    region: TruncatedMemoryRegion<PhysicalAddress>,
-    /// Bitmap of free pages.
+    /// Base address of the kernel pool.
+    base: PageAligned<PhysicalAddress>,
+    /// Bitmap of free frames.
     bitmap: Bitmap,
 }
 
@@ -74,7 +76,7 @@ impl Inner {
                 return Err(error);
             },
         };
-        let addr: usize = self.region.start().into_raw_value() + index * mem::PAGE_SIZE;
+        let addr: usize = self.base.into_raw_value() + index * mem::PAGE_SIZE;
         Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(addr)?)?))
     }
 
@@ -109,7 +111,7 @@ impl Inner {
             },
         };
 
-        let base_addr: usize = self.region.start().into_raw_value() + index * mem::PAGE_SIZE;
+        let base_addr: usize = self.base.into_raw_value() + index * mem::PAGE_SIZE;
         for i in 0..count {
             let addr: usize = base_addr + i * mem::PAGE_SIZE;
             let frame: FrameAddress = FrameAddress::new(PageAligned::from_address(
@@ -135,8 +137,7 @@ impl Inner {
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
     fn free(&mut self, addr: FrameAddress) -> Result<(), Error> {
-        let index: usize =
-            (addr.into_raw_value() - self.region.start().into_raw_value()) / mem::PAGE_SIZE;
+        let index: usize = (addr.into_raw_value() - self.base.into_raw_value()) / mem::PAGE_SIZE;
         match self.bitmap.clear(index) {
             Ok(()) => Ok(()),
             Err(error) => {
@@ -196,7 +197,8 @@ fn instance() -> &'static mut Inner {
 ///
 /// # Parameters
 ///
-/// - `region`: Physical memory region backing the kernel pool.
+/// - `base`: Base address of the kernel pool.
+/// - `bitmap`: Bitmap for tracking free pages.
 ///
 /// # Return Values
 ///
@@ -206,25 +208,30 @@ fn instance() -> &'static mut Inner {
 ///
 /// Must be called exactly once during boot, before any other function in this module.
 ///
-pub(super) unsafe fn init(region: TruncatedMemoryRegion<PhysicalAddress>) -> Result<Kpool, Error> {
+pub(super) unsafe fn init(
+    base: PageAligned<PhysicalAddress>,
+    bitmap: Bitmap,
+) -> Result<Kpool, Error> {
     if unlikely(INSTANCE_INIT.load(ORDER)) {
         return Err(Error::new(ErrorCode::InvalidArgument, "kernel pool already initialized"));
     }
 
-    trace!("region={region:?}");
-    debug_assert_eq!(
-        region.size() % mem::PAGE_SIZE,
-        0,
-        "kernel pool size must be a multiple of page size"
-    );
+    trace!("base={base:?}");
 
-    let bitmap: Bitmap = Bitmap::new(region.size() / mem::PAGE_SIZE)?;
+    // Check if bitmap spans across physically-addressable memory.
+    let bitmap_capacity: usize = bitmap.number_of_bits();
+    let kpool_size: usize = bitmap_capacity * mem::PAGE_SIZE;
+    if !is_valid_physical_region(base.into_raw_value(), kpool_size) {
+        let reason: &str = "kernel pool bitmap spans across physically-addressable memory";
+        error!("{reason}");
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
 
     let num_frames: usize = bitmap.number_of_bits();
     info!("kernel pool: {} frames, {} KB", num_frames, (num_frames * mem::PAGE_SIZE) / 1024,);
 
     // SAFETY: single-threaded boot; no other reference to `INSTANCE` exists.
-    unsafe { INSTANCE.write(Inner { region, bitmap }) };
+    unsafe { INSTANCE.write(Inner { base, bitmap }) };
     INSTANCE_INIT.store(true, ORDER);
     Ok(Kpool { _private: () })
 }
