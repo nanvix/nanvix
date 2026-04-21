@@ -177,6 +177,20 @@ impl FileMapping {
     pub fn size(&self) -> usize {
         self.size
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the mapped file contents as an immutable byte slice.
+    ///
+    /// # Returns
+    ///
+    /// An immutable byte slice covering the entire mapped file.
+    ///
+    pub fn as_slice(&self) -> &[u8] {
+        // SAFETY: The mapping is valid for `self.size` bytes for the lifetime of `self`.
+        unsafe { ::std::slice::from_raw_parts(self.view.Value as *const u8, self.size) }
+    }
 }
 
 impl ::std::fmt::Debug for FileMapping {
@@ -250,6 +264,23 @@ mod tests {
         assert_eq!(loaded, payload);
 
         // Drop the mapping before deleting the file; the section handle keeps the file open.
+        drop(mapping);
+        fs::remove_file(path_buf).ok();
+        Ok(())
+    }
+
+    #[test]
+    fn open_as_slice_returns_file_contents() -> Result<()> {
+        let (path_str, path_buf): (String, PathBuf) = unique_temp_path("as-slice")?;
+        let payload: &[u8] = b"as_slice test content for FileMapping";
+        fs::write(&path_buf, payload)?;
+
+        let mapping: FileMapping = FileMapping::open(&path_str)?;
+
+        let slice: &[u8] = mapping.as_slice();
+        assert_eq!(slice.len(), payload.len(), "slice length mismatch");
+        assert_eq!(slice, payload, "slice contents differ from file contents");
+
         drop(mapping);
         fs::remove_file(path_buf).ok();
         Ok(())

@@ -65,6 +65,7 @@ use ::alloc::{
 };
 use ::arch::mem;
 use ::core::panic;
+use ::sparse_bitmap::SparseBitmap;
 use ::sys::error::Error;
 
 //==================================================================================================
@@ -234,11 +235,28 @@ fn parse_memory_regions(
     Ok((other_virtual_memory_regions, virtual_memory_regions, physical_memory_regions))
 }
 
+///
+/// # Description
+///
 /// Initializes the memory manager.
+///
+/// # Parameters
+///
+/// - `kimage`: Kernel image.
+/// - `memory_regions`: Memory regions.
+/// - `mmio_regions`: MMIO regions.
+/// - `physical_memory_layout`: Physical memory layout bitmap.
+///
+/// # Returns
+///
+/// Upon success, the root virtual memory manager is returned. Upon failure, an error is returned
+/// instead.
+///
 pub fn init(
     kimage: &KernelImage,
     memory_regions: LinkedList<MemoryRegion<VirtualAddress>>,
     mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+    physical_memory_layout: SparseBitmap,
 ) -> Result<Vmem, Error> {
     info!("initializing the memory manager ...");
 
@@ -255,6 +273,7 @@ pub fn init(
         TruncatedMemoryRegion::from_virtual_memory_region(kimage.kpool())?,
         physical_memory_regions,
         &mmio_regions,
+        physical_memory_layout,
     )?;
 
     #[cfg(feature = "test")]

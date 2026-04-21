@@ -12,6 +12,10 @@ pub mod pvclock;
 //==================================================================================================
 
 use crate::{
+    collections::{
+        Bitmap,
+        RawArray,
+    },
     hal::{
         arch::x86::{
             self,
@@ -47,11 +51,13 @@ use crate::{
 use ::alloc::{
     collections::LinkedList,
     string::ToString,
+    vec,
 };
 use ::arch::{
     cpu::pic,
     mem,
 };
+use ::sparse_bitmap::SparseBitmap;
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -64,6 +70,17 @@ use crate::hal::platform::region_tags::LAPIC_MMIO_TAG;
 use crate::hal::platform::pit::Pit;
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Number of page tables needed for identity-mapping physical memory regions.
+///
+/// On microvm all physical memory is contiguous starting at GPA 0, so the base count
+/// (one page table per `PGTAB_SIZE` bytes) is sufficient.
+///
+pub const NUM_PAGE_TABLES: usize = config::kernel::MEMORY_SIZE / mem::PGTAB_SIZE;
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -71,7 +88,19 @@ pub struct Platform {
     pub arch: Arch,
     #[cfg(all(feature = "pit", not(feature = "whp")))]
     pub _pit: Pit,
+    /// A sparse bitmap representing the physical memory layout, owned by the platform and consumed
+    /// by the memory manager during system initialization.
+    pub physical_memory_layout: Option<SparseBitmap>,
 }
+
+//==================================================================================================
+// Global Variables
+//==================================================================================================
+
+/// Frame allocator storage.
+static mut FRAME_ALLOCATOR_STORAGE: [u8; config::kernel::MEMORY_SIZE
+    / (mem::FRAME_SIZE * u8::BITS as usize)] =
+    [0; config::kernel::MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)];
 
 //==================================================================================================
 // Standalone Functions
@@ -254,6 +283,70 @@ pub fn signal_startup_complete() {
         let cmd: u16 = ::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD;
         ::arch::io::out32(::config::microvm::DEFAULT_VMM_PORT, (cmd as u32) << 16);
     }
+}
+
+///
+/// # Description
+///
+/// Checks whether the given virtual address corresponds to a valid physical address on the Microvm
+/// platform.
+///
+/// # Parameters
+///
+/// - `addr`: The virtual address to validate.
+///
+/// # Returns
+///
+/// `true` if `addr` falls within the physical address space, `false` otherwise.
+///
+#[inline(always)]
+pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
+    addr < VirtualAddress::from_raw_value(config::kernel::MEMORY_SIZE)
+}
+
+///
+/// # Description
+///
+/// Checks whether the given physical memory region lies entirely within physical memory on the
+/// Microvm platform.
+///
+/// # Parameters
+///
+/// - `start`: Starting physical address of the region.
+/// - `size`: Size of the region in bytes.
+///
+/// # Returns
+///
+/// `true` if the entire region lies within physical memory, `false` otherwise.
+///
+#[inline(always)]
+pub fn is_valid_physical_region(start: usize, size: usize) -> bool {
+    // Reject zero-length regions.
+    if size == 0 {
+        return false;
+    }
+
+    // Compute the exclusive end, guarding against overflow.
+    match start.checked_add(size) {
+        Some(end) => end <= config::kernel::MEMORY_SIZE,
+        None => false,
+    }
+}
+
+///
+/// # Description
+///
+/// Returns the maximum physical address on the Microvm platform.
+///
+/// All physical memory is contiguous starting at GPA 0 up to `MEMORY_SIZE`.
+///
+/// # Returns
+///
+/// The maximum physical address value.
+///
+#[inline(always)]
+pub fn max_physical_address() -> usize {
+    config::kernel::MEMORY_SIZE - 1
 }
 
 ///
@@ -498,6 +591,24 @@ fn register_pit_ports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     Ok(())
 }
 
+///
+/// # Description
+///
+/// Initializes the microvm platform.
+///
+/// # Parameters
+///
+/// - `ioports`: I/O port allocator.
+/// - `ioaddresses`: I/O memory allocator.
+/// - `_memory_regions`: Memory regions.
+/// - `mmio_regions`: MMIO regions.
+/// - `madt`: MADT information.
+/// - `_mem_lower`: Lower memory size.
+///
+/// # Returns
+///
+/// Upon success, the initialized platform is returned. Upon failure, an error is returned instead.
+///
 pub fn init(
     ioports: &mut IoPortAllocator,
     ioaddresses: &mut IoMemoryAllocator,
@@ -564,9 +675,22 @@ pub fn init(
 
     let arch = x86::init(ioports, ioaddresses, madt)?;
 
+    // Build a sparse bitmap representing the physical memory layout.
+    let physical_memory_layout: SparseBitmap = {
+        // Safety: the frame allocator storage is valid and has a static lifetime.
+        let storage: RawArray<u8> = unsafe {
+            let (ptr, len): (*mut u8, usize) =
+                (FRAME_ALLOCATOR_STORAGE.as_mut_ptr(), FRAME_ALLOCATOR_STORAGE.len());
+            RawArray::from_raw_parts(ptr, len)?
+        };
+        let bitmap: Bitmap = Bitmap::from_raw_array(storage)?;
+        SparseBitmap::new(vec![(0, bitmap)])?
+    };
+
     Ok(Platform {
         arch,
         #[cfg(all(feature = "pit", not(feature = "whp")))]
         _pit: register_pit(ioports)?,
+        physical_memory_layout: Some(physical_memory_layout),
     })
 }

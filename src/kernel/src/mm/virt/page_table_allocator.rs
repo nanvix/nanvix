@@ -31,7 +31,7 @@ use ::bump_allocator::{
 //==================================================================================================
 
 /// Number of page tables for identity-mapping all physical memory.
-const NUM_PAGE_TABLES: usize = config::kernel::MEMORY_SIZE / mem::PGTAB_SIZE;
+const NUM_PAGE_TABLES: usize = crate::hal::platform::NUM_PAGE_TABLES;
 
 /// Total number of kernel page-table-sized slots.
 ///
