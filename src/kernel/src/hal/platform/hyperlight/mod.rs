@@ -91,7 +91,10 @@ use ::hyperlight_common::{
             GuestError,
         },
     },
-    layout::MAX_GVA,
+    layout::{
+        MAX_GPA,
+        MAX_GVA,
+    },
     mem::HyperlightPEB,
     outb::VmAction,
 };
@@ -573,6 +576,23 @@ extern "C" fn hyperlight_pre_kmain() -> ! {
     let peb_base: usize = ::sys::mm::align_up(kernel_end, PAGE_ALIGNMENT)
         .expect("hyperlight_pre_kmain(): PEB align_up overflow");
     let peb_ptr: *mut HyperlightPEB = peb_base as *mut HyperlightPEB;
+
+    // Patch PEB scratch pointers from GVA to GPA.
+    //
+    // The host writes input_stack.ptr and output_stack.ptr using scratch_base_gva()
+    // (derived from MAX_GVA).  On the Hyperlight i686 platform the guest runs with
+    // identity mapping (GVA == GPA), but the KVM memory slot for scratch is placed at
+    // scratch_base_gpa() (derived from MAX_GPA).  When MAX_GPA < MAX_GVA the two
+    // diverge and the guest would read from unmapped physical addresses.  Subtract the
+    // delta so the PEB pointers target the actual GPA range.
+    let gva_gpa_delta: u64 = (MAX_GVA - MAX_GPA) as u64;
+    if gva_gpa_delta != 0 {
+        unsafe {
+            (*peb_ptr).input_stack.ptr -= gva_gpa_delta;
+            (*peb_ptr).output_stack.ptr -= gva_gpa_delta;
+        }
+    }
+
     unsafe {
         GUEST_HANDLE = Some(GuestHandle::init(peb_ptr));
     }
@@ -1041,9 +1061,8 @@ pub fn init(
     }
 
     // Derive scratch region addresses from the host-provided scratch_size.
-    // scratch_size covers the full range [scratch_base, 0xFFFFFFFF] and includes the last
-    // page (0xFFFFF000) that Hyperlight reserves for bookkeeping.  The bitmap excludes that
-    // page because its frame number (0xFFFFF) exceeds FrameNumber::MAX.
+    // scratch_size covers the full range [scratch_base, MAX_GPA] and includes the last
+    // page that Hyperlight reserves for bookkeeping.  The bitmap excludes that page.
     // Validate that scratch_size is non-zero and large enough to contain the required MMIO
     // regions (input buffer + output buffer + one top page + excluded last page).
     let min_scratch_size: usize =
@@ -1056,11 +1075,13 @@ pub fn init(
         );
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
-    // scratch_base = MAX_GVA - scratch_size + 1.
-    let scratch_base_address: usize = MAX_GVA - scratch_size + 1;
-    // Bitmap end: stop one page short of MAX_GVA because the last page (frame 0xfffff)
-    // exceeds FrameNumber::MAX and cannot be booked by the frame allocator.
-    let scratch_bitmap_end: usize = MAX_GVA - mem::PAGE_SIZE + 1;
+    // scratch_base = MAX_GPA - scratch_size + 1.
+    // MAX_GPA (not MAX_GVA) because the guest uses identity mapping (GVA == GPA)
+    // and the KVM memory slot is placed relative to MAX_GPA.
+    let scratch_base_address: usize = MAX_GPA - scratch_size + 1;
+    // Bitmap end: stop one page short of MAX_GPA because the last page holds
+    // Hyperlight bookkeeping metadata and must not be allocated.
+    let scratch_bitmap_end: usize = MAX_GPA - mem::PAGE_SIZE + 1;
 
     // Record scratch region bounds for is_valid_physical_address.
     SCRATCH_BASE.store(scratch_base_address, Ordering::Relaxed);
@@ -1073,11 +1094,11 @@ pub fn init(
     // Register only the MMIO-critical portions of the scratch region:
     //  1. Input data buffer  [scratch_base, scratch_base + INPUT_DATA_BUFFER_SIZE)
     //  2. Output data buffer [scratch_base + INPUT_DATA_BUFFER_SIZE, + OUTPUT_DATA_BUFFER_SIZE)
-    //  3. Top page (0xFFFFE000): guest counter.
+    //  3. Top page: guest counter.
     // Everything between the output buffer and the top page (page tables, free space) is
-    // intentionally left unregistered  and are available for user-page allocation.  The very last
-    // page (0xFFFFF000) holds scratch metadata accessed only during early boot before paging, and
-    // its frame number (0xFFFFF) exceeds FrameNumber::MAX, so it is excluded entirely.
+    // intentionally left unregistered and are available for user-page allocation.  The very
+    // last page holds scratch metadata accessed only during early boot before paging, so it
+    // is excluded from the frame allocator.
     {
         let scratch_input_base: usize = scratch_base_address;
         let scratch_input: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
@@ -1278,8 +1299,8 @@ unsafe fn build_physical_memory_layout(
 
     let scratch_frames: usize = scratch_size / mem::FRAME_SIZE;
     let scratch_bytes: usize = scratch_frames.div_ceil(bits_per_byte);
-    // Phantom bits map to frame numbers beyond FrameNumber::MAX and must be pre-marked
-    // as used so that alloc() never returns an out-of-range frame.
+    // Phantom bits are trailing padding bits in the byte-aligned bitmap that do not
+    // correspond to real frames. Pre-mark them as used so alloc() never returns them.
     let scratch_phantom: usize = scratch_bytes * bits_per_byte - scratch_frames;
 
     let total_bytes: usize = low_bytes + ramfs_bytes + scratch_bytes;
