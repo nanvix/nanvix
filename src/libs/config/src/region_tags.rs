@@ -54,6 +54,9 @@ mod hyperlight {
 
     /// Tag used to identify the Hyperlight output data buffer MMIO region.
     pub const OUTPUT_BUF_MMIO_TAG: MmioTag = MmioTag::new(*b"OUTPUTBF");
+
+    /// Tag used to identify the Hyperlight scratch I/O MMIO region.
+    pub const SCRATCH_IO_MMIO_TAG: MmioTag = MmioTag::new(*b"SCRATCH ");
 }
 
 #[cfg(feature = "hyperlight")]

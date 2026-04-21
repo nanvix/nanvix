@@ -59,7 +59,6 @@ use ::arch::{
         PGTAB_ALIGNMENT,
     },
 };
-use ::config::kernel::MEMORY_SIZE;
 use ::core::cell::RefCell;
 use ::sys::{
     config,
@@ -453,16 +452,7 @@ impl Vmem {
     /// Returns `true` if the entire region lies within physical memory, `false` otherwise.
     ///
     pub fn is_physical_region(start: usize, size: usize) -> bool {
-        // Reject zero-length regions.
-        if size == 0 {
-            return false;
-        }
-
-        // Check if the start and end addresses of the region lie within physical memory.
-        match start.checked_add(size - 1) {
-            Some(end) => start < MEMORY_SIZE && end < MEMORY_SIZE,
-            None => false,
-        }
+        crate::hal::platform::is_valid_physical_region(start, size)
     }
 
     ///
