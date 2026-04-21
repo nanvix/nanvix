@@ -345,6 +345,9 @@ impl Vmem {
         // NOTE: if we fail beyond this point we should unmap the page.
         //=============================================================
 
+        // Frame is now owned by the page table; prevent Drop from freeing it.
+        uframe.leak();
+
         Ok(())
     }
 
