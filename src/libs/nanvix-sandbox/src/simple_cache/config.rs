@@ -49,8 +49,8 @@ pub struct SimpleSandboxCacheConfig<T> {
     kernel_binary_path: String,
     /// System call table.
     syscall_table: Option<Arc<SyscallTable<T>>>,
-    /// Path to the toolchain binary directory.
-    toolchain_binary_directory: String,
+    /// Path to the cloud-hypervisor binary directory.
+    clh_bin_path: String,
     /// Directory path for writing log files.
     log_directory: String,
     /// Path to the temporary directory for Unix sockets and transient files.
@@ -77,7 +77,7 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCacheConfig<T> {
         hwloc: Option<HwLoc>,
         kernel_binary_path: &str,
         syscall_table: Option<Arc<SyscallTable<T>>>,
-        toolchain_binary_directory: &str,
+        clh_bin_path: &str,
         log_directory: &str,
         tmp_directory: &str,
     ) -> Self {
@@ -90,7 +90,7 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCacheConfig<T> {
             hwloc,
             kernel_binary_path: kernel_binary_path.to_string(),
             syscall_table,
-            toolchain_binary_directory: toolchain_binary_directory.to_string(),
+            clh_bin_path: clh_bin_path.to_string(),
             log_directory: log_directory.to_string(),
             tmp_directory: tmp_directory.to_string(),
         }
@@ -136,9 +136,9 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCacheConfig<T> {
         self.syscall_table.clone()
     }
 
-    /// Returns the path to the toolchain binary directory.
-    pub fn toolchain_binary_directory(&self) -> &str {
-        &self.toolchain_binary_directory
+    /// Returns the path to the cloud-hypervisor binary directory.
+    pub fn clh_bin_path(&self) -> &str {
+        &self.clh_bin_path
     }
 
     /// Returns the log directory.

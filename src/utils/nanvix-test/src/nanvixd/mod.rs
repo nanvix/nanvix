@@ -141,7 +141,7 @@ impl Nanvixd {
         // cleanup.  This acts as a best-effort safety net during normal unwinding and shutdown
         // paths where drop handlers run, helping to prevent orphaned processes.
         command.kill_on_drop(true);
-        command.arg(::nanvixd::args::Args::OPT_TOOLCHAIN_BIN_DIRECTORY);
+        command.arg(::nanvixd::args::Args::OPT_CLH_BIN_PATH);
         command.arg(format!("{}/bin", config.toolchain_path));
 
         if let Some(hwloc_file) = hwloc_file_path {

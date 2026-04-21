@@ -50,8 +50,8 @@ pub struct Args {
     http_sockaddr: Option<String>,
     /// Directory path containing Nanvix binaries.
     binary_directory: String,
-    /// Directory path containing toolchain binaries (cloud-hypervisor, etc.).
-    toolchain_binary_directory: String,
+    /// Path to the cloud-hypervisor binary directory.
+    clh_bin_path: String,
     /// Optional file path for redirecting console output.
     console_file: Option<String>,
     /// Optional RAM filesystem image exposed to the guest.
@@ -97,8 +97,8 @@ impl Args {
     pub const OPT_HTTP_SOCKADDR: &'static str = "-http-addr";
     /// Command-line option that sets the binary directory path.
     pub const OPT_BIN_DIRECTORY: &'static str = "-bin-dir";
-    /// Command-line option that sets the toolchain binary directory path.
-    pub const OPT_TOOLCHAIN_BIN_DIRECTORY: &'static str = "-toolchain-bin-dir";
+    /// Command-line option that sets the cloud-hypervisor binary directory path.
+    pub const OPT_CLH_BIN_PATH: &'static str = "-clh-bin-path";
     /// Command-line option that sets the L2 snapshot path.
     pub const OPT_L2_SNAPSHOT_PATH: &'static str = "-l2-snapshot-path";
     /// Command-line option that redirects the console output to a file.
@@ -153,8 +153,7 @@ impl Args {
         #[cfg(unix)]
         let mut http_sockaddr: Option<String> = None;
         let mut binary_directory: String = config::DEFAULT_BIN_DIRECTORY.to_string();
-        let mut toolchain_binary_directory: String =
-            config::DEFAULT_TOOLCHAIN_BIN_DIRECTORY.to_string();
+        let mut clh_bin_path: String = config::DEFAULT_CLH_BIN_PATH.to_string();
         #[cfg(not(feature = "single-process"))]
         let mut console_file: Option<String> = None;
         #[cfg(feature = "single-process")]
@@ -211,9 +210,9 @@ impl Args {
                     i += 1;
                     binary_directory = args[i].clone();
                 },
-                Self::OPT_TOOLCHAIN_BIN_DIRECTORY => {
+                Self::OPT_CLH_BIN_PATH => {
                     i += 1;
-                    toolchain_binary_directory = args[i].clone();
+                    clh_bin_path = args[i].clone();
                 },
                 Self::OPT_CONSOLE_FILE => {
                     i += 1;
@@ -388,7 +387,7 @@ impl Args {
             #[cfg(unix)]
             http_sockaddr,
             binary_directory,
-            toolchain_binary_directory,
+            clh_bin_path,
             l2_snapshot_path,
             console_file,
             ramfs_filename,
@@ -437,8 +436,7 @@ Options:
   {console_file} <file>                     Redirect console output to a file.
   {ramfs_filename} <file>                   Attach a RAM filesystem image to spawned user VMs.
   {bin_dir} <bin_dir>                       Directory containing Nanvix binaries.
-  {toolchain_bin_dir} <toolchain_bin_dir>   Directory containing toolchain binaries \
-             (cloud-hypervisor, etc.).
+  {clh_bin_path} <clh_bin_path>             Path to the cloud-hypervisor binary directory.
   {hwloc} <hwloc.json>                      Hardware locality configuration file for CPU \
              affinity/topology.
   {log_dir} <log_dir>                       Directory for log files (Default: \
@@ -464,7 +462,7 @@ Options:
             console_file = Self::OPT_CONSOLE_FILE,
             ramfs_filename = Self::OPT_RAMFS_FILENAME,
             bin_dir = Self::OPT_BIN_DIRECTORY,
-            toolchain_bin_dir = Self::OPT_TOOLCHAIN_BIN_DIRECTORY,
+            clh_bin_path = Self::OPT_CLH_BIN_PATH,
             hwloc = Self::OPT_HWLOC,
             log_dir = Self::OPT_LOG_DIRECTORY,
             netns_pool_size = Self::OPT_NETNS_POOL_SIZE,
@@ -515,14 +513,14 @@ Options:
     ///
     /// # Description
     ///
-    /// Returns the toolchain binary directory path.
+    /// Returns the cloud-hypervisor binary directory path.
     ///
     /// # Returns
     ///
-    /// The toolchain binary directory path.
+    /// The cloud-hypervisor binary directory path.
     ///
-    pub fn toolchain_binary_directory(&self) -> &str {
-        &self.toolchain_binary_directory
+    pub fn clh_bin_path(&self) -> &str {
+        &self.clh_bin_path
     }
 
     ///

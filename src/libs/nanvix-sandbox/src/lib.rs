@@ -79,7 +79,7 @@
 //!     None,  // syscall_table
 //!     Some(("127.0.0.1:8082".to_string(), SocketType::Tcp)),  // control_plane_bind_socket_info
 //!     ("127.0.0.1:8081".to_string(), SocketType::Tcp),  // control_plane_connect_socket_info
-//!     Some("/path/to/toolchain".to_string()),  // toolchain_binary_directory
+//!     Some("/path/to/toolchain/bin".to_string()),  // clh_bin_path
 //!     Some("/tmp".to_string()),  // tmp_directory
 //!     Some(false),  // l2
 //! );

@@ -161,7 +161,7 @@ pub struct Benchmark {
     #[cfg(any(feature = "multi-process", feature = "single-process"))]
     pub nanvixd_client: reqwest::Client,
     #[cfg(any(feature = "multi-process", feature = "single-process"))]
-    pub nanvixd_toolchain_bin_dir: String,
+    pub nanvixd_clh_bin_path: String,
     #[cfg(any(feature = "multi-process", feature = "single-process"))]
     pub nanvixd_netns_pool_size: Option<usize>,
     #[cfg(any(feature = "multi-process", feature = "single-process"))]
