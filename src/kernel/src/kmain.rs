@@ -31,6 +31,7 @@
 extern crate alloc;
 
 use crate::{
+    collections::Bitmap,
     hal::{
         io::IoMemoryAllocator,
         mem::{
@@ -321,22 +322,24 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         }
     }
 
-    let physical_memory_layout: SparseBitmap =
+    let (physical_memory_layout, kpool_bitmap): (SparseBitmap, Bitmap) =
         match Hal::init(&mut memory_regions, &mut mmio_regions, &mut ioaddresses, &madt, mem_lower)
         {
-            Ok(bitmap) => bitmap,
+            Ok(result) => result,
             Err(err) => {
                 panic!("failed to initialize hardware abstraction layer: {:?}", err);
             },
         };
 
     // Initialize the memory manager.
-    let root: Vmem = match mm::init(&kimage, memory_regions, mmio_regions, physical_memory_layout) {
-        Ok(root) => root,
-        Err(err) => {
-            panic!("failed to initialize memory manager: {:?}", err);
-        },
-    };
+    let root: Vmem =
+        match mm::init(&kimage, memory_regions, mmio_regions, physical_memory_layout, kpool_bitmap)
+        {
+            Ok(root) => root,
+            Err(err) => {
+                panic!("failed to initialize memory manager: {:?}", err);
+            },
+        };
 
     // Check boot stack guard watermark for corruption.
     if let Err(err) = mm::kstack::check_boot_stack_guard() {
