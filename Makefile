@@ -827,11 +827,11 @@ endif
 
 # Runs system in release mode.
 run: image
-	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -toolchain-bin-dir $(CLH_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
+	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -clh-bin-path $(CLH_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
 
 # Runs system in debug mode.
 debug: image
-	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -toolchain-bin-dir $(CLH_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
+	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -clh-bin-path $(CLH_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
 
 #===================================================================================================
 # Build Rules for Test Kernel RAMFS Image

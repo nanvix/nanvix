@@ -1286,9 +1286,10 @@ jobs:
       - name: "Report Benchmark Results"
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concu\
-            rrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,snapsh\
-            ot-restore,vfs-bench,warm-start,warm-start-l2,warm-start-vmm"
+          benchmarks: >-
+            boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,
+            concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,
+            snapshot-restore,vfs-bench,warm-start,warm-start-l2,warm-start-vmm
           machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/baremetal"
@@ -1317,9 +1318,10 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concu\
-            rrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,snapsh\
-            ot-restore,vfs-bench,warm-start,warm-start-l2,warm-start-vmm"
+          benchmarks: >-
+            boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,
+            concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,
+            snapshot-restore,vfs-bench,warm-start,warm-start-l2,warm-start-vmm
           machine-types: "microvm,hyperlight"
           archs: "X64"
           target-dir: "data/baremetal"

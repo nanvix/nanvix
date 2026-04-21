@@ -21,9 +21,9 @@ pub const DEFAULT_BIN_DIRECTORY: &str = "./bin";
 ///
 /// # Description
 ///
-/// Default binary directory path for toolchain-related binaries.
+/// Default path for the cloud-hypervisor binary directory.
 ///
-pub const DEFAULT_TOOLCHAIN_BIN_DIRECTORY: &str = "./toolchain/bin";
+pub const DEFAULT_CLH_BIN_PATH: &str = "./toolchain/bin";
 
 ///
 /// # Description

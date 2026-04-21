@@ -285,8 +285,8 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCache<T> {
                 #[cfg(feature = "single-process")]
                 let syscall_table = self.config.syscall_table();
 
-                let toolchain_binary_directory =
-                    Some(self.config.toolchain_binary_directory().to_string());
+                let clh_bin_path =
+                    Some(self.config.clh_bin_path().to_string());
 
                 let config: SandboxConfig<T> = SandboxConfig::new(
                     tag.tenant_id(),
@@ -307,7 +307,7 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCache<T> {
                         control_plane_connect_sockaddr.clone(),
                         self.config.control_plane_sockaddr_type(),
                     ),
-                    toolchain_binary_directory,
+                    clh_bin_path,
                     Some(sandbox_tmp_dir.to_string_lossy().into_owned()),
                     Some(false), // l2 (not supported in single-process/standalone)
                 );

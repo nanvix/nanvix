@@ -75,9 +75,9 @@ pub struct SandboxConfig<T> {
     /// This changes for every sandbox, and thus must be provided every time.
     control_plane_connect_socket_info: (String, SocketType),
 
-    /// Optional path to the toolchain binary directory containing cloud-hypervisor and other tools.
+    /// Optional path to the cloud-hypervisor binary directory.
     /// This must be provided if a Linux Daemon instance was not provided before sandbox initialization.
-    toolchain_binary_directory: Option<String>,
+    clh_bin_path: Option<String>,
 
     /// Optional path to the temporary directory for Unix sockets and transient files.
     /// This must be provided if a Linux Daemon instance was not provided before sandbox initialization.
@@ -140,7 +140,7 @@ impl<T> SandboxConfig<T> {
     /// - `syscall_table`: Optional system call table for overriding default system call behavior (only if in single-process mode).
     /// - `control_plane_bind_socket_info`: Optional information on control plane listener socket (address, socket type).
     /// - `control_plane_connect_socket_info`: Optional information on control plane connect socket (address, socket type).
-    /// - `toolchain_binary_directory`: Optional path to the toolchain binary directory.
+    /// - `clh_bin_path`: Optional path to the cloud-hypervisor binary directory.
     /// - `tmp_directory`: Optional path to the temporary directory.
     /// - `l2`: Optional flag to deploy the Linux Daemon inside an L2 VM.
     ///
@@ -167,7 +167,7 @@ impl<T> SandboxConfig<T> {
         >,
         control_plane_bind_socket_info: Option<(String, SocketType)>,
         control_plane_connect_socket_info: (String, SocketType),
-        toolchain_binary_directory: Option<String>,
+        clh_bin_path: Option<String>,
         tmp_directory: Option<String>,
         l2: Option<bool>,
     ) -> Self {
@@ -191,7 +191,7 @@ impl<T> SandboxConfig<T> {
             syscall_table,
             control_plane_bind_socket_info,
             control_plane_connect_socket_info,
-            toolchain_binary_directory,
+            clh_bin_path,
             tmp_directory,
             l2,
             #[cfg(not(feature = "single-process"))]
@@ -374,14 +374,14 @@ impl<T> SandboxConfig<T> {
     ///
     /// # Description
     ///
-    /// Returns the optional path to the toolchain binary directory.
+    /// Returns the optional path to the cloud-hypervisor binary directory.
     ///
     /// # Returns
     ///
-    /// An optional reference to the toolchain binary directory path.
+    /// An optional reference to the cloud-hypervisor binary directory path.
     ///
-    pub fn toolchain_binary_directory(&self) -> Option<&str> {
-        self.toolchain_binary_directory.as_deref()
+    pub fn clh_bin_path(&self) -> Option<&str> {
+        self.clh_bin_path.as_deref()
     }
 
     ///

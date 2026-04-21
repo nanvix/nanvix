@@ -1064,11 +1064,11 @@ def run_benchmark(args):
     # Normalize paths so that Unix-style "./" prefixes are converted to
     # platform-native form (cmd.exe does not understand "./").
     args.bin_dir = os.path.normpath(args.bin_dir)
-    args.toolchain_bin_dir = os.path.normpath(args.toolchain_bin_dir)
+    args.clh_bin_path = os.path.normpath(args.clh_bin_path)
 
     print(
         f"[BENCHMARK] Paths: bin_dir={args.bin_dir}, "
-        f"toolchain_bin_dir={args.toolchain_bin_dir}"
+        f"clh_bin_path={args.clh_bin_path}"
     )
 
     # Resolve the commit SHA used to tag this benchmark result.
@@ -1123,7 +1123,7 @@ def run_benchmark(args):
             if not is_concurrent_bench
             else f"-num-concurrent-vms {NUM_CONCURRENT_VMS}"
         ),
-        f"-toolchain-bin-dir {args.toolchain_bin_dir}",
+        f"-clh-bin-path {args.clh_bin_path}",
     ]
     nanvix_bench_cmd = " ".join(nanvix_bench_cmd)
     print(f"[BENCHMARK] Executing command: {nanvix_bench_cmd}")
@@ -1445,8 +1445,8 @@ if __name__ == "__main__":
         default="./bin",
     )
     run_parser.add_argument(
-        "--toolchain-bin-dir",
-        help="Toolchain binary directory",
+        "--clh-bin-path",
+        help="Cloud-hypervisor binary directory",
         default="./toolchain/bin",
     )
     run_parser.add_argument(

@@ -56,8 +56,8 @@ pub struct SandboxCacheConfig<T> {
     linuxd_binary_path: String,
     /// Path to the User VM binary.
     uservm_binary_path: String,
-    /// Path to the toolchain binary directory containing cloud-hypervisor and other tools.
-    toolchain_binary_directory: String,
+    /// Path to the cloud-hypervisor binary directory.
+    clh_bin_path: String,
     /// Directory path for writing log files.
     log_directory: String,
     /// Flag indicating whether to deploy linuxd inside an L2 VM (using cloud-hypervisor).
@@ -92,7 +92,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
     /// - `kernel_binary_path`: Path to kernel binary.
     /// - `linuxd_binary_path`: Path to the Linux Daemon binary.
     /// - `uservm_binary_path`: Path to the User VM binary.
-    /// - `toolchain_binary_directory`: Path to the toolchain binary directory.
+    /// - `clh_bin_path`: Path to the cloud-hypervisor binary directory.
     /// - `log_directory`: Path to the log directory.
     /// - `l2`: Flag to deploy linuxd inside an L2 VM.
     /// - `l2_snapshot_path`: Path to the L2 VM's base snapshot.
@@ -114,7 +114,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
         kernel_binary_path: &str,
         linuxd_binary_path: &str,
         uservm_binary_path: &str,
-        toolchain_binary_directory: &str,
+        clh_bin_path: &str,
         log_directory: &str,
         l2: bool,
         l2_snapshot_path: &str,
@@ -131,7 +131,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
             kernel_binary_path: kernel_binary_path.to_string(),
             linuxd_binary_path: linuxd_binary_path.to_string(),
             uservm_binary_path: uservm_binary_path.to_string(),
-            toolchain_binary_directory: toolchain_binary_directory.to_string(),
+            clh_bin_path: clh_bin_path.to_string(),
             log_directory: log_directory.to_string(),
             l2,
             l2_snapshot_path: l2_snapshot_path.to_string(),
@@ -273,14 +273,14 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
     ///
     /// # Description
     ///
-    /// Returns the path to the toolchain binary directory.
+    /// Returns the path to the cloud-hypervisor binary directory.
     ///
     /// # Returns
     ///
-    /// The path to the toolchain binary directory.
+    /// The path to the cloud-hypervisor binary directory.
     ///
-    pub fn toolchain_binary_directory(&self) -> &str {
-        &self.toolchain_binary_directory
+    pub fn clh_bin_path(&self) -> &str {
+        &self.clh_bin_path
     }
 
     ///

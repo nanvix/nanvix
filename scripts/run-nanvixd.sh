@@ -20,7 +20,7 @@
 #
 # Environment:
 #   NANVIXD            Path to nanvixd binary  (default: ./bin/nanvixd.elf).
-#   TOOLCHAIN_BIN_DIR  Toolchain bin directory  (default: $HOME/toolchain/bin).
+#   CLH_BIN_PATH       CLH binary directory     (default: $HOME/toolchain/bin).
 #   LOG_DIR            Log output directory     (default: ./logs).
 #   RUST_LOG           Rust log level           (default: info).
 #
@@ -44,7 +44,7 @@ export SCRIPT_DIR
 
 # Defaults for nanvixd configuration.
 NANVIXD="${NANVIXD:-./bin/nanvixd.elf}"
-TOOLCHAIN_BIN_DIR="${TOOLCHAIN_BIN_DIR:-${HOME}/toolchain/bin}"
+CLH_BIN_PATH="${CLH_BIN_PATH:-${HOME}/toolchain/bin}"
 LOG_DIR="${LOG_DIR:-./logs}"
 export RUST_LOG="${RUST_LOG:-info}"
 
@@ -143,7 +143,7 @@ function check_args
 #
 function run_nanvixd
 {
-	local cmd="${NANVIXD} -console-file /dev/stdout -toolchain-bin-dir ${TOOLCHAIN_BIN_DIR} -log-dir ${LOG_DIR} -- ${IMAGE}"
+	local cmd="${NANVIXD} -console-file /dev/stdout -clh-bin-path ${CLH_BIN_PATH} -log-dir ${LOG_DIR} -- ${IMAGE}"
 
 	# Wait-for-string mode: run nanvixd in the background, monitor console output
 	# for a specific string, and terminate nanvixd when the string is found or on
@@ -232,7 +232,7 @@ echo "====================================================================="
 echo "MACHINE          = ${MACHINE}"
 echo "IMAGE            = ${IMAGE}"
 echo "NANVIXD          = ${NANVIXD}"
-echo "TOOLCHAIN_BIN_DIR= ${TOOLCHAIN_BIN_DIR}"
+echo "CLH_BIN_PATH     = ${CLH_BIN_PATH}"
 echo "LOG_DIR          = ${LOG_DIR}"
 echo "RUST_LOG         = ${RUST_LOG}"
 echo "TIMEOUT          = ${TIMEOUT}"
