@@ -6,7 +6,8 @@ description: "Set up native build environment for CI jobs (container-aware)"
 
 inputs:
   components:
-    description: "Space-separated list of additional Rust components to install (e.g., 'rustfmt clippy')"
+    description: "Space-separated list of additional Rust components to install
+      (e.g., 'rustfmt clippy')"
     required: false
     default: ""
   install-cloud-hypervisor:

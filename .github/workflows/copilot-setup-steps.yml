@@ -17,7 +17,7 @@ jobs:
       - name: "Free Disk Space"
         uses: ./.github/actions/free-disk-space
         with:
-          remove-hostedtoolcache: 'false'
+          remove-hostedtoolcache: "false"
 
       - name: Install Rust
         run: |

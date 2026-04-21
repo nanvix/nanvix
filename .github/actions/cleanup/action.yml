@@ -6,7 +6,8 @@ description: "Clean up resources that may have been left behind by previous runs
 
 inputs:
   phase:
-    description: "Cleanup phase: 'pre' (before tests, waits for ports, fails on timeout) or 'post' (after tests, informational only)"
+    description: "Cleanup phase: 'pre' (before tests, waits for ports, fails on
+      timeout) or 'post' (after tests, informational only)"
     required: true
   port:
     description: "Port number to check availability"
