@@ -22,10 +22,12 @@ use crate::{
         WritePermission,
     },
     mm::{
+        phys::UserFrame,
         VirtMemoryManager,
         Vmem,
     },
 };
+use ::alloc::vec::Vec;
 use ::arch::{
     mem,
     mem::PAGE_ALIGNMENT,
@@ -268,6 +270,7 @@ fn do_elf32_load(
             virt_addr_base, virt_addr_end, phys_addr_base, phys_addr_end, access
         );
 
+        let mut uframe_buf: Vec<UserFrame> = Vec::with_capacity(1);
         for vaddr in (virt_addr_base..virt_addr_end).step_by(mem::PAGE_SIZE) {
             let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
 
@@ -335,9 +338,9 @@ fn do_elf32_load(
                     mm.alloc_upages(
                         vmem,
                         vaddr,
-                        1,
                         access,
                         page_lies_in_bss || page_is_partially_covered,
+                        &mut uframe_buf,
                     )?;
                 }
             }

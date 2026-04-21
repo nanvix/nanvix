@@ -69,6 +69,7 @@ use ::alloc::{
         LinkedList,
     },
     ffi::CString,
+    vec::Vec,
 };
 use ::arch::{
     cpu::excp,
@@ -495,7 +496,13 @@ impl ProcessManager {
             error!("{reason} (cmdline.len={:?})", args.len());
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
-        mm.alloc_upages(&mut vmem, args_vaddr, 1, AccessPermission::RDWR, true)?;
+        mm.alloc_upages(
+            &mut vmem,
+            args_vaddr,
+            AccessPermission::RDWR,
+            true,
+            &mut Vec::with_capacity(1),
+        )?;
         vmem.copy_to_user_unaligned(
             args_vaddr.into_inner(),
             VirtualAddress::new(args.as_ptr() as usize),
@@ -513,7 +520,13 @@ impl ProcessManager {
         let envp_vaddr: PageAligned<VirtualAddress> = PageAligned::<VirtualAddress>::from_address(
             VirtualAddress::new(args_vaddr.into_raw_value() + PAGE_SIZE),
         )?;
-        mm.alloc_upages(&mut vmem, envp_vaddr, 1, AccessPermission::RDWR, true)?;
+        mm.alloc_upages(
+            &mut vmem,
+            envp_vaddr,
+            AccessPermission::RDWR,
+            true,
+            &mut Vec::with_capacity(1),
+        )?;
 
         // Populate the environment variable page.
         vmem.copy_to_user_unaligned(
@@ -554,9 +567,9 @@ impl ProcessManager {
         mm.alloc_upages(
             &mut vmem,
             initial_stack_base,
-            USER_STACK_MIN_SIZE / PAGE_SIZE,
             AccessPermission::RDWR,
             true,
+            &mut Vec::with_capacity(USER_STACK_MIN_SIZE / PAGE_SIZE),
         )?;
 
         //==============================================================
@@ -1869,7 +1882,7 @@ impl ProcessManager {
     ) -> Result<(), Error> {
         let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let vmem: &mut Vmem = process.state_mut().vmem_mut();
-        mm.alloc_upages(vmem, vaddr, 1, access, true)
+        mm.alloc_upages(vmem, vaddr, access, true, &mut Vec::with_capacity(1))
     }
 
     pub fn munmap(

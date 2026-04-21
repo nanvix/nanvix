@@ -9,7 +9,6 @@ use crate::{
     hal::mem::FrameAddress,
     mm::phys::frame,
 };
-use ::alloc::vec::Vec;
 use ::core::mem::ManuallyDrop;
 use ::sys::error::Error;
 
@@ -90,7 +89,7 @@ impl Drop for UserFrame {
 /// # Description
 ///
 /// Thin facade over the module-level [`frame`](super::frame) allocator. Exists as a distinct type
-/// so user-frame allocation has its own entry point ([`Upool::alloc_many`] returning [`UserFrame`]).
+/// so user-frame allocation has its own entry point ([`Upool::alloc`] returning [`UserFrame`]).
 ///
 #[derive(Debug)]
 pub struct Upool;
@@ -109,18 +108,17 @@ impl Upool {
         Self
     }
 
-    pub fn alloc_many(&mut self, nframes: usize) -> Result<Vec<UserFrame>, Error> {
-        trace!("nframes={nframes:?}");
-
-        let mut uframes: Vec<UserFrame> = Vec::with_capacity(nframes);
-        for _ in 0..nframes {
-            match frame::alloc() {
-                Ok(addr) => uframes.push(UserFrame::new(addr)),
-                // Rollback is automatic: dropping `uframes` frees all allocated frames.
-                Err(error) => return Err(error),
-            }
-        }
-
-        Ok(uframes)
+    ///
+    /// # Description
+    ///
+    /// Allocates a single user frame from the user frame pool.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a user frame is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn alloc(&mut self) -> Result<UserFrame, Error> {
+        let addr: FrameAddress = frame::alloc()?;
+        Ok(UserFrame::new(addr))
     }
 }
