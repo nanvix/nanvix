@@ -146,11 +146,12 @@ impl From<Alignment> for usize {
 // Standalone Functions
 //==================================================================================================
 
-pub fn align_up(value: usize, align: Alignment) -> Option<usize> {
+pub const fn align_up(value: usize, align: Alignment) -> Option<usize> {
     let align_val: usize = align as usize;
-    value
-        .checked_add(align_val - 1)
-        .map(|v| v & !(align_val - 1))
+    match value.checked_add(align_val - 1) {
+        Some(v) => Some(v & !(align_val - 1)),
+        None => None,
+    }
 }
 
 pub fn align_down(value: usize, align: Alignment) -> usize {
