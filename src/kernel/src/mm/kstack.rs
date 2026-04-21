@@ -8,6 +8,7 @@
 use crate::{
     hal::mem::PageAligned,
     mm::{
+        phys::KernelFrame,
         KernelPage,
         VirtMemoryManager,
     },
@@ -91,8 +92,10 @@ impl KernelStack {
     /// Upon success, the function returns the new kernel stack. Upon failure, an error is returned.
     ///
     pub fn new(mm: &mut VirtMemoryManager) -> Result<Self, Error> {
-        let kpages: Vec<KernelPage> =
-            mm.alloc_kpages(true, config::kernel::KSTACK_SIZE / ::arch::mem::PAGE_SIZE)?;
+        let count: usize = config::kernel::KSTACK_SIZE / ::arch::mem::PAGE_SIZE;
+        let mut kframes: Vec<KernelFrame> = Vec::with_capacity(count);
+        mm.alloc_kpages(true, &mut kframes)?;
+        let kpages: Vec<KernelPage> = kframes.into_iter().map(KernelPage::new).collect();
 
         let guard_threshold: u32 =
             (kpages[0].base().into_raw_value() + Exception::CONTEXT_HW_SIZE) as u32;

@@ -397,30 +397,40 @@ impl VirtMemoryManager {
     ///
     /// # Description
     ///
-    /// Allocates a contiguous range of kernel pages.
+    /// Allocates a contiguous range of kernel frames into caller-provided storage.
     ///
     /// # Parameters
     ///
-    /// - `clear`: Clear pages?
-    /// - `count`: Number of pages to allocate.
+    /// - `clear`: Clear frames?
+    /// - `kframes`: Pre-allocated vector where allocated frames are placed.
+    ///   The number of frames allocated equals `kframes.capacity()`.
     ///
     /// # Return Values
     ///
-    /// Upon success, a vector of kernel pages is returned. Upon failure, an error is returned
-    /// instead.
+    /// Upon success, `Ok(())` is returned and `kframes` is filled to capacity. Upon
+    /// failure, an error is returned instead.
     ///
-    pub fn alloc_kpages(&mut self, clear: bool, count: usize) -> Result<Vec<KernelPage>, Error> {
-        // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no concurrent
-        // or re-entrant access to the physical memory manager is possible.
-        let mut kpages: Vec<KernelFrame> =
-            unsafe { PhysMemoryManager::get_mut() }.alloc_many_kernel_frames(clear, count)?;
-
-        let mut pages: Vec<KernelPage> = Vec::new();
-        while let Some(kframes) = kpages.pop() {
-            pages.push(KernelPage::new(kframes));
+    pub fn alloc_kpages(
+        &mut self,
+        clear: bool,
+        kframes: &mut Vec<KernelFrame>,
+    ) -> Result<(), Error> {
+        if !kframes.is_empty() {
+            let reason: &str = "caller-supplied kframes vector is not empty";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
-        Ok(pages)
+        // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no concurrent
+        // or re-entrant access to the physical memory manager is possible.
+        unsafe { PhysMemoryManager::get_mut() }.alloc_many_kernel_frames(kframes)?;
+        if clear {
+            for kframe in kframes.iter_mut() {
+                kframe.clear();
+            }
+        }
+
+        Ok(())
     }
 
     /// Load an ELF image into a virtual address space.

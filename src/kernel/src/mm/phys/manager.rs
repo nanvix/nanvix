@@ -144,23 +144,26 @@ impl PhysMemoryManager {
     ///
     /// # Description
     ///
-    /// Allocates a contiguous range of kernel frames.
+    /// Allocates a contiguous range of kernel frames into caller-provided storage.
     ///
     /// # Parameters
     ///
-    /// - `clear`: Clear frames?
-    /// - `count`: Number of frames to allocate.
+    /// - `frames`: Mutable reference to a pre-allocated vector. The number of frames allocated
+    ///   equals `frames.capacity()`.
     ///
     /// # Return Values
     ///
-    /// Upon success, a vector of kernel frames is returned. Upon failure, an error is returned
-    /// instead.
+    /// Upon success, `Ok(())` is returned and `frames` is filled to capacity with contiguous
+    /// entries. Upon failure, an error is returned instead.
     ///
-    pub fn alloc_many_kernel_frames(
-        &mut self,
-        clear: bool,
-        count: usize,
-    ) -> Result<Vec<KernelFrame>, Error> {
-        self.kpool.alloc_many(clear, count)
+    pub fn alloc_many_kernel_frames(&mut self, frames: &mut Vec<KernelFrame>) -> Result<(), Error> {
+        // Check if caller-provided vector is not empty.
+        if !frames.is_empty() {
+            let reason: &str = "frames vector is not empty";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        self.kpool.alloc_many(frames)
     }
 }
