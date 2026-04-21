@@ -27,7 +27,10 @@ use ::core::{
         DerefMut,
     },
 };
-use ::sys::error::Error;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //==================================================================================================
 // Kernel Page Pool Inner
@@ -68,19 +71,26 @@ impl KpoolInner {
     ///
     /// # Description
     ///
-    /// Allocates a contiguous range of pages in the kernel page pool.
+    /// Allocates a contiguous range of frame addresses from the kernel pool.
     ///
     /// # Parameters
     ///
-    /// - `count`: Number of frames to allocate.
+    /// - `addrs`: Mutable reference to a pre-allocated vector. The number of frames allocated
+    ///   equals `addrs.capacity()`.
     ///
-    /// # Returns
+    /// # Return Values
     ///
-    /// Upon success, a vector of page-aligned addresses is returned. Upon failure, an error code is
-    /// returned instead.
+    /// Upon success, `Ok(())` is returned and `addrs` is filled to capacity with contiguous
+    /// entries. Upon failure, an error is returned instead.
     ///
-    fn alloc_range(&mut self, count: usize) -> Result<Vec<FrameAddress>, Error> {
-        // Attempt to allocate a range of pages.
+    fn alloc_range(&mut self, addrs: &mut Vec<FrameAddress>) -> Result<(), Error> {
+        if !addrs.is_empty() {
+            let reason: &str = "addrs vector is not empty";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        let count: usize = addrs.capacity();
         let index: usize = match self.bitmap.alloc_range(count) {
             Ok(index) => index,
             Err(error) => {
@@ -89,18 +99,16 @@ impl KpoolInner {
             },
         };
 
-        // Create a vector of page-aligned addresses.
         let base_addr: usize = self.region.start().into_raw_value() + index * mem::PAGE_SIZE;
-        let mut pages: Vec<FrameAddress> = Vec::new();
         for i in 0..count {
             let addr: usize = base_addr + i * mem::PAGE_SIZE;
-            let page: FrameAddress = FrameAddress::new(PageAligned::from_address(
+            let frame: FrameAddress = FrameAddress::new(PageAligned::from_address(
                 PhysicalAddress::from_raw_value(addr)?,
             )?);
-            pages.push(page);
+            addrs.push(frame);
         }
 
-        Ok(pages)
+        Ok(())
     }
 
     /// Frees a page in the kernel pool.
@@ -139,9 +147,9 @@ impl KernelFrame {
     ///
     /// # Description
     ///
-    /// Clears the target kernel page.
+    /// Clears the target kernel frame.
     ///
-    fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.deref_mut().fill(0);
     }
 }
@@ -194,52 +202,44 @@ impl Kpool {
     ///
     /// Allocates a kernel frame from the kernel frame pool.
     ///
-    /// # Parameters
-    ///
-    /// - `clear`: Clear page?
-    ///
     /// # Return Values
     ///
     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
     ///
-    pub fn alloc(&mut self, clear: bool) -> Result<KernelFrame, Error> {
+    pub fn alloc(&mut self) -> Result<KernelFrame, Error> {
         let frame: FrameAddress = self.inner.borrow_mut().alloc()?;
-        let mut kframe: KernelFrame = KernelFrame::new(self.inner.clone(), frame);
-        if clear {
-            kframe.clear();
-        }
-        Ok(kframe)
+        Ok(KernelFrame::new(self.inner.clone(), frame))
     }
 
     ///
     /// # Description
     ///
-    /// Allocates a contiguous range of frames from the kernel frame pool.
+    /// Allocates a contiguous range of kernel frames from the kernel frame pool.
     ///
     /// # Parameters
     ///
-    /// - `clear`: Clear pages?
-    /// - `count`: Number of pages to allocate.
+    /// - `frames`: Mutable reference to a pre-allocated vector. The number of frames allocated
+    ///   equals `frames.capacity()`.
     ///
     /// # Return Values
     ///
-    /// Upon success, a vector of kernel frames is returned. Upon failure, an error is returned
-    /// instead.
+    /// Upon success, `Ok(())` is returned and `frames` is filled to capacity with contiguous
+    /// entries. Upon failure, an error is returned instead.
     ///
-    pub fn alloc_many(&mut self, clear: bool, count: usize) -> Result<Vec<KernelFrame>, Error> {
-        // Attempt to allocate pages.
-        let mut kframes: Vec<FrameAddress> = self.inner.borrow_mut().alloc_range(count)?;
-
-        // Create a vector of kernel pages.
-        let mut kpages: Vec<KernelFrame> = Vec::new();
-        while let Some(kframe) = kframes.pop() {
-            let mut kframe: KernelFrame = KernelFrame::new(self.inner.clone(), kframe);
-            if clear {
-                kframe.clear();
-            }
-            kpages.push(kframe);
+    pub fn alloc_many(&mut self, frames: &mut Vec<KernelFrame>) -> Result<(), Error> {
+        // Check if caller-provided vector is not empty.
+        if !frames.is_empty() {
+            let reason: &str = "frames vector is not empty";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
-        Ok(kpages)
+        let count: usize = frames.capacity();
+        let mut addrs: Vec<FrameAddress> = Vec::with_capacity(count);
+        self.inner.borrow_mut().alloc_range(&mut addrs)?;
+        for addr in addrs {
+            frames.push(KernelFrame::new(self.inner.clone(), addr));
+        }
+        Ok(())
     }
 }
