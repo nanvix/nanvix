@@ -92,7 +92,10 @@ impl Drop for UserFrame {
 /// so user-frame allocation has its own entry point ([`Upool::alloc`] returning [`UserFrame`]).
 ///
 #[derive(Debug)]
-pub struct Upool;
+pub struct Upool {
+    /// Private field prevents external construction.
+    _private: (),
+}
 
 impl Upool {
     ///
@@ -104,8 +107,8 @@ impl Upool {
     ///
     /// A user frame pool.
     ///
-    pub fn new() -> Self {
-        Self
+    pub(super) fn new() -> Self {
+        Self { _private: () }
     }
 
     ///

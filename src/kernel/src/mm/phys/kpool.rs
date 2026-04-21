@@ -1,30 +1,43 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//! Kernel frame pool — module-level singleton.
+//!
+//! The kernel pool is backed by a [`Bitmap`] and exposed as free functions over a singleton so
+//! every in-kernel caller goes through the same state. The public facade types [`Kpool`] and
+//! [`KernelFrame`] delegate to the singleton.
+//!
+//! Access to the kernel pool is synchronized externally and performed by a single thread, so
+//! the backing bitmap uses non-atomic operations.
+
 //==================================================================================================
 // Imports
 //==================================================================================================
 
 use crate::{
     collections::Bitmap,
-    hal::mem::{
-        Address,
-        FrameAddress,
-        PageAligned,
-        PhysicalAddress,
-        TruncatedMemoryRegion,
+    hal::{
+        mem::{
+            Address,
+            FrameAddress,
+            PageAligned,
+            PhysicalAddress,
+        },
+        platform::is_valid_physical_region,
     },
 };
-use ::alloc::{
-    rc::Rc,
-    vec::Vec,
-};
+use ::alloc::vec::Vec;
 use ::arch::mem;
 use ::core::{
-    cell::RefCell,
+    hint::unlikely,
+    mem::MaybeUninit,
     ops::{
         Deref,
         DerefMut,
+    },
+    sync::atomic::{
+        AtomicBool,
+        Ordering,
     },
 };
 use ::sys::error::{
@@ -33,29 +46,28 @@ use ::sys::error::{
 };
 
 //==================================================================================================
-// Kernel Page Pool Inner
+// Inner
 //==================================================================================================
 
-#[derive(Debug)]
-struct KpoolInner {
-    /// Size of the kernel pool.
-    region: TruncatedMemoryRegion<PhysicalAddress>,
-    /// Bitmap of free pages.
+/// Private state of the kernel pool singleton.
+struct Inner {
+    /// Base address of the kernel pool.
+    base: PageAligned<PhysicalAddress>,
+    /// Bitmap of free frames.
     bitmap: Bitmap,
 }
 
-impl KpoolInner {
-    fn new(region: TruncatedMemoryRegion<PhysicalAddress>) -> Result<Self, Error> {
-        trace!("region={region:?}");
-        debug_assert_eq!(
-            region.size() % mem::PAGE_SIZE,
-            0,
-            "kernel pool size must be a multiple of page size"
-        );
-        let bitmap: Bitmap = Bitmap::new(region.size() / (mem::PAGE_SIZE))?;
-        Ok(Self { region, bitmap })
-    }
-
+impl Inner {
+    ///
+    /// # Description
+    ///
+    /// Allocates a frame from the kernel pool.
+    ///
+    /// # Return Values
+    ///
+    /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
+    /// returned instead.
+    ///
     fn alloc(&mut self) -> Result<FrameAddress, Error> {
         let index: usize = match self.bitmap.alloc() {
             Ok(index) => index,
@@ -64,7 +76,7 @@ impl KpoolInner {
                 return Err(error);
             },
         };
-        let addr: usize = self.region.start().into_raw_value() + index * mem::PAGE_SIZE;
+        let addr: usize = self.base.into_raw_value() + index * mem::PAGE_SIZE;
         Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(addr)?)?))
     }
 
@@ -99,7 +111,7 @@ impl KpoolInner {
             },
         };
 
-        let base_addr: usize = self.region.start().into_raw_value() + index * mem::PAGE_SIZE;
+        let base_addr: usize = self.base.into_raw_value() + index * mem::PAGE_SIZE;
         for i in 0..count {
             let addr: usize = base_addr + i * mem::PAGE_SIZE;
             let frame: FrameAddress = FrameAddress::new(PageAligned::from_address(
@@ -111,10 +123,21 @@ impl KpoolInner {
         Ok(())
     }
 
-    /// Frees a page in the kernel pool.
+    ///
+    /// # Description
+    ///
+    /// Frees a previously allocated frame in the kernel pool.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Address of the frame to free.
+    ///
+    /// # Return Values
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
     fn free(&mut self, addr: FrameAddress) -> Result<(), Error> {
-        let index: usize =
-            (addr.into_raw_value() - self.region.start().into_raw_value()) / mem::PAGE_SIZE;
+        let index: usize = (addr.into_raw_value() - self.base.into_raw_value()) / mem::PAGE_SIZE;
         match self.bitmap.clear(index) {
             Ok(()) => Ok(()),
             Err(error) => {
@@ -126,20 +149,181 @@ impl KpoolInner {
 }
 
 //==================================================================================================
-// Kernel Page
+// Constants
 //==================================================================================================
 
+// Use relaxed ordering for all atomic operations to mitigate synchronization overhead. It is safe
+// to use this ordering semantics because Nanvix is a single-core system, and the kernel runs with
+// interrupts disabled.
+const ORDER: Ordering = Ordering::Relaxed;
+
+//==================================================================================================
+// Singleton
+//==================================================================================================
+
+/// Module-level singleton storage.
+static mut INSTANCE: MaybeUninit<Inner> = MaybeUninit::uninit();
+
+/// Whether the kernel pool has been initialized.
+static INSTANCE_INIT: AtomicBool = AtomicBool::new(false);
+
+///
+/// # Description
+///
+/// Returns a mutable reference to the initialized singleton.
+///
+/// # Return Values
+///
+/// A mutable reference to the kernel pool singleton.
+///
+fn instance() -> &'static mut Inner {
+    if unlikely(!INSTANCE_INIT.load(ORDER)) {
+        panic!("kernel pool used before init()");
+    }
+
+    // SAFETY: `INSTANCE_INIT` is `true`, so `INSTANCE` has been fully written by `init()`.
+    // The kernel is single-threaded with interrupts disabled, so no concurrent access is possible.
+    unsafe { INSTANCE.assume_init_mut() }
+}
+
+//==================================================================================================
+// Public Free Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Initializes the kernel pool singleton.
+///
+/// # Parameters
+///
+/// - `base`: Base address of the kernel pool.
+/// - `bitmap`: Bitmap for tracking free pages.
+///
+/// # Return Values
+///
+/// Upon success, a [`Kpool`] instance is returned. Upon failure, an error is returned instead.
+///
+/// # Safety
+///
+/// Must be called exactly once during boot, before any other function in this module.
+///
+pub(super) unsafe fn init(
+    base: PageAligned<PhysicalAddress>,
+    bitmap: Bitmap,
+) -> Result<Kpool, Error> {
+    if unlikely(INSTANCE_INIT.load(ORDER)) {
+        return Err(Error::new(ErrorCode::InvalidArgument, "kernel pool already initialized"));
+    }
+
+    trace!("base={base:?}");
+
+    // Check if bitmap spans across physically-addressable memory.
+    let bitmap_capacity: usize = bitmap.number_of_bits();
+    let kpool_size: usize = bitmap_capacity * mem::PAGE_SIZE;
+    if !is_valid_physical_region(base.into_raw_value(), kpool_size) {
+        let reason: &str = "kernel pool bitmap spans across physically-addressable memory";
+        error!("{reason}");
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+
+    let num_frames: usize = bitmap.number_of_bits();
+    info!("kernel pool: {} frames, {} KB", num_frames, (num_frames * mem::PAGE_SIZE) / 1024,);
+
+    // SAFETY: single-threaded boot; no other reference to `INSTANCE` exists.
+    unsafe { INSTANCE.write(Inner { base, bitmap }) };
+    INSTANCE_INIT.store(true, ORDER);
+    Ok(Kpool { _private: () })
+}
+
+///
+/// # Description
+///
+/// Allocates a frame from the kernel pool.
+///
+/// # Return Values
+///
+/// Upon success, the address of the allocated frame is returned. Upon failure, an error is
+/// returned instead.
+///
+fn alloc() -> Result<FrameAddress, Error> {
+    instance().alloc()
+}
+
+///
+/// # Description
+///
+/// Allocates a contiguous range of frames from the kernel pool.
+///
+/// # Parameters
+///
+/// - `addrs`: Mutable reference to a pre-allocated vector. The number of frames allocated
+///   equals `addrs.capacity()`.
+///
+/// # Return Values
+///
+/// Upon success, `Ok(())` is returned and `addrs` is filled to capacity with contiguous
+/// entries. Upon failure, an error is returned instead.
+///
+fn alloc_range(addrs: &mut Vec<FrameAddress>) -> Result<(), Error> {
+    instance().alloc_range(addrs)
+}
+
+///
+/// # Description
+///
+/// Frees a frame previously returned by [`alloc`].
+///
+/// # Parameters
+///
+/// - `addr`: Address of the frame to free.
+///
+/// # Return Values
+///
+/// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+///
+fn free(addr: FrameAddress) -> Result<(), Error> {
+    instance().free(addr)
+}
+
+//==================================================================================================
+// Kernel Frame
+//==================================================================================================
+
+/// A type that represents a kernel frame.
 #[derive(Debug)]
 pub struct KernelFrame {
-    kpool: Rc<RefCell<KpoolInner>>,
+    /// Frame address.
     base: FrameAddress,
 }
 
 impl KernelFrame {
-    fn new(kpool: Rc<RefCell<KpoolInner>>, base: FrameAddress) -> Self {
-        Self { kpool, base }
+    ///
+    /// # Description
+    ///
+    /// Instantiates a kernel frame.
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: Frame address.
+    ///
+    /// # Returns
+    ///
+    /// A kernel frame.
+    ///
+    fn new(base: FrameAddress) -> Self {
+        Self { base }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the base address of the target kernel frame.
+    ///
+    /// # Returns
+    ///
+    /// The base address of the target kernel frame.
+    ///
     pub fn base(&self) -> FrameAddress {
         self.base
     }
@@ -174,8 +358,8 @@ impl DerefMut for KernelFrame {
 
 impl Drop for KernelFrame {
     fn drop(&mut self) {
-        if let Err(e) = self.kpool.borrow_mut().free(self.base) {
-            error!("failed to free kernel page pool: {:?}", e)
+        if let Err(e) = free(self.base) {
+            error!("failed to free kernel frame: {:?}", e);
         }
     }
 }
@@ -184,19 +368,19 @@ impl Drop for KernelFrame {
 // Kernel Pool
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Thin facade over the module-level kernel pool singleton. Exists as a distinct type so
+/// kernel-frame allocation has its own entry point ([`Kpool::alloc`] returning [`KernelFrame`]).
+///
 #[derive(Debug)]
 pub struct Kpool {
-    inner: Rc<RefCell<KpoolInner>>,
+    /// Private field prevents external construction.
+    _private: (),
 }
 
 impl Kpool {
-    /// Initializes the kernel pool.
-    pub fn new(region: TruncatedMemoryRegion<PhysicalAddress>) -> Result<Self, Error> {
-        Ok(Self {
-            inner: Rc::new(RefCell::new(KpoolInner::new(region)?)),
-        })
-    }
-
     ///
     /// # Description
     ///
@@ -207,8 +391,8 @@ impl Kpool {
     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
     ///
     pub fn alloc(&mut self) -> Result<KernelFrame, Error> {
-        let frame: FrameAddress = self.inner.borrow_mut().alloc()?;
-        Ok(KernelFrame::new(self.inner.clone(), frame))
+        let addr: FrameAddress = alloc()?;
+        Ok(KernelFrame::new(addr))
     }
 
     ///
@@ -236,9 +420,9 @@ impl Kpool {
 
         let count: usize = frames.capacity();
         let mut addrs: Vec<FrameAddress> = Vec::with_capacity(count);
-        self.inner.borrow_mut().alloc_range(&mut addrs)?;
+        alloc_range(&mut addrs)?;
         for addr in addrs {
-            frames.push(KernelFrame::new(self.inner.clone(), addr));
+            frames.push(KernelFrame::new(addr));
         }
         Ok(())
     }

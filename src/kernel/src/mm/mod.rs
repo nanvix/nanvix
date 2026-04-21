@@ -44,6 +44,7 @@ pub mod kredzone;
 //==================================================================================================
 
 use crate::{
+    collections::Bitmap,
     hal::{
         arch::x86::mem::mmu::page_table::PageTable,
         mem::{
@@ -246,6 +247,7 @@ fn parse_memory_regions(
 /// - `memory_regions`: Memory regions.
 /// - `mmio_regions`: MMIO regions.
 /// - `physical_memory_layout`: Physical memory layout bitmap.
+/// - `kpool_bitmap`: Statically-allocated bitmap for the kernel page pool.
 ///
 /// # Returns
 ///
@@ -257,11 +259,15 @@ pub fn init(
     memory_regions: LinkedList<MemoryRegion<VirtualAddress>>,
     mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
     physical_memory_layout: SparseBitmap,
+    kpool_bitmap: Bitmap,
 ) -> Result<Vmem, Error> {
     info!("initializing the memory manager ...");
 
     type VirtMemRegions = LinkedList<TruncatedMemoryRegion<VirtualAddress>>;
     type PhysMemRegions = LinkedList<TruncatedMemoryRegion<PhysicalAddress>>;
+
+    let kpool_base: PageAligned<PhysicalAddress> =
+        PageAligned::<PhysicalAddress>::from_raw_value(kimage.kpool().start().into_raw_value())?;
 
     let (mut other_virtual_memory_regions, virtual_memory_regions, physical_memory_regions): (
         VirtMemRegions,
@@ -270,10 +276,11 @@ pub fn init(
     ) = parse_memory_regions(memory_regions)?;
 
     phys::init(
-        TruncatedMemoryRegion::from_virtual_memory_region(kimage.kpool())?,
+        kpool_base,
         physical_memory_regions,
         &mmio_regions,
         physical_memory_layout,
+        kpool_bitmap,
     )?;
 
     #[cfg(feature = "test")]
