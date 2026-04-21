@@ -21,6 +21,13 @@ pub const WORD_SIZE: usize = ::core::mem::size_of::<u32>();
 ///
 /// # Description
 ///
+/// Alignment for a word.
+///
+pub const WORD_ALIGNMENT: Alignment = Alignment::Align4;
+
+///
+/// # Description
+///
 /// Log2 WORD_SIZE
 ///
 pub const WORD_SHIFT: usize = WORD_SIZE.trailing_zeros() as usize;
