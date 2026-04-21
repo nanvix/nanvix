@@ -17,15 +17,15 @@ outputs:
 runs:
   using: "composite"
   steps:
-  - id: compute
-    shell: bash
-    run: |
-      case "${{ inputs.deployment-type }}" in
-        standalone|single-process|multi-process|l2)
-          echo "make-flags=DEPLOYMENT_MODE=${{ inputs.deployment-type }}" >> "$GITHUB_OUTPUT"
-          ;;
-        *)
-          echo "invalid deployment type: ${{ inputs.deployment-type }}" >&2
-          exit 1
-          ;;
-      esac
+    - id: compute
+      shell: bash
+      run: |
+        case "${{ inputs.deployment-type }}" in
+          standalone|single-process|multi-process|l2)
+            echo "make-flags=DEPLOYMENT_MODE=${{ inputs.deployment-type }}" >> "$GITHUB_OUTPUT"
+            ;;
+          *)
+            echo "invalid deployment type: ${{ inputs.deployment-type }}" >&2
+            exit 1
+            ;;
+        esac

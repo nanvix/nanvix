@@ -7,10 +7,10 @@ description: "Enable KVM access for the current user on GitHub-hosted runners"
 runs:
   using: "composite"
   steps:
-  - name: "Setup KVM"
-    shell: bash
-    run: |
-      echo "[INFO] Configuring KVM access..."
-      sudo usermod -aG kvm "$(whoami)"
-      sudo chmod 666 /dev/kvm
-      echo "[INFO] KVM is ready."
+    - name: "Setup KVM"
+      shell: bash
+      run: |
+        echo "[INFO] Configuring KVM access..."
+        sudo usermod -aG kvm "$(whoami)"
+        sudo chmod 666 /dev/kvm
+        echo "[INFO] KVM is ready."

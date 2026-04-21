@@ -10,10 +10,10 @@ name: "Sync x86_64 Branch"
 
 on:
   schedule:
-    - cron: '0 * * * *'
+    - cron: "0 * * * *"
   workflow_dispatch:
 
-# Only one sync at a time.
+    # Only one sync at a time.
 concurrency:
   group: sync-x64-branch
   cancel-in-progress: true
@@ -27,37 +27,37 @@ jobs:
       contents: write
 
     steps:
-    - name: "Checkout feature-kernel-x64"
-      uses: actions/checkout@v6
-      with:
-        ref: feature-kernel-x64
-        fetch-depth: 0
+      - name: "Checkout feature-kernel-x64"
+        uses: actions/checkout@v6
+        with:
+          ref: feature-kernel-x64
+          fetch-depth: 0
 
-    - name: "Check if merge is needed"
-      id: check
-      run: |
-        git fetch origin dev
-        BEHIND=$(git rev-list --count HEAD..origin/dev)
-        echo "behind=$BEHIND"
-        echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
-        if [ "$BEHIND" -eq 0 ]; then
-          echo "feature-kernel-x64 is up-to-date with dev. Nothing to do."
-        else
-          echo "feature-kernel-x64 is $BEHIND commit(s) behind dev."
-        fi
+      - name: "Check if merge is needed"
+        id: check
+        run: |
+          git fetch origin dev
+          BEHIND=$(git rev-list --count HEAD..origin/dev)
+          echo "behind=$BEHIND"
+          echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
+          if [ "$BEHIND" -eq 0 ]; then
+            echo "feature-kernel-x64 is up-to-date with dev. Nothing to do."
+          else
+            echo "feature-kernel-x64 is $BEHIND commit(s) behind dev."
+          fi
 
-    - name: "Merge dev into feature-kernel-x64"
-      if: steps.check.outputs.behind != '0'
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        echo "Merging origin/dev into feature-kernel-x64..."
-        if ! git merge origin/dev --no-edit; then
-          echo "::error::Merge conflict: dev cannot be cleanly merged into feature-kernel-x64. Manual resolution required."
-          git merge --abort
-          exit 1
-        fi
+      - name: "Merge dev into feature-kernel-x64"
+        if: steps.check.outputs.behind != '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "Merging origin/dev into feature-kernel-x64..."
+          if ! git merge origin/dev --no-edit; then
+            echo "::error::Merge conflict: dev cannot be cleanly merged into feature-kernel-x64. Manual resolution required."
+            git merge --abort
+            exit 1
+          fi
 
-    - name: "Push merged branch"
-      if: steps.check.outputs.behind != '0'
-      run: git push origin feature-kernel-x64
+      - name: "Push merged branch"
+        if: steps.check.outputs.behind != '0'
+        run: git push origin feature-kernel-x64
