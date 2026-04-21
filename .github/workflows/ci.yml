@@ -126,13 +126,13 @@ jobs:
   # build matrix entry (12 jobs).
   lint:
     name: "Lint (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
-    needs: [precheck]
+    needs: [ precheck ]
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        machine-type: [microvm, hyperlight]
-        deployment-type: [standalone, single-process, multi-process]
+        machine-type: [ microvm, hyperlight ]
+        deployment-type: [ standalone, single-process, multi-process ]
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/nanvix/ci:ubuntu-24.04
@@ -179,13 +179,13 @@ jobs:
   # machine-type + deployment-type) and runs once per unique pair, like lint.
   verify:
     name: "Verify (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
-    needs: [precheck]
+    needs: [ precheck ]
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        machine-type: [microvm, hyperlight]
-        deployment-type: [standalone, single-process, multi-process]
+        machine-type: [ microvm, hyperlight ]
+        deployment-type: [ standalone, single-process, multi-process ]
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/nanvix/ci:ubuntu-24.04
@@ -228,8 +228,9 @@ jobs:
   # all builds have finished rather than as soon as an individual build
   # completes.
   ci-build:
-    name: "Build (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
-    needs: [precheck, checks, lint, verify]
+    name: "Build (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{
+      matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
+    needs: [ precheck, checks, lint, verify ]
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -237,10 +238,12 @@ jobs:
         # PRs run debug only (fast feedback); merge queue and dev pushes run
         # release only (final validation + release archives); manual dispatch
         # runs both.
-        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' || github.event_name == 'workflow_dispatch' && '["debug","release"]' || '["release"]') }}
-        machine-type: [microvm, hyperlight]
-        deployment-type: [standalone, single-process, multi-process]
-        memory-size: [128, 256]
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' ||
+          github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
+          '["release"]') }}
+        machine-type: [ microvm, hyperlight ]
+        deployment-type: [ standalone, single-process, multi-process ]
+        memory-size: [ 128, 256 ]
         # 256MB images are release-only; exclude them from debug builds.
         exclude:
           - build-type: debug
@@ -286,7 +289,8 @@ jobs:
           MACHINE_TYPE: ${{ matrix.machine-type }}
           LOG_LEVEL: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
           RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
-          BUILD_TARGETS: ${{ matrix.build-type == 'release' && 'all run-unit-tests release' || 'all run-unit-tests' }}
+          BUILD_TARGETS: ${{ matrix.build-type == 'release' && 'all run-unit-tests
+            release' || 'all run-unit-tests' }}
         run: |
           ./z build -- ${BUILD_TARGETS} \
             "MACHINE=${MACHINE_TYPE}" \
@@ -301,7 +305,8 @@ jobs:
       - name: "Upload Build Artifacts"
         uses: actions/upload-artifact@v7
         with:
-          name: ci-build-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.memory-size }}mb
+          name: ci-build-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{
+            matrix.deployment-type }}-${{ matrix.memory-size }}mb
           overwrite: true
           retention-days: 1
           path: |
@@ -315,7 +320,9 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.memory-size }}mb
+          name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number
+            }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{
+            matrix.deployment-type }}-${{ matrix.memory-size }}mb
           overwrite: "true"
           path: |
             logs/
@@ -324,20 +331,23 @@ jobs:
             **/*.err
 
   ci-test:
-    name: "Test (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
-    needs: [ci-build]
+    name: "Test (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{
+      matrix.deployment-type }})"
+    needs: [ ci-build ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: ${{ !cancelled() && needs.ci-build.result == 'success' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' || github.event_name == 'workflow_dispatch' && '["debug","release"]' || '["release"]') }}
-        machine-type: [microvm, hyperlight]
-        deployment-type: [standalone, single-process, multi-process]
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' ||
+          github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
+          '["release"]') }}
+        machine-type: [ microvm, hyperlight ]
+        deployment-type: [ standalone, single-process, multi-process ]
     runs-on:
       group: Test
-      labels: [self-hosted, Linux]
+      labels: [ self-hosted, Linux ]
     permissions:
       contents: read
 
@@ -411,7 +421,9 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: nanvix-integration-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
+          name: nanvix-integration-logs-${{ github.event.pull_request.number ||
+            github.run_number }}-${{ matrix.build-type }}-${{
+            matrix.machine-type }}-${{ matrix.deployment-type }}
           overwrite: "true"
           path: |
             logs/
@@ -426,7 +438,7 @@ jobs:
   # Format check is machine-type independent, so it runs once.
   windows-format-check:
     name: "Windows Format Check"
-    needs: [precheck]
+    needs: [ precheck ]
     timeout-minutes: 30
     runs-on: windows-latest
     permissions:
@@ -467,7 +479,7 @@ jobs:
   # Lint check varies by machine-type (different Cargo features), so it runs per backend.
   windows-lint-check:
     name: "Windows Lint Check (${{ matrix.machine-type }})"
-    needs: [precheck]
+    needs: [ precheck ]
     timeout-minutes: 30
     runs-on: windows-latest
     permissions:
@@ -475,7 +487,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        machine-type: [microvm, hyperlight]
+        machine-type: [ microvm, hyperlight ]
 
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: |
@@ -513,12 +525,12 @@ jobs:
   # on Windows, so the matrix covers machine-type only.
   windows-verify:
     name: "Windows Verify (${{ matrix.machine-type }})"
-    needs: [precheck]
+    needs: [ precheck ]
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        machine-type: [microvm, hyperlight]
+        machine-type: [ microvm, hyperlight ]
     runs-on: windows-latest
     permissions:
       contents: read
@@ -558,8 +570,9 @@ jobs:
   # Build all components (guest + host) natively on Windows using the local
   # cross-compilation toolchain (GNU Make + rust-lld) and run unit tests.
   windows-ci-build:
-    name: "Windows Build (${{ matrix.machine-type }}, ${{ matrix.build-type }}, ${{ matrix.memory-size }}mb)"
-    needs: [windows-format-check, windows-lint-check, windows-verify]
+    name: "Windows Build (${{ matrix.machine-type }}, ${{ matrix.build-type }}, ${{
+      matrix.memory-size }}mb)"
+    needs: [ windows-format-check, windows-lint-check, windows-verify ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     # !failure() ensures the build does not start when checks/lint/verify fail.
     if: |
@@ -571,9 +584,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' || github.event_name == 'workflow_dispatch' && '["debug","release"]' || '["release"]') }}
-        machine-type: [microvm, hyperlight]
-        memory-size: [128, 256]
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' ||
+          github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
+          '["release"]') }}
+        machine-type: [ microvm, hyperlight ]
+        memory-size: [ 128, 256 ]
         # 256MB images are release-only; exclude them from debug builds.
         exclude:
           - build-type: debug
@@ -633,7 +648,8 @@ jobs:
       - name: "Upload Build Artifacts"
         uses: actions/upload-artifact@v7
         with:
-          name: windows-build-${{ matrix.machine-type }}-${{ matrix.build-type }}-${{ matrix.memory-size }}mb
+          name: windows-build-${{ matrix.machine-type }}-${{ matrix.build-type }}-${{
+            matrix.memory-size }}mb
           retention-days: 1
           path: |
             bin/*.exe
@@ -643,16 +659,19 @@ jobs:
   # Run the full standalone test suite on Windows Hypervisor Platform using nanvix-test.exe,
   # mirroring the Linux CI integration-test stage.
   windows-integration-test:
-    name: "Windows Integration Test (${{ matrix.machine-type }}, ${{ matrix.build-type }})"
-    needs: [windows-ci-build]
+    name: "Windows Integration Test (${{ matrix.machine-type }}, ${{
+      matrix.build-type }})"
+    needs: [ windows-ci-build ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: ${{ !cancelled() && needs.windows-ci-build.result == 'success' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' || github.event_name == 'workflow_dispatch' && '["debug","release"]' || '["release"]') }}
-        machine-type: [microvm, hyperlight]
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' ||
+          github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
+          '["release"]') }}
+        machine-type: [ microvm, hyperlight ]
     runs-on: windows-latest
     permissions:
       contents: read
@@ -730,7 +749,8 @@ jobs:
           echo "whp_available=true" >> $env:GITHUB_OUTPUT
 
       - name: "In-Kernel Tests (${{ matrix.machine-type }})"
-        if: steps.whp-check.outputs.whp_available == 'true' && matrix.build-type == 'debug'
+        if: steps.whp-check.outputs.whp_available == 'true' && matrix.build-type ==
+          'debug'
         shell: pwsh
         env:
           RUST_LOG: debug
@@ -750,7 +770,9 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: nanvix-windows-integration-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}-${{ matrix.build-type }}
+          name: nanvix-windows-integration-logs-${{ github.event.pull_request.number ||
+            github.run_number }}-${{ matrix.machine-type }}-${{
+            matrix.build-type }}
           overwrite: "true"
           path: |
             logs/
@@ -763,7 +785,7 @@ jobs:
   # supported (boot-time, cold-start, warm-start-vmm).
   windows-benchmark-ci:
     name: "Windows Benchmark CI (${{ matrix.machine-type }})"
-    needs: [precheck]
+    needs: [ precheck ]
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -929,7 +951,8 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: nanvix-benchmark-ci-windows-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
+          name: nanvix-benchmark-ci-windows-logs-${{ github.event.pull_request.number ||
+            github.run_number }}-${{ matrix.machine-type }}
           overwrite: "true"
           path: |
             logs/
@@ -946,16 +969,18 @@ jobs:
   # from source on self-hosted runners with a local toolchain.
   ci-l2:
     name: "L2 (${{ matrix.build-type }}, ${{ matrix.machine-type }})"
-    needs: [precheck, checks]
+    needs: [ precheck, checks ]
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' || github.event_name == 'workflow_dispatch' && '["debug","release"]' || '["release"]') }}
-        machine-type: [microvm, hyperlight]
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' ||
+          github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
+          '["release"]') }}
+        machine-type: [ microvm, hyperlight ]
     runs-on:
       group: Test
-      labels: [self-hosted, Linux]
+      labels: [ self-hosted, Linux ]
     permissions:
       contents: read
 
@@ -1050,7 +1075,8 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: nanvix-l2-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}
+          name: nanvix-l2-logs-${{ github.event.pull_request.number || github.run_number
+            }}-${{ matrix.build-type }}-${{ matrix.machine-type }}
           overwrite: "true"
           path: |
             logs/
@@ -1063,7 +1089,7 @@ jobs:
   # Each machine type runs in parallel; a finalize job aggregates results.
   benchmark:
     name: "Benchmark (${{ matrix.machine-type }})"
-    needs: [precheck]
+    needs: [ precheck ]
     timeout-minutes: 240
     strategy:
       fail-fast: false
@@ -1073,7 +1099,9 @@ jobs:
             # FIXME(1171): the current L2 deployment involves a very slow network
             # namespace creation, particularly at high-churn, so we must temporarily
             # reduce the number of iterations of the benchmarks.
-            standard-benchmarks: "boot-time cold-start cold-start-l2 cold-start-uvm concurrent concurrent-l2 round-trip-latency snapshot-restore warm-start warm-start-l2 warm-start-vmm"
+            standard-benchmarks: "boot-time cold-start cold-start-l2 cold-start-uvm
+              concurrent concurrent-l2 round-trip-latency snapshot-restore
+              warm-start warm-start-l2 warm-start-vmm"
             standard-iterations: "100"
             echo-benchmarks: "echo-breakdown echo-breakdown-l2"
             echo-iterations: "1000"
@@ -1083,7 +1111,7 @@ jobs:
           # round-trip-latency failure is investigated.
     runs-on:
       group: Benchmark
-      labels: [self-hosted, Linux]
+      labels: [ self-hosted, Linux ]
     permissions:
       contents: read
 
@@ -1209,7 +1237,8 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: nanvix-benchmark-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
+          name: nanvix-benchmark-logs-${{ github.event.pull_request.number ||
+            github.run_number }}-${{ matrix.machine-type }}
           overwrite: "true"
           path: |
             logs/
@@ -1225,7 +1254,7 @@ jobs:
   # exclusion steps used by windows-benchmark-ci are omitted.
   windows-benchmark:
     name: "Windows Benchmark (${{ matrix.machine-type }})"
-    needs: [precheck]
+    needs: [ precheck ]
     timeout-minutes: 240
     strategy:
       fail-fast: false
@@ -1238,7 +1267,7 @@ jobs:
           # round-trip-latency failure is investigated.
     runs-on:
       group: Benchmark
-      labels: [self-hosted, Windows]
+      labels: [ self-hosted, Windows ]
     permissions:
       contents: read
 
@@ -1392,7 +1421,9 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: nanvix-benchmark-windows-baremetal-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
+          name: nanvix-benchmark-windows-baremetal-logs-${{
+            github.event.pull_request.number || github.run_number }}-${{
+            matrix.machine-type }}
           overwrite: "true"
           path: |
             logs/
@@ -1407,7 +1438,7 @@ jobs:
   # discarded so that baselines stay consistent across machine types.
   benchmark-finalize:
     name: "Benchmark Finalize"
-    needs: [benchmark]
+    needs: [ benchmark ]
     # NOTE: needs.benchmark.result is the aggregate result across all matrix
     # legs. It is 'success' only when every leg succeeds.
     if: ${{ !cancelled() && needs.benchmark.result == 'success' }}
@@ -1436,7 +1467,9 @@ jobs:
       - name: "Report Benchmark Results"
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-l2,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concu\
+            rrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,snapsh\
+            ot-restore,vfs-bench,warm-start,warm-start-l2,warm-start-vmm"
           machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/baremetal"
@@ -1465,7 +1498,9 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-l2,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concu\
+            rrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,snapsh\
+            ot-restore,vfs-bench,warm-start,warm-start-l2,warm-start-vmm"
           machine-types: "microvm,hyperlight"
           archs: "X64"
           target-dir: "data/baremetal"
@@ -1474,7 +1509,8 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: nanvix-benchmark-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
+          name: nanvix-benchmark-finalize-logs-${{ github.event.pull_request.number ||
+            github.run_number }}
           overwrite: "true"
           path: |
             logs/
@@ -1488,7 +1524,7 @@ jobs:
   # from the Linux and GitHub-hosted baselines.
   windows-benchmark-finalize:
     name: "Windows Benchmark Finalize"
-    needs: [windows-benchmark]
+    needs: [ windows-benchmark ]
     # NOTE: needs.windows-benchmark.result is the aggregate result across all
     # matrix legs. It is 'success' only when every leg succeeds.
     if: ${{ !cancelled() && needs.windows-benchmark.result == 'success' }}
@@ -1557,7 +1593,8 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: nanvix-benchmark-windows-baremetal-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
+          name: nanvix-benchmark-windows-baremetal-finalize-logs-${{
+            github.event.pull_request.number || github.run_number }}
           overwrite: "true"
           path: |
             logs/
@@ -1573,7 +1610,7 @@ jobs:
   # Each machine type runs in parallel; a finalize job aggregates results.
   benchmark-ci:
     name: "Benchmark CI (${{ matrix.machine-type }})"
-    needs: [precheck]
+    needs: [ precheck ]
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -1583,7 +1620,8 @@ jobs:
             # NOTE: concurrent is excluded on GitHub-hosted runners because the
             # gateway handshake race condition (issue #1552) causes sporadic
             # timeouts under the scheduling contention of shared CI machines.
-            standard-benchmarks: "boot-time cold-start cold-start-uvm round-trip-latency snapshot-restore warm-start warm-start-vmm"
+            standard-benchmarks: "boot-time cold-start cold-start-uvm round-trip-latency
+              snapshot-restore warm-start warm-start-vmm"
             standard-iterations: "100"
             echo-benchmarks: "echo-breakdown"
             echo-iterations: "1000"
@@ -1739,7 +1777,8 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: nanvix-benchmark-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
+          name: nanvix-benchmark-ci-logs-${{ github.event.pull_request.number ||
+            github.run_number }}-${{ matrix.machine-type }}
           overwrite: "true"
           path: |
             logs/
@@ -1754,7 +1793,7 @@ jobs:
   # discarded so that baselines stay consistent across machine types.
   benchmark-ci-finalize:
     name: "Benchmark CI Finalize"
-    needs: [benchmark-ci]
+    needs: [ benchmark-ci ]
     # NOTE: needs.benchmark-ci.result is the aggregate result across all matrix
     # legs. It is 'success' only when every leg succeeds.
     if: ${{ !cancelled() && needs.benchmark-ci.result == 'success' }}
@@ -1780,7 +1819,8 @@ jobs:
       - name: "Report Benchmark Results"
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: "boot-time,cold-start,cold-start-uvm,echo-breakdown,round-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-uvm,echo-breakdown,round-trip-late\
+            ncy,snapshot-restore,vfs-bench,warm-start,warm-start-vmm"
           machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/github"
@@ -1809,7 +1849,8 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,cold-start-uvm,echo-breakdown,round-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-uvm,echo-breakdown,round-trip-late\
+            ncy,snapshot-restore,vfs-bench,warm-start,warm-start-vmm"
           machine-types: "microvm,hyperlight"
           archs: "X64"
           target-dir: "data/github"
@@ -1818,7 +1859,8 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: nanvix-benchmark-ci-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
+          name: nanvix-benchmark-ci-finalize-logs-${{ github.event.pull_request.number ||
+            github.run_number }}
           overwrite: "true"
           path: |
             logs/
@@ -1831,7 +1873,7 @@ jobs:
   # them isolated from the Linux baselines.
   windows-benchmark-ci-finalize:
     name: "Windows Benchmark CI Finalize"
-    needs: [windows-benchmark-ci]
+    needs: [ windows-benchmark-ci ]
     if: ${{ !cancelled() && needs.windows-benchmark-ci.result == 'success' }}
     timeout-minutes: 30
     runs-on: ubuntu-24.04
@@ -1877,7 +1919,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: "Gate on Performance Regressions"
-        if: github.ref_name != 'dev' && steps.check-results.outputs.has_results == 'true'
+        if: github.ref_name != 'dev' && steps.check-results.outputs.has_results ==
+          'true'
         shell: bash
         # vfs-bench is excluded: it uses a different CSV schema (not percentile-based).
         run: |
@@ -1894,7 +1937,8 @@ jobs:
             --baseline-window 20
 
       - name: "Persist results on dev"
-        if: github.ref_name == 'dev' && steps.check-results.outputs.has_results == 'true'
+        if: github.ref_name == 'dev' && steps.check-results.outputs.has_results ==
+          'true'
         uses: ./.github/actions/benchmark-persist
         with:
           benchmarks: "boot-time,cold-start,snapshot-restore,vfs-bench,warm-start-vmm"
@@ -1906,7 +1950,8 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: nanvix-benchmark-ci-windows-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
+          name: nanvix-benchmark-ci-windows-finalize-logs-${{
+            github.event.pull_request.number || github.run_number }}
           overwrite: "true"
           path: |
             logs/
@@ -1920,7 +1965,8 @@ jobs:
 
   # Create release archives for all applicable configurations.
   release-archive:
-    name: "Release Archive (${{ matrix.target-arch }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
+    name: "Release Archive (${{ matrix.target-arch }}, ${{ matrix.machine-type }},
+      ${{ matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
     needs:
       [
         ci-test,
@@ -1944,10 +1990,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target-arch: [x86]
-        machine-type: [microvm, hyperlight]
-        deployment-type: [standalone, single-process, multi-process]
-        memory-size: [128, 256]
+        target-arch: [ x86 ]
+        machine-type: [ microvm, hyperlight ]
+        deployment-type: [ standalone, single-process, multi-process ]
+        memory-size: [ 128, 256 ]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -1958,7 +2004,8 @@ jobs:
       - name: "Download CI Build Artifacts"
         uses: actions/download-artifact@v8
         with:
-          name: ci-build-release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.memory-size }}mb
+          name: ci-build-release-${{ matrix.machine-type }}-${{ matrix.deployment-type
+            }}-${{ matrix.memory-size }}mb
           path: .
 
       - name: "Package Release Archive"
@@ -1973,14 +2020,16 @@ jobs:
       - name: "Upload Release Artifact"
         uses: actions/upload-artifact@v7
         with:
-          name: release-${{ matrix.target-arch }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.memory-size }}mb
+          name: release-${{ matrix.target-arch }}-${{ matrix.machine-type }}-${{
+            matrix.deployment-type }}-${{ matrix.memory-size }}mb
           path: ${{ steps.release-archive.outputs.archive-path }}
           overwrite: true
 
   # Package Windows standalone binaries into a release archive (.zip).
   # Windows only supports standalone deployment mode.
   windows-release-archive:
-    name: "Windows Release Archive (${{ matrix.target-arch }}, ${{ matrix.machine-type }}, ${{ matrix.memory-size }}mb)"
+    name: "Windows Release Archive (${{ matrix.target-arch }}, ${{
+      matrix.machine-type }}, ${{ matrix.memory-size }}mb)"
     needs:
       [
         windows-integration-test,
@@ -2006,9 +2055,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target-arch: [x86]
-        machine-type: [microvm, hyperlight]
-        memory-size: [128, 256]
+        target-arch: [ x86 ]
+        machine-type: [ microvm, hyperlight ]
+        memory-size: [ 128, 256 ]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -2019,7 +2068,8 @@ jobs:
       - name: "Download Windows Build Artifacts"
         uses: actions/download-artifact@v8
         with:
-          name: windows-build-${{ matrix.machine-type }}-release-${{ matrix.memory-size }}mb
+          name: windows-build-${{ matrix.machine-type }}-release-${{ matrix.memory-size
+            }}mb
           path: windows-bin
 
       - name: "Package Windows Release Archive"
@@ -2041,14 +2091,15 @@ jobs:
       - name: "Upload Release Artifact"
         uses: actions/upload-artifact@v7
         with:
-          name: release-windows-${{ matrix.target-arch }}-${{ matrix.machine-type }}-standalone-${{ matrix.memory-size }}mb
+          name: release-windows-${{ matrix.target-arch }}-${{ matrix.machine-type
+            }}-standalone-${{ matrix.memory-size }}mb
           path: ${{ steps.package.outputs.archive-path }}
           overwrite: true
 
   # Publish a versioned release to GitHub.
   publish-release:
     name: "Publish Release"
-    needs: [release-archive, windows-release-archive]
+    needs: [ release-archive, windows-release-archive ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: |
       !cancelled() &&
@@ -2059,7 +2110,7 @@ jobs:
       needs.windows-release-archive.result == 'success'
     runs-on:
       group: Test
-      labels: [self-hosted, Linux]
+      labels: [ self-hosted, Linux ]
     permissions:
       contents: write
 
@@ -2193,8 +2244,7 @@ jobs:
     # Only run on push-to-dev merge commits.
     # Guard against infinite loops by excluding github-actions[bot] commits.
     if: >-
-      github.event_name == 'push' &&
-      github.actor != 'github-actions[bot]' &&
+      github.event_name == 'push' && github.actor != 'github-actions[bot]' &&
       github.event.head_commit.author.username != 'github-actions[bot]' &&
       github.event.head_commit.committer.username != 'github-actions[bot]'
     runs-on: ubuntu-24.04

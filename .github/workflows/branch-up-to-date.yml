@@ -11,7 +11,8 @@ on:
   workflow_call:
     outputs:
       up_to_date:
-        description: "Whether the branch is up to date with the default branch (not behind and no merge commits)."
+        description: "Whether the branch is up to date with the default branch (not
+          behind and no merge commits)."
         value: ${{ jobs.precheck.outputs.up_to_date }}
       behind_count:
         description: "How many commits the branch is behind the default branch."
@@ -20,10 +21,12 @@ on:
         description: "The default branch name resolved for the base repository."
         value: ${{ jobs.precheck.outputs.default_branch }}
       has_merge_commits:
-        description: "Whether the branch contains merge commits not present on the default branch."
+        description: "Whether the branch contains merge commits not present on the
+          default branch."
         value: ${{ jobs.precheck.outputs.has_merge_commits }}
       merge_commit_count:
-        description: "The number of merge commits on the branch that are not on the default branch."
+        description: "The number of merge commits on the branch that are not on the
+          default branch."
         value: ${{ jobs.precheck.outputs.merge_commit_count }}
 
 jobs:
@@ -45,14 +48,17 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          repository: ${{ github.event.pull_request.head.repo.full_name ||
+            github.repository }}
 
       - name: "Determine if branch is behind default branch"
         id: branch_status
         shell: bash
         env:
-          BASE_REPO: ${{ github.event.pull_request.base.repo.full_name || github.repository }}
-          BASE_REF: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch || github.ref_name }}
+          BASE_REPO: ${{ github.event.pull_request.base.repo.full_name ||
+            github.repository }}
+          BASE_REF: ${{ github.event.pull_request.base.ref ||
+            github.event.repository.default_branch || github.ref_name }}
         run: |
           set -euo pipefail
 
@@ -163,7 +169,8 @@ jobs:
           fi
 
       - name: "Comment on PR when branch is behind or contains merge commits"
-        if: ${{ github.event_name == 'pull_request' && steps.final_status.outputs.up_to_date == 'false' }}
+        if: ${{ github.event_name == 'pull_request' &&
+          steps.final_status.outputs.up_to_date == 'false' }}
         uses: actions/github-script@v9
         with:
           script: |

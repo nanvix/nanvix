@@ -331,4 +331,3 @@ runs:
           } else {
             core.info(`Verified release ${release.id} is published (draft=${verify.draft}).`);
           }
-
