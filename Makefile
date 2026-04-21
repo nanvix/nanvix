@@ -460,7 +460,6 @@ clean: clean-nanvix-bench
 endif
 
 distclean: clean
-	$(FORCE_RM_CMD) Cargo.lock
 ifeq ($(IS_WINDOWS),yes)
 	$(FORCE_RM_CMD) "$(OBJECTS_DIR)"
 else
