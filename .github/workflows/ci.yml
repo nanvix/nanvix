@@ -58,7 +58,7 @@ jobs:
   # ==========================================================================================
 
   # Run config-independent source checks once (format, spellcheck) instead of
-  # repeating them in every matrix entry. Downstream jobs (ci-build, ci-l2)
+  # repeating them in every matrix entry. Downstream jobs (ci-build)
   # wait for these to pass.
   checks:
     name: "Source Checks"
@@ -355,8 +355,8 @@ jobs:
       - name: "Pre-Checkout Cleanup"
         shell: bash
         run: |
-          # Previous runs may leave root-owned files (e.g., images/l2-sysvm-rootfs/dev)
-          # that prevent actions/checkout from resetting the workspace. The cleanup
+          # Previous runs may leave root-owned files that prevent
+          # actions/checkout from resetting the workspace. The cleanup
           # composite action cannot run before checkout, so perform a direct cleanup
           # of the images directory without executing any workspace scripts.
           if [[ -d "${GITHUB_WORKSPACE}/images" ]]; then
@@ -781,130 +781,10 @@ jobs:
             **/*.err
 
   # ==========================================================================================
-  # Stage 3: L2 and Benchmark (Self-Hosted Runners)
+  # Stage 3: Benchmark (Self-Hosted Runners)
   # ==========================================================================================
 
-  # L2 configurations require .git for generate-l2-initramfs.sh, so they build
-  # from source on self-hosted runners with a local toolchain.
-  ci-l2:
-    name: "L2 (${{ matrix.build-type }}, ${{ matrix.machine-type }})"
-    needs: [ precheck, checks ]
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' ||
-          github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
-          '["release"]') }}
-        machine-type: [ microvm, hyperlight ]
-    runs-on:
-      group: Test
-      labels: [ self-hosted, Linux ]
-    permissions:
-      contents: read
-
-    # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
-    # !failure() ensures L2 does not start when checks fail.
-    if: |
-      !cancelled() && !failure() &&
-      github.repository == 'nanvix/nanvix' && (
-        github.event_name == 'merge_group' || github.event_name == 'schedule' || (
-          needs.precheck.outputs.up_to_date == 'true' && (
-            github.event_name != 'push' ||
-            github.event.head_commit == null ||
-            !startsWith(github.event.head_commit.message, 'Merge ')
-          ) && (
-            github.event_name != 'pull_request' ||
-            !github.event.pull_request.draft
-          )
-        )
-      )
-
-    steps:
-      - name: "Pre-Checkout Cleanup"
-        shell: bash
-        run: |
-          # Previous runs may leave root-owned files (e.g., images/l2-sysvm-rootfs/dev)
-          # that prevent actions/checkout from resetting the workspace. The cleanup
-          # composite action cannot run before checkout, so perform a direct cleanup
-          # of the images directory without executing any workspace scripts.
-          if [[ -d "${GITHUB_WORKSPACE}/images" ]]; then
-            echo "Removing images directory before checkout..."
-            sudo rm -rf "${GITHUB_WORKSPACE}/images"
-          fi
-
-      - uses: actions/checkout@v6
-
-      - name: "Isolate Cargo Home"
-        shell: bash
-        run: |
-          # Isolate Cargo home per job to prevent concurrent git-cache races on
-          # self-hosted runners that share the same filesystem.  Symlink the
-          # toolchain bin/ directory so that the Makefile can still resolve
-          # $CARGO_HOME/bin/cargo.
-          mkdir -p "$RUNNER_TEMP/.cargo"
-          ln -sfn "$HOME/.cargo/bin" "$RUNNER_TEMP/.cargo/bin"
-          echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
-
-      - name: "Pre-Cleanup Dangling Resources"
-        uses: ./.github/actions/cleanup
-        with:
-          phase: pre
-
-      - name: "Link Toolchain Directory"
-        uses: ./.github/actions/link-toolchain
-
-      - name: "Lint"
-        uses: ./.github/actions/lint
-        with:
-          release: "${{ matrix.build-type }}"
-          log-level: "trace"
-          machine-type: "${{ matrix.machine-type }}"
-          deployment-type: "l2"
-
-      - name: "Build"
-        uses: ./.github/actions/build
-        with:
-          release: "${{ matrix.build-type }}"
-          # Use 'error' log level for release builds to match release archive settings,
-          # enabling reuse of build artifacts and avoiding a redundant rebuild.
-          log-level: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
-          machine-type: "${{ matrix.machine-type }}"
-          deployment-type: "l2"
-
-      - name: "Test"
-        uses: ./.github/actions/test
-        with:
-          release: "${{ matrix.build-type }}"
-          log-level: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
-          machine-type: "${{ matrix.machine-type }}"
-          deployment-type: "l2"
-
-      - name: "Collect L2 diagnostics"
-        if: failure() || cancelled()
-        uses: ./.github/actions/collect-l2-diagnostics
-
-      - name: "Post-Cleanup Dangling Resources"
-        if: always()
-        uses: ./.github/actions/cleanup
-        with:
-          phase: post
-
-      - name: "Upload logs in case of failures"
-        if: failure() || cancelled()
-        uses: actions/upload-artifact@v7
-        with:
-          name: nanvix-l2-logs-${{ github.event.pull_request.number || github.run_number
-            }}-${{ matrix.build-type }}-${{ matrix.machine-type }}
-          overwrite: "true"
-          path: |
-            logs/
-            **/*.log
-            **/*.out
-            **/*.err
-
   # Build from source and run micro-benchmarks on baremetal self-hosted runners.
-  # Benchmarks require DEPLOYMENT_MODE=l2 which needs .git, so they cannot use Docker builds.
   # Each machine type runs in parallel; a finalize job aggregates results.
   benchmark:
     name: "Benchmark (${{ matrix.machine-type }})"
@@ -915,14 +795,10 @@ jobs:
       matrix:
         include:
           - machine-type: microvm
-            # FIXME(1171): the current L2 deployment involves a very slow network
-            # namespace creation, particularly at high-churn, so we must temporarily
-            # reduce the number of iterations of the benchmarks.
-            standard-benchmarks: "boot-time cold-start cold-start-l2 cold-start-uvm
-              concurrent concurrent-l2 round-trip-latency snapshot-restore
-              warm-start warm-start-l2 warm-start-vmm"
+            standard-benchmarks: "boot-time cold-start cold-start-uvm concurrent
+              round-trip-latency snapshot-restore warm-start warm-start-vmm"
             standard-iterations: "100"
-            echo-benchmarks: "echo-breakdown echo-breakdown-l2"
+            echo-benchmarks: "echo-breakdown"
             echo-iterations: "1000"
             vfs-benchmarks: "vfs-bench"
             vfs-iterations: "100"
@@ -954,8 +830,8 @@ jobs:
       - name: "Pre-Checkout Cleanup"
         shell: bash
         run: |
-          # Previous runs may leave root-owned files (e.g., images/l2-sysvm-rootfs/dev)
-          # that prevent actions/checkout from resetting the workspace. The cleanup
+          # Previous runs may leave root-owned files that prevent
+          # actions/checkout from resetting the workspace. The cleanup
           # composite action cannot run before checkout, so perform a direct cleanup
           # of the images directory without executing any workspace scripts.
           if [[ -d "${GITHUB_WORKSPACE}/images" ]]; then
@@ -1286,10 +1162,8 @@ jobs:
       - name: "Report Benchmark Results"
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: >-
-            boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,
-            concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,
-            snapshot-restore,vfs-bench,warm-start,warm-start-l2,warm-start-vmm
+          benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,\
+            round-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm"
           machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/baremetal"
@@ -1308,7 +1182,7 @@ jobs:
             ci-gate \
             --dev-dir "data/baremetal" \
             --target-dir "$(pwd)" \
-            --benchmarks "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,snapshot-restore,warm-start,warm-start-l2,warm-start-vmm" \
+            --benchmarks "boot-time,cold-start,cold-start-uvm,concurrent,snapshot-restore,warm-start,warm-start-vmm" \
             --machine-types "microvm" \
             --archs "X64" \
             --regression-threshold 40 \
@@ -1318,10 +1192,8 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: >-
-            boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,
-            concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,
-            snapshot-restore,vfs-bench,warm-start,warm-start-l2,warm-start-vmm
+          benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,roun\
+            d-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm"
           machine-types: "microvm,hyperlight"
           archs: "X64"
           target-dir: "data/baremetal"
@@ -1431,7 +1303,7 @@ jobs:
   release-archive:
     name: "Release Archive (${{ matrix.target-arch }}, ${{ matrix.machine-type }},
       ${{ matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
-    needs: [ ci-test, ci-l2, benchmark-finalize, windows-benchmark-finalize ]
+    needs: [ ci-test, benchmark-finalize, windows-benchmark-finalize ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: |
       !cancelled() &&
@@ -1439,7 +1311,6 @@ jobs:
       github.ref == 'refs/heads/dev' &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       needs.ci-test.result == 'success' &&
-      needs.ci-l2.result == 'success' &&
       needs.benchmark-finalize.result == 'success' &&
       needs.windows-benchmark-finalize.result == 'success'
     timeout-minutes: 60
@@ -1490,7 +1361,6 @@ jobs:
       [
         windows-integration-test,
         ci-test,
-        ci-l2,
         benchmark-finalize,
         windows-benchmark-finalize,
       ]
@@ -1501,7 +1371,6 @@ jobs:
       github.ref == 'refs/heads/dev' &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       needs.ci-test.result == 'success' &&
-      needs.ci-l2.result == 'success' &&
       needs.benchmark-finalize.result == 'success' &&
       needs.windows-benchmark-finalize.result == 'success' &&
       needs.windows-integration-test.result == 'success'
@@ -1597,7 +1466,6 @@ jobs:
         verify,
         ci-build,
         ci-test,
-        ci-l2,
         benchmark,
         benchmark-finalize,
         windows-benchmark,
