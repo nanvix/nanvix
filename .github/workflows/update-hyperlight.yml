@@ -46,7 +46,8 @@ jobs:
           token: ${{ secrets.DISPATCH_TOKEN }}
           base: dev
           branch: auto/hyperlight-update
-          commit-message: "[build] Update hyperlight to ${{ steps.update.outputs.VERSION }} (${{ steps.update.outputs.NEW_REV }})"
+          commit-message: "[build] Update hyperlight to ${{ steps.update.outputs.VERSION
+            }} (${{ steps.update.outputs.NEW_REV }})"
           title: "[build] Update hyperlight to ${{ steps.update.outputs.VERSION }}"
           body: |
             Automated hyperlight version bump.

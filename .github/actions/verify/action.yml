@@ -24,7 +24,8 @@ runs:
     - name: "Resolve Verus Version"
       id: verus-version
       shell: bash
-      run: echo "version=$(tr -d '[:space:]' < build/verus-version)" >> "$GITHUB_OUTPUT"
+      run: echo "version=$(tr -d '[:space:]' < build/verus-version)" >>
+        "$GITHUB_OUTPUT"
 
     - name: "Restore Verus Archive Cache"
       id: verus-cache
