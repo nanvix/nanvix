@@ -442,7 +442,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             (system_vm_sockaddr, self.config.system_vm_sockaddr_type()),
             self.config.hwloc(),
             self.config.linuxd_binary_path().to_string(),
-            self.config.toolchain_binary_directory().to_string(),
+            self.config.clh_bin_path().to_string(),
             self.config.log_directory().to_string(),
             linuxd_tmp_dir.to_string_lossy().into_owned(),
             self.config.l2(),
@@ -706,7 +706,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             self.config.log_directory(),
             Some((control_plane_bind_sockaddr.clone(), self.config.control_plane_sockaddr_type())),
             (control_plane_connect_sockaddr.clone(), self.config.control_plane_sockaddr_type()),
-            Some(self.config.toolchain_binary_directory().to_string()),
+            Some(self.config.clh_bin_path().to_string()),
             Some(sandbox_tmp_dir.to_string_lossy().into_owned()),
             Some(self.config.l2()),
         );
@@ -962,7 +962,7 @@ mod tests {
             &format!("{}/kernel.elf", tmp_dir.path()),
             &format!("{}/linuxd.elf", tmp_dir.path()),
             &format!("{}/uservm.elf", tmp_dir.path()),
-            &format!("{}/toolchain", tmp_dir.path()),
+            &format!("{}/toolchain/bin", tmp_dir.path()),
             &format!("{}/logs", tmp_dir.path()),
             false,
             &format!("{}/snapshot", tmp_dir.path()),
@@ -1008,7 +1008,7 @@ mod tests {
             &format!("{}/kernel.elf", tmp_dir.path()),
             &format!("{}/linuxd.elf", tmp_dir.path()),
             &format!("{}/uservm.elf", tmp_dir.path()),
-            &format!("{}/toolchain", tmp_dir.path()),
+            &format!("{}/toolchain/bin", tmp_dir.path()),
             &format!("{}/logs", tmp_dir.path()),
             l2,
             &format!("{}/snapshot", tmp_dir.path()),
@@ -1147,7 +1147,7 @@ mod tests {
         assert!(config.kernel_binary_path().ends_with("/kernel.elf"));
         assert!(config.linuxd_binary_path().ends_with("/linuxd.elf"));
         assert!(config.uservm_binary_path().ends_with("/uservm.elf"));
-        assert!(config.toolchain_binary_directory().ends_with("/toolchain"));
+        assert!(config.clh_bin_path().ends_with("/toolchain/bin"));
         assert!(config.log_directory().ends_with("/logs"));
         assert!(!config.l2());
         assert!(config.l2_snapshot_path().ends_with("/snapshot"));

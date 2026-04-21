@@ -492,7 +492,7 @@ impl LinuxDaemon {
             };
 
             vec![
-                format!("{}/cloud-hypervisor", get_clh_bin_dir(args.toolchain_binary_directory())?),
+                format!("{}/cloud-hypervisor", get_clh_bin_dir(args.clh_bin_path())?),
                 args::Args::OPT_CLH_API_SOCKET.to_string(),
                 clh_api_socket_path.clone(),
                 // FIXME(#1156): re-enable --seccomp true (default) when we cut a new Nanvix
@@ -563,7 +563,7 @@ impl LinuxDaemon {
             }
 
             let ch_remote_path: String =
-                format!("{}/ch-remote", get_clh_bin_dir(args.toolchain_binary_directory())?);
+                format!("{}/ch-remote", get_clh_bin_dir(args.clh_bin_path())?);
             if let Err(e) = Self::resume_l2_vm(
                 &netns_handle.netns_info()?,
                 args.tenant_id(),
