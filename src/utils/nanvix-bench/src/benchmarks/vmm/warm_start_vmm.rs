@@ -105,6 +105,7 @@ impl Benchmark {
             gdb_port: None,
             #[cfg(feature = "profile-time")]
             perf_timings: ::nanvix::uservm::perf::PerfTimings::new(),
+            guest_profile_path: None,
         });
 
         // Warmup: run one untimed echo cycle through the full IKC protocol to trigger
