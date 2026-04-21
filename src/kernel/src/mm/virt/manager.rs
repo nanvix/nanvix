@@ -200,7 +200,7 @@ impl VirtMemoryManager {
             // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
             // concurrent or re-entrant access to the physical memory manager is possible.
             let kframe: KernelFrame =
-                unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame(false)?;
+                unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
             KernelPage::new(kframe)
         };
 
@@ -285,8 +285,9 @@ impl VirtMemoryManager {
         let page_table_allocator = || {
             // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
             // concurrent or re-entrant access to the physical memory manager is possible.
-            let kframe: KernelFrame =
-                unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame(true)?;
+            let mut kframe: KernelFrame =
+                unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
+            kframe.clear();
             let kpage: KernelPage = KernelPage::new(kframe);
             let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
             let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
@@ -385,8 +386,11 @@ impl VirtMemoryManager {
     pub fn alloc_kpage(&mut self, clear: bool) -> Result<KernelPage, Error> {
         // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no concurrent
         // or re-entrant access to the physical memory manager is possible.
-        let kframe: KernelFrame =
-            unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame(clear)?;
+        let mut kframe: KernelFrame =
+            unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
+        if clear {
+            kframe.clear();
+        }
         Ok(KernelPage::new(kframe))
     }
 
