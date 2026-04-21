@@ -188,6 +188,7 @@ impl StandaloneVmHandle {
             gdb_port,
             #[cfg(feature = "profile-time")]
             perf_timings: perf_timings.clone(),
+            guest_profile_path: std::env::var("NANVIX_GUEST_PROFILE_PATH").ok(),
         });
 
         // Spawn the I/O handler task that processes guest IKC messages and bridges them to the
