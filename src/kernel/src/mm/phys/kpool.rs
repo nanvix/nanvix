@@ -139,9 +139,9 @@ impl KernelFrame {
     ///
     /// # Description
     ///
-    /// Clears the target kernel page.
+    /// Clears the target kernel frame.
     ///
-    fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.deref_mut().fill(0);
     }
 }
@@ -194,21 +194,13 @@ impl Kpool {
     ///
     /// Allocates a kernel frame from the kernel frame pool.
     ///
-    /// # Parameters
-    ///
-    /// - `clear`: Clear page?
-    ///
     /// # Return Values
     ///
     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
     ///
-    pub fn alloc(&mut self, clear: bool) -> Result<KernelFrame, Error> {
+    pub fn alloc(&mut self) -> Result<KernelFrame, Error> {
         let frame: FrameAddress = self.inner.borrow_mut().alloc()?;
-        let mut kframe: KernelFrame = KernelFrame::new(self.inner.clone(), frame);
-        if clear {
-            kframe.clear();
-        }
-        Ok(kframe)
+        Ok(KernelFrame::new(self.inner.clone(), frame))
     }
 
     ///

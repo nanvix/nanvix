@@ -133,16 +133,12 @@ impl PhysMemoryManager {
     ///
     /// Allocates a kernel frame.
     ///
-    /// # Parameters
-    ///
-    /// - `clear`: Clear frame?
-    ///
     /// # Return Values
     ///
     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
     ///
-    pub fn alloc_kernel_frame(&mut self, clear: bool) -> Result<KernelFrame, Error> {
-        self.kpool.alloc(clear)
+    pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
+        self.kpool.alloc()
     }
 
     ///
