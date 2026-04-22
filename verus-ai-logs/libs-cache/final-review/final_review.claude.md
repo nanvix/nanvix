@@ -1,255 +1,223 @@
-# Final Review: `cache` Crate Verus Verification
-
-**Date:** 2025-07-24
-**Reviewer:** Claude Sonnet 4 (independent final review)
-**Crate:** `src/libs/cache/src/lib.rs`
-**Spec:** `src/libs/cache/src/lib.spec.rs`
-**Proof:** `src/libs/cache/src/lib.proof.rs`
-
----
+# Final Review — claude-opus-4.6
 
 ## 1. Spec Quality
 
-### View Design
-
-The `CacheView<K, V>` type is well-designed with three fields:
-
-| Field | Type | Purpose |
-|-------|------|---------|
-| `contents` | `Map<K, V>` | Key-value mapping (mathematical) |
-| `capacity` | `nat` | Upper bound on entries (avoids overflow reasoning) |
-| `lru_order` | `Seq<K>` | Recency ordering, LRU at index 0 |
-
-All fields use mathematical types — no machine types leak into specs. The design
-passes the substitution test: swapping BTreeMap for a hash map or linked list
-would not change the View. No implementation details (counters, CacheEntry,
-BTreeMap) are visible in the abstract state.
-
-### Well-formedness Invariant
-
-```
-inv() = contents.dom().len() <= capacity
-      ∧ lru_order.no_duplicates()
-      ∧ lru_order.to_set() == contents.dom()
-      ∧ lru_order.len() == contents.dom().len()
-```
-
-- ✅ Capacity bound captured
-- ✅ LRU order is a permutation of the key set
-- ✅ Explicit cardinality link (solver hint, derivable but necessary for SMT)
-- ✅ No redundant fields
-
-### Spec Transition Functions
-
-All five transitions (`spec_new`, `spec_get`, `spec_put`, `spec_remove`, `spec_clear`)
-are declarative and independent of implementation details:
-
-- ✅ **`spec_new`**: Empty contents, empty order, given capacity. Clean.
-- ✅ **`spec_get`**: Hit → move to MRU, return value. Miss → no-op, return None. Both paths specified.
-- ✅ **`spec_put`**: Four branches (zero-capacity, overwrite, eviction, below-capacity). Eviction victim is `lru_order[0]` — deterministic. All branches well-defined.
-- ✅ **`spec_remove`**: Key present → remove from contents and order. Key absent → no-op.
-- ✅ **`spec_clear`**: Reset contents and order to empty, preserve capacity.
-
 ### External-Top Specs (API Contracts)
 
-| Function | Spec Quality | Notes |
-|----------|-------------|-------|
-| `Cache::new` | ✅ Good | `result@ == spec_new(capacity as nat) ∧ result@.inv()` |
-| `Cache::get` | ✅ Good | Bidirectional: hit IFF key in domain. Guard view equals value. State transitions via `spec_get`. |
-| `Cache::put` | ✅ Good | `self@ == old(self)@.spec_put(key, value) ∧ self@.inv()` |
-| `Cache::remove` | ✅ Good | `self@ == old(self)@.spec_remove(*key) ∧ self@.inv()` |
-| `Cache::clear` | ✅ Good | `self@ == old(self)@.spec_clear() ∧ self@.inv()` |
-| `Cache::evict` | ✅ Good | 5 ensures clauses: victim identity, contents update, size decrement, order update, capacity and inv preserved. |
-| `CacheGuard::deref` | ✅ Good | `*ret == self@` — standard Deref contract. |
-| `CacheGuard::deref_mut` | ⚠️ Unverifiable | Verus cannot annotate `&mut` return types. |
+**Cache::new** (lib.rs:160–164)
+- `ensures result@ == CacheView::spec_new(capacity as nat), result@.inv()`
+- ✅ Correct, complete, readable. Spec transition `spec_new` produces empty contents, given capacity, empty LRU order. The `inv()` postcondition is explicit.
 
-**Findings:**
+**Cache::get** (lib.rs:191–207)
+- Two-branch ensures: hit returns `Some` with correct value, refreshes LRU via `spec_get`, preserves `inv()`; miss returns `None`, state unchanged.
+- ✅ Correct and complete. The guard's abstract value (`result->Some_0@`) is constrained to match `spec_get(*key).1.unwrap()`.
+- ✅ Frame condition on miss: `self@ == old(self)@` — full frame.
+- ✅ Frame condition on hit: state transitions via `spec_get` which only modifies `lru_order`.
+- Minor note: the spec does not explicitly state `self@.contents == old(self)@.contents` on hit — this is *implied* by `spec_get` returning `..self` for contents. Acceptable since `spec_get` is `pub open`.
 
-- ✅ No tautological ensures (`Err(_) => true` patterns absent — no error paths exist).
-- ✅ Frame conditions implicit via spec transitions: `spec_get` preserves `contents` on hit, full state on miss. `spec_put` captures all cases.
-- ✅ Specs are written for the caller — directly usable in caller proofs (e.g., `self@ == old(self)@.spec_put(key, value)` is a single equation callers can unfold).
-- ✅ Liveness: `get` returns `Some` IFF key present. `put` with non-zero capacity guarantees insertion (via `spec_put` definition).
-- ✅ Invariant stated in every function's ensures (both `self@.inv()` and the transition equality).
-- ⚠️ Minor: `get` spec uses `old(self)@.spec_get(*key).1.unwrap()` for the guard view — the `.unwrap()` is safe because the preceding clause guarantees the hit branch, but this pattern requires the reader to mentally verify that `spec_get` returns `Some` when the key is present. Acceptable but slightly less readable than a direct `old(self)@.contents[*key]`.
+**Cache::put** (lib.rs:231–237)
+- `ensures self@ == old(self)@.spec_put(key, value), self@.inv()`
+- ✅ Correct and clean unified contract. All four branches (zero-cap no-op, overwrite, evict+insert, insert) are captured by `spec_put`.
+- ✅ `inv()` postcondition explicit.
 
-**Verdict: PASS** — Specs are high quality, caller-oriented, and complete for all verifiable functions.
+**Cache::remove** (lib.rs:276–281)
+- `ensures self@ == old(self)@.spec_remove(*key), self@.inv()`
+- ✅ Correct. `spec_remove` handles both present (remove + filter LRU) and absent (no-op) branches.
+
+**Cache::clear** (lib.rs:298–304)
+- `ensures self@ == old(self)@.spec_clear(), self@.inv()`
+- ✅ Correct. `spec_clear` resets contents and lru_order, preserves capacity.
+
+**CacheGuard::deref** (lib.rs:94–96)
+- `ensures *ret == self@`
+- ✅ Correct. Relates dereferenced value to guard's abstract view.
+
+**CacheGuard::deref_mut** — No spec. Excluded from verification due to Verus `&mut` return type limitation.
+- ⚠️ Known gap, documented in trust.md.
+
+**Cache::evict** (lib.rs:319–331) — Private, but has a spec:
+- Postcondition specifies victim is `lru_order[0]`, contents/order updated, capacity preserved, inv maintained.
+- ✅ Well-structured internal contract.
+
+### Anti-pattern Check
+- No tautological ensures found.
+- No subsumed properties (each ensures clause adds information).
+- Error paths: `get` miss is covered. `remove` absent key is covered. `put` zero-capacity is covered.
+- Frame conditions: present on all methods via spec transition functions.
+
+**Verdict: GOOD** — specs are correct, complete, readable, and free of anti-patterns.
 
 ---
 
 ## 2. Caller Coverage
 
-Cross-referencing every caller expectation from `caller_analysis.md` against actual specs:
+| Caller Expectation | Spec Clause | Covered? |
+|---|---|---|
+| **new: empty cache** | `spec_new(capacity as nat)` → contents = empty, lru_order = empty | ✅ |
+| **new: capacity set** | `spec_new` sets `capacity` field | ✅ |
+| **get: hit returns Some with value** | hit ⟹ `result is Some`, `result->Some_0@ == spec_get.1.unwrap()` | ✅ |
+| **get: miss returns None** | `!contains(*key)` ⟹ `result is None` | ✅ |
+| **get: hit refreshes LRU** | `self@ == spec_get(*key).0` (which uses `move_to_mru`) | ✅ |
+| **get: size unchanged** | Implied by `spec_get` not modifying `contents` | ✅ (implicit) |
+| **put: new key below cap inserts** | `spec_put` below-capacity branch inserts `(key, value)` | ✅ |
+| **put: at cap evicts LRU** | `spec_put` at-capacity branch evicts `lru_order[0]`, inserts new | ✅ |
+| **put: overwrite replaces value** | `spec_put` existing-key branch: `contents.insert(key, value)` | ✅ |
+| **put: zero-cap no-op** | `spec_put` capacity==0 branch returns `self` | ✅ |
+| **remove: present key removed** | `spec_remove` present branch: `contents.remove(key)` | ✅ |
+| **remove: absent key no-op** | `spec_remove` absent branch: returns `self` | ✅ |
+| **clear: all removed** | `spec_clear` sets `contents = Map::empty()` | ✅ |
+| **clear: capacity preserved** | `spec_clear` uses `..self` (capacity field preserved) | ✅ |
+| **deref: returns reference to value** | `*ret == self@` | ✅ |
+| **deref_mut: returns mutable reference** | No spec (Verus limitation) | ❌ |
 
-| # | Caller Expectation | Spec Coverage | Status |
-|---|-------------------|---------------|--------|
-| 1 | `new` returns empty cache with given capacity | `result@ == spec_new(capacity as nat)` unfolds to empty contents/order + capacity | ✅ |
-| 2 | `get` returns `Some` IFF key present | Bidirectional ensures with `contains` | ✅ |
-| 3 | `get` guard dereferences to stored value | `result->Some_0@ == old(self)@.spec_get(*key).1.unwrap()` | ✅ |
-| 4 | `get` refreshes LRU order | `self@ == old(self)@.spec_get(*key).0` which uses `move_to_mru` | ✅ |
-| 5 | `get` does not change cache size | `spec_get` preserves `contents` | ✅ |
-| 6 | `put` new key below capacity: inserted and retrievable | `spec_put` below-capacity branch: `contents.insert(key, value)` | ✅ |
-| 7 | `put` new key at capacity: LRU evicted, new key inserted | `spec_put` eviction branch: victim = `lru_order[0]` | ✅ |
-| 8 | `put` existing key: value replaced, no eviction, size unchanged | `spec_put` overwrite branch: `contents.insert(key, value)`, same domain | ✅ |
-| 9 | `put` zero-capacity: no-op | `spec_put` zero-capacity branch: `self` | ✅ |
-| 10 | `put` overwrite refreshes recency | `spec_put` overwrite branch uses `move_to_mru` | ✅ |
-| 11 | `remove` present key: removed, size decreases | `spec_remove` present branch | ✅ |
-| 12 | `remove` absent key: no-op, no panic | `spec_remove` absent branch: `self` | ✅ |
-| 13 | `clear` removes all entries | `spec_clear`: `contents = Map::empty()` | ✅ |
-| 14 | `clear` preserves capacity | `spec_clear`: `..self` preserves capacity | ✅ |
-| 15 | `deref` yields `&V` to stored value | `*ret == self@` | ✅ |
-| 16 | `deref_mut` yields `&mut V` | Unverifiable (Verus limitation) | ⚠️ |
-| 17 | Guard borrows cache exclusively | Rust borrow checker (static guarantee) | ✅ |
-
-**Coverage: 16/17** (1 unverifiable due to Verus `&mut` return limitation).
-
-**Verdict: PASS** — All verifiable caller expectations are covered.
+- **Covered: 15 / 16**
+- The only uncovered expectation is `deref_mut`, which cannot be specified due to Verus's `&mut` return type limitation. This is documented and justified.
 
 ---
 
 ## 3. Proof Completeness
 
-### admit() Search
+- **admit() count: 0**
+- Searched `lib.spec.rs`, `lib.proof.rs`, `lib.vstd_btree.rs`, `lib.rs` — no `admit()` calls found.
+- All five invariant preservation lemmas (`spec_new`, `spec_get`, `spec_put`, `spec_remove`, `spec_clear`) are fully proven.
+- The `lemma_new_view`, `lemma_clear_view`, and `lemma_remove_view` integration lemmas are also fully proven.
 
-- `lib.rs`: 0 occurrences of `admit()`
-- `lib.spec.rs`: 0 occurrences of `admit()`
-- `lib.proof.rs`: 0 occurrences of `admit()`
-
-### assume() Search
-
-- `lib.rs`: 0 occurrences
-- `lib.spec.rs`: 0 occurrences
-- `lib.proof.rs`: 0 occurrences
-
-### Proven Lemmas
-
-All 5 invariant preservation lemmas are fully proven:
-
-| Lemma | Status |
-|-------|--------|
-| `lemma_spec_new_inv` | ✅ Proven |
-| `lemma_spec_get_inv` | ✅ Proven |
-| `lemma_spec_put_inv` | ✅ Proven (most complex — 3 branches) |
-| `lemma_spec_remove_inv` | ✅ Proven |
-| `lemma_spec_clear_inv` | ✅ Proven |
-
-All 5 helper lemmas are fully proven:
-
-| Helper | Status |
-|--------|--------|
-| `lemma_push_preserves_no_dup` | ✅ Proven |
-| `lemma_filter_preserves_no_dup` | ✅ Proven (recursive, with decreases) |
-| `lemma_filter_neq_to_set` | ✅ Proven |
-| `lemma_filter_neq_len` | ✅ Proven |
-| `lemma_subrange_no_dup` | ✅ Proven |
-| `lemma_drop_first_to_set` | ✅ Proven |
-
-**Verdict: PASS** — Zero admit(), zero assume(). All proofs complete.
+**Verdict: PASS** — no admit() blockers.
 
 ---
 
 ## 4. Trust Minimization
 
-### External Type Specifications (2 with external_body)
+### External Type Specifications
 
-| Item | Classification | Eliminable? | Verdict |
-|------|---------------|------------|---------|
-| `ExBTreeMap` | EXTERNAL_TYPE | ❌ No — `alloc::collections::BTreeMap` has private fields; no_std target blocks vstd btree specs | ✅ Necessary |
-| `ExGlobal` | EXTERNAL_TYPE | ❌ No — default allocator type for BTreeMap, required for type declaration | ✅ Necessary |
-| `ExCacheEntry` | EXTERNAL_TYPE | ❌ No — private struct used as BTreeMap value type | ✅ Necessary |
-| `ExCacheGuard` | VERUS_LIMITATION | ❌ No — `CacheGuard` contains `&'a mut V`; Verus cannot handle `&mut` in struct fields | ✅ Necessary |
+| Item | File:Line | Challenge | Verdict |
+|---|---|---|---|
+| ExBTreeMap | lib.vstd_btree.rs:31–38 | Required: BTreeMap is a stdlib type not modeled by vstd on no_std. `external_body` needed for private fields. | ✅ Acceptable |
+| ExGlobal | lib.vstd_btree.rs:40–41 | Required: default allocator type parameter for BTreeMap. | ✅ Acceptable |
+| ExCacheEntry | lib.spec.rs:17–18 | Private struct used as BTreeMap value type. `external_type_specification` without `external_body` — Verus sees the fields. | ✅ Acceptable |
+| ExCacheGuard | lib.spec.rs:23–25 | Contains `&'a mut V` field. Verus cannot handle `&mut` in struct fields. `external_body` required. | ✅ Acceptable (Verus limitation) |
 
-### External Body Functions (7)
+### External Body Functions
 
-| Function | Classification | Could it be eliminated? | Verdict |
-|----------|---------------|------------------------|---------|
-| `Cache::new` | VERUS_LIMITATION | ❌ — Calls `BTreeMap::new()`, vstd btree specs require `cfg(std)`, incompatible with no_std target. Even with `assume_specification`, the uninterp view means body cannot be verified. | ✅ Necessary |
-| `Cache::get` | VERUS_LIMITATION | ❌ — Uses `BTreeMap::get_mut()` which has NO vstd spec at all (confirmed: 0 occurrences in vstd). Also returns `Option<&mut V>`, a Verus limitation. Constructs `CacheGuard` with `&mut`. Three independent blockers. | ✅ Necessary |
-| `Cache::put` | VERUS_LIMITATION | ❌ — Same `get_mut` blockers as `get`, plus calls `self.evict()` (also external_body). Three independent blockers. | ✅ Necessary |
-| `Cache::remove` | VERUS_LIMITATION | ❌ — Calls `BTreeMap::remove()`, vstd btree specs require `cfg(std)`. Even with custom `assume_specification`, trust merely shifts to the axiom. | ✅ Necessary |
-| `Cache::clear` | VERUS_LIMITATION | ❌ — Calls `BTreeMap::clear()`, same no_std blocker. | ✅ Necessary |
-| `Cache::evict` | VERUS_LIMITATION | ❌ — Uses `iter().min_by_key()` iterator chain (no vstd spec for `min_by_key`), plus `BTreeMap::remove()`. Even rewriting as a loop wouldn't help: `BTreeMap::iter` and `BTreeMap::remove` specs are inaccessible on no_std. | ✅ Necessary |
-| `CacheGuard::deref` | VERUS_LIMITATION | ❌ — `CacheGuard` is `external_body` (opaque `&mut V` field). Body accesses the opaque field. | ✅ Necessary |
+| Function | File:Line | Can it be eliminated? | Verdict |
+|---|---|---|---|
+| btreemap_remove | lib.rs:114–123 | No. `BTreeMap::remove` has `Borrow<Q>` parameter that cannot be monomorphized in `assume_specification` for `alloc::collections::BTreeMap`. Thin wrapper fixing Q=K. Body is a single stdlib call. | ✅ Justified |
+| CacheGuard::deref | lib.rs:93–99 | No. CacheGuard is `external_body` — the body accesses the opaque `&mut V` field. | ✅ Justified |
+| Cache::get | lib.rs:190–218 | **Challenging**: Uses `BTreeMap::get_mut()` which has no vstd spec and returns `Option<&mut V>` (Verus limitation). Also constructs CacheGuard with `&mut`. Cannot be rewritten without changing exec code (source integrity). | ⚠️ Irreducible — Verus limitation |
+| Cache::put | lib.rs:230–265 | **Challenging**: Same `get_mut` blockers as `get`. Rewriting to `remove+insert` would change exec code. `contains_key` also has the `Borrow<Q>` blocker. | ⚠️ Irreducible — Verus limitation |
+| Cache::evict | lib.rs:318–344 | No. Uses `iter().min_by_key()` iterator chain — iterator combinators have no vstd specs. | ⚠️ Irreducible — Verus limitation |
+| axiom_cache_lru_of_remove | lib.proof.rs:401–411 | **Most concerning trust item.** This is an axiom (proof fn with external_body) asserting that removing a key from the BTreeMap produces the old LRU ordering filtered by that key. Sound because `BTreeMap::remove` doesn't change `last_used` counters of remaining entries. However, it is *asserted without proof* — the soundness argument is informal. | ⚠️ Necessary trust assumption — cannot be proven without fully axiomatizing counter-based LRU ordering |
 
-**Challenge result:** Both the integrity audit reviewers (Claude Opus 4.6 and GPT-5.3-Codex)
-independently challenged every item. Three functions (new, remove, clear) were identified
-as theoretically eliminable via custom `assume_specification` + concrete view, but this was
-correctly rejected because:
+### assume_specification Items (lib.vstd_btree.rs)
+- 5 items: `BTreeMap::new`, `len`, `is_empty`, `insert`, `clear`
+- All are copies of upstream vstd specs adapted for `alloc::collections::BTreeMap` (vs `std::collections::BTreeMap`).
+- Semantically identical to upstream — only the import path differs.
+- **Verdict: ✅ Acceptable** — standard practice for no_std targets.
 
-1. Only 3 of 7 function-level items would be eliminated
-2. Trust shifts to `assume_specification` axioms, not actually eliminated
-3. The 4 most complex methods remain `external_body` regardless
-4. Engineering cost is disproportionate to benefit
+### Broadcast Axioms (lib.vstd_btree.rs)
+- `axiom_btree_map_view_finite_dom`: BTreeMap view domain is finite.
+- `axiom_spec_btree_map_len`: Connects `spec_btree_map_len` to `btreemap_view_spec.len()`.
+- Both mirror upstream vstd axioms.
+- **Verdict: ✅ Acceptable.**
 
-**Root cause:** The single root cause for all 7 function-level `external_body` items is
-the no_std target. vstd provides BTreeMap specs in `vstd::std_specs::btree`, but they are
-gated behind `cfg(all(feature = "alloc", feature = "std"))` and import from
-`std::collections`, making them structurally incompatible with the `no_std` kernel target.
-This is an environmental constraint, not a verification quality issue.
+### Counter Overflow Assumption
+- `self.counter` (u64) incremented without overflow check.
+- At 10 billion ops/sec, overflow requires ~58 years.
+- No `requires self.counter < u64::MAX` precondition.
+- The spec uses abstract `Seq` ordering, so the *spec* is correct regardless — but the external_body trust gap means the *implementation's* correctness depends on no overflow.
+- **Verdict: ✅ Acceptable** — documented in trust.md and bugs.md.
 
-**Verdict: PASS** — Trust boundary is minimal and well-documented. Every item has been
-challenged and justified with specific error messages and reproducers.
+**Overall Trust Assessment:** 6 external_body functions, 1 custom axiom, 5 assume_specifications. All are justified by Verus limitations (no `&mut` return types, no iterator specs, no `get_mut` spec, `Borrow<Q>` generics) or no_std platform constraints. No items can be eliminated with current Verus capabilities.
 
 ---
 
 ## 5. AST Consistency
 
-Pre-computed result:
+**Result: 2 MISMATCHES + 1 EXTRA — all acceptable**
 
-- **Functions:** 18/18 MATCH (matched=18, mismatched=0, missing=0, extra=0)
-- **Structs:** 3/3 MATCH
-- **Consistent:** YES
-- **VERUS REWRITE comments:** None needed (zero deviations)
+### Cache::new — MISMATCH
+```diff
+-        Self {
++        let result = Self {
+             entries: BTreeMap::new(),
+             counter: 0,
+             capacity,
++        };
++        proof! {
++            Self::lemma_new_view(&result, capacity);
+         }
++        result
+```
+**Analysis:** The original directly returns the struct literal. The Verus version binds it to `result` and calls a `proof!{}` block. The `proof!{}` block is ghost code (erased at compilation). The `let result = ...; result` transformation is semantically equivalent to directly returning the expression — the struct construction and its field values are identical. **Acceptable.**
 
-No exec code was modified during the verification effort. The implementation is
-identical to the original source.
+### Cache::remove — MISMATCH
+```diff
+-        self.entries.remove(key);
++        btreemap_remove(&mut self.entries, key);
++        proof! {
++            Self::lemma_remove_view(self, *key, old(self).entries, old(self).capacity);
++        }
+```
+**Analysis:** The original calls `self.entries.remove(key)` directly. The Verus version uses the `btreemap_remove` wrapper (which calls `m.remove(k)` inside — identical semantics) plus a `proof!{}` block. The VERUS REWRITE comment at line 284 documents this. **Acceptable** — same runtime behavior, wrapper needed for verification.
 
-**Verdict: PASS**
+### btreemap_remove — EXTRA_IN_VERUS
+This is a new helper function in the Verus version that doesn't exist in the original source. It wraps `BTreeMap::remove` to provide a verifiable signature. **Acceptable** — it's a pure wrapper that adds verification capability without changing semantics.
+
+**Verdict: PASS** — all mismatches are semantically equivalent or documented rewrites.
 
 ---
 
 ## 6. Verification
 
-Pre-computed result:
+**Result: PASS**
 
-- **Verus output:** 11 verified, 0 errors
-- **Exit code:** 0 from Verus itself
-- **verify.sh wrapper:** Reports exit 1 due to cheating detection (external_body items),
-  which are expected and documented
+```
+verification results:: 18 verified, 0 errors
+```
 
-**Verdict: PASS**
+- 18 verification conditions verified successfully.
+- 0 errors.
+- Exit code: 0.
+- 8/9 exec functions have contracts (only `deref_mut` excluded — Verus limitation).
 
 ---
 
 ## 7. Guardrails Compliance
 
-### Cheating Dimensions
+### Counts
 
-| Dimension | Count | Threshold | Status |
-|-----------|-------|-----------|--------|
-| `admit()` | 0 | 0 (BLOCKER if > 0) | ✅ |
-| `assume()` | 0 | 0 (BLOCKER if > 0) | ✅ |
-| `external_body` (type) | 2 | Acceptable (EXTERNAL_TYPE) | ✅ |
-| `external_body` (function) | 7 | Requires human review | ⚠️ |
-| `trusted` | 0 | 0 (BLOCKER if > 0) | ✅ |
-| `no_decreases` | 0 | 0 (BLOCKER if > 0) | ✅ |
-| `cfg_gate` | 0 | 0 (BLOCKER if > 0) | ✅ |
+| Dimension | Count | Details |
+|---|---|---|
+| `admit()` | **0** | None found in any file. |
+| `assume()` | **0** | None found in any file (excluding `assume_specification`). |
+| `external_body` | **8** | See breakdown below. |
+| `trusted` | **0** | None found in any file. |
+| `no_decreases` | **0** | None found in any file. |
+| `cfg(not(verus_keep_ghost))` | **0** | None found — no cfg-gated exec code. |
+| `assume_specification` | **5** | All in lib.vstd_btree.rs (stdlib specs). |
 
-### External Body Function Challenge (detailed)
+### external_body Breakdown
 
-All 7 `external_body` functions have been challenged in §4. Summary:
+| # | Function | File:Line | Classification |
+|---|---|---|---|
+| 1 | ExBTreeMap (type) | lib.vstd_btree.rs:32 | EXTERNAL_TYPE — stdlib type |
+| 2 | ExCacheGuard (type) | lib.spec.rs:24 | EXTERNAL_TYPE — Verus &mut limitation |
+| 3 | CacheGuard::deref | lib.rs:93 | VERUS_LIMITATION — opaque guard field |
+| 4 | btreemap_remove | lib.rs:114 | STDLIB_WRAPPER — Borrow\<Q\> workaround |
+| 5 | Cache::get | lib.rs:190 | VERUS_LIMITATION — get_mut has no spec, &mut return |
+| 6 | Cache::put | lib.rs:230 | VERUS_LIMITATION — same as get |
+| 7 | Cache::evict | lib.rs:318 | VERUS_LIMITATION — no iterator specs |
+| 8 | axiom_cache_lru_of_remove | lib.proof.rs:401 | VERUS_LIMITATION — uninterpreted LRU ordering |
 
-- **Root blocker:** no_std target prevents access to vstd's BTreeMap specs
-- **Secondary blockers:** `get_mut` has no vstd spec at all; `&mut` return types; `&mut` struct fields; `min_by_key` iterator combinator
-- **Elimination potential:** None without changing the target platform or Verus itself
-- **Each item** has a classification (all `VERUS_LIMITATION`), a specific error message or reproducer, and was independently validated by two reviewers
+Items 1–2 are `external_type_specification` (acceptable for types with private/unsupported fields).
+Items 3–7 are exec functions on user code — each is a concern requiring justification. All 5 are justified by documented Verus limitations.
+Item 8 is a proof axiom — concerning but necessary for the uninterpreted LRU ordering model.
 
-**Assessment:** The 7 function-level `external_body` items are **BLOCKERS requiring
-human review** per the guardrails policy. However, all have been thoroughly documented
-with root causes, reproducers, and independent dual-reviewer validation. The recommendation
-is that human reviewers confirm the no_std constraint is genuine and accept these items.
-
-**Verdict: CONDITIONAL PASS** — Requires human sign-off on the 7 `external_body` functions.
-All documentation and justification is in place.
+### BLOCKER Assessment
+- **admit: 0** — ✅ No blockers.
+- **assume: 0** — ✅ No blockers.
+- **trusted: 0** — ✅ No blockers.
+- **external_body on user functions: 5** (+ 1 axiom) — ⚠️ All justified but represent trust gaps.
 
 ---
 
@@ -257,75 +225,49 @@ All documentation and justification is in place.
 
 ### BUG-1: Counter Overflow (u64)
 
-- **Status:** UNCONFIRMED (documented but not fixed)
-- **Classification:** **Context-Dependent** (per bug-reporting skill)
-- **Analysis:**
-  - `self.counter: u64` is incremented without overflow checking in `get` (line ~189) and `put` (line ~224, ~235).
-  - At 10 billion ops/sec, overflow requires ~58 years. Physically unreachable.
-  - The spec transition functions use abstract `Seq` ordering (not counters), so the spec is correct regardless of overflow. The trust gap is in the `external_body` bridge: the implementation's correctness depends on no overflow, but the spec doesn't model this assumption.
-  - Adding `requires self.counter < u64::MAX` was considered and rejected as it would burden every caller with an unprovable obligation in practice.
-  - Correctly documented in `trust.md` as a trust assumption and in `bugs.md` as BUG-1.
-- **Verdict:** ✅ Properly handled. The bug is real in theory but physically unreachable. Documentation is accurate. No fix needed.
+- **Status in bugs.md:** UNCONFIRMED
+- **Still valid?** Yes — `self.counter += 1` in `get` (line 210) and `put` (lines 246, 257) has no overflow guard.
+- **Was it fixed?** No — intentionally left as a documented trust assumption.
+- **Classification:** **Context-Dependent** — physically unreachable (58+ years at 10B ops/sec). The spec is correct regardless (uses abstract `Seq` ordering), but the implementation's correctness under the `external_body` trust gap depends on no overflow.
+- **Impact:** The overflow would only matter if `get`/`put` were not `external_body`. Since they are, the spec-level model (abstract LRU sequence) is immune. However, if Verus adds `get_mut` support and these functions become body-verified, the overflow would need explicit handling.
 
-### Additional Bugs from Property Analysis
-
-- **BUG-2 (usize vs nat):** Correctness concern in abstraction function. Not a code bug — a trust boundary inherent in the `external_body` approach. ✅ Documented.
-- **BUG-3 (evict on empty):** Non-issue. Guarded by control flow (`entries.len() >= capacity` with `capacity > 0`). ✅ Correct.
-- **BUG-4 (clear resets counter):** Design observation, not a bug. Counter reset is safe because all entries are also removed. ✅ Correct.
-- **BUG-5 (min_by_key ties):** Non-issue under no-overflow assumption (TYPE-4 injectivity). ✅ Correct.
-
-### Bugs Discovered During Proving/Integrity
-
-No new bugs were discovered during the proving or integrity audit phases that were
-not already recorded in `bugs.md` or `property_analysis.md`.
-
-**Verdict: PASS** — All bugs properly classified and documented.
+### Undiscovered Bugs
+- No additional bugs discovered during this review.
+- The `clear` function resets `self.counter = 0`, which is correct but means counter values are not globally unique across clear boundaries — this is fine since all entries are also cleared.
 
 ---
 
-## Summary
+## Issues Found (highest priority first)
 
-| Dimension | Result | Details |
-|-----------|--------|---------|
-| 1. Spec Quality | ✅ PASS | Clean mathematical specs, caller-oriented, complete |
-| 2. Caller Coverage | ✅ PASS | 16/17 expectations covered (1 Verus limitation) |
-| 3. Proof Completeness | ✅ PASS | 0 admit, 0 assume, 11 lemmas fully proven |
-| 4. Trust Minimization | ✅ PASS | All 9 external_body items justified, dual-reviewed |
-| 5. AST Consistency | ✅ PASS | 18/18 functions, 3/3 structs match |
-| 6. Verification | ✅ PASS | 11 verified, 0 errors |
-| 7. Guardrails | ⚠️ CONDITIONAL | 7 external_body functions need human sign-off |
-| 8. Bug Reconciliation | ✅ PASS | All bugs documented, none unrecorded |
+1. **[CONCERN]** `Cache::get`, `Cache::put`, and `Cache::evict` are `external_body` — three of the most important API functions have their bodies trusted rather than verified. This is due to Verus limitations (no `get_mut` spec, no `&mut` return types, no iterator specs). The specs are well-written and the trust boundary is clearly documented, but ~60% of the exec code by complexity is unverified.
 
-## Final Verdict: **CONDITIONAL PASS**
+2. **[CONCERN]** `axiom_cache_lru_of_remove` is a custom axiom with `external_body` on a proof function. It asserts a relationship between `cache_lru_of` (which is partly uninterpreted) and BTreeMap removal. The soundness argument is informal (BTreeMap::remove preserves other entries' counters). This is the most opaque trust item.
 
-The verification effort for the `cache` crate is thorough, well-documented, and
-technically sound. The spec design is high quality — abstract, caller-oriented,
-and free of implementation leakage. All proofs are complete with zero admit/assume.
-The trust boundary is minimal and fully justified by a single environmental
-constraint (no_std target blocking vstd BTreeMap specs).
+3. **[CONCERN]** `CacheGuard::deref_mut` has no specification at all — Verus cannot handle `&mut` return types. Mutation-through-guard semantics are entirely unmodeled. While Rust's borrow checker provides safety guarantees, there is no formal connection between guard mutations and cache state.
 
-The only open item is **human review of 7 `external_body` functions**. These are
-not verification quality issues — they are environmental constraints that cannot
-be resolved without changing the target platform or waiting for Verus to add
-`&mut` return type support and `get_mut` specs. All items are documented with
-specific error messages, reproducers, and dual-reviewer validation.
+4. **[NOTE]** Counter overflow (BUG-1) remains as a documented trust assumption. Acceptable given the 58-year overflow horizon.
 
-### Strengths
+5. **[NOTE]** AST mismatches in `Cache::new` and `Cache::remove` are semantically equivalent rewrites documented with VERUS REWRITE comments. The `btreemap_remove` wrapper is an additional function not in the original source.
 
-1. **Clean View design** — `CacheView` passes substitution test, uses only mathematical types
-2. **Comprehensive spec transitions** — all edge cases (zero-capacity, overwrite, eviction) modeled
-3. **Full proof completion** — 11 lemmas, all from-scratch, no shortcuts
-4. **Thorough documentation** — trust.md, bugs.md, property_analysis.md, view_design.md all consistent
-5. **Dual-reviewer integrity audit** — independent validation by two models with disagreement resolution
+---
 
-### Weaknesses
+## Overall Assessment
 
-1. **All exec functions are `external_body`** — the entire implementation is trusted, not verified. The specs and proofs verify only the *abstract model* (spec transitions preserve invariants). The bridge between implementation and abstraction is entirely trust-based.
-2. **`deref_mut` completely unverifiable** — mutation-through-guard semantics have no formal guarantee
-3. **Counter overflow assumption undischarged** — the `u64` overflow gap is documented but not enforced (no `debug_assert!` or `checked_add` in the code)
+**PASS (Conditional)**
 
-### Recommendations for Future Work
+**Rationale:**
 
-1. **When Verus adds no_std btree support:** Remove `external_body` from `new`, `remove`, `clear` first (simplest). Then tackle `put` and `get` once `get_mut` specs exist.
-2. **Add `debug_assert!(self.counter < u64::MAX)`** in `get` and `put` to catch the theoretically-possible overflow in debug builds.
-3. **When Verus adds `&mut` return support:** Verify `deref_mut` and remove `external_body` from `CacheGuard`.
+The verification effort for the `cache` crate is well-executed within the constraints of current Verus capabilities:
+
+- **Specs are high quality:** All 7 public functions (except `deref_mut`) have correct, complete, readable specifications with proper frame conditions and invariant preservation. The spec transition functions in `CacheView` are cleanly designed.
+- **Proofs are complete:** 0 `admit()`, 0 `assume()`, 0 `trusted`. All 18 verification conditions pass. Five invariant preservation lemmas are fully proven with clean mathematical proofs.
+- **Trust boundary is well-documented:** Every `external_body` and `assume_specification` is documented in trust.md with classification, justification, and Verus error reproducers.
+- **Caller expectations are met:** 15/16 expectations from caller_analysis.md have corresponding spec clauses.
+
+**Caveats preventing unconditional PASS:**
+
+1. Three core API functions (`get`, `put`, `evict`) are `external_body` — their implementations are trusted, not verified. This is the dominant limitation.
+2. One custom axiom (`axiom_cache_lru_of_remove`) is informally justified.
+3. `deref_mut` is entirely unverified.
+
+All caveats are due to documented Verus limitations (no `&mut` return types, no `get_mut` spec, no iterator specs) and cannot be resolved without upstream Verus changes. The verification achieves the maximum possible assurance level given current tool capabilities.
