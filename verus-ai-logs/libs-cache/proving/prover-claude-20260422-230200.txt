@@ -85,3 +85,5 @@ confirm the full crate passes with no cross-module conflicts.
 
 === Output (streaming) ===
 Now let me run the current verification to see the baseline:
+Now I have a clear picture. The verification already passes with 0 errors. The issue is `external_body` annotations that need to be minimized. Most are genuinely unverifiable (Verus limitations), but `clear` can be body-verified since `BTreeMap::clear` has an `assume_specification`. Let me implement the proof.
+Now add the `lemma_clear_view` proof function to the proof file:

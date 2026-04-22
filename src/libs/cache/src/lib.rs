@@ -298,7 +298,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// Removes all entries.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(
         requires
             old(self)@.inv(),
@@ -309,6 +308,9 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.counter = 0;
+        proof! {
+            Self::lemma_clear_view(self, old(self).capacity);
+        }
     }
 
     ///

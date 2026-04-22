@@ -363,6 +363,41 @@ impl<K: Ord + Clone, V> Cache<K, V> {
 }
 
 //==================================================================================================
+// Cache::clear Verification Lemma
+//==================================================================================================
+
+impl<K: Ord + Clone, V> Cache<K, V> {
+    /// Proves that Cache::clear produces the correct spec_clear view.
+    /// Called from Cache::clear after removing external_body.
+    proof fn lemma_clear_view(new_self: &Self, old_capacity: usize)
+        requires
+            btreemap_view_spec(new_self.entries) == Map::<K, CacheEntry<V>>::empty(),
+            new_self.capacity == old_capacity,
+        ensures
+            new_self@ == (CacheView::<K, V> {
+                contents: cache_contents_of(new_self.entries),
+                capacity: old_capacity as nat,
+                lru_order: cache_lru_of(new_self.entries),
+            }).spec_clear(),
+            new_self@.inv(),
+    {
+        broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
+            vstd::seq_lib::seq_to_set_is_finite;
+
+        reveal(<Cache<_, _> as View>::view);
+        reveal(cache_contents_of);
+        reveal(cache_lru_of);
+
+        // After clear: btreemap_view_spec is Map::empty()
+        // cache_contents_of => Map::new(|k| false, ...) =~= Map::empty()
+        assert(new_self@.contents =~= Map::<K, V>::empty());
+        // cache_lru_of: dom().len() == 0 => Seq::empty()
+        assert(new_self@.lru_order == Seq::<K>::empty());
+        assert(new_self@.lru_order.to_set() =~= Set::<K>::empty());
+    }
+}
+
+//==================================================================================================
 // BTreeMap LRU Axiom
 //==================================================================================================
 
