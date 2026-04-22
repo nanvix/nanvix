@@ -1,0 +1,87 @@
+=== Copilot Session ===
+Timestamp: 2026-04-22T19:58:23.014716
+Model: claude-opus-4.6
+Session: new
+Command: copilot --allow-all --model claude-opus-4.6 --output-format...
+
+=== Prompt ===
+You are proving the specifications for /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.rs using Verus.
+Treat the current contracts (requires/ensures/invariants) as fixed input.
+Your job is to complete all proofs — fill proof bodies, write loop invariants,
+add lemmas, and eliminate every `admit()` placeholder.
+
+
+
+Source file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.rs
+Spec file:  /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.spec.rs
+Proof file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.proof.rs
+Verus command: make verify-cache
+
+== SOURCE INTEGRITY ==
+
+Follow the **verus-constraints** skill strictly — especially the escalation
+ladder and "Claiming Verus Limitations" section. Key rules:
+- Verify exec code as-is; add spec annotations in-place.
+- Never cfg-gate exec code — this is cheating.
+- If unsupported: isolate and test, then follow the escalation ladder.
+- Minimize trust: only genuinely unverifiable items in /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/trust.md.
+
+== SKILLS ==
+
+Follow these skills strictly (auto-loaded from .github/skills/):
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns, source integrity
+- **proving-guide** — MUST follow: proof strategy, invariant planning
+- **spec-design** — MUST follow when writing requires/ensures/invariants
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai-lru-0422/scripts/
+- Source directory: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai-lru-0422/vstd/
+
+== SUB-AGENT POLICY ==
+
+Sub-agents are allowed. Use ONLY these models:
+  - **claude-opus-4.6** (preferred default) — for all tasks.
+  - **gpt-5.3-codex** — for all tasks.
+When diversity is needed (e.g. independent parallel analysis), use a different model per sub-agent.
+
+== TASK ==
+
+Prove all specifications: fill proof bodies, write loop invariants, add
+intermediate assertions and lemmas, until `make verify-cache` passes with 0 errors
+and 0 remaining `admit()` calls.
+
+Critical rules:
+- Do NOT weaken any `requires` or `ensures` clause to make a proof easier.
+  The spec signatures are the contract — prove them as-is.
+- You may add new properties during proving, but never remove or weaken existing ones.
+- If a spec seems unprovable, investigate whether the exec code has a bug.
+  Document findings in /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/bugs.md following the bug-reporting skill.
+
+== ELIMINATING CHEATING ==
+
+Eliminate all admit/assume/external_body. Follow **verus-constraints** skill
+(escalation ladder, isolate-and-test). Never cfg-gate exec code.
+
+**Starting point discipline**: the setup / spec phases may have placed
+`#[verus_verify(external_body)]` and `ensures true` stubs on functions
+purely to make the crate compile. At the start of proving, strip these
+placeholders on every function in scope and attempt verification from
+step 1 of the escalation ladder (verify as-is). Only re-add `external_body`
+after steps 2-4 (vstd search, minimal rewrite, stdlib wrapper) genuinely
+fail, and record a minimal reproducer + `trust.md` entry.
+
+Minimize /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/trust.md — only genuinely unverifiable items remain (see
+**spec-design** skill trust classifications).
+
+Done when: verus verifies with 0 errors, build passes, trust is minimal.
+
+After all functions verify per-module, run `make verify` (no MODULE) to
+confirm the full crate passes with no cross-module conflicts.
+
+
+
+=== Output (streaming) ===
+Now let me run the initial verification to see the baseline state:
