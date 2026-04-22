@@ -329,3 +329,13 @@ Module: cache
 [2026-04-23 02:38:05] [REVIEW] review r1...
 [2026-04-23 02:38:05] [COPILOT] Running: copilot --model claude-opus-4.6 ...
 [2026-04-23 02:48:05]   ↳ review-r1 done in 10m00s (exit=0)
+[2026-04-23 02:48:05] [REVIEW] Result: PASS (0/0)
+[2026-04-23 02:48:05] [PHASE] integrity-audit: PASS (23m41s)
+[2026-04-23 02:48:05] [CHEATING] external_body: 8 (6 on user fns)
+[2026-04-23 02:48:05] ✅ integrity-audit: PASS (0/0)
+
+============================================================
+PIPELINE COMPLETE: All phases passed for cache
+Total time: 23m41s
+============================================================
+[2026-04-23 02:48:05] [USAGE] Summary: 32 calls, 0 tokens, 6h47m27s total → /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/usage_summary.json

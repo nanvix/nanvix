@@ -1,11 +1,11 @@
 {
   "module": "libs-cache",
-  "generated_at": "2026-04-23T02:24:12.488150",
-  "total_calls": 30,
-  "calls_with_usage": 29,
+  "generated_at": "2026-04-23T02:48:05.854142",
+  "total_calls": 32,
+  "calls_with_usage": 31,
   "calls_timed_out": 0,
   "calls_failed": 0,
-  "total_duration_s": 23026.3,
+  "total_duration_s": 24447.5,
   "total_input_tokens": 0,
   "total_output_tokens": 0,
   "total_tokens": 0,
@@ -41,10 +41,10 @@
       "duration_s": 2577.7
     },
     "integrity-audit": {
-      "calls": 8,
+      "calls": 10,
       "input_tokens": 0,
       "output_tokens": 0,
-      "duration_s": 6272.199999999999
+      "duration_s": 7693.399999999999
     },
     "polish": {
       "calls": 2,
@@ -67,16 +67,16 @@
   },
   "per_role": {
     "prover": {
-      "calls": 12,
+      "calls": 13,
       "input_tokens": 0,
       "output_tokens": 0,
-      "duration_s": 8891.0
+      "duration_s": 9712.0
     },
     "review-r1": {
-      "calls": 9,
+      "calls": 10,
       "input_tokens": 0,
       "output_tokens": 0,
-      "duration_s": 5658.599999999999
+      "duration_s": 6258.799999999999
     },
     "fix-r1": {
       "calls": 1,
@@ -750,6 +750,48 @@
         "premiumRequests": 3,
         "totalApiDurationMs": 845108,
         "sessionDurationMs": 768773,
+        "codeChanges": {
+          "linesAdded": 0,
+          "linesRemoved": 0,
+          "filesModified": []
+        }
+      }
+    },
+    {
+      "timestamp": "2026-04-23T02:38:05.465802",
+      "phase": "integrity-audit",
+      "role": "prover",
+      "model": "claude-opus-4.6",
+      "exit_code": 0,
+      "session_id": "6c9324db-3465-44a5-8145-57e50bda8441",
+      "log_file": "/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/integrity-audit/prover-claude-20260423-022424.txt",
+      "duration_s": 821.0,
+      "usage": {
+        "premiumRequests": 3,
+        "totalApiDurationMs": 796869,
+        "sessionDurationMs": 819377,
+        "codeChanges": {
+          "linesAdded": 128,
+          "linesRemoved": 9,
+          "filesModified": [
+            "/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/trust.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-04-23T02:48:05.749644",
+      "phase": "integrity-audit",
+      "role": "review-r1",
+      "model": "claude-opus-4.6",
+      "exit_code": 0,
+      "session_id": "4a97e301-6c54-40fd-a798-ced66b033a0a",
+      "log_file": "/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/integrity-audit/review-r1-claude-20260423-023805.txt",
+      "duration_s": 600.2,
+      "usage": {
+        "premiumRequests": 3,
+        "totalApiDurationMs": 748388,
+        "sessionDurationMs": 598703,
         "codeChanges": {
           "linesAdded": 0,
           "linesRemoved": 0,
