@@ -1,120 +1,155 @@
-## Turn 1: external_body on Cache::new — Step 1+4 (assume_specification for BTreeMap::new)
+## Turn 1: external_body on Cache::evict — Step 2 (isolate unverifiable iterator chain)
 
 ### Progress Tracker
-- external_body on user functions: **7 remaining** (each is a defect)
-  1. `Cache::new` — lib.rs:141
-  2. `Cache::get` — lib.rs:168
-  3. `Cache::put` — lib.rs:208
-  4. `Cache::remove` — lib.rs:254
-  5. `Cache::clear` — lib.rs:271
-  6. `Cache::evict` — lib.rs:289
-  7. `CacheGuard::deref` — lib.rs:91
+- external_body on user functions: **4 remaining** (each is a defect)
+  1. `CacheGuard::deref` — lib.rs:93
+  2. `Cache::get` — lib.rs:190
+  3. `Cache::put` — lib.rs:230
+  4. `Cache::evict` — lib.rs:318
 - external_type_specification: 4 (expected, not defects)
-- Spec quality issues: 0 (specs are high quality — not the concern here)
-- Current drill-down: function `Cache::new`, step 4/6
+- Infrastructure external_body: 2 (btreemap_remove wrapper, axiom_cache_lru_of_remove proof axiom — acceptable)
+- Spec quality issues: 0
+- Current drill-down: function `Cache::evict`, step 2/6
 
 ### Verification of Previous Fix
-First turn, no previous fix.
+First turn of this dialogue round. Previous rounds (turns 1–2) successfully
+eliminated `external_body` from `Cache::new`, `Cache::remove`, and `Cache::clear`.
+Confirmed baseline: 18 verified, 0 errors, external_body=8 total (4 on user functions).
 
-### Foundational Challenge
+### Triage of All 4 Remaining external_body User Functions
 
-The final review classified all 7 `external_body` items as `VERUS_LIMITATION`
-with the rationale that `assume_specification` would "merely shift trust to
-unverified axioms, not eliminate it." **This rationale is wrong.** Here's why:
+I removed `external_body` from each function independently and ran `make verify-cache`.
+Here is the exact error for each:
 
-- `external_body` on `Cache::put` trusts **all user logic**: zero-capacity
-  handling, overwrite behavior, counter bumping, eviction logic, map mutation —
-  every line of user code is unverified.
-- `assume_specification` on `BTreeMap::insert` trusts **only the stdlib
-  primitive**. All user logic (the four branches of `put`, the counter, the
-  eviction decision) would be **verified**.
+| Function | Error | Line | Root Cause |
+|---|---|---|---|
+| `Cache::evict` | `only variables are supported here, not general patterns` | 336 | Pattern destructuring `\|(_, e)\|` in closure arg of iterator chain |
+| `Cache::put` | `&mut types, except in special cases` | 245 | `self.entries.get_mut(&key)` returns `Option<&mut CacheEntry<V>>` |
+| `Cache::get` | `&mut types, except in special cases` | 209 | `self.entries.get_mut(key)` returns `Option<&mut CacheEntry<V>>` |
+| `CacheGuard::deref` | `field expression for an opaque datatype` | 98 | `self.value` — CacheGuard is `external_body` struct (due to `&'a mut V` field) |
 
-This is not "merely shifting trust" — it is a **strictly smaller trust
-boundary**. It is also exactly the standard Verus pattern: vstd itself uses
-`assume_specification` for all BTreeMap methods (`vstd/std_specs/btree.rs`).
+**Tractability assessment:**
+- `Cache::evict`: **HIGH** — only the 3-line iterator chain is unverifiable; the conditional remove (`if let Some(key) = ... { self.entries.remove(&key); }`) is verifiable using the existing `btreemap_remove` wrapper.
+- `Cache::put`: **MEDIUM** — `get_mut` returns `&mut` (true blocker). Needs a wrapper that encapsulates `get_mut + in-place mutation` into a single `external_body` call. Rest of function (capacity check, eviction call, insertion) is verifiable.
+- `Cache::get`: **LOW** — same `get_mut` blocker PLUS must construct `CacheGuard` which is an opaque type. Two compounding blockers.
+- `CacheGuard::deref`: **LOW** — struct itself is opaque due to `&mut` in field. Field access is fundamentally blocked until Verus supports `&mut` in struct fields.
 
 ### Issue
 
-**Step 1 (completed by reviewer):** I removed `external_body` from `Cache::new`
-and ran `make verify-cache`. The exact error is:
+**`Cache::evict` (lib.rs:318–341)** has `external_body` on the entire function,
+but only the iterator chain (lines 333–337) is unverifiable. The conditional
+remove (lines 338–340) is verifiable — `btreemap_remove` wrapper already exists.
 
-```
-error: `alloc::collections::btree::map::impl&%18::new` is not supported
-  (note: you may be able to add a Verus specification to this function
-   with `assume_specification`)
-  = help: The following declaration may resolve this error:
-          pub assume_specification<K, V> [alloc::collections::BTreeMap::<K, V>::new] ()
-              -> alloc::collections::BTreeMap<K, V>;
-```
-
-**Verus itself tells us the fix: `assume_specification`.**
-
-**Step 3 (completed by reviewer):** vstd already provides the exact spec at
-`vstd/std_specs/btree.rs:613-616`:
-
+The function body is:
 ```rust
-pub assume_specification<Key, Value>[ BTreeMap::<Key, Value>::new ]() -> (m: BTreeMap<Key, Value>)
-    ensures
-        m@ == Map::<Key, Value>::empty(),
-;
+fn evict(&mut self) {
+    let victim: Option<K> = self
+        .entries
+        .iter()                                    // ← no Verus spec for BTreeMap::iter
+        .min_by_key(|(_, e)| e.last_used)          // ← pattern destructuring + iterator combinator
+        .map(|(k, _)| k.clone());                  // ← pattern destructuring + Option::map
+    if let Some(key) = victim {
+        self.entries.remove(&key);                  // ← verifiable (btreemap_remove exists)
+    }
+}
 ```
 
-This is gated behind `cfg(all(feature = "alloc", feature = "std"))` only because
-vstd uses `use std::collections::BTreeMap` — but `std::collections::BTreeMap` is
-a re-export of `alloc::collections::BTreeMap`, which this crate already uses.
+**Step 2 — Isolate:** The ENTIRE function is NOT unverifiable. Only the iterator
+chain is blocked. This is a textbook case for splitting into a verified outer
+function + minimal `external_body` inner helper.
 
 ### Specific Question
 
-**Step 4 — Fix attempt for `Cache::new`:**
+**Split `Cache::evict` into a verified outer function + minimal external_body helper.**
 
-Add a local `assume_specification` for `alloc::collections::BTreeMap::new` in
-`lib.spec.rs` (following the vstd pattern above), remove `external_body` from
-`Cache::new`, and run `make verify-cache`.
+Specifically:
 
-Report the EXACT result — either it verifies successfully, or show the **full
-new error message**. If a new error appears (e.g., about the uninterpreted
-`view()`), that's expected — report it and we'll address it in the next turn.
+1. Create a minimal `external_body` helper function that isolates ONLY the
+   iterator chain (1–3 lines of exec code):
+   ```rust
+   #[verus_verify(external_body)]
+   #[verus_spec(ret =>
+       ensures
+           btreemap_view_spec(*entries).dom().len() > 0 ==> {
+               &&& ret is Some
+               &&& cache_lru_of(*entries).len() > 0
+               &&& ret->Some_0 == cache_lru_of(*entries)[0]
+           },
+           btreemap_view_spec(*entries).dom().len() == 0 ==> ret is None,
+   )]
+   fn find_lru_victim(entries: &BTreeMap<K, CacheEntry<V>>) -> Option<K> {
+       entries.iter().min_by_key(|(_, e)| e.last_used).map(|(k, _)| k.clone())
+   }
+   ```
 
-Note: You will also need to add `View` impl for `BTreeMap` via
-`assume_specification` or equivalent, since the vstd BTreeMap View
-(`impl<Key, Value, A: Allocator + Clone> View for BTreeMap<Key, Value, A>`)
-is also gated behind `cfg(std)`. The cache crate's `lib.spec.rs` already
-declares `ExBTreeMap` as `external_type_specification` + `external_body`, and
-already has an `uninterp` `View` for `Cache` — you may need to modify these.
+2. Remove `#[verus_verify(external_body)]` from `Cache::evict` and rewrite the
+   body to call the helper + `btreemap_remove` (VERUS REWRITE, same pattern as
+   `Cache::remove`):
+   ```rust
+   fn evict(&mut self) {
+       // VERUS REWRITE: extracted iterator chain into find_lru_victim
+       if let Some(key) = Self::find_lru_victim(&self.entries) {
+           // VERUS REWRITE: originally self.entries.remove(&key)
+           btreemap_remove(&mut self.entries, &key);
+       }
+   }
+   ```
+
+3. Add a proof lemma (following the `lemma_new_view` / `lemma_remove_view`
+   pattern) that proves `evict`'s postconditions from the helper's ensures
+   and `btreemap_remove`'s ensures. You will need:
+   - `axiom_cache_lru_of_remove` (already exists) for the LRU update after remove
+   - A new helper connecting `cache_lru_of(entries)[0]` to the eviction victim
+   - `reveal` of the closed view functions
+
+4. Run `make verify-cache` and report the **exact** result.
+
+**Note:** The `find_lru_victim` spec axiomatizes that the iterator-based minimum
+equals the abstract LRU victim (`cache_lru_of(entries)[0]`). This is sound because
+`cache_lru_of` is defined as "sorted by last_used ascending", and `min_by_key`
+finds the entry with the smallest `last_used`, which is exactly index 0. This is
+a narrower trust boundary than the current state where ALL of `evict`'s logic is
+trusted.
 
 ### Evidence
 
 **Commands run by reviewer:**
 
-1. Baseline verification:
+1. Baseline verification (all functions with external_body):
 ```
 $ make verify-cache
 verification: cached (no recompilation), — (exit 0)
-cheating: assume=0 external_body=9 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+cheating: assume=0 external_body=8 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+status: CHEATING_DETECTED
 ```
 
-2. Removed `external_body` from `Cache::new`, ran verification:
+2. Removed `external_body` from `Cache::evict`, ran verification:
 ```
 $ make verify-cache
-error: `alloc::collections::btree::map::impl&%18::new` is not supported
-  = help: pub assume_specification<K, V> [alloc::collections::BTreeMap::<K, V>::new] ()
-              -> alloc::collections::BTreeMap<K, V>;
-Exit code: 101
+error: The verifier does not yet support the following Rust feature:
+       only variables are supported here, not general patterns
+   --> src/libs/cache/src/lib.rs:336:26
+    |
+336 |             .min_by_key(|(_, e)| e.last_used)
+    |                          ^^^^^^
 ```
 
-3. Verified vstd btree module gating:
+3. Removed `external_body` from `Cache::put`, ran verification:
 ```
-$ grep -B5 'pub mod btree' ~/verus/vstd/std_specs/mod.rs
-#[cfg(all(feature = "alloc", feature = "std"))]
-pub mod btree;
+error: The verifier does not yet support the following Rust feature:
+       &mut types, except in special cases
+   --> src/libs/cache/src/lib.rs:245:30
 ```
 
-4. Confirmed vstd BTreeMap::new spec exists at `vstd/std_specs/btree.rs:613-616`.
+4. Removed `external_body` from `Cache::get`, ran verification:
+```
+error: The verifier does not yet support the following Rust feature:
+       &mut types, except in special cases
+   --> src/libs/cache/src/lib.rs:209:30
+```
 
-5. Confirmed vstd BTreeMap View impl at `vstd/std_specs/btree.rs:457-461`:
-```rust
-impl<Key, Value, A: Allocator + Clone> View for BTreeMap<Key, Value, A> {
-    type V = Map<Key, Value>;
-    uninterp spec fn view(&self) -> Map<Key, Value>;
-}
+5. Removed `external_body` from `CacheGuard::deref`, ran verification:
+```
+error: disallowed: field expression for an opaque datatype
+  --> src/libs/cache/src/lib.rs:98:9
 ```
