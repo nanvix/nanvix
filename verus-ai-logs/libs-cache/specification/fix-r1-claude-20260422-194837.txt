@@ -113,3 +113,5 @@ Let me implement step by step, starting with the spike:
 Now add `#[verus_verify]` on the Deref impl block and `#[verus_verify(external_body)]` + spec on `deref`:
 Now try DerefMut:
 Now let me spike this to see if CacheGuard View + Deref/DerefMut compile:
+As expected, `deref_mut` fails — Verus doesn't support `&mut V` return type. `deref` works fine. Let me remove the annotations from DerefMut:
+Now verify the spike with just View + Deref:

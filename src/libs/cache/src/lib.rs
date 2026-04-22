@@ -97,12 +97,7 @@ impl<V> Deref for CacheGuard<'_, V> {
     }
 }
 
-#[verus_verify]
 impl<V> DerefMut for CacheGuard<'_, V> {
-    #[verus_verify(external_body)]
-    #[verus_spec(ret =>
-        ensures *ret == self@,
-    )]
     fn deref_mut(&mut self) -> &mut V {
         self.value
     }
