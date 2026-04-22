@@ -90,10 +90,10 @@ fields ("The verifier does not yet support &mut types, except in special cases")
 - **Trust item:** `external_body`
 - **Classification:** `VERUS_LIMITATION`
 - **Reason:** Same `get_mut` blockers as Cache::get (no vstd spec, `&mut` return
-  type). Rewriting to avoid `get_mut` (using `contains_key` + `remove` +
-  `insert`) would require a new `axiom_cache_lru_of_insert` trust item plus a
-  concrete counter invariant, increasing total trust items without reducing
-  the trust boundary.
+  type). Rewriting to avoid `get_mut` would change the existing-key path from
+  in-place mutation to a `remove` + `insert` sequence — a structural exec code
+  modification violating source integrity. The `contains_key` alternative also
+  has the `Borrow<Q>` blocker (same as `remove`).
 - **Spec:** `self@ == old(self)@.spec_put(key, value)`, invariant preserved.
 
 ### Cache::evict — `lib.rs:321-344`
@@ -164,3 +164,33 @@ lemmas are now fully proven:
 | `lemma_spec_put_inv` | ✅ Proven |
 | `lemma_spec_remove_inv` | ✅ Proven |
 | `lemma_spec_clear_inv` | ✅ Proven |
+
+## assume_specification Items (lib.vstd_btree.rs)
+
+These are copies of upstream vstd specs adapted for `alloc::collections::BTreeMap`.
+They exist because vstd gates its btree specs behind `cfg(std)` which is unavailable
+on this no\_std kernel target. Semantically identical to upstream — only the import
+path (`alloc::` vs `std::`) differs.
+
+| Function | Line | Classification |
+|---|---|---|
+| `BTreeMap::new` | lib.vstd\_btree.rs:69-73 | `EXTERNAL_BOTTOM` |
+| `BTreeMap::len` | lib.vstd\_btree.rs:88-95 | `EXTERNAL_BOTTOM` |
+| `BTreeMap::is_empty` | lib.vstd\_btree.rs:98-105 | `EXTERNAL_BOTTOM` |
+| `BTreeMap::insert` | lib.vstd\_btree.rs:108-122 | `EXTERNAL_BOTTOM` |
+| `BTreeMap::clear` | lib.vstd\_btree.rs:130-137 | `EXTERNAL_BOTTOM` |
+
+### broadcast axiom Declarations
+
+| Axiom | Line | Purpose |
+|---|---|---|
+| `axiom_btree_map_view_finite_dom` | lib.vstd\_btree.rs:56-61 | BTreeMap view domain is finite |
+| `axiom_spec_btree_map_len` | lib.vstd\_btree.rs:80-85 | Connects `spec_btree_map_len` to `btreemap_view_spec.len()` |
+
+Source: `~/.cargo/registry/src/.../vstd-0.0.0-2026-04-05-0114/std_specs/btree.rs`
+
+## Integrity Audit
+
+Audited 2026-04-22. All items challenged against verus-constraints escalation ladder.
+No items eliminated — all are genuine trust boundaries. See
+`integrity-audit/fix_report.md` for detailed challenge analysis.

@@ -109,3 +109,66 @@ Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-
 
 === Output (streaming) ===
 Now let me run the verification and AST consistency checks in parallel.
+Good. I have the initial state. Let me examine the AST mismatches and the extra function.
+Now I have a clear picture. Let me analyze the AST mismatches and cheating items, then plan my approach. Let me consult the rubber-duck agent for a critique before proceeding with fixes.
+Now let me check the existing review artifacts and the verify script for completeness.
+Now I have a thorough understanding of the code and the plan. Here is my critique:
+
+---
+
+## Critique
+
+### Overall Assessment
+
+This is a thorough and well-structured analysis. The item inventory is correct (8 `external_body`: 6 functions + 2 external_type_specifications), the AST mismatch classifications are sound, and the KEEP decisions are defensible for all items. That said, I have one substantive issue with a justification that should be corrected, and two smaller observations.
+
+---
+
+### Issue 1 — Cache::put justification is factually wrong (Non-blocking, but fix before writing trust.md)
+
+**The problem:** You argue that rewriting `Cache::put` to avoid `get_mut` would produce "more trust, not less." This is incorrect. Body-verifying `put` with a new `axiom_cache_lru_of_insert` would be *strictly less trust* than a fully `external_body` `put`. An `external_body` function trusts the **entire implementation** — every branch, every counter bump, every eviction decision. A body-verified function with one axiom only trusts the axiom statement itself. The verification would structurally prove that eviction triggers at the right time, insert uses the right key/value, the capacity-0 short circuit is correct, etc.
+
+**The correct justification for KEEP is source integrity, not trust volume.** The rewrite requires changing exec code from an in-place `get_mut` update to a `btreemap_remove` + `insert` sequence — a behavioral change at the implementation level, not a mere wrapper substitution. Per Verus constraints, this goes beyond step 4 of the escalation ladder (stdlib wrapper) into structural exec code modification.
+
+**Additionally, the rewrite doesn't just need `contains_key`.** Your analysis proposes "`contains_key` + `remove` + `insert`", but `contains_key` itself has the same `Borrow<Q>` blocker as `get_mut` and `remove` (see `lib.vstd_btree.rs:124-127`). So the actual rewrite would be `btreemap_remove` (check return) + `insert`, which changes the existing-key path from in-place mutation to remove-then-reinsert — a semantic exec change.
+
+**Recommendation:** Update the justification to: *"Requires exec code modification (in-place `get_mut` update → remove+insert sequence), violating source integrity. The `contains_key` alternative also has the `Borrow<Q>` blocker. KEEP as external_body."* Drop the "more trust, not less" claim.
+
+---
+
+### Issue 2 — axiom_cache_lru_of_remove: your conclusion is correct but the reasoning could be sharper (Non-blocking)
+
+You say the axiom is unverifiable because `cache_lru_of_nonempty` is uninterpreted. This is true under the current design, but the deeper reason is worth stating: even if `cache_lru_of` were defined concretely (e.g., as a spec-level sort-by-`last_used` over `Map` keys), you would *still* need to prove that sorting a map after removing a key produces the same sequence as filtering the pre-removal sorted sequence. This is provable in principle (it's a standard sorting lemma) but requires:
+
+1. A recursive sort-by-value function over `Map` in spec — vstd's `Map` has no ordering primitives
+2. A stability-under-removal lemma for that sort function
+3. Significant proof effort for one trust item
+
+The practical calculus (large effort, one axiom eliminated, axiom is small and obviously sound) makes KEEP the right call. But stating this shows you considered the deeper alternative and rejected it on cost/benefit, not impossibility.
+
+---
+
+### Issue 3 — Counter overflow should be acknowledged in the plan (Minor)
+
+Your plan focuses on `external_body` items, which is the right scope for an integrity audit. However, `bugs.md` BUG-1 documents that `self.counter += 1` in `Cache::get` and `Cache::put` (both `external_body`) has no overflow guard. The spec transitions use abstract `Seq` ordering that doesn't model counters, so the spec is correct — but the `external_body` trust gap means the **implementation's** correctness depends on no overflow occurring. Since this is a trust assumption that lives *inside* external_body functions you're auditing, the fix_report should at least cross-reference it (e.g., "See bugs.md BUG-1 for counter overflow trust assumption within external_body functions").
+
+---
+
+### Items I Verified as Correct
+
+- **btreemap_remove (KEEP):** The `Borrow<Q>` blocker is real, documented in `lib.vstd_btree.rs:124-127`. The wrapper is the thinnest possible trust layer. ✅
+- **CacheGuard::deref (KEEP):** CacheGuard is necessarily `external_body` due to `&mut V` field. Field access is opaque. No alternative. ✅
+- **Cache::get (KEEP):** `get_mut` has no vstd spec and returns `Option<&mut V>`. Double blocker. ✅
+- **Cache::evict (KEEP):** `iter()`, `min_by_key()`, `map()` all lack vstd specs. A manual loop would still need `iter()` which has no spec. ✅
+- **AST mismatches:** `Cache::new` let-binding pattern is pre-approved. `Cache::remove` + `btreemap_remove` is escalation step 4. Both correctly classified. ✅
+- **External type specs:** `ExBTreeMap` and `ExCacheGuard` are necessary and correctly classified. ✅
+Good critique. The key takeaways: fix the Cache::put justification (source integrity, not trust volume), and cross-reference counter overflow. No items can be eliminated.
+
+Let me check the full cheating detection patterns and assume_specification counts.
+Good — no admit() or assume() calls. Now let me create the output directory and write the reports.
+Now let me check the assume_specification count more carefully — the verify.sh reports assume=0 but that might only count `assume(...)` calls, not `assume_specification`. Let me check the script's pattern.
+The script counts `assume(` calls (not `assume_specification`). The `assume_specification` items are in `lib.vstd_btree.rs` — those are trust boundary items that should be in trust.md. Now let me write the fix_report.md and updated trust.md.
+Now update trust.md with proper classifications and corrected justifications:
+The existing trust.md is already comprehensive. I need to fix the Cache::put justification as the rubber-duck agent identified. Let me update that entry:
+Good. Now I need to add the `assume_specification` items and `broadcast axiom` items to trust.md, since those are trust boundary items the audit should track. Let me also add an "Integrity Audit" section noting this was reviewed:
+Now let me run the final verification to confirm everything still passes:
