@@ -234,7 +234,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// Removes all entries.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(
         requires
             old(self)@.inv(),
@@ -244,12 +243,25 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     )]
     pub fn clear(&mut self) { ... }
 
+    /// Finds the LRU victim (entry with smallest last_used counter).
+    /// Only the iterator chain is unverifiable; isolated as external_body.
+    #[verus_verify(external_body)]
+    #[verus_spec(ret =>
+        ensures
+            btreemap_view_spec(*entries).dom().len() > 0 ==> {
+                &&& ret is Some
+                &&& cache_lru_of(*entries).len() > 0
+                &&& ret->Some_0 == cache_lru_of(*entries)[0]
+            },
+            btreemap_view_spec(*entries).dom().len() == 0 ==> ret is None,
+    )]
+    fn find_lru_victim(entries: &BTreeMap<K, CacheEntry<V>>) -> Option<K> { ... }
+
     ///
     /// # Description
     ///
     /// Evicts the entry with the smallest `last_used` counter.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(
         requires
             old(self)@.inv(),
