@@ -508,15 +508,20 @@ proof fn lemma_filter_neq_first_is_subrange<K>(s: Seq<K>, first: K)
         // s.last() != first (no dups, different indices)
         assert(s.last() != first);
 
-        // By filter def: s.filter(pred) = dl.filter(pred).push(s.last())
-        //              = dl.subrange(1, dl.len()).push(s.last())  (by IH)
-
+        // By filter def (revealed): s.filter(pred) = dl.filter(pred).push(s.last())
         // Compose nested subranges:
         // dl.subrange(1, dl.len()) = s.subrange(0,n-1).subrange(1,n-1) =~= s.subrange(1,n-1)
         s.lemma_slice_of_slice(0, n - 1, 1, n - 1);
 
-        // Extend subrange by one element:
-        assert(s.subrange(1, n - 1).push(s[n - 1]) =~= s.subrange(1, n));
+        // Chain the equalities explicitly:
+        assert(dl.subrange(1, dl.len() as int)
+               =~= s.subrange(1, n - 1));
+        assert(dl.filter(pred)
+               =~= s.subrange(1, n - 1));
+        assert(s.subrange(1, n - 1).push(s[n - 1])
+               =~= s.subrange(1, n));
+        assert(s.filter(pred)
+               =~= s.subrange(1, n - 1).push(s.last()));
     }
 }
 
