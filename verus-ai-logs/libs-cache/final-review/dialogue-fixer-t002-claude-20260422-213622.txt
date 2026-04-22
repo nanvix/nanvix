@@ -122,3 +122,5 @@ The reveals compile but the solver needs more help. I need:
 
 Let me add the axiom and a lemma. First, the axiom in lib.proof.rs:
 Now update Cache::remove to use ghost snapshot and call the lemma:
+The `let ghost` syntax is for `verus!` blocks, not attribute-based syntax. Let me check how other crates handle ghost snapshots in attribute-based exec code:
+`old(self)` works inside `proof!` blocks (bitmap crate confirms). Let me use that directly instead of ghost variables:
