@@ -109,3 +109,68 @@ Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-
 
 === Output (streaming) ===
 Now let me run the initial cheating detection and AST consistency check in parallel:
+Good. I have the baseline:
+- **Cheating**: external_body=9, everything else=0
+- **AST Consistency**: All 18 items MATCH, 0 mismatched
+
+Now let me challenge each external_body. First, I need to search vstd for BTreeMap support:
+There's a `btree.rs` in a different vstd! Let me examine it and check which vstd version this project uses:
+This is a critical finding - vstd HAS BTreeMap specs! Let me check which methods are available:
+Now I have the full picture. Let me consult rubber-duck before writing the report, to validate my analysis:
+Now let me check the vstd btree specs and the Cargo configuration to verify the claims:
+Now let me verify one more critical detail about the `alloc` vs `std` path issue:
+Good. Now I have a thorough understanding. Let me compile the critique.
+
+---
+
+## Critique
+
+Your analysis is thorough and your conclusion is substantively correct — none of the 9 `external_body` items can be practically eliminated. The count is accurate, the root cause diagnosis is sound, and the trust.md update is the right action. However, there are a few issues ranging from a factual inaccuracy to gaps in reasoning that should be tightened.
+
+### Issue 1: The trust.md correction should be more precise about *why* btree specs are unavailable (Non-blocking)
+
+Your finding is correct that vstd HAS btree specs and the current trust.md is imprecise. But your proposed correction ("unavailable on kernel target due to std gating") undersells the depth of the problem.
+
+**Key detail:** vstd's `btree.rs` (line 19-22) imports types via `use std::collections::BTreeMap` — not `use alloc::collections::BTreeMap`. This means the btree module *structurally depends on the `std` crate*, not just the `alloc` crate. The `cfg(all(feature = "alloc", feature = "std"))` gating at `std_specs/mod.rs:17-18` reflects this hard dependency.
+
+The cache crate imports from `alloc::collections::BTreeMap` (lib.rs:43). Although these are the same Rust type at the language level (std re-exports from alloc), the vstd btree module would fail to *compile* without `std` because of its own internal imports. So the issue isn't merely "feature flags not enabled" — it's that enabling them would require `std` to exist as a crate, which fundamentally conflicts with the `no_std` kernel target.
+
+**Recommendation:** In the trust.md update, state: *"vstd does provide BTreeMap specifications (`vstd::std_specs::btree`), but the module is gated behind `cfg(all(feature = "alloc", feature = "std"))` and internally imports from `std::collections`, making it structurally incompatible with this crate's `no_std` kernel target."*
+
+### Issue 2: Your question 3 (custom `assume_specification`) deserves a more rigorous cost-benefit analysis (Blocking for the report)
+
+You identified this as a question but didn't analyze it. The answer has substance, and the fix_report.md should document *why* this path was evaluated and rejected, not just that nothing was done.
+
+**What's theoretically possible:** You could write custom `assume_specification` for `BTreeMap::new`, `insert`, `remove`, `clear`, and `len` in the cache crate (the external_type_specification for BTreeMap is already in place). You could also give `BTreeMap<K, CacheEntry<V>>` a `View` implementation as `Map<K, CacheEntry<V>>`, then write a concrete `Cache::view()` that maps from this to `CacheView`.
+
+**What that would unblock:** At most `Cache::new`, `Cache::remove`, and `Cache::clear` — these only call BTreeMap methods that have straightforward specs.
+
+**Why it's not worth it:**
+1. The concrete `Cache::view()` must produce `lru_order: Seq<K>` by *sorting all keys by their `last_used` counter*. This requires a spec-level sort function, well-foundedness proofs, and lemmas proving the sort is consistent with `move_to_mru` / subrange operations. This is substantial verification effort.
+2. Even with all that work, `Cache::get` and `Cache::put` remain `external_body` because they call `BTreeMap::get_mut`, which (a) is absent from vstd and (b) returns `Option<&mut V>` — a Verus limitation.
+3. `Cache::evict` remains `external_body` due to the `iter().min_by_key()` closure chain.
+4. `CacheGuard::deref` remains `external_body` because CacheGuard's struct fields are opaque.
+5. Net result: eliminating 3 out of 7 function `external_body` items at enormous cost, while the 4 hardest ones (which are the ones callers actually rely on — `get`, `put`, `evict`) stay trusted.
+
+**Recommendation:** Add a brief "Evaluated and Rejected Alternatives" section to the fix_report.md documenting this tradeoff. This prevents future auditors from re-investigating the same dead end.
+
+### Issue 3: Answer to question 2 — correct but the reasoning should be explicit (Non-blocking)
+
+"Is it reasonable to NOT try enabling `alloc` feature for vstd?" — Yes, and for a stronger reason than you might think: enabling `alloc` alone is *insufficient*. The btree module requires `cfg(all(feature = "alloc", feature = "std"))` (both features). And `std` is fundamentally incompatible with the kernel target. So this isn't a judgment call — it's a hard constraint. Make sure the report states this clearly rather than framing it as a choice.
+
+### Issue 4: No issues found with spec quality or proof structure
+
+For completeness: I reviewed the spec transitions (spec_new, spec_get, spec_put, spec_remove, spec_clear), the CacheView invariant, and all five invariant preservation proofs. They are well-structured, handle all edge cases (zero capacity, key-present vs key-absent, at-capacity vs below-capacity), and the helper lemmas (filter preserves no_dup, filter_neq_to_set, subrange_no_dup, drop_first_to_set) are correct and necessary. The proof file is clean — no admits, no unnecessary assertions.
+
+### Summary
+
+| # | Issue | Severity | Action |
+|---|-------|----------|--------|
+| 1 | trust.md correction should explain `std::collections` import dependency, not just feature gating | Non-blocking | Refine the wording |
+| 2 | fix_report.md should document why custom `assume_specification` path was evaluated and rejected | Blocking | Add "Evaluated Alternatives" section |
+| 3 | Explicitly state `alloc`-only is insufficient (both `alloc` + `std` needed) | Non-blocking | Clarify in report |
+
+Your core conclusion — all 9 items remain, no code changes — is correct. The work is well-executed; these suggestions are about making the audit trail more rigorous and preventing wasted effort by future auditors.
+The critique validated my conclusions and suggested better framing. Let me now produce the deliverables:
+Now update trust.md with corrected information:
+Now run the verification gate:

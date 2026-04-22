@@ -5,12 +5,20 @@ used in the cache crate verification.
 
 ## Root Cause
 
-`BTreeMap` (from `alloc::collections`) has no vstd specifications — no View trait,
-no `assume_specification` for any method (`new`, `get_mut`, `insert`, `remove`, `clear`,
-`len`, `iter`, `min_by_key`). This makes body verification of any Cache method impossible.
-All methods are marked `external_body` with comprehensive pre/post conditions.
+vstd provides BTreeMap specifications in `vstd::std_specs::btree` (View trait,
+`assume_specification` for `new`, `insert`, `get`, `remove`, `clear`, `len`, `iter`,
+`contains_key`, `keys`, `values`). However, the btree module is gated behind
+`cfg(all(feature = "alloc", feature = "std"))` and internally imports from
+`std::collections`, making it structurally incompatible with this crate's `no_std`
+kernel target (`-Z build-std=core,alloc,compiler_builtins`). Enabling the `std`
+feature is not possible because the `std` crate does not exist on the i686-nanvix
+kernel target.
 
-Additionally, `CacheGuard` contains `&'a mut V` which Verus cannot handle in struct
+Additionally, `BTreeMap::get_mut` (used by `Cache::get` and `Cache::put`) has no
+vstd spec even in the `std` btree module, and returns `Option<&mut V>` — a Verus
+limitation on `&mut` return types.
+
+`CacheGuard` contains `&'a mut V` which Verus cannot handle in struct
 fields ("The verifier does not yet support &mut types, except in special cases").
 
 ## External Type Specifications
@@ -50,14 +58,17 @@ fields ("The verifier does not yet support &mut types, except in special cases")
 ### Cache::new — `lib.rs:147`
 - **Trust item:** `external_body`
 - **Classification:** `VERUS_LIMITATION`
-- **Reason:** Body calls `BTreeMap::new()` which has no vstd spec.
+- **Reason:** Body calls `BTreeMap::new()`. vstd btree specs unavailable on
+  `no_std` target (see Root Cause). Cache::view() is uninterp, so body cannot
+  be verified against abstract state even with specs.
 - **Spec:** `result@ == CacheView::spec_new(capacity as nat)`
 
 ### Cache::get — `lib.rs:186`
 - **Trust item:** `external_body`
 - **Classification:** `VERUS_LIMITATION`
-- **Reason:** Body calls `BTreeMap::get_mut()` which has no vstd spec. Also
-  constructs `CacheGuard` with `&mut` which Verus cannot handle.
+- **Reason:** Body calls `BTreeMap::get_mut()` which (a) has no vstd spec even
+  in the `std` btree module, and (b) returns `Option<&mut V>` — a Verus `&mut`
+  return type limitation. Also constructs `CacheGuard` with `&mut`.
 - **Spec:** On hit: `result is Some`, guard view equals `spec_get(*key).1.unwrap()`,
   state transitions via `spec_get`. On miss: `result is None`, view unchanged.
 
@@ -71,28 +82,30 @@ fields ("The verifier does not yet support &mut types, except in special cases")
 ### Cache::put — `lib.rs:216`
 - **Trust item:** `external_body`
 - **Classification:** `VERUS_LIMITATION`
-- **Reason:** Body calls `BTreeMap::get_mut()`, `BTreeMap::len()`,
-  `BTreeMap::insert()`, and `self.evict()`. None have vstd specs.
+- **Reason:** Same `get_mut` blockers as Cache::get (no vstd spec, `&mut` return
+  type), plus calls `self.evict()`. vstd btree specs unavailable on `no_std` target.
 - **Spec:** `self@ == old(self)@.spec_put(key, value)`, invariant preserved.
 
 ### Cache::remove — `lib.rs:262`
 - **Trust item:** `external_body`
 - **Classification:** `VERUS_LIMITATION`
-- **Reason:** Body calls `BTreeMap::remove()` which has no vstd spec.
+- **Reason:** Calls `BTreeMap::remove()`. vstd btree specs unavailable on
+  `no_std` target (see Root Cause).
 - **Spec:** `self@ == old(self)@.spec_remove(*key)`, invariant preserved.
 
 ### Cache::clear — `lib.rs:279`
 - **Trust item:** `external_body`
 - **Classification:** `VERUS_LIMITATION`
-- **Reason:** Body calls `BTreeMap::clear()` which has no vstd spec.
+- **Reason:** Calls `BTreeMap::clear()`. vstd btree specs unavailable on
+  `no_std` target (see Root Cause).
 - **Spec:** `self@ == old(self)@.spec_clear()`, invariant preserved.
 
 ### Cache::evict — `lib.rs:303`
 - **Trust item:** `external_body`
 - **Classification:** `VERUS_LIMITATION`
-- **Reason:** Body calls `BTreeMap::iter()`, `Iterator::min_by_key()` with a
-  closure, and `BTreeMap::remove()`. None have vstd specs. The iterator chain
-  with closure is also problematic for Verus.
+- **Reason:** Uses `self.entries.iter().min_by_key(|(_, e)| e.last_used)`
+  iterator chain with closure, plus `BTreeMap::remove()`. Iterator combinators
+  lack vstd specs. vstd btree specs unavailable on `no_std` target.
 - **Spec:** LRU victim (`lru_order[0]`) evicted, contents/order updated accordingly.
 
 ## Unverifiable Functions
