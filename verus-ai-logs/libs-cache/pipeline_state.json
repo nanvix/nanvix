@@ -4,23 +4,10 @@
   "source_path": "src/libs/cache/src/lib.rs",
   "current_phase": "integrity-audit",
   "current_phase_idx": 4,
-  "phase_results": {
-    "integrity-audit": {
-      "phase": "integrity-audit",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "PASS",
-      "review_file": null,
-      "duration_s": 1461.1
-    }
-  },
-  "prover_session_id": "76e27d0e-a9ba-479b-b7fd-7ce5f5c9a688",
-  "completed": true,
+  "phase_results": {},
+  "prover_session_id": null,
+  "completed": false,
   "base_branch": "verus-ai/cache",
   "verus_branch": "verus-ai/cache",
-  "phase_boundary_shas": {
-    "integrity-audit": "498f53c6f4b60a7f6d52bdb81aaed100e99e0a4a"
-  }
+  "phase_boundary_shas": {}
 }

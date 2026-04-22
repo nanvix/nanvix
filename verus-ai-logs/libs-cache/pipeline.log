@@ -306,3 +306,20 @@ PIPELINE COMPLETE: All phases passed for cache
 Total time: 24m21s
 ============================================================
 [2026-04-23 02:24:12] [USAGE] Summary: 30 calls, 0 tokens, 6h23m46s total → /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/usage_summary.json
+[2026-04-23 02:24:24] [BRANCH] Base: verus-ai/cache → Verus: verus-ai/cache
+[2026-04-23 02:24:24] [ABSTRACTION] Body-removed source: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/body_removed_source.rs (13792 -> 9343 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: cache
+Source: src/libs/cache/src/lib.rs
+Crate:  cache
+Branch: verus-ai/cache (base: verus-ai/cache)
+Phases: integrity-audit → integrity-audit
+Body-removed source: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/body_removed_source.rs
+############################################################
+
+============================================================
+PHASE: integrity-audit
+Module: cache
+============================================================
