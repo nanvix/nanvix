@@ -179,3 +179,4 @@ Excellent! Now try the assert inside the `!sub.contains(key)` by-block. Let me t
 Now try removing `assert(s.to_set().contains(key))` in `lemma_filter_neq_len` (the highest-risk one):
 Now let me try some more: remove `assert(s.contains(x))` and `assert(x != s[0])` inside `lemma_drop_first_to_set`, and `assert(sub.contains(x))` / `assert(idx >= 1int)`:
 Try removing the intermediate asserts in the first forall-by block:
+Now try simplifying the second forall-by block in the same lemma:

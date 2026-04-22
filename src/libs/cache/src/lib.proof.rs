@@ -149,9 +149,7 @@ proof fn lemma_drop_first_to_set<K>(s: Seq<K>)
     assert forall |x: K|
         s.to_set().remove(s[0]).contains(x) implies sub.to_set().contains(x)
     by {
-        assert(s.contains(x) && x != s[0]);
         let idx = choose |idx: int| 0 <= idx < s.len() && s[idx] == x;
-        assert(idx >= 1int);
         vstd::seq_lib::lemma_seq_subrange_elements(s, 1int, s.len() as int, x);
     };
 }
