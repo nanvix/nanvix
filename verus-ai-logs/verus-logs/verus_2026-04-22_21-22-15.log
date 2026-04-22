@@ -1,0 +1,43 @@
+Timestamp: 2026-04-22_21-22-15
+Mode: cargo
+Crate: cache
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=8
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking cache v0.12.457 (/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache)
+error[E0308]: mismatched types
+  --> src/libs/cache/src/lib.spec.rs:42:1
+   |
+42 | / pub assume_specification<K, V>[ alloc::collections::BTreeMap::<K, V>::new ]()
+43 | |     -> (m: ExBTreeMap<K, V, alloc::alloc::Global>)
+   | |            -------------------------------------- expected `ExBTreeMap<K, V, alloc::alloc::Global>` because of return type
+44 | |     ensures
+45 | |         m@ == Map::<K, V>::empty(),
+46 | | ;
+   | |_^ expected `ExBTreeMap<K, V, Global>`, found `BTreeMap<K, V>`
+   |
+   = note: expected struct `ExBTreeMap<K, V, alloc::alloc::Global>`
+              found struct `alloc::collections::BTreeMap<K, V>`
+help: try wrapping the expression in `ExBTreeMap`
+   |
+42 ~ ExBTreeMap(pub assume_specification<K, V>[ alloc::collections::BTreeMap::<K, V>::new ]()
+43 |     -> (m: ExBTreeMap<K, V, alloc::alloc::Global>)
+44 |     ensures
+45 |         m@ == Map::<K, V>::empty(),
+46 ~ ;)
+   |
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `cache` (lib) due to 1 previous error

@@ -105,3 +105,4 @@ Now I have full context. Let me implement the fix step by step.
 **Attempt 1:** Add `assume_specification` for `BTreeMap::new` + View impl for BTreeMap, remove `external_body` from `Cache::new`.
 Orphan rule error. Let me try implementing View on the proxy type `ExBTreeMap` instead, which is a local type.
 The View impl on the proxy type doesn't propagate to the real BTreeMap for `@` resolution. Let me try without View-based ensures on the assume_specification first to see what Cache::new error we get.
+Now let me try a different approach. In Attempt 2, the View impl on `ExBTreeMap` compiled fine — the issue was only in the `assume_specification` where `m` was typed as `alloc::collections::BTreeMap`. Let me try using `ExBTreeMap` in the return type.
