@@ -154,3 +154,4 @@ Now let me read all the source files and the latest review to understand the cur
 Now let me get an accurate count of all `external_body` annotations and read the final review:
 Let me read the existing dialogue turns to understand what's been discussed:
 Now let me run verification to confirm the current baseline and do Step 1 of the drill-down:
+Good. Now let me do Step 1 of the drill-down — I'll try removing `external_body` from `Cache::evict` to get the exact error:
