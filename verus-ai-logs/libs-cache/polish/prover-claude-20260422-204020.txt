@@ -177,3 +177,5 @@ Now try removing `assert(!cache.contents.dom().remove(victim).contains(key))` (l
 Now try removing `assert(new_lru.to_set() =~= result.contents.dom())` (the final composed equality):
 Excellent! Now try the assert inside the `!sub.contains(key)` by-block. Let me try removing the two inner asserts (lines 270-271):
 Now try removing `assert(s.to_set().contains(key))` in `lemma_filter_neq_len` (the highest-risk one):
+Now let me try some more: remove `assert(s.contains(x))` and `assert(x != s[0])` inside `lemma_drop_first_to_set`, and `assert(sub.contains(x))` / `assert(idx >= 1int)`:
+Try removing the intermediate asserts in the first forall-by block:
