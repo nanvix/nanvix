@@ -1,0 +1,113 @@
+=== Copilot Session ===
+Timestamp: 2026-04-23T01:48:21.408338
+Model: claude-opus-4.6
+Session: new
+Command: copilot --allow-all --model claude-opus-4.6 --output-format...
+
+=== Prompt ===
+You are performing an integrity audit for cache. The goal is to
+**minimize trust** — eliminate as many cheating items as possible. Any
+verifiable code logic must be verified, not trusted.
+
+A claimed "Verus limitation" in trust.md is suspect. Follow the
+**verus-constraints** escalation ladder: search vstd, write an isolated
+reproducer, try equivalent rewrites. Only genuinely unverifiable items
+(see **spec-design** skill trust classifications) may remain.
+
+
+
+Source file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.rs
+Source directory: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src
+Spec file:  /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.spec.rs
+Proof file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.proof.rs
+Verus command: make verify-cache
+Base branch: verus-ai/cache
+
+== SKILLS ==
+
+Follow strictly (auto-loaded from .github/skills/):
+- **ast-consistency** — MUST follow: AST consistency checks, pre-approved deviations
+- **verus-constraints** — MUST follow: forbidden patterns, escalation ladder
+- **spec-design** — reference: trust classifications (external-top, external-bottom)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai-lru-0422/scripts/
+- Source directory: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/
+
+== SUB-AGENT POLICY ==
+
+Sub-agents are allowed. Use ONLY these models:
+  - **claude-opus-4.6** (preferred default) — for all tasks.
+  - **gpt-5.3-codex** — for all tasks.
+When diversity is needed (e.g. independent parallel analysis), use a different model per sub-agent.
+
+== TASK ==
+
+Independently verify the integrity audit. Do NOT trust the prover's report —
+run all checks yourself. The goal: is trust.md truly minimal?
+
+Audit report: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/integrity-audit/fix_report.md
+
+Use **2 sub-agents** (one per model from the sub-agent policy) to independently
+review. Each sub-agent should:
+
+1. **Cheating detection**: Run `make verify-cache` and count all cheating items.
+   Cross-check against the audit report.
+2. **Challenge surviving items**: For each item still in /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/trust.md:
+   - Is the classification correct (per **spec-design** skill)?
+   - Does the isolated reproducer actually prove the construct is unsupported?
+   - Could an equivalent rewrite eliminate this item?
+   Any item that could be eliminated but wasn't = FAIL.
+3. **AST consistency**: Run the checks per the **ast-consistency** skill.
+   For each mismatch, verify the cause analysis is correct.
+4. **Verification**: Run `make verify-cache` to confirm it passes.
+5. **Bug vs limitation**: For each surviving `external_body`, determine whether
+   it masks a code defect or a genuine Verus limitation. If the underlying code
+   is wrong (not just unsupported), record it in /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/bugs.md as a True Bug.
+
+Save each sub-agent's raw review next to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/integrity-audit/review_r1.md with the model name
+appended (e.g., `review_r1.claude.md`). Then consolidate into a single review.
+
+== OUTPUT ==
+
+Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/integrity-audit/review_r1.md:
+```markdown
+# Integrity Audit Review: cache
+
+## Checklist
+### Integrity Audit
+- [ ] Zero admit() remaining
+- [ ] Zero assume() remaining
+- [ ] Zero trusted functions
+- [ ] Zero exec_allows_no_decreases_clause
+- [ ] Zero cfg-gated exec code (only imports/derives/debug_assert/logging allowed)
+- [ ] Every external_body challenged — only genuinely unverifiable items survive
+- [ ] AST consistency: each mismatch analyzed (allowed deviation vs restore needed)
+- [ ] All exec rewrites have VERUS REWRITE comment and minimal reproducer
+- [ ] trust.md minimized — only genuinely unverifiable items remain
+- [ ] make verify passes (0 errors, 0 warnings)
+
+## Cheating Items Still Present
+- [each item with location and whether it's truly necessary]
+
+## Challengeable Items (should have been eliminated)
+- [items that could be verified but weren't — FAIL]
+
+## AST Mismatches
+- [any mismatched functions/structs with cause analysis]
+
+## Issues (highest priority first)
+- ...
+
+## Result: PASS / FAIL
+```
+
+== RESULT ==
+
+Be strict: PASS only if ALL checklist items are checked. Any unchecked item is FAIL.
+
+=== Output (streaming) ===
+Let me read the source files and existing reviews to understand the full context before launching independent verification.
+Now let me read the remaining parts and check the AST consistency scripts.
+Now I have a thorough understanding of the existing state. I notice a naming discrepancy — the reviews call `find_lru_victim` "evict" incorrectly. Let me now run verification and AST consistency checks, then launch the two independent sub-agents.
