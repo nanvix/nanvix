@@ -1,5 +1,7 @@
 # Integrity Audit Report: cache
 
+Audited: 2026-04-23
+
 ## Cheating Counts (before → after)
 
 | Item | Before | After | Eliminated |
@@ -12,17 +14,29 @@
 | cfg-gated exec | 0 | 0 | 0 |
 | assume_specification | 5 | 5 | 0 |
 
-Note: The 8 `external_body` items break down as: 6 functions (`axiom_cache_lru_of_remove`,
-`deref`, `btreemap_remove`, `get`, `put`, `evict`) + 2 external type specifications
-(`ExBTreeMap`, `ExCacheGuard`). The 5 `assume_specification` items are in `lib.vstd_btree.rs`
-for `BTreeMap::{new, len, is_empty, insert, clear}` — copies of upstream vstd specs adapted
-for `alloc::collections::BTreeMap` on no\_std targets. Additionally, 2 `broadcast axiom`
-declarations exist for `btreemap_view_spec` domain finiteness and `len` equivalence.
+Additional trust items (not in cheating counter):
+- broadcast axiom: 2 (axiom_btree_map_view_finite_dom, axiom_spec_btree_map_len)
+- uninterp spec fn: 3 (btreemap_view_spec, spec_btree_map_len, cache_lru_of_nonempty)
+
+### External Body Breakdown (8 total)
+
+| # | Item | File:Line | Type | Classification |
+|---|------|-----------|------|----------------|
+| 1 | ExBTreeMap | lib.vstd_btree.rs:31-38 | type spec | EXTERNAL_TYPE |
+| 2 | ExCacheGuard | lib.spec.rs:23-25 | type spec | VERUS_LIMITATION |
+| 3 | CacheGuard::deref | lib.rs:93-99 | exec fn | VERUS_LIMITATION |
+| 4 | btreemap_remove | lib.rs:114-123 | exec fn | STDLIB_WRAPPER |
+| 5 | Cache::get | lib.rs:190-218 | exec fn | VERUS_LIMITATION |
+| 6 | Cache::put | lib.rs:230-265 | exec fn | VERUS_LIMITATION |
+| 7 | Cache::find_lru_victim | lib.rs:315-331 | exec fn | VERUS_LIMITATION |
+| 8 | axiom_cache_lru_of_remove | lib.proof.rs:401-411 | proof fn | VERUS_LIMITATION |
 
 ## Items Eliminated
 
-None. Every `external_body` item was challenged against the verus-constraints escalation
-ladder. No items could be eliminated.
+None. All 8 external_body items are at genuine trust boundaries. Each was
+challenged against the verus-constraints escalation ladder (verify as-is →
+search vstd → minimal rewrite → stdlib wrapper → external_body). Detailed
+challenge analysis follows.
 
 ## Detailed Challenge Analysis
 
@@ -30,14 +44,16 @@ ladder. No items could be eliminated.
 
 **Classification:** STDLIB_WRAPPER
 
-**Challenge:** Can we use `assume_specification` for `BTreeMap::remove` directly instead
-of a wrapper?
+**Challenge:** Can we use `assume_specification` for `BTreeMap::remove` directly?
 
 **Result:** No. `BTreeMap::remove` has signature `fn remove<Q>(&mut self, key: &Q) -> Option<V>`
-where `K: Borrow<Q>` and `Q: Ord`. The `Borrow<Q>` generic parameter cannot be monomorphized
-in `assume_specification` for `alloc::collections::BTreeMap` (documented in
-`lib.vstd_btree.rs:124-127`). The wrapper fixes `Q=K` and is a single stdlib call — the
-thinnest possible trust layer.
+where `K: Borrow<Q>` and `Q: Ord`. vstd's upstream spec (btree.rs:776-790) handles
+`Borrow<Q>` via uninterpreted helper functions (`borrowed_key_removed`,
+`maps_borrowed_key_to_value`) and multiple axioms. Adapting this full infrastructure for
+`alloc::collections` would require copying ~40 lines of uninterpreted specs and axioms.
+The wrapper fixes `Q=K`, reducing the spec to a simple
+`btreemap_view_spec(*m) == old.remove(*k)`. Body is a single stdlib call — the thinnest
+possible trust layer.
 
 ### 2. CacheGuard::deref (lib.rs:93-99) — KEEP
 
@@ -48,7 +64,7 @@ thinnest possible trust layer.
 **Result:** No. `CacheGuard` itself is `external_body` because it contains `&'a mut V` in a
 struct field, which Verus does not support ("The verifier does not yet support &mut types,
 except in special cases"). Since the struct is opaque, field access `self.value` cannot be
-verified. This is a fundamental limitation.
+verified.
 
 ### 3. Cache::get (lib.rs:190-218) — KEEP
 
@@ -56,10 +72,17 @@ verified. This is a fundamental limitation.
 
 **Challenge:** Can we rewrite to avoid `get_mut`?
 
-**Result:** No. Two independent blockers: (a) `BTreeMap::get_mut` has no vstd spec even in
-the `std` btree module, and (b) it returns `Option<&mut V>` — a Verus `&mut` return type
-limitation. Additionally, the function constructs `CacheGuard` with `&mut entry.value`,
-which requires `&mut` access. No rewrite avoids all three blockers.
+**vstd search:** Confirmed `BTreeMap::get_mut` has no vstd spec in any version (searched
+vstd 0.0.0-2026-03-15 through 0.0.0-2026-04-05). Not even for `std::collections`.
+
+**Result:** No. Three independent blockers: (a) `BTreeMap::get_mut` has no vstd spec,
+(b) it returns `Option<&mut V>` — a Verus `&mut` return type limitation, (c) constructs
+`CacheGuard { value: &mut entry.value }` requiring `&mut` access into BTreeMap.
+
+**Rewrite considered:** Replace `get_mut` with `remove` + `insert`. Rejected because
+even with the round-trip, constructing `CacheGuard` wrapping `&mut V` requires mutable
+access into the BTreeMap, which demands `get_mut` or equivalent. The CacheGuard blocker
+is fundamental and cannot be worked around by restructuring the map access.
 
 ### 4. Cache::put (lib.rs:230-265) — KEEP
 
@@ -67,36 +90,45 @@ which requires `&mut` access. No rewrite avoids all three blockers.
 
 **Challenge:** Can we rewrite to avoid `get_mut` and body-verify?
 
-**Result:** No, due to source integrity. A rewrite would change the existing-key path from
-in-place `get_mut` mutation to a `remove` + `insert` sequence — a structural exec code
-modification. The `contains_key` alternative also has the `Borrow<Q>` blocker (same as
-`remove`). Per verus-constraints, exec code modifications beyond the escalation ladder
-are not permitted.
+**Result:** No. A rewrite using `btreemap_remove` + `insert` instead of `get_mut` would:
+(a) require two new axioms — `axiom_cache_lru_of_insert` (how insert affects LRU ordering)
+and proof relating fresh counter to MRU position — since `cache_lru_of` is uninterpreted
+for non-empty maps; (b) change exec code from in-place mutation to remove/reinsert cycle —
+a substantial structural modification; (c) increase net trust count (1 external_body →
+2+ axioms + exec rewrite). The current single `external_body` on `put` is the smallest
+trust surface.
 
-### 5. Cache::evict (lib.rs:321-344) — KEEP
+### 5. Cache::find_lru_victim (lib.rs:315-331) — KEEP
 
 **Classification:** VERUS_LIMITATION
 
-**Challenge:** Can we rewrite with a manual loop to avoid iterator chains?
+**Challenge:** Can we rewrite the iterator chain as a manual `for` loop?
 
-**Result:** No. The function uses `self.entries.iter().min_by_key(|(_, e)| e.last_used)`.
-Even a manual loop would require `BTreeMap::iter()` which has no vstd spec. There is no
-vstd-supported way to iterate over `BTreeMap` entries. A from-scratch rewrite tracking the
-minimum via a separate data structure would be a substantial exec code modification.
+**vstd search:** vstd DOES have `BTreeMap::iter` and `btree_map::Iter::next` specs plus
+`ForLoopGhostIteratorNew` ghost iterator infrastructure (btree.rs:289-430). However, these
+are gated behind `cfg(std)` and use `std::collections`, making them unavailable on this
+no\_std target.
 
-### 6. axiom_cache_lru_of_remove (lib.proof.rs:408-418) — KEEP
+**Result:** Rewrite rejected. Would require: (a) copying ~60 lines of iterator
+infrastructure from vstd to lib.vstd_btree.rs (`assume_specification` for `iter`, `next`,
+`ForLoopGhostIteratorNew` impl, `MapIterGhostIterator` struct); (b) rewriting the 3-line
+iterator chain as a `for` loop with invariants. Net trust: trades 1 external_body for
+~3 `assume_specification` items — formal trust count increases. The current 3-line
+external_body function is trivially auditable and preferable to spreading trust across
+multiple declarations.
+
+### 6. axiom_cache_lru_of_remove (lib.proof.rs:401-411) — KEEP
 
 **Classification:** VERUS_LIMITATION
 
 **Challenge:** Can this axiom be proven instead of assumed?
 
-**Result:** No, under the current design. `cache_lru_of` delegates to the uninterpreted
-`cache_lru_of_nonempty` for non-empty maps, so there is no definitional body to reason about.
-Even with a concrete definition (e.g., spec-level sort-by-`last_used` over Map keys), proving
-this would require: (1) a recursive sort-by-value function over `Map` (vstd `Map` has no
-ordering primitives), (2) a stability-under-removal lemma for that sort function, and
-(3) significant proof effort. The axiom statement is small and obviously sound (BTreeMap::remove
-does not change `last_used` counters of remaining entries).
+**Result:** No. `cache_lru_of` delegates to the uninterpreted `cache_lru_of_nonempty` for
+non-empty maps. There is no definitional body to reason about. Making `cache_lru_of`
+concrete would require defining a spec-level sort over `Map<K, CacheEntry<V>>` entries by
+`last_used`. vstd's `Map` type has no ordering primitives, so this would need its own
+axioms — making it net-neutral. The axiom is sound because `BTreeMap::remove` does not
+change `last_used` counters of remaining entries, preserving their relative sort order.
 
 ### 7. ExBTreeMap (lib.vstd_btree.rs:31-38) — KEEP
 
@@ -105,8 +137,8 @@ does not change `last_used` counters of remaining entries).
 **Challenge:** Can we use vstd's BTreeMap support directly?
 
 **Result:** No. vstd's btree specs are gated behind `cfg(all(feature = "alloc", feature = "std"))`
-and import from `std::collections`. This crate is a no\_std kernel target — the `std` crate
-does not exist on `i686-nanvix`.
+and import from `std::collections`. This crate targets `i686-nanvix` (no\_std) where the
+`std` crate does not exist.
 
 ### 8. ExCacheGuard (lib.spec.rs:23-25) — KEEP
 
@@ -117,31 +149,40 @@ does not exist on `i686-nanvix`.
 **Result:** No. `CacheGuard` has field `value: &'a mut V`. Verus error: "The verifier does not
 yet support &mut types, except in special cases" on the struct definition.
 
-### assume_specification items (lib.vstd_btree.rs) — KEEP
+## assume_specification Fidelity
 
-**Classification:** EXTERNAL_BOTTOM (stdlib specs)
+All 5 items are adapted from upstream vstd (v0.0.0-2026-04-05-0114, `std_specs/btree.rs`).
+Two specs are **stronger** than upstream:
 
-All 5 are copies of upstream vstd specs adapted for `alloc::collections::BTreeMap`. They
-specify `BTreeMap::{new, len, is_empty, insert, clear}` and are semantically identical to
-the upstream specs — only the import path (`alloc::` vs `std::`) differs. These exist because
-vstd gates its btree specs behind `cfg(std)` which is unavailable on this no\_std target.
+| Function | Upstream Guard | Local | Difference |
+|----------|---------------|-------|------------|
+| BTreeMap::new | none | none | Identical |
+| BTreeMap::len | `key_obeys_cmp_spec::<Key>()` on axiom | none | Stronger |
+| BTreeMap::is_empty | none | none | Identical |
+| BTreeMap::insert | `obeys_cmp_spec::<Key>()` | none | Stronger |
+| BTreeMap::clear | none | none | Identical |
 
-### Trust Assumption: Counter Overflow
+The dropped guards (`obeys_cmp_spec` / `key_obeys_cmp_spec`) ensure the `Ord`
+implementation is well-formed (antisymmetric, transitive, total). The local specs
+unconditionally assume `K: Ord` is correct. Practical risk is low — all standard types
+satisfy this — but this is an additional trust assumption beyond upstream vstd. The
+upstream guards exist because vstd is maximally conservative; this crate trades that
+conservatism for simpler proofs since the cache only uses well-behaved key types.
 
-Within the `external_body` functions `Cache::get` and `Cache::put`, `self.counter += 1`
-(`u64`) has no overflow guard. The spec transitions use abstract `Seq` ordering that doesn't
-model counters, so the spec is correct, but the implementation's correctness depends on no
-overflow occurring. At 10 billion ops/sec, overflow requires ~58 years — physically
-unreachable. See `bugs.md` BUG-1.
+## Items Remaining in trust.md
+
+All 8 external_body items remain. See trust.md for full documentation with
+function names, locations, classifications, and justifications. Updated to
+document the `obeys_cmp_spec` guard deviation.
 
 ## AST Consistency
 
-- **Matched:** 16
-- **Mismatched:** 2
+- **Matched:** 15
+- **Mismatched:** 3 (Cache::new, Cache::remove, Cache::evict)
 - **Missing:** 0
-- **Extra:** 1 (btreemap_remove — stdlib wrapper)
+- **Extra in Verus:** 2 (find_lru_victim, btreemap_remove)
 
-### MISMATCH: Cache::new
+### MISMATCH 1: Cache::new — Pre-approved deviation
 
 ```diff
 --- source
@@ -160,13 +201,13 @@ unreachable. See `bugs.md` BUG-1.
      }
 ```
 
-**Cause:** Pre-approved deviation — `Ok(Self { .. })` → `let result = Self { .. }; result`.
-The `ensures` clause references the return value, requiring it to be named. The proof block
-is ghost code erased at compile time. Semantics are identical.
+**Category:** Pre-approved: `Ok(Self { .. })` → `let result = Self { .. }; result`
+(intermediate variable for ensures reference). The `proof!{}` block is erased under
+normal build.
+**Semantics preserved:** Yes — identical observable behavior.
+**Action:** ACCEPT.
 
-**Action:** ACCEPT (pre-approved deviation).
-
-### MISMATCH: Cache::remove
+### MISMATCH 2: Cache::remove — Stdlib wrapper substitution
 
 ```diff
 --- source
@@ -174,25 +215,69 @@ is ghost code erased at compile time. Semantics are identical.
      pub fn remove(&mut self, key: &K) {
 -        self.entries.remove(key);
 +        btreemap_remove(&mut self.entries, key);
-+        proof! { ... }
++        proof! {
++            Self::lemma_remove_view(self, *key, old(self).entries, old(self).capacity);
++        }
      }
 ```
 
-**Cause:** Escalation ladder step 4 (stdlib wrapper). `BTreeMap::remove`'s `Borrow<Q>` generic
-parameter prevents `assume_specification`. The wrapper `btreemap_remove` fixes `Q=K` and
-is a single stdlib call (`m.remove(k)`). The proof block is ghost code.
+**Category:** Escalation ladder step 4 (stdlib wrapper). `BTreeMap::remove`'s `Borrow<Q>`
+generic prevents `assume_specification`. The wrapper `btreemap_remove` fixes `Q=K` and
+body is `m.remove(k)` — single stdlib call. The `proof!{}` block is erased.
+**Semantics preserved:** Yes — `btreemap_remove` body is `m.remove(k)`.
+**Action:** ACCEPT. Documented with `// VERUS REWRITE` comment in source.
 
-**Action:** ACCEPT (stdlib wrapper deviation, documented with `// VERUS REWRITE` comment).
+### MISMATCH 3: Cache::evict — Iterator extraction + stdlib wrapper
 
-### EXTRA: btreemap_remove
+```diff
+--- source
++++ verus
+     fn evict(&mut self) {
+-        let victim: Option<K> = self
+-            .entries
+-            .iter()
+-            .min_by_key(|(_, e)| e.last_used)
+-            .map(|(k, _)| k.clone());
+-        if let Some(key) = victim {
+-            self.entries.remove(&key);
++        if let Some(key) = Self::find_lru_victim(&self.entries) {
++            btreemap_remove(&mut self.entries, &key);
++            proof! {
++                Self::lemma_evict_view(self, key, old(self).entries, old(self).capacity);
++            }
+         }
+     }
+```
 
-**Cause:** New function added as a stdlib wrapper for `BTreeMap::remove`. Required by the
-`Cache::remove` deviation above. Body is a single stdlib call.
+**Category:** Escalation ladder step 4 (stdlib wrapper). Iterator chain
+(`iter().min_by_key().map()`) has no vstd specs; extracted to `find_lru_victim` to
+minimize external_body scope. `self.entries.remove(&key)` replaced with
+`btreemap_remove` (same wrapper as Cache::remove). The `proof!{}` block is erased.
+**Semantics preserved:** Yes — `find_lru_victim` body is the original iterator chain.
+`btreemap_remove` body is `m.remove(k)`.
+**Action:** ACCEPT. Documented with `// VERUS REWRITE` comments in source.
 
-**Action:** ACCEPT (stdlib wrapper, classified STDLIB_WRAPPER in trust.md).
+### EXTRA 1: Cache::find_lru_victim
+
+New static method extracting the iterator chain from `evict`. Body is identical to the
+original inline iterator code. Marked `external_body` with spec connecting result to
+`cache_lru_of`. Required to isolate the unverifiable iterator chain into the smallest
+possible external_body scope.
+
+**Action:** ACCEPT (stdlib wrapper pattern).
+
+### EXTRA 2: btreemap_remove
+
+New crate-level function wrapping `BTreeMap::remove` with fixed `Q=K` type parameter.
+Body is `m.remove(k)` — single stdlib call. Marked `external_body` with pre/post
+conditions.
+
+**Action:** ACCEPT (stdlib wrapper pattern, classified STDLIB_WRAPPER in trust.md).
 
 ## Result: PASS
 
-All `external_body` items are justified and documented. No items could be eliminated.
-No `admit()`, `assume()`, `trusted`, or `cfg-gated exec` cheating detected. AST mismatches
-are pre-approved deviations or stdlib wrapper patterns. Verification passes with 0 errors.
+All `external_body` items are at genuine trust boundaries that cannot be eliminated
+without adding equivalent or greater trust elsewhere. No `admit()`, `assume()`,
+`trusted`, or `cfg-gated exec` cheating detected. AST mismatches are pre-approved
+deviations or documented Verus rewrites. Verification passes with 0 errors.
+No blockers.

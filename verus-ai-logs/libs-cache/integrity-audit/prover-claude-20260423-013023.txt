@@ -109,3 +109,93 @@ Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-
 
 === Output (streaming) ===
 Now let me run the initial verification and AST consistency checks.
+Good — no cfg-gated exec code. Let me now check for `assume_specification` counts tracked by the verify script:
+Now I have a comprehensive view of the codebase. Let me consult the rubber-duck agent with my analysis before writing the report.
+Now let me check for existing documentation and verify a few specific claims.
+Now let me verify the specific claim about `BTreeMap::remove` and the `Borrow<Q>` issue, and check if there's any alternative approach the user might have missed.
+Good — confirmed: vstd has no `get_mut` spec. Now let me check one more thing about the `put` alternative the user mentioned.
+This is a significant finding. Let me compare the insert specs more carefully.
+This is important — let me compare all the specs systematically between the local and upstream versions.
+I now have all the evidence I need. Let me compile my critique.
+
+---
+
+## Critique
+
+Your analysis is thorough and demonstrates deep understanding of the Verus verification landscape for this module. The conclusions are largely sound. However, I found several issues — one is a substantive accuracy problem, and the others are analytical gaps worth addressing.
+
+### Issue 1: assume_specification for `insert` and `len` axiom are NOT semantically identical to upstream (Blocking)
+
+**Severity: Blocking — this is a factual error in the analysis that affects trust documentation.**
+
+You claim the 5 `assume_specification` items are "semantically identical — only the import path differs." This is incorrect for two of them.
+
+**Upstream vstd `insert` spec** (`btree.rs:624-637`):
+```rust
+ensures
+    obeys_cmp_spec::<Key>() ==> {
+        &&& m@ == old(m)@.insert(k, v)
+        &&& match result { ... }
+    },
+```
+
+**Your local `insert` spec** (`lib.vstd_btree.rs:108-122`):
+```rust
+ensures
+    btreemap_view_spec(*m) == btreemap_view_spec(*old(m)).insert(k, v),
+    match result { ... },
+```
+
+Your local spec **drops the `obeys_cmp_spec::<Key>()` guard**, making the ensures unconditional. The same is true for `axiom_spec_btree_map_len` — upstream guards with `key_obeys_cmp_spec::<Key>()`, your local version does not.
+
+This means your specs are **strictly stronger** than upstream. They silently assume `obeys_cmp_spec` holds for any `K: Ord`, which is true for well-behaved types but is an additional trust assumption not present in the originals. Your trust.md and fix_report.md must document this deviation rather than claiming the specs are identical copies. The practical risk is low (any sane `Ord` impl satisfies `obeys_cmp_spec`), but an integrity audit should not have factual errors about what it trusts.
+
+**Recommendation:** Add a note in `trust.md` under the assume_specification section stating: "The local `insert` and `len` axiom specs drop the upstream `obeys_cmp_spec`/`key_obeys_cmp_spec` precondition guard, unconditionally assuming the Ord implementation is well-formed. This is a deliberate strengthening that removes a proof obligation on callers at the cost of an additional trust assumption."
+
+### Issue 2: Existing `fix_report.md` counts are stale — your new counts are correct but the report needs updating (Non-blocking)
+
+Your counts (15 MATCH, 3 MISMATCH, 2 EXTRA) are more accurate than the existing `fix_report.md` (16 MATCH, 2 MISMATCH, 1 EXTRA). The existing report:
+- Omits the `evict` MISMATCH (its body was changed to call `find_lru_victim` + `btreemap_remove` instead of inline iterator + `self.entries.remove`)
+- Omits `find_lru_victim` as EXTRA_IN_VERUS
+- Confusingly labels challenge item #5 as "Cache::evict (lib.rs:321-344)" which spans `find_lru_victim`'s actual location
+
+Your plan says "Write the fix_report.md with counts" — make sure you're replacing the stale AST section entirely rather than appending. The challenge analysis section is fine; it's just the AST summary table and diff sections that are incomplete.
+
+### Issue 3: Your `put` trade-off analysis is correct but under-justified (Non-blocking)
+
+You correctly conclude that rewriting `put` to avoid `get_mut` isn't worth it. But your reasoning ("would require a new `axiom_cache_lru_of_insert`") could be stronger. The deeper reason is:
+
+The existing-key path in `put` does in-place mutation via `get_mut`: it updates `entry.value` and `entry.last_used` without removing/reinserting. A `remove`+`insert` rewrite wouldn't just need an LRU axiom — it would also need to prove that the counter-based ordering is preserved through the remove-reinsert cycle. With `cache_lru_of` being uninterpreted for non-empty maps, you'd likely need **two** new axioms: one for how insert affects `cache_lru_of`, and one relating the fresh counter value to MRU position. The net trust cost is worse than the current single `external_body` on `put`. This stronger justification should go into your report.
+
+### Issue 4: On `find_lru_victim` for-loop rewrite — your instinct is right, be more decisive (Non-blocking)
+
+You characterize the trade-off as "1 external_body for ~3 assume_specifications" and call it "arguably an improvement." I'd argue the opposite: it's arguable that it's **not** an improvement, and you should say so definitively.
+
+An `external_body` on a 3-line function whose body is `entries.iter().min_by_key(|(_, e)| e.last_used).map(|(k, _)| k.clone())` is highly auditable — the entire trust surface is visible in one glance. Replacing it with ~3 `assume_specification` items for BTreeMap iterator infrastructure copies from vstd spreads the trust surface across multiple declarations that must be kept in sync with upstream. The net formal trust count goes up (3 > 1), and the informal auditability arguably gets worse.
+
+**Recommendation:** State clearly that the current approach is preferable and close this item.
+
+### Answers to Your Specific Questions
+
+**Q1: Missing opportunities to eliminate external_body items?**
+No — your analysis covers every item. The only theoretical avenue you don't fully explore is making `cache_lru_of` concrete (a spec-level sort-by-last_used), which could potentially make `axiom_cache_lru_of_remove` provable. But as you note in item 6, this requires ordering primitives that `Map` doesn't provide and would likely need its own axioms, making it a net-neutral or worse trade. Your conclusion stands.
+
+**Q2: AST mismatch classifications correct?**
+Yes. The `new` intermediate-variable pattern, the `remove` stdlib-wrapper pattern, and the `evict` iterator-extraction + wrapper substitution are all correctly classified.
+
+**Q3: put/find_lru_victim trade-offs correct?**
+Yes, substantively correct. Strengthen the justifications per Issues 3 and 4 above.
+
+**Q4: Should you attempt the find_lru_victim for-loop rewrite?**
+No. Close it as "current design is preferable."
+
+### Summary
+
+The analysis is solid. The one blocking issue is the factual inaccuracy about the `assume_specification` items being "semantically identical" when two of them are actually stronger than upstream. Fix the trust documentation, update the stale fix_report counts, and this audit is complete.
+The rubber duck raised an important issue about the `assume_specification` items dropping `obeys_cmp_spec` guards. Let me verify this.
+Good — the rubber-duck agent correctly identified that `insert` and `len` axiom specs drop upstream guards. Now let me write the report and update trust.md.
+The existing report is stale. Let me overwrite it with the corrected version.
+Now update trust.md to document the `obeys_cmp_spec` guard deviation:
+Also update the trust.md audit section and fix the evict reference (was previously listed as evict, should note find_lru_victim separately):
+Also fix the evict entry — the trust.md lists it as `Cache::evict` but the external_body is on `find_lru_victim`:
+Now let me run the final verification to confirm everything still passes:

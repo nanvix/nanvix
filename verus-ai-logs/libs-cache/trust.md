@@ -96,13 +96,23 @@ fields ("The verifier does not yet support &mut types, except in special cases")
   has the `Borrow<Q>` blocker (same as `remove`).
 - **Spec:** `self@ == old(self)@.spec_put(key, value)`, invariant preserved.
 
-### Cache::evict — `lib.rs:321-344`
+### Cache::find_lru_victim — `lib.rs:315-331`
 - **Trust item:** `external_body`
 - **Classification:** `VERUS_LIMITATION`
-- **Reason:** Uses `self.entries.iter().min_by_key(|(_, e)| e.last_used)`
-  iterator chain with closure, plus `BTreeMap::remove()`. Iterator combinators
-  (`iter`, `min_by_key`, `map`) have no vstd specs.
-- **Spec:** LRU victim (`lru_order[0]`) evicted, contents/order updated accordingly.
+- **Reason:** Uses `entries.iter().min_by_key(|(_, e)| e.last_used).map(|(k, _)| k.clone())`
+  iterator chain with closure. `min_by_key` has no vstd spec. vstd does have
+  `BTreeMap::iter` and `Iter::next` specs (with ForLoopGhostIteratorNew) but gated
+  behind `cfg(std)`, unavailable on this no\_std target. Even with iterator specs,
+  `min_by_key` would still require a manual loop rewrite.
+- **Spec:** Returns the key with the smallest `last_used` counter (= `cache_lru_of(*entries)[0]`).
+  Returns `None` iff entries is empty.
+
+### Cache::evict — `lib.rs:338-360`
+- **Trust item:** None (body-verified)
+- **Note:** `evict` itself is NOT external_body. Its body is verified using
+  `find_lru_victim` (external_body) and `btreemap_remove` (external_body) as
+  trusted helpers. The eviction logic (call find_lru_victim, remove victim) is
+  proven correct.
 
 ### axiom_cache_lru_of_remove — `lib.proof.rs:408-418`
 - **Trust item:** `external_body` (on proof fn)
@@ -167,18 +177,28 @@ lemmas are now fully proven:
 
 ## assume_specification Items (lib.vstd_btree.rs)
 
-These are copies of upstream vstd specs adapted for `alloc::collections::BTreeMap`.
+These are adapted from upstream vstd specs for `alloc::collections::BTreeMap`.
 They exist because vstd gates its btree specs behind `cfg(std)` which is unavailable
-on this no\_std kernel target. Semantically identical to upstream — only the import
-path (`alloc::` vs `std::`) differs.
+on this no\_std kernel target. The import path (`alloc::` vs `std::`) and type
+parameters (`A: Allocator + Clone` exposed) differ from upstream.
 
-| Function | Line | Classification |
-|---|---|---|
-| `BTreeMap::new` | lib.vstd\_btree.rs:69-73 | `EXTERNAL_BOTTOM` |
-| `BTreeMap::len` | lib.vstd\_btree.rs:88-95 | `EXTERNAL_BOTTOM` |
-| `BTreeMap::is_empty` | lib.vstd\_btree.rs:98-105 | `EXTERNAL_BOTTOM` |
-| `BTreeMap::insert` | lib.vstd\_btree.rs:108-122 | `EXTERNAL_BOTTOM` |
-| `BTreeMap::clear` | lib.vstd\_btree.rs:130-137 | `EXTERNAL_BOTTOM` |
+**Fidelity deviation:** Two local specs drop upstream guards, making them
+unconditionally stronger:
+
+| Function | Line | Classification | Upstream Guard | Local |
+|---|---|---|---|---|
+| `BTreeMap::new` | lib.vstd\_btree.rs:69-73 | `EXTERNAL_BOTTOM` | none | none |
+| `BTreeMap::len` | lib.vstd\_btree.rs:88-95 | `EXTERNAL_BOTTOM` | `key_obeys_cmp_spec::<Key>()` on axiom | **dropped** |
+| `BTreeMap::is_empty` | lib.vstd\_btree.rs:98-105 | `EXTERNAL_BOTTOM` | none | none |
+| `BTreeMap::insert` | lib.vstd\_btree.rs:108-122 | `EXTERNAL_BOTTOM` | `obeys_cmp_spec::<Key>()` | **dropped** |
+| `BTreeMap::clear` | lib.vstd\_btree.rs:130-137 | `EXTERNAL_BOTTOM` | none | none |
+
+The dropped guards (`obeys_cmp_spec` / `key_obeys_cmp_spec`) ensure the `Ord`
+implementation is well-formed (antisymmetric, transitive, total). The local specs
+unconditionally assume `K: Ord` is correctly implemented. Practical risk is low —
+all standard types satisfy this — but this is an additional trust assumption beyond
+upstream vstd. The upstream guards exist because vstd is maximally conservative;
+this crate trades that conservatism for simpler proofs.
 
 ### broadcast axiom Declarations
 
@@ -191,6 +211,9 @@ Source: `~/.cargo/registry/src/.../vstd-0.0.0-2026-04-05-0114/std_specs/btree.rs
 
 ## Integrity Audit
 
-Audited 2026-04-22. All items challenged against verus-constraints escalation ladder.
-No items eliminated — all are genuine trust boundaries. See
-`integrity-audit/fix_report.md` for detailed challenge analysis.
+Audited 2026-04-23. All items challenged against verus-constraints escalation ladder.
+No items eliminated — all are genuine trust boundaries. Two assume_specification items
+(insert, len axiom) identified as stronger than upstream vstd due to dropped
+`obeys_cmp_spec` guards. See `integrity-audit/fix_report.md` for detailed challenge
+analysis, AST consistency results (15 matched, 3 mismatched, 2 extra — all acceptable),
+and assume_specification fidelity comparison.
