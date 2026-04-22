@@ -187,7 +187,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// An RAII guard providing access to the cached value, or `None` on cache miss.
     ///
-    // REMOVED: #[verus_verify(external_body)]
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self)@.inv(),
@@ -227,7 +227,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     /// - `key`: The cache key to insert or update.
     /// - `value`: The value to store.
     ///
-    #[verus_verify(external_body)]
+    // REMOVED: #[verus_verify(external_body)]
     #[verus_spec(
         requires
             old(self)@.inv(),
