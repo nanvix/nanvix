@@ -18,6 +18,7 @@ verus! {
 #[verifier::reject_recursive_types(V)]
 #[verifier::reject_recursive_types(A)]
 #[verifier::external_type_specification]
+#[verifier::external_body]
 pub struct ExBTreeMap<K, V, A>(alloc::collections::BTreeMap<K, V, A>)
     where A: core::alloc::Allocator + core::clone::Clone;
 
@@ -33,6 +34,7 @@ struct ExCacheEntry<V>(crate::CacheEntry<V>);
 // so we declare it as an external type.
 #[verifier::reject_recursive_types(V)]
 #[verifier::external_type_specification]
+#[verifier::external_body]
 pub struct ExCacheGuard<'a, V>(crate::CacheGuard<'a, V>);
 
 //==================================================================================================
