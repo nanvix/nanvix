@@ -25,6 +25,7 @@ use crate::{
     hal::{
         arch::x86::{
             self,
+            cpu::idt,
             mem::gdt,
             Arch,
         },
@@ -66,6 +67,10 @@ use ::alloc::{
     vec,
 };
 use ::arch::{
+    cpu::{
+        idt::Idte,
+        idtr::Idtr,
+    },
     mem,
     mem::{
         gdt::Gdte,
@@ -250,6 +255,12 @@ scratch_layout! {
     /// GDT backing storage.
     GDT                : size = gdt::GDT_NUM_ENTRIES * core::mem::size_of::<Gdte>(),
                          align = gdt::GDTE_ALIGNMENT;
+    /// IDT backing storage.
+    IDT                : size = idt::IDT_SIZE,
+                         align = idt::IDTE_ALIGNMENT;
+    /// IDTR backing storage.
+    IDTR               : size = idt::IDTR_SIZE,
+                         align = WORD_ALIGNMENT;
 }
 
 //==================================================================================================
@@ -1287,6 +1298,19 @@ pub fn init(
             gdt::GDT_NUM_ENTRIES,
         );
         gdt::Gdt::set_backing_storage(gdt_backing)?;
+    }
+
+    // Install IDT and IDTR backing storage in the scratch region, outside the CoW snapshot.
+    //
+    // Safety: idt_ptr returns a pointer aligned to IDTE_ALIGNMENT (enforced at compile
+    // time by the scratch_layout! macro). idtr_ptr returns a word-aligned pointer.
+    // The scratch region is identity-mapped, zeroed by Hyperlight, and never freed,
+    // so the pointers are valid and outlive all IDT usage. This is the only call to
+    // Idt::set_backing_storage() in the Hyperlight init path.
+    unsafe {
+        let idt_backing: *mut Idte = idt_ptr(scratch_reserved_base) as *mut Idte;
+        let idtr_backing: *mut Idtr = idtr_ptr(scratch_reserved_base) as *mut Idtr;
+        idt::Idt::set_backing_storage(idt_backing, idtr_backing)?;
     }
 
     Ok(Platform {
