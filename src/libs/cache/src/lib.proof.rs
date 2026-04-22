@@ -495,10 +495,10 @@ proof fn lemma_filter_first_is_subrange<K>(s: Seq<K>)
     } else {
         let n = s.len() as int;
 
-        // IH on s.subrange(0, n-1) (= s.drop_last())
+        // IH on s.drop_last() = s.subrange(0, n-1)
         lemma_subrange_no_dup(s, 0, n - 1);
         lemma_filter_first_is_subrange(s.subrange(0, n - 1));
-        // Now: s.subrange(0,n-1).filter(pred) =~= s.subrange(0,n-1).subrange(1,n-1)
+        // IH: s.subrange(0,n-1).filter(pred) =~= s.subrange(0,n-1).subrange(1,n-1)
 
         // s.last() != first (no dups, different indices)
         assert(s.last() != first);
@@ -506,25 +506,13 @@ proof fn lemma_filter_first_is_subrange<K>(s: Seq<K>)
         // Connect drop_last to subrange for filter definition unfolding
         assert(s.drop_last() =~= s.subrange(0, n - 1));
 
-        // Prove nested subrange composition element-wise:
-        // s.subrange(0,n-1).subrange(1,n-1).push(s[n-1]) =~= s.subrange(1,n)
-        let inner = s.subrange(0, n - 1).subrange(1, n - 1);
-        let target = s.subrange(1, n);
+        // Compose nested subranges using vstd lemma:
+        // s.subrange(0,n-1).subrange(1,n-1) =~= s.subrange(1, n-1)
+        s.lemma_slice_of_slice(0, n - 1, 1, n - 1);
 
-        assert(inner.push(s[n - 1]) =~= target) by {
-            assert(inner.push(s[n - 1]).len() == target.len());
-            assert forall |i: int| 0 <= i < target.len()
-                implies inner.push(s[n - 1])[i] == target[i]
-            by {
-                assert(target[i] == s[1 + i]);
-                if i < inner.len() {
-                    // Trigger subrange axioms with full expressions
-                    assert(s.subrange(0, n - 1).subrange(1, n - 1)[i]
-                           == s.subrange(0, n - 1)[1 + i]);
-                    assert(s.subrange(0, n - 1)[1 + i] == s[(1 + i) + 0]);
-                }
-            };
-        };
+        // Extend subrange by pushing the last element:
+        // s.subrange(1, n-1).push(s[n-1]) =~= s.subrange(1, n)
+        assert(s.subrange(1, n - 1).push(s[n - 1]) =~= s.subrange(1, n));
     }
 }
 
