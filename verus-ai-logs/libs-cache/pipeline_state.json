@@ -24,6 +24,16 @@
       "verdict": "PASS",
       "review_file": null,
       "duration_s": 1656.7
+    },
+    "polish": {
+      "phase": "polish",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "PASS",
+      "review_file": null,
+      "duration_s": 795.9
     }
   },
   "prover_session_id": "28439cf8-8ddb-4907-81c2-80dfe2a3a995",
@@ -32,6 +42,7 @@
   "verus_branch": "verus-ai/cache",
   "phase_boundary_shas": {
     "proving": "743b8eda97d19083daafb9c2ca0f5b76bce7385c",
-    "integrity-audit": "1d3259a3e715d8fcfeefa2bd2864104075fda165"
+    "integrity-audit": "1d3259a3e715d8fcfeefa2bd2864104075fda165",
+    "polish": "9eb11cc477f3591f5ac355a0d9825b214bcf2462"
   }
 }
