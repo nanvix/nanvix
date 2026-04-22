@@ -247,6 +247,7 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
         // to_set
         lemma_filter_neq_to_set(cache.lru_order, key);
         filtered.lemma_push_to_set_commute(key);
+        assert(cache.contents.insert(key, value).dom() =~= cache.contents.dom());
         lemma_filter_neq_len(cache.lru_order, key);
 
     } else if cache.contents.dom().len() >= cache.capacity {
