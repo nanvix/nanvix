@@ -1,0 +1,15 @@
+--- source:Cache::new
++++ verus:Cache::new
+@@ -1,7 +1,11 @@
+     pub const fn new(capacity: usize) -> Self {
+-        Self {
++        let result = Self {
+             entries: BTreeMap::new(),
+             counter: 0,
+             capacity,
++        };
++        proof! {
++            Self::lemma_new_view(&result, capacity);
+         }
++        result
+     }

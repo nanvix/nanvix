@@ -1,0 +1,20 @@
+--- source:Cache::evict
++++ verus:Cache::evict
+@@ -1,10 +1,10 @@
+     fn evict(&mut self) {
+-        let victim: Option<K> = self
+-            .entries
+-            .iter()
+-            .min_by_key(|(_, e)| e.last_used)
+-            .map(|(k, _)| k.clone());
+-        if let Some(key) = victim {
+-            self.entries.remove(&key);
++        // VERUS REWRITE: extracted iterator chain into find_lru_victim
++        if let Some(key) = Self::find_lru_victim(&self.entries) {
++            // VERUS REWRITE: originally self.entries.remove(&key)
++            btreemap_remove(&mut self.entries, &key);
++            proof! {
++                Self::lemma_evict_view(self, key, old(self).entries, old(self).capacity);
++            }
+         }
+     }
