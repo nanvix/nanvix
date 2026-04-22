@@ -18,3 +18,11 @@ Module: cache
 [2026-04-22 18:54:47] [PROVER] Running caller-analysis...
 [2026-04-22 18:54:47] [COPILOT] Running: copilot --model claude-opus-4.6 ...
 [2026-04-22 18:56:32]   ↳ prover done in 1m44s (exit=0)
+[2026-04-22 18:56:32] [PHASE] caller-analysis: no-review (1m44s)
+[2026-04-22 18:56:32] ✅ caller-analysis: PASS (0/0)
+[2026-04-22 18:56:32] [ABSTRACTION] Using override source for view-design: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/body_removed_source.rs
+
+============================================================
+PHASE: view-design
+Module: cache
+============================================================

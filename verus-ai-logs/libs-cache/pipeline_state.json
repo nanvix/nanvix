@@ -2,12 +2,25 @@
   "module_name": "cache",
   "log_name": "libs-cache",
   "source_path": "src/libs/cache/src/lib.rs",
-  "current_phase": "caller-analysis",
-  "current_phase_idx": 0,
-  "phase_results": {},
+  "current_phase": "view-design",
+  "current_phase_idx": 1,
+  "phase_results": {
+    "caller-analysis": {
+      "phase": "caller-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "PASS",
+      "review_file": null,
+      "duration_s": 104.7
+    }
+  },
   "prover_session_id": "f327f543-2a88-4ff6-99e3-6ba6a43e79df",
   "completed": false,
   "base_branch": "dev",
   "verus_branch": "verus-ai/cache",
-  "phase_boundary_shas": {}
+  "phase_boundary_shas": {
+    "caller-analysis": "bfe20d254ad71ba1b97b8c1d61a9e9057eed8fcc"
+  }
 }
