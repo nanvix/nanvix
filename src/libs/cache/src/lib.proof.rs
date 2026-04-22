@@ -258,11 +258,6 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
         let sub = cache.lru_order.subrange(1, cache.lru_order.len() as int);
         let new_lru = sub.push(key);
 
-        // victim is in contents
-        assert(cache.lru_order.to_set().contains(victim));
-        assert(cache.contents.dom().contains(victim));
-        assert(key != victim);
-
         // sub.no_duplicates
         lemma_subrange_no_dup(cache.lru_order, 1, cache.lru_order.len() as int);
 
