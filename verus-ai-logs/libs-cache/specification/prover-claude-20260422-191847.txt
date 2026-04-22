@@ -164,3 +164,5 @@ Also need to remove `#[verus_verify]` from the Cache struct since we're now usin
 Need to add `external_body` to both BTreeMap and CacheGuard specs. Let me fix:
 Down to 1 error. Need `reject_recursive_types` on K for CacheView:
 Need to add `reject_recursive_types(K)` on the Cache struct too:
+Need V too:
+Also need `reject_recursive_types(V)` on `CacheView`:

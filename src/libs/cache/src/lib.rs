@@ -113,6 +113,7 @@ impl<V> DerefMut for CacheGuard<'_, V> {
 ///
 #[verus_verify]
 #[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types(K))]
+#[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types(V))]
 pub struct Cache<K, V> {
     /// Cached entries.
     entries: BTreeMap<K, CacheEntry<V>>,
