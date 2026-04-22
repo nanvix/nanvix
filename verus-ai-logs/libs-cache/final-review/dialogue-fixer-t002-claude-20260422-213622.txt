@@ -116,3 +116,9 @@ Now add the stdlib wrapper and modify Cache::remove. Let me find the right inser
 Now update Cache::remove to use the wrapper:
 Now let's run verification to see what errors arise without any proof block:
 Good — the wrapper works (compiles). Now I need proof infrastructure. Let me try reveals directly in a `proof!` block first:
+The reveals compile but the solver needs more help. I need:
+1. An axiom for `cache_lru_of` under BTreeMap remove (since `cache_lru_of_nonempty` is uninterpreted)
+2. Explicit assertions for contents equality
+
+Let me add the axiom and a lemma. First, the axiom in lib.proof.rs:
+Now update Cache::remove to use ghost snapshot and call the lemma:

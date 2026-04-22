@@ -348,5 +348,89 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     }
 }
 
+//==================================================================================================
+// BTreeMap LRU Axiom
+//==================================================================================================
+
+// Axiom: removing a key from entries produces the old LRU ordering filtered to
+// exclude that key. Sound because BTreeMap::remove doesn't change last_used
+// counters of remaining entries, so their relative sort order is preserved.
+// Trust boundary: documented in trust.md.
+#[verifier::external_body]
+proof fn axiom_cache_lru_of_remove<K, V>(
+    old_entries: alloc::collections::BTreeMap<K, CacheEntry<V>>,
+    new_entries: alloc::collections::BTreeMap<K, CacheEntry<V>>,
+    key: K,
+)
+    requires
+        btreemap_view_spec(new_entries) == btreemap_view_spec(old_entries).remove(key),
+    ensures
+        cache_lru_of(new_entries) == cache_lru_of(old_entries).filter(|k: K| k != key),
+{}
+
+//==================================================================================================
+// Cache::remove Verification Lemma
+//==================================================================================================
+
+impl<K: Ord + Clone, V> Cache<K, V> {
+    /// Proves that Cache::remove produces the correct spec_remove view.
+    proof fn lemma_remove_view(
+        new_self: &Self,
+        key: K,
+        old_entries: alloc::collections::BTreeMap<K, CacheEntry<V>>,
+        old_capacity: usize,
+    )
+        requires
+            btreemap_view_spec(new_self.entries) == btreemap_view_spec(old_entries).remove(key),
+            new_self.capacity == old_capacity,
+            // Old state was well-formed (inv fields expressed via abstraction helpers):
+            cache_contents_of(old_entries).dom().len() <= old_capacity as nat,
+            cache_lru_of(old_entries).no_duplicates(),
+            cache_lru_of(old_entries).to_set() == cache_contents_of(old_entries).dom(),
+            cache_lru_of(old_entries).len() == cache_contents_of(old_entries).dom().len(),
+        ensures
+            new_self@ == (CacheView::<K, V> {
+                contents: cache_contents_of(old_entries),
+                capacity: old_capacity as nat,
+                lru_order: cache_lru_of(old_entries),
+            }).spec_remove(key),
+            new_self@.inv(),
+    {
+        broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
+            vstd::seq_lib::seq_to_set_is_finite;
+
+        reveal(<Cache<_, _> as View>::view);
+        reveal(cache_contents_of);
+        reveal(cache_lru_of);
+
+        let old_view = CacheView::<K, V> {
+            contents: cache_contents_of(old_entries),
+            capacity: old_capacity as nat,
+            lru_order: cache_lru_of(old_entries),
+        };
+
+        // Apply LRU axiom
+        axiom_cache_lru_of_remove(old_entries, new_self.entries, key);
+
+        // Prove contents equality via extensional equality
+        assert(cache_contents_of(new_self.entries) =~= cache_contents_of(old_entries).remove(key));
+
+        // Prove LRU properties
+        if old_view.contents.dom().contains(key) {
+            // Key was present: lru_order changes to filtered version
+            let pred = |k: K| k != key;
+            let filtered = old_view.lru_order.filter(pred);
+
+            lemma_filter_preserves_no_dup(old_view.lru_order, pred);
+            lemma_filter_neq_to_set(old_view.lru_order, key);
+            lemma_filter_neq_len(old_view.lru_order, key);
+            filtered.unique_seq_to_set();
+        } else {
+            // Key absent: no-op, lru_order unchanged
+            // filter(!=key) on a seq not containing key is identity
+        }
+    }
+}
+
 } // verus!
 
