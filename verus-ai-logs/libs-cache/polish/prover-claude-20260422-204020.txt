@@ -189,3 +189,4 @@ Let me try removing unused `let` bindings. `result` and `mru` in `lemma_spec_get
 Now try removing `mru` from `lemma_spec_put_inv` (existing key branch):
 Let me try removing `result` from the eviction branch and below-capacity branch too:
 Now try removing `result` and `new_lru` from the below-capacity branch:
+Now let me also check if `victim` can be removed (it's unused after the asserts removal):

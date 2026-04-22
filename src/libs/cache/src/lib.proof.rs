@@ -240,7 +240,6 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
 
     } else if cache.contents.dom().len() >= cache.capacity {
         // At capacity, new key: evict LRU victim.
-        let victim = cache.lru_order[0];
         let sub = cache.lru_order.subrange(1, cache.lru_order.len() as int);
         let new_lru = sub.push(key);
 
