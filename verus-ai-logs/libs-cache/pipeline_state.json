@@ -34,6 +34,13 @@
       "verdict": "PASS",
       "review_file": null,
       "duration_s": 795.9
+    },
+    "final-review": {
+      "verdict": "UNKNOWN",
+      "total_score": 0,
+      "max_score": 5,
+      "passed": false,
+      "duration_s": 4971.8
     }
   },
   "prover_session_id": "28439cf8-8ddb-4907-81c2-80dfe2a3a995",
