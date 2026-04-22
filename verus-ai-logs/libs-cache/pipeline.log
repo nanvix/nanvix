@@ -105,3 +105,12 @@ Module: cache
 [2026-04-22 20:31:24] [REVIEW] review r1...
 [2026-04-22 20:31:24] [COPILOT] Running: copilot --model claude-opus-4.6 ...
 [2026-04-22 20:40:20]   ↳ review-r1 done in 8m55s (exit=0)
+[2026-04-22 20:40:20] [REVIEW] Result: PASS (0/0)
+[2026-04-22 20:40:20] [PHASE] integrity-audit: PASS (23m18s)
+[2026-04-22 20:40:20] [CHEATING] external_body: 9 (7 on user fns)
+[2026-04-22 20:40:20] ✅ integrity-audit: PASS (0/0)
+
+============================================================
+PHASE: polish
+Module: cache
+============================================================

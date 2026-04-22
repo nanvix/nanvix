@@ -2,8 +2,8 @@
   "module_name": "cache",
   "log_name": "libs-cache",
   "source_path": "src/libs/cache/src/lib.rs",
-  "current_phase": "integrity-audit",
-  "current_phase_idx": 5,
+  "current_phase": "polish",
+  "current_phase_idx": 6,
   "phase_results": {
     "caller-analysis": {
       "phase": "caller-analysis",
@@ -54,6 +54,16 @@
       "verdict": "PASS",
       "review_file": null,
       "duration_s": 1119.2
+    },
+    "integrity-audit": {
+      "phase": "integrity-audit",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "PASS",
+      "review_file": null,
+      "duration_s": 1398.2
     }
   },
   "prover_session_id": "4515a91e-9299-459e-8749-733edceb5b60",
@@ -65,6 +75,7 @@
     "view-design": "905b1ea9b44c963a314bf6dea72be9da118f61a5",
     "property-analysis": "f2bcfe5646039c6c280894c3fc4d335bc2f0c664",
     "specification": "1cd84e6547d21e850b3be2720dbc61cdda985cb1",
-    "proving": "5ad9cc932da29328734ede4310a3012a2e0cbb28"
+    "proving": "5ad9cc932da29328734ede4310a3012a2e0cbb28",
+    "integrity-audit": "4612889529e0b965ceedda4cede53ede58579aa1"
   }
 }
