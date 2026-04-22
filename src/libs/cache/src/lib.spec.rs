@@ -33,7 +33,7 @@ pub struct ExGlobal(alloc::alloc::Global);
 // Uninterpreted spec function mirroring vstd's View::view for BTreeMap.
 // The View trait impl is in vstd::std_specs::btree, gated behind cfg(std) which is
 // unavailable on this no_std kernel target. We use a standalone spec function instead.
-uninterp spec fn btreemap_view_spec<K, V>(m: alloc::collections::BTreeMap<K, V>) -> Map<K, V>;
+pub uninterp spec fn btreemap_view_spec<K, V>(m: alloc::collections::BTreeMap<K, V>) -> Map<K, V>;
 
 // assume_specification for BTreeMap::new — matches vstd/std_specs/btree.rs:613-616.
 pub assume_specification<K, V>[ alloc::collections::BTreeMap::<K, V>::new ]()
@@ -64,7 +64,7 @@ pub open spec fn cache_lru_of<K, V>(entries: alloc::collections::BTreeMap<K, Cac
     }
 }
 
-uninterp spec fn cache_lru_of_nonempty<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Seq<K>;
+pub uninterp spec fn cache_lru_of_nonempty<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Seq<K>;
 
 // CacheEntry is a private internal type.
 #[verifier::reject_recursive_types(V)]

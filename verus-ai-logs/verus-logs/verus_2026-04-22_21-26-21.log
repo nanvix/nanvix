@@ -1,0 +1,31 @@
+Timestamp: 2026-04-22_21-26-21
+Mode: cargo
+Crate: cache
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=8
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking cache v0.12.457 (/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache)
+error: disallowed: field expression for a non-visible datatype
+  --> src/libs/cache/src/lib.spec.rs:53:16
+   |
+53 |         |k: K| btreemap_view_spec(entries)[k].value,
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this field expression is disallowed because of non-visibility
+...
+72 | struct ExCacheEntry<V>(crate::CacheEntry<V>);
+   | --------------------------------------------- this datatype is only visible to `cache`
+   |
+   = help: note that because this is a pub open spec function, this field expression must be well-formed everywhere, which is wider than `cache`
+
+error: could not compile `cache` (lib) due to 1 previous error
