@@ -169,3 +169,5 @@ Batch 2 failed. Let me revert and try each individually.
 Now let me try batch 3: `assert(cache.contents.insert(key, value).dom() =~= cache.contents.dom())` (line 254).
 Needed. Revert and try next: lines 211/252 (to_set().contains hints).
 Now try removing the `to_set().contains(key)` asserts (lines 211 and 251):
+Lines 211/251 removed successfully. Now try removing the `=~=` set identity asserts (lines 212/252 — now at different line numbers):
+Try removing the `=~=` identity asserts on lines 211 and 250:

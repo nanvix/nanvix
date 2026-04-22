@@ -208,7 +208,6 @@ proof fn lemma_spec_get_inv<K, V>(cache: CacheView<K, V>, key: K)
         // 2. to_set: mru.to_set() == contents.dom()
         lemma_filter_neq_to_set(cache.lru_order, key);
         filtered.lemma_push_to_set_commute(key);
-        assert(cache.lru_order.to_set().remove(key).insert(key) =~= cache.lru_order.to_set());
 
         // 3. len
         lemma_filter_neq_len(cache.lru_order, key);
@@ -247,7 +246,6 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
         // to_set
         lemma_filter_neq_to_set(cache.lru_order, key);
         filtered.lemma_push_to_set_commute(key);
-        assert(cache.lru_order.to_set().remove(key).insert(key) =~= cache.lru_order.to_set());
         assert(cache.contents.insert(key, value).dom() =~= cache.contents.dom());
 
         // len
