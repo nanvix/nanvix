@@ -278,7 +278,6 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
         // to_set: new_lru.to_set() == result.contents.dom()
         lemma_drop_first_to_set(cache.lru_order);
         sub.lemma_push_to_set_commute(key);
-        assert(new_lru.to_set() =~= result.contents.dom());
 
         // len
         new_lru.unique_seq_to_set();
