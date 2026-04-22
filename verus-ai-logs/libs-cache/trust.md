@@ -211,9 +211,11 @@ Source: `~/.cargo/registry/src/.../vstd-0.0.0-2026-04-05-0114/std_specs/btree.rs
 
 ## Integrity Audit
 
-Audited 2026-04-23. All items challenged against verus-constraints escalation ladder.
-No items eliminated — all are genuine trust boundaries. Two assume_specification items
-(insert, len axiom) identified as stronger than upstream vstd due to dropped
-`obeys_cmp_spec` guards. See `integrity-audit/fix_report.md` for detailed challenge
-analysis, AST consistency results (15 matched, 3 mismatched, 2 extra — all acceptable),
-and assume_specification fidelity comparison.
+Re-audited 2026-04-23. All items re-challenged against verus-constraints
+escalation ladder (verify as-is → search vstd → minimal rewrite → stdlib
+wrapper). No items eliminated — all 8 external_body and 5 assume_specification
+items are genuine trust boundaries. Two assume_specification items (insert, len
+axiom) are stronger than upstream vstd due to dropped `obeys_cmp_spec` guards.
+See `integrity-audit/fix_report.md` for detailed challenge analysis per item,
+AST consistency results (15 matched, 3 mismatched, 2 extra — all pre-approved
+deviations), and assume_specification fidelity comparison.

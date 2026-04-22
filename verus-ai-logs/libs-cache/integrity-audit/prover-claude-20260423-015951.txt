@@ -109,3 +109,87 @@ Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-
 
 === Output (streaming) ===
 Now let me run the initial verification to get baseline cheating counts.
+Now let me run the AST consistency check and get the original source from the base branch.
+Now I have a comprehensive picture. Let me create the plan and run the rubber-duck agent for a design critique before proceeding with my analysis.
+Good — no admit(), no assume(), no cfg-gated exec code. Let me now launch a rubber-duck review of my analysis and in parallel check if any of the external_body items can be eliminated by searching vstd.
+Now let me also check the AST consistency records and trust documentation:
+Now let me verify the AST report discrepancy and check one more thing about the axiom's soundness:
+Now I have a comprehensive understanding of the full verification. Here is my critique.
+
+---
+
+## Critique
+
+### Overall Assessment
+
+Your analysis is **thorough and largely correct**. The 8 external_body items are at genuine trust boundaries, the AST mismatches are properly justified, and the reasoning on each "KEEP" verdict is sound. I have **two substantive concerns** and **one minor observation**.
+
+---
+
+### Issue 1: axiom_cache_lru_of_remove is sound but under-constrained in a subtle way — verify your mental model (Non-blocking)
+
+**What you said:** The axiom is sound "because BTreeMap::remove doesn't change last_used counters of remaining entries."
+
+**Why the axiom IS actually well-constrained (confirming your conclusion, with nuance):**
+
+The axiom's precondition is:
+```rust
+btreemap_view_spec(new_entries) == btreemap_view_spec(old_entries).remove(key)
+```
+
+Because `btreemap_view_spec` maps `BTreeMap<K, CacheEntry<V>>` → `Map<K, CacheEntry<V>>` (not `Map<K, V>`), this constrains that all remaining entries have **identical `CacheEntry` values including `last_used` fields**. An adversarial `new_entries` with different `last_used` counters wouldn't satisfy the precondition. So the axiom can't be misapplied to unrelated BTreeMaps — it's well-constrained by the types.
+
+However, there's a deeper question you should have raised in your Q3: **the axiom is currently only used for `remove` and `evict`, but `Cache::put` is `external_body`.** If you ever tried to body-verify `put`, you would need an analogous `axiom_cache_lru_of_insert` — and that axiom would be substantially harder to state correctly (you'd need to express that a fresh counter places the entry at the MRU end, which requires reasoning about counter monotonicity relative to all existing `last_used` values). Your analysis correctly notes this would increase trust, but you should explicitly document that the current architecture **fundamentally cannot support body-verifying `put`** without this second axiom — it's not just "not worth it," it's architecturally blocked.
+
+**Severity:** Non-blocking. Your KEEP verdict is correct. But your Q3 answer ("making cache_lru_of fully interpreted") misses the real structural issue: the problem isn't that `cache_lru_of` is uninterpreted — it's that the *counter monotonicity invariant* linking concrete `last_used` values to abstract `lru_order` position is nowhere in the spec. Making `cache_lru_of` interpreted wouldn't help unless you also added this invariant, which would require reasoning about all entries' counters — exactly the infrastructure that makes body-verifying `get`/`put` hard.
+
+---
+
+### Issue 2: Counter overflow trust assumption is under-stated given external_body functions (Non-blocking, but raise severity)
+
+**What's documented:** BUG-1 says counter overflow is LOW severity, physically unreachable.
+
+**What's missed:** The soundness of `Cache::get` and `Cache::put` specs **depends on no overflow**. Both functions are `external_body` with specs claiming:
+- `get`: `self@ == old(self)@.spec_get(*key).0` (entry moves to MRU position)  
+- `put`: `self@ == old(self)@.spec_put(key, value)` (new entry at MRU position)
+
+After counter wraparound, `self.counter += 1` produces a value **smaller** than existing `last_used` values. The implementation would then treat the newly-accessed entry as **older** than all others (it has the smallest counter), while the spec says it's MRU. This means:
+
+1. The `external_body` spec on `get` becomes **unsound** — the implementation places the entry at LRU, but the spec says MRU.
+2. Subsequent `evict` would evict the **most recently used** entry — the exact opposite of the spec.
+
+This isn't just a theoretical concern — it means the `external_body` specs have an **implicit precondition** (`self.counter < u64::MAX`) that is not stated. In a verification context, unstated preconditions on trusted functions are the most dangerous kind of trust gap.
+
+**Recommendation:** Either:
+- Add `requires self.counter < u64::MAX` to `get` and `put` specs (makes the trust assumption explicit and verifier-checked), or
+- Add a `saturating_add` / `checked_add` with a panic path, and document why the precondition is omitted.
+
+The current state — unstated precondition on external_body functions — should be documented as a **MEDIUM** trust assumption, not LOW, because if it's violated the verification guarantees become **actively wrong** (not just missing).
+
+---
+
+### Issue 3: AST report artifact is misleading (Non-blocking observation)
+
+The `ast_summary.json` shows 18/18 MATCH with "consistent: true", but this comparison used the **post-rewrite** source (the `body_removed_source.rs` already contains `btreemap_remove` and `find_lru_victim`). The real AST comparison against the **original** source (3 mismatches, 2 extras) is only in `fix_report.md`. 
+
+This means someone looking only at `ast_summary.json` would incorrectly conclude no exec code was changed. The `fix_report.md` is the authoritative source and does properly document everything — but the artifact discrepancy could mislead future auditors. Consider noting in the ast_summary that it reflects the post-rewrite baseline, not the original source.
+
+---
+
+### Answers to Your Five Questions
+
+**Q1 (Cache::put body-verify):** You are correct. But your reasoning understates the problem — it's not just "the axiom issue makes it not worth it." The architecture is fundamentally blocked: you'd need `axiom_cache_lru_of_insert` which requires expressing counter monotonicity (fresh counter > all existing last_used), and this invariant doesn't exist anywhere in your spec. It's not a cost-benefit tradeoff — it's a missing abstraction.
+
+**Q2 (Cache::get around CacheGuard):** No. CacheGuard's `&mut V` field is the fundamental API contract — callers use `DerefMut` to modify cached values in place. Any alternative (returning `Option<&V>`, copying values) would change the public API semantics. The `&mut` limitation is load-bearing.
+
+**Q3 (Restructuring to avoid axiom_cache_lru_of_remove):** Making `cache_lru_of` interpreted would require a spec-level sort over `Map<K, CacheEntry<V>>` entries by `last_used`. vstd's `Map` has no ordering primitives and no way to enumerate entries as a `Seq`. You'd need your own axioms for that enumeration, making it net-neutral. Your conclusion is correct.
+
+**Q4 (AST mismatches pre-approved):** Yes, all three are genuine pre-approved deviations: let-binding for ensures reference, stdlib wrapper substitution, and function extraction. The `proof!{}` blocks are ghost code erased at runtime. The fix_report.md documents these correctly.
+
+**Q5 (Missed opportunities):** No. I systematically checked all 8 items and found no reduction path that decreases net trust. The only theoretical possibility would be if vstd added `cfg(alloc)` support for btree specs (eliminating lib.vstd_btree.rs entirely), but that's an upstream dependency change, not something within your control.
+The rubber-duck review confirms all 8 external_body items are genuine trust boundaries. It raised a good point about counter overflow severity which I'll incorporate into the report. Now let me produce the outputs.
+Good. Now let me write the fix_report.md and update trust.md. Since no cheating items can be eliminated, no code changes are needed — this is a documentation-only audit.
+There's an existing fix_report.md. I'll overwrite it with the authoritative audit. Let me now write the definitive report and the updated trust.md.
+Now update the trust.md — the existing one is thorough but I'll update the audit timestamp and ensure the integrity audit section reflects the current results.
+The trust.md is already comprehensive and accurate. The existing integrity audit section correctly summarizes the results. Since no items were eliminated, the trust.md content doesn't need material changes. Let me just update the audit timestamp to reflect this re-audit.
+Now run the final verification to confirm 0 errors.
