@@ -1,0 +1,106 @@
+Timestamp: 2026-04-22_22-47-52
+Mode: cargo
+Crate: cache
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=9
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking cache v0.12.457 (/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache)
+error: assume_specification requires function type signature to match `alloc::collections::btree::map::impl&%100::len` exactly 
+             assume_specification provided: `for<Key, Value> for<'_> (&alloc::collections::BTreeMap<Key, Value>) -> usize`
+             expected:                      `for<K, V, A> for<'_> (&alloc::collections::BTreeMap<K, V, A>) -> usize`
+  --> src/libs/cache/src/lib.vstd_btree.rs:79:1
+   |
+79 | / pub assume_specification<Key, Value>[ alloc::collections::BTreeMap::<Key, Value>::len ](
+80 | |     m: &alloc::collections::BTreeMap<Key, Value>,
+81 | | ) -> (len: usize)
+   | |________________^
+
+error: assume_specification requires function type signature to match `alloc::collections::btree::map::impl&%100::is_empty` exactly 
+             assume_specification provided: `for<Key, Value> for<'_> (&alloc::collections::BTreeMap<Key, Value>) -> bool`
+             expected:                      `for<K, V, A> for<'_> (&alloc::collections::BTreeMap<K, V, A>) -> bool`
+  --> src/libs/cache/src/lib.vstd_btree.rs:87:1
+   |
+87 | / pub assume_specification<Key, Value>[ alloc::collections::BTreeMap::<Key, Value>::is_empty ](
+88 | |     m: &alloc::collections::BTreeMap<Key, Value>,
+89 | | ) -> (res: bool)
+   | |_______________^
+
+error: assume_specification requires function type signature to match `alloc::collections::btree::map::impl&%20::insert` exactly 
+             assume_specification provided: `for<Key, Value> for<'_> (&mut alloc::collections::BTreeMap<Key, Value>, Key, Value) -> core::option::Option<Value>`
+             expected:                      `for<K, V, A> for<'_> (&mut alloc::collections::BTreeMap<K, V, A>, K, V) -> core::option::Option<V>`
+  --> src/libs/cache/src/lib.vstd_btree.rs:95:1
+   |
+95 | / pub assume_specification<Key: Ord, Value>[ alloc::collections::BTreeMap::<Key, Value>::insert ](
+96 | |     m: &mut alloc::collections::BTreeMap<Key, Value>,
+97 | |     k: Key,
+98 | |     v: Value,
+99 | | ) -> (result: Option<Value>)
+   | |___________________________^
+
+error: assume_specification requires function type signature to match `alloc::collections::btree::map::impl&%20::contains_key` exactly 
+             assume_specification provided: `for<Key, Value> for<'_, '_> (&alloc::collections::BTreeMap<Key, Value>, &Key) -> bool`
+             expected:                      `for<K, V, A, Q> for<'_, '_> (&alloc::collections::BTreeMap<K, V, A>, &Q) -> bool`
+   --> src/libs/cache/src/lib.vstd_btree.rs:109:1
+    |
+109 | / pub assume_specification<Key: Ord, Value>[ alloc::collections::BTreeMap::<Key, Value>::contains_key::<Key> ](
+110 | |     m: &alloc::collections::BTreeMap<Key, Value>,
+111 | |     k: &Key,
+112 | | ) -> (result: bool)
+    | |__________________^
+
+error: assume_specification requires function type signature to match `alloc::collections::btree::map::impl&%20::get` exactly 
+             assume_specification provided: `for<Key, Value> for<'a, '_> (&'a alloc::collections::BTreeMap<Key, Value>, &Key) -> core::option::Option<&'a Value>`
+             expected:                      `for<K, V, A, Q> for<'_, '_> (&alloc::collections::BTreeMap<K, V, A>, &Q) -> core::option::Option<&V>`
+   --> src/libs/cache/src/lib.vstd_btree.rs:118:1
+    |
+118 | / pub assume_specification<'a, Key: Ord, Value>[ alloc::collections::BTreeMap::<Key, Value>::get::<Key> ](
+119 | |     m: &'a alloc::collections::BTreeMap<Key, Value>,
+120 | |     k: &Key,
+121 | | ) -> (result: Option<&'a Value>)
+    | |_______________________________^
+
+error: assume_specification requires function type signature to match `alloc::collections::btree::map::impl&%20::get_mut` exactly 
+             assume_specification provided: `for<Key, Value> for<'a, '_> (&'a mut alloc::collections::BTreeMap<Key, Value>, &Key) -> core::option::Option<&'a mut Value>`
+             expected:                      `for<K, V, A, Q> for<'_, '_> (&mut alloc::collections::BTreeMap<K, V, A>, &Q) -> core::option::Option<&mut V>`
+   --> src/libs/cache/src/lib.vstd_btree.rs:132:1
+    |
+132 | / pub assume_specification<'a, Key: Ord, Value>[ alloc::collections::BTreeMap::<Key, Value>::get_mut::<Key> ](
+133 | |     m: &'a mut alloc::collections::BTreeMap<Key, Value>,
+134 | |     k: &Key,
+135 | | ) -> (result: Option<&'a mut Value>)
+    | |___________________________________^
+
+error: assume_specification requires function type signature to match `alloc::collections::btree::map::impl&%20::remove` exactly 
+             assume_specification provided: `for<Key, Value> for<'_, '_> (&mut alloc::collections::BTreeMap<Key, Value>, &Key) -> core::option::Option<Value>`
+             expected:                      `for<K, V, A, Q> for<'_, '_> (&mut alloc::collections::BTreeMap<K, V, A>, &Q) -> core::option::Option<V>`
+   --> src/libs/cache/src/lib.vstd_btree.rs:153:1
+    |
+153 | / pub assume_specification<Key: Ord, Value>[ alloc::collections::BTreeMap::<Key, Value>::remove::<Key> ](
+154 | |     m: &mut alloc::collections::BTreeMap<Key, Value>,
+155 | |     k: &Key,
+156 | | ) -> (result: Option<Value>)
+    | |___________________________^
+
+error: assume_specification requires function type signature to match `alloc::collections::btree::map::impl&%19::clear` exactly 
+             assume_specification provided: `for<Key, Value> for<'_> (&mut alloc::collections::BTreeMap<Key, Value>) -> ()`
+             expected:                      `for<K, V, A> for<'_> (&mut alloc::collections::BTreeMap<K, V, A>) -> ()`
+   --> src/libs/cache/src/lib.vstd_btree.rs:166:1
+    |
+166 | / pub assume_specification<Key, Value>[ alloc::collections::BTreeMap::<Key, Value>::clear ](
+167 | |     m: &mut alloc::collections::BTreeMap<Key, Value>,
+168 | | )
+    | |_^
+
+error: could not compile `cache` (lib) due to 8 previous errors

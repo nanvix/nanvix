@@ -7,6 +7,11 @@
 // making them unavailable on no_std kernel targets. The specifications here are
 // semantically identical — only the import path differs.
 //
+// Unlike upstream vstd, we use an uninterpreted `btreemap_view_spec` function
+// instead of `impl View for BTreeMap`, because the orphan rule prevents
+// implementing the `View` trait (defined in vstd) for `BTreeMap` (defined in alloc)
+// from this crate.
+//
 // IMPORTANT: This file should be kept in sync with the upstream vstd btree specs.
 // If vstd adds `cfg(alloc)` support for btree specs, this file can be removed.
 //
@@ -32,19 +37,19 @@ pub struct ExBTreeMap<Key, Value, A: core::alloc::Allocator + Clone>(
 pub struct ExGlobal(alloc::alloc::Global);
 
 //==================================================================================================
-// View for BTreeMap
+// BTreeMap abstract view (uninterpreted spec function)
 //==================================================================================================
 
-impl<Key, Value, A: core::alloc::Allocator + Clone> View for alloc::collections::BTreeMap<Key, Value, A> {
-    type V = Map<Key, Value>;
-
-    uninterp spec fn view(&self) -> Map<Key, Value>;
-}
+// Uninterpreted spec function mirroring vstd's View::view for BTreeMap.
+// The View trait impl is in vstd::std_specs::btree, gated behind cfg(std) which is
+// unavailable on this no_std kernel target. We use a standalone spec function instead
+// because the orphan rule prevents implementing View for BTreeMap from this crate.
+pub uninterp spec fn btreemap_view_spec<K, V>(m: alloc::collections::BTreeMap<K, V>) -> Map<K, V>;
 
 /// A BTreeMap always has a finite domain.
 pub broadcast axiom fn axiom_btree_map_view_finite_dom<K, V>(m: alloc::collections::BTreeMap<K, V>)
     ensures
-        #[trigger] m@.dom().finite(),
+        #[trigger] btreemap_view_spec(m).dom().finite(),
 ;
 
 //==================================================================================================
@@ -55,7 +60,7 @@ pub broadcast axiom fn axiom_btree_map_view_finite_dom<K, V>(m: alloc::collectio
 pub assume_specification<Key, Value>[ alloc::collections::BTreeMap::<Key, Value>::new ]()
     -> (m: alloc::collections::BTreeMap<Key, Value>)
     ensures
-        m@ == Map::<Key, Value>::empty(),
+        btreemap_view_spec(m) == Map::<Key, Value>::empty(),
 ;
 
 // --- len ---
@@ -67,7 +72,7 @@ pub broadcast axiom fn axiom_spec_btree_map_len<Key, Value>(
     m: &alloc::collections::BTreeMap<Key, Value>,
 )
     ensures
-        #[trigger] spec_btree_map_len(m) == m@.len(),
+        #[trigger] spec_btree_map_len(m) == btreemap_view_spec(*m).len(),
 ;
 
 #[verifier::when_used_as_spec(spec_btree_map_len)]
@@ -83,7 +88,7 @@ pub assume_specification<Key, Value>[ alloc::collections::BTreeMap::<Key, Value>
     m: &alloc::collections::BTreeMap<Key, Value>,
 ) -> (res: bool)
     ensures
-        res == m@.is_empty(),
+        res == btreemap_view_spec(*m).is_empty(),
 ;
 
 // --- insert ---
@@ -93,10 +98,10 @@ pub assume_specification<Key: Ord, Value>[ alloc::collections::BTreeMap::<Key, V
     v: Value,
 ) -> (result: Option<Value>)
     ensures
-        m@ == old(m)@.insert(k, v),
+        btreemap_view_spec(*m) == btreemap_view_spec(*old(m)).insert(k, v),
         match result {
-            Some(v) => old(m)@.contains_key(k) && v == old(m)@[k],
-            None => !old(m)@.contains_key(k),
+            Some(v) => btreemap_view_spec(*old(m)).contains_key(k) && v == btreemap_view_spec(*old(m))[k],
+            None => !btreemap_view_spec(*old(m)).contains_key(k),
         },
 ;
 
@@ -106,7 +111,7 @@ pub assume_specification<Key: Ord, Value>[ alloc::collections::BTreeMap::<Key, V
     k: &Key,
 ) -> (result: bool)
     ensures
-        result == m@.contains_key(*k),
+        result == btreemap_view_spec(*m).contains_key(*k),
 ;
 
 // --- get (Q = K) ---
@@ -116,8 +121,8 @@ pub assume_specification<'a, Key: Ord, Value>[ alloc::collections::BTreeMap::<Ke
 ) -> (result: Option<&'a Value>)
     ensures
         match result {
-            Some(v) => m@.contains_key(*k) && *v == m@[*k],
-            None => !m@.contains_key(*k),
+            Some(v) => btreemap_view_spec(*m).contains_key(*k) && *v == btreemap_view_spec(*m)[*k],
+            None => !btreemap_view_spec(*m).contains_key(*k),
         },
 ;
 
@@ -130,15 +135,17 @@ pub assume_specification<'a, Key: Ord, Value>[ alloc::collections::BTreeMap::<Ke
 ) -> (result: Option<&'a mut Value>)
     ensures
         // Domain unchanged.
-        m@.dom() == old(m)@.dom(),
+        btreemap_view_spec(*m).dom() == btreemap_view_spec(*old(m)).dom(),
         match result {
             Some(v) => {
-                &&& old(m)@.contains_key(*k)
-                &&& *v == old(m)@[*k]
+                &&& btreemap_view_spec(*old(m)).contains_key(*k)
+                &&& *v == btreemap_view_spec(*old(m))[*k]
                 // All other keys unchanged.
-                &&& forall |j: Key| j != *k && old(m)@.contains_key(j) ==> m@[j] == old(m)@[j]
+                &&& forall |j: Key| j != *k && btreemap_view_spec(*old(m)).contains_key(j)
+                        ==> btreemap_view_spec(*m)[j] == btreemap_view_spec(*old(m))[j]
             },
-            None => !old(m)@.contains_key(*k) && m@ == old(m)@,
+            None => !btreemap_view_spec(*old(m)).contains_key(*k)
+                && btreemap_view_spec(*m) == btreemap_view_spec(*old(m)),
         },
 ;
 
@@ -148,10 +155,10 @@ pub assume_specification<Key: Ord, Value>[ alloc::collections::BTreeMap::<Key, V
     k: &Key,
 ) -> (result: Option<Value>)
     ensures
-        m@ == old(m)@.remove(*k),
+        btreemap_view_spec(*m) == btreemap_view_spec(*old(m)).remove(*k),
         match result {
-            Some(v) => old(m)@.contains_key(*k) && v == old(m)@[*k],
-            None => !old(m)@.contains_key(*k),
+            Some(v) => btreemap_view_spec(*old(m)).contains_key(*k) && v == btreemap_view_spec(*old(m))[*k],
+            None => !btreemap_view_spec(*old(m)).contains_key(*k),
         },
 ;
 
@@ -160,7 +167,7 @@ pub assume_specification<Key, Value>[ alloc::collections::BTreeMap::<Key, Value>
     m: &mut alloc::collections::BTreeMap<Key, Value>,
 )
     ensures
-        m@ == Map::<Key, Value>::empty(),
+        btreemap_view_spec(*m) == Map::<Key, Value>::empty(),
 ;
 
 //==================================================================================================

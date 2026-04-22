@@ -114,9 +114,9 @@ impl<V> DerefMut for CacheGuard<'_, V> {
 #[verus_verify(external_body)]
 #[verus_spec(ret =>
     ensures
-        m@ == old(m)@.remove(*k),
-        ret.is_some() <==> old(m)@.dom().contains(*k),
-        ret.is_some() ==> ret == Some(old(m)@[*k]),
+        btreemap_view_spec(*m) == btreemap_view_spec(*old(m)).remove(*k),
+        ret.is_some() <==> btreemap_view_spec(*old(m)).dom().contains(*k),
+        ret.is_some() ==> ret == Some(btreemap_view_spec(*old(m))[*k]),
 )]
 fn btreemap_remove<K: Ord, V>(m: &mut BTreeMap<K, V>, k: &K) -> Option<V> {
     m.remove(k)
