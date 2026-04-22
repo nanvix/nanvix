@@ -78,6 +78,7 @@ struct CacheEntry<V> {
 /// and `&mut V` for write access. The LRU counter is bumped when the guard
 /// is created.
 ///
+#[verus_verify]
 pub struct CacheGuard<'a, V> {
     /// Mutable reference to the cached value.
     value: &'a mut V,
@@ -110,6 +111,7 @@ impl<V> DerefMut for CacheGuard<'_, V> {
 /// on eviction the entry with the smallest (oldest) counter value is removed. Lookups bump the
 /// counter to mark the entry as recently used.
 ///
+#[verus_verify]
 pub struct Cache<K, V> {
     /// Cached entries.
     entries: BTreeMap<K, CacheEntry<V>>,
@@ -119,6 +121,7 @@ pub struct Cache<K, V> {
     capacity: usize,
 }
 
+#[verus_verify]
 impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// # Description
@@ -129,6 +132,15 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// - `capacity`: Maximum number of entries the cache can hold.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        ensures
+            result@ == CacheView::<K, V>::spec_new(capacity as nat),
+            result@.inv(),
+            result@.contents == Map::<K, V>::empty(),
+            result@.capacity == capacity as nat,
+            result@.lru_order == Seq::<K>::empty(),
+    )]
     pub const fn new(capacity: usize) -> Self {
         Self {
             entries: BTreeMap::new(),
@@ -150,6 +162,26 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// An RAII guard providing access to the cached value, or `None` on cache miss.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            old(self)@.inv(),
+        ensures
+            // Hit: key is present.
+            old(self)@.contents.dom().contains(*key) ==> {
+                &&& result is Some
+                &&& result->0@ == old(self)@.contents[*key]
+                &&& self@ == old(self)@.spec_get(*key).0
+                &&& self@.contents == old(self)@.contents
+                &&& self@.capacity == old(self)@.capacity
+                &&& self@.inv()
+            },
+            // Miss: key is absent.
+            !old(self)@.contents.dom().contains(*key) ==> {
+                &&& result is None
+                &&& self@ == old(self)@
+            },
+    )]
     pub fn get(&mut self, key: &K) -> Option<CacheGuard<'_, V>> {
         if let Some(entry) = self.entries.get_mut(key) {
             self.counter += 1;
@@ -172,6 +204,22 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     /// - `key`: The cache key to insert or update.
     /// - `value`: The value to store.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(
+        requires
+            old(self)@.inv(),
+        ensures
+            self@ == old(self)@.spec_put(key, value),
+            self@.inv(),
+            self@.capacity == old(self)@.capacity,
+            // Put-get round-trip: if capacity > 0, the key is now present.
+            old(self)@.capacity > 0 ==> {
+                &&& self@.contents.dom().contains(key)
+                &&& self@.contents[key] == value
+            },
+            // Zero-capacity no-op.
+            old(self)@.capacity == 0 ==> self@ == old(self)@,
+    )]
     pub fn put(&mut self, key: K, value: V) {
         // A zero-capacity cache cannot store entries.
         if self.capacity == 0 {
@@ -210,6 +258,19 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// - `key`: The cache key to remove.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(
+        requires
+            old(self)@.inv(),
+        ensures
+            self@ == old(self)@.spec_remove(*key),
+            self@.inv(),
+            self@.capacity == old(self)@.capacity,
+            // Key is no longer present.
+            !self@.contents.dom().contains(*key),
+            // Key absent: no-op.
+            !old(self)@.contents.dom().contains(*key) ==> self@ == old(self)@,
+    )]
     pub fn remove(&mut self, key: &K) {
         self.entries.remove(key);
     }
@@ -219,6 +280,17 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// Removes all entries.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(
+        requires
+            old(self)@.inv(),
+        ensures
+            self@ == old(self)@.spec_clear(),
+            self@.inv(),
+            self@.contents == Map::<K, V>::empty(),
+            self@.lru_order == Seq::<K>::empty(),
+            self@.capacity == old(self)@.capacity,
+    )]
     pub fn clear(&mut self) {
         self.entries.clear();
         self.counter = 0;
@@ -229,6 +301,20 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// Evicts the entry with the smallest `last_used` counter.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(
+        requires
+            old(self)@.inv(),
+            old(self)@.contents.dom().len() > 0,
+        ensures
+            // The LRU victim (index 0) is evicted.
+            !self@.contents.dom().contains(old(self)@.lru_order[0]),
+            self@.contents == old(self)@.contents.remove(old(self)@.lru_order[0]),
+            self@.contents.dom().len() == old(self)@.contents.dom().len() - 1,
+            self@.lru_order == old(self)@.lru_order.subrange(1, old(self)@.lru_order.len() as int),
+            self@.capacity == old(self)@.capacity,
+            self@.inv(),
+    )]
     fn evict(&mut self) {
         let victim: Option<K> = self
             .entries
