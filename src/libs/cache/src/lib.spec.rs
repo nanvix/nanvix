@@ -12,7 +12,8 @@ verus! {
 // External Type Specifications
 //==================================================================================================
 
-// BTreeMap is from alloc::collections and has no vstd specs.
+// BTreeMap is from alloc::collections. vstd provides specs in vstd::std_specs::btree,
+// but they require cfg(std) which is incompatible with this crate's no_std kernel target.
 // We declare it as an external type so Verus can reference it.
 #[verifier::reject_recursive_types(K)]
 #[verifier::reject_recursive_types(V)]
@@ -167,8 +168,8 @@ impl<K, V> CacheView<K, V> {
 // View Implementation for Cache
 //==================================================================================================
 
-// BTreeMap has no vstd specs, so the view is uninterpreted.
-// All constraints on the view come from the external_body method ensures clauses.
+// vstd BTreeMap specs require cfg(std), unavailable on this no_std target.
+// The view is therefore uninterpreted; constraints come from external_body ensures clauses.
 impl<K: Ord + Clone, V> View for Cache<K, V> {
     type V = CacheView<K, V>;
 

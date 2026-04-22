@@ -1,0 +1,9 @@
+admit_count=0
+assume_call_count=0
+external_body_count=11
+trusted_count=0
+no_decreases_count=0
+external_type_specification_count=4
+cfg_not_verus_keep_ghost_count=0
+external_body_attr_count=9
+external_type_spec_attr_count=4

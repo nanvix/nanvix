@@ -1,0 +1,10 @@
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+ --> verus-ai-logs/libs-cache/integrity-audit/artifacts/repro_mut_field.rs:4:1
+  |
+4 | / struct Guard<'a> {
+5 | |     value: &'a mut u64,
+6 | | }
+  | |_^
+
+error: aborting due to 1 previous error
+
