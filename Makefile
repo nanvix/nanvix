@@ -301,7 +301,13 @@ VERUS_INSTALL_DIR ?= $(HOME)/verus
 export VERUS_EXECUTABLE_DIR ?= $(VERUS_INSTALL_DIR)
 
 # List of crates to verify with Verus.
-VERUS_CRATES := bitmap slab
+VERUS_CRATES := bitmap slab cache
+
+# Per-crate RUSTFLAGS for Verus verification.
+VERUS_RUSTFLAGS_cache = $(KERNEL_RUST_FLAGS)
+
+# Per-crate extra cargo arguments for Verus verification.
+VERUS_EXTRA_CARGO_ARGS_cache = $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 
 # Path to the verus-ai tool directory (for guardrails.py / tree-sitter).
 VERUS_AI_DIR ?= $(realpath $(CURDIR)/../..)

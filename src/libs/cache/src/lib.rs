@@ -31,6 +31,7 @@
 //! ```
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
 
 //==================================================================================================
 // Imports
@@ -43,6 +44,13 @@ use ::core::ops::{
     Deref,
     DerefMut,
 };
+
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("lib.spec.rs");
+#[cfg(verus_keep_ghost)]
+include!("lib.proof.rs");
+
 
 //==================================================================================================
 // Cache Entry

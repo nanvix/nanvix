@@ -287,6 +287,9 @@ dependencies = [
 [[package]]
 name = "cache"
 version = "0.12.457"
+dependencies = [
+ "vstd",
+]
 
 [[package]]
 name = "cc"

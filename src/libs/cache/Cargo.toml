@@ -9,10 +9,14 @@ authors.workspace = true
 description = "Bounded LRU cache collection for Nanvix"
 homepage.workspace = true
 
+[package.metadata.verus]
+verify = true
+
 [lib]
 crate-type = ["lib"]
 
 [dependencies]
+vstd = { workspace = true }
 
 [features]
 default = []
