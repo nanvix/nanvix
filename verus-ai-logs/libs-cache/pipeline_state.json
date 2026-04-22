@@ -2,12 +2,25 @@
   "module_name": "cache",
   "log_name": "libs-cache",
   "source_path": "src/libs/cache/src/lib.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
-  "phase_results": {},
+  "current_phase": "integrity-audit",
+  "current_phase_idx": 4,
+  "phase_results": {
+    "proving": {
+      "phase": "proving",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "PASS",
+      "review_file": null,
+      "duration_s": 1458.8
+    }
+  },
   "prover_session_id": "7b3724e6-f7d3-40fa-9719-093f758fa1d0",
   "completed": false,
   "base_branch": "verus-ai/cache",
   "verus_branch": "verus-ai/cache",
-  "phase_boundary_shas": {}
+  "phase_boundary_shas": {
+    "proving": "743b8eda97d19083daafb9c2ca0f5b76bce7385c"
+  }
 }
