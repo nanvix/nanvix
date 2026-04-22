@@ -1,0 +1,17 @@
+[2026-04-22 18:54:47] [BRANCH] Base: dev → Verus: verus-ai/cache
+[2026-04-22 18:54:47] [ABSTRACTION] Body-removed source: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/body_removed_source.rs (9304 -> 5751 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: cache
+Source: src/libs/cache/src/lib.rs
+Crate:  cache
+Branch: verus-ai/cache (base: dev)
+Phases: caller-analysis → polish
+Body-removed source: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/body_removed_source.rs
+############################################################
+
+============================================================
+PHASE: caller-analysis
+Module: cache
+============================================================

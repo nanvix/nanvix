@@ -1,0 +1,36 @@
+Timestamp: 2026-04-16_16-19-13
+Mode: cargo
+Crate: bitmap
+Directory: N/A
+Module: <all>
+Exit code: 0
+69 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+
+--- Full output ---
+   Compiling compiler_builtins v0.1.160 (/home/ruize/.rustup/toolchains/1.94.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling core v0.0.0 (/home/ruize/.rustup/toolchains/1.94.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling config v0.12.429 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/config)
+   Compiling vstd v0.0.0-2026-04-12-0118
+   Compiling alloc v0.0.0 (/home/ruize/.rustup/toolchains/1.94.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+    Checking cfg-if v1.0.4
+    Checking mmio-tag v0.12.429 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/mmio-tag)
+    Checking verus_builtin v0.0.0-2026-04-12-0118
+    Checking static_assert v0.12.429 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/static_assert)
+    Checking sysapi v0.12.429 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/sysapi)
+verification results:: 1340 verified, 0 errors
+    Checking error v0.12.429 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/error)
+verification results:: 0 verified, 0 errors
+    Checking sys v0.12.429 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/sys)
+    Checking raw-array v0.12.429 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/raw-array)
+verification results:: 0 verified, 0 errors
+    Checking bitmap v0.12.429 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/bitmap)
+verification results:: 69 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 32.42s

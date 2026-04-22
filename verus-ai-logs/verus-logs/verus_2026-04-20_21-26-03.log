@@ -1,0 +1,126 @@
+Timestamp: 2026-04-20_21-26-03
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 0
+0 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=1
+  admit=0
+  trusted=0
+  no_decreases=0
+
+--- Full output ---
+   Compiling config v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/src/libs/config)
+   Compiling kernel v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/src/kernel)
+    Checking sorted-vec v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/src/libs/sorted-vec)
+    Checking sysapi v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/src/libs/sysapi)
+    Checking error v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/src/libs/error)
+verification results:: 0 verified, 0 errors
+verification results:: 0 verified, 0 errors
+    Checking sys v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/src/libs/sys)
+    Checking multibin v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/src/libs/multibin)
+    Checking raw-array v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/src/libs/raw-array)
+    Checking arch v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/src/libs/arch)
+    Checking elf v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/src/libs/elf)
+verification results:: 0 verified, 0 errors
+    Checking bitmap v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/src/libs/bitmap)
+verification results:: 69 verified, 0 errors
+    Checking slab v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/src/libs/slab)
+verification results:: 35 verified, 0 errors
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/kheap.spec.rs:122:13
+    |
+122 |           &&& forall|a1: int, a2: int|
+    |  _____________^
+123 | |                 self.allocations.dom().contains(a1)
+124 | |                 && self.allocations.dom().contains(a2)
+125 | |                 && a1 != a2
+126 | |                 ==> a1 + self.allocations[a1] as int <= a2
+127 | |                     || a2 + self.allocations[a2] as int <= a1
+    | |_____________________________________________________________^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/kheap.spec.rs:123:17
+    |
+123 |                 self.allocations.dom().contains(a1)
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+124 |                 && self.allocations.dom().contains(a2)
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/kheap.proof.rs:820:9
+    |
+820 | /         forall|a1: int, a2: int|
+821 | |             pre_map.dom().contains(a1)
+822 | |             && pre_map.dom().contains(a2)
+823 | |             && a1 != a2
+824 | |             ==> a1 + pre_map[a1] as int <= a2
+825 | |                 || a2 + pre_map[a2] as int <= a1,
+    | |________________________________________________^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/kheap.proof.rs:821:13
+    |
+821 |             pre_map.dom().contains(a1)
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+822 |             && pre_map.dom().contains(a2)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/kheap.proof.rs:827:9
+    |
+827 | /         forall|a1: int, a2: int|
+828 | |             post_map.dom().contains(a1)
+829 | |             && post_map.dom().contains(a2)
+830 | |             && a1 != a2
+831 | |             ==> a1 + post_map[a1] as int <= a2
+832 | |                 || a2 + post_map[a2] as int <= a1,
+    | |_________________________________________________^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/kheap.proof.rs:828:13
+    |
+828 |             post_map.dom().contains(a1)
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+829 |             && post_map.dom().contains(a2)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/kheap.proof.rs:834:5
+    |
+834 |     assert forall|a1: int, a2: int|
+    |     ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/kheap.proof.rs:835:9
+    |
+835 |         post_map.dom().contains(a1)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+836 |         && post_map.dom().contains(a2)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> src/kernel/src/mm/kheap.proof.rs:834:5
+    |
+834 |     assert forall|a1: int, a2: int|
+    |     ^^^^^^
+
+verification results:: 41 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 9.73s

@@ -1,0 +1,64 @@
+Timestamp: 2026-04-19_21-59-30
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 0
+20 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=1
+  admit=3
+  trusted=0
+  no_decreases=0
+
+--- Full output ---
+    Checking kernel v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/src/kernel)
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/kheap.spec.rs:117:13
+    |
+117 |           &&& forall|a1: int, a2: int|
+    |  _____________^
+118 | |                 self.allocations.dom().contains(a1)
+119 | |                 && self.allocations.dom().contains(a2)
+120 | |                 && a1 != a2
+121 | |                 ==> a1 + self.allocations[a1] as int <= a2
+122 | |                     || a2 + self.allocations[a2] as int <= a1
+    | |_____________________________________________________________^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/kheap.spec.rs:118:17
+    |
+118 |                 self.allocations.dom().contains(a1)
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+119 |                 && self.allocations.dom().contains(a2)
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> src/kernel/src/mm/kheap.spec.rs:117:13
+    |
+117 |           &&& forall|a1: int, a2: int|
+    |  _____________^
+118 | |                 self.allocations.dom().contains(a1)
+119 | |                 && self.allocations.dom().contains(a2)
+120 | |                 && a1 != a2
+121 | |                 ==> a1 + self.allocations[a1] as int <= a2
+122 | |                     || a2 + self.allocations[a2] as int <= a1
+    | |_____________________________________________________________^
+
+verification results:: 20 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 3.38s

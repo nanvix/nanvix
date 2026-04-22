@@ -1,0 +1,22 @@
+Timestamp: 2026-04-13_18-03-31
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::kheap
+Exit code: 0
+30 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+
+--- Full output ---
+   Compiling kernel v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/kernel)
+note: verifying module mm::kheap
+
+verification results:: 30 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 10.88s

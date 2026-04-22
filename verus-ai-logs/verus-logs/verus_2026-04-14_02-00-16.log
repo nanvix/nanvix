@@ -1,0 +1,120 @@
+Timestamp: 2026-04-14_02-00-16
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 0
+1340 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+
+--- Full output ---
+   Compiling compiler_builtins v0.1.160 (/home/ruize/.rustup/toolchains/1.94.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling proc-macro2 v1.0.106
+   Compiling core v0.0.0 (/home/ruize/.rustup/toolchains/1.94.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling build-utils v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/build-utils)
+   Compiling autocfg v1.5.0
+   Compiling verus_prettyplease v0.0.0-2026-04-05-0114
+   Compiling hashbrown v0.12.3
+   Compiling indexmap v1.9.3
+   Compiling verus_syn v0.0.0-2026-04-05-0114
+   Compiling syn v2.0.117
+   Compiling config v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/config)
+   Compiling vstd v0.0.0-2026-04-05-0114
+   Compiling kernel v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/kernel)
+   Compiling synstructure v0.13.2
+   Compiling verus_state_machines_macros v0.0.0-2026-04-05-0114
+   Compiling verus_builtin_macros v0.0.0-2026-04-05-0114
+   Compiling alloc v0.0.0 (/home/ruize/.rustup/toolchains/1.94.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+   Compiling verus_builtin v0.0.0-2026-04-05-0114
+   Compiling cfg-if v1.0.4
+   Compiling static_assert v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/static_assert)
+   Compiling sysapi v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/sysapi)
+   Compiling no_fail v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/no_fail)
+   Compiling type-safe v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/type-safe)
+verification results:: 1340 verified, 0 errors
+   Compiling error v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/error)
+   Compiling sorted-vec v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/sorted-vec)
+verification results:: 0 verified, 0 errors
+verification results:: 0 verified, 0 errors
+   Compiling sys v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/sys)
+   Compiling multibin v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/multibin)
+   Compiling raw-array v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/raw-array)
+   Compiling arch v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/arch)
+   Compiling elf v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/elf)
+verification results:: 0 verified, 0 errors
+   Compiling bitmap v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/bitmap)
+verification results:: 69 verified, 0 errors
+   Compiling slab v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/slab)
+verification results:: 38 verified, 0 errors
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/kheap.rs:347:25
+    |
+347 |                       &&& forall|t: nat| self@.has_free.dom().contains(t)
+    |  _________________________^
+348 | |                         && t != KheapView::tier_for_size(spec_layout_size(layout) as nat)
+349 | |                         ==> self@.has_free[t] == old(self)@.has_free[t]
+    | |_______________________________________________________________________^
+
+note:   trigger 1 of 2:
+   --> src/kernel/src/mm/kheap.rs:349:29
+    |
+349 |                         ==> self@.has_free[t] == old(self)@.has_free[t]
+    |                             ^^^^^^^^^^^^^^^^^
+
+note:   trigger 2 of 2:
+   --> src/kernel/src/mm/kheap.rs:349:50
+    |
+349 |                         ==> self@.has_free[t] == old(self)@.has_free[t]
+    |                                                  ^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/kheap.rs:437:13
+    |
+437 | /             forall|t: nat| self@.has_free.dom().contains(t)
+438 | |                 && t != KheapView::tier_for_size(spec_layout_size(layout) as nat)
+439 | |                 ==> self@.has_free[t] == old(self)@.has_free[t],
+    | |_______________________________________________________________^
+
+note:   trigger 1 of 2:
+   --> src/kernel/src/mm/kheap.rs:439:21
+    |
+439 |                 ==> self@.has_free[t] == old(self)@.has_free[t],
+    |                     ^^^^^^^^^^^^^^^^^
+
+note:   trigger 2 of 2:
+   --> src/kernel/src/mm/kheap.rs:439:42
+    |
+439 |                 ==> self@.has_free[t] == old(self)@.has_free[t],
+    |                                          ^^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> src/kernel/src/mm/kheap.rs:437:13
+    |
+437 | /             forall|t: nat| self@.has_free.dom().contains(t)
+438 | |                 && t != KheapView::tier_for_size(spec_layout_size(layout) as nat)
+439 | |                 ==> self@.has_free[t] == old(self)@.has_free[t],
+    | |_______________________________________________________________^
+
+verification results:: 31 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 1m 01s

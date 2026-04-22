@@ -1,0 +1,52 @@
+Timestamp: 2026-04-13_21-51-24
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 0
+1340 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=1
+  admit=0
+  trusted=0
+  no_decreases=0
+
+--- Full output ---
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling autocfg v1.5.0
+   Compiling verus_prettyplease v0.0.0-2026-04-05-0114
+   Compiling hashbrown v0.12.3
+   Compiling vstd v0.0.0-2026-04-05-0114
+   Compiling verus_builtin v0.0.0-2026-04-05-0114
+   Compiling cfg-if v1.0.4
+   Compiling config v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/config)
+   Compiling sysapi v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/sysapi)
+   Compiling indexmap v1.9.3
+   Compiling verus_syn v0.0.0-2026-04-05-0114
+   Compiling syn v2.0.117
+   Compiling synstructure v0.13.2
+   Compiling verus_builtin_macros v0.0.0-2026-04-05-0114
+   Compiling verus_state_machines_macros v0.0.0-2026-04-05-0114
+verification results:: 1340 verified, 0 errors
+   Compiling error v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/error)
+   Compiling sorted-vec v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/sorted-vec)
+verification results:: 0 verified, 0 errors
+verification results:: 0 verified, 0 errors
+   Compiling sys v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/sys)
+   Compiling multibin v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/multibin)
+   Compiling raw-array v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/raw-array)
+   Compiling elf v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/elf)
+   Compiling arch v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/arch)
+verification results:: 0 verified, 0 errors
+   Compiling bitmap v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/bitmap)
+verification results:: 69 verified, 0 errors
+   Compiling slab v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/libs/slab)
+verification results:: 35 verified, 0 errors
+   Compiling kernel v0.12.378 (/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-kheap0413/src/kernel)
+verification results:: 30 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 33.41s
