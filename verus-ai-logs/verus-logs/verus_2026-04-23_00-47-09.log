@@ -1,0 +1,102 @@
+Timestamp: 2026-04-23_00-47-09
+Mode: cargo
+Crate: cache
+Directory: N/A
+Module: <all>
+Exit code: 101
+21 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=8
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking cache v0.12.457 (/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache)
+error: postcondition not satisfied
+   --> src/libs/cache/src/lib.proof.rs:486:9
+    |
+486 |           s.filter(|k: K| k != first) =~= s.subrange(1, s.len() as int),
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+494 | /     if s.len() == 1 {
+495 | |         // Single element: filter removes s[0]==first, subrange(1,1) is empty.
+496 | |     } else {
+497 | |         let n = s.len() as int;
+...   |
+519 | |         assert(s.subrange(1, n - 1).push(s[n - 1]) =~= s.subrange(1, n));
+520 | |     }
+    | |_____- at the end of the function body
+
+note: automatically chose triggers for this expression:
+  --> src/libs/cache/src/lib.proof.rs:75:5
+   |
+75 |     assert forall |x: K|
+   |     ^^^^^^
+
+note:   trigger 1 of 1:
+  --> src/libs/cache/src/lib.proof.rs:76:9
+   |
+76 |         filtered.to_set().contains(x) implies s.to_set().remove(key).contains(x)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> src/libs/cache/src/lib.proof.rs:83:5
+   |
+83 |     assert forall |x: K|
+   |     ^^^^^^
+
+note:   trigger 1 of 1:
+  --> src/libs/cache/src/lib.proof.rs:84:52
+   |
+84 |         s.to_set().remove(key).contains(x) implies filtered.to_set().contains(x)
+   |                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/libs/cache/src/lib.proof.rs:156:5
+    |
+156 |     assert forall |x: K|
+    |     ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/libs/cache/src/lib.proof.rs:157:9
+    |
+157 |         sub.to_set().contains(x) implies s.to_set().remove(s[0]).contains(x)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/libs/cache/src/lib.proof.rs:162:5
+    |
+162 |     assert forall |x: K|
+    |     ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/libs/cache/src/lib.proof.rs:163:53
+    |
+163 |         s.to_set().remove(s[0]).contains(x) implies sub.to_set().contains(x)
+    |                                                     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> src/libs/cache/src/lib.proof.rs:162:5
+    |
+162 |     assert forall |x: K|
+    |     ^^^^^^
+
+verification results:: 21 verified, 1 errors
+error: could not compile `cache` (lib) due to 1 previous error

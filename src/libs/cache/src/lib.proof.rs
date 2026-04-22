@@ -475,6 +475,51 @@ impl<K: Ord + Clone, V> Cache<K, V> {
 // Helper: filter-first equals drop-first for no-dup sequences
 //==================================================================================================
 
+/// Helper: filter(|k| k != first) == drop_first for no-dup sequences starting with `first`.
+/// The `first` parameter is fixed across recursion to keep the predicate closure consistent.
+proof fn lemma_filter_neq_first_is_subrange<K>(s: Seq<K>, first: K)
+    requires
+        s.no_duplicates(),
+        s.len() > 0,
+        s[0] == first,
+    ensures
+        s.filter(|k: K| k != first) =~= s.subrange(1, s.len() as int),
+    decreases s.len(),
+{
+    reveal(Seq::filter);
+    broadcast use vstd::seq_lib::group_seq_properties;
+
+    let pred = |k: K| k != first;
+
+    if s.len() == 1 {
+        // Single element: filter removes s[0]==first, subrange(1,1) is empty.
+    } else {
+        let n = s.len() as int;
+        let dl = s.drop_last();
+
+        // dl = s.subrange(0, n-1), no_duplicates, dl[0] == first
+        assert(dl =~= s.subrange(0, n - 1));
+        lemma_subrange_no_dup(s, 0, n - 1);
+
+        // Recurse with the SAME `first` — predicate closure is identical.
+        lemma_filter_neq_first_is_subrange(dl, first);
+        // dl.filter(pred) =~= dl.subrange(1, dl.len())
+
+        // s.last() != first (no dups, different indices)
+        assert(s.last() != first);
+
+        // By filter def: s.filter(pred) = dl.filter(pred).push(s.last())
+        //              = dl.subrange(1, dl.len()).push(s.last())  (by IH)
+
+        // Compose nested subranges:
+        // dl.subrange(1, dl.len()) = s.subrange(0,n-1).subrange(1,n-1) =~= s.subrange(1,n-1)
+        s.lemma_slice_of_slice(0, n - 1, 1, n - 1);
+
+        // Extend subrange by one element:
+        assert(s.subrange(1, n - 1).push(s[n - 1]) =~= s.subrange(1, n));
+    }
+}
+
 /// For a no-dup sequence, filtering out s[0] equals dropping the first element.
 proof fn lemma_filter_first_is_subrange<K>(s: Seq<K>)
     requires
@@ -482,38 +527,8 @@ proof fn lemma_filter_first_is_subrange<K>(s: Seq<K>)
         s.len() > 0,
     ensures
         s.filter(|k: K| k != s[0]) =~= s.subrange(1, s.len() as int),
-    decreases s.len(),
 {
-    reveal(Seq::filter);
-    broadcast use vstd::seq_lib::group_seq_properties;
-
-    let first = s[0];
-    let pred = |k: K| k != first;
-
-    if s.len() == 1 {
-        // Single element: filter removes it, subrange(1,1) is empty.
-    } else {
-        let n = s.len() as int;
-
-        // IH on s.drop_last() = s.subrange(0, n-1)
-        lemma_subrange_no_dup(s, 0, n - 1);
-        lemma_filter_first_is_subrange(s.subrange(0, n - 1));
-        // IH: s.subrange(0,n-1).filter(pred) =~= s.subrange(0,n-1).subrange(1,n-1)
-
-        // s.last() != first (no dups, different indices)
-        assert(s.last() != first);
-
-        // Connect drop_last to subrange for filter definition unfolding
-        assert(s.drop_last() =~= s.subrange(0, n - 1));
-
-        // Compose nested subranges using vstd lemma:
-        // s.subrange(0,n-1).subrange(1,n-1) =~= s.subrange(1, n-1)
-        s.lemma_slice_of_slice(0, n - 1, 1, n - 1);
-
-        // Extend subrange by pushing the last element:
-        // s.subrange(1, n-1).push(s[n-1]) =~= s.subrange(1, n)
-        assert(s.subrange(1, n - 1).push(s[n - 1]) =~= s.subrange(1, n));
-    }
+    lemma_filter_neq_first_is_subrange(s, s[0]);
 }
 
 //==================================================================================================

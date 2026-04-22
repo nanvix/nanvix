@@ -113,3 +113,4 @@ The issue is the solver can't chain subrange indexing through local variables. L
 Let me check what's available in vstd seq_lib for subrange-related lemmas:
 There's a `subrange.subrange` composition lemma at line 1030. Let me check it:
 I found `lemma_slice_of_slice` to compose nested subranges. Let me rewrite:
+I realize the issue: the recursive call creates a different closure (`|k| k != s.drop_last()[0]` vs `|k| k != s[0]`). I need to pass `first` as a fixed parameter to keep the closure consistent. Let me restructure:
