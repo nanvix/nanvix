@@ -187,7 +187,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// An RAII guard providing access to the cached value, or `None` on cache miss.
     ///
-    #[verus_verify(external_body)]
+    // REMOVED: #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self)@.inv(),
@@ -315,7 +315,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// Evicts the entry with the smallest `last_used` counter.
     ///
-    // REMOVED: #[verus_verify(external_body)]
+    #[verus_verify(external_body)]
     #[verus_spec(
         requires
             old(self)@.inv(),
