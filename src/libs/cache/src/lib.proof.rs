@@ -471,5 +471,124 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     }
 }
 
+//==================================================================================================
+// Helper: filter-first equals drop-first for no-dup sequences
+//==================================================================================================
+
+/// For a no-dup sequence, filtering out s[0] equals dropping the first element.
+proof fn lemma_filter_first_is_subrange<K>(s: Seq<K>)
+    requires
+        s.no_duplicates(),
+        s.len() > 0,
+    ensures
+        s.filter(|k: K| k != s[0]) =~= s.subrange(1, s.len() as int),
+    decreases s.len(),
+{
+    reveal(Seq::filter);
+    broadcast use vstd::seq_lib::group_seq_properties;
+
+    let first = s[0];
+    let pred = |k: K| k != first;
+
+    if s.len() == 1 {
+        // Single element: filter removes it, subrange(1,1) is empty.
+    } else {
+        let rest = s.drop_last();
+        let last = s.last();
+
+        // rest has no duplicates (it's a prefix of s).
+        assert(rest.no_duplicates()) by {
+            assert forall |i: int, j: int|
+                0 <= i < rest.len() && 0 <= j < rest.len() && i != j
+            implies rest[i] != rest[j] by {
+                assert(rest[i] == s[i]);
+                assert(rest[j] == s[j]);
+            }
+        };
+
+        // rest[0] == s[0]
+        assert(rest[0] == first);
+
+        // IH: rest.filter(pred) =~= rest.subrange(1, rest.len())
+        lemma_filter_first_is_subrange(rest);
+
+        // last != first (since s has no dups and indices differ).
+        assert(last != first) by {
+            assert(s[s.len() as int - 1] == last);
+            assert(s[0] == first);
+        };
+
+        // filter(s, pred) = filter(rest, pred).push(last)  (since pred(last) = true)
+        //                  = rest.subrange(1, rest.len()).push(last)
+        //                  =~= s.subrange(1, s.len())
+        assert(rest.subrange(1, rest.len() as int).push(last)
+               =~= s.subrange(1, s.len() as int));
+    }
+}
+
+//==================================================================================================
+// Cache::evict Verification Lemma
+//==================================================================================================
+
+impl<K: Ord + Clone, V> Cache<K, V> {
+    /// Proves that Cache::evict (after extracting find_lru_victim) produces
+    /// the correct postconditions: the LRU victim is removed, lru_order drops
+    /// its first element, capacity is preserved, and inv holds.
+    proof fn lemma_evict_view(
+        new_self: &Self,
+        victim: K,
+        old_entries: alloc::collections::BTreeMap<K, CacheEntry<V>>,
+        old_capacity: usize,
+    )
+        requires
+            // victim is the LRU key
+            cache_lru_of(old_entries).len() > 0,
+            victim == cache_lru_of(old_entries)[0],
+            // entries after btreemap_remove
+            btreemap_view_spec(new_self.entries) == btreemap_view_spec(old_entries).remove(victim),
+            new_self.capacity == old_capacity,
+            // Old state was well-formed (inv fields via abstraction helpers)
+            cache_contents_of(old_entries).dom().len() <= old_capacity as nat,
+            cache_lru_of(old_entries).no_duplicates(),
+            cache_lru_of(old_entries).to_set() == cache_contents_of(old_entries).dom(),
+            cache_lru_of(old_entries).len() == cache_contents_of(old_entries).dom().len(),
+        ensures
+            new_self@.contents == cache_contents_of(old_entries).remove(victim),
+            !new_self@.contents.dom().contains(victim),
+            new_self@.contents.dom().len() == cache_contents_of(old_entries).dom().len() - 1,
+            new_self@.lru_order == cache_lru_of(old_entries).subrange(
+                1, cache_lru_of(old_entries).len() as int,
+            ),
+            new_self@.capacity == old_capacity as nat,
+            new_self@.inv(),
+    {
+        broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
+            vstd::seq_lib::seq_to_set_is_finite;
+
+        reveal(<Cache<_, _> as View>::view);
+        reveal(cache_contents_of);
+        reveal(cache_lru_of);
+
+        let old_lru = cache_lru_of(old_entries);
+
+        // Apply LRU axiom: removing victim from entries filters the LRU order.
+        axiom_cache_lru_of_remove(old_entries, new_self.entries, victim);
+        // Now: cache_lru_of(new_self.entries) == old_lru.filter(|k| k != victim)
+
+        // Key insight: filter(|k| k != s[0]) == subrange(1, len) for no-dup sequences.
+        lemma_filter_first_is_subrange(old_lru);
+
+        // Invariant properties for the new state:
+        // 1. no_duplicates for the subranged lru_order
+        lemma_subrange_no_dup(old_lru, 1, old_lru.len() as int);
+
+        // 2. to_set: subrange(1, len).to_set() == to_set().remove(s[0])
+        lemma_drop_first_to_set(old_lru);
+
+        // 3. contents: cache_contents_of after remove
+        assert(new_self@.contents =~= cache_contents_of(old_entries).remove(victim));
+    }
+}
+
 } // verus!
 

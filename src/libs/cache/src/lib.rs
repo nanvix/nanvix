@@ -310,12 +310,31 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         }
     }
 
+    /// Finds the LRU victim (entry with smallest last_used counter).
+    /// Only the iterator chain is unverifiable; isolated as external_body.
+    #[verus_verify(external_body)]
+    #[verus_spec(ret =>
+        ensures
+            btreemap_view_spec(*entries).dom().len() > 0 ==> {
+                &&& ret is Some
+                &&& cache_lru_of(*entries).len() > 0
+                &&& ret->Some_0 == cache_lru_of(*entries)[0]
+            },
+            btreemap_view_spec(*entries).dom().len() == 0 ==> ret is None,
+    )]
+    fn find_lru_victim(entries: &BTreeMap<K, CacheEntry<V>>) -> Option<K> {
+        // VERUS REWRITE: originally inlined in evict as iterator chain
+        entries
+            .iter()
+            .min_by_key(|(_, e)| e.last_used)
+            .map(|(k, _)| k.clone())
+    }
+
     ///
     /// # Description
     ///
     /// Evicts the entry with the smallest `last_used` counter.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(
         requires
             old(self)@.inv(),
@@ -330,13 +349,13 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             self@.inv(),
     )]
     fn evict(&mut self) {
-        let victim: Option<K> = self
-            .entries
-            .iter()
-            .min_by_key(|(_, e)| e.last_used)
-            .map(|(k, _)| k.clone());
-        if let Some(key) = victim {
-            self.entries.remove(&key);
+        // VERUS REWRITE: extracted iterator chain into find_lru_victim
+        if let Some(key) = Self::find_lru_victim(&self.entries) {
+            // VERUS REWRITE: originally self.entries.remove(&key)
+            btreemap_remove(&mut self.entries, &key);
+            proof! {
+                Self::lemma_evict_view(self, key, old(self).entries, old(self).capacity);
+            }
         }
     }
 }
