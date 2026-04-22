@@ -175,3 +175,4 @@ Now try removing line 266 (`assert(cache.lru_order.to_set().contains(victim))`):
 Let me try removing the three victim-related asserts (lines 262-264) as a batch:
 Now try removing `assert(!cache.contents.dom().remove(victim).contains(key))` (line 283 originally, now lower):
 Now try removing `assert(new_lru.to_set() =~= result.contents.dom())` (the final composed equality):
+Excellent! Now try the assert inside the `!sub.contains(key)` by-block. Let me try removing the two inner asserts (lines 270-271):

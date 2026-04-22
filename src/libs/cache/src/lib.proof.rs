@@ -267,8 +267,6 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
                 vstd::seq_lib::lemma_seq_subrange_elements(
                     cache.lru_order, 1int, cache.lru_order.len() as int, key,
                 );
-                assert(cache.lru_order.contains(key));
-                assert(cache.lru_order.to_set().contains(key));
             }
         };
 
