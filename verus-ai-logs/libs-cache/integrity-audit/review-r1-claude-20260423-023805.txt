@@ -111,3 +111,7 @@ Be strict: PASS only if ALL checklist items are checked. Any unchecked item is F
 Now let me read the remaining large files and check the existing scripts/tools.
 Let me read the rest of the proof file and check for available scripts.
 Good. Now I have full context. Let me run `make verify-cache` to establish the baseline, and also check the Makefile for the verify command.
+Now I have full context. Let me launch both sub-agents in parallel for independent review.
+Both sub-agents are running independently. I'll wait for their completion before consolidating the review.
+
+<system_notification>Background agent `claude-review` (claude-review) has completed. Use `read_agent` to retrieve its output.</system_notification>
