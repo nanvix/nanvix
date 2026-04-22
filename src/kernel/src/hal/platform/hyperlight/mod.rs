@@ -62,7 +62,10 @@ use ::alloc::{
 };
 use ::arch::{
     mem,
-    mem::PAGE_ALIGNMENT,
+    mem::{
+        PAGE_ALIGNMENT,
+        WORD_ALIGNMENT,
+    },
 };
 use ::config::{
     constants::KILOBYTE,
@@ -213,26 +216,56 @@ pub struct Platform {
 }
 
 //==================================================================================================
-// Global Variables
+// Constants
 //==================================================================================================
 
-/// Frame allocator storage.
-/// Sized to hold one bit per frame for the entire `MEMORY_SIZE` address range, plus one extra byte
-/// per chunk (snapshot, ramfs, scratch) so that frame counts that are not multiples of 8 can be
-/// rounded up without overflowing the backing array.  At runtime, sub-slices of this array back the
-/// per-region bitmaps inside a multi-chunk `SparseBitmap`.
-static mut FRAME_ALLOCATOR_STORAGE: [u8; MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize) + 3] =
-    [0; MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize) + 3];
+/// Size in bytes of the frame allocator bitmap storage.
+///
+/// One bit per frame for the entire `MEMORY_SIZE` address range, plus three extra bytes so that
+/// per-chunk frame counts that are not multiples of 8 can be rounded up without overflow.
+const FRAME_ALLOCATOR_STORAGE_SIZE: usize = MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize) + 3;
+
+/// Offset of the kpool bitmap within the allocator storage reservation.
+///
+/// The frame allocator storage size is rounded up to the next word boundary so that the kpool
+/// bitmap that follows starts at a word-aligned offset.
+const KPOOL_BITMAP_OFFSET: usize = {
+    match ::sys::mm::align_up(FRAME_ALLOCATOR_STORAGE_SIZE, WORD_ALIGNMENT) {
+        Some(v) => v,
+        // Compile-time only: overflow is impossible for realistic MEMORY_SIZE values.
+        None => ::core::unreachable!(),
+    }
+};
 
 // Ensure the number of kpool pages is a multiple of 8 so the bitmap has no padding bits.
 ::static_assert::assert_eq!(
     (::config::kernel::KPOOL_SIZE / mem::PAGE_SIZE).is_multiple_of(u8::BITS as usize)
 );
 
-/// Kernel page pool bitmap storage.
-static mut KPOOL_BITMAP_STORAGE: [u8; ::config::kernel::KPOOL_SIZE
-    / (mem::PAGE_SIZE * u8::BITS as usize)] =
-    [0; ::config::kernel::KPOOL_SIZE / (mem::PAGE_SIZE * u8::BITS as usize)];
+/// Size in bytes of the kernel page pool bitmap storage.
+const KPOOL_BITMAP_STORAGE_SIZE: usize =
+    ::config::kernel::KPOOL_SIZE / (mem::PAGE_SIZE * u8::BITS as usize);
+
+/// Combined size of the allocator backing stores (with inter-area padding for word alignment),
+/// rounded up to a page boundary.
+///
+/// This many bytes are reserved at the beginning of the free portion of the scratch region
+/// (right after the I/O buffers) so the bitmap backing stores live in scratch memory
+/// instead of the BSS (which is part of the snapshot and therefore Copy-on-Write).
+const ALLOCATOR_STORAGE_PAGES_SIZE: usize = {
+    let raw: usize = KPOOL_BITMAP_OFFSET + KPOOL_BITMAP_STORAGE_SIZE;
+    // Round up to the next multiple of PAGE_SIZE.
+    // SAFETY: `raw` is small relative to `usize::MAX`, so overflow cannot occur.
+    match ::sys::mm::align_up(raw, PAGE_ALIGNMENT) {
+        Some(v) => v,
+        // Compile-time only: overflow is impossible for realistic storage sizes.
+        None => ::core::unreachable!(),
+    }
+};
+
+//==================================================================================================
+// Global Variables
+//==================================================================================================
 
 /// Snapshot region base address (inclusive).
 static SNAPSHOT_BASE: AtomicUsize = AtomicUsize::new(KERNEL_BASE_RAW);
@@ -1077,12 +1110,15 @@ pub fn init(
     // scratch_size covers the full range [scratch_base, scratch_end) and includes the last
     // page that Hyperlight reserves for bookkeeping.  That page is included in the bitmap
     // but marked as reserved (used) so the frame allocator never hands it out.
-    // Validate that scratch_size is non-zero and large enough to contain the required MMIO
-    // regions (input buffer + output buffer + one top page + one reserved last page).
-    let min_scratch_size: usize =
-        INPUT_DATA_BUFFER_SIZE + OUTPUT_DATA_BUFFER_SIZE + 2 * mem::PAGE_SIZE;
+    // Validate that scratch_size is non-zero and large enough to contain the required scratch
+    // regions (input buffer + output buffer + allocator storage pages + one I/O page +
+    // one reserved last page).
+    let min_scratch_size: usize = INPUT_DATA_BUFFER_SIZE
+        + OUTPUT_DATA_BUFFER_SIZE
+        + ALLOCATOR_STORAGE_PAGES_SIZE
+        + 2 * mem::PAGE_SIZE;
     if scratch_size == 0 || scratch_size < min_scratch_size {
-        let reason: &str = "scratch_size is too small for required MMIO regions";
+        let reason: &str = "scratch_size is too small for required scratch regions";
         error!(
             "init(): {} (scratch_size={:#x}, min={:#x})",
             reason, scratch_size, min_scratch_size
@@ -1115,10 +1151,11 @@ pub fn init(
     // Register only the MMIO-critical portions of the scratch region:
     //  1. Input data buffer  [scratch_base, scratch_base + INPUT_DATA_BUFFER_SIZE)
     //  2. Output data buffer [scratch_base + INPUT_DATA_BUFFER_SIZE, + OUTPUT_DATA_BUFFER_SIZE)
-    //  3. Scratch I/O page: guest counter page (second-to-last page).
-    //  4. Scratch reserved page: Hyperlight bookkeeping metadata (last page, not for use).
-    // Everything between the output buffer and the scratch I/O page (page tables, free space) is
-    // intentionally left unregistered and are available for user-page allocation.
+    //  3. Allocator storage  [output_end, output_end + ALLOCATOR_STORAGE_PAGES_SIZE)
+    //  4. Scratch I/O page: guest counter page (second-to-last page).
+    //  5. Scratch reserved page: Hyperlight bookkeeping metadata (last page, not for use).
+    // Everything between the allocator storage and the scratch I/O page is
+    // intentionally left unregistered and is available for user-page allocation.
     {
         let scratch_input_base: usize = scratch_base_address;
         let scratch_input: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
@@ -1143,6 +1180,33 @@ pub fn init(
             )?;
         ioaddresses.register(OUTPUT_BUF_MMIO_TAG, scratch_output.clone())?;
         mmio_regions.push_back(scratch_output);
+    }
+
+    // Reserve pages at the start of the free scratch area for the frame allocator and
+    // kpool bitmap backing stores.  This memory is in scratch (never snapshot/CoW) and
+    // is registered as a reserved memory region so the frame allocator never hands it out.
+    let allocator_storage_base: usize =
+        scratch_base_address + INPUT_DATA_BUFFER_SIZE + OUTPUT_DATA_BUFFER_SIZE;
+    {
+        // No need to zero the storage pages: the scratch region is guaranteed to be
+        // zeroed out by Hyperlight before the guest starts.
+
+        let allocator_storage_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+            "allocator storage",
+            VirtualAddress::from_raw_value(allocator_storage_base),
+            ALLOCATOR_STORAGE_PAGES_SIZE,
+            MemoryRegionType::Reserved,
+            AccessPermission::RDWR,
+        )?;
+        memory_regions.push_back(allocator_storage_region);
+        info!(
+            "allocator storage: [{:#010x}, {:#010x}) (frame_alloc={} B, kpool={} B, size={:#x})",
+            allocator_storage_base,
+            allocator_storage_base + ALLOCATOR_STORAGE_PAGES_SIZE,
+            FRAME_ALLOCATOR_STORAGE_SIZE,
+            KPOOL_BITMAP_STORAGE_SIZE,
+            ALLOCATOR_STORAGE_PAGES_SIZE,
+        );
     }
     {
         let scratch_io_page: usize = scratch_end_address - 2 * mem::PAGE_SIZE;
@@ -1182,7 +1246,14 @@ pub fn init(
     // byte may cover phantom frames beyond snapshot_end.  If the RAMFS starts within that
     // padded range the two chunks would overlap, so they are merged into a single "low"
     // chunk.  When the RAMFS is absent or far enough away it becomes a separate chunk.
+    //
+    // The backing store for the bitmap lives in the scratch region at `allocator_storage_base`,
+    // not in BSS, so it is never part of the CoW snapshot.
     let ramfs_end_address: usize = ramfs_base + ramfs_size;
+    // Safety: `allocator_storage_base` points to a zeroed, identity-mapped region inside
+    // the scratch area with at least `FRAME_ALLOCATOR_STORAGE_SIZE` bytes available.
+    // The memory outlives the returned `SparseBitmap` (it is never freed) and no other
+    // code writes to this range after this point.
     let physical_memory_layout: SparseBitmap = unsafe {
         build_physical_memory_layout(
             KERNEL_BASE_RAW,
@@ -1191,16 +1262,20 @@ pub fn init(
             ramfs_end_address,
             scratch_base_address,
             scratch_end_address,
+            (allocator_storage_base as *mut u8, FRAME_ALLOCATOR_STORAGE_SIZE),
         )?
     };
 
     // Build a bitmap for the kernel page pool.
+    // The kpool bitmap storage is placed at a word-aligned offset after the frame allocator
+    // storage in the same scratch reservation.
     let kpool_bitmap: Bitmap = {
-        // Safety: the kpool bitmap storage is valid and has a static lifetime.
+        // Safety: the kpool bitmap sits at a known word-aligned offset within the
+        // scratch-allocated storage region and outlives the returned bitmap.
         let storage: RawArray<u8> = unsafe {
-            let (ptr, len): (*mut u8, usize) =
-                (KPOOL_BITMAP_STORAGE.as_mut_ptr(), KPOOL_BITMAP_STORAGE.len());
-            RawArray::from_raw_parts(ptr, len)?
+            let ptr: *mut u8 = (allocator_storage_base + KPOOL_BITMAP_OFFSET) as *mut u8;
+            debug_assert!(::sys::mm::is_aligned(ptr as usize, WORD_ALIGNMENT));
+            RawArray::from_raw_parts(ptr, KPOOL_BITMAP_STORAGE_SIZE)?
         };
         Bitmap::from_raw_array(storage)?
     };
@@ -1267,6 +1342,7 @@ fn check_memory_size(
 /// - `ramfs_end_address`: Exclusive end address of the RAMFS region (0 when absent).
 /// - `scratch_start_address`: Inclusive start address of the scratch region.
 /// - `scratch_end_address`: Exclusive end address of the scratch bitmap region.
+/// - `storage`: Pointer and length of the backing store for the bitmap.
 ///
 /// # Returns
 ///
@@ -1275,8 +1351,9 @@ fn check_memory_size(
 ///
 /// # Safety
 ///
-/// This function is unsafe because it writes to the mutable static [`FRAME_ALLOCATOR_STORAGE`].
-/// The caller must ensure exclusive access.
+/// This function is unsafe because it dereferences the raw pointer in `storage`.
+/// The caller must ensure that it points to at least `storage.1` bytes of writable,
+/// zero-initialised memory with a lifetime that outlives the returned bitmap.
 ///
 unsafe fn build_physical_memory_layout(
     snapshot_start_address: usize,
@@ -1285,6 +1362,7 @@ unsafe fn build_physical_memory_layout(
     ramfs_end_address: usize,
     scratch_start_address: usize,
     scratch_end_address: usize,
+    storage: (*mut u8, usize),
 ) -> Result<SparseBitmap, Error> {
     // Validate that region ends are not before their starts.
     if snapshot_end_address < snapshot_start_address
@@ -1348,9 +1426,7 @@ unsafe fn build_physical_memory_layout(
 
     let total_bytes: usize = low_bytes + ramfs_bytes + scratch_bytes;
 
-    // Safety: the frame allocator storage has a static lifetime and is large enough
-    // to cover MEMORY_SIZE worth of frames.
-    let storage_len: usize = FRAME_ALLOCATOR_STORAGE.len();
+    let (storage_ptr, storage_len): (*mut u8, usize) = storage;
     if total_bytes > storage_len {
         let reason: &str = "frame allocator storage too small for sparse layout";
         error!(
@@ -1360,7 +1436,7 @@ unsafe fn build_physical_memory_layout(
         return Err(Error::new(ErrorCode::OutOfMemory, reason));
     }
 
-    let base_ptr: *mut u8 = FRAME_ALLOCATOR_STORAGE.as_mut_ptr();
+    let base_ptr: *mut u8 = storage_ptr;
     let mut offset: usize = 0;
 
     // Build a bitmap chunk from the shared storage at the current offset.
