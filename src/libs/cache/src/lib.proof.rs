@@ -75,7 +75,6 @@ proof fn lemma_filter_neq_to_set<K>(s: Seq<K>, key: K)
     assert forall |x: K|
         filtered.to_set().contains(x) implies s.to_set().remove(key).contains(x)
     by {
-        assert(filtered.contains(x));
         s.lemma_filter_contains_rev(pred, x);
         let idx = choose |idx: int| 0 <= idx < filtered.len() && filtered[idx] == x;
         s.lemma_filter_pred(pred, idx);
