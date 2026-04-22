@@ -466,16 +466,11 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             let pred = |k: K| k != key;
             let filtered = old_view.lru_order.filter(pred);
 
-            // Contents: new contents == old contents with key removed
-            assert(cache_contents_of(new_self.entries) =~= cache_contents_of(old_entries).remove(key));
-
             // Prove inv on the new state
             lemma_filter_preserves_no_dup(old_view.lru_order, pred);
             lemma_filter_neq_to_set(old_view.lru_order, key);
             lemma_filter_neq_len(old_view.lru_order, key);
             filtered.unique_seq_to_set();
-
-            assert(new_self@ =~= old_view.spec_remove(key));
         } else {
             // Key absent — spec_remove returns old_view unchanged
             assert(cache_contents_of(old_entries).dom() =~= btreemap_view_spec(old_entries).dom());
@@ -486,8 +481,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             assert(!old_view.lru_order.contains(key));
             lemma_filter_neq_absent(old_view.lru_order, key);
             assert(cache_lru_of(new_self.entries) == cache_lru_of(old_entries));
-
-            assert(new_self@ =~= old_view.spec_remove(key));
         }
     }
 }
