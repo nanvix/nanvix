@@ -217,10 +217,8 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
         // Zero-capacity: no-op.
     } else if cache.contents.dom().contains(key) {
         // Overwrite existing key.
-        let result = cache.spec_put(key, value);
         let pred = |k: K| k != key;
         let filtered = cache.lru_order.filter(pred);
-        let mru = cache.move_to_mru(key);
 
         // no_duplicates
         lemma_filter_preserves_no_dup(cache.lru_order, pred);
