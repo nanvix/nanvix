@@ -171,3 +171,5 @@ The raw-array crate uses `#[verus_verify(reject_recursive_types(T))]`. Let me us
 cfg_gate=0 now. Verification: **5 verified, 0 errors**. The CHEATING_DETECTED is from external_body/admit which are expected and will be documented in trust.md.
 
 Let me now run regression checks and build:
+Bitmap passes (69 verified, 0 errors) — the cfg_gate=5 is pre-existing. Let me check what `make verify` runs and continue:
+Let me run slab and cache individually:
