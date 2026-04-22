@@ -152,3 +152,5 @@ Do NOT create /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/v
 === Output (streaming) ===
 Now let me verify the fixer's claims by reading the actual source files and running verification.
 Good — `external_body` is removed from `new`. Let me confirm verification passes and check the exact count:
+Verification passes (exit 0). external_body count went from 9 to 8 (7→6 on user functions; 2 remain on type specs). Now let me identify the next target — `Cache::remove` should be the simplest remaining function (one BTreeMap call).
+`Cache::remove` only calls `self.entries.remove(key)`. This should be fixable with an `assume_specification` for `BTreeMap::remove`. Let me try removing `external_body` from it to see the exact error:
