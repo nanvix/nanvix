@@ -207,15 +207,17 @@ this crate trades that conservatism for simpler proofs.
 | `axiom_btree_map_view_finite_dom` | lib.vstd\_btree.rs:56-61 | BTreeMap view domain is finite |
 | `axiom_spec_btree_map_len` | lib.vstd\_btree.rs:80-85 | Connects `spec_btree_map_len` to `btreemap_view_spec.len()` |
 
-Source: `~/.cargo/registry/src/.../vstd-0.0.0-2026-04-05-0114/std_specs/btree.rs`
+Source: `~/.cargo/registry/src/.../vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs`
 
 ## Integrity Audit
 
-Re-audited 2026-04-23. All items re-challenged against verus-constraints
-escalation ladder (verify as-is → search vstd → minimal rewrite → stdlib
-wrapper). No items eliminated — all 8 external_body and 5 assume_specification
-items are genuine trust boundaries. Two assume_specification items (insert, len
-axiom) are stronger than upstream vstd due to dropped `obeys_cmp_spec` guards.
-See `integrity-audit/fix_report.md` for detailed challenge analysis per item,
-AST consistency results (15 matched, 3 mismatched, 2 extra — all pre-approved
-deviations), and assume_specification fidelity comparison.
+Re-audited 2026-04-23. All 8 external_body and 5 assume_specification items
+challenged against verus-constraints escalation ladder (verify as-is → search
+vstd → minimal rewrite → stdlib wrapper). None eliminated — all are genuine
+trust boundaries. Verified against vstd 0.0.0-2026-04-12-0118 (btree specs
+still gated behind `cfg(all(feature="alloc", feature="std"))`; no get_mut spec
+in any version). Two assume_specification items (insert, len axiom) are stronger
+than upstream vstd due to dropped `obeys_cmp_spec` guards. AST consistency:
+15 matched, 3 mismatched (all pre-approved deviations or justified VERUS
+REWRITEs), 0 missing, 2 extra (new wrapper/helper functions). See
+`integrity-audit/fix_report.md` for full challenge analysis.

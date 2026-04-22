@@ -109,3 +109,113 @@ Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-
 
 === Output (streaming) ===
 Now let me run the initial cheating detection and AST consistency checks in parallel.
+Good. Now I have the baseline:
+- **Cheating counts**: 0 admit, 0 assume, 8 external_body, 0 trusted, 0 no_decreases, 0 cfg_gate
+- **AST**: 15 matched, 3 mismatched, 0 missing, 2 extra
+
+Let me investigate the 3 mismatches and the 8 external_body functions to see what can be eliminated.
+Let me search vstd to challenge the claims about BTreeMap limitations, and investigate whether any external_body items can be eliminated.
+Let me do a thorough search for all cheating patterns and check assume_specification count.
+Now I have a complete picture. Let me consult the rubber duck to validate my analysis before writing the report.
+Now let me search for any hidden cheating patterns and verify the counts:
+Now let me verify a few more details I want to check:
+I've now reviewed all four source files in detail. Here is my critique:
+
+---
+
+## Critique: Verus Cache Module Integrity Audit
+
+### Counts Validated ✅
+
+Your counts are correct:
+- **external_body: 8** — confirmed by grep across all 4 source files.
+- **assume_specification: 5** — confirmed (new, len, is_empty, insert, clear).
+- **broadcast axiom: 2** — confirmed (finite_dom, spec_btree_map_len).
+- **admit/assume/trusted/no_decreases/cfg_gate: 0** — confirmed, no matches.
+
+### AST Mismatch Classifications Validated ✅
+
+Your 3 mismatches and 2 extras are correctly classified. The `Cache::new` let-binding + proof block, `Cache::remove` wrapper substitution, and `Cache::evict` extraction are all legitimate Verus rewrites.
+
+---
+
+### Finding 1: `DerefMut` is missing from the audit (Severity: Medium, Non-blocking)
+
+**Lines 102–106 of `lib.rs`**: `impl<V> DerefMut for CacheGuard<'_, V>` has **no `#[verus_verify]` attribute and no spec**. It is implicitly external — Verus ignores it entirely. Your audit enumerates every `external_body` item but misses this implicitly-excluded function.
+
+**Why it matters**: `DerefMut` allows callers to **mutate the cached value** through the guard (`*guard = new_value`). The `get` spec commits to `self@ == old(self)@.spec_get(*key).0`, which says `contents` is unchanged (only `lru_order` changes). But mutations through DerefMut modify the entry's value in the underlying BTreeMap. When the guard is dropped and `self` becomes accessible again, the actual `contents[key]` may differ from what the spec claims.
+
+This is partially mitigated by: (a) `get` is already external_body (the postcondition is trusted regardless), (b) CacheGuard's `view()` is uninterpreted so verified code can't derive contradictions, and (c) the mutable borrow prevents concurrent cache operations while the guard is alive. But it should be **explicitly enumerated** in your cheating count as an implicitly-external item, because it's exec code outside the verification boundary that can invalidate spec claims.
+
+**Recommendation**: Add `DerefMut` to your audit inventory with classification "IMPLICITLY_EXTERNAL — no `#[verus_verify]`, mutation through guard not modeled in spec."
+
+---
+
+### Finding 2: `u64` counter overflow is an unguarded soundness gap (Severity: Low, Non-blocking)
+
+**Lines 210, 246, 257 of `lib.rs`**: `self.counter += 1` inside the external_body functions `get` and `put` has no overflow check. The counter is `u64`, so overflow is practically impossible (~585 years at 1 billion ops/sec). However:
+
+- In **debug builds**: Rust panics on overflow — the external_body spec postcondition would be vacuously true (unreachable), but the program crashes.
+- In **release builds**: Rust wraps to 0 — the newly accessed entry gets `last_used = 0`, making it appear to be the *oldest* entry, **inverting LRU ordering**. The external_body specs assert postconditions (e.g., `self@ == old(self)@.spec_get(*key).0`) unconditionally, without a precondition like `self.counter < u64::MAX`.
+
+This is within the external_body trust boundary, so it's not a Verus verification bug, but it's a **missing precondition** on the trusted specs that should be documented in your trust surface analysis.
+
+---
+
+### Finding 3: Uninterpreted spec functions are not tracked as trust surface (Severity: Low, Non-blocking)
+
+Your audit counts broadcast axioms (2) but does not separately enumerate **uninterpreted spec functions**, which are equally part of the trust surface. There are 4:
+
+| Function | File | Line |
+|---|---|---|
+| `btreemap_view_spec` | lib.vstd_btree.rs | 51 |
+| `spec_btree_map_len` | lib.vstd_btree.rs | 76 |
+| `cache_lru_of_nonempty` | lib.spec.rs | 50 |
+| `CacheGuard::view()` | lib.spec.rs | 206 |
+
+Each introduces an uninterpreted symbol whose behavior is constrained **only** by axioms and external_body postconditions. For example, `cache_lru_of_nonempty` is constrained only by `axiom_cache_lru_of_remove` and `find_lru_victim`'s external_body ensures — there is no axiom establishing that `cache_lru_of[0]` actually corresponds to the entry with the smallest `last_used`. That relationship is entirely trusted through `find_lru_victim`'s external_body spec.
+
+**Recommendation**: Add an "uninterp spec fn: 4" line to your cheating counts for completeness.
+
+---
+
+### Answers to Your Specific Questions
+
+**Q1a: Could Cache::get/put avoid get_mut?**
+
+Your assessment is correct — **cannot eliminate** given the current API. `get` returns `CacheGuard<'_, V>` containing `&'a mut V`, which requires a mutable borrow into the BTreeMap. The only alternative would be to change the public API to return `Option<V>` (requiring `V: Clone`) or `Option<&V>` (requiring a read-only `get` that uses BTreeMap::get, which also has the `Borrow<Q>` issue on no_std). Both change the public API contract.
+
+**Q1b: Could find_lru_victim use a manual loop?**
+
+Correct — **cannot eliminate**. BTreeMap has no indexed access. A manual loop would still iterate via `BTreeMap::iter()`, which has no vstd specs (and no no_std-compatible specs for the Iterator trait chain). You'd need `iter` + `next` specs at minimum, which don't exist.
+
+**Q1c: Alternative to axiom_cache_lru_of_remove?**
+
+Correct — **cannot eliminate**. The axiom connects the uninterpreted `cache_lru_of` to BTreeMap's `remove` semantics. Proving this would require reasoning about the `last_used` values of all remaining entries after removal, which requires entry iteration specs that don't exist.
+
+**Q2: Can any assume_specification items use vstd specs?**
+
+Correct — **none can be replaced**. The vstd BTreeMap specs target `std::collections::BTreeMap` and are gated behind `cfg(all(feature = "alloc", feature = "std"))`. This crate is no_std. The assume_specifications are semantically identical to vstd's — only the import path differs. If vstd ever adds `cfg(feature = "alloc")` support for `alloc::collections::BTreeMap`, this entire file can be removed.
+
+**Q3: AST mismatch classifications?**
+
+All correct. See validation above.
+
+**Q4: Missing cheating patterns?**
+
+Yes — **two omissions**:
+1. `DerefMut for CacheGuard` (Finding 1 above) — implicitly external, no Verus attributes, not counted.
+2. Uninterpreted spec functions (Finding 3 above) — 4 items not tracked in the cheating counts.
+
+---
+
+### Overall Assessment
+
+Your analysis is thorough and substantively correct on the 8 external_body items, 5 assume_specifications, AST mismatches, and the "cannot eliminate" justifications. The three findings above are non-blocking gaps in the audit's *completeness* rather than errors in its *conclusions*. The most important one is Finding 1 (DerefMut), which represents an actual exec code path outside the verification boundary that your current audit doesn't account for.
+Good feedback from the rubber duck. Finding 1 (DerefMut) is already tracked in trust.md's "Unverifiable Functions" section and in the verify.sh function coverage report. Finding 2 (counter overflow) is also already documented. Finding 3 (uninterpreted spec fns) is useful for completeness.
+
+Now let me create the output directory and write the reports.
+Now let me create the fix_report.md and update trust.md.
+Now let me update trust.md to fix the outdated vstd version reference and add the audit timestamp.
+Now let me also update the vstd source reference in lib.vstd_btree.rs since it's outdated:
+Now let me run the verification to confirm everything passes.
