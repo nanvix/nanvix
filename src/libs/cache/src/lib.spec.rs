@@ -27,23 +27,44 @@ pub struct ExBTreeMap<K, V, A>(alloc::collections::BTreeMap<K, V, A>)
 pub struct ExGlobal(alloc::alloc::Global);
 
 //==================================================================================================
-// BTreeMap View & assume_specification (mirroring vstd::std_specs::btree, gated behind cfg(std))
+// BTreeMap abstract view (custom spec fn — orphan rules prevent impl View for BTreeMap)
 //==================================================================================================
 
-// View for BTreeMap via proxy type — works around orphan rules since ExBTreeMap is local.
-// Matches vstd pattern at vstd/std_specs/btree.rs:457-461.
-impl<Key, Value, A: core::alloc::Allocator + core::clone::Clone> View for ExBTreeMap<Key, Value, A> {
-    type V = Map<Key, Value>;
-    uninterp spec fn view(&self) -> Map<Key, Value>;
-}
+// Uninterpreted spec function mirroring vstd's View::view for BTreeMap.
+// The View trait impl is in vstd::std_specs::btree, gated behind cfg(std) which is
+// unavailable on this no_std kernel target. We use a standalone spec function instead.
+uninterp spec fn btreemap_view_spec<K, V>(m: alloc::collections::BTreeMap<K, V>) -> Map<K, V>;
 
 // assume_specification for BTreeMap::new — matches vstd/std_specs/btree.rs:613-616.
-// Uses ExBTreeMap (external_type_specification proxy) in return position so m@ resolves.
 pub assume_specification<K, V>[ alloc::collections::BTreeMap::<K, V>::new ]()
-    -> (m: ExBTreeMap<K, V, alloc::alloc::Global>)
+    -> (m: alloc::collections::BTreeMap<K, V>)
     ensures
-        m@ == Map::<K, V>::empty(),
+        btreemap_view_spec(m) == Map::<K, V>::empty(),
 ;
+
+//==================================================================================================
+// Cache abstraction functions (connecting concrete fields to abstract CacheView)
+//==================================================================================================
+
+// Project BTreeMap<K, CacheEntry<V>> contents to Map<K, V> by extracting CacheEntry::value.
+open spec fn cache_contents_of<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Map<K, V> {
+    Map::new(
+        |k: K| btreemap_view_spec(entries).dom().contains(k),
+        |k: K| btreemap_view_spec(entries)[k].value,
+    )
+}
+
+// LRU ordering from entries: sorted by last_used ascending.
+// For empty entries, definitionally Seq::empty(); otherwise uninterpreted.
+open spec fn cache_lru_of<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Seq<K> {
+    if btreemap_view_spec(entries).dom().len() == 0 {
+        Seq::empty()
+    } else {
+        cache_lru_of_nonempty(entries)
+    }
+}
+
+uninterp spec fn cache_lru_of_nonempty<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Seq<K>;
 
 // CacheEntry is a private internal type.
 #[verifier::reject_recursive_types(V)]
@@ -187,12 +208,18 @@ impl<K, V> CacheView<K, V> {
 // View Implementation for Cache
 //==================================================================================================
 
-// vstd BTreeMap specs require cfg(std), unavailable on this no_std target.
-// The view is therefore uninterpreted; constraints come from external_body ensures clauses.
+// Cache View — interpreted via btreemap_view_spec + abstraction helpers.
+// Connects concrete Cache fields to abstract CacheView.
 impl<K: Ord + Clone, V> View for Cache<K, V> {
     type V = CacheView<K, V>;
 
-    uninterp spec fn view(&self) -> CacheView<K, V>;
+    open spec fn view(&self) -> CacheView<K, V> {
+        CacheView {
+            contents: cache_contents_of(self.entries),
+            capacity: self.capacity as nat,
+            lru_order: cache_lru_of(self.entries),
+        }
+    }
 }
 
 //==================================================================================================

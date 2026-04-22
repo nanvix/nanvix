@@ -1,0 +1,32 @@
+Timestamp: 2026-04-22_21-25-54
+Mode: cargo
+Crate: cache
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=8
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking cache v0.12.457 (/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache)
+error: function is marked `open` but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible
+  --> src/libs/cache/src/lib.spec.rs:50:11
+   |
+50 | open spec fn cache_contents_of<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Map<K, V> {
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: function is marked `open` but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible
+  --> src/libs/cache/src/lib.spec.rs:59:11
+   |
+59 | open spec fn cache_lru_of<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Seq<K> {
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: could not compile `cache` (lib) due to 2 previous errors
