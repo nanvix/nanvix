@@ -143,3 +143,4 @@ Try removing the last two assertions in the absent branch:
 Now let me try minimizing assertions in the other lemmas. I'll try several at once:
 Let me try removing the assertions in `lemma_new_view`, `lemma_clear_view`, `lemma_spec_new_inv`, `lemma_spec_clear_inv`, and the insert-dom assertion in `lemma_spec_put_inv`:
 Now try removing assertions in `lemma_new_view` and `lemma_clear_view`:
+Some assertions were needed. Let me see the errors:
