@@ -1,62 +1,67 @@
-# Review: cache proving (GPT-5.3-Codex)
+# Independent Review: cache (GPT-5.3 Codex)
 
 ## 1. Spec Preservation
-- Ran: `git diff 1cd84e654 -- src/libs/cache/src/lib.rs src/libs/cache/src/lib.spec.rs`.
-- Result: **no diff** (zero changed lines).
-- Cross-check: `git diff --name-only 1cd84e654 -- src/libs/cache/src` shows only `src/libs/cache/src/lib.proof.rs` changed.
-- Conclusion: specification baseline is preserved; no requires/ensures weakening/removal/trivialization in `lib.rs` or `lib.spec.rs`.
+Compared `lib.rs` at `a48beb884` vs current.
+
+- `Cache::new` removed explicit field ensures (`contents/capacity/lru_order`) and removed `external_body`.
+  - **Implied**: `result@ == CacheView::spec_new(capacity as nat)` plus `spec_new` definition gives exactly empty contents, preserved capacity, empty LRU.
+  - No weakening.
+- `Cache::get` removed hit-case `self@.contents == old(self)@.contents` and `self@.capacity == old(self)@.capacity`.
+  - **Implied**: `self@ == old(self)@.spec_get(*key).0`; in `spec_get` hit branch uses `..self`, so contents/capacity unchanged.
+  - Added `result->Some_0@ == old(self)@.spec_get(*key).1.unwrap()` (strictly stronger result linkage).
+- `Cache::put` removed capacity-preservation, put-get round-trip, and zero-capacity no-op clauses.
+  - **Implied**: `self@ == old(self)@.spec_put(key, value)`; all `spec_put` branches preserve `capacity` via `..self`; `capacity==0` branch returns `self`; `capacity>0` branches all produce map containing `key -> value`.
+- `Cache::remove` removed capacity-preservation, key-absent-after-remove, and absent-key no-op clauses.
+  - **Implied**: `self@ == old(self)@.spec_remove(*key)`; `spec_remove` uses `..self` (capacity preserved), present branch removes key, absent branch returns `self`.
+- `Cache::clear` removed explicit empty-contents, empty-LRU, and capacity-preservation clauses.
+  - **Implied**: `self@ == old(self)@.spec_clear()`; `spec_clear` sets empty contents/LRU and preserves capacity via `..self`.
+
+**Conclusion:** No removed clause is a genuine caller-visible weakening; all are derivable from retained transition-equality ensures and open transition definitions.
 
 ## 2. Cheating Audit
-### Forbidden patterns (lib.rs/lib.spec.rs/lib.proof.rs)
-- `admit()`: **0**
-- `assume(`: **0**
-- `cfg(not(verus_keep_ghost))` on exec code: **0**
-- `trusted`: **0**
-- `verifier::external` (plain, i.e., not `_body`/`_type_specification`): **0** (only `external_body` and `external_type_specification` are present)
+- `admit()`: **0** (checked by search and `make verify-cache` cheating report).
+- `assume(...)`: **0**.
+- cfg-gated exec code: **0 suspicious** (`#[cfg(verus_keep_ghost)]` includes and test cfg only; no behavior-hiding cfg on exec logic).
+- `assume_specification` in `lib.vstd_btree.rs`: **5** (`new`, `len`, `is_empty`, `insert`, `clear`).
+  - Assessment: expected trust bridge for `alloc::collections::BTreeMap` on `no_std`; still a substantial trusted base.
 
-### `external_body` inventory and assessment
-Found 9 actual `external_body` attributes:
-1. `lib.spec.rs:21` — `ExBTreeMap` (`external_type_specification` + `external_body`)
-2. `lib.spec.rs:37` — `ExCacheGuard` (`external_type_specification` + `external_body`)
-3. `lib.rs:91` — `CacheGuard::deref`
-4. `lib.rs:141` — `Cache::new`
-5. `lib.rs:168` — `Cache::get`
-6. `lib.rs:208` — `Cache::put`
-7. `lib.rs:254` — `Cache::remove`
-8. `lib.rs:271` — `Cache::clear`
-9. `lib.rs:289` — `Cache::evict`
+`external_body`: **8 total**
+1. `lib.rs:97` `CacheGuard::deref` — in `trust.md` ✅, explicit reproducer ❌ (only indirect rationale).
+2. `lib.rs:121` `btreemap_remove` — in `trust.md` ✅, explicit reproducer ❌.
+3. `lib.rs:208` `Cache::get` — in `trust.md` ✅, explicit reproducer partial (limitation explained, no minimal script).
+4. `lib.rs:238` `Cache::put` — in `trust.md` ✅, explicit reproducer partial.
+5. `lib.rs:335` `Cache::evict` — in `trust.md` ✅, explicit reproducer ❌.
+6. `lib.spec.rs:24` `ExCacheGuard` type body — in `trust.md` ✅, reproducer ✅.
+7. `lib.vstd_btree.rs:32` `ExBTreeMap` type body — in `trust.md` ✅, reproducer ✅.
+8. `lib.proof.rs:409` `axiom_cache_lru_of_remove` — in `trust.md` ✅, explicit reproducer N/A (axiom; needs stronger soundness argument than currently provided).
 
-All are documented in `verus-ai-logs/libs-cache/trust.md` with matching rationale.
-
-Escalation-ladder assessment:
-- Root blocker is still valid: `alloc::collections::BTreeMap` lacks vstd specs (view + method specs), so cache bodies cannot be verified directly.
-- `CacheGuard` has `&mut` field/return constraints that Verus does not currently support for full body verification.
-- Given current toolchain/library limits, these `external_body` uses are **legitimate trust boundaries**, not avoidable shortcuts in this crate.
+Escalation-ladder check:
+- `btreemap_remove` is already a stdlib wrapper + thin external body (reasonable endpoint).
+- `get`/`put` still blocked by `get_mut` + `&mut` modeling limitations.
+- `evict` likely removable only with non-trivial redesign (e.g., model/maintain ghost LRU order explicitly rather than iterator/min_by_key chain).
+- `axiom_cache_lru_of_remove` is the most concerning trust point; currently asserts key-order relation over an uninterpreted ordering function.
 
 ## 3. Proof Quality
-The five former stubs are now real proofs (`lemma_spec_new_inv`, `lemma_spec_get_inv`, `lemma_spec_put_inv`, `lemma_spec_remove_inv`, `lemma_spec_clear_inv`) and no `admit()` remains.
-
-### Helper lemmas
-- `lemma_push_preserves_no_dup`: good local reasoning via index separation; not brute-force.
-- `lemma_filter_preserves_no_dup`: structurally recursive proof over sequence; appropriate and reusable.
-- `lemma_filter_neq_to_set`: clean set-extensional proof (both directions) using filter lemmas.
-- `lemma_filter_neq_len`: bridges `no_duplicates` + set conversion to cardinality fact; necessary for len obligations.
-- `lemma_subrange_no_dup`: standard index-lifting argument; minimal and correct.
-- `lemma_drop_first_to_set`: proper extensional proof for eviction branch; necessary for `subrange(1, len)` set relation.
-
-### Main invariant lemmas
-- Strategy is sound: each transition lemma proves preservation of all invariant components (`size <= capacity`, no duplicates, set/domain equality, len equality) branch-by-branch.
-- `spec_put` coverage is especially complete (capacity 0 / overwrite / evict / insert branches).
-- `spec_get`, `spec_remove`, `spec_clear` are appropriately lightweight where transition is identity or trivially empty-state.
-- Minor polish only: a few locals (`result`, `mru`) are introduced mainly for solver guidance/readability and could be trimmed, but this is not a correctness issue.
+- Invariant lemmas are structured and reusable (filter/no-dup/set/len decomposition), not brute-force SMT spam.
+- `new/clear/remove` bridge lemmas are coherent.
+- However, `axiom_cache_lru_of_remove` is an unproven proof-level trust leap over uninterpreted `cache_lru_of_nonempty`; this is a significant proof-quality/soundness gap.
 
 ## 4. Rewrite Audit
-- Searched `lib.rs` for `VERUS REWRITE` comments: **none found**.
-- No exec rewrite markers exist; consistent with the claim that proving-phase edits were confined to `lib.proof.rs`.
+`Cache::remove` rewrite (`self.entries.remove(key)` -> `btreemap_remove(...)` + proof block):
+- Minimality: **mostly minimal** for enabling body verification.
+- Semantic equivalence: **yes**, wrapper body is exactly `m.remove(k)` with matching map-view ensures.
+- Avoidability: likely avoidable only with broader spec infrastructure changes for alloc BTreeMap `remove` (non-minimal).
 
-## Summary
-**No blockers found.**
-- Spec baseline is preserved exactly in `lib.rs` and `lib.spec.rs`.
-- Cheating audit is clean (`admit/assume/trusted/plain verifier::external` all zero).
-- `external_body` usage is explicit, documented, and justified by current Verus/BTreeMap limits.
-- Proofs are substantive and structurally sound, not placeholder/brute-force artifacts.
+## 5. Verification Status
+Command run: `make verify-cache 2>&1 | tail -30`
+- Verifier phase: `Exit code : 0` (cached; no verification errors reported).
+- Overall target result: **FAIL** due cheating check (`external_body: 8`), and `make` exits with error.
+
+## Issues (highest priority first)
+1. **Unproven axiom trust gap:** `axiom_cache_lru_of_remove` is external-body proof axiom over uninterpreted LRU function; strongest unsoundness risk.
+2. **High trusted surface:** 8 external_body + 5 assume_specification leaves substantial behavior trusted, not proven.
+3. **Trust docs lack reproducibility quality** for several external bodies (`deref`, `btreemap_remove`, `evict`, and partial for `get`/`put`).
+4. **Pipeline status not clean:** `make verify-cache` fails policy gate (CHEATING_DETECTED), so verification is not “green” at target level.
+
+## Verdict: FAIL
+Specs were not weakened, but the trust boundary remains too large (especially axiom-level external proof), and the repository’s own verify target currently fails its cheating gate.
