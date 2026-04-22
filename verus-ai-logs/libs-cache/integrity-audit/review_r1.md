@@ -1,9 +1,5 @@
 # Integrity Audit Review: cache
 
-**Date:** 2026-04-22
-**Reviewers:** Claude Opus 4.6, GPT-5.3-Codex (independent parallel reviews)
-**Consolidated by:** Claude Opus 4.6
-
 ## Checklist
 ### Integrity Audit
 - [x] Zero admit() remaining
@@ -17,115 +13,105 @@
 - [x] trust.md minimized — only genuinely unverifiable items remain
 - [x] make verify passes (0 errors, 0 warnings)
 
+## Reviewers
+
+Two independent sub-agents reviewed with different models:
+- **Claude (claude-opus-4.6)**: see `review_r1.claude.md`
+- **GPT (gpt-5.3-codex)**: see `review_r1.gpt.md`
+
 ## Cheating Items Still Present
 
-| Item | Count | Truly necessary? |
-|------|-------|-----------------|
-| admit() | 0 | N/A |
-| assume() | 0 | N/A |
-| external_body (type) | 2 | Yes — ExBTreeMap (no_std + private fields), ExCacheGuard (&mut struct field) |
-| external_body (function) | 7 | Yes — all blocked by no_std btree or &mut limitations (see below) |
-| trusted | 0 | N/A |
-| no_decreases | 0 | N/A |
-| cfg-gated exec | 0 | N/A |
-| assume_specification | 0 | N/A |
+All counts independently verified by both reviewers (grep across all 4 source files):
 
-### Function-level external_body details
+| Item | Count | Notes |
+|------|-------|-------|
+| admit() | 0 | — |
+| assume() | 0 | — |
+| external_body (functions) | 6 | btreemap_remove, deref, get, put, evict, axiom_cache_lru_of_remove |
+| external_body (type specs) | 2 | ExBTreeMap, ExCacheGuard |
+| trusted | 0 | — |
+| exec_allows_no_decreases | 0 | — |
+| cfg-gated exec code | 0 | Only ghost includes and test module cfgs |
+| assume_specification | 5 | BTreeMap::{new, len, is_empty, insert, clear} in lib.vstd_btree.rs |
+| broadcast axiom | 2 | axiom_btree_map_view_finite_dom, axiom_spec_btree_map_len |
+| external_type_specification | 4 | ExBTreeMap (w/ external_body), ExGlobal, ExCacheEntry, ExCacheGuard (w/ external_body) |
 
-| Function | Root blocker | Independent blockers |
-|----------|-------------|---------------------|
-| CacheGuard::deref | CacheGuard is external_body (opaque &mut field) | 1 |
-| Cache::new | no_std blocks vstd btree specs + uninterp view | 2 |
-| Cache::get | get_mut no vstd spec + &mut return + CacheGuard &mut | 3 |
-| Cache::put | get_mut no vstd spec + calls evict + no_std btree | 3 |
-| Cache::remove | no_std blocks vstd btree specs + uninterp view | 2 |
-| Cache::clear | no_std blocks vstd btree specs + uninterp view | 2 |
-| Cache::evict | min_by_key combinator no spec + no_std btree + BTreeMap::remove | 3 |
+All counts match the fix_report claims. ✅
+
+### Each external_body item — necessity assessment
+
+| # | Item | Classification | Verdict | Reason |
+|---|------|----------------|---------|--------|
+| 1 | `btreemap_remove` | STDLIB_WRAPPER | **KEEP** | Thin wrapper (single `m.remove(k)` call). BTreeMap::remove has Borrow\<Q\> generic that blocks direct assume_specification on alloc path. |
+| 2 | `CacheGuard::deref` | VERUS_LIMITATION | **KEEP** | CacheGuard is opaque (&mut V field). Field access unverifiable. Fundamental limitation. |
+| 3 | `Cache::get` | VERUS_LIMITATION | **KEEP** | get_mut has no vstd spec + returns Option\<&mut V\> (Verus limitation). CacheGuard construction also needs &mut. Even with remove+insert rewrite, still need get_mut to obtain &mut V for the guard. Circular. |
+| 4 | `Cache::put` | VERUS_LIMITATION | **KEEP** | Uses get_mut for in-place update. Theoretically eliminable via remove+insert rewrite (see Challengeable Items below), but this changes exec algorithm and source integrity policy blocks it. Both reviewers agree: KEEP under current policy. |
+| 5 | `Cache::evict` | VERUS_LIMITATION | **KEEP** | Uses `iter().min_by_key()` chain. vstd has BTreeMap::iter specs but they are cfg(std)-gated — unavailable on this no_std target. Porting ~80 lines of iter specs + rewriting to manual loop is feasible but substantial exec code modification. Both reviewers agree: KEEP. |
+| 6 | `axiom_cache_lru_of_remove` | VERUS_LIMITATION | **KEEP** | Axiom on uninterpreted cache_lru_of. Proving it would require building sort-by-value infrastructure over vstd Map (no ordering primitives exist). Axiom is narrow and obviously sound. |
+| 7 | `ExBTreeMap` | EXTERNAL_TYPE | **KEEP** | vstd btree specs are cfg(std)-gated. no_std target cannot use them. |
+| 8 | `ExCacheGuard` | VERUS_LIMITATION | **KEEP** | &mut V in struct field — Verus does not support &mut types in struct fields. |
 
 ## Challengeable Items (should have been eliminated)
 
-**None.** Both reviewers agree no external_body item can be eliminated under
-current constraints. Three functions (new, remove, clear) are theoretically
-eliminable with custom `assume_specification` + concrete view, but the
-fix_report correctly rejected this because:
-1. Only 3 of 7 function-level items would be eliminated
-2. The 4 most complex methods (get, put, evict, deref) remain external_body
-3. Trust shifts to assume_specification axioms, not eliminated
-4. Engineering cost (concrete view, spec-level sort) is disproportionate
+**None identified.** Both reviewers agree no item is straightforwardly eliminable without either:
+- Structural exec code modifications (blocked by source integrity policy), OR
+- Trading one trust item for another (net trust reshuffling, not elimination)
+
+Two items are **theoretically reducible** but correctly documented:
+
+1. **Cache::put** — Could replace get_mut with btreemap_remove+insert. Would eliminate 1 external_body but add 1 STDLIB_WRAPPER (btreemap_contains_key). Requires algorithmic change (in-place mutation → remove+insert). Claude review calls this "technically eliminable with exec code modification" but agrees KEEP is justified under source integrity policy.
+
+2. **Cache::evict** — Could port ~80 lines of BTreeMap iter specs from vstd + rewrite iterator chain as manual loop. Substantial effort for marginal trust reduction. Both reviewers agree: KEEP.
+
+Neither constitutes a FAIL because:
+- The escalation ladder's "minimal equivalent rewrite" (step 3) is designed for small expression-level changes, not algorithmic restructuring
+- Both would introduce new trust items (assume_specifications), not eliminate trust entirely
+- Current items are correctly classified and documented with justifications
 
 ## AST Mismatches
 
-**None.** AST consistency check: 18/18 functions match, 3/3 structs match.
-All exec code is identical to the `dev` branch. No deviations, no rewrites.
+| Function | Status | Cause | Verdict |
+|----------|--------|-------|---------|
+| `Cache::new` | MISMATCH | `Self { .. }` → `let result = Self { .. }; proof! { .. } result` — named return for ensures clause | **ACCEPT** (pre-approved deviation) |
+| `Cache::remove` | MISMATCH | `self.entries.remove(key)` → `btreemap_remove(&mut self.entries, key); proof! { .. }` — stdlib wrapper for Borrow\<Q\> | **ACCEPT** (escalation ladder step 4, documented with VERUS REWRITE comment) |
+| `btreemap_remove` | EXTRA | New stdlib wrapper function, body is single `m.remove(k)` call | **ACCEPT** (STDLIB_WRAPPER in trust.md) |
 
-## Reviewer Disagreement
-
-The two independent reviewers initially disagreed on the verdict:
-
-**Claude Opus 4.6: PASS** — All items correctly classified, trust.md minimal.
-
-**GPT-5.3-Codex: FAIL** — Raised three concerns:
-1. **Stale comments in lib.spec.rs** claiming "BTreeMap has no vstd specs" — factually
-   imprecise (vstd has specs, they're just gated behind `cfg(std)`)
-2. **evict blocker framing** too narrow — iterator chain could be rewritten as a loop
-3. **put get_mut blocker** partially challengeable — body could use remove+insert
-
-### Resolution
-
-1. **Stale comments: VALID.** Fixed in this review — updated two comments in
-   `lib.spec.rs` (lines 15-16, 171-172) to accurately state that vstd provides
-   BTreeMap specs but they require `cfg(std)`, incompatible with no_std.
-
-2. **evict loop rewrite: VALID concern, but does not change verdict.** Even with
-   a for-loop rewrite, BTreeMap::iter and BTreeMap::remove specs are inaccessible
-   on no_std. The blocker is the no_std constraint, not the iterator chain per se.
-   The fix_report's analysis correctly identifies both blockers.
-
-3. **put remove+insert rewrite: VALID concern, but does not change verdict.** Even
-   rewritten, put still needs BTreeMap::remove and BTreeMap::insert specs (no_std
-   blocked) plus calls self.evict() (still external_body). The exec code change
-   alone doesn't eliminate the external_body.
+All mismatches are legitimate and documented. No unauthorized exec code modifications. ✅
 
 ## Issues (highest priority first)
 
-1. **FIXED: Stale comments in lib.spec.rs** — Two comments incorrectly stated
-   "BTreeMap has no vstd specs." Corrected to reference the `cfg(std)` gating.
+### ISSUE-1 (LOW): Inaccurate claim about BTreeMap::iter specs
 
-2. **LOW: BUG-1 counter overflow** — `self.counter: u64` incremented without
-   overflow check in `get`/`put`. Documented in bugs.md. Physically unreachable
-   (~58 years at 10B ops/sec). Correctly classified as trust assumption.
+**Location:** trust.md line 103-104, fix_report.md line 82
+**Claim:** "Iterator combinators (iter, min_by_key, map) have no vstd specs"
+**Reality:** vstd has comprehensive BTreeMap::iter support (ExMapIter type, assume_specification for iter and Iter::next, ForLoopGhostIterator impl). These are cfg(std)-gated, not absent.
+**Correction needed:** Change to "BTreeMap::iter specs exist in vstd but are unavailable on this no_std target (cfg(std)-gated). The min_by_key combinator has no vstd spec."
+**Impact:** Documentation accuracy only — does not change the KEEP verdict.
+**Both reviewers flagged this independently.** ✅
 
-3. **INFO: CacheGuard::deref_mut excluded** — Returns `&mut V`, Verus cannot
-   annotate. Mutation-through-guard semantics unmodeled. Correctly documented.
+### ISSUE-2 (INFORMATIONAL): Counter overflow trust assumption
 
-## Verification Results
+The external_body on Cache::get and Cache::put masks counter overflow (u64). Spec uses abstract Seq ordering immune to overflow, but implementation depends on no wrap. Correctly documented in trust.md and bugs.md BUG-1. At 10B ops/sec, overflow requires ~58 years — physically unreachable.
+
+### ISSUE-3 (INFORMATIONAL): axiom_cache_lru_of_remove is unproven trusted glue
+
+Sound but unproven axiom over an uninterpreted function. Provable in principle with substantial new spec/proof infrastructure (~100+ lines). Correctly classified as VERUS_LIMITATION. Both reviewers agree: reasonable trust boundary.
+
+### ISSUE-4 (INFORMATIONAL): assume_specification fidelity
+
+All 5 assume_specifications in lib.vstd_btree.rs are semantically identical to upstream vstd (confirmed by manual comparison against vstd-0.0.0-2026-04-05-0114). Differences are only import path (alloc:: vs std::) and explicit Allocator parameter. No strengthening or weakening of postconditions. ✅
+
+## Verification
 
 ```
-make verify-cache
-  verification: 11 verified, 0 errors (exit 0)
-  cheating: assume=0 external_body=9 admit=0 trusted=0 no_decreases=0 cfg_gate=0
-  coverage: 7/8 exec functions have contracts
+make verify-cache → Exit code: 0
+  verification: 0 errors
+  cheating: assume=0 external_body=8 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 8/9 exec functions have contracts (deref_mut correctly excluded)
 ```
-
-All 5 invariant preservation lemmas + 5 helper lemmas fully proven.
-No admit, assume, or trusted constructs anywhere.
-
-## vstd Evidence
-
-- `vstd/std_specs/btree.rs` provides `assume_specification` for: new, insert,
-  get (immutable), remove, clear, len, is_empty, contains_key, keys, values,
-  iter, Iter::next
-- `get_mut`: **NOT specified** (0 occurrences in vstd — confirmed by both reviewers)
-- Module gated: `#[cfg(all(feature = "alloc", feature = "std"))]` in
-  `vstd/std_specs/mod.rs:17-18`
-- btree.rs imports: `use std::collections::{BTreeMap, BTreeSet}` — hard std dependency
-- Verus version: `0.2026.04.12.f1166c4`
 
 ## Result: PASS
 
-All checklist items verified. The trust boundary is minimal — every external_body
-has been independently challenged by two reviewers using different models, and none
-can be eliminated under current constraints (no_std target, missing get_mut spec,
-&mut struct field limitation). Documentation precision issue (stale comments) was
-fixed during this review. Trust.md accurately documents all trust items with
-correct classifications.
+**Rationale:** All checklist items verified. Zero admit/assume/trusted/no_decreases/cfg-gated exec code. All 8 external_body items challenged independently by two reviewers using different models — all are genuine trust boundaries that cannot be eliminated without structural exec code modifications (which would trade one trust type for another, not eliminate trust). AST mismatches are pre-approved deviations. trust.md documents all items with justifications. Verification passes with 0 errors.
+
+**Recommendation:** Fix ISSUE-1 (documentation accuracy on BTreeMap::iter specs) in trust.md and fix_report.md.
