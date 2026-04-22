@@ -1,8 +1,9 @@
 === Copilot Session ===
-Timestamp: 2026-04-22T19:18:47.410081
+Timestamp: 2026-04-22T19:40:15.836343
 Model: claude-opus-4.6
-Session: new
-Command: copilot --allow-all --model claude-opus-4.6 --output-format...
+Session: 2bd2fca5-511f-416f-b37d-2bf348559da3
+Duration: 1288.4s
+Exit code: 0
 
 === Prompt ===
 You are adding formal specifications to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.rs using Verus, in-place.
@@ -83,7 +84,7 @@ Verify `make build` still works (dual compilation).
 
 
 
-=== Output (streaming) ===
+=== Output ===
 Now let me read the large documents in sections:
 Now let me check the Verus syntax guide and search vstd for BTreeMap support:
 No vstd BTreeMap support. Let me check what vstd has for HashMap and other collections:
@@ -181,3 +182,25 @@ Now let me create trust.md and review the final state of all files:
 Now let me create trust.md and run the ast-consistency check:
 Now let me run the ast-consistency check:
 All 18 functions and 3 structs are MATCH — source integrity verified. Let me do a final summary of all checks:
+Good — cached, 0 errors. All checks pass. Here's the complete summary:
+
+## Results
+
+**✅ Verification:** 5 verified, 0 Verus errors (all proof stubs verified with `admit()`)
+
+**✅ Regression:** bitmap (69 verified, 0 errors) and slab (35 verified, 0 errors) unchanged
+
+**✅ Build:** `make build` passes (dual compilation works)
+
+**✅ AST Consistency:** 18/18 functions + 3/3 structs MATCH — no exec code changes
+
+### Files modified:
+- **lib.spec.rs** — CacheView type, inv(), 5 spec transitions (new/get/put/remove/clear), move_to_mru helper, View for Cache (uninterpreted), 4 external_type_specifications (BTreeMap, Global, CacheEntry, CacheGuard)
+- **lib.proof.rs** — 5 invariant preservation lemmas with `admit()` placeholders
+- **lib.rs** — Added `#[verus_verify]`/`#[verus_verify(external_body)]`/`#[verus_spec]` annotations on Cache struct, impl block, and all 6 methods; added `allocator_api` feature gate
+
+### Coverage: 6/8 exec functions have contracts
+- `deref`/`deref_mut` on CacheGuard are unverified (CacheGuard uses `&mut V` which Verus doesn't support in struct fields)
+
+### Trust boundary documented in `verus-ai-logs/libs-cache/trust.md`
+=== End ===

@@ -36,7 +36,7 @@
       "duration_s": 627.3
     }
   },
-  "prover_session_id": "d90416de-a627-484c-b849-0a9485540f57",
+  "prover_session_id": "2bd2fca5-511f-416f-b37d-2bf348559da3",
   "completed": false,
   "base_branch": "dev",
   "verus_branch": "verus-ai/cache",
