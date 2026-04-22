@@ -178,10 +178,6 @@ proof fn lemma_spec_new_inv<K, V>(capacity: nat)
 {
     broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
         vstd::seq_lib::seq_to_set_is_finite;
-
-    let cv = CacheView::<K, V>::spec_new(capacity);
-    assert(cv.contents.dom() =~= Set::<K>::empty());
-    assert(cv.lru_order.to_set() =~= Set::<K>::empty());
 }
 
 /// `spec_get` preserves the invariant.
@@ -248,8 +244,6 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
         lemma_filter_neq_to_set(cache.lru_order, key);
         filtered.lemma_push_to_set_commute(key);
         assert(cache.contents.insert(key, value).dom() =~= cache.contents.dom());
-
-        // len
         lemma_filter_neq_len(cache.lru_order, key);
 
     } else if cache.contents.dom().len() >= cache.capacity {
@@ -325,10 +319,6 @@ proof fn lemma_spec_clear_inv<K, V>(cache: CacheView<K, V>)
 {
     broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
         vstd::seq_lib::seq_to_set_is_finite;
-
-    let cv = cache.spec_clear();
-    assert(cv.contents.dom() =~= Set::<K>::empty());
-    assert(cv.lru_order.to_set() =~= Set::<K>::empty());
 }
 
 //==================================================================================================
@@ -354,11 +344,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         reveal(cache_contents_of);
         reveal(cache_lru_of);
 
-        // cache_contents_of(entries) = Map::new(|k| false, ...) =~= Map::empty()
         assert(result@.contents =~= Map::<K, V>::empty());
-        // cache_lru_of(entries): btreemap_view_spec empty => dom len 0 => Seq::empty()
-        assert(result@.lru_order == Seq::<K>::empty());
-        assert(result@.lru_order.to_set() =~= Set::<K>::empty());
     }
 }
 
@@ -388,12 +374,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         reveal(cache_contents_of);
         reveal(cache_lru_of);
 
-        // After clear: btreemap_view_spec is Map::empty()
-        // cache_contents_of => Map::new(|k| false, ...) =~= Map::empty()
         assert(new_self@.contents =~= Map::<K, V>::empty());
-        // cache_lru_of: dom().len() == 0 => Seq::empty()
-        assert(new_self@.lru_order == Seq::<K>::empty());
-        assert(new_self@.lru_order.to_set() =~= Set::<K>::empty());
     }
 }
 
