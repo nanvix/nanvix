@@ -181,10 +181,8 @@ proof fn lemma_spec_get_inv<K, V>(cache: CacheView<K, V>, key: K)
         vstd::seq_lib::seq_to_set_is_finite;
 
     if cache.contents.dom().contains(key) {
-        let result = cache.spec_get(key).0;
         let pred = |k: K| k != key;
         let filtered = cache.lru_order.filter(pred);
-        let mru = cache.move_to_mru(key);
 
         // 1. no_duplicates for move_to_mru
         lemma_filter_preserves_no_dup(cache.lru_order, pred);

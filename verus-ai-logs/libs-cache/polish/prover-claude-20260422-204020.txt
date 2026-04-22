@@ -184,3 +184,5 @@ Let me now try similar simplifications in `lemma_filter_neq_to_set`:
 Try simplifying the first forall-by block by removing the intermediate assert and choose:
 Now let me try the `lemma_spec_remove_inv` — remove the assert-by block for `cache.lru_order.contains(key)`:
 Let me also try removing the `assert(!cache.lru_order.contains(key))` block in the below-capacity branch of `spec_put`:
+Let me also try removing the `let` bindings that aren't used after removing asserts. Let me check if `mru` is used in `lemma_spec_get_inv`:
+Let me try removing unused `let` bindings. `result` and `mru` in `lemma_spec_get_inv` appear unused:
