@@ -1,0 +1,111 @@
+=== Copilot Session ===
+Timestamp: 2026-04-23T01:30:23.416360
+Model: claude-opus-4.6
+Session: new
+Command: copilot --allow-all --model claude-opus-4.6 --output-format...
+
+=== Prompt ===
+You are performing an integrity audit for cache. The goal is to
+**minimize trust** — eliminate as many cheating items as possible. Any
+verifiable code logic must be verified, not trusted.
+
+A claimed "Verus limitation" in trust.md is suspect. Follow the
+**verus-constraints** escalation ladder: search vstd, write an isolated
+reproducer, try equivalent rewrites. Only genuinely unverifiable items
+(see **spec-design** skill trust classifications) may remain.
+
+
+
+Source file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.rs
+Source directory: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src
+Spec file:  /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.spec.rs
+Proof file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.proof.rs
+Verus command: make verify-cache
+Base branch: verus-ai/cache
+
+== SKILLS ==
+
+Follow strictly (auto-loaded from .github/skills/):
+- **ast-consistency** — MUST follow: AST consistency checks, pre-approved deviations
+- **verus-constraints** — MUST follow: forbidden patterns, escalation ladder
+- **spec-design** — reference: trust classifications (external-top, external-bottom)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai-lru-0422/scripts/
+- Source directory: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/
+
+== SUB-AGENT POLICY ==
+
+Sub-agents are allowed. Use ONLY these models:
+  - **claude-opus-4.6** (preferred default) — for all tasks.
+  - **gpt-5.3-codex** — for all tasks.
+When diversity is needed (e.g. independent parallel analysis), use a different model per sub-agent.
+
+== TASK ==
+
+Audit and minimize trust. For each cheating item, try to ELIMINATE it.
+Only items that survive challenge belong in trust.md.
+
+1. **Cheating detection**: Run `make verify-cache` (verify.sh reports cheating
+   counts). Count: admit, assume, external_body, trusted,
+   exec_allows_no_decreases_clause, cfg-gated exec code.
+
+2. **Challenge each item**: For every external_body, assume, cfg-gated exec:
+   - Can it be eliminated? Follow **verus-constraints** escalation ladder:
+     search vstd, write isolated reproducer, try equivalent rewrite.
+   - If genuinely unverifiable (per **spec-design** trust classifications),
+     keep in trust.md with isolated reproducer.
+   - admit/assume/trusted → Must be eliminated. Report BLOCKER if
+     non-mechanical proof redesign is needed.
+
+3. **AST consistency**: Run the checks per the **ast-consistency** skill.
+   For each MISMATCH, analyze the cause:
+   - If it matches a pre-approved deviation (see skill) → acceptable, document.
+   - If the change was needed for Verus but alters semantics → RESTORE
+     original from `git show verus-ai/cache:src/libs/cache/src/lib.rs` and fix the
+     proof strategy instead.
+
+4. **Update trust.md**: Rewrite /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/trust.md with only surviving items.
+   Remove any items that were eliminated. Each remaining item needs:
+   function name, location, classification (per **spec-design** skill),
+   isolated reproducer.
+
+5. **Full-crate verification** (authoritative gate): Re-run `make verify-cache`
+   after any fixes to confirm 0 errors, then run `make verify` (no
+   MODULE) to ensure no regressions across the full crate. This is the
+   last phase that modifies proof/spec code — the full crate must pass here.
+
+== OUTPUT ==
+
+Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/integrity-audit/fix_report.md:
+```markdown
+# Integrity Audit Report: cache
+
+## Cheating Counts (before → after)
+| Item | Before | After | Eliminated |
+|------|--------|-------|------------|
+| admit() | N | N | N |
+| assume() | N | N | N |
+| external_body | N | N | N |
+| trusted | N | N | N |
+| no_decreases | N | N | N |
+| cfg-gated exec | N | N | N |
+| assume_specification | N | N | N |
+
+## Items Eliminated
+- [each item: what it was, how it was eliminated]
+
+## Items Remaining in trust.md
+- [each: function, classification, reproducer]
+
+## AST Consistency
+- Matched: N
+- Mismatched: N (list each with cause analysis and action taken)
+- Missing: N (list each)
+
+## Result: PASS / BLOCKER
+```
+
+=== Output (streaming) ===
+Now let me run the initial verification and AST consistency checks.
