@@ -187,3 +187,4 @@ Let me also try removing the `assert(!cache.lru_order.contains(key))` block in t
 Let me also try removing the `let` bindings that aren't used after removing asserts. Let me check if `mru` is used in `lemma_spec_get_inv`:
 Let me try removing unused `let` bindings. `result` and `mru` in `lemma_spec_get_inv` appear unused:
 Now try removing `mru` from `lemma_spec_put_inv` (existing key branch):
+Let me try removing `result` from the eviction branch and below-capacity branch too:
