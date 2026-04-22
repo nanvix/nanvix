@@ -119,3 +119,6 @@ Let me fix the `reveal` syntax for trait methods:
 The bitmap crate pattern shows: define lemmas as `impl Self` in the proof file, call via `Self::lemma_...()` from `proof!`. Let me follow that pattern.
 Now add the lemma to the proof file:
 The `reveal` with explicit generics fails in nested items. Let me try using wildcards:
+**13 verified, 0 errors!** `Cache::new` is now body-verified. The external_body count dropped from 9 to 8 (the `assume_specification` for BTreeMap::new adds 2 to the count — the ExBTreeMap external_body was already there). Let me verify the files are clean and write the response.
+Let me clean up the duplicate comment and then write the response:
+Now verify once more to confirm it's clean:

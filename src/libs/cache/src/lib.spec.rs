@@ -47,7 +47,6 @@ pub assume_specification<K, V>[ alloc::collections::BTreeMap::<K, V>::new ]()
 //==================================================================================================
 
 // Project BTreeMap<K, CacheEntry<V>> contents to Map<K, V> by extracting CacheEntry::value.
-// Project BTreeMap<K, CacheEntry<V>> contents to Map<K, V> by extracting CacheEntry::value.
 // Closed: CacheEntry is crate-private, so the body can't appear in pub open functions.
 spec fn cache_contents_of<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Map<K, V> {
     Map::new(
