@@ -115,3 +115,7 @@ There's a `subrange.subrange` composition lemma at line 1030. Let me check it:
 I found `lemma_slice_of_slice` to compose nested subranges. Let me rewrite:
 I realize the issue: the recursive call creates a different closure (`|k| k != s.drop_last()[0]` vs `|k| k != s[0]`). I need to pass `first` as a fixed parameter to keep the closure consistent. Let me restructure:
 The postcondition fails despite all intermediate assertions passing. The solver can't chain the equalities. Let me add explicit intermediate steps:
+Let me try a completely different proof strategy using `filter_distributes_over_add`:
+Now let me see the current state of the proof file and find `lemma_filter_neq_absent`:
+The recursive approach keeps failing. Let me try a completely different strategy using `filter_distributes_over_add` — split `s` at position 1, prove each half filters correctly, then combine.
+Now let me rewrite `lemma_filter_neq_first_is_subrange` with the `filter_distributes_over_add` strategy:

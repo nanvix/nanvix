@@ -476,7 +476,9 @@ impl<K: Ord + Clone, V> Cache<K, V> {
 //==================================================================================================
 
 /// Helper: filter(|k| k != first) == drop_first for no-dup sequences starting with `first`.
-/// The `first` parameter is fixed across recursion to keep the predicate closure consistent.
+/// Uses filter_distributes_over_add to split s = [first] + tail, then shows:
+///   - filter([first]) = empty (pred rejects first)
+///   - filter(tail) = tail (no element equals first, by no_duplicates)
 proof fn lemma_filter_neq_first_is_subrange<K>(s: Seq<K>, first: K)
     requires
         s.no_duplicates(),
@@ -484,45 +486,40 @@ proof fn lemma_filter_neq_first_is_subrange<K>(s: Seq<K>, first: K)
         s[0] == first,
     ensures
         s.filter(|k: K| k != first) =~= s.subrange(1, s.len() as int),
-    decreases s.len(),
 {
-    reveal(Seq::filter);
-    broadcast use vstd::seq_lib::group_seq_properties;
-
     let pred = |k: K| k != first;
+    let n = s.len() as int;
+    let head = s.subrange(0, 1);
+    let tail = s.subrange(1, n);
 
-    if s.len() == 1 {
-        // Single element: filter removes s[0]==first, subrange(1,1) is empty.
-    } else {
-        let n = s.len() as int;
-        let dl = s.drop_last();
+    // Step 1: s == head + tail
+    s.lemma_split_at(1);
+    assert(head + tail =~= s);
 
-        // dl = s.subrange(0, n-1), no_duplicates, dl[0] == first
-        assert(dl =~= s.subrange(0, n - 1));
-        lemma_subrange_no_dup(s, 0, n - 1);
+    // Step 2: filter distributes over concatenation
+    Seq::filter_distributes_over_add(head, tail, pred);
+    // Now: (head + tail).filter(pred) == head.filter(pred) + tail.filter(pred)
 
-        // Recurse with the SAME `first` — predicate closure is identical.
-        lemma_filter_neq_first_is_subrange(dl, first);
-        // dl.filter(pred) =~= dl.subrange(1, dl.len())
+    // Step 3: head.filter(pred) == empty
+    // head = [first], pred(first) == false
+    assert(head[0] == first);
+    assert(!pred(first));
+    assert(head.filter(pred) =~= Seq::<K>::empty()) by {
+        reveal_with_fuel(Seq::filter, 2);
+    };
 
-        // s.last() != first (no dups, different indices)
-        assert(s.last() != first);
+    // Step 4: tail.filter(pred) == tail (all elements differ from first)
+    assert forall |i: int| 0 <= i < tail.len() implies #[trigger] tail[i] != first by {
+        assert(tail[i] == s[1 + i]);  // subrange indexing
+        // s.no_duplicates(): indices 0 and 1+i are distinct, so s[0] != s[1+i]
+    };
+    assert(!tail.contains(first));
+    lemma_filter_neq_absent(tail, first);
+    // tail.filter(pred) =~= tail
 
-        // By filter def (revealed): s.filter(pred) = dl.filter(pred).push(s.last())
-        // Compose nested subranges:
-        // dl.subrange(1, dl.len()) = s.subrange(0,n-1).subrange(1,n-1) =~= s.subrange(1,n-1)
-        s.lemma_slice_of_slice(0, n - 1, 1, n - 1);
-
-        // Chain the equalities explicitly:
-        assert(dl.subrange(1, dl.len() as int)
-               =~= s.subrange(1, n - 1));
-        assert(dl.filter(pred)
-               =~= s.subrange(1, n - 1));
-        assert(s.subrange(1, n - 1).push(s[n - 1])
-               =~= s.subrange(1, n));
-        assert(s.filter(pred)
-               =~= s.subrange(1, n - 1).push(s.last()));
-    }
+    // Step 5: combine
+    assert(Seq::<K>::empty() + tail =~= tail);
+    // s.filter(pred) == (head + tail).filter(pred) == empty + tail == tail == s.subrange(1, n)
 }
 
 /// For a no-dup sequence, filtering out s[0] equals dropping the first element.
