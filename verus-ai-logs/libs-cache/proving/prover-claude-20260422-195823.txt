@@ -1,8 +1,9 @@
 === Copilot Session ===
-Timestamp: 2026-04-22T19:58:23.014716
+Timestamp: 2026-04-22T20:11:37.820156
 Model: claude-opus-4.6
-Session: new
-Command: copilot --allow-all --model claude-opus-4.6 --output-format...
+Session: de08bc99-3b66-4135-809a-53a80d6c0303
+Duration: 794.8s
+Exit code: 0
 
 === Prompt ===
 You are proving the specifications for /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.rs using Verus.
@@ -83,7 +84,7 @@ confirm the full crate passes with no cross-module conflicts.
 
 
 
-=== Output (streaming) ===
+=== Output ===
 Now let me run the initial verification to see the baseline state:
 Let me study the key vstd lemmas more closely:
 Now let me check the map remove/insert domain axioms and look at the set remove properties:
@@ -97,3 +98,27 @@ All 11 functions verify with 0 errors and 0 admits. The remaining `external_body
 Let me check the trust.md situation and document the external_body items:
 The trust.md has a section about admit() placeholders that's now outdated. Let me update it:
 Now let me verify the build still passes and run the full verification one final time:
+**11 verified, 0 errors.** All proofs pass cleanly.
+
+Let me do a quick summary of what was accomplished:
+
+## Summary
+
+All 5 `admit()` placeholders in `lib.proof.rs` have been replaced with complete proofs. **11 functions verified, 0 errors.**
+
+### Helper lemmas added:
+1. **`lemma_push_preserves_no_dup`** — pushing a novel element onto a no-dup sequence preserves uniqueness
+2. **`lemma_filter_preserves_no_dup`** — filtering preserves no-duplicates (inductive)
+3. **`lemma_filter_neq_to_set`** — `filter(≠key).to_set() =~= to_set().remove(key)`
+4. **`lemma_filter_neq_len`** — filter-out-key on no-dup sequence reduces length by 1
+5. **`lemma_subrange_no_dup`** — subrange of no-dup is no-dup
+6. **`lemma_drop_first_to_set`** — dropping first element removes it from to_set
+
+### Invariant preservation lemmas proven:
+- **`spec_new`** / **`spec_clear`** — trivial (empty containers)
+- **`spec_get`** — move-to-MRU via filter+push preserves all invariant conjuncts
+- **`spec_put`** — 4 cases (zero capacity, overwrite, eviction, insert)
+- **`spec_remove`** — filter-based removal preserves invariant
+
+The 9 `external_body` annotations remain on exec functions using `BTreeMap` (no vstd specs) — these are justified and documented in `trust.md`.
+=== End ===
