@@ -21,6 +21,7 @@ use crate::{
     hal::{
         arch::x86::{
             self,
+            mem::gdt,
             Arch,
         },
         io::{
@@ -63,6 +64,7 @@ use ::alloc::{
 use ::arch::{
     mem,
     mem::{
+        gdt::Gdte,
         PAGE_ALIGNMENT,
         WORD_ALIGNMENT,
     },
@@ -246,14 +248,30 @@ const KPOOL_BITMAP_OFFSET: usize = {
 const KPOOL_BITMAP_STORAGE_SIZE: usize =
     ::config::kernel::KPOOL_SIZE / (mem::PAGE_SIZE * u8::BITS as usize);
 
-/// Combined size of the allocator backing stores (with inter-area padding for word alignment),
-/// rounded up to a page boundary.
+/// Offset of the GDT backing storage within the scratch allocator reservation.
+///
+/// Placed right after the kpool bitmap, aligned to the minimum alignment of [`Gdte`] so that
+/// `copy_nonoverlapping` and subsequent GDT accesses meet the pointer alignment requirement.
+const GDT_OFFSET: usize = {
+    match ::sys::mm::align_up(KPOOL_BITMAP_OFFSET + KPOOL_BITMAP_STORAGE_SIZE, gdt::GDTE_ALIGNMENT)
+    {
+        Some(v) => v,
+        // Compile-time only: overflow is impossible for realistic storage sizes.
+        None => ::core::unreachable!(),
+    }
+};
+
+/// Size in bytes of the GDT backing storage in the scratch region.
+const GDT_STORAGE_SIZE: usize = gdt::GDT_NUM_ENTRIES * core::mem::size_of::<Gdte>();
+
+/// Combined size of all scratch-resident kernel structures (frame allocator bitmap, kpool bitmap,
+/// and GDT) with inter-area padding, rounded up to a page boundary.
 ///
 /// This many bytes are reserved at the beginning of the free portion of the scratch region
-/// (right after the I/O buffers) so the bitmap backing stores live in scratch memory
-/// instead of the BSS (which is part of the snapshot and therefore Copy-on-Write).
-const ALLOCATOR_STORAGE_PAGES_SIZE: usize = {
-    let raw: usize = KPOOL_BITMAP_OFFSET + KPOOL_BITMAP_STORAGE_SIZE;
+/// (right after the I/O buffers) so these structures live in scratch memory instead of the BSS
+/// (which is part of the snapshot and therefore Copy-on-Write).
+const SCRATCH_RESERVED_SIZE: usize = {
+    let raw: usize = GDT_OFFSET + GDT_STORAGE_SIZE;
     // Round up to the next multiple of PAGE_SIZE.
     // SAFETY: `raw` is small relative to `usize::MAX`, so overflow cannot occur.
     match ::sys::mm::align_up(raw, PAGE_ALIGNMENT) {
@@ -1115,7 +1133,7 @@ pub fn init(
     // one reserved last page).
     let min_scratch_size: usize = INPUT_DATA_BUFFER_SIZE
         + OUTPUT_DATA_BUFFER_SIZE
-        + ALLOCATOR_STORAGE_PAGES_SIZE
+        + SCRATCH_RESERVED_SIZE
         + 2 * mem::PAGE_SIZE;
     if scratch_size == 0 || scratch_size < min_scratch_size {
         let reason: &str = "scratch_size is too small for required scratch regions";
@@ -1151,7 +1169,7 @@ pub fn init(
     // Register only the MMIO-critical portions of the scratch region:
     //  1. Input data buffer  [scratch_base, scratch_base + INPUT_DATA_BUFFER_SIZE)
     //  2. Output data buffer [scratch_base + INPUT_DATA_BUFFER_SIZE, + OUTPUT_DATA_BUFFER_SIZE)
-    //  3. Allocator storage  [output_end, output_end + ALLOCATOR_STORAGE_PAGES_SIZE)
+    //  3. Scratch-reserved structures [output_end, output_end + SCRATCH_RESERVED_SIZE)
     //  4. Scratch I/O page: guest counter page (second-to-last page).
     //  5. Scratch reserved page: Hyperlight bookkeeping metadata (last page, not for use).
     // Everything between the allocator storage and the scratch I/O page is
@@ -1182,30 +1200,32 @@ pub fn init(
         mmio_regions.push_back(scratch_output);
     }
 
-    // Reserve pages at the start of the free scratch area for the frame allocator and
-    // kpool bitmap backing stores.  This memory is in scratch (never snapshot/CoW) and
-    // is registered as a reserved memory region so the frame allocator never hands it out.
-    let allocator_storage_base: usize =
+    // Reserve pages at the start of the free scratch area for the frame allocator bitmap,
+    // kpool bitmap, and GDT backing stores.  This memory is in scratch (never snapshot/CoW)
+    // and is registered as a reserved memory region so the frame allocator never hands it out.
+    let scratch_reserved_base: usize =
         scratch_base_address + INPUT_DATA_BUFFER_SIZE + OUTPUT_DATA_BUFFER_SIZE;
     {
         // No need to zero the storage pages: the scratch region is guaranteed to be
         // zeroed out by Hyperlight before the guest starts.
 
-        let allocator_storage_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-            "allocator storage",
-            VirtualAddress::from_raw_value(allocator_storage_base),
-            ALLOCATOR_STORAGE_PAGES_SIZE,
+        let scratch_reserved_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+            "scratch reserved structures",
+            VirtualAddress::from_raw_value(scratch_reserved_base),
+            SCRATCH_RESERVED_SIZE,
             MemoryRegionType::Reserved,
             AccessPermission::RDWR,
         )?;
-        memory_regions.push_back(allocator_storage_region);
+        memory_regions.push_back(scratch_reserved_region);
         info!(
-            "allocator storage: [{:#010x}, {:#010x}) (frame_alloc={} B, kpool={} B, size={:#x})",
-            allocator_storage_base,
-            allocator_storage_base + ALLOCATOR_STORAGE_PAGES_SIZE,
+            "scratch reserved: [{:#010x}, {:#010x}) (frame_alloc={} B, kpool={} B, gdt={} B, \
+             size={:#x})",
+            scratch_reserved_base,
+            scratch_reserved_base + SCRATCH_RESERVED_SIZE,
             FRAME_ALLOCATOR_STORAGE_SIZE,
             KPOOL_BITMAP_STORAGE_SIZE,
-            ALLOCATOR_STORAGE_PAGES_SIZE,
+            GDT_STORAGE_SIZE,
+            SCRATCH_RESERVED_SIZE,
         );
     }
     {
@@ -1247,10 +1267,10 @@ pub fn init(
     // padded range the two chunks would overlap, so they are merged into a single "low"
     // chunk.  When the RAMFS is absent or far enough away it becomes a separate chunk.
     //
-    // The backing store for the bitmap lives in the scratch region at `allocator_storage_base`,
+    // The backing store for the bitmap lives in the scratch region at `scratch_reserved_base`,
     // not in BSS, so it is never part of the CoW snapshot.
     let ramfs_end_address: usize = ramfs_base + ramfs_size;
-    // Safety: `allocator_storage_base` points to a zeroed, identity-mapped region inside
+    // Safety: `scratch_reserved_base` points to a zeroed, identity-mapped region inside
     // the scratch area with at least `FRAME_ALLOCATOR_STORAGE_SIZE` bytes available.
     // The memory outlives the returned `SparseBitmap` (it is never freed) and no other
     // code writes to this range after this point.
@@ -1262,7 +1282,7 @@ pub fn init(
             ramfs_end_address,
             scratch_base_address,
             scratch_end_address,
-            (allocator_storage_base as *mut u8, FRAME_ALLOCATOR_STORAGE_SIZE),
+            (scratch_reserved_base as *mut u8, FRAME_ALLOCATOR_STORAGE_SIZE),
         )?
     };
 
@@ -1271,14 +1291,32 @@ pub fn init(
     // storage in the same scratch reservation.
     let kpool_bitmap: Bitmap = {
         // Safety: the kpool bitmap sits at a known word-aligned offset within the
-        // scratch-allocated storage region and outlives the returned bitmap.
+        // scratch-reserved storage region and outlives the returned bitmap.
         let storage: RawArray<u8> = unsafe {
-            let ptr: *mut u8 = (allocator_storage_base + KPOOL_BITMAP_OFFSET) as *mut u8;
+            let ptr: *mut u8 = (scratch_reserved_base + KPOOL_BITMAP_OFFSET) as *mut u8;
             debug_assert!(::sys::mm::is_aligned(ptr as usize, WORD_ALIGNMENT));
             RawArray::from_raw_parts(ptr, KPOOL_BITMAP_STORAGE_SIZE)?
         };
         Bitmap::from_raw_array(storage)?
     };
+
+    // Install GDT backing storage in the scratch region, outside the CoW snapshot.
+    // The GDT is placed at GDT_OFFSET within the scratch-reserved area.
+    //
+    // Safety: gdt_ptr is computed from scratch_reserved_base + GDT_OFFSET, which is
+    // aligned to GDTE_ALIGNMENT (enforced at compile time by the GDT_OFFSET constant).
+    // The scratch region is identity-mapped, zeroed by Hyperlight, and never freed,
+    // so the pointer is valid for GDT_NUM_ENTRIES entries and outlives all GDT usage.
+    // This is the only call to set_backing_storage() in the Hyperlight init path.
+    unsafe {
+        let gdt_ptr: *mut Gdte = (scratch_reserved_base + GDT_OFFSET) as *mut Gdte;
+        core::ptr::copy_nonoverlapping(
+            gdt::DEFAULT_ENTRIES.as_ptr(),
+            gdt_ptr,
+            gdt::GDT_NUM_ENTRIES,
+        );
+        gdt::Gdt::set_backing_storage(gdt_ptr)?;
+    }
 
     Ok(Platform {
         arch: x86::init(ioports, ioaddresses, madt)?,
