@@ -1,0 +1,33 @@
+Timestamp: 2026-04-22_21-35-18
+Mode: cargo
+Crate: cache
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=7
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking cache v0.12.457 (/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache)
+error: `alloc::collections::btree::map::impl&%20::remove` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/libs/cache/src/lib.rs:265:9
+    |
+265 |         self.entries.remove(key);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<K, V, A, Q> [alloc::collections::BTreeMap::<K, V, A>::remove] (_0: &alloc::collections::BTreeMap<K, V, A>, _1: &Q) -> core::option::Option<V>
+            where
+            A: core::alloc::Allocator + core::clone::Clone,
+            K: core::borrow::Borrow<Q> + core::cmp::Ord,
+            Q: core::marker::MetaSized + core::cmp::Ord + ?Sized,;
+
+error: could not compile `cache` (lib) due to 1 previous error
