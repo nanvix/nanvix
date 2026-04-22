@@ -115,3 +115,4 @@ Let me revert the assume_specification for remove and use a wrapper instead:
 Now add the stdlib wrapper and modify Cache::remove. Let me find the right insertion point:
 Now update Cache::remove to use the wrapper:
 Now let's run verification to see what errors arise without any proof block:
+Good — the wrapper works (compiles). Now I need proof infrastructure. Let me try reveals directly in a `proof!` block first:
