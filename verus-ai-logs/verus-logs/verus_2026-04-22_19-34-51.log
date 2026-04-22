@@ -1,0 +1,91 @@
+Timestamp: 2026-04-22_19-34-51
+Mode: cargo
+Crate: cache
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=6
+  admit=5
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking cache v0.12.457 (/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache)
+error: `alloc::collections::btree::map::BTreeMap` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/libs/cache/src/lib.rs:114:1
+    |
+114 | / pub struct Cache<K, V> {
+115 | |     /// Cached entries.
+116 | |     entries: BTreeMap<K, CacheEntry<V>>,
+117 | |     /// Monotonically increasing counter for LRU ordering.
+...   |
+120 | |     capacity: usize,
+121 | | }
+    | |_^
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::reject_recursive_types(A)]
+            #[verifier::reject_recursive_types(K)]
+            #[verifier::reject_recursive_types(V)]
+            #[verifier::external_type_specification]
+            pub struct ExBTreeMap<K, V, A>(alloc::collections::BTreeMap<K, V, A>)
+            where
+            A: core::alloc::Allocator + core::clone::Clone,;
+
+error: cannot use type `cache::CacheEntry` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/cache/src/lib.rs:114:1
+    |
+114 | / pub struct Cache<K, V> {
+115 | |     /// Cached entries.
+116 | |     entries: BTreeMap<K, CacheEntry<V>>,
+117 | |     /// Monotonically increasing counter for LRU ordering.
+...   |
+120 | |     capacity: usize,
+121 | | }
+    | |_^
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::reject_recursive_types(V)]
+            #[verifier::external_type_specification]
+            struct ExCacheEntry<V>(crate::CacheEntry<V>);
+
+error: `alloc::alloc::Global` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/libs/cache/src/lib.rs:114:1
+    |
+114 | / pub struct Cache<K, V> {
+115 | |     /// Cached entries.
+116 | |     entries: BTreeMap<K, CacheEntry<V>>,
+117 | |     /// Monotonically increasing counter for LRU ordering.
+...   |
+120 | |     capacity: usize,
+121 | | }
+    | |_^
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExGlobal(alloc::alloc::Global);
+
+error: cannot use type `cache::CacheGuard` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/cache/src/lib.rs:183:39
+    |
+171 |                 &&& result is Some
+    |                     ------
+...
+179 |                 &&& result is None
+    |                     ------
+...
+183 |     pub fn get(&mut self, key: &K) -> Option<CacheGuard<'_, V>> {
+    |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::reject_recursive_types(V)]
+            #[verifier::external_type_specification]
+            pub struct ExCacheGuard<'a, V>(crate::CacheGuard<'a, V>);
+
+error: could not compile `cache` (lib) due to 4 previous errors

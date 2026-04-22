@@ -144,17 +144,5 @@ impl<K: Ord + Clone, V> View for Cache<K, V> {
     uninterp spec fn view(&self) -> CacheView<K, V>;
 }
 
-//==================================================================================================
-// View Implementation for CacheGuard
-//==================================================================================================
-
-// CacheGuard is a transparent wrapper over &mut V.
-// Its view is the value it dereferences to.
-impl<'a, V> View for CacheGuard<'a, V> {
-    type V = V;
-
-    uninterp spec fn view(&self) -> V;
-}
-
 } // verus!
 

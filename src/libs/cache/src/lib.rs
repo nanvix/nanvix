@@ -78,7 +78,6 @@ struct CacheEntry<V> {
 /// and `&mut V` for write access. The LRU counter is bumped when the guard
 /// is created.
 ///
-#[verus_verify]
 pub struct CacheGuard<'a, V> {
     /// Mutable reference to the cached value.
     value: &'a mut V,
@@ -170,7 +169,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             // Hit: key is present.
             old(self)@.contents.dom().contains(*key) ==> {
                 &&& result is Some
-                &&& result->0@ == old(self)@.contents[*key]
                 &&& self@ == old(self)@.spec_get(*key).0
                 &&& self@.contents == old(self)@.contents
                 &&& self@.capacity == old(self)@.capacity

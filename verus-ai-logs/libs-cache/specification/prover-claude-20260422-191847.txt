@@ -154,3 +154,7 @@ Now add specs to `clear`:
 Now add specs to `evict`:
 Now let me verify the file looks correct:
 Good, the file looks correct. Now let me try running the verification:
+Verus doesn't support `&mut` in struct fields. Let me remove `#[verus_verify]` from CacheGuard and adjust:
+Remove CacheGuard View from spec.rs and adjust get's spec to not reference guard view:
+Now adjust the `get` spec to remove the guard@ reference:
+Now let me retry verification:
