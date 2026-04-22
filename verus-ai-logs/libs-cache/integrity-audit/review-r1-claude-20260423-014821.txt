@@ -111,3 +111,9 @@ Be strict: PASS only if ALL checklist items are checked. Any unchecked item is F
 Let me read the source files and existing reviews to understand the full context before launching independent verification.
 Now let me read the remaining parts and check the AST consistency scripts.
 Now I have a thorough understanding of the existing state. I notice a naming discrepancy — the reviews call `find_lru_victim` "evict" incorrectly. Let me now run verification and AST consistency checks, then launch the two independent sub-agents.
+Let me do comprehensive cheating pattern greps as ground truth before launching sub-agents.
+Good. Now I have all ground truth. Let me now launch the two sub-agents for independent review.
+Two sub-agents launched (claude-opus-4.6 and gpt-5.3-codex) for independent review. Waiting for them to complete before consolidating.
+Good. I've read all the relevant files. Let me wait for the sub-agents.
+Now let me independently verify the cheating item counts by searching the source files.
+Now let me check the exec function coverage and look for any existing review files or related files the task mentions.
