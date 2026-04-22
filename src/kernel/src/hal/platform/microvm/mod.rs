@@ -19,6 +19,7 @@ use crate::{
     hal::{
         arch::x86::{
             self,
+            mem::gdt,
             Arch,
         },
         io::{
@@ -56,6 +57,7 @@ use ::alloc::{
 use ::arch::{
     cpu::pic,
     mem,
+    mem::gdt::Gdte,
 };
 use ::sparse_bitmap::SparseBitmap;
 use ::sys::error::{
@@ -104,6 +106,9 @@ pub struct Platform {
 static mut FRAME_ALLOCATOR_STORAGE: [u8; config::kernel::MEMORY_SIZE
     / (mem::FRAME_SIZE * u8::BITS as usize)] =
     [0; config::kernel::MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)];
+
+/// GDT backing storage, allocated in BSS.
+static mut GDT_STORAGE: [Gdte; gdt::GDT_NUM_ENTRIES] = gdt::DEFAULT_ENTRIES;
 
 // Ensure the number of kpool pages is a multiple of 8 so the bitmap has no padding bits.
 ::static_assert::assert_eq!(
@@ -685,6 +690,15 @@ pub fn init(
     // controller can allocate them during LAPIC timer calibration.
     #[cfg(all(feature = "pit", feature = "whp"))]
     register_pit_ports(ioports)?;
+
+    // Install GDT backing storage. On microvm the GDT lives in a BSS-allocated static.
+    // Safety: GDT_STORAGE is a static array of Gdte entries with repr(C, align(8)),
+    // so the pointer is properly aligned and valid for GDT_NUM_ENTRIES entries.
+    // The static lifetime guarantees the storage outlives all GDT usage.
+    // This is the only call to set_backing_storage() in the microvm init path.
+    unsafe {
+        gdt::Gdt::set_backing_storage(GDT_STORAGE.as_mut_ptr())?;
+    }
 
     let arch = x86::init(ioports, ioaddresses, madt)?;
 
