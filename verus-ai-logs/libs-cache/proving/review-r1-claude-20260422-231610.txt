@@ -107,3 +107,8 @@ Be strict: PASS only if ALL checklist items are checked. Any unchecked item is F
 === Output (streaming) ===
 Now let me get the trust.md and check git history for the specification phase commit.
 Now let me get the specification phase commit diff and run `make verify-cache` to check current status:
+Now let me look at the diff for `lib.rs` (the source file) to check for spec changes:
+Now I have all the context I need. Let me also check for any existing review files and read the bugs.md:
+Now I have comprehensive context. Let me launch the two sub-agents in parallel for independent reviews.
+Both review sub-agents are running in parallel. I'm waiting for them to complete before consolidating their findings into the final review document.
+Now let me run the cheating audit searches and verification:
