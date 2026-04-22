@@ -146,3 +146,4 @@ Now try removing assertions in `lemma_new_view` and `lemma_clear_view`:
 Some assertions were needed. Let me see the errors:
 Need to restore the inv-critical assertions. Let me add back what's needed:
 Now I need to add back the lru_order assertions for `lemma_new_view` and `lemma_clear_view`:
+Good, back to passing. Now let me try removing the `insert dom` assertion in `lemma_spec_put_inv`:
