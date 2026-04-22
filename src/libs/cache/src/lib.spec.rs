@@ -42,6 +42,17 @@ pub assume_specification<K, V>[ alloc::collections::BTreeMap::<K, V>::new ]()
         btreemap_view_spec(m) == Map::<K, V>::empty(),
 ;
 
+// assume_specification for BTreeMap::remove — simplified from vstd/std_specs/btree.rs:776-791.
+// For Key == Q case, borrowed_key_removed simplifies to: new_m == old_m.remove(*k).
+pub assume_specification<K: Ord, V>
+    [ alloc::collections::BTreeMap::<K, V>::remove::<K> ]
+    (m: &mut alloc::collections::BTreeMap<K, V>, k: &K) -> (result: Option<V>)
+    ensures
+        btreemap_view_spec(*m) == btreemap_view_spec(*old(m)).remove(*k),
+        result.is_some() <==> btreemap_view_spec(*old(m)).dom().contains(*k),
+        result.is_some() ==> result == Some(btreemap_view_spec(*old(m))[*k]),
+;
+
 //==================================================================================================
 // Cache abstraction functions (connecting concrete fields to abstract CacheView)
 //==================================================================================================

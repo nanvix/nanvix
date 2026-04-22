@@ -1,0 +1,30 @@
+Timestamp: 2026-04-22_21-45-54
+Mode: cargo
+Crate: cache
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=7
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking cache v0.12.457 (/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache)
+error: assume_specification requires function type signature to match `alloc::collections::btree::map::impl&%20::remove` exactly 
+             assume_specification provided: `for<K, V> for<'_, '_> (&mut alloc::collections::BTreeMap<K, V>, &K) -> core::option::Option<V>`
+             expected:                      `for<K, V, A, Q> for<'_, '_> (&mut alloc::collections::BTreeMap<K, V, A>, &Q) -> core::option::Option<V>`
+  --> src/libs/cache/src/lib.spec.rs:47:1
+   |
+47 | / pub assume_specification<K: Ord, V>
+48 | |     [ alloc::collections::BTreeMap::<K, V>::remove::<K> ]
+49 | |     (m: &mut alloc::collections::BTreeMap<K, V>, k: &K) -> (result: Option<V>)
+   | |_____________________________________________________________________________^
+
+error: could not compile `cache` (lib) due to 1 previous error
