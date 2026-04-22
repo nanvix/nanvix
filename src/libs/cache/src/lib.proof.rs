@@ -478,7 +478,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             assert(cache_contents_of(new_self.entries) =~= cache_contents_of(old_entries));
 
             // LRU: filter identity for absent key
-            assert(!old_view.lru_order.contains(key));
             lemma_filter_neq_absent(old_view.lru_order, key);
             assert(cache_lru_of(new_self.entries) == cache_lru_of(old_entries));
         }

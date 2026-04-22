@@ -135,3 +135,5 @@ Reveals were redundant — removed them, block is now 3 lines. 18 verified, 0 er
 Now let me minimize assertions in the proof file. I'll start with the field-by-field assertions in `lemma_remove_view`.
 18 verified, 0 errors. Removed 7 redundant assertions. Now let me try removing more — the bridge assertions.
 Let me try removing the contents bridge assertion in the present branch (line 470) and the ext_equal assertions (lines 478, 490):
+3 more removed. Let me now try removing the bridge assertions in the absent branch and assertions in other lemmas.
+Let me now try removing more assertions. I'll attempt an aggressive batch in the absent branch:
