@@ -139,3 +139,20 @@ Module: cache
 [2026-04-22 22:01:55]   ↳ fixer-t2 done in 25m33s (exit=0)
 [2026-04-22 22:01:55] [DIALOGUE] Timeout reached after 3647s
 [2026-04-22 22:01:55] [DIALOGUE] Ended after 3 turns: TIMEOUT (3647s)
+[2026-04-22 22:01:55] [FINAL REVIEW] Cheating report: external_body: 9 (7 on user fns)
+[2026-04-22 22:01:55] [FINAL REVIEW] ⚠ external_body on user functions: 7
+[2026-04-22 22:01:55] [FINAL REVIEW] Done (1h08m54s)
+
+============================================================
+PIPELINE FINISHED: Some phases need improvement for cache
+  ✅ caller-analysis: PASS (0/0) [1m44s]
+  ✅ view-design: PASS (0/0) [6m47s]
+  ✅ property-analysis: PASS (0/0) [10m27s]
+  ❌ specification: FAIL (0/0) [39m35s]
+  ✅ proving: PASS (0/0) [18m39s]
+  ✅ integrity-audit: PASS (0/0) [23m18s]
+  ✅ polish: PASS (0/0) [12m41s]
+  ❌ final-review: UNKNOWN (0/5) [1h08m54s]
+Total time: 3h07m08s
+============================================================
+[2026-04-22 22:01:55] [USAGE] Summary: 16 calls, 0 tokens, 3h02m06s total → /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/usage_summary.json
