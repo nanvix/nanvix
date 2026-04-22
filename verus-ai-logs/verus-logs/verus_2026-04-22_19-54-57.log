@@ -1,0 +1,26 @@
+Timestamp: 2026-04-22_19-54-57
+Mode: cargo
+Crate: cache
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=10
+  admit=5
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking cache v0.12.457 (/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache)
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> src/libs/cache/src/lib.rs:106:5
+    |
+106 |     fn deref_mut(&mut self) -> &mut V {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: could not compile `cache` (lib) due to 1 previous error

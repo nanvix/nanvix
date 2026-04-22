@@ -175,5 +175,17 @@ impl<K: Ord + Clone, V> View for Cache<K, V> {
     uninterp spec fn view(&self) -> CacheView<K, V>;
 }
 
+//==================================================================================================
+// View Implementation for CacheGuard
+//==================================================================================================
+
+// CacheGuard is external_body (Verus limitation: &mut in struct fields),
+// so the view is uninterpreted. Constraints come from get/deref ensures.
+impl<'a, V> View for CacheGuard<'a, V> {
+    type V = V;
+
+    uninterp spec fn view(&self) -> V;
+}
+
 } // verus!
 

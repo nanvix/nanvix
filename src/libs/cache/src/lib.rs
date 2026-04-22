@@ -84,15 +84,25 @@ pub struct CacheGuard<'a, V> {
     value: &'a mut V,
 }
 
+#[verus_verify]
 impl<V> Deref for CacheGuard<'_, V> {
     type Target = V;
 
+    #[verus_verify(external_body)]
+    #[verus_spec(ret =>
+        ensures *ret == self@,
+    )]
     fn deref(&self) -> &V {
         self.value
     }
 }
 
+#[verus_verify]
 impl<V> DerefMut for CacheGuard<'_, V> {
+    #[verus_verify(external_body)]
+    #[verus_spec(ret =>
+        ensures *ret == self@,
+    )]
     fn deref_mut(&mut self) -> &mut V {
         self.value
     }
