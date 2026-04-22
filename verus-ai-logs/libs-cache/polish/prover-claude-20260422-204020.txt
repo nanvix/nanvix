@@ -81,3 +81,86 @@ Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-
 Done when: verus verifies with 0 errors/admits and build passes.
 
 === Output (streaming) ===
+Good — verification passes (Verus exit code 0), and there are no inline proof blocks in lib.rs. All exec functions use `external_body`, and all proofs are already in the proof file.
+
+Now let me analyze the proof file for minimization opportunities.
+Directionally good, but your risk ranking is off.
+
+## Main critique
+
+### 1) **Batch 1 is safer than you think — but not for the reason you gave**
+**Severity:** non-blocking  
+`216` / `258` are probably removable, but **not** because “the lemma call already required `s.contains(key)`.”  
+That only means Verus discharged the precondition at the call site; it does **not** guarantee the fact is still a useful hypothesis for later VC solving.
+
+Why they’re still *likely* removable: they appear **after** `lemma_filter_neq_len(...)` and don’t obviously feed any later explicit step. So this is a good first batch, just with a weaker justification.
+
+### 2) **Batch 2 is riskier than you think**
+**Severity:** important  
+`211` / `252` may follow semantically from `cache.inv()` + branch condition, but SMT often needs the explicit bridge:
+- `cache.inv()` gives `lru_order.to_set() == contents.dom()`
+- branch gives `contents.dom().contains(key)`
+
+That combination is exactly the sort of thing Verus sometimes fails to instantiate automatically.
+
+`268` is even riskier than `211`/`252`:
+- it is not just “from inv()”
+- it needs the solver to connect `victim = lru_order[0]` with `lru_order.to_set().contains(victim)`
+
+That index→membership step is often a real hint.
+
+### 3) **Batch 3 is too coarse; `293` should be isolated**
+**Severity:** important  
+These are not all the same class.
+
+- `212` / `253`: plausible removals, but they likely depend on `211` / `252`
+- `254`: probably removable independently
+- `293`: **much riskier**; it is the final composed equality in the eviction branch
+
+`293` is exactly the kind of “summary assertion” that can be redundant mathematically but still essential to close the invariant. Don’t batch it with simpler identities.
+
+### 4) **Batch 5 is the highest-risk item, not a cleanup item**
+**Severity:** important  
+`111` is very likely doing real work.
+
+`lemma_filter_neq_len` seems to prove cardinality via:
+- `lemma_filter_neq_to_set`
+- `unique_seq_to_set()`
+- then needing `key ∈ s.to_set()` to conclude `|remove(key)| = |set| - 1`
+
+So `assert(s.to_set().contains(key))` is probably the critical bridge from `s.contains(key)` to set-membership. I would try this **last**, if at all.
+
+## What you’re missing
+
+### 5) Some assertions are coupled
+**Severity:** important  
+If you remove `211`, `212` may fail too.  
+If you remove `268`, then `269` and `270` may become harder:
+- `269` uses invariant + set/domain equality
+- `270` uses branch fact “key absent” plus `269`
+
+So don’t batch dependent hints together if you want good signal.
+
+## Suggested order
+
+Safest to riskiest:
+
+1. **`216`, `258`**
+2. **`178-179`, `358-359`**
+3. **`254` alone**
+4. **`211`, `252`** (one batch)
+5. **`212`, `253`** (after 211/252 survive)
+6. **`268` alone**
+7. **`293` alone**
+8. **`111` last**
+
+## Bottom line
+
+Your plan is sensible, but:
+- **Batch 1:** good first try
+- **Batch 2:** split `268` out
+- **Batch 3:** split `293` out, and separate `254`
+- **Batch 5:** treat as high-risk, not low-risk
+
+If you want the highest-probability wins first, start with **216/258**, then **new/clear asserts**, and leave **111 / 268 / 293** for the very end.
+Good feedback. I'll follow the suggested safer-to-riskier order. Let me start with the safest batch: removing post-call asserts at lines 216 and 258.

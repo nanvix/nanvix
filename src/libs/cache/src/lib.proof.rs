@@ -213,7 +213,6 @@ proof fn lemma_spec_get_inv<K, V>(cache: CacheView<K, V>, key: K)
 
         // 3. len
         lemma_filter_neq_len(cache.lru_order, key);
-        assert(cache.lru_order.contains(key));
     }
 }
 
@@ -255,7 +254,6 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
 
         // len
         lemma_filter_neq_len(cache.lru_order, key);
-        assert(cache.lru_order.contains(key));
 
     } else if cache.contents.dom().len() >= cache.capacity {
         // At capacity, new key: evict LRU victim.
