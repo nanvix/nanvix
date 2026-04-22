@@ -123,13 +123,13 @@ fields ("The verifier does not yet support &mut types, except in special cases")
 
 ## admit() in Proof Stubs
 
-All five lemmas in `lib.proof.rs` use `admit()`. These are specification-phase
-placeholders to be filled during the proving phase.
+All five admit() placeholders have been eliminated. The invariant preservation
+lemmas are now fully proven:
 
-| Lemma | Line | Classification |
-|---|---|---|
-| `lemma_spec_new_inv` | proof.rs:17 | `TEMPORARY` |
-| `lemma_spec_get_inv` | proof.rs:25 | `TEMPORARY` |
-| `lemma_spec_put_inv` | proof.rs:35 | `TEMPORARY` |
-| `lemma_spec_remove_inv` | proof.rs:45 | `TEMPORARY` |
-| `lemma_spec_clear_inv` | proof.rs:55 | `TEMPORARY` |
+| Lemma | Status |
+|---|---|
+| `lemma_spec_new_inv` | ✅ Proven |
+| `lemma_spec_get_inv` | ✅ Proven |
+| `lemma_spec_put_inv` | ✅ Proven |
+| `lemma_spec_remove_inv` | ✅ Proven |
+| `lemma_spec_clear_inv` | ✅ Proven |

@@ -92,3 +92,8 @@ Good, `axiom_set_remove_insert` gives us exactly what we need: `s.contains(a) ==
 Now I have all the pieces. Let me write the complete proof file:
 Now let me run verification:
 I need to use fully qualified paths since these items aren't imported. Let me fix:
+All 11 functions verify with 0 errors and 0 admits. The remaining `external_body` markers are on exec functions that use `BTreeMap` (no vstd specs) and the `CacheGuard` deref (which wraps `&mut` in a struct — a Verus limitation). These are expected trust boundaries, not proof gaps.
+
+Let me check the trust.md situation and document the external_body items:
+The trust.md has a section about admit() placeholders that's now outdated. Let me update it:
+Now let me verify the build still passes and run the full verification one final time:
