@@ -66,7 +66,7 @@ spec fn cache_lru_of<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V
     }
 }
 
-pub uninterp spec fn cache_lru_of_nonempty<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Seq<K>;
+uninterp spec fn cache_lru_of_nonempty<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Seq<K>;
 
 // CacheEntry is a private internal type.
 #[verifier::reject_recursive_types(V)]
