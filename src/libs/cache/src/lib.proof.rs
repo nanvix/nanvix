@@ -107,8 +107,6 @@ proof fn lemma_filter_neq_len<K>(s: Seq<K>, key: K)
 
     s.unique_seq_to_set();
     filtered.unique_seq_to_set();
-
-    assert(s.to_set().contains(key));
 }
 
 /// Subrange of a no-duplicate sequence is no-duplicate.
