@@ -473,11 +473,8 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             filtered.unique_seq_to_set();
         } else {
             // Key absent — spec_remove returns old_view unchanged
-            assert(cache_contents_of(old_entries).dom() =~= btreemap_view_spec(old_entries).dom());
             assert(btreemap_view_spec(new_self.entries) == btreemap_view_spec(old_entries));
             assert(cache_contents_of(new_self.entries) =~= cache_contents_of(old_entries));
-
-            // LRU: filter identity for absent key
             lemma_filter_neq_absent(old_view.lru_order, key);
             assert(cache_lru_of(new_self.entries) == cache_lru_of(old_entries));
         }

@@ -137,3 +137,4 @@ Now let me minimize assertions in the proof file. I'll start with the field-by-f
 Let me try removing the contents bridge assertion in the present branch (line 470) and the ext_equal assertions (lines 478, 490):
 3 more removed. Let me now try removing the bridge assertions in the absent branch and assertions in other lemmas.
 Let me now try removing more assertions. I'll attempt an aggressive batch in the absent branch:
+Now let me try removing the remaining bridge assertions in the absent branch:
