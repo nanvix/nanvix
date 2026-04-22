@@ -2,8 +2,8 @@
   "module_name": "cache",
   "log_name": "libs-cache",
   "source_path": "src/libs/cache/src/lib.rs",
-  "current_phase": "property-analysis",
-  "current_phase_idx": 2,
+  "current_phase": "specification",
+  "current_phase_idx": 3,
   "phase_results": {
     "caller-analysis": {
       "phase": "caller-analysis",
@@ -24,6 +24,16 @@
       "verdict": "PASS",
       "review_file": null,
       "duration_s": 407.9
+    },
+    "property-analysis": {
+      "phase": "property-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "PASS",
+      "review_file": null,
+      "duration_s": 627.3
     }
   },
   "prover_session_id": "d90416de-a627-484c-b849-0a9485540f57",
@@ -32,6 +42,7 @@
   "verus_branch": "verus-ai/cache",
   "phase_boundary_shas": {
     "caller-analysis": "bfe20d254ad71ba1b97b8c1d61a9e9057eed8fcc",
-    "view-design": "905b1ea9b44c963a314bf6dea72be9da118f61a5"
+    "view-design": "905b1ea9b44c963a314bf6dea72be9da118f61a5",
+    "property-analysis": "f2bcfe5646039c6c280894c3fc4d335bc2f0c664"
   }
 }
