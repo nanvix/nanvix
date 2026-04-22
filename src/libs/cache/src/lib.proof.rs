@@ -312,9 +312,6 @@ proof fn lemma_spec_remove_inv<K, V>(cache: CacheView<K, V>, key: K)
         lemma_filter_neq_to_set(cache.lru_order, key);
 
         // len
-        assert(cache.lru_order.contains(key)) by {
-            assert(cache.lru_order.to_set().contains(key));
-        };
         lemma_filter_neq_len(cache.lru_order, key);
         filtered.unique_seq_to_set();
     }

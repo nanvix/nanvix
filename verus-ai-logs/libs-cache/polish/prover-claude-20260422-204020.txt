@@ -182,3 +182,4 @@ Try removing the intermediate asserts in the first forall-by block:
 Now try simplifying the second forall-by block in the same lemma:
 Let me now try similar simplifications in `lemma_filter_neq_to_set`:
 Try simplifying the first forall-by block by removing the intermediate assert and choose:
+Now let me try the `lemma_spec_remove_inv` — remove the assert-by block for `cache.lru_order.contains(key)`:
