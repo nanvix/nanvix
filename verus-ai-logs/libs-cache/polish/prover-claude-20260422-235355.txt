@@ -81,3 +81,52 @@ Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-
 Done when: verus verifies with 0 errors/admits and build passes.
 
 === Output (streaming) ===
+Verification passes (exit code 0). The "CHEATING_DETECTED" is about pre-existing external_body functions, not an actual failure. Now let me analyze the situation and plan the polishing work.
+
+The check found:
+- 1 block at 6 lines (≥5) in `remove()` — marked for extraction
+- 2 blocks at 3 lines — OK to keep inline
+
+Let me examine the proof file for minimization opportunities, then consult the rubber duck on my plan.
+Here’s the main pushback:
+
+- **Blocking: your extraction rationale is wrong.**  
+  `lemma_remove_view()` already does the three reveals internally (`lib.proof.rs:451-453`), so the reveals in `remove()` (`lib.rs:289-291`) do **not** look call-site-essential.  
+  **Impact:** you may preserve redundant proof code for the wrong reason.  
+  **Fix:** first try minimizing `remove()` to:
+  ```rust
+  proof! { Self::lemma_remove_view(self, *key, old(self).entries, old(self).capacity); }
+  ```
+  If that verifies, then the current inline block is already over-minimized.
+
+- **Q1:** So, **yes and no**.  
+  Adding *another* wrapper lemma would be pointless, because `lemma_remove_view` is already the extracted wrapper.  
+  But **no**, it’s not because reveals must stay at the call site — the code suggests they already don’t.
+
+- **Q2: your batch strategy is good only if it is dependency-aware.**  
+  Don’t remove everything in a branch at once. Some assertions are likely “bridge” facts; others are downstream conveniences.
+  Recommended order:
+  1. Remove the **call-site reveals** in `remove()`.
+  2. In present branch, try removing **476-478** first, while keeping **470** and **486**.
+  3. Then try removing **486**.
+  4. In absent branch, try removing **504-507** first, while keeping **491/492/495/502/508**.
+  5. Then try removing **508**.
+  
+  I would **not** batch-remove `470`, `491`, `492`, or `495` early; those are exactly the abstraction-bridge assertions most likely to be needed.
+
+- **Important correction on your intuition about specific assertions:**  
+  - `491` is probably **not** “definitional enough to auto-derive reliably”; it bridges `cache_contents_of(...)` to `btreemap_view_spec(...)`.  
+  - `492` likely depends on `491` plus absent-key reasoning.  
+  - `470`/`495` are also prime “keep until late” candidates.
+
+- **Big missed opportunity:** reuse the invariant lemmas instead of reproving invariants locally.  
+  In `lemma_remove_view`, once you establish `new_self@ =~= old_view.spec_remove(key)`, the `new_self@.inv()` part may be dischargeable via `lemma_spec_remove_inv(old_view, key)` after showing `old_view.inv()`.  
+  **Impact:** could remove the local filter/no-dup/len proof noise in the present branch.  
+  Same idea may apply to `lemma_new_view` / `lemma_clear_view` with `lemma_spec_new_inv` / `lemma_spec_clear_inv`.
+
+- **Q3:** yes, you’re missing at least two minimization targets:
+  1. **The redundant call-site reveals in `remove()`.**
+  2. **Potential duplication between `lemma_remove_view` and `lemma_spec_remove_inv`.**
+
+Overall: the plan is mostly solid, but its central assumption about why `remove()` must stay inline is likely false. The easiest win is probably **shrinking `remove()` to a single lemma call**, then minimizing `lemma_remove_view` in dependency-aware batches.
+Excellent feedback. The rubber duck caught that `lemma_remove_view` already contains the same 3 reveals internally, so the inline reveals may be redundant. Let me try the aggressive minimization first.

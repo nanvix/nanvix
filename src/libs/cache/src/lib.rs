@@ -286,9 +286,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         // (Borrow<Q>, Allocator) cannot be expressed with btreemap_view_spec.
         btreemap_remove(&mut self.entries, key);
         proof! {
-            reveal(<Cache<_, _> as View>::view);
-            reveal(cache_contents_of);
-            reveal(cache_lru_of);
             Self::lemma_remove_view(self, *key, old(self).entries, old(self).capacity);
         }
     }
