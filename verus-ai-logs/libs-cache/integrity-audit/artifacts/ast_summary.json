@@ -1,0 +1,201 @@
+{
+  "functions": [
+    {
+      "name": "Cache::clear",
+      "status": "MATCH",
+      "src_hash": "75734f47f900a7fd1cc01fda6725cb2e",
+      "verus_hash": "75734f47f900a7fd1cc01fda6725cb2e",
+      "src_lines": "222-225",
+      "verus_lines": "279-282",
+      "verification": ""
+    },
+    {
+      "name": "Cache::evict",
+      "status": "MATCH",
+      "src_hash": "6d412a47c4a5b3c797756ac5e142c752",
+      "verus_hash": "6d412a47c4a5b3c797756ac5e142c752",
+      "src_lines": "232-241",
+      "verus_lines": "303-312",
+      "verification": ""
+    },
+    {
+      "name": "Cache::get",
+      "status": "MATCH",
+      "src_hash": "54955ace770e226354929c3bb31fc62f",
+      "verus_hash": "54955ace770e226354929c3bb31fc62f",
+      "src_lines": "153-163",
+      "verus_lines": "186-196",
+      "verification": ""
+    },
+    {
+      "name": "Cache::new",
+      "status": "MATCH",
+      "src_hash": "b7d73728ddc55e8dc07b114bc3ea96e2",
+      "verus_hash": "b7d73728ddc55e8dc07b114bc3ea96e2",
+      "src_lines": "132-138",
+      "verus_lines": "147-153",
+      "verification": ""
+    },
+    {
+      "name": "Cache::put",
+      "status": "MATCH",
+      "src_hash": "ff3fd552f3f19ba7a7dbb9c4fd7e4b1b",
+      "verus_hash": "ff3fd552f3f19ba7a7dbb9c4fd7e4b1b",
+      "src_lines": "175-202",
+      "verus_lines": "216-243",
+      "verification": ""
+    },
+    {
+      "name": "Cache::remove",
+      "status": "MATCH",
+      "src_hash": "6fbc76bfc6e5500106ba28418c84e3c4",
+      "verus_hash": "6fbc76bfc6e5500106ba28418c84e3c4",
+      "src_lines": "213-215",
+      "verus_lines": "262-264",
+      "verification": ""
+    },
+    {
+      "name": "CacheGuard::deref",
+      "status": "MATCH",
+      "src_hash": "194fa9a5940d0d31de4f1545e582bb97",
+      "verus_hash": "194fa9a5940d0d31de4f1545e582bb97",
+      "src_lines": "89-91",
+      "verus_lines": "95-97",
+      "verification": ""
+    },
+    {
+      "name": "CacheGuard::deref_mut",
+      "status": "MATCH",
+      "src_hash": "69683291ce3971ba92532da07cdbd763",
+      "verus_hash": "69683291ce3971ba92532da07cdbd763",
+      "src_lines": "95-97",
+      "verus_lines": "101-103",
+      "verification": ""
+    },
+    {
+      "name": "capacity_one",
+      "status": "MATCH",
+      "src_hash": "fd4e15a429522fd5d7423d9f7ad5d2ef",
+      "verus_hash": "fd4e15a429522fd5d7423d9f7ad5d2ef",
+      "src_lines": "324-330",
+      "verus_lines": "395-401",
+      "verification": ""
+    },
+    {
+      "name": "clear_removes_all_entries",
+      "status": "MATCH",
+      "src_hash": "8a4a519374119890fdb9d10bb338c320",
+      "verus_hash": "8a4a519374119890fdb9d10bb338c320",
+      "src_lines": "314-321",
+      "verus_lines": "385-392",
+      "verification": ""
+    },
+    {
+      "name": "evicts_lru_entry_when_full",
+      "status": "MATCH",
+      "src_hash": "609e32b10fb45be5f8377d24a9c20fee",
+      "verus_hash": "609e32b10fb45be5f8377d24a9c20fee",
+      "src_lines": "274-283",
+      "verus_lines": "345-354",
+      "verification": ""
+    },
+    {
+      "name": "get_refreshes_lru_order",
+      "status": "MATCH",
+      "src_hash": "33b47aa6a23557336ac39ea846a0b6f3",
+      "verus_hash": "33b47aa6a23557336ac39ea846a0b6f3",
+      "src_lines": "286-296",
+      "verus_lines": "357-367",
+      "verification": ""
+    },
+    {
+      "name": "get_returns_none_on_miss",
+      "status": "MATCH",
+      "src_hash": "324dd50da8a7c9dd052112363734e865",
+      "verus_hash": "324dd50da8a7c9dd052112363734e865",
+      "src_lines": "253-256",
+      "verus_lines": "324-327",
+      "verification": ""
+    },
+    {
+      "name": "overwrite_does_not_evict",
+      "status": "MATCH",
+      "src_hash": "d2001be5eb280460be6df5fdc97c178e",
+      "verus_hash": "d2001be5eb280460be6df5fdc97c178e",
+      "src_lines": "333-341",
+      "verus_lines": "404-412",
+      "verification": ""
+    },
+    {
+      "name": "put_overwrites_existing_key",
+      "status": "MATCH",
+      "src_hash": "69c901a1e34cd5bb5ec4ddb32e9a7511",
+      "verus_hash": "69c901a1e34cd5bb5ec4ddb32e9a7511",
+      "src_lines": "266-271",
+      "verus_lines": "337-342",
+      "verification": ""
+    },
+    {
+      "name": "put_then_get",
+      "status": "MATCH",
+      "src_hash": "1a40bd0317547776cdfb862427572486",
+      "verus_hash": "1a40bd0317547776cdfb862427572486",
+      "src_lines": "259-263",
+      "verus_lines": "330-334",
+      "verification": ""
+    },
+    {
+      "name": "remove_deletes_key",
+      "status": "MATCH",
+      "src_hash": "a9e7ed41567d1ca3b63512a04734ac3f",
+      "verus_hash": "a9e7ed41567d1ca3b63512a04734ac3f",
+      "src_lines": "299-304",
+      "verus_lines": "370-375",
+      "verification": ""
+    },
+    {
+      "name": "remove_nonexistent_key_is_noop",
+      "status": "MATCH",
+      "src_hash": "9453d0b7e5e83296896f1e5b11ff9be6",
+      "verus_hash": "9453d0b7e5e83296896f1e5b11ff9be6",
+      "src_lines": "307-311",
+      "verus_lines": "378-382",
+      "verification": ""
+    }
+  ],
+  "structs": [
+    {
+      "name": "Cache",
+      "src_lines": "113-120",
+      "verus_lines": "121-128",
+      "status": "MATCH"
+    },
+    {
+      "name": "CacheEntry",
+      "src_lines": "61-66",
+      "verus_lines": "62-67",
+      "status": "MATCH"
+    },
+    {
+      "name": "CacheGuard",
+      "src_lines": "81-84",
+      "verus_lines": "82-85",
+      "status": "MATCH"
+    }
+  ],
+  "summary": {
+    "functions": {
+      "matched": 18,
+      "mismatched": 0,
+      "missing_in_verus": 0,
+      "extra_in_verus": 0,
+      "total_source": 18,
+      "total_verus": 18
+    },
+    "structs": {
+      "matched": 3,
+      "mismatched": 0
+    },
+    "consistent": true
+  }
+}

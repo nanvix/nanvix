@@ -1,0 +1,30 @@
+/home/ruize/verus/vstd/std_specs/mod.rs:18:pub mod btree;
+/home/ruize/verus/vstd/std_specs/btree.rs:2://! `std::collections::BTreeMap` and `std::collections::BTreeSet`.
+/home/ruize/verus/vstd/std_specs/btree.rs:8://! about the behavior of `BTreeMap` and `BTreeSet` into the ambient
+/home/ruize/verus/vstd/std_specs/btree.rs:10://! `vstd::std_specs::btree::group_btree_axioms`.
+/home/ruize/verus/vstd/std_specs/btree.rs:19:use std::collections::btree_map;
+/home/ruize/verus/vstd/std_specs/btree.rs:20:use std::collections::btree_map::{Keys, Values};
+/home/ruize/verus/vstd/std_specs/btree.rs:21:use std::collections::btree_set;
+/home/ruize/verus/vstd/std_specs/btree.rs:22:use std::collections::{BTreeMap, BTreeSet};
+/home/ruize/verus/vstd/std_specs/btree.rs:26:/// Whether the `Key` type obeys the cmp spec, required for [`BTreeMap`]
+/home/ruize/verus/vstd/std_specs/btree.rs:28:/// This is a workaround to the fact that [`BTreeMap`] "late binds" the trait bounds when needed.
+/home/ruize/verus/vstd/std_specs/btree.rs:29:/// For instance, [`BTreeMap::iter`] does not require `Key: Ord`, even though it yields ordered
+/home/ruize/verus/vstd/std_specs/btree.rs:30:/// items. Rather, it relies on the fact that [`BTreeMap::insert`] does require `Key: Ord`, meaning
+/home/ruize/verus/vstd/std_specs/btree.rs:31:/// no instance of a [`BTreeMap`] will ever have keys that cannot be comparable.
+/home/ruize/verus/vstd/std_specs/btree.rs:58:/// [`std::collections::btree_map::Keys`](https://doc.rust-lang.org/std/collections/btree_map/struct.Keys.html).
+/home/ruize/verus/vstd/std_specs/btree.rs:165:/// [`std::collections::btree_map::Values`](https://doc.rust-lang.org/std/collections/btree_map/struct.Values.html).
+/home/ruize/verus/vstd/std_specs/btree.rs:271:// The `iter` method of a `BTreeMap` returns an iterator of type `btree_map::Iter`,
+/home/ruize/verus/vstd/std_specs/btree.rs:277:pub struct ExMapIter<'a, K, V>(btree_map::Iter<'a, K, V>);
+/home/ruize/verus/vstd/std_specs/btree.rs:283:impl<'a, K: 'a, V: 'a> View for btree_map::Iter<'a, K, V> {
+/home/ruize/verus/vstd/std_specs/btree.rs:286:    uninterp spec fn view(self: &btree_map::Iter<'a, K, V>) -> (int, Seq<(K, V)>);
+/home/ruize/verus/vstd/std_specs/btree.rs:289:pub assume_specification<'a, K: 'a, V: 'a>[ btree_map::Iter::<'a, K, V>::next ](
+/home/ruize/verus/vstd/std_specs/btree.rs:290:    iter: &mut btree_map::Iter<'a, K, V>,
+/home/ruize/verus/vstd/std_specs/btree.rs:320:impl<'a, Key: 'a, Value: 'a> super::super::pervasive::ForLoopGhostIteratorNew for btree_map::Iter<
+/home/ruize/verus/vstd/std_specs/btree.rs:337:    type ExecIter = btree_map::Iter<'a, Key, Value>;
+/home/ruize/verus/vstd/std_specs/btree.rs:343:    open spec fn exec_invariant(&self, exec_iter: &btree_map::Iter<'a, Key, Value>) -> bool {
+/home/ruize/verus/vstd/std_specs/btree.rs:374:        _exec_iter: &btree_map::Iter<'a, Key, Value>,
+/home/ruize/verus/vstd/std_specs/btree.rs:394:pub uninterp spec fn spec_btree_map_iter<'a, Key, Value, A: Allocator + Clone>(
+/home/ruize/verus/vstd/std_specs/btree.rs:395:    m: &'a BTreeMap<Key, Value, A>,
+/home/ruize/verus/vstd/std_specs/btree.rs:396:) -> (r: btree_map::Iter<'a, Key, Value>);
+/home/ruize/verus/vstd/std_specs/btree.rs:398:pub broadcast axiom fn axiom_spec_btree_map_iter<'a, Key, Value, A: Allocator + Clone>(
+/home/ruize/verus/vstd/std_specs/btree.rs:399:    m: &'a BTreeMap<Key, Value, A>,

@@ -1,0 +1,15 @@
+src/libs/cache/src/lib.rs:91:    #[verus_verify(external_body)]
+src/libs/cache/src/lib.rs:141:    #[verus_verify(external_body)]
+src/libs/cache/src/lib.rs:168:    #[verus_verify(external_body)]
+src/libs/cache/src/lib.rs:208:    #[verus_verify(external_body)]
+src/libs/cache/src/lib.rs:254:    #[verus_verify(external_body)]
+src/libs/cache/src/lib.rs:271:    #[verus_verify(external_body)]
+src/libs/cache/src/lib.rs:289:    #[verus_verify(external_body)]
+src/libs/cache/src/lib.spec.rs:20:#[verifier::external_type_specification]
+src/libs/cache/src/lib.spec.rs:21:#[verifier::external_body]
+src/libs/cache/src/lib.spec.rs:25:#[verifier::external_type_specification]
+src/libs/cache/src/lib.spec.rs:30:#[verifier::external_type_specification]
+src/libs/cache/src/lib.spec.rs:36:#[verifier::external_type_specification]
+src/libs/cache/src/lib.spec.rs:37:#[verifier::external_body]
+src/libs/cache/src/lib.spec.rs:171:// All constraints on the view come from the external_body method ensures clauses.
+src/libs/cache/src/lib.spec.rs:182:// CacheGuard is external_body (Verus limitation: &mut in struct fields),
