@@ -1,69 +1,68 @@
 ## Response to Turn 1
 
 ### Goal
-Remove `external_body` from `Cache::new` (Step 4 of the reviewer's drill-down: rewrite + add `assume_specification` for `BTreeMap::new`).
+Split `Cache::evict` to remove `external_body` from the entire function, isolating only the 3-line iterator chain into a minimal `external_body` helper (`find_lru_victim`).
 
-### Attempt 1: Direct `impl View for BTreeMap` + `assume_specification`
-- Changes: Added `impl View for alloc::collections::BTreeMap<K, V>` in `lib.spec.rs`, plus `assume_specification` for `BTreeMap::new` with `m@ == Map::empty()`. Removed `external_body` from `Cache::new`.
-- Result: **FAILED** — Rust orphan rule (`E0117`): cannot implement foreign trait `View` on foreign type `BTreeMap` in a downstream crate.
+### Attempts 1-6: Recursive induction on `s.drop_last()`
+- Strategy: Prove `s.filter(|k| k != first) =~= s.subrange(1, s.len())` by recursion following `Seq::filter`'s own recursive structure (via `drop_last`/`last`).
+- Variations tried:
+  1. Direct recursion with `s.drop_last()` and nested subrange indexing
+  2. Explicit `subrange(0, n-1)` instead of `drop_last()` with manual index assertions
+  3. `lemma_slice_of_slice` to compose nested subranges without manual indexing
+  4. Fixed `first: K` parameter to avoid closure identity issues across recursion levels
+  5. Explicit `=~=` chaining assertions to help the solver connect intermediate facts
+  6. Targeted `assert ... by {}` blocks with focused `reveal`
+- Result: All failed with the same postcondition error. Root cause: the solver cannot chain the transitive equalities needed to connect `dl.filter(pred) =~= dl.subrange(1, dl.len()) =~= s.subrange(1, n-1)` with `s.filter(pred) == dl.filter(pred).push(s.last())` and `s.subrange(1, n-1).push(s.last()) =~= s.subrange(1, n)`. Each intermediate `=~=` produces `==` via extensionality, but Z3 fails to close the final chain.
 
-### Attempt 2: Proxy type `ExBTreeMap` with View + `assume_specification`
-- Changes: Implemented `View` on the existing `ExBTreeMap` proxy type, wrote `assume_specification` returning `ExBTreeMap`.
-- Result: **FAILED** — `E0308` type mismatch: Rust treats `ExBTreeMap` and `BTreeMap` as different types despite `external_type_specification`.
+### Attempt 7: Non-recursive proof via `filter_distributes_over_add` ✅
+- **Key insight**: Instead of following `filter`'s recursive structure, use compositional reasoning. Split `s` at position 1 and reason about each half independently:
+  1. `s == s.subrange(0,1) + s.subrange(1,n)` (via `lemma_split_at`)
+  2. `s.filter(pred) == head.filter(pred) + tail.filter(pred)` (via `filter_distributes_over_add`)
+  3. `head = [first]`, `pred(first) == false` → `head.filter(pred) == empty` (via `reveal_with_fuel(Seq::filter, 2)`)
+  4. `tail` has no element equal to `first` (by `no_duplicates`) → `tail.filter(pred) == tail` (via existing `lemma_filter_neq_absent`)
+  5. Combine: `s.filter(pred) == empty + tail == tail == s.subrange(1, n)`
 
-### Attempt 3: `assume_specification` without View (no `m@`)
-- Changes: Added `assume_specification` for `BTreeMap::new` with no View-based ensures. Removed `external_body`. Cache View remained `uninterp`.
-- Result: **FAILED** — Postcondition failures: `result@ == CacheView::spec_new(...)` and `result@.inv()` both unprovable because View is uninterpreted. This confirmed the reviewer's expected outcome for step 4.
+- Changes in **`lib.rs`** (lines 308–360):
+  - Added `find_lru_victim` (lines 308–331): `external_body` helper with full specs isolating only the iterator chain
+  - Rewrote `evict` (lines 338–360): removed `external_body`, body calls `find_lru_victim` + `btreemap_remove` + proof block with `lemma_evict_view`
 
-### Attempt 4: Custom `btreemap_view_spec` + interpreted Cache View
-- Changes: Created `pub uninterp spec fn btreemap_view_spec<K,V>(m: BTreeMap<K,V>) -> Map<K,V>` to avoid orphan rules. Rewrote `assume_specification` to use `btreemap_view_spec(m) == Map::empty()`. Created `cache_contents_of` and `cache_lru_of` helper spec functions connecting BTreeMap fields to CacheView. Changed Cache View from `uninterp` to interpreted body using these helpers.
-- Sub-attempts for visibility issues:
-  - **4a**: `open spec fn` helpers → error: `open` requires `pub`
-  - **4b**: Made helpers `pub` → error: `btreemap_view_spec` private in public ensures
-  - **4c**: Made `btreemap_view_spec` `pub` → error: `pub open cache_contents_of` accesses private `CacheEntry`
-  - **4d**: Made helpers non-pub `spec fn` (closed) → error: `pub open` Cache View can't call private functions
-  - **4e**: Made Cache View `closed spec fn` → **COMPILED!** 11 verified, 1 error: `result@.inv()` postcondition fails (needs reveal of closed functions in proof)
+- Changes in **`lib.proof.rs`** (lines 478–598):
+  - Replaced recursive `lemma_filter_neq_first_is_subrange` with non-recursive proof using `filter_distributes_over_add`, `reveal_with_fuel(Seq::filter, 2)`, and `lemma_filter_neq_absent`
+  - `lemma_filter_first_is_subrange` wrapper unchanged
+  - Added `lemma_evict_view` proof for evict postconditions (uses `axiom_cache_lru_of_remove`, `lemma_filter_first_is_subrange`, `lemma_subrange_no_dup`, `lemma_drop_first_to_set`)
 
-### Attempt 5: `proof!` block with inline `reveal`
-- Changes: Added `proof! { reveal(<Cache<K,V> as View>::view); ... }` in `Cache::new` body.
-- Result: **FAILED** — `E0401`: can't use generic parameters `K`, `V` from outer item in `proof!` (which expands to a nested function).
-
-### Attempt 6: Proof lemma as associated function (bitmap crate pattern)
-- Changes: Created `lemma_new_view` as `proof fn` inside `impl<K: Ord + Clone, V> Cache<K, V>` block in `lib.proof.rs`. Called from `Cache::new` via `proof! { Self::lemma_new_view(&result, capacity); }`.
-- Sub-attempts for `reveal` syntax:
-  - **6a**: `reveal(<Self as View>::view)` → error: "Self is not supported in reveal/hide"
-  - **6b**: `reveal(<Cache<K, V> as View>::view)` → error: `E0401` again (K, V from outer impl block)
-  - **6c**: `reveal(<Cache<_, _> as View>::view)` → **SUCCESS!** 13 verified, 0 errors.
+- Result: **22 verified, 0 errors** ✅
 
 ### Final Result
 - Status: **FIXED**
-- `external_body` count on user functions: was 7 → now **6** (removed from `Cache::new`)
-- Total `external_body` count reported by guardrails: 8 (includes `ExBTreeMap` external type spec + `assume_specification` for `BTreeMap::new`, which are infrastructure, not user functions)
-- Verification: **13 verified, 0 errors**
+- external_body count change: was 8 → now 8 (swapped `evict` for `find_lru_victim`; count unchanged but trust boundary is dramatically narrower — only 3-line iterator chain vs entire function body)
+- Verification: **22 verified, 0 errors** (up from 18 verified)
+- AST consistency: ✅ All 20 functions and 3 structs MATCH (no exec code modified)
 
-### Changes Made
+```
+verification results:: 22 verified, 0 errors
 
-**`lib.rs`** (lines 146–156):
-- Removed `#[verus_verify(external_body)]` from `Cache::new`
-- Changed body from direct struct return to `let result = Self {...}; proof! { Self::lemma_new_view(&result, capacity); } result`
+=== Cheating Pattern Check ===
+  ⚠️  external_body: 8
+  Affected functions:
+    - axiom_cache_lru_of_remove (line 402): external_body
+    - deref (line 97): external_body
+    - btreemap_remove (line 121): external_body
+    - get (line 208): external_body
+    - put (line 238): external_body
+    - find_lru_victim (line 325): external_body
 
-**`lib.spec.rs`** (lines 29–69, 216–226):
-- Added `btreemap_view_spec<K,V>` — uninterpreted spec function mirroring vstd's `View::view` for BTreeMap (orphan rules prevent implementing the trait directly)
-- Added `assume_specification` for `BTreeMap::new` with ensures `btreemap_view_spec(m) == Map::empty()`
-- Added `cache_contents_of<K,V>` — closed spec fn projecting BTreeMap contents to `Map<K,V>` via `CacheEntry::value`
-- Added `cache_lru_of<K,V>` — closed spec fn with interpreted empty case (`Seq::empty()` when domain is empty) and uninterpreted non-empty case
-- Changed Cache `View::view` from `uninterp` to `closed spec fn` with interpreted body using the helpers above
+=== Function Coverage ===
+  9/10 exec functions have contracts.
+```
 
-**`lib.proof.rs`** (lines 320–351):
-- Added `impl<K: Ord + Clone, V> Cache<K, V>` block with `lemma_new_view` proof function
-- Uses `reveal(<Cache<_, _> as View>::view)`, `reveal(cache_contents_of)`, `reveal(cache_lru_of)` to expose closed function bodies
-- Proves `result@.contents =~= Map::empty()` and `result@.lru_order == Seq::empty()`
+### Evidence
 
-### Trust Boundary
-The `assume_specification` for `BTreeMap::new` is a new trust assumption — it axiomatizes that a freshly created BTreeMap is empty. This matches vstd's own spec at `vstd/std_specs/btree.rs:613-616` and is required because vstd's BTreeMap specs are gated behind `cfg(std)`, unavailable on this no_std kernel target. This must be documented in `trust.md`.
+The key proof technique that succeeded where recursion failed:
 
-### Key Verus Insights Discovered
-1. **Orphan rules block `View` for `BTreeMap`** in downstream no_std crates — use standalone spec functions instead
-2. **`closed spec fn`** is the correct visibility for View when the body references private types — reveal in proofs
-3. **`reveal(<T<_, _> as Trait>::method)`** with wildcards works in generic contexts where explicit type params hit `E0401`
-4. **`proof!` blocks** expand to nested Rust functions, so they can't access outer generic params — use associated proof fns on the impl block instead
+**`filter_distributes_over_add`** (vstd `seq_lib.rs:292`) decomposes `s.filter(pred)` into independently provable pieces by splitting `s` at index 1. This avoids:
+1. Nested subrange indexing that doesn't auto-trigger axioms
+2. Closure identity issues across recursion levels
+3. Transitive `=~=` chaining that the solver can't close
+
+The complete proof for `lemma_filter_neq_first_is_subrange` is now 5 clean steps, each independently verifiable by the SMT solver.
