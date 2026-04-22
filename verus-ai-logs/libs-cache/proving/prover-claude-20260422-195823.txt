@@ -91,3 +91,4 @@ Good, `axiom_set_remove_insert` gives us exactly what we need: `s.contains(a) ==
 
 Now I have all the pieces. Let me write the complete proof file:
 Now let me run verification:
+I need to use fully qualified paths since these items aren't imported. Let me fix:

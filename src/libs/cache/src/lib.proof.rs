@@ -20,7 +20,7 @@ proof fn lemma_push_preserves_no_dup<K>(s: Seq<K>, elem: K)
     ensures
         s.push(elem).no_duplicates(),
 {
-    broadcast use group_seq_properties;
+    broadcast use vstd::seq_lib::group_seq_properties;
 
     let pushed = s.push(elem);
     assert forall |i: int, j: int|
@@ -42,7 +42,7 @@ proof fn lemma_filter_preserves_no_dup<K>(s: Seq<K>, pred: spec_fn(K) -> bool)
         s.filter(pred).no_duplicates(),
     decreases s.len(),
 {
-    broadcast use group_seq_properties;
+    broadcast use vstd::seq_lib::group_seq_properties;
     reveal(Seq::filter);
 
     if s.len() > 0 {
@@ -67,7 +67,7 @@ proof fn lemma_filter_neq_to_set<K>(s: Seq<K>, key: K)
     ensures
         s.filter(|k: K| k != key).to_set() =~= s.to_set().remove(key),
 {
-    broadcast use group_seq_properties, group_set_axioms;
+    broadcast use vstd::seq_lib::group_seq_properties, vstd::set::group_set_axioms;
 
     let pred = |k: K| k != key;
     let filtered = s.filter(pred);
@@ -97,7 +97,7 @@ proof fn lemma_filter_neq_len<K>(s: Seq<K>, key: K)
     ensures
         s.filter(|k: K| k != key).len() == s.len() - 1,
 {
-    broadcast use group_set_axioms, seq_to_set_is_finite;
+    broadcast use vstd::set::group_set_axioms, vstd::seq_lib::seq_to_set_is_finite;
 
     let pred = |k: K| k != key;
     let filtered = s.filter(pred);
@@ -138,7 +138,7 @@ proof fn lemma_drop_first_to_set<K>(s: Seq<K>)
     ensures
         s.subrange(1, s.len() as int).to_set() =~= s.to_set().remove(s[0]),
 {
-    broadcast use group_seq_properties, group_set_axioms;
+    broadcast use vstd::seq_lib::group_seq_properties, vstd::set::group_set_axioms;
 
     let sub = s.subrange(1, s.len() as int);
 
@@ -146,7 +146,7 @@ proof fn lemma_drop_first_to_set<K>(s: Seq<K>)
         sub.to_set().contains(x) implies s.to_set().remove(s[0]).contains(x)
     by {
         assert(sub.contains(x));
-        lemma_seq_subrange_elements(s, 1int, s.len() as int, x);
+        vstd::seq_lib::lemma_seq_subrange_elements(s, 1int, s.len() as int, x);
         let idx = choose |idx: int| 1 <= idx < s.len() && s[idx] == x;
         assert(s.contains(x));
         assert(x != s[0]);
@@ -158,7 +158,7 @@ proof fn lemma_drop_first_to_set<K>(s: Seq<K>)
         assert(s.contains(x) && x != s[0]);
         let idx = choose |idx: int| 0 <= idx < s.len() && s[idx] == x;
         assert(idx >= 1int);
-        lemma_seq_subrange_elements(s, 1int, s.len() as int, x);
+        vstd::seq_lib::lemma_seq_subrange_elements(s, 1int, s.len() as int, x);
     };
 }
 
@@ -171,7 +171,8 @@ proof fn lemma_spec_new_inv<K, V>(capacity: nat)
     ensures
         CacheView::<K, V>::spec_new(capacity).inv(),
 {
-    broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
+        vstd::seq_lib::seq_to_set_is_finite;
 
     let cv = CacheView::<K, V>::spec_new(capacity);
     assert(cv.contents.dom() =~= Set::<K>::empty());
@@ -185,7 +186,8 @@ proof fn lemma_spec_get_inv<K, V>(cache: CacheView<K, V>, key: K)
     ensures
         cache.spec_get(key).0.inv(),
 {
-    broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
+        vstd::seq_lib::seq_to_set_is_finite;
 
     if cache.contents.dom().contains(key) {
         let result = cache.spec_get(key).0;
@@ -205,7 +207,7 @@ proof fn lemma_spec_get_inv<K, V>(cache: CacheView<K, V>, key: K)
 
         // 2. to_set: mru.to_set() == contents.dom()
         lemma_filter_neq_to_set(cache.lru_order, key);
-        Seq::lemma_push_to_set_commute(filtered, key);
+        filtered.lemma_push_to_set_commute(key);
         assert(cache.lru_order.to_set().contains(key));
         assert(cache.lru_order.to_set().remove(key).insert(key) =~= cache.lru_order.to_set());
 
@@ -222,7 +224,8 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
     ensures
         cache.spec_put(key, value).inv(),
 {
-    broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
+        vstd::seq_lib::seq_to_set_is_finite;
 
     if cache.capacity == 0 {
         // Zero-capacity: no-op.
@@ -245,7 +248,7 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
 
         // to_set
         lemma_filter_neq_to_set(cache.lru_order, key);
-        Seq::lemma_push_to_set_commute(filtered, key);
+        filtered.lemma_push_to_set_commute(key);
         assert(cache.lru_order.to_set().contains(key));
         assert(cache.lru_order.to_set().remove(key).insert(key) =~= cache.lru_order.to_set());
         assert(cache.contents.insert(key, value).dom() =~= cache.contents.dom());
@@ -272,7 +275,7 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
         // key not in sub
         assert(!sub.contains(key)) by {
             if sub.contains(key) {
-                lemma_seq_subrange_elements(
+                vstd::seq_lib::lemma_seq_subrange_elements(
                     cache.lru_order, 1int, cache.lru_order.len() as int, key,
                 );
                 assert(cache.lru_order.contains(key));
@@ -285,7 +288,7 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
 
         // to_set: new_lru.to_set() == result.contents.dom()
         lemma_drop_first_to_set(cache.lru_order);
-        Seq::lemma_push_to_set_commute(sub, key);
+        sub.lemma_push_to_set_commute(key);
         assert(!cache.contents.dom().remove(victim).contains(key));
         assert(new_lru.to_set() =~= result.contents.dom());
 
@@ -307,7 +310,7 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
         lemma_push_preserves_no_dup(cache.lru_order, key);
 
         // to_set
-        Seq::lemma_push_to_set_commute(cache.lru_order, key);
+        cache.lru_order.lemma_push_to_set_commute(key);
     }
 }
 
@@ -318,7 +321,8 @@ proof fn lemma_spec_remove_inv<K, V>(cache: CacheView<K, V>, key: K)
     ensures
         cache.spec_remove(key).inv(),
 {
-    broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
+        vstd::seq_lib::seq_to_set_is_finite;
 
     if cache.contents.dom().contains(key) {
         let result = cache.spec_remove(key);
@@ -347,7 +351,8 @@ proof fn lemma_spec_clear_inv<K, V>(cache: CacheView<K, V>)
     ensures
         cache.spec_clear().inv(),
 {
-    broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
+        vstd::seq_lib::seq_to_set_is_finite;
 
     let cv = cache.spec_clear();
     assert(cv.contents.dom() =~= Set::<K>::empty());
