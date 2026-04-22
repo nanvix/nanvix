@@ -15,3 +15,6 @@ Body-removed source: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/n
 PHASE: caller-analysis
 Module: cache
 ============================================================
+[2026-04-22 18:54:47] [PROVER] Running caller-analysis...
+[2026-04-22 18:54:47] [COPILOT] Running: copilot --model claude-opus-4.6 ...
+[2026-04-22 18:56:32]   ↳ prover done in 1m44s (exit=0)
