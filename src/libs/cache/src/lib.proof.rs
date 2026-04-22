@@ -336,7 +336,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
             vstd::seq_lib::seq_to_set_is_finite;
 
-        reveal(<Cache<K, V> as View>::view);
+        reveal(<Cache<_, _> as View>::view);
         reveal(cache_contents_of);
         reveal(cache_lru_of);
 
