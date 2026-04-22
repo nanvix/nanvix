@@ -130,3 +130,6 @@ Here’s the main pushback:
 
 Overall: the plan is mostly solid, but its central assumption about why `remove()` must stay inline is likely false. The easiest win is probably **shrinking `remove()` to a single lemma call**, then minimizing `lemma_remove_view` in dependency-aware batches.
 Excellent feedback. The rubber duck caught that `lemma_remove_view` already contains the same 3 reveals internally, so the inline reveals may be redundant. Let me try the aggressive minimization first.
+Reveals were redundant — removed them, block is now 3 lines. 18 verified, 0 errors.
+
+Now let me minimize assertions in the proof file. I'll start with the field-by-field assertions in `lemma_remove_view`.

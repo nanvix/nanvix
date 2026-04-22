@@ -469,14 +469,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             // Contents: new contents == old contents with key removed
             assert(cache_contents_of(new_self.entries) =~= cache_contents_of(old_entries).remove(key));
 
-            // LRU: from axiom, new lru == old.filter(neq key) == filtered
-            // Capacity: unchanged (from requires)
-
-            // Field-by-field =~= with spec_remove result
-            assert(new_self@.contents =~= old_view.contents.remove(key));
-            assert(new_self@.lru_order =~= filtered);
-            assert(new_self@.capacity == old_view.capacity);
-
             // Prove inv on the new state
             lemma_filter_preserves_no_dup(old_view.lru_order, pred);
             lemma_filter_neq_to_set(old_view.lru_order, key);
@@ -486,25 +478,15 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             assert(new_self@ =~= old_view.spec_remove(key));
         } else {
             // Key absent — spec_remove returns old_view unchanged
-
-            // btreemap_view_spec unchanged (remove of absent key is identity on Map)
             assert(cache_contents_of(old_entries).dom() =~= btreemap_view_spec(old_entries).dom());
             assert(btreemap_view_spec(new_self.entries) == btreemap_view_spec(old_entries));
-
-            // Contents unchanged
             assert(cache_contents_of(new_self.entries) =~= cache_contents_of(old_entries));
 
             // LRU: filter identity for absent key
-            // From inv + branch: key not in lru_order
             assert(!old_view.lru_order.contains(key));
             lemma_filter_neq_absent(old_view.lru_order, key);
-            // Now filter is identity, combined with axiom: lru unchanged
             assert(cache_lru_of(new_self.entries) == cache_lru_of(old_entries));
 
-            assert(new_self@.contents =~= old_view.contents);
-            assert(new_self@.lru_order =~= old_view.lru_order);
-            assert(new_self@.capacity == old_view.capacity);
-            assert(new_self@ =~= old_view);
             assert(new_self@ =~= old_view.spec_remove(key));
         }
     }
