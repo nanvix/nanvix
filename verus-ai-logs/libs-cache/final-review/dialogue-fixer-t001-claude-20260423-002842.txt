@@ -107,3 +107,4 @@ Baseline confirms: 18 verified, 0 errors, external_body=8. Now implementing the 
 Now add the proof lemmas to lib.proof.rs:
 Now let's run verification:
 Let me see the full error:
+The proof fails because the solver can't automatically chain nested subrange indexing. Let me rewrite with more explicit intermediate steps:

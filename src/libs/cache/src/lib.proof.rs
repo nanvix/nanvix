@@ -493,36 +493,44 @@ proof fn lemma_filter_first_is_subrange<K>(s: Seq<K>)
     if s.len() == 1 {
         // Single element: filter removes it, subrange(1,1) is empty.
     } else {
-        let rest = s.drop_last();
-        let last = s.last();
+        let n = s.len() as int;
+        // Use subrange directly (avoids needing to unfold drop_last).
+        let sub = s.subrange(0, n - 1);
 
-        // rest has no duplicates (it's a prefix of s).
-        assert(rest.no_duplicates()) by {
-            assert forall |i: int, j: int|
-                0 <= i < rest.len() && 0 <= j < rest.len() && i != j
-            implies rest[i] != rest[j] by {
-                assert(rest[i] == s[i]);
-                assert(rest[j] == s[j]);
-            }
+        // sub has no duplicates (prefix of s).
+        lemma_subrange_no_dup(s, 0, n - 1);
+
+        // sub[0] == s[0] by subrange indexing (0+0 = 0).
+
+        // IH: sub.filter(pred) =~= sub.subrange(1, sub.len())
+        lemma_filter_first_is_subrange(sub);
+
+        // s.last() != first (no dups in s, different indices).
+        assert(s.last() != first);
+
+        // Connect s.drop_last() to sub so filter definition can unfold.
+        assert(s.drop_last() =~= sub);
+
+        // Final step: sub.subrange(1, sub.len()).push(s.last()) =~= s.subrange(1, n)
+        // Prove element-wise for the nested subrange composition.
+        let lhs_prefix = sub.subrange(1, sub.len() as int);
+        let rhs = s.subrange(1, n);
+
+        assert(lhs_prefix.push(s.last()) =~= rhs) by {
+            assert(lhs_prefix.push(s.last()).len() == rhs.len());
+            assert forall |i: int| 0 <= i < rhs.len()
+                implies lhs_prefix.push(s.last())[i] == rhs[i]
+            by {
+                if i < lhs_prefix.len() {
+                    // lhs_prefix[i] = sub.subrange(1, sub.len())[i] = sub[1+i]
+                    // sub[1+i] = s.subrange(0, n-1)[1+i] = s[1+i]
+                    // rhs[i] = s.subrange(1, n)[i] = s[1+i]
+                    assert(lhs_prefix[i] == sub[1 + i]);
+                    assert(sub[1 + i] == s[1 + i]);
+                    assert(rhs[i] == s[1 + i]);
+                }
+            };
         };
-
-        // rest[0] == s[0]
-        assert(rest[0] == first);
-
-        // IH: rest.filter(pred) =~= rest.subrange(1, rest.len())
-        lemma_filter_first_is_subrange(rest);
-
-        // last != first (since s has no dups and indices differ).
-        assert(last != first) by {
-            assert(s[s.len() as int - 1] == last);
-            assert(s[0] == first);
-        };
-
-        // filter(s, pred) = filter(rest, pred).push(last)  (since pred(last) = true)
-        //                  = rest.subrange(1, rest.len()).push(last)
-        //                  =~= s.subrange(1, s.len())
-        assert(rest.subrange(1, rest.len() as int).push(last)
-               =~= s.subrange(1, s.len() as int));
     }
 }
 
