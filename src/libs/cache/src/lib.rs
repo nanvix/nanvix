@@ -144,11 +144,25 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             result@.inv(),
     )]
     pub const fn new(capacity: usize) -> Self {
-        Self {
+        let result = Self {
             entries: BTreeMap::new(),
             counter: 0,
             capacity,
+        };
+        proof! {
+            use vstd::set::group_set_axioms;
+            use vstd::map::group_map_axioms;
+            use vstd::seq_lib::seq_to_set_is_finite;
+            reveal(Cache::view);
+            reveal(cache_contents_of);
+            reveal(cache_lru_of);
+            // btreemap_view_spec(result.entries) == Map::empty() (from assume_specification)
+            // cache_contents_of: Map::new(|k| false, ...) has empty domain ≡ Map::empty()
+            assert(result@.contents =~= Map::<K, V>::empty());
+            assert(result@.lru_order == Seq::<K>::empty());
+            assert(result@.lru_order.to_set() =~= Set::<K>::empty());
         }
+        result
     }
 
     ///
