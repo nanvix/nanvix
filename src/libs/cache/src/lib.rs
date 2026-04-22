@@ -143,9 +143,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         ensures
             result@ == CacheView::<K, V>::spec_new(capacity as nat),
             result@.inv(),
-            result@.contents == Map::<K, V>::empty(),
-            result@.capacity == capacity as nat,
-            result@.lru_order == Seq::<K>::empty(),
     )]
     pub const fn new(capacity: usize) -> Self {
         Self {
@@ -176,9 +173,8 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             // Hit: key is present.
             old(self)@.contents.dom().contains(*key) ==> {
                 &&& result is Some
+                &&& result->Some_0@ == old(self)@.spec_get(*key).1.unwrap()
                 &&& self@ == old(self)@.spec_get(*key).0
-                &&& self@.contents == old(self)@.contents
-                &&& self@.capacity == old(self)@.capacity
                 &&& self@.inv()
             },
             // Miss: key is absent.
@@ -216,14 +212,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         ensures
             self@ == old(self)@.spec_put(key, value),
             self@.inv(),
-            self@.capacity == old(self)@.capacity,
-            // Put-get round-trip: if capacity > 0, the key is now present.
-            old(self)@.capacity > 0 ==> {
-                &&& self@.contents.dom().contains(key)
-                &&& self@.contents[key] == value
-            },
-            // Zero-capacity no-op.
-            old(self)@.capacity == 0 ==> self@ == old(self)@,
     )]
     pub fn put(&mut self, key: K, value: V) {
         // A zero-capacity cache cannot store entries.
@@ -270,11 +258,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         ensures
             self@ == old(self)@.spec_remove(*key),
             self@.inv(),
-            self@.capacity == old(self)@.capacity,
-            // Key is no longer present.
-            !self@.contents.dom().contains(*key),
-            // Key absent: no-op.
-            !old(self)@.contents.dom().contains(*key) ==> self@ == old(self)@,
     )]
     pub fn remove(&mut self, key: &K) {
         self.entries.remove(key);
@@ -292,9 +275,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         ensures
             self@ == old(self)@.spec_clear(),
             self@.inv(),
-            self@.contents == Map::<K, V>::empty(),
-            self@.lru_order == Seq::<K>::empty(),
-            self@.capacity == old(self)@.capacity,
     )]
     pub fn clear(&mut self) {
         self.entries.clear();

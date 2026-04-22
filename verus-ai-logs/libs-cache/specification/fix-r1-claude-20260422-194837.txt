@@ -115,3 +115,7 @@ Now try DerefMut:
 Now let me spike this to see if CacheGuard View + Deref/DerefMut compile:
 As expected, `deref_mut` fails — Verus doesn't support `&mut V` return type. `deref` works fine. Let me remove the annotations from DerefMut:
 Now verify the spike with just View + Deref:
+5 verified, 0 errors. CacheGuard View + Deref work. Now 7/8 functions have contracts (only `deref_mut` missing — confirmed Verus limitation). 
+
+Now let me strengthen `get` ensures and prune all subsumed clauses. I'll do all edits at once:
+Now verify:
