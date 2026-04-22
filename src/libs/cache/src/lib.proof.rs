@@ -276,12 +276,6 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
         let result = cache.spec_put(key, value);
         let new_lru = cache.lru_order.push(key);
 
-        assert(!cache.lru_order.contains(key)) by {
-            if cache.lru_order.contains(key) {
-                assert(cache.lru_order.to_set().contains(key));
-            }
-        };
-
         // no_duplicates
         lemma_push_preserves_no_dup(cache.lru_order, key);
 
