@@ -163,3 +163,4 @@ Now add the external type specifications to spec.rs:
 Also need to remove `#[verus_verify]` from the Cache struct since we're now using external_type_specification for its field types. Wait, actually, since BTreeMap is declared as external_type_specification, Verus should now be able to see Cache with `#[verus_verify]`. Let me try:
 Need to add `external_body` to both BTreeMap and CacheGuard specs. Let me fix:
 Down to 1 error. Need `reject_recursive_types` on K for CacheView:
+Need to add `reject_recursive_types(K)` on the Cache struct too:

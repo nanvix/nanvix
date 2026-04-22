@@ -112,6 +112,7 @@ impl<V> DerefMut for CacheGuard<'_, V> {
 /// counter to mark the entry as recently used.
 ///
 #[verus_verify]
+#[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types(K))]
 pub struct Cache<K, V> {
     /// Cached entries.
     entries: BTreeMap<K, CacheEntry<V>>,
