@@ -163,14 +163,6 @@ pub assume_specification<Key, Value>[ alloc::collections::BTreeMap::<Key, Value>
         m@ == Map::<Key, Value>::empty(),
 ;
 
-// --- decreases ---
-pub broadcast axiom fn axiom_btree_map_decreases<Key, Value>(
-    m: alloc::collections::BTreeMap<Key, Value>,
-)
-    ensures
-        #[trigger] (decreases_to!(m => m@)),
-;
-
 //==================================================================================================
 // Broadcast group
 //==================================================================================================
@@ -178,7 +170,6 @@ pub broadcast axiom fn axiom_btree_map_decreases<Key, Value>(
 pub broadcast group group_btree_axioms {
     axiom_btree_map_view_finite_dom,
     axiom_spec_btree_map_len,
-    axiom_btree_map_decreases,
 }
 
 } // verus!

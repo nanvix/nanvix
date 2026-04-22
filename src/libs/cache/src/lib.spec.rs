@@ -49,18 +49,6 @@ spec fn cache_lru_of<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V
 
 uninterp spec fn cache_lru_of_nonempty<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Seq<K>;
 
-// CacheEntry is a private internal type.
-#[verifier::reject_recursive_types(V)]
-#[verifier::external_type_specification]
-struct ExCacheEntry<V>(crate::CacheEntry<V>);
-
-// CacheGuard wraps &mut V; Verus cannot handle &mut in struct fields,
-// so we declare it as an external type.
-#[verifier::reject_recursive_types(V)]
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExCacheGuard<'a, V>(crate::CacheGuard<'a, V>);
-
 //==================================================================================================
 // CacheView - Abstract Specification Model
 //==================================================================================================
