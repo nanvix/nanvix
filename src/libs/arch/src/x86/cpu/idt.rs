@@ -38,6 +38,12 @@ pub struct Idte {
 // `Idte` must be 8 bytes long. This must match the hardware specification.
 ::static_assert::assert_eq_size!(Idte, 8);
 
+/// Required alignment for an IDT entry.
+pub const IDTE_ALIGNMENT: ::sys::mm::Alignment = ::sys::mm::Alignment::Align8;
+
+// Ensure `Idte` alignment matches `IDTE_ALIGNMENT`.
+::static_assert::assert_eq_align!(Idte, IDTE_ALIGNMENT as usize);
+
 impl Idte {
     /// Creates a new IDT entry.
     pub fn new(handler: u32, selector: u16, flags: Flags) -> Self {
