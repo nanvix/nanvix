@@ -26,3 +26,6 @@ Module: cache
 PHASE: view-design
 Module: cache
 ============================================================
+[2026-04-22 18:56:32] [PROVER] Running view-design...
+[2026-04-22 18:56:32] [COPILOT] Running: copilot --model claude-opus-4.6 ...
+[2026-04-22 19:03:19]   ↳ prover done in 6m47s (exit=0)
