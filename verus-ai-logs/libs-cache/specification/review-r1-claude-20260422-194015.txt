@@ -1,0 +1,370 @@
+=== Copilot Session ===
+Timestamp: 2026-04-22T19:48:37.618887
+Model: claude-opus-4.6
+Session: 3a21c9cd-cf1a-4819-905d-a04355257436
+Duration: 501.6s
+Exit code: 0
+
+=== Prompt ===
+You are adding formal specifications to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.rs using Verus, in-place.
+Spec and proof files sit alongside the source file.
+
+
+
+Caller analysis: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/caller_analysis.md
+View design: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/view_design.md
+Property analysis: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/property_analysis.md
+Source file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.rs
+Spec file:  /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.spec.rs
+Proof file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.proof.rs
+Verus command: make verify-cache
+
+== SKILLS ==
+
+Follow strictly (auto-loaded from .github/skills/):
+- **spec-design** — MUST follow: primary methodology for this phase
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns
+- **spec-completeness** — SHOULD follow: determinism-based completeness check (best-effort)
+- **proving-guide** — reference: plan invariants, admit non-trivial proofs
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai-lru-0422/scripts/
+- Source directory: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai-lru-0422/vstd/
+
+== SOURCE INTEGRITY ==
+
+Follow the **verus-constraints** skill strictly — especially the escalation
+ladder and "Claiming Verus Limitations" section. Key rules:
+- Verify exec code as-is; add spec annotations in-place.
+- Never cfg-gate exec code — this is cheating.
+- If unsupported: isolate and test, then follow the escalation ladder.
+- Minimize trust: only genuinely unverifiable items in /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/trust.md.
+
+== SUB-AGENT POLICY ==
+
+Sub-agents are allowed. Use ONLY these models:
+  - **claude-opus-4.6** (preferred default) — for all tasks.
+  - **gpt-5.3-codex** — for all tasks.
+When diversity is needed (e.g. independent parallel analysis), use a different model per sub-agent.
+
+== TASK ==
+
+Review the specification for completeness, correctness, and quality.
+Follow the **review-methodology** skill.
+
+**Scope**: Evaluate *spec quality* — whether specs correctly and completely
+capture the module's contract. Proofs are NOT the focus yet:
+- `admit()` in proof bodies is **expected and acceptable**.
+- `#[verifier::external_body]` on exec functions, `assume(...)`, or cfg-gated
+  exec code are **NOT acceptable** — every function body must be visible to
+  Verus. Many functions with `external_body` = red flag (likely over-generalized).
+
+Use **2 sub-agents** (one per model from the sub-agent policy) to independently
+review the specification. Each sub-agent should:
+
+1. **Caller coverage**: Read /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/caller_analysis.md and check each caller
+   expectation against the spec. Every public function must have contracts.
+2. **Independent assessment**: Read the source code and identify important
+   properties the caller analysis missed, or specs that are wrong/misleading.
+3. **Spec quality**: Evaluate per the **spec-design** skill.
+   Flag tautological, subsumed, or bloated specs for removal.
+4. **Spec completeness**: Follow the **spec-completeness** skill to test
+   whether each public function's spec uniquely determines the output.
+   Report any nondeterministic (incomplete) specs.
+5. **Bug awareness**: Check whether any code looks fundamentally incorrect
+   (not just hard to spec). If suspected bugs exist, verify they are recorded
+   in /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/bugs.md. If not, note them in the review.
+
+Save each sub-agent's raw review next to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/specification/review_r1.md with the model name
+appended (e.g., if /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/specification/review_r1.md is `review_r1.md`, save as `review_r1.claude.md`).
+Then consolidate into a single review — keep the strongest critiques, deduplicate,
+and resolve disagreements.
+
+== OUTPUT ==
+
+Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/specification/review_r1.md:
+```markdown
+# Specification Review: cache
+
+## Checklist
+### Specification
+- [ ] Every in-scope exec function has requires/ensures
+- [ ] No tautological ensures (e.g., `Err(_) => true`)
+- [ ] No subsumed ensures (derivable from inv() + other ensures)
+- [ ] Error paths have meaningful ensures (match style: Ok => ..., Err => ...)
+- [ ] No assume_specification for workspace-internal code
+- [ ] vstd searched before any assume_specification
+- [ ] Specs written for the caller (usable directly in caller proofs)
+
+## Determinism Check
+| Function | Result (COMPLETE/INCOMPLETE) | Under-constrained aspect |
+Only list functions with issues — omit COMPLETE ones.
+
+## Caller Coverage Issues
+| Function | Status (MISSING_SPEC/WRONG/TAUTOLOGICAL/SUBSUMED) | Notes |
+Only list functions with problems — omit OK ones.
+
+## Missing Properties
+- [properties identified that should be added]
+
+## Specs to Remove
+- [specs that add no verification value, with reason]
+
+## Issues (highest priority first)
+- ...
+
+## Result: PASS / FAIL
+```
+
+== RESULT ==
+
+Be strict: PASS only if ALL checklist items are checked. Any unchecked item is FAIL.
+
+=== Output ===
+Now let me check for the bugs file and the specification directory, and read the rest of the property analysis.
+Good — I have all the context. Now let me launch two independent review sub-agents.
+Both review sub-agents are running in the background. I'll wait for them to complete before consolidating.
+### 1. Caller Coverage Issues
+
+| Function | Status | Notes |
+|---|---|---|
+| `Cache::new` | OK | Covers empty state + capacity. |
+| `Cache::get` | MISSING_SPEC | Hit/miss split is good, but returned `CacheGuard` is under-specified (no link to key/value). |
+| `Cache::put` | OK | Transition via `spec_put` captures insert/overwrite/evict semantics. |
+| `Cache::remove` | OK | Transition + idempotent no-op covered. |
+| `Cache::clear` | OK | Clear-to-empty + capacity preserved covered. |
+| `CacheGuard::deref` | MISSING_SPEC | No Verus contract; guard consistency expectation not formalized. |
+| `CacheGuard::deref_mut` | MISSING_SPEC | No Verus contract; mutation-through-guard behavior unmodeled. |
+
+---
+
+### 2. Spec Quality Assessment
+
+- **`new`**: strong enough; several ensures are **subsumed** by `result@ == spec_new(...)`.
+- **`get`**: requires are reasonable; frame on miss is good. Hit path lacks semantic guarantee for returned guard target/value.
+- **`put`**: strong transition spec; useful caller-facing facts included. `capacity preserved` and `capacity==0 ==> self unchanged` are derivable from `spec_put` (possible bloat).
+- **`remove`**: strong transition spec; “key absent => no-op” and “key not present after” derivable from `spec_remove`.
+- **`clear`**: strong but redundant clauses derivable from `spec_clear`.
+- No tautological clauses found.
+- Error/None path handling exists where applicable.
+
+---
+
+### 3. Determinism Analysis
+
+| Function | Result |
+|---|---|
+| `Cache::new` | COMPLETE |
+| `Cache::get` | INCOMPLETE (`result` on hit under-constrained: only `Some`, not what it points to) |
+| `Cache::put` | COMPLETE (`()` + exact post-state) |
+| `Cache::remove` | COMPLETE |
+| `Cache::clear` | COMPLETE |
+| `CacheGuard::deref` | INCOMPLETE (no spec) |
+| `CacheGuard::deref_mut` | INCOMPLETE (no spec) |
+
+---
+
+### 4. Missing Properties
+
+- Guard/value correspondence: `get(k)` hit should specify guard refers to `contents[k]`.
+- Post-`deref_mut` effect on cache abstract state is unmodeled.
+- No explicit spec-level handling/assumption for `counter: u64` overflow and LRU ordering impact.
+
+---
+
+### 5. Specs to Remove
+
+Remove/trim **subsumed** ensures to reduce noise:
+- `new`: `inv`, `contents empty`, `capacity`, `lru_order empty` (all implied by `spec_new` equality).
+- `put`: `capacity preserved`, `capacity==0 ==> self==old` (implied by `spec_put`); keep round-trip only if caller convenience is desired.
+- `remove`: no-present/no-op clauses implied by `spec_remove`.
+- `clear`: emptiness/order/capacity clauses implied by `spec_clear`.
+
+---
+
+### 6. Issues (highest priority first)
+
+1. Add contracts for `CacheGuard::deref` and `deref_mut` (caller-visible API gap).
+2. Strengthen `get` hit ensures to relate returned guard to queried key/value.
+3. Prune subsumed ensures to avoid bloated specs and maintenance burden.
+4. Decide/document overflow policy for `counter` (trusted assumption vs explicit behavior).
+
+---
+
+### 7. Suspected Bugs
+
+- **Potential**: `counter` overflow can break strict recency ordering (or panic in checked builds), which may violate intended LRU semantics over very long runs.  
+- No immediate functional bug otherwise stands out in the shown implementation.
+
+
+GPT review complete. Let me read it while waiting for the Claude review.
+Good. Waiting for the Claude review to complete.
+I found **no direct `cache::Cache` / `cache::CacheGuard` use** in the listed Nanvix files.  
+The only definitions are in the cache crate itself:
+
+- `src/libs/cache/src/lib.rs:145-250` (`Cache::new/get/put`)
+- `src/libs/cache/src/lib.rs:73-99` (`CacheGuard` + `Deref`/`DerefMut`)
+
+Per file:
+
+- `src/libs/nanvix/src/lib.rs:86-96` — **no direct use**; only re-exports `sandbox_cache`
+- `src/libs/nanvix-terminal/src/single_process.rs:155-183` — uses `SimpleSandboxCache::new()` and `.get()`, not `cache::Cache`
+- `src/libs/nanvix-terminal/src/multi_process.rs:145-170` — uses `SandboxCache::new()` and `.get()`, not `cache::Cache`
+- `src/libs/nanvix-http/src/server.rs:183-254` — uses `SimpleSandboxCache` / `SandboxCache`, and a local `cache_guard` from `tokio::sync::Mutex`, not `CacheGuard`
+- `src/libs/nanvix-http/src/client/single_process.rs:115-175` — uses `sandbox_cache.lock().await.get(...)`, not `cache::Cache`
+- `src/libs/nanvix-http/src/client/multi_process.rs:115-170` — same
+- `src/libs/nanvix-sandbox/src/uninitialized.rs` — no direct use
+- `src/libs/nanvix-sandbox-cache/src/lib.rs` — no direct use
+- `src/libs/nanvix-sandbox/src/control_plane_acceptor.rs:462-465` — `self.accept_task.get()` is `Option::get`-style access, not `CacheGuard`
+- `src/libs/nanvix-registry/src/lib.rs` — no direct use
+- `src/libs/nanvix-sandbox/src/simple_cache/mod.rs` — no direct use of `cache::Cache`
+- `src/tests/test-kernel/src/tls.rs` — no direct use
+- `src/utils/nanvixd/src/main.rs` — no direct use
+
+`CacheGuard` behavior in the cache crate:
+- `Deref` returns `&V` (`lib.rs:87-93`)
+- `DerefMut` returns `&mut V` (`lib.rs:95-99`)
+- callers would read/write the guarded value through normal `*guard` / field access
+
+Assumptions encoded by the cache API:
+- `get()` hits return `Some(CacheGuard)` and bump LRU state; misses return `None` (`lib.rs:185-194`)
+- `put()` updates in place if key exists, evicts LRU at capacity, and is a no-op at capacity 0 (`lib.rs:223-250`)
+Here is the review:
+
+---
+
+## Spec Review: `cache` crate (bounded LRU cache)
+
+### 1. Caller Coverage Issues
+
+| Function | Status | Notes |
+|---|---|---|
+| `new` | **SUBSUMED** | `result@ == spec_new(…)` already determines everything; 4 additional clauses are redundant since `spec_new` is `open spec` |
+| `get` | **MISSING_SPEC** | Return value is unconstrained on hit — only `result is Some`, but no connection to the stored value. `CacheGuard` has no `View` and `Deref`/`DerefMut` have no specs. Caller cannot prove anything about the data received. |
+| `put` | **SUBSUMED** | `self@ == spec_put(…)` fully determines post-state; round-trip and zero-cap clauses are derivable from the `open spec` definition |
+| `remove` | **SUBSUMED** | `self@ == spec_remove(…)` suffices; remaining 4 clauses are derivable |
+| `clear` | **SUBSUMED** | `self@ == spec_clear()` suffices; remaining 4 clauses are derivable |
+| `evict` | OK | Internal function, well-specified |
+| `Deref for CacheGuard` | **MISSING_SPEC** | No `#[verus_spec]` at all. This is the only way callers extract values from `get`. |
+| `DerefMut for CacheGuard` | **MISSING_SPEC** | Same as above; callers cannot prove mutation effects on the cached value |
+
+### 2. Spec Quality Assessment
+
+**`new`**
+- Requires: none (correct — any `usize` is valid)
+- Ensures: strong enough but bloated. The `== spec_new(…)` clause is the canonical spec; the other 4 just unfold it.
+- Recommendation: Keep only `result@ == spec_new(…)` and `result@.inv()`.
+
+**`get`**
+- Requires: `inv()` — appropriate.
+- Ensures (hit): state transition via `spec_get` is good, but **return value is opaque**. `result is Some` tells the caller nothing about the value inside the `CacheGuard`. The `spec_get` helper returns `(CacheView, Option<V>)` but the `Option<V>` is never connected to the result.
+- Ensures (miss): `self@ == old(self)@` is a clean frame condition. Good.
+- Hit-path subsumed clauses: `self@.contents == old(self)@.contents`, `self@.capacity == old(self)@.capacity`, `self@.inv()` — all derivable from `== spec_get(…).0` plus the `open spec` definition.
+- **Critical gap**: No `CacheGuard::view()` or `Deref` spec, so the hit-path value is completely unspecified.
+
+**`put`**
+- Requires: `inv()` — appropriate.
+- Ensures: `== spec_put(…)` is canonical. The round-trip and zero-cap clauses are conveniences derivable from the open definition.
+- No return value to constrain (returns `()`). Good.
+- Frame: capacity preserved is subsumed.
+
+**`remove`**
+- Clean. No issues beyond subsumption.
+
+**`clear`**
+- Clean. No issues beyond subsumption.
+
+**`evict`**
+- Private, well-specified. The `requires contents.dom().len() > 0` is appropriate.
+- Post-state is fully determined.
+
+**`inv()` quality**: The 4th conjunct (`lru_order.len() == contents.dom().len()`) is derivable from conjuncts 2+3 (`no_duplicates` + `to_set() == dom()`), but serves as a useful convenience lemma trigger. Acceptable.
+
+### 3. Determinism Analysis
+
+| Function | Status | Detail |
+|---|---|---|
+| `new` | COMPLETE | `spec_new` fully determines `result@` |
+| `get` (state) | COMPLETE | `spec_get` fully determines `self@` |
+| `get` (return) | **INCOMPLETE** | On hit: only `result is Some`. The value inside `CacheGuard` is entirely unconstrained — no View, no Deref spec. Caller cannot distinguish a correct implementation from one that returns arbitrary data. |
+| `put` | COMPLETE | `spec_put` fully determines `self@`; returns `()` |
+| `remove` | COMPLETE | `spec_remove` fully determines `self@`; returns `()` |
+| `clear` | COMPLETE | `spec_clear` fully determines `self@`; returns `()` |
+| `evict` | COMPLETE | Fully determined |
+
+### 4. Missing Properties
+
+1. **Get-value correctness** — The single most important property of a cache ("you get back what you put in") is unverifiable because `CacheGuard` is opaque. Need either:
+   - A `View` impl for `CacheGuard` mapping to `V`, plus a spec on `Deref`
+   - Or an ensures clause directly on `get` that ties the guard's value to `old(self)@.contents[*key]`
+
+2. **Guard mutation effect** — If a caller mutates via `DerefMut`, the cache entry should reflect that mutation. Currently unspecified.
+
+3. **Counter overflow** — `self.counter` is `u64`, incremented on every `get`-hit and `put`. After 2⁶⁴ operations the counter wraps (release) or panics (debug). The spec has no precondition guarding against this. While practically unreachable, a rigorous spec would either add a ghost counter to `CacheView` with a `requires counter < u64::MAX` or document the trust assumption.
+
+4. **Capacity = 0 on `get`** — Works correctly (always misses), but not explicitly called out. Minor.
+
+5. **Size observability** — No `len()` or `is_empty()` function. Callers can reason about `self@.contents.dom().len()` but have no exec-level accessor.
+
+### 5. Specs to Remove
+
+| Clause | Location | Reason |
+|---|---|---|
+| `result@.inv()` | `new` | Derivable from `result@ == spec_new(…)` + `lemma_spec_new_inv` |
+| `result@.contents == Map::empty()` | `new` | Unfolding of `spec_new` (which is `open spec`) |
+| `result@.capacity == capacity as nat` | `new` | Same |
+| `result@.lru_order == Seq::empty()` | `new` | Same |
+| `self@.contents == old(self)@.contents` | `get` (hit) | Derivable from `spec_get` definition |
+| `self@.capacity == old(self)@.capacity` | `get` (hit) | Same |
+| `self@.inv()` | `get` (hit) | Derivable from `spec_get` + `lemma_spec_get_inv` |
+| `self@.inv()` | `put` | Derivable from `spec_put` + lemma |
+| `self@.capacity == old(self)@.capacity` | `put` | Derivable from `spec_put` definition |
+| Put-get round-trip block | `put` | Derivable from `spec_put` definition |
+| Zero-capacity no-op block | `put` | Derivable from `spec_put` definition |
+| `self@.inv()` | `remove` | Derivable from `spec_remove` + lemma |
+| `self@.capacity == old(self)@.capacity` | `remove` | Same |
+| `!self@.contents.dom().contains(*key)` | `remove` | Derivable from `spec_remove` definition |
+| No-op block | `remove` | Same |
+| `self@.inv()` | `clear` | Derivable from `spec_clear` + lemma |
+| `self@.contents == Map::empty()` | `clear` | Derivable from `spec_clear` definition |
+| `self@.lru_order == Seq::empty()` | `clear` | Same |
+| `self@.capacity == old(self)@.capacity` | `clear` | Same |
+
+**Caveat**: While all of the above are logically subsumed, keeping `self@.inv()` on each function is a reasonable ergonomic choice — it lets callers avoid invoking lemmas. The field-level unfoldings (`contents ==`, `capacity ==`, etc.) add pure bloat.
+
+### 6. Issues (highest priority first)
+
+1. **🔴 CRITICAL — `get` return value is unspecified.** The ensures says `result is Some` on hit but never constrains *what* the `CacheGuard` provides. A conforming implementation could return any `V`. This defeats the fundamental purpose of the cache. **Fix**: Add a `View` for `CacheGuard` (or a ghost field), and add `result matches Some(g) ==> g@ == old(self)@.contents[*key]` to the ensures.
+
+2. **🔴 CRITICAL — `CacheGuard::Deref`/`DerefMut` have no specs.** Even if `get` constrained the guard, callers still couldn't verify dereference behavior. **Fix**: Add `#[verus_spec]` to `Deref::deref` and `DerefMut::deref_mut` for `CacheGuard`.
+
+3. **🟡 MODERATE — Pervasive subsumed clauses.** Every function has 3-5 ensures clauses that are strict unfoldings of the `== spec_*()` clause. This bloats the spec surface, increases maintenance burden, and risks divergence if the spec functions are updated. **Fix**: Remove field-level unfoldings; keep only `== spec_*(…)` + `inv()`.
+
+4. **🟡 MODERATE — Counter overflow unaddressed.** `u64` counter is incremented without bounds checking. Not a practical bug but a verification gap. **Fix**: Document in trust.md or add a ghost precondition.
+
+5. **🟢 MINOR — `inv()` has a redundant conjunct.** `lru_order.len() == contents.dom().len()` follows from `no_duplicates()` + `to_set() == dom()`. Acceptable as a convenience trigger for SMT.
+
+### 7. Suspected Bugs
+
+**No functional bugs identified.** The exec code correctly implements LRU semantics:
+- `evict` uses `min_by_key(|e| e.last_used)` — correct LRU selection.
+- `put` checks for existing key before eviction — correct overwrite-vs-insert distinction.
+- `spec_put` eviction branch is only reached when `!contents.dom().contains(key)`, so `key ≠ lru_order[0]` is guaranteed — no self-eviction risk.
+- `get` returns a `CacheGuard` borrowing from the entry — lifetime is sound.
+
+The counter overflow (item 4 above) is a theoretical correctness concern but not a practical bug.
+Both reviews complete. Let me now consolidate and write the output files.
+Now let me write the consolidated review.
+Review complete. **Result: FAIL** — two critical issues:
+
+1. **`get` return value is unspecified** — on hit, only `result is Some` with no link to the cached value. The fundamental cache contract ("get back what you put in") is unverifiable.
+
+2. **`CacheGuard::deref`/`deref_mut` have no specs** — these are the only way callers extract values, breaking the spec chain.
+
+Additionally, all functions carry 3–5 subsumed ensures clauses that merely unfold the canonical `== spec_*(…)` clause and should be pruned.
+
+All three review files saved to `verus-ai-logs/libs-cache/specification/`.
+=== End ===
