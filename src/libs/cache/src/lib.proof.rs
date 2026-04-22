@@ -175,6 +175,8 @@ proof fn lemma_spec_new_inv<K, V>(capacity: nat)
         vstd::seq_lib::seq_to_set_is_finite;
 
     let cv = CacheView::<K, V>::spec_new(capacity);
+    assert(cv.contents.dom() =~= Set::<K>::empty());
+    assert(cv.lru_order.to_set() =~= Set::<K>::empty());
 }
 
 /// `spec_get` preserves the invariant.
@@ -248,7 +250,6 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
         filtered.lemma_push_to_set_commute(key);
         assert(cache.lru_order.to_set().contains(key));
         assert(cache.lru_order.to_set().remove(key).insert(key) =~= cache.lru_order.to_set());
-        assert(cache.contents.insert(key, value).dom() =~= cache.contents.dom());
 
         // len
         lemma_filter_neq_len(cache.lru_order, key);
@@ -351,6 +352,8 @@ proof fn lemma_spec_clear_inv<K, V>(cache: CacheView<K, V>)
         vstd::seq_lib::seq_to_set_is_finite;
 
     let cv = cache.spec_clear();
+    assert(cv.contents.dom() =~= Set::<K>::empty());
+    assert(cv.lru_order.to_set() =~= Set::<K>::empty());
 }
 
 } // verus!
