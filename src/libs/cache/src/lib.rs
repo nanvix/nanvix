@@ -104,6 +104,24 @@ impl<V> DerefMut for CacheGuard<'_, V> {
 }
 
 //==================================================================================================
+// Stdlib Wrappers
+//==================================================================================================
+
+/// Stdlib wrapper for `BTreeMap::remove`. Needed because `BTreeMap::remove`'s full
+/// generic signature (`Borrow<Q>`, `Allocator`) cannot be expressed with
+/// `btreemap_view_spec`. This wrapper fixes Q=K and A=Global.
+#[verus_verify(external_body)]
+#[verus_spec(ret =>
+    ensures
+        btreemap_view_spec(*m) == btreemap_view_spec(*old(m)).remove(*k),
+        ret.is_some() <==> btreemap_view_spec(*old(m)).dom().contains(*k),
+        ret.is_some() ==> ret == Some(btreemap_view_spec(*old(m))[*k]),
+)]
+fn btreemap_remove<K: Ord, V>(m: &mut BTreeMap<K, V>, k: &K) -> Option<V> {
+    m.remove(k)
+}
+
+//==================================================================================================
 // Cache
 //==================================================================================================
 
@@ -262,7 +280,10 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             self@.inv(),
     )]
     pub fn remove(&mut self, key: &K) {
-        self.entries.remove(key);
+        // VERUS REWRITE: originally self.entries.remove(key);
+        // Wrapper needed because BTreeMap::remove's full generic signature
+        // (Borrow<Q>, Allocator) cannot be expressed with btreemap_view_spec.
+        btreemap_remove(&mut self.entries, key);
     }
 
     ///

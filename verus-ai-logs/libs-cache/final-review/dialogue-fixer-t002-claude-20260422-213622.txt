@@ -109,3 +109,9 @@ Now I have full context. Let me plan my approach for removing `external_body` fr
 Let me start with **Attempt 1**: add the infrastructure and see what errors arise.
 Now remove `external_body` from `Cache::remove`:
 Now run verification to see what errors we get:
+The error says the signature needs A (allocator) and Q (borrow key) type parameters. Since the full generic signature requires complex `Borrow<Q>` infrastructure that can't use `btreemap_view_spec` directly, I'll use the **stdlib wrapper** pattern from the escalation ladder.
+
+Let me revert the assume_specification for remove and use a wrapper instead:
+Now add the stdlib wrapper and modify Cache::remove. Let me find the right insertion point:
+Now update Cache::remove to use the wrapper:
+Now let's run verification to see what errors arise without any proof block:
