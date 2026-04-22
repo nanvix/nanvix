@@ -1,8 +1,9 @@
 === Copilot Session ===
-Timestamp: 2026-04-22T23:02:00.144732
+Timestamp: 2026-04-22T23:16:10.882946
 Model: claude-opus-4.6
-Session: new
-Command: copilot --allow-all --model claude-opus-4.6 --output-format...
+Session: 7b3724e6-f7d3-40fa-9719-093f758fa1d0
+Duration: 850.7s
+Exit code: 0
 
 === Prompt ===
 You are proving the specifications for /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.rs using Verus.
@@ -83,7 +84,7 @@ confirm the full crate passes with no cross-module conflicts.
 
 
 
-=== Output (streaming) ===
+=== Output ===
 Now let me run the current verification to see the baseline:
 Now I have a clear picture. The verification already passes with 0 errors. The issue is `external_body` annotations that need to be minimized. Most are genuinely unverifiable (Verus limitations), but `clear` can be body-verified since `BTreeMap::clear` has an `assume_specification`. Let me implement the proof.
 Now add the `lemma_clear_view` proof function to the proof file:
@@ -91,3 +92,23 @@ Verification passes (18 verified, 0 errors). `clear` is now body-verified. Let m
 No vstd specs exist for `iter`, `min_by_key`, `contains_key`, or `get_mut` on BTreeMap. Verifying `put` would require a new `contains_key` wrapper, a new `cache_lru_of_insert` axiom, and a counter invariant — adding 2 new trust items to remove 1. Not beneficial. The remaining `external_body` items are genuinely unverifiable. Let me update trust.md and finalize.
 Now let me write the updated trust.md:
 Now let me run the AST consistency check and verify the build compiles:
+18 verified, 0 errors. Now let me verify the normal build still works:
+All 10 unit tests and 1 doc-test pass. Let me also run the AST consistency check:
+All exec code matches — zero mismatches. Let me do a final summary review:
+Here's the final summary:
+
+**Verification result: 18 verified, 0 errors, 0 admit()**
+
+**Changes made:**
+1. **Removed `external_body` from `Cache::clear`** — added a `lemma_clear_view` proof function in `lib.proof.rs` and inline `proof!` block in `lib.rs`. The proof leverages the existing `BTreeMap::clear` `assume_specification` to connect the concrete cleared state to the abstract `spec_clear` transition.
+
+2. **Updated `trust.md`** — removed stale entries for `Cache::new`, `Cache::remove`, and `Cache::clear` (all now body-verified), corrected line numbers, added `btreemap_remove` and `axiom_cache_lru_of_remove` entries, and added a "Body-Verified Functions" section.
+
+**Trust minimization:** Reduced from 9 → 8 `external_body` items. The remaining 8 are all genuinely unverifiable:
+- 2 external type specs (BTreeMap, CacheGuard)
+- 1 stdlib wrapper (`btreemap_remove`)
+- 1 axiom (`axiom_cache_lru_of_remove`)
+- 4 functions using `&mut` return types or iterator chains (`deref`, `get`, `put`, `evict`)
+
+**AST consistency:** All 19 functions and 3 structs match — zero exec code modifications.
+=== End ===
