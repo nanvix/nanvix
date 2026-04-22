@@ -2,8 +2,8 @@
   "module_name": "cache",
   "log_name": "libs-cache",
   "source_path": "src/libs/cache/src/lib.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 4,
+  "current_phase": "integrity-audit",
+  "current_phase_idx": 5,
   "phase_results": {
     "caller-analysis": {
       "phase": "caller-analysis",
@@ -44,6 +44,16 @@
       "verdict": "FAIL",
       "review_file": null,
       "duration_s": 2375.6
+    },
+    "proving": {
+      "phase": "proving",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "PASS",
+      "review_file": null,
+      "duration_s": 1119.2
     }
   },
   "prover_session_id": "de08bc99-3b66-4135-809a-53a80d6c0303",
@@ -54,6 +64,7 @@
     "caller-analysis": "bfe20d254ad71ba1b97b8c1d61a9e9057eed8fcc",
     "view-design": "905b1ea9b44c963a314bf6dea72be9da118f61a5",
     "property-analysis": "f2bcfe5646039c6c280894c3fc4d335bc2f0c664",
-    "specification": "1cd84e6547d21e850b3be2720dbc61cdda985cb1"
+    "specification": "1cd84e6547d21e850b3be2720dbc61cdda985cb1",
+    "proving": "5ad9cc932da29328734ede4310a3012a2e0cbb28"
   }
 }
