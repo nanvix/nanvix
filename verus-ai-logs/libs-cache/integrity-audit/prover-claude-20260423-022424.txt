@@ -1,8 +1,9 @@
 === Copilot Session ===
-Timestamp: 2026-04-23T02:24:24.451388
+Timestamp: 2026-04-23T02:38:05.465331
 Model: claude-opus-4.6
-Session: new
-Command: copilot --allow-all --model claude-opus-4.6 --output-format...
+Session: 6c9324db-3465-44a5-8145-57e50bda8441
+Duration: 821.0s
+Exit code: 0
 
 === Prompt ===
 You are performing an integrity audit for cache. The goal is to
@@ -107,7 +108,7 @@ Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-
 ## Result: PASS / BLOCKER
 ```
 
-=== Output (streaming) ===
+=== Output ===
 Now let me run the initial cheating detection and AST consistency checks in parallel.
 Good. Now I have the baseline:
 - **Cheating counts**: 0 admit, 0 assume, 8 external_body, 0 trusted, 0 no_decreases, 0 cfg_gate
@@ -223,3 +224,20 @@ Verification passes (0 errors). The `CHEATING_DETECTED` status is expected — i
 The `make verify` stops on the first crate (`bitmap`) due to pre-existing `CHEATING_DETECTED` status — unrelated to cache. My changes were limited to trust.md (documentation only). The cache verification itself passes with 0 errors.
 
 Let me do a final confirmation that the full verification pipeline works for cache specifically:
+Verification passes with 0 errors. Let me review the final state of all deliverables.
+All deliverables are in place. Here's the audit summary:
+
+## Integrity Audit: cache — Complete
+
+**Cheating counts (unchanged):** 0 admit, 0 assume, **8 external_body**, 0 trusted, 0 no_decreases, 0 cfg-gate, 5 assume_specification
+
+**Items eliminated:** 0 — all 8 external_body items survived challenge via the verus-constraints escalation ladder. Root causes: `&mut` return types (get_mut), `Borrow<Q>` generics (remove), iterator chain (min_by_key), external types (BTreeMap, CacheGuard), and uninterpreted function axiom.
+
+**AST consistency:** 15 matched, 3 mismatched (all pre-approved deviations or justified VERUS REWRITEs), 0 missing, 2 extra (stdlib wrapper + extracted helper).
+
+**Verification:** 0 errors. **Result: PASS**
+
+Reports written to:
+- `verus-ai-logs/libs-cache/integrity-audit/fix_report.md`
+- `verus-ai-logs/libs-cache/trust.md` (updated vstd version reference)
+=== End ===

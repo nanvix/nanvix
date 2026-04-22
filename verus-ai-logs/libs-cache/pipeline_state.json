@@ -5,7 +5,7 @@
   "current_phase": "integrity-audit",
   "current_phase_idx": 4,
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "6c9324db-3465-44a5-8145-57e50bda8441",
   "completed": false,
   "base_branch": "verus-ai/cache",
   "verus_branch": "verus-ai/cache",
