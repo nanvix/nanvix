@@ -7,7 +7,7 @@
 
 mod context;
 mod exception;
-mod idt;
+pub(crate) mod idt;
 mod interrupt;
 
 #[cfg(feature = "smp")]

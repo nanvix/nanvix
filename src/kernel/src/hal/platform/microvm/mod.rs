@@ -19,6 +19,7 @@ use crate::{
     hal::{
         arch::x86::{
             self,
+            cpu::idt,
             mem::gdt,
             Arch,
         },
@@ -55,7 +56,11 @@ use ::alloc::{
     vec,
 };
 use ::arch::{
-    cpu::pic,
+    cpu::{
+        idt::Idte,
+        idtr::Idtr,
+        pic,
+    },
     mem,
     mem::gdt::Gdte,
 };
@@ -109,6 +114,12 @@ static mut FRAME_ALLOCATOR_STORAGE: [u8; config::kernel::MEMORY_SIZE
 
 /// GDT backing storage, allocated in BSS.
 static mut GDT_STORAGE: [Gdte; gdt::GDT_NUM_ENTRIES] = gdt::DEFAULT_ENTRIES;
+
+/// IDT backing storage, allocated in BSS.
+static mut IDT_STORAGE: [Idte; idt::IDT_LEN] = unsafe { core::mem::zeroed() };
+
+/// IDTR backing storage, allocated in BSS.
+static mut IDTR_STORAGE: Idtr = unsafe { core::mem::zeroed() };
 
 // Ensure the number of kpool pages is a multiple of 8 so the bitmap has no padding bits.
 ::static_assert::assert_eq!(
@@ -698,6 +709,16 @@ pub fn init(
     // This is the only call to set_backing_storage() in the microvm init path.
     unsafe {
         gdt::Gdt::set_backing_storage(GDT_STORAGE.as_mut_ptr())?;
+    }
+
+    // Install IDT and IDTR backing storage. On microvm these live in BSS-allocated area.
+    // Safety: IDT_STORAGE is a static array of Idte entries with repr(C, align(8)),
+    // so the pointer is properly aligned and valid for IDT_LEN entries.
+    // IDTR_STORAGE is a static Idtr with repr(C, packed).
+    // The static lifetime guarantees the storage outlives all IDT usage.
+    // This is the only call to Idt::set_backing_storage() in the microvm init path.
+    unsafe {
+        idt::Idt::set_backing_storage(IDT_STORAGE.as_mut_ptr(), &raw mut IDTR_STORAGE)?;
     }
 
     let arch = x86::init(ioports, ioaddresses, madt)?;
