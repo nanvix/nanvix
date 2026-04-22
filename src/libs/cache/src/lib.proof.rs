@@ -317,5 +317,36 @@ proof fn lemma_spec_clear_inv<K, V>(cache: CacheView<K, V>)
     assert(cv.lru_order.to_set() =~= Set::<K>::empty());
 }
 
+//==================================================================================================
+// Cache::new Verification Lemma
+//==================================================================================================
+
+impl<K: Ord + Clone, V> Cache<K, V> {
+    /// Proves that a freshly constructed Cache matches CacheView::spec_new.
+    /// Called from Cache::new after removing external_body.
+    proof fn lemma_new_view(result: &Self, capacity: usize)
+        requires
+            btreemap_view_spec(result.entries) == Map::<K, CacheEntry<V>>::empty(),
+            result.counter == 0u64,
+            result.capacity == capacity,
+        ensures
+            result@ == CacheView::<K, V>::spec_new(capacity as nat),
+            result@.inv(),
+    {
+        broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
+            vstd::seq_lib::seq_to_set_is_finite;
+
+        reveal(<Self as View>::view);
+        reveal(cache_contents_of);
+        reveal(cache_lru_of);
+
+        // cache_contents_of(entries) = Map::new(|k| false, ...) =~= Map::empty()
+        assert(result@.contents =~= Map::<K, V>::empty());
+        // cache_lru_of(entries): btreemap_view_spec empty => dom len 0 => Seq::empty()
+        assert(result@.lru_order == Seq::<K>::empty());
+        assert(result@.lru_order.to_set() =~= Set::<K>::empty());
+    }
+}
+
 } // verus!
 

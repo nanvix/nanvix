@@ -150,15 +150,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             capacity,
         };
         proof! {
-            use vstd::set::group_set_axioms;
-            use vstd::map::group_map_axioms;
-            use vstd::seq_lib::seq_to_set_is_finite;
-            reveal(<Cache<K, V> as View>::view);
-            reveal(cache_contents_of);
-            reveal(cache_lru_of);
-            assert(result@.contents =~= Map::<K, V>::empty());
-            assert(result@.lru_order == Seq::<K>::empty());
-            assert(result@.lru_order.to_set() =~= Set::<K>::empty());
+            Self::lemma_new_view(&result, capacity);
         }
         result
     }

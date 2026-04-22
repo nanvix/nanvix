@@ -116,3 +116,5 @@ The `pub open` view can't call private functions. Let me make the Cache View `cl
 `cache_lru_of_nonempty` doesn't need to be `pub` — it's only used internally:
 Progress! Compiles and 11 verified, but 1 error remains: `result@.inv()` postcondition fails. The `closed` Cache::view needs revealing. Let me add a proof block to `Cache::new`:
 Let me fix the `reveal` syntax for trait methods:
+The bitmap crate pattern shows: define lemmas as `impl Self` in the proof file, call via `Self::lemma_...()` from `proof!`. Let me follow that pattern.
+Now add the lemma to the proof file:

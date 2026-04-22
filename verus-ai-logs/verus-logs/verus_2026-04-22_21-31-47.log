@@ -1,0 +1,26 @@
+Timestamp: 2026-04-22_21-31-47
+Mode: cargo
+Crate: cache
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=8
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking cache v0.12.457 (/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache)
+error: Self is not supported in reveal/hide, use the type name instead, or <T as X> for functions in trait impls
+   --> src/libs/cache/src/lib.proof.rs:339:9
+    |
+339 |         reveal(<Self as View>::view);
+    |         ^^^^^^
+
+error: could not compile `cache` (lib) due to 1 previous error
