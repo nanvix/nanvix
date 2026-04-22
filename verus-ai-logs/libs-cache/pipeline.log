@@ -36,3 +36,6 @@ Module: cache
 PHASE: property-analysis
 Module: cache
 ============================================================
+[2026-04-22 19:03:20] [PROVER] Running property-analysis...
+[2026-04-22 19:03:20] [COPILOT] Running: copilot --model claude-opus-4.6 ...
+[2026-04-22 19:13:47]   ↳ prover done in 10m27s (exit=0)
