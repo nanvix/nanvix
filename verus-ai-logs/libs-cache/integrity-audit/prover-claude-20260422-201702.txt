@@ -1,8 +1,9 @@
 === Copilot Session ===
-Timestamp: 2026-04-22T20:17:02.248289
+Timestamp: 2026-04-22T20:31:24.791322
 Model: claude-opus-4.6
-Session: new
-Command: copilot --allow-all --model claude-opus-4.6 --output-format...
+Session: 4515a91e-9299-459e-8749-733edceb5b60
+Duration: 862.5s
+Exit code: 0
 
 === Prompt ===
 You are performing an integrity audit for cache. The goal is to
@@ -107,7 +108,7 @@ Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-
 ## Result: PASS / BLOCKER
 ```
 
-=== Output (streaming) ===
+=== Output ===
 Now let me run the initial cheating detection and AST consistency check in parallel:
 Good. I have the baseline:
 - **Cheating**: external_body=9, everything else=0
@@ -174,3 +175,26 @@ Your core conclusion — all 9 items remain, no code changes — is correct. The
 The critique validated my conclusions and suggested better framing. Let me now produce the deliverables:
 Now update trust.md with corrected information:
 Now run the verification gate:
+All three crates verify successfully (exit code 0). The `CHEATING_DETECTED` status is expected — it flags the external_body items we've documented.
+
+Let me do a final review of the trust.md to make sure it's clean:
+Everything looks good. Let me store the key finding as a memory for future tasks:
+## Audit Complete
+
+**Result: PASS** — All 9 `external_body` items are genuinely unverifiable.
+
+### Summary
+| Metric | Value |
+|--------|-------|
+| external_body | 9 → 9 (none eliminable) |
+| admit/assume/trusted | 0 |
+| AST consistency | 18/18 MATCH |
+| Verification | All 3 crates pass (exit 0) |
+
+### Key Finding
+The previous trust.md incorrectly stated "BTreeMap has no vstd specifications." vstd **does** have BTreeMap specs in `std_specs/btree.rs`, but they're gated behind `cfg(all(feature = "alloc", feature = "std"))` and internally import from `std::collections` — structurally incompatible with the `no_std` kernel target. The trust.md root cause was corrected.
+
+### Deliverables
+- **fix_report.md**: Written to `verus-ai-logs/libs-cache/integrity-audit/`
+- **trust.md**: Updated with precise root cause and corrected classifications
+=== End ===
