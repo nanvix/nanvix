@@ -108,6 +108,20 @@ proof fn lemma_filter_neq_len<K>(s: Seq<K>, key: K)
     filtered.unique_seq_to_set();
 }
 
+/// Filtering by != key on a sequence not containing key is identity.
+proof fn lemma_filter_neq_absent<K>(s: Seq<K>, key: K)
+    requires
+        !s.contains(key),
+    ensures
+        s.filter(|k: K| k != key) =~= s,
+    decreases s.len(),
+{
+    reveal(Seq::filter);
+    if s.len() > 0 {
+        lemma_filter_neq_absent(s.drop_last(), key);
+    }
+}
+
 /// Subrange of a no-duplicate sequence is no-duplicate.
 proof fn lemma_subrange_no_dup<K>(s: Seq<K>, start: int, stop: int)
     requires
@@ -409,25 +423,54 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             lru_order: cache_lru_of(old_entries),
         };
 
-        // Apply LRU axiom
+        // Apply LRU axiom: cache_lru_of(new) == cache_lru_of(old).filter(|k| k != key)
         axiom_cache_lru_of_remove(old_entries, new_self.entries, key);
 
-        // Prove contents equality via extensional equality
-        assert(cache_contents_of(new_self.entries) =~= cache_contents_of(old_entries).remove(key));
-
-        // Prove LRU properties
         if old_view.contents.dom().contains(key) {
-            // Key was present: lru_order changes to filtered version
+            // Key was present — spec_remove returns modified view
             let pred = |k: K| k != key;
             let filtered = old_view.lru_order.filter(pred);
 
+            // Contents: new contents == old contents with key removed
+            assert(cache_contents_of(new_self.entries) =~= cache_contents_of(old_entries).remove(key));
+
+            // LRU: from axiom, new lru == old.filter(neq key) == filtered
+            // Capacity: unchanged (from requires)
+
+            // Field-by-field =~= with spec_remove result
+            assert(new_self@.contents =~= old_view.contents.remove(key));
+            assert(new_self@.lru_order =~= filtered);
+            assert(new_self@.capacity == old_view.capacity);
+
+            // Prove inv on the new state
             lemma_filter_preserves_no_dup(old_view.lru_order, pred);
             lemma_filter_neq_to_set(old_view.lru_order, key);
             lemma_filter_neq_len(old_view.lru_order, key);
             filtered.unique_seq_to_set();
+
+            assert(new_self@ =~= old_view.spec_remove(key));
         } else {
-            // Key absent: no-op, lru_order unchanged
-            // filter(!=key) on a seq not containing key is identity
+            // Key absent — spec_remove returns old_view unchanged
+
+            // btreemap_view_spec unchanged (remove of absent key is identity on Map)
+            assert(cache_contents_of(old_entries).dom() =~= btreemap_view_spec(old_entries).dom());
+            assert(btreemap_view_spec(new_self.entries) == btreemap_view_spec(old_entries));
+
+            // Contents unchanged
+            assert(cache_contents_of(new_self.entries) =~= cache_contents_of(old_entries));
+
+            // LRU: filter identity for absent key
+            // From inv + branch: key not in lru_order
+            assert(!old_view.lru_order.contains(key));
+            lemma_filter_neq_absent(old_view.lru_order, key);
+            // Now filter is identity, combined with axiom: lru unchanged
+            assert(cache_lru_of(new_self.entries) == cache_lru_of(old_entries));
+
+            assert(new_self@.contents =~= old_view.contents);
+            assert(new_self@.lru_order =~= old_view.lru_order);
+            assert(new_self@.capacity == old_view.capacity);
+            assert(new_self@ =~= old_view);
+            assert(new_self@ =~= old_view.spec_remove(key));
         }
     }
 }

@@ -124,3 +124,9 @@ Let me add the axiom and a lemma. First, the axiom in lib.proof.rs:
 Now update Cache::remove to use ghost snapshot and call the lemma:
 The `let ghost` syntax is for `verus!` blocks, not attribute-based syntax. Let me check how other crates handle ghost snapshots in attribute-based exec code:
 `old(self)` works inside `proof!` blocks (bitmap crate confirms). Let me use that directly instead of ghost variables:
+Good — the structure compiles and `old(self)` works in `proof!`. The lemma has postcondition failures. The key-absent case has no proof code, and the contents/LRU proofs need more help. Let me add a filter-identity lemma and strengthen the proof:
+Now let me also check the spec for `spec_remove` to understand the exact postcondition:
+Let me check CacheView for ext_equal:
+Now I understand the issues. I need: (1) a filter identity lemma for key-absent case, (2) explicit field-by-field assertions, and (3) extensional equality on CacheView. Let me update the proof:
+Now let me add the filter identity lemma and rewrite `lemma_remove_view`:
+Now replace the `lemma_remove_view` body with proper proofs for both branches:
