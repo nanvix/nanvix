@@ -32,6 +32,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
+#![cfg_attr(verus_keep_ghost, feature(allocator_api))]
 
 //==================================================================================================
 // Imports

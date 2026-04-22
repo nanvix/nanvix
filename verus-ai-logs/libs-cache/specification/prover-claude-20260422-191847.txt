@@ -158,3 +158,6 @@ Verus doesn't support `&mut` in struct fields. Let me remove `#[verus_verify]` f
 Remove CacheGuard View from spec.rs and adjust get's spec to not reference guard view:
 Now adjust the `get` spec to remove the guard@ reference:
 Now let me retry verification:
+Good progress — I need external type specifications. Let me add them to the spec file:
+Now add the external type specifications to spec.rs:
+Also need to remove `#[verus_verify]` from the Cache struct since we're now using external_type_specification for its field types. Wait, actually, since BTreeMap is declared as external_type_specification, Verus should now be able to see Cache with `#[verus_verify]`. Let me try:

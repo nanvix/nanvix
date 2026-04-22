@@ -9,6 +9,33 @@
 verus! {
 
 //==================================================================================================
+// External Type Specifications
+//==================================================================================================
+
+// BTreeMap is from alloc::collections and has no vstd specs.
+// We declare it as an external type so Verus can reference it.
+#[verifier::reject_recursive_types(K)]
+#[verifier::reject_recursive_types(V)]
+#[verifier::reject_recursive_types(A)]
+#[verifier::external_type_specification]
+pub struct ExBTreeMap<K, V, A>(alloc::collections::BTreeMap<K, V, A>)
+    where A: core::alloc::Allocator + core::clone::Clone;
+
+#[verifier::external_type_specification]
+pub struct ExGlobal(alloc::alloc::Global);
+
+// CacheEntry is a private internal type.
+#[verifier::reject_recursive_types(V)]
+#[verifier::external_type_specification]
+struct ExCacheEntry<V>(crate::CacheEntry<V>);
+
+// CacheGuard wraps &mut V; Verus cannot handle &mut in struct fields,
+// so we declare it as an external type.
+#[verifier::reject_recursive_types(V)]
+#[verifier::external_type_specification]
+pub struct ExCacheGuard<'a, V>(crate::CacheGuard<'a, V>);
+
+//==================================================================================================
 // CacheView - Abstract Specification Model
 //==================================================================================================
 
