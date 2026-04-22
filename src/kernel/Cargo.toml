@@ -33,6 +33,7 @@ flatbuffers = { workspace = true, optional = true }
 hyperlight-common = { workspace = true, optional = true }
 hyperlight-guest = { workspace = true, optional = true }
 multibin = { workspace = true, optional = true }
+paste = { workspace = true, optional = true }
 static_assert = { workspace = true }
 
 [build-dependencies]
@@ -52,6 +53,7 @@ hyperlight = [
     "dep:hyperlight-guest",
     "dep:config",
     "dep:multibin",
+    "dep:paste",
     "config/hyperlight",
 ]
 microvm = [
