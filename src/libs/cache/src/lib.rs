@@ -111,9 +111,8 @@ impl<V> DerefMut for CacheGuard<'_, V> {
 /// on eviction the entry with the smallest (oldest) counter value is removed. Lookups bump the
 /// counter to mark the entry as recently used.
 ///
-#[verus_verify]
-#[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types(K))]
-#[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types(V))]
+#[verus_verify(reject_recursive_types(K))]
+#[verus_verify(reject_recursive_types(V))]
 pub struct Cache<K, V> {
     /// Cached entries.
     entries: BTreeMap<K, CacheEntry<V>>,

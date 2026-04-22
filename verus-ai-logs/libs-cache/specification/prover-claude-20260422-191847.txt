@@ -166,3 +166,5 @@ Down to 1 error. Need `reject_recursive_types` on K for CacheView:
 Need to add `reject_recursive_types(K)` on the Cache struct too:
 Need V too:
 Also need `reject_recursive_types(V)` on `CacheView`:
+Verification passes! 5 verified, 0 errors. The guardrail flags cfg-gated code for the `reject_recursive_types` attributes. Let me check how other crates handle this:
+The raw-array crate uses `#[verus_verify(reject_recursive_types(T))]`. Let me use the same approach:
