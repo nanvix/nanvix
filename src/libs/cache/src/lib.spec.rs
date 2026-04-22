@@ -30,8 +30,9 @@ pub struct ExGlobal(alloc::alloc::Global);
 // BTreeMap View & assume_specification (mirroring vstd::std_specs::btree, gated behind cfg(std))
 //==================================================================================================
 
-// View for BTreeMap — matches vstd pattern at vstd/std_specs/btree.rs:457-461.
-impl<Key, Value, A: core::alloc::Allocator + core::clone::Clone> View for alloc::collections::BTreeMap<Key, Value, A> {
+// View for BTreeMap via proxy type — works around orphan rules since ExBTreeMap is local.
+// Matches vstd pattern at vstd/std_specs/btree.rs:457-461.
+impl<Key, Value, A: core::alloc::Allocator + core::clone::Clone> View for ExBTreeMap<Key, Value, A> {
     type V = Map<Key, Value>;
     uninterp spec fn view(&self) -> Map<Key, Value>;
 }
