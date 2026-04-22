@@ -6,6 +6,10 @@
 //==================================================================================================
 
 pub(crate) mod peb;
+// `#[macro_use]` is required so that the `scratch_layout!` macro defined
+// in this submodule is visible in the parent module without a path prefix.
+#[macro_use]
+mod scratch_layout;
 
 //==================================================================================================
 // Imports
@@ -221,65 +225,32 @@ pub struct Platform {
 // Constants
 //==================================================================================================
 
-/// Size in bytes of the frame allocator bitmap storage.
-///
-/// One bit per frame for the entire `MEMORY_SIZE` address range, plus three extra bytes so that
-/// per-chunk frame counts that are not multiples of 8 can be rounded up without overflow.
-const FRAME_ALLOCATOR_STORAGE_SIZE: usize = MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize) + 3;
-
-/// Offset of the kpool bitmap within the allocator storage reservation.
-///
-/// The frame allocator storage size is rounded up to the next word boundary so that the kpool
-/// bitmap that follows starts at a word-aligned offset.
-const KPOOL_BITMAP_OFFSET: usize = {
-    match ::sys::mm::align_up(FRAME_ALLOCATOR_STORAGE_SIZE, WORD_ALIGNMENT) {
-        Some(v) => v,
-        // Compile-time only: overflow is impossible for realistic MEMORY_SIZE values.
-        None => ::core::unreachable!(),
-    }
-};
-
 // Ensure the number of kpool pages is a multiple of 8 so the bitmap has no padding bits.
 ::static_assert::assert_eq!(
     (::config::kernel::KPOOL_SIZE / mem::PAGE_SIZE).is_multiple_of(u8::BITS as usize)
 );
 
-/// Size in bytes of the kernel page pool bitmap storage.
-const KPOOL_BITMAP_STORAGE_SIZE: usize =
-    ::config::kernel::KPOOL_SIZE / (mem::PAGE_SIZE * u8::BITS as usize);
+// Scratch-reserved layout.
+//
+// These structures are allocated in the scratch region (outside the CoW snapshot) so that
+// runtime writes do not trigger copy-on-write faults.  The `scratch_layout!` macro generates
+// *_OFFSET, *_SIZE constants, per-entry _ptr() accessors, and the page-aligned
+// SCRATCH_RESERVED_SIZE constant from the entries below.
+scratch_layout! {
+    page_align = PAGE_ALIGNMENT;
 
-/// Offset of the GDT backing storage within the scratch allocator reservation.
-///
-/// Placed right after the kpool bitmap, aligned to the minimum alignment of [`Gdte`] so that
-/// `copy_nonoverlapping` and subsequent GDT accesses meet the pointer alignment requirement.
-const GDT_OFFSET: usize = {
-    match ::sys::mm::align_up(KPOOL_BITMAP_OFFSET + KPOOL_BITMAP_STORAGE_SIZE, gdt::GDTE_ALIGNMENT)
-    {
-        Some(v) => v,
-        // Compile-time only: overflow is impossible for realistic storage sizes.
-        None => ::core::unreachable!(),
-    }
-};
-
-/// Size in bytes of the GDT backing storage in the scratch region.
-const GDT_STORAGE_SIZE: usize = gdt::GDT_NUM_ENTRIES * core::mem::size_of::<Gdte>();
-
-/// Combined size of all scratch-resident kernel structures (frame allocator bitmap, kpool bitmap,
-/// and GDT) with inter-area padding, rounded up to a page boundary.
-///
-/// This many bytes are reserved at the beginning of the free portion of the scratch region
-/// (right after the I/O buffers) so these structures live in scratch memory instead of the BSS
-/// (which is part of the snapshot and therefore Copy-on-Write).
-const SCRATCH_RESERVED_SIZE: usize = {
-    let raw: usize = GDT_OFFSET + GDT_STORAGE_SIZE;
-    // Round up to the next multiple of PAGE_SIZE.
-    // SAFETY: `raw` is small relative to `usize::MAX`, so overflow cannot occur.
-    match ::sys::mm::align_up(raw, PAGE_ALIGNMENT) {
-        Some(v) => v,
-        // Compile-time only: overflow is impossible for realistic storage sizes.
-        None => ::core::unreachable!(),
-    }
-};
+    /// One bit per frame for the entire `MEMORY_SIZE` address range, plus three extra bytes
+    /// so that per-chunk frame counts that are not multiples of 8 can be rounded up without
+    /// overflow.
+    FRAME_ALLOC_BITMAP : size = MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize) + 3,
+                         align = WORD_ALIGNMENT;
+    /// Kernel page pool bitmap storage.
+    KPOOL_BITMAP       : size = ::config::kernel::KPOOL_SIZE / (mem::PAGE_SIZE * u8::BITS as usize),
+                         align = WORD_ALIGNMENT;
+    /// GDT backing storage.
+    GDT                : size = gdt::GDT_NUM_ENTRIES * core::mem::size_of::<Gdte>(),
+                         align = gdt::GDTE_ALIGNMENT;
+}
 
 //==================================================================================================
 // Global Variables
@@ -1222,9 +1193,9 @@ pub fn init(
              size={:#x})",
             scratch_reserved_base,
             scratch_reserved_base + SCRATCH_RESERVED_SIZE,
-            FRAME_ALLOCATOR_STORAGE_SIZE,
-            KPOOL_BITMAP_STORAGE_SIZE,
-            GDT_STORAGE_SIZE,
+            FRAME_ALLOC_BITMAP_SIZE,
+            KPOOL_BITMAP_SIZE,
+            GDT_SIZE,
             SCRATCH_RESERVED_SIZE,
         );
     }
@@ -1270,8 +1241,8 @@ pub fn init(
     // The backing store for the bitmap lives in the scratch region at `scratch_reserved_base`,
     // not in BSS, so it is never part of the CoW snapshot.
     let ramfs_end_address: usize = ramfs_base + ramfs_size;
-    // Safety: `scratch_reserved_base` points to a zeroed, identity-mapped region inside
-    // the scratch area with at least `FRAME_ALLOCATOR_STORAGE_SIZE` bytes available.
+    // Safety: frame_alloc_bitmap_ptr returns a pointer within the scratch-reserved region
+    // that was identity-mapped and zeroed by Hyperlight before the guest started.
     // The memory outlives the returned `SparseBitmap` (it is never freed) and no other
     // code writes to this range after this point.
     let physical_memory_layout: SparseBitmap = unsafe {
@@ -1282,7 +1253,7 @@ pub fn init(
             ramfs_end_address,
             scratch_base_address,
             scratch_end_address,
-            (scratch_reserved_base as *mut u8, FRAME_ALLOCATOR_STORAGE_SIZE),
+            (frame_alloc_bitmap_ptr(scratch_reserved_base), FRAME_ALLOC_BITMAP_SIZE),
         )?
     };
 
@@ -1290,12 +1261,12 @@ pub fn init(
     // The kpool bitmap storage is placed at a word-aligned offset after the frame allocator
     // storage in the same scratch reservation.
     let kpool_bitmap: Bitmap = {
-        // Safety: the kpool bitmap sits at a known word-aligned offset within the
+        // Safety: kpool_bitmap_ptr returns a word-aligned pointer within the
         // scratch-reserved storage region and outlives the returned bitmap.
         let storage: RawArray<u8> = unsafe {
-            let ptr: *mut u8 = (scratch_reserved_base + KPOOL_BITMAP_OFFSET) as *mut u8;
+            let ptr: *mut u8 = kpool_bitmap_ptr(scratch_reserved_base);
             debug_assert!(::sys::mm::is_aligned(ptr as usize, WORD_ALIGNMENT));
-            RawArray::from_raw_parts(ptr, KPOOL_BITMAP_STORAGE_SIZE)?
+            RawArray::from_raw_parts(ptr, KPOOL_BITMAP_SIZE)?
         };
         Bitmap::from_raw_array(storage)?
     };
@@ -1303,19 +1274,19 @@ pub fn init(
     // Install GDT backing storage in the scratch region, outside the CoW snapshot.
     // The GDT is placed at GDT_OFFSET within the scratch-reserved area.
     //
-    // Safety: gdt_ptr is computed from scratch_reserved_base + GDT_OFFSET, which is
-    // aligned to GDTE_ALIGNMENT (enforced at compile time by the GDT_OFFSET constant).
-    // The scratch region is identity-mapped, zeroed by Hyperlight, and never freed,
-    // so the pointer is valid for GDT_NUM_ENTRIES entries and outlives all GDT usage.
-    // This is the only call to set_backing_storage() in the Hyperlight init path.
+    // Safety: gdt_ptr returns a pointer aligned to GDTE_ALIGNMENT (enforced at compile
+    // time by the scratch_layout! macro). The scratch region is identity-mapped, zeroed
+    // by Hyperlight, and never freed, so the pointer is valid for GDT_NUM_ENTRIES entries
+    // and outlives all GDT usage. This is the only call to set_backing_storage() in the
+    // Hyperlight init path.
     unsafe {
-        let gdt_ptr: *mut Gdte = (scratch_reserved_base + GDT_OFFSET) as *mut Gdte;
+        let gdt_backing: *mut Gdte = gdt_ptr(scratch_reserved_base) as *mut Gdte;
         core::ptr::copy_nonoverlapping(
             gdt::DEFAULT_ENTRIES.as_ptr(),
-            gdt_ptr,
+            gdt_backing,
             gdt::GDT_NUM_ENTRIES,
         );
-        gdt::Gdt::set_backing_storage(gdt_ptr)?;
+        gdt::Gdt::set_backing_storage(gdt_backing)?;
     }
 
     Ok(Platform {
