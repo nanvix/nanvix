@@ -119,3 +119,4 @@ Now verify the spike with just View + Deref:
 
 Now let me strengthen `get` ensures and prune all subsumed clauses. I'll do all edits at once:
 Now verify:
+5 verified, 0 errors. Now run build and full verify:
