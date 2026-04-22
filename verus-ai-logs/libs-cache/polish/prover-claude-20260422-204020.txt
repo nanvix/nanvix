@@ -164,3 +164,4 @@ Your plan is sensible, but:
 
 If you want the highest-probability wins first, start with **216/258**, then **new/clear asserts**, and leave **111 / 268 / 293** for the very end.
 Good feedback. I'll follow the suggested safer-to-riskier order. Let me start with the safest batch: removing post-call asserts at lines 216 and 258.
+Batch 1 passed (11 verified, 0 errors). Now batch 2: new/clear empty set asserts.
