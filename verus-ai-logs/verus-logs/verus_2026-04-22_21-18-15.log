@@ -1,0 +1,119 @@
+Timestamp: 2026-04-22_21-18-15
+Mode: cargo
+Crate: cache
+Directory: N/A
+Module: <all>
+Exit code: 101
+11 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=8
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking cache v0.12.457 (/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache)
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/libs/cache/src/lib.rs:146:5
+    |
+146 |     pub const fn new(capacity: usize) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/libs/cache/src/lib.rs:143:13
+    |
+143 |               result@ == CacheView::<K, V>::spec_new(capacity as nat),
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+147 | /         Self {
+148 | |             entries: BTreeMap::new(),
+149 | |             counter: 0,
+150 | |             capacity,
+151 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/libs/cache/src/lib.rs:144:13
+    |
+144 |               result@.inv(),
+    |               ^^^^^^^^^^^^^ failed this postcondition
+...
+147 | /         Self {
+148 | |             entries: BTreeMap::new(),
+149 | |             counter: 0,
+150 | |             capacity,
+151 | |         }
+    | |_________- at the end of the function body
+
+note: automatically chose triggers for this expression:
+  --> src/libs/cache/src/lib.proof.rs:75:5
+   |
+75 |     assert forall |x: K|
+   |     ^^^^^^
+
+note:   trigger 1 of 1:
+  --> src/libs/cache/src/lib.proof.rs:76:9
+   |
+76 |         filtered.to_set().contains(x) implies s.to_set().remove(key).contains(x)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> src/libs/cache/src/lib.proof.rs:83:5
+   |
+83 |     assert forall |x: K|
+   |     ^^^^^^
+
+note:   trigger 1 of 1:
+  --> src/libs/cache/src/lib.proof.rs:84:52
+   |
+84 |         s.to_set().remove(key).contains(x) implies filtered.to_set().contains(x)
+   |                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/libs/cache/src/lib.proof.rs:142:5
+    |
+142 |     assert forall |x: K|
+    |     ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/libs/cache/src/lib.proof.rs:143:9
+    |
+143 |         sub.to_set().contains(x) implies s.to_set().remove(s[0]).contains(x)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/libs/cache/src/lib.proof.rs:148:5
+    |
+148 |     assert forall |x: K|
+    |     ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/libs/cache/src/lib.proof.rs:149:53
+    |
+149 |         s.to_set().remove(s[0]).contains(x) implies sub.to_set().contains(x)
+    |                                                     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> src/libs/cache/src/lib.proof.rs:148:5
+    |
+148 |     assert forall |x: K|
+    |     ^^^^^^
+
+verification results:: 11 verified, 1 errors
+error: could not compile `cache` (lib) due to 2 previous errors

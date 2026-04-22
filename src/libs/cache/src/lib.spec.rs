@@ -30,18 +30,12 @@ pub struct ExGlobal(alloc::alloc::Global);
 // BTreeMap View & assume_specification (mirroring vstd::std_specs::btree, gated behind cfg(std))
 //==================================================================================================
 
-// View for BTreeMap via proxy type — works around orphan rules since ExBTreeMap is local.
-// Matches vstd pattern at vstd/std_specs/btree.rs:457-461.
-impl<Key, Value, A: core::alloc::Allocator + core::clone::Clone> View for ExBTreeMap<Key, Value, A> {
-    type V = Map<Key, Value>;
-    uninterp spec fn view(&self) -> Map<Key, Value>;
-}
-
-// assume_specification for BTreeMap::new — matches vstd/std_specs/btree.rs:613-616.
+// assume_specification for BTreeMap::new — declares to Verus that BTreeMap::new exists.
+// Note: View-based ensures (m@ == Map::empty()) cannot be expressed here because:
+//   - Orphan rules prevent impl View for alloc::collections::BTreeMap in this crate
+//   - vstd's View impl is gated behind cfg(all(feature = "alloc", feature = "std"))
 pub assume_specification<K, V>[ alloc::collections::BTreeMap::<K, V>::new ]()
     -> (m: alloc::collections::BTreeMap<K, V>)
-    ensures
-        m@ == Map::<K, V>::empty(),
 ;
 
 // CacheEntry is a private internal type.
