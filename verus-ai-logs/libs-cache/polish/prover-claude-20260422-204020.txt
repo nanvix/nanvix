@@ -173,3 +173,4 @@ Lines 211/251 removed successfully. Now try removing the `=~=` set identity asse
 Try removing the `=~=` identity asserts on lines 211 and 250:
 Now try removing line 266 (`assert(cache.lru_order.to_set().contains(victim))`):
 Let me try removing the three victim-related asserts (lines 262-264) as a batch:
+Now try removing `assert(!cache.contents.dom().remove(victim).contains(key))` (line 283 originally, now lower):
