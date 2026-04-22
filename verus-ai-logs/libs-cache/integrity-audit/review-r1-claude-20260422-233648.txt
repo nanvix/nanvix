@@ -115,3 +115,35 @@ Now let me load the ast-consistency skill and read the key files in parallel.
 
 Now let me read all the key files to understand the current state.
 Good. Now I have a thorough understanding of the codebase. Let me now launch two sub-agents to independently review, and also run the verification and AST check myself.
+Now let me read the exec-only diffs to understand the mismatches:
+Good. Now I have all the data I need. Let me also check for any `admit`, `assume`, `trusted`, `exec_allows_no_decreases_clause`, and cfg-gated exec code patterns:
+Good — no admit, assume, trusted, or cfg-gated exec code. Now let me launch the two sub-agents for independent review.
+Two sub-agents are running independently (Claude Opus 4.6 and GPT-5.3-Codex). I'll continue doing my own analysis while waiting.
+
+Let me search vstd for BTreeMap method specs to independently verify the claims:
+Now let me read the source file (lib.rs) in sections and the proof file:
+Now let me check the latest vstd version for any changes to the btree module and verify the `Borrow<Q>` claim:
+Confirmed: vstd has NO `get_mut` spec for BTreeMap. Now let me check whether `BTreeMap::get` has a spec:
+Done. I completed an independent, skeptical audit and wrote the review to:
+
+`/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/integrity-audit/review_r1.gpt.md`
+
+It includes verified cheating counts, per-item KEEP/ELIMINATE challenges, AST deviation analysis, bug-vs-limitation classification, vstd source findings, prioritized issues, and a final verdict.
+Let me check the crate's Cargo.toml to understand the no_std constraint:
+
+
+Let me read the GPT review while waiting for Claude:
+Good. Now let me check on the Claude agent:
+Now I have comprehensive data. Let me also verify one more detail about the `remove` spec in vstd with the `Borrow<Q>`:
+Now I have all the data. Let me write the comprehensive review:
+The Claude agent is still working (35 tool calls completed). Let me wait for it to finish.
+Review written. Key findings:
+
+1. **Cheating counts verified** — all match (8 external_body, 0 admit/assume/trusted)
+2. **ISSUE-1 (LOW)**: trust.md incorrectly claims BTreeMap::iter has "no vstd specs" — vstd has full iter support (just cfg(std)-gated). Should say "unavailable on no_std"
+3. **ISSUE-2/3 (INFO)**: `Cache::evict` and `Cache::put` are theoretically reducible via exec code rewrites, but blocked by source integrity policy — net trust trade, not elimination
+4. **AST mismatches**: All 3 items legitimate (named return, stdlib wrapper)
+5. **Counter overflow**: Correctly documented trust assumption, not a verification gap
+
+**Verdict: CONDITIONAL PASS** — all items justified, no undocumented cheating, one inaccurate documentation claim to fix.
+Now I have both sub-agent reviews. Let me do a final verification run and then consolidate.
