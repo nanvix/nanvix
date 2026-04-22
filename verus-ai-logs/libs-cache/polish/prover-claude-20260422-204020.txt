@@ -188,3 +188,4 @@ Let me also try removing the `let` bindings that aren't used after removing asse
 Let me try removing unused `let` bindings. `result` and `mru` in `lemma_spec_get_inv` appear unused:
 Now try removing `mru` from `lemma_spec_put_inv` (existing key branch):
 Let me try removing `result` from the eviction branch and below-capacity branch too:
+Now try removing `result` and `new_lru` from the below-capacity branch:

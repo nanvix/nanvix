@@ -268,8 +268,6 @@ proof fn lemma_spec_put_inv<K, V>(cache: CacheView<K, V>, key: K, value: V)
 
     } else {
         // Below capacity, new key: insert directly.
-        let result = cache.spec_put(key, value);
-        let new_lru = cache.lru_order.push(key);
 
         // no_duplicates
         lemma_push_preserves_no_dup(cache.lru_order, key);
