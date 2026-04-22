@@ -139,3 +139,4 @@ Let me try removing the contents bridge assertion in the present branch (line 47
 Let me now try removing more assertions. I'll attempt an aggressive batch in the absent branch:
 Now let me try removing the remaining bridge assertions in the absent branch:
 Good. Now try removing the `btreemap_view_spec` assertion:
+Try removing the last two assertions in the absent branch:
