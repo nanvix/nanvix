@@ -121,72 +121,10 @@ pub assume_specification<Key: Ord, Value, A: core::alloc::Allocator + Clone>[
         },
 ;
 
-// --- contains_key (Q = K) ---
-pub assume_specification<Key: Ord, Value, A: core::alloc::Allocator + Clone>[
-    alloc::collections::BTreeMap::<Key, Value, A>::contains_key::<Key>
-](
-    m: &alloc::collections::BTreeMap<Key, Value, A>,
-    k: &Key,
-) -> (result: bool)
-    ensures
-        result == btreemap_view_spec(*m).contains_key(*k),
-;
-
-// --- get (Q = K) ---
-pub assume_specification<'a, Key: Ord, Value, A: core::alloc::Allocator + Clone>[
-    alloc::collections::BTreeMap::<Key, Value, A>::get::<Key>
-](
-    m: &'a alloc::collections::BTreeMap<Key, Value, A>,
-    k: &Key,
-) -> (result: Option<&'a Value>)
-    ensures
-        match result {
-            Some(v) => btreemap_view_spec(*m).contains_key(*k)
-                && *v == btreemap_view_spec(*m)[*k],
-            None => !btreemap_view_spec(*m).contains_key(*k),
-        },
-;
-
-// --- get_mut (Q = K) ---
-// NOTE: vstd does NOT provide get_mut specs even for std targets.
-// This is a new specification.
-pub assume_specification<'a, Key: Ord, Value, A: core::alloc::Allocator + Clone>[
-    alloc::collections::BTreeMap::<Key, Value, A>::get_mut::<Key>
-](
-    m: &'a mut alloc::collections::BTreeMap<Key, Value, A>,
-    k: &Key,
-) -> (result: Option<&'a mut Value>)
-    ensures
-        // Domain unchanged.
-        btreemap_view_spec(*m).dom() == btreemap_view_spec(*old(m)).dom(),
-        match result {
-            Some(v) => {
-                &&& btreemap_view_spec(*old(m)).contains_key(*k)
-                &&& *v == btreemap_view_spec(*old(m))[*k]
-                // All other keys unchanged.
-                &&& forall |j: Key| j != *k && btreemap_view_spec(*old(m)).contains_key(j)
-                        ==> btreemap_view_spec(*m)[j] == btreemap_view_spec(*old(m))[j]
-            },
-            None => !btreemap_view_spec(*old(m)).contains_key(*k)
-                && btreemap_view_spec(*m) == btreemap_view_spec(*old(m)),
-        },
-;
-
-// --- remove (Q = K) ---
-pub assume_specification<Key: Ord, Value, A: core::alloc::Allocator + Clone>[
-    alloc::collections::BTreeMap::<Key, Value, A>::remove::<Key>
-](
-    m: &mut alloc::collections::BTreeMap<Key, Value, A>,
-    k: &Key,
-) -> (result: Option<Value>)
-    ensures
-        btreemap_view_spec(*m) == btreemap_view_spec(*old(m)).remove(*k),
-        match result {
-            Some(v) => btreemap_view_spec(*old(m)).contains_key(*k)
-                && v == btreemap_view_spec(*old(m))[*k],
-            None => !btreemap_view_spec(*old(m)).contains_key(*k),
-        },
-;
+// --- contains_key, get, get_mut, remove ---
+// These methods have a `Borrow<Q>` generic parameter that cannot be monomorphized
+// in assume_specification for alloc::collections::BTreeMap (unlike std::collections).
+// Use the wrapper functions in lib.rs instead (btreemap_remove, etc.).
 
 // --- clear ---
 pub assume_specification<Key, Value, A: core::alloc::Allocator + Clone>[
