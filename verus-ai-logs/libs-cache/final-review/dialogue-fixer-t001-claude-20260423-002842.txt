@@ -108,3 +108,5 @@ Now add the proof lemmas to lib.proof.rs:
 Now let's run verification:
 Let me see the full error:
 The proof fails because the solver can't automatically chain nested subrange indexing. Let me rewrite with more explicit intermediate steps:
+The nested subrange indexing isn't triggering. Let me search vstd for subrange-related axioms and try a different proof approach:
+The issue is the solver can't chain subrange indexing through local variables. Let me use full expressions to trigger the axioms:
