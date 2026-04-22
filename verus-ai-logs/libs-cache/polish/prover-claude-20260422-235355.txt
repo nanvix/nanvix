@@ -1,0 +1,83 @@
+=== Copilot Session ===
+Timestamp: 2026-04-22T23:53:55.736239
+Model: claude-opus-4.6
+Session: new
+Command: copilot --allow-all --model claude-opus-4.6 --output-format...
+
+=== Prompt ===
+You are polishing the verification of /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.rs for integration.
+The specs and proofs are already working and integrity-checked. Your job
+is to improve readability: extract proof blocks and minimize redundancy.
+
+
+
+Source file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.rs
+Spec file:  /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.spec.rs
+Proof file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.proof.rs
+Verus command: make verify-cache
+
+== SOURCE INTEGRITY ==
+
+Follow the **verus-constraints** skill strictly — especially the escalation
+ladder and "Claiming Verus Limitations" section. Key rules:
+- Verify exec code as-is; add spec annotations in-place.
+- Never cfg-gate exec code — this is cheating.
+- If unsupported: isolate and test, then follow the escalation ladder.
+- Minimize trust: only genuinely unverifiable items in /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/trust.md.
+
+== SKILLS ==
+
+Follow these skills strictly (auto-loaded from .github/skills/):
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns, source integrity
+- **proving-guide** — MUST follow: proof strategy, invariant planning
+- **spec-design** — MUST follow when writing requires/ensures/invariants
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai-lru-0422/scripts/
+- Source directory: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai-lru-0422/vstd/
+
+== POLISH SKILLS ==
+
+- **proof-extraction** — MUST follow for extracting inline proof blocks
+- **proof-minimization** — MUST follow for removing redundancy
+
+== SUB-AGENT POLICY ==
+
+Sub-agents are allowed. Use ONLY these models:
+  - **claude-opus-4.6** (preferred default) — for all tasks.
+  - **gpt-5.3-codex** — for all tasks.
+When diversity is needed (e.g. independent parallel analysis), use a different model per sub-agent.
+
+== TASK ==
+
+Polish the verification for integration readability.
+
+1. **Extract proof blocks**: Use `check_proof_blocks` tool (or
+   `python3 scripts/check_proof_blocks.py /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.rs --all`) to find all
+   inline proof blocks. Extract those >5 lines into named lemmas in the proof
+   file, following the proof-extraction skill.
+2. **Minimize**: Remove redundant assertions, proof hints, and dead spec
+   functions following the proof-minimization skill. Re-run verification after
+   each batch of removals.
+
+== OUTPUT ==
+
+Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/polish/checklist.md:
+```markdown
+# Polish Report: cache
+
+## Proof Extraction
+- Blocks extracted: N (list each with old location → new lemma name)
+- Blocks kept inline: M (with justification)
+
+## Minimization
+- Redundant assertions removed: N
+- Redundant lemmas/hints removed: N
+```
+
+Done when: verus verifies with 0 errors/admits and build passes.
+
+=== Output (streaming) ===
