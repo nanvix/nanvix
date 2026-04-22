@@ -47,7 +47,7 @@ pub assume_specification<K, V>[ alloc::collections::BTreeMap::<K, V>::new ]()
 //==================================================================================================
 
 // Project BTreeMap<K, CacheEntry<V>> contents to Map<K, V> by extracting CacheEntry::value.
-open spec fn cache_contents_of<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Map<K, V> {
+pub open spec fn cache_contents_of<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Map<K, V> {
     Map::new(
         |k: K| btreemap_view_spec(entries).dom().contains(k),
         |k: K| btreemap_view_spec(entries)[k].value,
@@ -56,7 +56,7 @@ open spec fn cache_contents_of<K, V>(entries: alloc::collections::BTreeMap<K, Ca
 
 // LRU ordering from entries: sorted by last_used ascending.
 // For empty entries, definitionally Seq::empty(); otherwise uninterpreted.
-open spec fn cache_lru_of<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Seq<K> {
+pub open spec fn cache_lru_of<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Seq<K> {
     if btreemap_view_spec(entries).dom().len() == 0 {
         Seq::empty()
     } else {

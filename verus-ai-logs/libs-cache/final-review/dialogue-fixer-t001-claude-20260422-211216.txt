@@ -109,3 +109,4 @@ Now let me try a different approach. In Attempt 2, the View impl on `ExBTreeMap`
 The proxy type isn't Rust-equivalent to BTreeMap. Let me search the Verus test suite for patterns of implementing View on external types.
 Good, the `assume_specification` without View-based ensures compiles (Attempt 3), but postconditions fail because Cache view is uninterpreted. Now let me try the most promising approach: use a custom `btreemap_view_spec` function (avoiding View trait/orphan rules) and make Cache view interpreted.
 Now change the Cache View from uninterpreted to open:
+Quick fix — `open spec fn` must be `pub`:
