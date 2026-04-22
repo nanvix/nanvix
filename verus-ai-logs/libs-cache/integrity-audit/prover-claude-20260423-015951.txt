@@ -196,3 +196,4 @@ Now run the final verification to confirm 0 errors.
 Verification passes with 0 errors (exit code 0 from Verus). The `make` exit code 1 is from the CHEATING_DETECTED status which is expected since we have legitimate external_body items.
 
 Let me also run `make verify` to check for regressions (since no code was changed, this should pass).
+The `make verify` stops at bitmap due to cheating detection (in bitmap, not cache). Cache already verified with 0 Verus errors. Let me confirm all three crates individually.
