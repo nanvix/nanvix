@@ -1,0 +1,333 @@
+Timestamp: 2026-04-22_20-08-07
+Mode: cargo
+Crate: cache
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=9
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking cache v0.12.457 (/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache)
+error[E0425]: cannot find value `group_seq_properties` in this scope
+  --> src/libs/cache/src/lib.proof.rs:23:19
+   |
+23 |     broadcast use group_seq_properties;
+   |                   ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+help: consider importing this function
+  --> src/libs/cache/src/lib.rs:43:1
+   |
+43 + use vstd::seq_lib::group_seq_properties;
+   |
+
+error[E0425]: cannot find value `group_seq_properties` in this scope
+  --> src/libs/cache/src/lib.proof.rs:45:19
+   |
+45 |     broadcast use group_seq_properties;
+   |                   ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+help: consider importing this function
+  --> src/libs/cache/src/lib.rs:43:1
+   |
+43 + use vstd::seq_lib::group_seq_properties;
+   |
+
+error[E0425]: cannot find value `group_seq_properties` in this scope
+  --> src/libs/cache/src/lib.proof.rs:70:19
+   |
+70 |     broadcast use group_seq_properties, group_set_axioms;
+   |                   ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+help: consider importing this function
+  --> src/libs/cache/src/lib.rs:43:1
+   |
+43 + use vstd::seq_lib::group_seq_properties;
+   |
+
+error[E0425]: cannot find value `group_set_axioms` in this scope
+  --> src/libs/cache/src/lib.proof.rs:70:41
+   |
+70 |     broadcast use group_seq_properties, group_set_axioms;
+   |                                         ^^^^^^^^^^^^^^^^ not found in this scope
+   |
+help: consider importing this function
+  --> src/libs/cache/src/lib.rs:43:1
+   |
+43 + use vstd::set::group_set_axioms;
+   |
+
+error[E0425]: cannot find value `group_set_axioms` in this scope
+   --> src/libs/cache/src/lib.proof.rs:100:19
+    |
+100 |     broadcast use group_set_axioms, seq_to_set_is_finite;
+    |                   ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::set::group_set_axioms;
+    |
+
+error[E0425]: cannot find value `seq_to_set_is_finite` in this scope
+   --> src/libs/cache/src/lib.proof.rs:100:37
+    |
+100 |     broadcast use group_set_axioms, seq_to_set_is_finite;
+    |                                     ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::seq_lib::seq_to_set_is_finite;
+    |
+
+error[E0425]: cannot find value `group_seq_properties` in this scope
+   --> src/libs/cache/src/lib.proof.rs:141:19
+    |
+141 |     broadcast use group_seq_properties, group_set_axioms;
+    |                   ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::seq_lib::group_seq_properties;
+    |
+
+error[E0425]: cannot find value `group_set_axioms` in this scope
+   --> src/libs/cache/src/lib.proof.rs:141:41
+    |
+141 |     broadcast use group_seq_properties, group_set_axioms;
+    |                                         ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::set::group_set_axioms;
+    |
+
+error[E0425]: cannot find function `lemma_seq_subrange_elements` in this scope
+   --> src/libs/cache/src/lib.proof.rs:149:9
+    |
+149 |         lemma_seq_subrange_elements(s, 1int, s.len() as int, x);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::seq_lib::lemma_seq_subrange_elements;
+    |
+
+error[E0425]: cannot find function `lemma_seq_subrange_elements` in this scope
+   --> src/libs/cache/src/lib.proof.rs:161:9
+    |
+161 |         lemma_seq_subrange_elements(s, 1int, s.len() as int, x);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::seq_lib::lemma_seq_subrange_elements;
+    |
+
+error[E0425]: cannot find value `group_set_axioms` in this scope
+   --> src/libs/cache/src/lib.proof.rs:174:19
+    |
+174 |     broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    |                   ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::set::group_set_axioms;
+    |
+
+error[E0425]: cannot find value `group_map_axioms` in this scope
+   --> src/libs/cache/src/lib.proof.rs:174:37
+    |
+174 |     broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    |                                     ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::map::group_map_axioms;
+    |
+
+error[E0425]: cannot find value `seq_to_set_is_finite` in this scope
+   --> src/libs/cache/src/lib.proof.rs:174:55
+    |
+174 |     broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    |                                                       ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::seq_lib::seq_to_set_is_finite;
+    |
+
+error[E0425]: cannot find value `group_set_axioms` in this scope
+   --> src/libs/cache/src/lib.proof.rs:188:19
+    |
+188 |     broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    |                   ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::set::group_set_axioms;
+    |
+
+error[E0425]: cannot find value `group_map_axioms` in this scope
+   --> src/libs/cache/src/lib.proof.rs:188:37
+    |
+188 |     broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    |                                     ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::map::group_map_axioms;
+    |
+
+error[E0425]: cannot find value `seq_to_set_is_finite` in this scope
+   --> src/libs/cache/src/lib.proof.rs:188:55
+    |
+188 |     broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    |                                                       ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::seq_lib::seq_to_set_is_finite;
+    |
+
+error[E0425]: cannot find value `group_set_axioms` in this scope
+   --> src/libs/cache/src/lib.proof.rs:225:19
+    |
+225 |     broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    |                   ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::set::group_set_axioms;
+    |
+
+error[E0425]: cannot find value `group_map_axioms` in this scope
+   --> src/libs/cache/src/lib.proof.rs:225:37
+    |
+225 |     broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    |                                     ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::map::group_map_axioms;
+    |
+
+error[E0425]: cannot find value `seq_to_set_is_finite` in this scope
+   --> src/libs/cache/src/lib.proof.rs:225:55
+    |
+225 |     broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    |                                                       ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::seq_lib::seq_to_set_is_finite;
+    |
+
+error[E0425]: cannot find function `lemma_seq_subrange_elements` in this scope
+   --> src/libs/cache/src/lib.proof.rs:275:17
+    |
+275 |                 lemma_seq_subrange_elements(
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::seq_lib::lemma_seq_subrange_elements;
+    |
+
+error[E0425]: cannot find value `group_set_axioms` in this scope
+   --> src/libs/cache/src/lib.proof.rs:321:19
+    |
+321 |     broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    |                   ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::set::group_set_axioms;
+    |
+
+error[E0425]: cannot find value `group_map_axioms` in this scope
+   --> src/libs/cache/src/lib.proof.rs:321:37
+    |
+321 |     broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    |                                     ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::map::group_map_axioms;
+    |
+
+error[E0425]: cannot find value `seq_to_set_is_finite` in this scope
+   --> src/libs/cache/src/lib.proof.rs:321:55
+    |
+321 |     broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    |                                                       ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::seq_lib::seq_to_set_is_finite;
+    |
+
+error[E0425]: cannot find value `group_set_axioms` in this scope
+   --> src/libs/cache/src/lib.proof.rs:350:19
+    |
+350 |     broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    |                   ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::set::group_set_axioms;
+    |
+
+error[E0425]: cannot find value `group_map_axioms` in this scope
+   --> src/libs/cache/src/lib.proof.rs:350:37
+    |
+350 |     broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    |                                     ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::map::group_map_axioms;
+    |
+
+error[E0425]: cannot find value `seq_to_set_is_finite` in this scope
+   --> src/libs/cache/src/lib.proof.rs:350:55
+    |
+350 |     broadcast use group_set_axioms, group_map_axioms, seq_to_set_is_finite;
+    |                                                       ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> src/libs/cache/src/lib.rs:43:1
+    |
+ 43 + use vstd::seq_lib::seq_to_set_is_finite;
+    |
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `cache` (lib) due to 26 previous errors

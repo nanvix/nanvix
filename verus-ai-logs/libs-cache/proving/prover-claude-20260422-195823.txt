@@ -85,3 +85,9 @@ confirm the full crate passes with no cross-module conflicts.
 
 === Output (streaming) ===
 Now let me run the initial verification to see the baseline state:
+Let me study the key vstd lemmas more closely:
+Now let me check the map remove/insert domain axioms and look at the set remove properties:
+Good, `axiom_set_remove_insert` gives us exactly what we need: `s.contains(a) ==> s.remove(a).insert(a) == s`. This is in `group_set_axioms`.
+
+Now I have all the pieces. Let me write the complete proof file:
+Now let me run verification:
