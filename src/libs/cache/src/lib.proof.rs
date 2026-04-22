@@ -287,7 +287,6 @@ proof fn lemma_spec_remove_inv<K, V>(cache: CacheView<K, V>, key: K)
         vstd::seq_lib::seq_to_set_is_finite;
 
     if cache.contents.dom().contains(key) {
-        let result = cache.spec_remove(key);
         let pred = |k: K| k != key;
         let filtered = cache.lru_order.filter(pred);
 

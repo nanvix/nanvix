@@ -190,3 +190,4 @@ Now try removing `mru` from `lemma_spec_put_inv` (existing key branch):
 Let me try removing `result` from the eviction branch and below-capacity branch too:
 Now try removing `result` and `new_lru` from the below-capacity branch:
 Now let me also check if `victim` can be removed (it's unused after the asserts removal):
+Let me also try removing `result` from `lemma_spec_remove_inv` and `cv` from `lemma_spec_new_inv`/`lemma_spec_clear_inv`:
