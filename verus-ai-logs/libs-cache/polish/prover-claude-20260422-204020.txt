@@ -167,3 +167,5 @@ Good feedback. I'll follow the suggested safer-to-riskier order. Let me start wi
 Batch 1 passed (11 verified, 0 errors). Now batch 2: new/clear empty set asserts.
 Batch 2 failed. Let me revert and try each individually.
 Now let me try batch 3: `assert(cache.contents.insert(key, value).dom() =~= cache.contents.dom())` (line 254).
+Needed. Revert and try next: lines 211/252 (to_set().contains hints).
+Now try removing the `to_set().contains(key)` asserts (lines 211 and 251):
