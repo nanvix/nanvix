@@ -199,3 +199,4 @@ Now update trust.md to document the `obeys_cmp_spec` guard deviation:
 Also update the trust.md audit section and fix the evict reference (was previously listed as evict, should note find_lru_victim separately):
 Also fix the evict entry — the trust.md lists it as `Cache::evict` but the external_body is on `find_lru_victim`:
 Now let me run the final verification to confirm everything still passes:
+Verification passes (exit 0). Since no source code was modified (only trust.md and fix_report.md documentation), the full-crate verification result is unchanged. Let me confirm by running `make verify`:
