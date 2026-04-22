@@ -211,11 +211,12 @@ impl<K, V> CacheView<K, V> {
 //==================================================================================================
 
 // Cache View — interpreted via btreemap_view_spec + abstraction helpers.
-// Connects concrete Cache fields to abstract CacheView.
+// Closed: CacheEntry is private, so the body can't be pub open.
+// Within this crate, use reveal(Cache::view) to expose the structure in proofs.
 impl<K: Ord + Clone, V> View for Cache<K, V> {
     type V = CacheView<K, V>;
 
-    open spec fn view(&self) -> CacheView<K, V> {
+    closed spec fn view(&self) -> CacheView<K, V> {
         CacheView {
             contents: cache_contents_of(self.entries),
             capacity: self.capacity as nat,

@@ -112,3 +112,4 @@ Now change the Cache View from uninterpreted to open:
 Quick fix — `open spec fn` must be `pub`:
 Need to make `btreemap_view_spec` and `cache_lru_of_nonempty` public too:
 CacheEntry is private so `pub open` can't access its fields. Let me use `closed` (non-pub) spec functions instead — the Cache View stays open but delegates to closed helpers.
+The `pub open` view can't call private functions. Let me make the Cache View `closed` instead — its body is defined but hidden, revealable in proofs.
