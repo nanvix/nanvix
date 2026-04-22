@@ -1,8 +1,9 @@
 === Copilot Session ===
-Timestamp: 2026-04-23T01:59:51.394791
+Timestamp: 2026-04-23T02:11:21.951595
 Model: claude-opus-4.6
-Session: new
-Command: copilot --allow-all --model claude-opus-4.6 --output-format...
+Session: 76e27d0e-a9ba-479b-b7fd-7ce5f5c9a688
+Duration: 690.6s
+Exit code: 0
 
 === Prompt ===
 You are performing an integrity audit for cache. The goal is to
@@ -107,7 +108,7 @@ Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-
 ## Result: PASS / BLOCKER
 ```
 
-=== Output (streaming) ===
+=== Output ===
 Now let me run the initial verification to get baseline cheating counts.
 Now let me run the AST consistency check and get the original source from the base branch.
 Now I have a comprehensive picture. Let me create the plan and run the rubber-duck agent for a design critique before proceeding with my analysis.
@@ -197,3 +198,23 @@ Verification passes with 0 errors (exit code 0 from Verus). The `make` exit code
 
 Let me also run `make verify` to check for regressions (since no code was changed, this should pass).
 The `make verify` stops at bitmap due to cheating detection (in bitmap, not cache). Cache already verified with 0 Verus errors. Let me confirm all three crates individually.
+All three crates verify with exit code 0 (0 Verus errors). No regressions.
+
+## Summary
+
+**Integrity Audit Result: PASS** — No cheating items eliminated.
+
+| Item | Before | After |
+|------|--------|-------|
+| external_body | 8 | 8 |
+| assume_specification | 5 | 5 |
+| admit/assume/trusted/no_decreases/cfg_gate | 0 | 0 |
+
+All 8 `external_body` items were challenged against the verus-constraints escalation ladder. None could be eliminated — all stem from genuine Verus limitations (`&mut` in struct fields/return types, no vstd specs for `min_by_key`/`BTreeMap::iter` on no_std, `Borrow<Q>` generic in `assume_specification`).
+
+**AST Consistency:** 15 matched, 3 mismatched (all pre-approved deviations: let-binding for ensures, stdlib wrapper substitution, function extraction), 0 missing, 2 extra (new stdlib wrapper + extracted function).
+
+Reports written:
+- `verus-ai-logs/libs-cache/integrity-audit/fix_report.md`
+- `verus-ai-logs/libs-cache/trust.md` (audit section updated)
+=== End ===
