@@ -90,7 +90,7 @@ pub struct CacheGuard<'a, V> {
 impl<V> Deref for CacheGuard<'_, V> {
     type Target = V;
 
-    #[verus_verify(external_body)]
+    // REMOVED: #[verus_verify(external_body)]
     #[verus_spec(ret =>
         ensures *ret == self@,
     )]
@@ -227,7 +227,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     /// - `key`: The cache key to insert or update.
     /// - `value`: The value to store.
     ///
-    // REMOVED: #[verus_verify(external_body)]
+    #[verus_verify(external_body)]
     #[verus_spec(
         requires
             old(self)@.inv(),
