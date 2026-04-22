@@ -1,0 +1,109 @@
+=== Copilot Session ===
+Timestamp: 2026-04-22T23:16:10.977942
+Model: claude-opus-4.6
+Session: new
+Command: copilot --allow-all --model claude-opus-4.6 --output-format...
+
+=== Prompt ===
+You are proving the specifications for /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.rs using Verus.
+Treat the current contracts (requires/ensures/invariants) as fixed input.
+Your job is to complete all proofs — fill proof bodies, write loop invariants,
+add lemmas, and eliminate every `admit()` placeholder.
+
+
+
+Source file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.rs
+Spec file:  /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.spec.rs
+Proof file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.proof.rs
+Verus command: make verify-cache
+
+== SOURCE INTEGRITY ==
+
+Follow the **verus-constraints** skill strictly — especially the escalation
+ladder and "Claiming Verus Limitations" section. Key rules:
+- Verify exec code as-is; add spec annotations in-place.
+- Never cfg-gate exec code — this is cheating.
+- If unsupported: isolate and test, then follow the escalation ladder.
+- Minimize trust: only genuinely unverifiable items in /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/trust.md.
+
+== SKILLS ==
+
+Follow these skills strictly (auto-loaded from .github/skills/):
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns, source integrity
+- **proving-guide** — MUST follow: proof strategy, invariant planning
+- **spec-design** — MUST follow when writing requires/ensures/invariants
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai-lru-0422/scripts/
+- Source directory: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai-lru-0422/vstd/
+
+== SUB-AGENT POLICY ==
+
+Sub-agents are allowed. Use ONLY these models:
+  - **claude-opus-4.6** (preferred default) — for all tasks.
+  - **gpt-5.3-codex** — for all tasks.
+When diversity is needed (e.g. independent parallel analysis), use a different model per sub-agent.
+
+== TASK ==
+
+Review the proof quality and verify that specs have not been weakened.
+Follow the **review-methodology** skill.
+
+Use **2 sub-agents** (one per model from the sub-agent policy) to independently
+review. Each sub-agent should:
+
+1. **Spec preservation**: Compare current specs against the specification phase
+   using `git log --oneline | grep specification` then `git diff <commit> -- src/libs/cache/src/`.
+   Flag any weakened, removed, or trivialized requires/ensures — this is a blocker.
+2. **Cheating audit**: Count `admit()`, `external_body`, `assume`,
+   cfg-gated exec code. Any cheating without an **isolated** reproducer
+   (testing the specific construct, not the full expression) is a blocker.
+   Many functions `external_body` = red flag. Challenge each — could it
+   be eliminated via escalation ladder?
+3. **Proof quality**: Are proofs actual reasoning or brute-force workarounds?
+4. **Rewrite audit**: Check `// VERUS REWRITE` comments — is each rewrite
+   truly minimal and semantically equivalent?
+
+Save each sub-agent's raw review next to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/proving/review_r1.md with the model name
+appended (e.g., `review_r1.claude.md`). Then consolidate into a single review.
+
+== OUTPUT ==
+
+Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/proving/review_r1.md:
+```markdown
+# Proving Review: cache
+
+## Checklist
+### Proving
+- [ ] No specs weakened from specification phase
+- [ ] Zero remaining admit()
+- [ ] No new assume/assume_specification/external_body added without reproducer
+- [ ] No cfg-gated exec code (branches, expressions, match arms)
+- [ ] All trust items in trust.md classified per spec-design skill
+- [ ] Any claimed limitation has an **isolated** reproducer for the specific construct — not just the full failing expression. Conclusion names exact unsupported API/pattern, not a feature class
+- [ ] If many functions are external_body, this is a red flag — verify each claim independently
+- [ ] make verify passes (0 errors, 0 warnings)
+- [ ] Exec rewrites are minimal and semantically equivalent
+
+## Weakened Specs
+- [any specs weakened from specification phase — BLOCKER]
+
+## Remaining Admits
+- [each remaining admit() with location and reason]
+
+## Issues (highest priority first)
+- ...
+
+## Result: PASS / FAIL
+```
+
+== RESULT ==
+
+Be strict: PASS only if ALL checklist items are checked. Any unchecked item is FAIL.
+
+=== Output (streaming) ===
+Now let me get the trust.md and check git history for the specification phase commit.
+Now let me get the specification phase commit diff and run `make verify-cache` to check current status:
