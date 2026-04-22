@@ -14,6 +14,11 @@ kernel target (`-Z build-std=core,alloc,compiler_builtins`). Enabling the `std`
 feature is not possible because the `std` crate does not exist on the i686-nanvix
 kernel target.
 
+To work around this, `lib.vstd_btree.rs` provides equivalent
+`assume_specification` declarations for `alloc::collections::BTreeMap` methods
+(`new`, `insert`, `len`, `is_empty`, `clear`) and an uninterpreted
+`btreemap_view_spec` function instead of `impl View for BTreeMap`.
+
 Additionally, `BTreeMap::get_mut` (used by `Cache::get` and `Cache::put`) has no
 vstd spec even in the `std` btree module, and returns `Option<&mut V>` — a Verus
 limitation on `&mut` return types.
@@ -23,29 +28,29 @@ fields ("The verifier does not yet support &mut types, except in special cases")
 
 ## External Type Specifications
 
-### ExBTreeMap — `lib.spec.rs:20-23`
+### ExBTreeMap — `lib.vstd_btree.rs:31-38`
 - **Trust item:** `external_type_specification` + `external_body`
 - **Classification:** `EXTERNAL_TYPE`
-- **Reason:** `alloc::collections::BTreeMap` is not in vstd. Verus requires a type
-  declaration to reference it in verified structs. `external_body` is needed because
-  BTreeMap has private fields.
+- **Reason:** `alloc::collections::BTreeMap` is not in vstd on no_std targets.
+  Verus requires a type declaration to reference it in verified structs.
+  `external_body` is needed because BTreeMap has private fields.
 - **Reproducer:** Any `#[verus_verify]` struct containing `BTreeMap<K, V>` fails with
   "cannot use type `alloc::collections::BTreeMap` which is ignored because it is either
   declared outside the verus! macro or it is marked as `external`."
 
-### ExGlobal — `lib.spec.rs:25-26`
+### ExGlobal — `lib.vstd_btree.rs:40-41`
 - **Trust item:** `external_type_specification`
 - **Classification:** `EXTERNAL_TYPE`
 - **Reason:** `alloc::alloc::Global` is the default allocator for `BTreeMap<K, V>`.
   Declaring BTreeMap requires this type to be visible to Verus.
 
-### ExCacheEntry — `lib.spec.rs:29-31`
+### ExCacheEntry — `lib.spec.rs:17-18`
 - **Trust item:** `external_type_specification`
 - **Classification:** `EXTERNAL_TYPE`
 - **Reason:** `CacheEntry<V>` is a private struct used as the value type in
   `BTreeMap<K, CacheEntry<V>>`. Verus needs to see it to verify Cache.
 
-### ExCacheGuard — `lib.spec.rs:35-38`
+### ExCacheGuard — `lib.spec.rs:23-25`
 - **Trust item:** `external_type_specification` + `external_body`
 - **Classification:** `VERUS_LIMITATION`
 - **Reason:** `CacheGuard<'a, V>` has field `value: &'a mut V`. Verus does not
@@ -55,15 +60,24 @@ fields ("The verifier does not yet support &mut types, except in special cases")
 
 ## external_body Functions
 
-### Cache::new — `lib.rs:147`
+### btreemap_remove — `lib.rs:114-123`
+- **Trust item:** `external_body`
+- **Classification:** `STDLIB_WRAPPER`
+- **Reason:** `BTreeMap::remove()` has a `Borrow<Q>` generic parameter that
+  cannot be monomorphized in `assume_specification` for
+  `alloc::collections::BTreeMap`. This thin wrapper fixes Q=K and provides
+  pre/post conditions. Body is a single stdlib call.
+- **Spec:** `btreemap_view_spec(*m) == old(*m).remove(*k)`, returns the removed
+  value if present.
+
+### CacheGuard::deref — `lib.rs:93-99`
 - **Trust item:** `external_body`
 - **Classification:** `VERUS_LIMITATION`
-- **Reason:** Body calls `BTreeMap::new()`. vstd btree specs unavailable on
-  `no_std` target (see Root Cause). Cache::view() is uninterp, so body cannot
-  be verified against abstract state even with specs.
-- **Spec:** `result@ == CacheView::spec_new(capacity as nat)`
+- **Reason:** CacheGuard is `external_body` (Verus cannot see `&mut V` field).
+  The body `self.value` accesses the opaque field.
+- **Spec:** `*ret == self@` — dereferencing yields the guard's abstract value.
 
-### Cache::get — `lib.rs:186`
+### Cache::get — `lib.rs:190-218`
 - **Trust item:** `external_body`
 - **Classification:** `VERUS_LIMITATION`
 - **Reason:** Body calls `BTreeMap::get_mut()` which (a) has no vstd spec even
@@ -72,45 +86,49 @@ fields ("The verifier does not yet support &mut types, except in special cases")
 - **Spec:** On hit: `result is Some`, guard view equals `spec_get(*key).1.unwrap()`,
   state transitions via `spec_get`. On miss: `result is None`, view unchanged.
 
-### CacheGuard::deref — `lib.rs:95`
-- **Trust item:** `external_body`
-- **Classification:** `VERUS_LIMITATION`
-- **Reason:** CacheGuard is `external_body` (Verus cannot see `&mut V` field).
-  The body `self.value` accesses the opaque field.
-- **Spec:** `*ret == self@` — dereferencing yields the guard's abstract value.
-
-### Cache::put — `lib.rs:216`
+### Cache::put — `lib.rs:230-265`
 - **Trust item:** `external_body`
 - **Classification:** `VERUS_LIMITATION`
 - **Reason:** Same `get_mut` blockers as Cache::get (no vstd spec, `&mut` return
-  type), plus calls `self.evict()`. vstd btree specs unavailable on `no_std` target.
+  type). Rewriting to avoid `get_mut` (using `contains_key` + `remove` +
+  `insert`) would require a new `axiom_cache_lru_of_insert` trust item plus a
+  concrete counter invariant, increasing total trust items without reducing
+  the trust boundary.
 - **Spec:** `self@ == old(self)@.spec_put(key, value)`, invariant preserved.
 
-### Cache::remove — `lib.rs:262`
-- **Trust item:** `external_body`
-- **Classification:** `VERUS_LIMITATION`
-- **Reason:** Calls `BTreeMap::remove()`. vstd btree specs unavailable on
-  `no_std` target (see Root Cause).
-- **Spec:** `self@ == old(self)@.spec_remove(*key)`, invariant preserved.
-
-### Cache::clear — `lib.rs:279`
-- **Trust item:** `external_body`
-- **Classification:** `VERUS_LIMITATION`
-- **Reason:** Calls `BTreeMap::clear()`. vstd btree specs unavailable on
-  `no_std` target (see Root Cause).
-- **Spec:** `self@ == old(self)@.spec_clear()`, invariant preserved.
-
-### Cache::evict — `lib.rs:303`
+### Cache::evict — `lib.rs:321-344`
 - **Trust item:** `external_body`
 - **Classification:** `VERUS_LIMITATION`
 - **Reason:** Uses `self.entries.iter().min_by_key(|(_, e)| e.last_used)`
   iterator chain with closure, plus `BTreeMap::remove()`. Iterator combinators
-  lack vstd specs. vstd btree specs unavailable on `no_std` target.
+  (`iter`, `min_by_key`, `map`) have no vstd specs.
 - **Spec:** LRU victim (`lru_order[0]`) evicted, contents/order updated accordingly.
+
+### axiom_cache_lru_of_remove — `lib.proof.rs:408-418`
+- **Trust item:** `external_body` (on proof fn)
+- **Classification:** `VERUS_LIMITATION`
+- **Reason:** Axiom relating the uninterpreted `cache_lru_of` function to
+  BTreeMap removal. `cache_lru_of` is partially uninterpreted (uses
+  `cache_lru_of_nonempty` for non-empty maps) because the concrete LRU
+  ordering depends on `CacheEntry::last_used` counter values, which cannot
+  be expressed as a closed-form spec function over `BTreeMap` entries.
+  Sound because `BTreeMap::remove` does not change `last_used` counters of
+  remaining entries, so their relative sort order is preserved.
+- **Spec:** `cache_lru_of(new) == cache_lru_of(old).filter(|k| k != key)`.
+
+## Body-Verified Functions
+
+The following functions are verified without `external_body`:
+
+| Function | Status |
+|---|---|
+| `Cache::new` | ✅ Body verified (calls `BTreeMap::new` with local `assume_specification`) |
+| `Cache::remove` | ✅ Body verified (uses `btreemap_remove` wrapper + `axiom_cache_lru_of_remove`) |
+| `Cache::clear` | ✅ Body verified (calls `BTreeMap::clear` with local `assume_specification`) |
 
 ## Unverifiable Functions
 
-### CacheGuard::deref_mut — `lib.rs:101`
+### CacheGuard::deref_mut — `lib.rs:102-105`
 - **Trust item:** No spec (function excluded from verification)
 - **Classification:** `VERUS_LIMITATION`
 - **Reason:** `deref_mut` returns `&mut V`. Verus error: "The verifier does not
@@ -125,7 +143,7 @@ fields ("The verifier does not yet support &mut types, except in special cases")
 
 ## Trust Assumptions
 
-### Counter overflow — `lib.rs:192,224`
+### Counter overflow — `lib.rs:210,246`
 - **Assumption:** `self.counter` (type `u64`) never overflows during the
   lifetime of a Cache instance.
 - **Classification:** `VERUS_LIMITATION` (precondition omitted)

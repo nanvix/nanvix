@@ -87,3 +87,7 @@ confirm the full crate passes with no cross-module conflicts.
 Now let me run the current verification to see the baseline:
 Now I have a clear picture. The verification already passes with 0 errors. The issue is `external_body` annotations that need to be minimized. Most are genuinely unverifiable (Verus limitations), but `clear` can be body-verified since `BTreeMap::clear` has an `assume_specification`. Let me implement the proof.
 Now add the `lemma_clear_view` proof function to the proof file:
+Verification passes (18 verified, 0 errors). `clear` is now body-verified. Let me check if I can also verify `put` by rewriting it to avoid `get_mut`.
+No vstd specs exist for `iter`, `min_by_key`, `contains_key`, or `get_mut` on BTreeMap. Verifying `put` would require a new `contains_key` wrapper, a new `cache_lru_of_insert` axiom, and a counter invariant — adding 2 new trust items to remove 1. Not beneficial. The remaining `external_body` items are genuinely unverifiable. Let me update trust.md and finalize.
+Now let me write the updated trust.md:
+Now let me run the AST consistency check and verify the build compiles:
