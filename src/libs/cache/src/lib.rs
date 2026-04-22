@@ -254,6 +254,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// - `key`: The cache key to remove.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(
         requires
             old(self)@.inv(),
