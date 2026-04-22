@@ -47,6 +47,7 @@ pub struct ExCacheGuard<'a, V>(crate::CacheGuard<'a, V>);
 /// - `capacity`: maximum number of entries.
 /// - `lru_order`: keys ordered from LRU (index 0) to MRU (last element).
 #[verifier::ext_equal]
+#[verifier::reject_recursive_types(K)]
 pub struct CacheView<K, V> {
     pub contents: Map<K, V>,
     pub capacity: nat,

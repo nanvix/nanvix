@@ -1,0 +1,32 @@
+Timestamp: 2026-04-22_19-36-29
+Mode: cargo
+Crate: cache
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=8
+  admit=5
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking cache v0.12.457 (/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache)
+error: Type parameter K of cache::Cache must be declared #[verifier::reject_recursive_types] to be used in a non-positive position
+   --> src/libs/cache/src/lib.rs:115:1
+    |
+115 | / pub struct Cache<K, V> {
+116 | |     /// Cached entries.
+117 | |     entries: BTreeMap<K, CacheEntry<V>>,
+118 | |     /// Monotonically increasing counter for LRU ordering.
+...   |
+121 | |     capacity: usize,
+122 | | }
+    | |_^
+
+error: could not compile `cache` (lib) due to 1 previous error
