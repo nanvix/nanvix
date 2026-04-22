@@ -26,6 +26,23 @@ pub struct ExBTreeMap<K, V, A>(alloc::collections::BTreeMap<K, V, A>)
 #[verifier::external_type_specification]
 pub struct ExGlobal(alloc::alloc::Global);
 
+//==================================================================================================
+// BTreeMap View & assume_specification (mirroring vstd::std_specs::btree, gated behind cfg(std))
+//==================================================================================================
+
+// View for BTreeMap — matches vstd pattern at vstd/std_specs/btree.rs:457-461.
+impl<Key, Value, A: core::alloc::Allocator + core::clone::Clone> View for alloc::collections::BTreeMap<Key, Value, A> {
+    type V = Map<Key, Value>;
+    uninterp spec fn view(&self) -> Map<Key, Value>;
+}
+
+// assume_specification for BTreeMap::new — matches vstd/std_specs/btree.rs:613-616.
+pub assume_specification<K, V>[ alloc::collections::BTreeMap::<K, V>::new ]()
+    -> (m: alloc::collections::BTreeMap<K, V>)
+    ensures
+        m@ == Map::<K, V>::empty(),
+;
+
 // CacheEntry is a private internal type.
 #[verifier::reject_recursive_types(V)]
 #[verifier::external_type_specification]

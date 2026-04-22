@@ -101,3 +101,5 @@ Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-
 === Output (streaming) ===
 Now let me check the vstd btree specs and the verus-constraints skill, then look at the Makefile.
 Good. Now let me run the baseline verification and check the current View impl for BTreeMap more carefully.
+Now I have full context. Let me implement the fix step by step.
+**Attempt 1:** Add `assume_specification` for `BTreeMap::new` + View impl for BTreeMap, remove `external_body` from `Cache::new`.
