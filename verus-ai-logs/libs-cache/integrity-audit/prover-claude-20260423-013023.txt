@@ -1,8 +1,9 @@
 === Copilot Session ===
-Timestamp: 2026-04-23T01:30:23.416360
+Timestamp: 2026-04-23T01:48:21.320590
 Model: claude-opus-4.6
-Session: new
-Command: copilot --allow-all --model claude-opus-4.6 --output-format...
+Session: 1e7866b0-e710-4333-bc55-82fea4fe7580
+Duration: 1077.9s
+Exit code: 0
 
 === Prompt ===
 You are performing an integrity audit for cache. The goal is to
@@ -107,7 +108,7 @@ Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-
 ## Result: PASS / BLOCKER
 ```
 
-=== Output (streaming) ===
+=== Output ===
 Now let me run the initial verification and AST consistency checks.
 Good — no cfg-gated exec code. Let me now check for `assume_specification` counts tracked by the verify script:
 Now I have a comprehensive view of the codebase. Let me consult the rubber-duck agent with my analysis before writing the report.
@@ -200,3 +201,31 @@ Also update the trust.md audit section and fix the evict reference (was previous
 Also fix the evict entry — the trust.md lists it as `Cache::evict` but the external_body is on `find_lru_victim`:
 Now let me run the final verification to confirm everything still passes:
 Verification passes (exit 0). Since no source code was modified (only trust.md and fix_report.md documentation), the full-crate verification result is unchanged. Let me confirm by running `make verify`:
+All three crates pass Verus verification (exit 0). The `CHEATING_DETECTED` exits are from the cheating counter — pre-existing in bitmap (cfg_gate=5) and slab (cfg_gate=1), plus cache's external_body items. No regressions.
+
+Let me verify the final state of the updated trust.md:
+All updates are in place. Let me provide a final summary.
+
+---
+
+## Integrity Audit Complete: cache
+
+**Result: PASS** — no items eliminated, all trust boundaries genuine.
+
+### Cheating Counts (unchanged)
+| Item | Count |
+|------|-------|
+| external_body | 8 (2 types + 6 functions) |
+| assume_specification | 5 |
+| admit/assume/trusted/cfg_gate | 0 |
+
+### Key Findings
+1. **All 8 external_body items challenged** — none can be eliminated without adding equivalent or greater trust elsewhere (confirmed by vstd search across 3 versions + trade-off analysis)
+2. **assume_specification fidelity issue found**: `insert` and `len` axiom drop upstream `obeys_cmp_spec` guards — now documented in trust.md
+3. **AST consistency**: 15 match, 3 mismatch (all pre-approved: intermediate variable, stdlib wrapper, iterator extraction), 2 extra (new wrapper functions)
+4. **Verification**: All 3 crates (bitmap, slab, cache) pass with 0 errors
+
+### Files Updated
+- `verus-ai-logs/libs-cache/integrity-audit/fix_report.md` — full audit report
+- `verus-ai-logs/libs-cache/trust.md` — corrected `find_lru_victim` entry, added `obeys_cmp_spec` deviation documentation, updated audit date
+=== End ===
