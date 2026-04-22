@@ -64,6 +64,16 @@
       "verdict": "PASS",
       "review_file": null,
       "duration_s": 1398.2
+    },
+    "polish": {
+      "phase": "polish",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "PASS",
+      "review_file": null,
+      "duration_s": 761.3
     }
   },
   "prover_session_id": "14102062-6070-477a-999a-f0617b42776c",
@@ -76,6 +86,7 @@
     "property-analysis": "f2bcfe5646039c6c280894c3fc4d335bc2f0c664",
     "specification": "1cd84e6547d21e850b3be2720dbc61cdda985cb1",
     "proving": "5ad9cc932da29328734ede4310a3012a2e0cbb28",
-    "integrity-audit": "4612889529e0b965ceedda4cede53ede58579aa1"
+    "integrity-audit": "4612889529e0b965ceedda4cede53ede58579aa1",
+    "polish": "187969ed6ab4ddda7e7e8f96b1ed7772f81dd87e"
   }
 }

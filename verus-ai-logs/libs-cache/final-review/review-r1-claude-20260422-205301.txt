@@ -1,0 +1,185 @@
+=== Copilot Session ===
+Timestamp: 2026-04-22T20:53:01.738552
+Model: claude-opus-4.6
+Session: new
+Command: copilot --allow-all --model claude-opus-4.6 --output-format...
+
+=== Prompt ===
+You are performing a comprehensive final review of the entire verification
+effort for cache. All phases (caller analysis → view design →
+specification → proving → integrity audit → polish) have completed.
+
+
+
+Source file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.rs
+Spec file:  /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.spec.rs
+Proof file: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache/src/lib.proof.rs
+Caller analysis: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/caller_analysis.md
+View design: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/view_design.md
+Property analysis: /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/property_analysis.md
+Verus command: make verify-cache
+Base branch: dev
+
+== SKILLS ==
+
+Follow strictly (auto-loaded from .github/skills/):
+- **spec-design** — MUST follow: spec quality and classification
+- **verus-constraints** — MUST follow: forbidden patterns
+- **ast-consistency** — MUST follow: AST consistency checks
+
+
+== SUB-AGENT POLICY ==
+
+Sub-agents are allowed. Use ONLY these models:
+  - **claude-opus-4.6** (preferred default) — for all tasks.
+  - **gpt-5.3-codex** — for all tasks.
+When diversity is needed (e.g. independent parallel analysis), use a different model per sub-agent.
+
+== TASK ==
+
+Use **2 sub-agents** (one per model from the sub-agent policy) to independently
+review. Each sub-agent should cover ALL of the following:
+
+1. **Spec quality** — are external-top specs (API contracts) correct, complete,
+   understandable? Follow **spec-design** skill criteria.
+2. **Caller coverage** — does every caller expectation from /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/caller_analysis.md
+   have a corresponding spec? Are any important properties missing?
+3. **Proof completeness** — count remaining `admit()`. Any remaining admit()
+   is a BLOCKER — they must all be resolved.
+4. **Trust minimization** — is /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/trust.md truly minimal? Challenge every
+   item per **spec-design** skill trust classifications. Any item that could
+   be eliminated but wasn't is a BLOCKER.
+5. **AST consistency** — run the AST consistency checks per the **ast-consistency** skill.
+   Check all `// VERUS REWRITE` comments for semantic equivalence. Any MISMATCH is a blocker.
+6. **Verification** — run `make verify-cache` to confirm 0 errors.
+7. **Guardrails compliance** — count ALL cheating dimensions:
+   `admit`, `assume`, `external_body`, `trusted`, `no_decreases`, `cfg-gated exec`.
+   Report exact counts. Any `admit > 0`, `assume > 0`, or `trusted > 0` is a **BLOCKER**.
+   `external_body` on user functions (NOT external_type_specification on type specs)
+   is a **BLOCKER** — each one forces human review of unverified code. Challenge every
+   external_body: can it be eliminated by rewriting, splitting, or isolating the
+   unsupported construct? Only external_type_specification items are acceptable.
+   For `no_decreases`: must be justified in /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/trust.md with a reproducer.
+8. **Bug reconciliation** — read /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/bugs.md and reconcile against the final
+   code state. For each entry: is it still valid? Was it fixed? Were any bugs
+   discovered during proving/integrity that were not recorded? Ensure every
+   surviving verification failure that was NOT resolved is classified per the
+   **bug-reporting** skill.
+
+Save each sub-agent's raw review next to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/final-review/final_review.md with the model name
+appended (e.g., `final_review.claude.md`). Then consolidate into a single review.
+
+== OUTPUT ==
+
+Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-ai-logs/libs-cache/final-review/final_review.md:
+```markdown
+# Final Comprehensive Review: cache
+
+## Checklist
+### Caller Analysis
+- [ ] All pub functions have callers identified (or justified as design-intent-only)
+- [ ] Trait obligations documented with expected semantics
+- [ ] Caller expectations (success + failure) documented for each pub function
+- [ ] Abstract resource identified (1-2 sentences)
+- [ ] Pre-existing specs assessed (if any exist from upstream verification)
+
+### View Design
+- [ ] Every field passes the substitution test (survives a complete rewrite)
+- [ ] All caller-observable state represented (no missing fields)
+- [ ] No implementation-specific fields (no capacity, hash fn, pointers)
+- [ ] inv() encodes real constraints (not trivially true)
+- [ ] Mathematical types used (int/Seq/Set/Map; exception: addresses keep usize)
+- [ ] Inherited View fields validated against ALL callers (if pre-existing)
+
+### Specification
+- [ ] Every in-scope exec function has requires/ensures
+- [ ] No tautological ensures (e.g., `Err(_) => true`)
+- [ ] No subsumed ensures (derivable from inv() + other ensures)
+- [ ] Error paths have meaningful ensures (match style: Ok => ..., Err => ...)
+- [ ] No assume_specification for workspace-internal code
+- [ ] vstd searched before any assume_specification
+- [ ] Specs written for the caller (usable directly in caller proofs)
+
+### Proving
+- [ ] No specs weakened from specification phase
+- [ ] Zero remaining admit()
+- [ ] No new assume/assume_specification/external_body added without reproducer
+- [ ] No cfg-gated exec code (branches, expressions, match arms)
+- [ ] All trust items in trust.md classified per spec-design skill
+- [ ] Any claimed limitation has an **isolated** reproducer for the specific construct — not just the full failing expression. Conclusion names exact unsupported API/pattern, not a feature class
+- [ ] If many functions are external_body, this is a red flag — verify each claim independently
+- [ ] make verify passes (0 errors, 0 warnings)
+- [ ] Exec rewrites are minimal and semantically equivalent
+
+### Polish
+- [ ] Large inline proof blocks extracted into named lemmas (proof-extraction)
+- [ ] No redundant assertions, hints, or duplicate lemmas (proof-minimization; uncalled lemmas are NOT dead — they still prove properties)
+- [ ] Lemma names are descriptive (describe WHAT is proven)
+- [ ] make verify still passes (0 errors, 0 warnings)
+- [ ] No specs weakened during polish
+
+### Integrity Audit
+- [ ] Zero admit() remaining
+- [ ] Zero assume() remaining
+- [ ] Zero trusted functions
+- [ ] Zero exec_allows_no_decreases_clause
+- [ ] Zero cfg-gated exec code (only imports/derives/debug_assert/logging allowed)
+- [ ] Every external_body challenged — only genuinely unverifiable items survive
+- [ ] AST consistency: each mismatch analyzed (allowed deviation vs restore needed)
+- [ ] All exec rewrites have VERUS REWRITE comment and minimal reproducer
+- [ ] trust.md minimized — only genuinely unverifiable items remain
+- [ ] make verify passes (0 errors, 0 warnings)
+
+### Bug Recording
+- [ ] bugs.md exists and has been reviewed for completeness
+- [ ] Every surviving verification failure classified (True Bug / Context-Dependent / False Positive)
+- [ ] Each True Bug has all fields: What / Why / Verification Failure / How Verus Helped / Severity / Suggested Fix
+- [ ] No external_body used to mask a code defect (vs. genuine Verus limitation)
+- [ ] Bug entries include provenance (which phase discovered it)
+
+## Spec Quality
+- [assessment of external-top specs: correctness, completeness, readability]
+
+## Caller Coverage
+- Covered: N / Total
+- Missing: [list uncovered caller expectations]
+
+## Proof Completeness
+- Remaining admit(): N [list locations — each is a BLOCKER]
+
+## Trust Minimization
+- Total trust items: N [list each with classification per spec-design skill]
+- Challengeable (should be eliminated): [any — BLOCKER]
+
+## Guardrails Compliance
+- admit: N, assume: N, external_body: N, trusted: N, no_decreases: N
+- Unjustified items: [any not in trust.md — BLOCKER]
+
+## AST Consistency
+- AST check: PASS / FAIL
+
+## Verification
+- verus: PASS / FAIL
+
+## Bug Summary
+- Total bugs recorded: N
+- True Bugs: N [list each with severity]
+- Context-Dependent: N [list each]
+- Spec-phase suspicions unresolved: N [each is a concern]
+
+## Issues (highest priority first)
+- ...
+
+## Result: PASS / FAIL
+```
+
+== RESULT ==
+
+Be strict: PASS only if ALL checklist items are checked. Any unchecked item is FAIL.
+
+=== Output (streaming) ===
+Now let me read the remaining large files and check for the skills and existing final-review directory:
+Let me read the remaining content and check the skills:
+Now let me check the verify-cache target and gather remaining context:
+Now I have comprehensive context. Let me load the required skills and then launch the two sub-agents:
+Now I have all three skills loaded and full context. Let me run `make verify-cache` first, then launch both sub-agents in parallel:
