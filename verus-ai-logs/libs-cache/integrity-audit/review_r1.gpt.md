@@ -1,55 +1,75 @@
 # Independent Integrity Audit Review — GPT
 
 ## Cheating Item Counts
-Verified by direct inspection of `lib.rs`, `lib.spec.rs`, `lib.proof.rs`, `lib.vstd_btree.rs`:
+Verified from source + `make verify-cache` output.
 
-- `admit()`: **0**
-- `assume()`: **0**
-- `external_body`: **8** ✅
-  - Functions: `CacheGuard::deref`, `btreemap_remove`, `Cache::get`, `Cache::put`, `Cache::evict`, `axiom_cache_lru_of_remove`
-  - Type specs with body: `ExCacheGuard`, `ExBTreeMap`
+- `admit()`: **0** (`rg "admit\\(" src/libs/cache/src`)
+- `assume()`: **0** (`rg "assume\\(" src/libs/cache/src`)
 - `trusted`: **0**
-- `exec_allows_no_decreases_clause`: **0**
-- cfg-gated exec code: **0** (only ghost includes and test module cfgs observed)
-- `assume_specification` in `lib.vstd_btree.rs`: **5** ✅
-- `broadcast axiom` in `lib.vstd_btree.rs`: **2** ✅
+- `external_body`: **8** total
+  - Exec/proof fns (**6**): `CacheGuard::deref` (lib.rs:93), `btreemap_remove` (lib.rs:114), `Cache::get` (lib.rs:190), `Cache::put` (lib.rs:230), `Cache::find_lru_victim` (lib.rs:315), `axiom_cache_lru_of_remove` (lib.proof.rs:401)
+  - Type specs (**2**): `ExBTreeMap` (lib.vstd_btree.rs:32), `ExCacheGuard` (lib.spec.rs:24)
+- `assume_specification`: **5 declarations** (lib.vstd_btree.rs:69,88,98,108,130)
+- `broadcast axiom`: **2 declarations** (lib.vstd_btree.rs:56,80)
+- `external_type_specification`: **4** (`ExBTreeMap`, `ExGlobal`, `ExCacheEntry`, `ExCacheGuard`)
+- cfg-gated exec code: **0**
+
+`make verify-cache` confirms: verification exit 0, cheating `assume=0 external_body=8 admit=0 trusted=0 no_decreases=0 cfg_gate=0`, coverage `9/10` (only `deref_mut` excluded).
 
 ## Challenge Results
-1. `btreemap_remove` — **KEEP**. Wrapper is a narrow trust shim around `remove`; replacing with broader `assume_specification` for `remove::<Q>` on `alloc::BTreeMap` would not reduce trust.
-2. `CacheGuard::deref` — **KEEP**. Depends on opaque `CacheGuard` (`&mut V` field limitation).
-3. `Cache::get` — **KEEP**. Fundamental blocker is `CacheGuard`/`&mut` modeling; not just `get_mut`.
-4. `Cache::put` — **KEEP**. `remove+insert` rewrite is possible semantically, but is a structural exec rewrite (source-integrity violation for this audit target).
-5. `Cache::evict` — **KEEP**. Current body uses iterator combinators (`min_by_key`, `map`) without usable specs here; manual-loop rewrite would alter exec code.
-6. `axiom_cache_lru_of_remove` — **KEEP (high-risk trust)**. Could be provable only with a fully interpreted LRU-order spec and substantial new proof machinery.
-7. `ExBTreeMap` — **KEEP**. Needed on this no_std path.
-8. `ExCacheGuard` — **KEEP**. Verus limitation on `&mut` in struct fields.
-9. `ExCacheEntry` — **KEEP**. Needed to reason about private internal type in specs.
+1. **btreemap_remove** (STDLIB_WRAPPER): keep. Thin wrapper over `m.remove(k)` with precise postconditions; direct alloc-path `Borrow<Q>` spec support is missing in this crate setup.
+2. **CacheGuard::deref** (VERUS_LIMITATION): keep. `CacheGuard` is opaque (`&mut` field type limitation), so field-read body cannot be verified.
+3. **Cache::get** (VERUS_LIMITATION): keep. Depends on `get_mut` and returning mutable-backed guard; this is exactly where Verus support is missing.
+4. **Cache::put** (VERUS_LIMITATION): keep. Existing-key in-place update uses `get_mut`; eliminating requires structural rewrite (remove/reinsert path + extra trusted interface), not a trust-boundary reduction.
+5. **Cache::find_lru_victim** (VERUS_LIMITATION): keep. Isolates unverifiable iterator/combinator chain into smallest external_body surface.
+6. **axiom_cache_lru_of_remove** (VERUS_LIMITATION): keep. Needed because `cache_lru_of_nonempty` is uninterpreted; relation is narrow and targeted.
+7. **ExBTreeMap** (EXTERNAL_TYPE): keep. Required no_std alloc BTreeMap visibility/type bridging.
+8. **ExCacheGuard** (VERUS_LIMITATION): keep. Required for `&mut`-field struct type.
 
 ## AST Consistency Analysis
-Given mismatch set (2 mismatches + 1 extra), all are legitimate:
-- `Cache::new`: named return + ghost proof block only; exec semantics unchanged.
-- `Cache::remove`: `self.entries.remove(key)` replaced by one-call wrapper `btreemap_remove(...)` plus ghost proof; semantically equivalent stdlib wrapper deviation.
-- Extra `btreemap_remove`: intentional wrapper, single-call body.
+Recomputed with `/home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py`:
+- Matched: 15
+- Mismatched: 3 (`Cache::new`, `Cache::remove`, `Cache::evict`)
+- Extra: 2 (`Cache::find_lru_victim`, `btreemap_remove`)
+
+Per item:
+- **Cache::new** mismatch: justified (pre-approved named-result rewrite + proof block). `VERUS REWRITE` comment: **No**.
+- **Cache::remove** mismatch: justified (`remove` -> `btreemap_remove` + proof). `VERUS REWRITE`: **Yes** (lib.rs:284).
+- **Cache::evict** mismatch: justified (extracted helper + wrapper + proof). `VERUS REWRITE`: **Yes** (lib.rs:352,354).
+- **Cache::find_lru_victim** extra: justified extraction of iterator chain. `VERUS REWRITE`: **Yes** (lib.rs:326).
+- **btreemap_remove** extra: justified stdlib wrapper. `VERUS REWRITE`: **No** (not a rewrite site; new wrapper function).
 
 ## Bug vs Limitation
-- `CacheGuard::deref`: limitation, no bug evidence.
-- `btreemap_remove`: limitation/workaround, no bug evidence.
-- `Cache::get`: limitation; logic appears correct modulo counter overflow assumption.
-- `Cache::put`: limitation; logic appears correct modulo counter overflow assumption.
-- `Cache::evict`: limitation; victim selection correct if `last_used` monotonic (no overflow).
-- `axiom_cache_lru_of_remove`: limitation but trust-sensitive (axiom could mask spec inconsistency if abused).
+- `btreemap_remove`: limitation/wrapper; no cache-specific defect evidence.
+- `CacheGuard::deref`: limitation.
+- `Cache::get`: limitation, but external_body means counter-overflow behavior is not mechanically checked.
+- `Cache::put`: limitation, same overflow caveat.
+- `Cache::find_lru_victim`: limitation; trusts iterator-chain behavior to match spec abstraction.
+- `axiom_cache_lru_of_remove`: limitation/axiom trust, not an exec bug.
+- `ExBTreeMap`: external type boundary.
+- `ExCacheGuard`: limitation.
 
-## vstd Search Results
-From `~/.cargo/registry/src/.../vstd-0.0.0-2026-04-05-0114/std_specs`:
-- `std_specs/mod.rs` gates btree behind `#[cfg(all(feature = "alloc", feature = "std"))]`.
-- `btree.rs` has specs for `contains_key`, `get`, `remove`, `iter`, `keys`, `values`.
-- `get_mut` spec: **not found**.
-- Therefore: upstream has broad `std`-BTreeMap support, but this crate’s no_std adaptation intentionally carries only a subset (5 assumes + 2 axioms).
+## Errors in Existing Review
+In `integrity-audit/review_r1.md`:
+1. **Misnamed external_body function**: lists `Cache::evict` instead of `Cache::find_lru_victim` (line 30/table and line 49).
+2. **AST table incomplete/incorrect**: omits `Cache::evict` mismatch and lists only one extra in table section.
+3. **Coverage claim incorrect**: says `8/9` (line 110); verifier output is **`9/10`**.
+
+## Spec Quality Assessment
+- `btreemap_remove`: strong and appropriate (state + return relation).
+- `CacheGuard::deref`: minimal but consistent with opaque guard model.
+- `Cache::get`: reasonably strong hit/miss split; ties returned guard view and abstract transition.
+- `Cache::put`: strong abstract transition spec (`spec_put`) + invariant preservation.
+- `Cache::find_lru_victim`: adequate for current abstraction, but relies on uninterpreted `cache_lru_of` (limited semantic grounding).
+- `axiom_cache_lru_of_remove`: narrow and useful, but inherently trusted.
+- Type external bodies (`ExBTreeMap`, `ExCacheGuard`): boundary declarations, not behavioral specs.
 
 ## Issues Found
-1. **Axiom risk (highest):** `axiom_cache_lru_of_remove` is unproven trusted glue over an uninterpreted LRU function.
-2. **Model/runtime gap:** counter overflow (`u64`) can break concrete LRU ordering; documented but still trusted.
-3. **Documentation precision:** claims about missing BTreeMap iteration support should explicitly say “in local no_std adaptation”, not globally in upstream vstd.
+1. **Medium**: Existing review (`review_r1.md`) has factual errors (misnaming `evict`, wrong coverage).
+2. **Low**: `get`/`put` external_body leaves counter-overflow behavior as trust assumption (already documented in bugs/trust docs).
+3. **Low**: `find_lru_victim`/`cache_lru_of` link is abstraction-heavy (acceptable but trusted).
 
 ## Conclusion
-**PASS** (strict integrity outcome): no clearly eliminable trust item was found without source-integrity-breaking exec rewrites or enlarging trust elsewhere. Trust boundary is not zero, but appears locally minimal under current Verus/no_std constraints.
+**PASS (with documentation corrections required).**
+
+Trust boundary appears minimal under current no_std + Verus limitations and source-integrity constraints. I found no clear removable external_body that reduces net trust without comparable replacement. However, the prior review document contains concrete factual inaccuracies (notably `evict` vs `find_lru_victim`, and `8/9` vs `9/10`) and should be corrected.
