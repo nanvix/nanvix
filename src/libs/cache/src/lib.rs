@@ -138,6 +138,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// - `capacity`: Maximum number of entries the cache can hold.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             result@ == CacheView::<K, V>::spec_new(capacity as nat),
