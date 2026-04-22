@@ -32,6 +32,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
+#![cfg_attr(verus_keep_ghost, feature(allocator_api))]
 
 //==================================================================================================
 // Imports
@@ -46,6 +47,8 @@ use ::core::ops::{
 };
 
 use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("lib.vstd_btree.rs");
 #[cfg(verus_keep_ghost)]
 include!("lib.spec.rs");
 #[cfg(verus_keep_ghost)]
@@ -83,15 +86,35 @@ pub struct CacheGuard<'a, V> {
     value: &'a mut V,
 }
 
+#[verus_verify]
 impl<V> Deref for CacheGuard<'_, V> {
     type Target = V;
 
+    #[verus_verify(external_body)]
+    #[verus_spec(ret =>
+        ensures *ret == self@,
+    )]
     fn deref(&self) -> &V { ... }
 }
 
 impl<V> DerefMut for CacheGuard<'_, V> {
     fn deref_mut(&mut self) -> &mut V { ... }
 }
+
+//==================================================================================================
+// Stdlib Wrappers
+//==================================================================================================
+
+/// Stdlib wrapper for `BTreeMap::remove`. Needed because `BTreeMap::remove`'s full
+/// generic signature (`Borrow<Q>`, `Allocator`) is complex. This wrapper fixes Q=K.
+#[verus_verify(external_body)]
+#[verus_spec(ret =>
+    ensures
+        btreemap_view_spec(*m) == btreemap_view_spec(*old(m)).remove(*k),
+        ret.is_some() <==> btreemap_view_spec(*old(m)).dom().contains(*k),
+        ret.is_some() ==> ret == Some(btreemap_view_spec(*old(m))[*k]),
+)]
+fn btreemap_remove<K: Ord, V>(m: &mut BTreeMap<K, V>, k: &K) -> Option<V> { ... }
 
 //==================================================================================================
 // Cache
@@ -106,6 +129,8 @@ impl<V> DerefMut for CacheGuard<'_, V> {
 /// on eviction the entry with the smallest (oldest) counter value is removed. Lookups bump the
 /// counter to mark the entry as recently used.
 ///
+#[verus_verify(reject_recursive_types(K))]
+#[verus_verify(reject_recursive_types(V))]
 pub struct Cache<K, V> {
     /// Cached entries.
     entries: BTreeMap<K, CacheEntry<V>>,
@@ -115,6 +140,7 @@ pub struct Cache<K, V> {
     capacity: usize,
 }
 
+#[verus_verify]
 impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// # Description
@@ -125,6 +151,11 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// - `capacity`: Maximum number of entries the cache can hold.
     ///
+    #[verus_spec(result =>
+        ensures
+            result@ == CacheView::<K, V>::spec_new(capacity as nat),
+            result@.inv(),
+    )]
     pub const fn new(capacity: usize) -> Self { ... }
 
     ///
@@ -140,6 +171,24 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// An RAII guard providing access to the cached value, or `None` on cache miss.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            old(self)@.inv(),
+        ensures
+            // Hit: key is present.
+            old(self)@.contents.dom().contains(*key) ==> {
+                &&& result is Some
+                &&& result->Some_0@ == old(self)@.spec_get(*key).1.unwrap()
+                &&& self@ == old(self)@.spec_get(*key).0
+                &&& self@.inv()
+            },
+            // Miss: key is absent.
+            !old(self)@.contents.dom().contains(*key) ==> {
+                &&& result is None
+                &&& self@ == old(self)@
+            },
+    )]
     pub fn get(&mut self, key: &K) -> Option<CacheGuard<'_, V>> { ... }
 
     ///
@@ -152,6 +201,14 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     /// - `key`: The cache key to insert or update.
     /// - `value`: The value to store.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(
+        requires
+            old(self)@.inv(),
+        ensures
+            self@ == old(self)@.spec_put(key, value),
+            self@.inv(),
+    )]
     pub fn put(&mut self, key: K, value: V) { ... }
 
     ///
@@ -163,6 +220,13 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// - `key`: The cache key to remove.
     ///
+    #[verus_spec(
+        requires
+            old(self)@.inv(),
+        ensures
+            self@ == old(self)@.spec_remove(*key),
+            self@.inv(),
+    )]
     pub fn remove(&mut self, key: &K) { ... }
 
     ///
@@ -170,6 +234,14 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// Removes all entries.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(
+        requires
+            old(self)@.inv(),
+        ensures
+            self@ == old(self)@.spec_clear(),
+            self@.inv(),
+    )]
     pub fn clear(&mut self) { ... }
 
     ///
@@ -177,6 +249,20 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// Evicts the entry with the smallest `last_used` counter.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(
+        requires
+            old(self)@.inv(),
+            old(self)@.contents.dom().len() > 0,
+        ensures
+            // The LRU victim (index 0) is evicted.
+            !self@.contents.dom().contains(old(self)@.lru_order[0]),
+            self@.contents == old(self)@.contents.remove(old(self)@.lru_order[0]),
+            self@.contents.dom().len() == old(self)@.contents.dom().len() - 1,
+            self@.lru_order == old(self)@.lru_order.subrange(1, old(self)@.lru_order.len() as int),
+            self@.capacity == old(self)@.capacity,
+            self@.inv(),
+    )]
     fn evict(&mut self) { ... }
 }
 
