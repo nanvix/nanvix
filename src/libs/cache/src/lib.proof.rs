@@ -340,7 +340,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     /// Called from Cache::new after removing external_body.
     proof fn lemma_new_view(result: &Self, capacity: usize)
         requires
-            btreemap_view_spec(result.entries) == Map::<K, CacheEntry<V>>::empty(),
+            result.entries@ == Map::<K, CacheEntry<V>>::empty(),
             result.counter == 0u64,
             result.capacity == capacity,
         ensures
@@ -377,7 +377,7 @@ proof fn axiom_cache_lru_of_remove<K, V>(
     key: K,
 )
     requires
-        btreemap_view_spec(new_entries) == btreemap_view_spec(old_entries).remove(key),
+        new_entries@ == old_entries@.remove(key),
     ensures
         cache_lru_of(new_entries) == cache_lru_of(old_entries).filter(|k: K| k != key),
 {}
@@ -395,7 +395,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         old_capacity: usize,
     )
         requires
-            btreemap_view_spec(new_self.entries) == btreemap_view_spec(old_entries).remove(key),
+            new_self.entries@ == old_entries@.remove(key),
             new_self.capacity == old_capacity,
             // Old state was well-formed (inv fields expressed via abstraction helpers):
             cache_contents_of(old_entries).dom().len() <= old_capacity as nat,
@@ -453,8 +453,8 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             // Key absent — spec_remove returns old_view unchanged
 
             // btreemap_view_spec unchanged (remove of absent key is identity on Map)
-            assert(cache_contents_of(old_entries).dom() =~= btreemap_view_spec(old_entries).dom());
-            assert(btreemap_view_spec(new_self.entries) == btreemap_view_spec(old_entries));
+            assert(cache_contents_of(old_entries).dom() =~= old_entries@.dom());
+            assert(new_self.entries@ == old_entries@);
 
             // Contents unchanged
             assert(cache_contents_of(new_self.entries) =~= cache_contents_of(old_entries));

@@ -48,6 +48,8 @@ use ::core::ops::{
 
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
+include!("lib.vstd_btree.rs");
+#[cfg(verus_keep_ghost)]
 include!("lib.spec.rs");
 #[cfg(verus_keep_ghost)]
 include!("lib.proof.rs");
@@ -108,14 +110,13 @@ impl<V> DerefMut for CacheGuard<'_, V> {
 //==================================================================================================
 
 /// Stdlib wrapper for `BTreeMap::remove`. Needed because `BTreeMap::remove`'s full
-/// generic signature (`Borrow<Q>`, `Allocator`) cannot be expressed with
-/// `btreemap_view_spec`. This wrapper fixes Q=K and A=Global.
+/// generic signature (`Borrow<Q>`, `Allocator`) is complex. This wrapper fixes Q=K.
 #[verus_verify(external_body)]
 #[verus_spec(ret =>
     ensures
-        btreemap_view_spec(*m) == btreemap_view_spec(*old(m)).remove(*k),
-        ret.is_some() <==> btreemap_view_spec(*old(m)).dom().contains(*k),
-        ret.is_some() ==> ret == Some(btreemap_view_spec(*old(m))[*k]),
+        m@ == old(m)@.remove(*k),
+        ret.is_some() <==> old(m)@.dom().contains(*k),
+        ret.is_some() ==> ret == Some(old(m)@[*k]),
 )]
 fn btreemap_remove<K: Ord, V>(m: &mut BTreeMap<K, V>, k: &K) -> Option<V> {
     m.remove(k)
