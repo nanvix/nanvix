@@ -174,6 +174,7 @@ no_fail = { path = "src/libs/no_fail", default-features = false }
 num_enum = { version = "0.7.6", default-features = false }
 nvx = { path = "src/libs/nvx", default-features = false }
 oci-spec = "0.9.0"
+paste = "1.0"
 profiler = { path = "src/libs/profiler", default-features = false }
 protobuf = "3.7"
 portpicker = "0.1"
