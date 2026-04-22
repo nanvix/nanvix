@@ -144,3 +144,5 @@ Now let me try minimizing assertions in the other lemmas. I'll try several at on
 Let me try removing the assertions in `lemma_new_view`, `lemma_clear_view`, `lemma_spec_new_inv`, `lemma_spec_clear_inv`, and the insert-dom assertion in `lemma_spec_put_inv`:
 Now try removing assertions in `lemma_new_view` and `lemma_clear_view`:
 Some assertions were needed. Let me see the errors:
+Need to restore the inv-critical assertions. Let me add back what's needed:
+Now I need to add back the lru_order assertions for `lemma_new_view` and `lemma_clear_view`:

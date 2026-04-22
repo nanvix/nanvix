@@ -178,6 +178,10 @@ proof fn lemma_spec_new_inv<K, V>(capacity: nat)
 {
     broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
         vstd::seq_lib::seq_to_set_is_finite;
+
+    let cv = CacheView::<K, V>::spec_new(capacity);
+    assert(cv.contents.dom() =~= Set::<K>::empty());
+    assert(cv.lru_order.to_set() =~= Set::<K>::empty());
 }
 
 /// `spec_get` preserves the invariant.
@@ -319,6 +323,10 @@ proof fn lemma_spec_clear_inv<K, V>(cache: CacheView<K, V>)
 {
     broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
         vstd::seq_lib::seq_to_set_is_finite;
+
+    let cv = cache.spec_clear();
+    assert(cv.contents.dom() =~= Set::<K>::empty());
+    assert(cv.lru_order.to_set() =~= Set::<K>::empty());
 }
 
 //==================================================================================================
@@ -345,6 +353,8 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         reveal(cache_lru_of);
 
         assert(result@.contents =~= Map::<K, V>::empty());
+        assert(result@.lru_order == Seq::<K>::empty());
+        assert(result@.lru_order.to_set() =~= Set::<K>::empty());
     }
 }
 
@@ -375,6 +385,8 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         reveal(cache_lru_of);
 
         assert(new_self@.contents =~= Map::<K, V>::empty());
+        assert(new_self@.lru_order == Seq::<K>::empty());
+        assert(new_self@.lru_order.to_set() =~= Set::<K>::empty());
     }
 }
 
