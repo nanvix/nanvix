@@ -37,17 +37,6 @@ pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 
 struct ArenaAllocator;
 
-#[repr(align(4096))]
-struct HeapStorage {
-    memory: [u8; MIN_HEAP_SIZE],
-}
-
-::static_assert::assert_eq_align!(HeapStorage, mem::PAGE_SIZE);
-
-static mut HEAP_STORAGE: HeapStorage = HeapStorage {
-    memory: [0; MIN_HEAP_SIZE],
-};
-
 #[derive(Copy, Clone)]
 enum SlabSize {
     Slab8 = 8,
@@ -88,6 +77,12 @@ struct Kheap {
 //==================================================================================================
 
 static mut HEAP: Option<Kheap> = None;
+
+/// Pointer to the platform-provided heap backing buffer.
+/// Every platform must set this via [`set_backing_storage()`] before calling [`init()`].
+static mut BACKING_PTR: *mut u8 = core::ptr::null_mut();
+/// Size of the backing storage in bytes.
+static mut BACKING_SIZE: usize = 0;
 
 #[global_allocator]
 static mut ALLOCATOR: ArenaAllocator = ArenaAllocator;
@@ -267,13 +262,57 @@ unsafe impl GlobalAlloc for ArenaAllocator {
 // Standalone Functions
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Records an externally-provided backing buffer for the kernel heap.
+///
+/// All platforms must call this function before [`init()`]. The heap initializer
+/// unconditionally requires a previously recorded backing buffer and does not
+/// fall back to any kheap-local static storage.
+///
+/// # Parameters
+///
+/// - `ptr`: Pointer to the start of the backing buffer. Must be page-aligned.
+/// - `size`: Size of the backing buffer in bytes. Must be a multiple of [`MIN_HEAP_SIZE`].
+///
+#[allow(dead_code)]
+pub unsafe fn set_backing_storage(ptr: *mut u8, size: usize) -> Result<(), Error> {
+    if ptr.is_null() {
+        let reason: &str = "null backing storage pointer";
+        error!("set_backing_storage(): {}", reason);
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+    if !(ptr as usize).is_multiple_of(mem::PAGE_SIZE) {
+        let reason: &str = "unaligned backing storage pointer";
+        error!("set_backing_storage(): {}", reason);
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+    if size < MIN_HEAP_SIZE {
+        let reason: &str = "backing storage too small";
+        error!("set_backing_storage(): {} (size={}, min={})", reason, size, MIN_HEAP_SIZE);
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+    if !size.is_multiple_of(MIN_HEAP_SIZE) {
+        let reason: &str = "backing storage size is not a multiple of MIN_HEAP_SIZE";
+        error!("set_backing_storage(): {} (size={}, min={})", reason, size, MIN_HEAP_SIZE);
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+    BACKING_PTR = ptr;
+    BACKING_SIZE = size;
+    Ok(())
+}
+
 pub unsafe fn init() -> Result<(), Error> {
     info!("initializing the kernel heap...");
 
-    HEAP = Some(Kheap::from_raw_parts(
-        HEAP_STORAGE.memory.as_ptr() as usize,
-        HEAP_STORAGE.memory.len(),
-    )?);
+    if BACKING_PTR.is_null() {
+        let reason: &str = "backing storage not set";
+        error!("init(): {}", reason);
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+
+    HEAP = Some(Kheap::from_raw_parts(BACKING_PTR as usize, BACKING_SIZE)?);
 
     Ok(())
 }

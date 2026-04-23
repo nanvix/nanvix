@@ -131,9 +131,40 @@ static mut KPOOL_BITMAP_STORAGE: [u8; config::kernel::KPOOL_SIZE
     / (mem::PAGE_SIZE * u8::BITS as usize)] =
     [0; config::kernel::KPOOL_SIZE / (mem::PAGE_SIZE * u8::BITS as usize)];
 
+/// Heap backing storage, allocated in BSS.
+#[repr(align(4096))]
+struct HeapStorage {
+    memory: [u8; crate::mm::kheap::MIN_HEAP_SIZE],
+}
+
+::static_assert::assert_eq_align!(HeapStorage, mem::PAGE_SIZE);
+
+/// Heap backing storage.
+static mut HEAP_STORAGE: HeapStorage = HeapStorage {
+    memory: [0; crate::mm::kheap::MIN_HEAP_SIZE],
+};
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+///
+/// # Description
+///
+/// Points the kernel heap at the BSS-resident `HEAP_STORAGE` buffer.
+///
+/// Must be called before [`crate::mm::kheap::init()`].
+///
+/// # Safety
+///
+/// This function accesses the `HEAP_STORAGE` static mutable.
+///
+pub unsafe fn setup_heap_backing_storage() -> Result<(), ::sys::error::Error> {
+    crate::mm::kheap::set_backing_storage(
+        HEAP_STORAGE.memory.as_mut_ptr(),
+        HEAP_STORAGE.memory.len(),
+    )
+}
 
 ///
 /// # Description
