@@ -235,6 +235,9 @@ pub struct Platform {
     (::config::kernel::KPOOL_SIZE / mem::PAGE_SIZE).is_multiple_of(u8::BITS as usize)
 );
 
+// Ensure the config crate's GPA ceiling matches the upstream MAX_GPA from hyperlight-common.
+::static_assert::assert_eq!(memory_layout::HYPERLIGHT_GPA_CEILING == MAX_GPA + 1);
+
 // Scratch-reserved layout.
 //
 // These structures are allocated in the scratch region (outside the CoW snapshot) so that
@@ -1129,6 +1132,24 @@ pub fn init(
     // MAX_GPA (not MAX_GVA) because the guest uses identity mapping (GVA == GPA)
     // and the KVM memory slot is placed relative to MAX_GPA.
     let scratch_base_address: usize = MAX_GPA - scratch_size + 1;
+
+    // Sanity check: the scratch region must not descend into the user virtual address space.
+    // The config crate already computes USER_END_RAW to avoid this overlap, but verify at
+    // runtime in case the memory layout parameters diverge from compile-time assumptions.
+    // When they do, the reserved MMIO structures (input/output buffers) at the bottom of the
+    // scratch region would collide with user stack pages.
+    if scratch_base_address < memory_layout::USER_END_RAW {
+        let reason: &str = "scratch region overlaps user address space";
+        error!(
+            "init(): {} (scratch_base={:#010x} < USER_END_RAW={:#010x}, scratch_size={:#x})",
+            reason,
+            scratch_base_address,
+            memory_layout::USER_END_RAW,
+            scratch_size
+        );
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+
     // scratch_end is the exclusive end of the full scratch range, including the last page
     // reserved for Hyperlight bookkeeping metadata.
     let scratch_end_address: usize =
