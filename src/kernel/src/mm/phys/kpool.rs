@@ -70,15 +70,20 @@ impl Inner {
     fn new(base: PageAligned<PhysicalAddress>, bitmap: Bitmap) -> Result<Inner, Error> {
         // Check if bitmap spans across physically-addressable memory.
         let bitmap_capacity: usize = bitmap.number_of_bits();
-        let kpool_size: usize = bitmap_capacity * mem::PAGE_SIZE;
+        let kpool_size: usize = match bitmap_capacity.checked_mul(mem::PAGE_SIZE) {
+            Some(size) => size,
+            None => {
+                let reason: &str = "kernel pool size overflows addressable memory";
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            },
+        };
         if !is_valid_physical_region(base.into_raw_value(), kpool_size) {
             let reason: &str = "kernel pool bitmap spans across physically-addressable memory";
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
-
-        let num_frames: usize = bitmap.number_of_bits();
-        info!("kernel pool: {} frames, {} KB", num_frames, (num_frames * mem::PAGE_SIZE) / 1024,);
+        info!("kernel pool: {} frames, {} KB", bitmap_capacity, kpool_size / 1024,);
 
         Ok(Inner { base, bitmap })
     }
