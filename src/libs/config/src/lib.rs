@@ -83,12 +83,53 @@ pub mod memory_layout {
     ///
     pub const USER_BASE_RAW: usize = KERNEL_END_RAW;
 
-    ///
-    /// # Description
-    ///
-    /// Provides the raw value for [`USER_END`], which can be used in constant-value expressions.
-    ///
-    pub const USER_END_RAW: usize = 0xf0000000;
+    // On Hyperlight the scratch region occupies the top of the 32-bit GPA space ([MAX_GPA -
+    // scratch_size + 1, MAX_GPA + 1)).  Reserved MMIO structures (input/output buffers, allocator
+    // bitmaps) are placed at the very bottom of the scratch region.  Because scratch_size can be as
+    // large as MEMORY_SIZE, those buffers can descend into the user address space, colliding with
+    // the user stack.  To prevent this, the user address space must end below the worst-case
+    // scratch base.  The value is aligned down to a 4 MB page-table boundary.
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "hyperlight")] {
+            ///
+            /// # Description
+            ///
+            /// First guest physical address above the addressable GPA range
+            /// (`MAX_GPA + 1` from `hyperlight-common`).  The kernel's compile-time
+            /// assertion ties this value to the upstream constant so it cannot
+            /// silently drift.
+            ///
+            pub const HYPERLIGHT_GPA_CEILING: usize = 0xFEE0_0000;
+
+            /// Alignment for the exclusive upper bound of the user virtual address space.
+            pub const USER_END_ALIGNMENT: usize = 4 * 1024 * 1024;
+
+            ///
+            /// # Description
+            ///
+            /// Exclusive upper bound of the user virtual address space (Hyperlight).
+            ///
+            /// Computed as `floor_4MB(HYPERLIGHT_GPA_CEILING - MEMORY_SIZE)` so that
+            /// the worst-case scratch region never overlaps the user stack.
+            ///
+            pub const USER_END_RAW: usize =
+                (HYPERLIGHT_GPA_CEILING - crate::kernel::MEMORY_SIZE) & !(USER_END_ALIGNMENT - 1);
+        } else {
+            ///
+            /// # Description
+            ///
+            /// Exclusive upper bound of the user virtual address space.
+            ///
+            pub const USER_END_RAW: usize = 0xf0000000;
+        }
+    }
+
+    // The subtraction in USER_END_RAW must not underflow, and the result must stay above the
+    // kernel region. The Hyperlight build.rs ceiling guarantees this today, but verify here so
+    // future configuration changes fail with a clear diagnostic at the source of the calculation.
+    const _: () = assert!(USER_END_RAW > USER_BASE_RAW, "USER_END_RAW underflows into kernel");
+    const _: () =
+        assert!(USER_END_RAW > USER_MMAP_END_RAW, "USER_END_RAW overlaps fixed user-space regions");
 
     ///
     /// # Description
