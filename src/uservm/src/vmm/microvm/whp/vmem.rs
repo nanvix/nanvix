@@ -87,6 +87,11 @@ pub struct VirtualMemory {
     /// File-backed remap info for placeholder-split cleanup, or `None` when the region is a
     /// single committed block.
     file_remap: Option<FileRemap>,
+    /// Multiple file-backed remap info for multi-image zero-copy mapping, or `None` when
+    /// `remap_files_at` has not been called.
+    multi_file_remap: Option<MultiFileRemap>,
+    /// File handles that must stay alive for file-backed mappings to remain valid.
+    backing_files: Vec<File>,
 }
 
 ///
@@ -111,6 +116,29 @@ struct FileRemap {
 ///
 /// # Description
 ///
+/// Tracks the state of a multi-file remap performed by `remap_files_at()`. Multiple sub-regions
+/// of guest memory are replaced with file-backed views via placeholder splitting.
+///
+struct MultiFileRemap {
+    /// Byte offset where the placeholder split begins (everything before is committed).
+    split_start: usize,
+    /// Ordered list of file-backed view segments.
+    views: Vec<FileView>,
+}
+
+/// A single file-backed view within a multi-file remap.
+struct FileView {
+    /// Byte offset within the guest memory region.
+    offset: usize,
+    /// Page-aligned size of the view.
+    len: usize,
+    /// Section handle for cleanup (default/null if not yet mapped).
+    section_handle: HANDLE,
+}
+
+///
+/// # Description
+///
 /// A structure that represents the header in virtual memory snapshot files.
 ///
 #[repr(C)]
@@ -122,10 +150,11 @@ struct SnapshotHeader {
 // SAFETY: `VirtualMemory` owns a contiguous region of virtual memory allocated with
 // `VirtualAlloc2` and released in `Drop` (via `VirtualFree` and, when a file remap is active,
 // `UnmapViewOfFileEx` + `CloseHandle`), a WHP partition handle (an opaque OS handle safe to use
-// from any thread), and an optional `FileRemap` containing OS handles with no thread affinity.
-// All operations that mutate or deallocate the region require exclusive access (`&mut self`),
-// and resources are released exactly once during `Drop`. Synchronisation of concurrent access to
-// the pointed-to memory is the responsibility of higher-level code.
+// from any thread), optional `FileRemap`/`MultiFileRemap` containing OS handles with no thread
+// affinity, and a `Vec<File>` of backing file handles. All operations that mutate or deallocate
+// the region require exclusive access (`&mut self`), and resources are released exactly once
+// during `Drop`. Synchronisation of concurrent access to the pointed-to memory is the
+// responsibility of higher-level code.
 unsafe impl Send for VirtualMemory {}
 unsafe impl Sync for VirtualMemory {}
 
@@ -152,6 +181,11 @@ const GPA_RWX: WHV_MAP_GPA_RANGE_FLAGS = WHV_MAP_GPA_RANGE_FLAGS(
 /// WHP GPA mapping flags: Read | Write (no Execute).
 const GPA_RW: WHV_MAP_GPA_RANGE_FLAGS =
     WHV_MAP_GPA_RANGE_FLAGS(WHvMapGpaRangeFlagRead.0 | WHvMapGpaRangeFlagWrite.0);
+
+/// Combined `MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER` flag used to split a committed region
+/// back into placeholders without destroying the head.
+const MEM_RELEASE_PRESERVE: VIRTUAL_FREE_TYPE =
+    VIRTUAL_FREE_TYPE(MEM_RELEASE.0 | MEM_PRESERVE_PLACEHOLDER.0);
 
 //==================================================================================================
 // Implementations
@@ -237,6 +271,8 @@ impl VirtualMemory {
             size,
             partition_handle: partition.handle(),
             file_remap: None,
+            multi_file_remap: None,
+            backing_files: Vec::new(),
         };
 
         // Map the memory into the WHP partition at guest physical address 0.
@@ -298,61 +334,15 @@ impl VirtualMemory {
     /// new one is established. Callers should treat a failure as fatal for the VM instance.
     ///
     pub fn remap_file_at(&mut self, start: usize, file: &File) -> Result<()> {
-        let len: usize = {
-            let file_len: u64 = file
-                .metadata()
-                .map_err(|e| {
-                    let reason: String = format!("failed to query file metadata (error={e:?})");
-                    error!("remap_file_at(): {reason}");
-                    anyhow::anyhow!(reason)
-                })?
-                .len();
-            usize::try_from(file_len).map_err(|_| {
-                let reason: String =
-                    format!("file size exceeds platform address space (size={file_len})");
-                error!("remap_file_at(): {reason}");
-                anyhow::anyhow!(reason)
-            })?
-        };
+        if self.file_remap.is_some() || self.multi_file_remap.is_some() {
+            let reason: &str = "remap has already been performed on this VirtualMemory";
+            error!("remap_file_at(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        let view_specs: Vec<(usize, usize)> = self.validate_remap_regions(&[(start, file)])?;
+        let len: usize = view_specs[0].1;
         trace!("remap_file_at(): start={start:#x}, len={len:#x}");
-
-        if self.file_remap.is_some() {
-            let reason: &str = "remap_file_at() has already been called on this VirtualMemory";
-            error!("remap_file_at(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        if len == 0 {
-            let reason: &str = "cannot remap zero-sized region";
-            error!("remap_file_at(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        if start.checked_add(len).is_none_or(|end| end > self.size) {
-            let reason: String = format!(
-                "remap region [{start:#x}, {:#x}) exceeds memory bounds (size={:#x})",
-                start.saturating_add(len),
-                self.size
-            );
-            error!("remap_file_at(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        let page_size: usize = ::arch::mem::PAGE_SIZE;
-        if !start.is_multiple_of(page_size) {
-            let reason: String = format!(
-                "start address is not page-aligned (start={start:#x}, page_size={page_size:#x})"
-            );
-            error!("remap_file_at(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        if !len.is_multiple_of(page_size) {
-            let reason: String =
-                format!("length is not page-aligned (len={len:#x}, page_size={page_size:#x})");
-            error!("remap_file_at(): {reason}");
-            anyhow::bail!(reason);
-        }
 
         // SAFETY: `GetCurrentProcess()` returns a pseudo-handle that is always valid.
         let current_process: HANDLE = unsafe { GetCurrentProcess() };
@@ -381,7 +371,12 @@ impl VirtualMemory {
 
         // Phase 3: Re-commit the tail placeholder and re-register all affected GPA segments
         //          with the WHP partition.
-        self.commit_and_map_tail(start, len, current_process)?;
+        let view: FileView = FileView {
+            offset: start,
+            len,
+            section_handle,
+        };
+        self.recommit_tail_and_register_gpa(start, &[view], start + len, current_process)?;
 
         Ok(())
     }
@@ -420,8 +415,6 @@ impl VirtualMemory {
         // `VirtualFree(addr, size, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER)` splits the
         // committed region in place: [0..start) stays committed, [start..size) becomes a
         // placeholder. No data is destroyed in the head.
-        const MEM_RELEASE_PRESERVE: VIRTUAL_FREE_TYPE =
-            VIRTUAL_FREE_TYPE(MEM_RELEASE.0 | MEM_PRESERVE_PLACEHOLDER.0);
         // SAFETY: `self.ptr.add(start)` points within the committed region (bounds checked
         // by the caller). `MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER` splits the committed
         // allocation: [0..start) stays committed, [start..size) becomes a placeholder.
@@ -526,22 +519,244 @@ impl VirtualMemory {
     ///
     /// # Description
     ///
-    /// Re-commits the tail placeholder `[start+len..size)` (if any) and re-registers
-    /// the file-backed middle segment and the tail committed segment with the WHP partition.
+    /// Replaces multiple sub-regions of guest memory with zero-copy, file-backed mappings using
+    /// Windows placeholder APIs.
     ///
-    fn commit_and_map_tail(
+    /// The committed region from the first region's offset onward is freed to placeholders,
+    /// then each file is mapped via `MapViewOfFile3` with `MEM_REPLACE_PLACEHOLDER`. Gaps
+    /// between file regions and the tail are re-committed. All affected GPA segments are
+    /// re-registered with the WHP partition.
+    ///
+    /// # Parameters
+    ///
+    /// - `regions`: Slice of `(guest_offset, file)` pairs, sorted by offset. Files must be
+    ///   page-aligned in size and non-overlapping.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns empty. On failure, returns an error.
+    ///
+    pub fn remap_files_at(&mut self, regions: &[(usize, &File)]) -> Result<()> {
+        if regions.is_empty() {
+            return Ok(());
+        }
+
+        if self.file_remap.is_some() || self.multi_file_remap.is_some() {
+            let reason: &str = "remap has already been performed on this VirtualMemory";
+            error!("remap_files_at(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        let view_specs: Vec<(usize, usize)> = self.validate_remap_regions(regions)?;
+        let split_start: usize = view_specs[0].0;
+
+        // SAFETY: `GetCurrentProcess()` returns a pseudo-handle that is always valid.
+        let current_process: HANDLE = unsafe { GetCurrentProcess() };
+
+        // Phase 1+2: Unmap GPA [split_start..size) and free to a single placeholder.
+        // When `len == self.size - split_start`, the tail split in step 3 is naturally
+        // skipped because `split_start + len == self.size`.
+        self.prepare_placeholders(split_start, self.size - split_start)?;
+
+        // Phase 3: Split placeholders, commit gaps, and map each file view.
+        let (multi_remap, placeholder_base): (MultiFileRemap, usize) =
+            self.split_and_map_views(regions, &view_specs, split_start, current_process)?;
+
+        // Phase 4+5: Re-commit tail and re-register all GPA segments with WHP.
+        self.recommit_tail_and_register_gpa(
+            multi_remap.split_start,
+            &multi_remap.views,
+            placeholder_base,
+            current_process,
+        )?;
+
+        self.multi_file_remap = Some(multi_remap);
+        Ok(())
+    }
+
+    /// Validates that every region in `regions` has a non-zero, page-aligned size, a
+    /// page-aligned offset, and fits within the guest memory bounds. Returns the
+    /// `(offset, len)` pairs on success.
+    fn validate_remap_regions(&self, regions: &[(usize, &File)]) -> Result<Vec<(usize, usize)>> {
+        let page_size: usize = ::arch::mem::PAGE_SIZE;
+        let mut view_specs: Vec<(usize, usize)> = Vec::with_capacity(regions.len());
+
+        for &(offset, file) in regions {
+            let len: usize = {
+                let file_len: u64 = file
+                    .metadata()
+                    .map_err(|e| {
+                        let reason: String = format!("failed to query file metadata (error={e:?})");
+                        error!("validate_remap_regions(): {reason}");
+                        anyhow::anyhow!(reason)
+                    })?
+                    .len();
+                usize::try_from(file_len).map_err(|_| {
+                    let reason: String =
+                        format!("file size exceeds platform address space (size={file_len})");
+                    error!("validate_remap_regions(): {reason}");
+                    anyhow::anyhow!(reason)
+                })?
+            };
+            if len == 0 {
+                anyhow::bail!("validate_remap_regions(): cannot remap zero-sized file");
+            }
+            if !offset.is_multiple_of(page_size) || !len.is_multiple_of(page_size) {
+                anyhow::bail!(
+                    "validate_remap_regions(): offset ({offset:#x}) and length ({len:#x}) must be \
+                     page-aligned"
+                );
+            }
+            if offset.checked_add(len).is_none_or(|end| end > self.size) {
+                anyhow::bail!(
+                    "validate_remap_regions(): region [{offset:#x}..{:#x}) exceeds memory bounds",
+                    offset.saturating_add(len)
+                );
+            }
+            view_specs.push((offset, len));
+        }
+
+        // Verify that regions are sorted by offset and non-overlapping, which is
+        // required by split_and_map_views() for correct placeholder splitting.
+        for window in view_specs.windows(2) {
+            let (prev_offset, prev_len) = window[0];
+            let (next_offset, _) = window[1];
+            let prev_end: usize = prev_offset + prev_len;
+            if next_offset < prev_end {
+                anyhow::bail!(
+                    "validate_remap_regions(): regions are not sorted or overlap \
+                     (prev=[{prev_offset:#x}..{prev_end:#x}), next_offset={next_offset:#x})"
+                );
+            }
+        }
+
+        Ok(view_specs)
+    }
+
+    /// Iterates over the file regions left-to-right, splitting gaps from the placeholder and
+    /// re-committing them, then splitting each file-sized placeholder and mapping it via
+    /// [`Self::map_file_view`]. Returns the populated [`MultiFileRemap`] and the final
+    /// placeholder base offset.
+    fn split_and_map_views(
         &mut self,
-        start: usize,
-        len: usize,
+        regions: &[(usize, &File)],
+        view_specs: &[(usize, usize)],
+        split_start: usize,
+        current_process: HANDLE,
+    ) -> Result<(MultiFileRemap, usize)> {
+        let mut multi_remap: MultiFileRemap = MultiFileRemap {
+            split_start,
+            views: Vec::with_capacity(regions.len()),
+        };
+
+        // After `prepare_placeholders` we have one placeholder [split_start..size).
+        let mut placeholder_base: usize = split_start;
+
+        for (i, &(view_offset, file)) in regions.iter().enumerate() {
+            let view_len: usize = view_specs[i].1;
+            let view_end: usize = view_offset + view_len;
+
+            // Split off and re-commit a gap [placeholder_base..view_offset) if one exists.
+            if view_offset > placeholder_base {
+                let gap_size: usize = view_offset - placeholder_base;
+                self.commit_gap(placeholder_base, gap_size, current_process)?;
+                placeholder_base = view_offset;
+            }
+
+            // Split the file region from the remaining placeholder (if more follows).
+            if view_end < self.size {
+                // SAFETY: `self.ptr.add(placeholder_base)` is the base of the current
+                // placeholder, and `view_len` splits off the file-sized region.
+                unsafe {
+                    VirtualFree(
+                        self.ptr.add(placeholder_base).cast(),
+                        view_len,
+                        MEM_RELEASE_PRESERVE,
+                    )
+                    .map_err(|e| {
+                        let reason: String = format!(
+                            "split_and_map_views(): failed to split file placeholder (error={e:?})"
+                        );
+                        error!("{reason}");
+                        anyhow::anyhow!(reason)
+                    })?;
+                }
+            }
+
+            // Map the file view at [view_offset..view_end), reusing the single-file helper.
+            let file_handle: HANDLE = HANDLE(file.as_raw_handle());
+            let section_handle: HANDLE =
+                self.map_file_view(view_offset, view_len, file_handle, current_process)?;
+
+            multi_remap.views.push(FileView {
+                offset: view_offset,
+                len: view_len,
+                section_handle,
+            });
+
+            placeholder_base = view_end;
+        }
+
+        Ok((multi_remap, placeholder_base))
+    }
+
+    /// Splits a gap-sized region from the current placeholder and re-commits it as writable
+    /// memory.
+    fn commit_gap(&self, base: usize, gap_size: usize, current_process: HANDLE) -> Result<()> {
+        // SAFETY: `self.ptr.add(base)` is the start of the current placeholder.
+        // Splitting off `gap_size` bytes creates two placeholders.
+        unsafe {
+            VirtualFree(self.ptr.add(base).cast(), gap_size, MEM_RELEASE_PRESERVE).map_err(
+                |e| {
+                    let reason: String =
+                        format!("commit_gap(): failed to split gap placeholder (error={e:?})");
+                    error!("{reason}");
+                    anyhow::anyhow!(reason)
+                },
+            )?;
+        }
+
+        // Re-commit the gap as writable memory.
+        // SAFETY: `self.ptr.add(base)` targets the gap placeholder just split off.
+        let committed: *mut std::ffi::c_void = unsafe {
+            VirtualAlloc2(
+                Some(current_process),
+                Some(self.ptr.add(base).cast()),
+                gap_size,
+                MEM_RESERVE | MEM_COMMIT | MEM_REPLACE_PLACEHOLDER,
+                PAGE_READWRITE.0,
+                None,
+            )
+        };
+        if committed.is_null() {
+            let reason: String = format!(
+                "commit_gap(): failed to re-commit gap [{base:#x}..{:#x})",
+                base + gap_size
+            );
+            error!("{reason}");
+            anyhow::bail!(reason);
+        }
+
+        Ok(())
+    }
+
+    /// Re-commits the tail placeholder `[tail_start..size)` (if any) and re-registers
+    /// all affected GPA segments (committed gaps, file-backed views, tail) with the WHP
+    /// partition. The head `[0..split_start)` is assumed to still be mapped.
+    ///
+    /// This is the shared finalization step used by both `remap_file_at` (single view) and
+    /// `remap_files_at` (multiple views).
+    fn recommit_tail_and_register_gpa(
+        &self,
+        split_start: usize,
+        views: &[FileView],
+        tail_start: usize,
         current_process: HANDLE,
     ) -> Result<()> {
-        let tail_start: usize = start + len;
-
-        // Re-commit the tail placeholder (if any).
+        // Re-commit the tail placeholder if any.
         if tail_start < self.size {
             let tail_size: usize = self.size - tail_start;
-            // SAFETY: `self.ptr.add(tail_start)` targets the tail placeholder created by
-            // `prepare_placeholders()`.  `tail_size` spans [tail_start..size).
+            // SAFETY: `self.ptr.add(tail_start)` targets the tail placeholder.
             let committed: *mut std::ffi::c_void = unsafe {
                 VirtualAlloc2(
                     Some(current_process),
@@ -553,52 +768,78 @@ impl VirtualMemory {
                 )
             };
             if committed.is_null() {
-                let reason: String =
-                    format!("failed to re-commit tail segment [{tail_start:#x}..{:#x})", self.size);
-                error!("commit_and_map_tail(): {reason}");
+                let reason: String = format!(
+                    "recommit_tail_and_register_gpa(): failed to re-commit tail \
+                     [{tail_start:#x}..{:#x})",
+                    self.size
+                );
+                error!("{reason}");
                 anyhow::bail!(reason);
             }
         }
 
-        // Re-map the file-backed middle segment into the WHP partition.
-        // The head [0..start) was never unmapped — skip it.
-        // Use RW-only permissions: RAMFS data does not contain executable code.
-        // SAFETY: `self.ptr.add(start)` points to the file-backed view of `len` bytes
-        // established by `map_file_view()`.
-        unsafe {
-            WHvMapGpaRange(
-                self.partition_handle,
-                self.ptr.add(start) as *const std::ffi::c_void,
-                start as u64,
-                len as u64,
-                GPA_RW,
-            )
-            .map_err(|e| {
-                let reason: String = format!(
-                    "failed to map file-backed GPA range (start={start:#x}, len={len:#x}, \
-                     error={e:?})"
-                );
-                error!("commit_and_map_tail(): {reason}");
-                anyhow::anyhow!(reason)
-            })?;
-        }
-
-        // Re-map the tail committed segment (if any).
-        if tail_start < self.size {
-            let tail_size: usize = self.size - tail_start;
-            // SAFETY: `self.ptr.add(tail_start)` points to the re-committed tail segment.
-            // `tail_size` spans [tail_start..size). The WHP handle is valid.
+        // Re-register GPA segments with WHP. The head [0..split_start) was never unmapped.
+        let mut prev_end: usize = split_start;
+        for view in views {
+            // Re-map committed gap before this view.
+            if view.offset > prev_end {
+                let gap_size: usize = view.offset - prev_end;
+                // SAFETY: `self.ptr.add(prev_end)` points to a re-committed gap segment.
+                unsafe {
+                    WHvMapGpaRange(
+                        self.partition_handle,
+                        self.ptr.add(prev_end) as *const std::ffi::c_void,
+                        prev_end as u64,
+                        gap_size as u64,
+                        GPA_RWX,
+                    )
+                    .map_err(|e| {
+                        let reason: String = format!(
+                            "recommit_tail_and_register_gpa(): failed to map gap GPA (error={e:?})"
+                        );
+                        error!("{reason}");
+                        anyhow::anyhow!(reason)
+                    })?;
+                }
+            }
+            // Re-map file-backed view (RW only, RAMFS data is not executable).
+            // SAFETY: `self.ptr.add(view.offset)` points to the file-backed view.
             unsafe {
                 WHvMapGpaRange(
                     self.partition_handle,
-                    self.ptr.add(tail_start) as *const std::ffi::c_void,
-                    tail_start as u64,
+                    self.ptr.add(view.offset) as *const std::ffi::c_void,
+                    view.offset as u64,
+                    view.len as u64,
+                    GPA_RW,
+                )
+                .map_err(|e| {
+                    let reason: String = format!(
+                        "recommit_tail_and_register_gpa(): failed to map file GPA (error={e:?})"
+                    );
+                    error!("{reason}");
+                    anyhow::anyhow!(reason)
+                })?;
+            }
+            prev_end = view.offset + view.len;
+        }
+
+        // Re-map committed tail.
+        if prev_end < self.size {
+            let tail_size: usize = self.size - prev_end;
+            // SAFETY: `self.ptr.add(prev_end)` points to the re-committed tail segment.
+            unsafe {
+                WHvMapGpaRange(
+                    self.partition_handle,
+                    self.ptr.add(prev_end) as *const std::ffi::c_void,
+                    prev_end as u64,
                     tail_size as u64,
                     GPA_RWX,
                 )
                 .map_err(|e| {
-                    let reason: String = format!("failed to re-map tail GPA range (error={e:?})");
-                    error!("commit_and_map_tail(): {reason}");
+                    let reason: String = format!(
+                        "recommit_tail_and_register_gpa(): failed to map tail GPA (error={e:?})"
+                    );
+                    error!("{reason}");
                     anyhow::anyhow!(reason)
                 })?;
             }
@@ -700,6 +941,21 @@ impl VirtualMemory {
         }
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Attaches multiple backing file handles whose memory-mapped regions must remain valid
+    /// for the VM's lifetime. Used by the multi-image RAMFS path where each sub-image file
+    /// is mapped individually.
+    ///
+    /// # Parameters
+    ///
+    /// - `files`: File handles to keep alive.
+    ///
+    pub fn attach_backing_files(&mut self, files: Vec<File>) {
+        self.backing_files = files;
     }
 
     ///
@@ -1089,81 +1345,111 @@ impl Drop for VirtualMemory {
             }
         }
 
-        match self.file_remap.take() {
-            Some(remap) => {
-                // The region was split into up to three segments by `remap_file_at()`.
-                // Free each segment individually: committed segments via VirtualFree,
-                // the file view via UnmapViewOfFileEx, and the section handle via
-                // CloseHandle (when file-mapped).
-                //
-                // This also handles partial-failure states: if `remap_file_at()` failed
-                // after `prepare_placeholders()` but before completing all phases, some
-                // segments may still be placeholders. `VirtualFree(MEM_RELEASE)` releases
-                // both committed regions and placeholders, so cleanup is safe either way.
-                let tail_start: usize = remap.start + remap.len;
+        if let Some(multi) = self.multi_file_remap.take() {
+            // Multi-file remap active. The region was split into: committed head, N file views
+            // (possibly with committed gaps between them), and a committed tail.
 
-                // Free the head committed segment.
-                if remap.start > 0 {
-                    // SAFETY: `self.ptr` is the base of the original allocation.  After
-                    // `remap_file_at()`, [0..start) is a standalone committed region.
+            // Free the committed head [0..split_start).
+            if multi.split_start > 0 {
+                unsafe {
+                    if VirtualFree(self.ptr.cast(), 0, MEM_RELEASE).is_err() {
+                        error!("VirtualFree() failed for head segment (multi)");
+                    }
+                }
+            }
+
+            // Free committed gaps and file views, left to right.
+            let mut prev_end: usize = multi.split_start;
+            for view in &multi.views {
+                // Free committed gap [prev_end..view.offset) if any.
+                if view.offset > prev_end {
                     unsafe {
-                        if VirtualFree(self.ptr.cast(), 0, MEM_RELEASE).is_err() {
-                            error!("VirtualFree() failed for head segment");
+                        if VirtualFree(self.ptr.add(prev_end).cast(), 0, MEM_RELEASE).is_err() {
+                            error!("VirtualFree() failed for gap segment (multi)");
                         }
                     }
                 }
-
-                // Release the middle segment.
-                if remap.section_handle == HANDLE::default() {
-                    // Middle is a placeholder (partial failure). VirtualFree handles this.
-                    // SAFETY: `self.ptr.add(remap.start)` is the base of a standalone
-                    // region created during `remap_file_at()`.
+                // Release file-backed view.
+                if view.section_handle == HANDLE::default() {
                     unsafe {
-                        if VirtualFree(self.ptr.add(remap.start).cast(), 0, MEM_RELEASE).is_err() {
-                            error!("VirtualFree() failed for middle placeholder segment");
+                        if VirtualFree(self.ptr.add(view.offset).cast(), 0, MEM_RELEASE).is_err() {
+                            error!("VirtualFree() failed for placeholder segment (multi)");
                         }
                     }
                 } else {
-                    // Middle is a file-backed view — unmap and close the section handle.
-                    // SAFETY: `self.ptr.add(remap.start)` is the address of the file-backed
-                    // view created by `MapViewOfFile3` in `remap_file_at()` and
-                    // `remap.section_handle` is the corresponding section handle.  Both are
-                    // released exactly once here.
                     unsafe {
-                        let view: MEMORY_MAPPED_VIEW_ADDRESS = MEMORY_MAPPED_VIEW_ADDRESS {
-                            Value: self.ptr.add(remap.start).cast(),
+                        let view_addr: MEMORY_MAPPED_VIEW_ADDRESS = MEMORY_MAPPED_VIEW_ADDRESS {
+                            Value: self.ptr.add(view.offset).cast(),
                         };
-                        if UnmapViewOfFileEx(view, UNMAP_VIEW_OF_FILE_FLAGS(0)).is_err() {
-                            error!("UnmapViewOfFileEx() failed for file view");
+                        if UnmapViewOfFileEx(view_addr, UNMAP_VIEW_OF_FILE_FLAGS(0)).is_err() {
+                            error!("UnmapViewOfFileEx() failed for file view (multi)");
                         }
-                        if CloseHandle(remap.section_handle).is_err() {
-                            error!("CloseHandle() failed for section handle");
+                        if CloseHandle(view.section_handle).is_err() {
+                            error!("CloseHandle() failed for section handle (multi)");
                         }
                     }
                 }
+                prev_end = view.offset + view.len;
+            }
 
-                // Free the tail committed segment (or placeholder if Phase 3a failed).
-                if tail_start < self.size {
-                    // SAFETY: `self.ptr.add(tail_start)` is the base of either the
-                    // re-committed tail segment or a placeholder (if `commit_and_map_tail()`
-                    // failed before re-committing). `VirtualFree(MEM_RELEASE)` handles both.
-                    unsafe {
-                        if VirtualFree(self.ptr.add(tail_start).cast(), 0, MEM_RELEASE).is_err() {
-                            error!("VirtualFree() failed for tail segment");
-                        }
+            // Free committed tail [prev_end..size) if any.
+            if prev_end < self.size {
+                unsafe {
+                    if VirtualFree(self.ptr.add(prev_end).cast(), 0, MEM_RELEASE).is_err() {
+                        error!("VirtualFree() failed for tail segment (multi)");
                     }
                 }
-            },
-            None => {
-                // No remap: the region is a single committed block.
-                // SAFETY: `self.ptr` is a valid committed allocation from `VirtualAlloc2`
-                // in `new()` and is released exactly once here.
+            }
+        } else if let Some(remap) = self.file_remap.take() {
+            // Single file remap active. The region was split into up to three segments
+            // by `remap_file_at()`.
+            let tail_start: usize = remap.start + remap.len;
+
+            // Free the head committed segment.
+            if remap.start > 0 {
                 unsafe {
                     if VirtualFree(self.ptr.cast(), 0, MEM_RELEASE).is_err() {
-                        error!("VirtualFree() failed");
+                        error!("VirtualFree() failed for head segment");
                     }
                 }
-            },
+            }
+
+            // Release the middle segment.
+            if remap.section_handle == HANDLE::default() {
+                unsafe {
+                    if VirtualFree(self.ptr.add(remap.start).cast(), 0, MEM_RELEASE).is_err() {
+                        error!("VirtualFree() failed for middle placeholder segment");
+                    }
+                }
+            } else {
+                unsafe {
+                    let view: MEMORY_MAPPED_VIEW_ADDRESS = MEMORY_MAPPED_VIEW_ADDRESS {
+                        Value: self.ptr.add(remap.start).cast(),
+                    };
+                    if UnmapViewOfFileEx(view, UNMAP_VIEW_OF_FILE_FLAGS(0)).is_err() {
+                        error!("UnmapViewOfFileEx() failed for file view");
+                    }
+                    if CloseHandle(remap.section_handle).is_err() {
+                        error!("CloseHandle() failed for section handle");
+                    }
+                }
+            }
+
+            // Free the tail committed segment (or placeholder).
+            if tail_start < self.size {
+                unsafe {
+                    if VirtualFree(self.ptr.add(tail_start).cast(), 0, MEM_RELEASE).is_err() {
+                        error!("VirtualFree() failed for tail segment");
+                    }
+                }
+            }
+        } else {
+            // No remap: the region is a single committed block.
+            unsafe {
+                if VirtualFree(self.ptr.cast(), 0, MEM_RELEASE).is_err() {
+                    error!("VirtualFree() failed");
+                }
+            }
         }
     }
 }

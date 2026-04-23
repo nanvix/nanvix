@@ -213,6 +213,7 @@ async fn async_main() -> Result<ExitCode> {
         args.ramfs_filename().map(|s| s.to_string()),
         args.console_file().clone(),
         args.snapshot_path().map(|s| s.to_string()),
+        args.mount_directory().map(|s| s.to_string()),
         #[cfg(feature = "gdb")]
         args.gdb_port(),
     );
@@ -268,6 +269,7 @@ async fn async_main() -> Result<ExitCode> {
             args.ramfs_filename().map(|s| s.to_string()),
             args.console_file().clone(),
             args.snapshot_path().map(|s| s.to_string()),
+            args.mount_directory().map(|s| s.to_string()),
             #[cfg(feature = "gdb")]
             args.gdb_port(),
         ));

@@ -1,0 +1,42 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "mount-bench-nostd"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Benchmark for host directory mount feature"
+homepage.workspace = true
+
+[[bin]]
+name = "mount-bench-nostd"
+
+[dependencies]
+libc_string = { workspace = true }
+nvx = { workspace = true }
+sys = { workspace = true, features = ["kcall"] }
+sysapi = { workspace = true }
+syscall = { workspace = true, features = ["syscall"] }
+syslog = { workspace = true, default-features = true }
+
+[build-dependencies]
+build-utils = { workspace = true }
+cc = { workspace = true }
+cfg-if = { workspace = true }
+fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
+mkramfs = { workspace = true }
+
+[features]
+default = ["panic"]
+standalone = ["nvx/standalone", "syscall/standalone"]
+trace = ["nvx/trace", "syscall/trace", "syslog/trace"]
+debug = ["nvx/debug", "syscall/debug", "syslog/debug"]
+info = ["nvx/info", "syscall/info", "syslog/info"]
+warn = ["nvx/warn", "syscall/warn", "syslog/warn"]
+error = ["nvx/error", "syscall/error", "syslog/error"]
+panic = ["nvx/panic", "syscall/panic", "syslog/panic"]
+
+[lints]
+workspace = true

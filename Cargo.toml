@@ -7,6 +7,7 @@ default-members = ["src/utils/nanvixd"]
 members = [
         "src/benchmarks/echo-rust-nostd",
         "src/benchmarks/echo-wasm-rust",
+        "src/benchmarks/mount-bench-nostd",
         "src/benchmarks/noop-rust-nostd",
         "src/benchmarks/noop-wasm-rust",
         "src/benchmarks/snapshot-rust-nostd",
@@ -52,6 +53,7 @@ members = [
         "src/libs/libc_string",
         "src/libs/cache",
         "src/libs/multibin",
+        "src/libs/multiimage",
         "src/libs/mmio-tag",
         "src/libs/sys",
         "src/libs/type-safe",
@@ -65,6 +67,7 @@ members = [
         "src/tests/linux-app",
         "src/tests/memory-rust",
         "src/tests/misc-rust",
+        "src/tests/mount-test",
         "src/tests/network-rust",
         "src/tests/stress-rust",
         "src/tests/test-kernel",
@@ -158,6 +161,7 @@ log = "0.4.29"
 cache = { path = "src/libs/cache", default-features = false }
 mkramfs = { path = "src/utils/mkramfs" }
 multibin = { path = "src/libs/multibin", default-features = false }
+multiimage = { path = "src/libs/multiimage", default-features = false }
 nanvix = { path = "src/libs/nanvix", default-features = false }
 nanvix-http = { path = "src/libs/nanvix-http", default-features = false }
 nanvix-oci = { path = "src/libs/nanvix-oci" }

@@ -47,6 +47,9 @@ pub struct VirtualMemory {
     mapping: AnonymousMapping,
     /// Optional RAMFS descriptor that keeps metadata and the backing file alive.
     ramfs: Option<RamFs>,
+    /// Additional file handles for multi-image backing files. Kept alive so that
+    /// `mmap(MAP_FIXED)` file-backed regions remain valid for the VM's lifetime.
+    backing_files: Vec<File>,
 }
 
 ///
@@ -156,6 +159,7 @@ impl VirtualMemory {
         let vmem: Self = Self {
             mapping,
             ramfs: None,
+            backing_files: Vec::new(),
         };
 
         // Map memory into virtual machine.
@@ -217,6 +221,29 @@ impl VirtualMemory {
     ///
     /// # Description
     ///
+    /// Replaces multiple sub-regions of guest memory with file-backed mappings (zero-copy).
+    ///
+    /// Each region is specified as a `(guest_offset, file)` pair. The file is mapped at the
+    /// given offset using `mmap(MAP_FIXED)`, replacing the anonymous pages in that range.
+    ///
+    /// # Parameters
+    ///
+    /// - `regions`: Slice of `(guest_offset, file)` pairs. Must be non-overlapping.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns empty. Otherwise, returns an error.
+    ///
+    pub fn remap_files_at(&mut self, regions: &[(usize, &File)]) -> Result<()> {
+        for &(start, file) in regions {
+            self.remap_file_at(start, file)?;
+        }
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Attaches a RAM filesystem descriptor to the virtual memory so the backing file remains
     /// alive for the VM's lifetime.
     ///
@@ -230,6 +257,21 @@ impl VirtualMemory {
     ///
     pub fn attach_ramfs(&mut self, ramfs: RamFs) {
         self.ramfs = Some(ramfs);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Attaches multiple backing file handles whose memory-mapped regions must remain valid
+    /// for the VM's lifetime. Used by the multi-image RAMFS path where each sub-image file
+    /// is mapped individually.
+    ///
+    /// # Parameters
+    ///
+    /// - `files`: File handles to keep alive.
+    ///
+    pub fn attach_backing_files(&mut self, files: Vec<File>) {
+        self.backing_files = files;
     }
 
     ///
