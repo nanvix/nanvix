@@ -48,8 +48,6 @@ use ::core::ops::{
 
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
-include!("lib.vstd_btree.rs");
-#[cfg(verus_keep_ghost)]
 include!("lib.spec.rs");
 #[cfg(verus_keep_ghost)]
 include!("lib.proof.rs");
@@ -102,23 +100,6 @@ impl<V> DerefMut for CacheGuard<'_, V> {
     fn deref_mut(&mut self) -> &mut V {
         self.value
     }
-}
-
-//==================================================================================================
-// Stdlib Wrappers
-//==================================================================================================
-
-/// Stdlib wrapper for `BTreeMap::remove`. Needed because `BTreeMap::remove`'s full
-/// generic signature (`Borrow<Q>`, `Allocator`) is complex. This wrapper fixes Q=K.
-#[verus_verify(external_body)]
-#[verus_spec(ret =>
-    ensures
-        btreemap_view_spec(*m) == btreemap_view_spec(*old(m)).remove(*k),
-        ret.is_some() <==> btreemap_view_spec(*old(m)).dom().contains(*k),
-        ret.is_some() ==> ret == Some(btreemap_view_spec(*old(m))[*k]),
-)]
-fn btreemap_remove<K: Ord, V>(m: &mut BTreeMap<K, V>, k: &K) -> Option<V> {
-    m.remove(k)
 }
 
 //==================================================================================================
@@ -241,7 +222,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
 
         // VERUS REWRITE: replace get_mut with remove+insert
         // Avoids &mut reference from get_mut (unsupported by Verus).
-        let existed = btreemap_remove(&mut self.entries, &key);
+        let existed = self.entries.remove(&key);
 
         proof_decl! {
             let ghost mut entries_after_remove;
@@ -262,8 +243,8 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                     vstd::set::group_set_axioms, vstd::map::group_map_axioms;
 
                 // Map identity: removing absent key doesn't change the map.
-                assert(btreemap_view_spec(self.entries)
-                    =~= btreemap_view_spec(old(self).entries));
+                assert(self.entries@
+                    =~= old(self@.entries));
 
                 assert(cache_contents_of(self.entries)
                     =~= cache_contents_of(old(self).entries));
@@ -287,7 +268,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                     reveal(cache_contents_of);
                     broadcast use axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom;
                     assert(cache_contents_of(self.entries).dom()
-                        =~= btreemap_view_spec(self.entries).dom());
+                        =~= self.entries@.dom());
                     assert(self@.contents.dom().len() > 0);
                 }
                 self.evict();
@@ -446,10 +427,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             self@.inv(),
     )]
     pub fn remove(&mut self, key: &K) {
-        // VERUS REWRITE: originally self.entries.remove(key);
-        // Wrapper needed because BTreeMap::remove's full generic signature
-        // (Borrow<Q>, Allocator) cannot be expressed with btreemap_view_spec.
-        btreemap_remove(&mut self.entries, key);
+        self.entries.remove(key);
         proof! {
             Self::lemma_remove_view(self, *key, old(self).entries, old(self).capacity);
         }
@@ -480,12 +458,12 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     #[verus_verify(external_body)]
     #[verus_spec(ret =>
         ensures
-            btreemap_view_spec(*entries).dom().len() > 0 ==> {
+            *entries@.dom().len() > 0 ==> {
                 &&& ret is Some
                 &&& cache_lru_of(*entries).len() > 0
                 &&& ret->Some_0 == cache_lru_of(*entries)[0]
             },
-            btreemap_view_spec(*entries).dom().len() == 0 ==> ret is None,
+            *entries@.dom().len() == 0 ==> ret is None,
     )]
     fn find_lru_victim(entries: &BTreeMap<K, CacheEntry<V>>) -> Option<K> {
         // VERUS REWRITE: originally inlined in evict as iterator chain
@@ -517,7 +495,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         // VERUS REWRITE: extracted iterator chain into find_lru_victim
         if let Some(key) = Self::find_lru_victim(&self.entries) {
             // VERUS REWRITE: originally self.entries.remove(&key)
-            btreemap_remove(&mut self.entries, &key);
+            self.entries.remove(&key);
             proof! {
                 Self::lemma_evict_view(self, key, old(self).entries, old(self).capacity);
             }

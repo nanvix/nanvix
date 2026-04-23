@@ -32,15 +32,15 @@ pub struct ExCacheGuard<'a, V>(crate::CacheGuard<'a, V>);
 // Closed: CacheEntry is crate-private, so the body can't appear in pub open functions.
 spec fn cache_contents_of<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Map<K, V> {
     Map::new(
-        |k: K| btreemap_view_spec(entries).dom().contains(k),
-        |k: K| btreemap_view_spec(entries)[k].value,
+        |k: K| entries@.dom().contains(k),
+        |k: K| entries@[k].value,
     )
 }
 
 // LRU ordering from entries: sorted by last_used ascending.
 // For empty entries, definitionally Seq::empty(); otherwise uninterpreted.
 spec fn cache_lru_of<K, V>(entries: alloc::collections::BTreeMap<K, CacheEntry<V>>) -> Seq<K> {
-    if btreemap_view_spec(entries).dom().len() == 0 {
+    if entries@.dom().len() == 0 {
         Seq::empty()
     } else {
         cache_lru_of_nonempty(entries)
