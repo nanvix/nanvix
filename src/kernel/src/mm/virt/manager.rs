@@ -433,18 +433,20 @@ impl VirtMemoryManager {
     /// # Parameters
     ///
     /// - `clear`: Clear frames?
-    /// - `kframes`: Pre-allocated vector where allocated frames are placed.
-    ///   The number of frames allocated equals `kframes.capacity()`.
+    /// - `kframes`: Pre-allocated vector where allocated frames are placed. Must be empty on
+    ///   entry.
+    /// - `count`: Number of contiguous frames to allocate.
     ///
     /// # Return Values
     ///
-    /// Upon success, `Ok(())` is returned and `kframes` is filled to capacity. Upon
-    /// failure, an error is returned instead.
+    /// Upon success, `Ok(())` is returned and `kframes` contains `count` contiguous entries.
+    /// Upon failure, an error is returned instead.
     ///
     pub fn alloc_kpages(
         &mut self,
         clear: bool,
         kframes: &mut Vec<KernelFrame>,
+        count: usize,
     ) -> Result<(), Error> {
         if !kframes.is_empty() {
             let reason: &str = "caller-supplied kframes vector is not empty";
@@ -454,7 +456,7 @@ impl VirtMemoryManager {
 
         // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no concurrent
         // or re-entrant access to the physical memory manager is possible.
-        unsafe { PhysMemoryManager::get_mut() }.alloc_many_kernel_frames(kframes)?;
+        unsafe { PhysMemoryManager::get_mut() }.alloc_many_kernel_frames(kframes, count)?;
         if clear {
             for kframe in kframes.iter_mut() {
                 kframe.clear();
