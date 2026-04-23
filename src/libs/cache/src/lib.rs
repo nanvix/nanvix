@@ -90,7 +90,7 @@ pub struct CacheGuard<'a, V> {
 impl<V> Deref for CacheGuard<'_, V> {
     type Target = V;
 
-    // REMOVED external_body for testing
+    #[verus_verify(external_body)]
     #[verus_spec(ret =>
         ensures *ret == self@,
     )]
