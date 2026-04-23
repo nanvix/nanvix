@@ -283,6 +283,15 @@ impl<K: Ord + Clone, V> Cache<K, V> {
 
             // New key — may need eviction.
             if self.entries.len() >= self.capacity {
+                proof! {
+                    reveal(<Cache<_, _> as View>::view);
+                    reveal(cache_contents_of);
+                    broadcast use axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom;
+                    // entries.len() >= capacity > 0 ⟹ contents non-empty.
+                    assert(cache_contents_of(self.entries).dom()
+                        =~= btreemap_view_spec(self.entries).dom());
+                    assert(self@.contents.dom().len() > 0);
+                }
                 self.evict();
             }
         }
@@ -324,20 +333,31 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                 CacheEntry { value, last_used: self.counter },
             );
 
+            // Key intermediate: map_values distributes over insert, so
+            // cache_contents_of(inserted) =~= cache_contents_of(before).insert(key, value).
+            assert(cache_contents_of(self.entries)
+                =~= cache_contents_of(pre_insert_entries).insert(key, value));
+
             let old_view = old(self)@;
 
             if existed.is_some() {
-                // Existed: remove + insert = overwrite.
-                // LRU: filter(!=key).push(key) = move_to_mru.
+                // pre_insert_entries = entries_after_remove (key removed).
+                assert(cache_contents_of(pre_insert_entries)
+                    =~= old_view.contents.remove(key));
+                // remove(key).insert(key, value) =~= insert(key, value)
                 assert(cache_contents_of(self.entries)
                     =~= old_view.contents.insert(key, value));
             } else if old_view.contents.dom().len() >= old_view.capacity {
-                // New key at capacity: evict LRU victim + insert.
+                // Evict case: pre_insert_entries = entries after evict.
                 let victim = old_view.lru_order[0];
+                assert(cache_contents_of(pre_insert_entries)
+                    =~= old_view.contents.remove(victim));
                 assert(cache_contents_of(self.entries)
                     =~= old_view.contents.remove(victim).insert(key, value));
             } else {
-                // New key below capacity: direct insert.
+                // Simple insert: btreemap_remove was identity (absent key).
+                assert(cache_contents_of(pre_insert_entries)
+                    =~= old_view.contents);
                 assert(cache_contents_of(self.entries)
                     =~= old_view.contents.insert(key, value));
             }

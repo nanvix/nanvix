@@ -157,3 +157,8 @@ Wrong function name. Let me search for the correct vstd function:
 The `to_set().contains(x) <==> contains(x)` should be derivable from `Seq::to_set` being `open`. Let me simplify the proof:
 The `counter` field can't appear in public ensures because the struct is opaque outside the crate. Let me use a saturating increment instead — no precondition changes needed:
 Now replace the counter arithmetic in `put` with a saturating increment:
+Good progress — down to 2 errors. Let me see the full `put` function:
+Two errors to fix. Let me address both — first the evict precondition, then the contents assertion:
+Now let me also add a helper lemma for `map_values` distributing over `insert`. Let me check the spec of `map_values`:
+Let me check the BTreeMap insert spec:
+Good — the insert spec gives `btreemap_view_spec(*m) == btreemap_view_spec(*old(m)).insert(k, v)`. Now I need intermediate assertions to connect `cache_contents_of` through `map_values` and `insert`. Let me add these to the proof block:
