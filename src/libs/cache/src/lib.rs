@@ -286,10 +286,17 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                     reveal(<Cache<_, _> as View>::view);
                     reveal(cache_contents_of);
                     broadcast use vstd::std_specs::btree::group_btree_axioms;
+                    // self.entries.len() is spec_btree_map_len(&self.entries)
+                    // axiom gives: spec_btree_map_len(m) == m@.len()
+                    // self.capacity > 0 (returned early for 0)
+                    // self.entries.len() >= self.capacity >= 1
+                    assert(self.entries@.len() > 0) by {
+                        broadcast use vstd::std_specs::btree::group_btree_axioms;
+                    };
+                    assert(self.entries@.dom().finite());
                     assert(cache_contents_of(self.entries).dom()
                         =~= self.entries@.dom());
                     assert(self@.contents.dom() =~= self.entries@.dom());
-                    assert(self.entries@.dom().len() > 0);
                     assert(self@.contents.dom().len() > 0);
                 }
                 self.evict();
