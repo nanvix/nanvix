@@ -381,6 +381,9 @@ fn vfs_init_ramfs() {
     /// Mount path for the RAMFS image (root filesystem).
     const RAMFS_MOUNT_PATH: &str = "/";
 
+    /// Mount path for the host-mounted directory image.
+    const MOUNT_DIR_PATH: &str = "/mnt";
+
     // Initialize the VFS (idempotent — ignore AlreadyInitialized).
     if ::vfs::init().is_err() && !::vfs::is_initialized() {
         ::syslog::warn!("vfs_init_ramfs(): failed to initialize VFS");
@@ -431,12 +434,88 @@ fn vfs_init_ramfs() {
             (base_ptr, false)
         };
 
-        if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, mount_ptr, total_size, false) }.is_err() {
-            ::syslog::warn!("vfs_init_ramfs(): failed to mount RAMFS image");
-            if !free_mmio_early {
-                let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+        // Check if the MMIO region contains a multi-image container.
+        let region_slice: &[u8] = unsafe { core::slice::from_raw_parts(mount_ptr, total_size) };
+        if ::multiimage::is_multiimage(region_slice) {
+            // Parse multi-image header and mount each sub-image.
+            let header = match ::multiimage::parse_header(region_slice) {
+                Ok(h) => h,
+                Err(_) => {
+                    ::syslog::warn!("vfs_init_ramfs(): failed to parse multi-image header");
+                    if !free_mmio_early {
+                        let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+                    }
+                    return false;
+                },
+            };
+
+            let entries = match ::multiimage::parse_entries(region_slice, header.num_images) {
+                Ok(e) => e,
+                Err(_) => {
+                    ::syslog::warn!("vfs_init_ramfs(): failed to parse multi-image entries");
+                    if !free_mmio_early {
+                        let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+                    }
+                    return false;
+                },
+            };
+
+            // Validate that the header's total_size fits within the MMIO region and
+            // that every entry's offset+size falls within the container bounds.
+            if header.total_size as usize > total_size {
+                ::syslog::warn!(
+                    "vfs_init_ramfs(): header total_size ({}) exceeds MMIO region ({})",
+                    header.total_size,
+                    total_size
+                );
+                if !free_mmio_early {
+                    let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+                }
+                return false;
             }
-            return false;
+            if ::multiimage::validate_entries(entries, header.total_size).is_err() {
+                ::syslog::warn!("vfs_init_ramfs(): multi-image entry validation failed");
+                if !free_mmio_early {
+                    let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+                }
+                return false;
+            }
+
+            // Mount ROOTFS at "/" if present.
+            if let Some(rootfs) =
+                ::multiimage::find_entry_by_tag(entries, &::multiimage::ROOTFS_MMIO_TAG)
+            {
+                let sub_ptr: *mut u8 = unsafe { mount_ptr.add(rootfs.offset as usize) };
+                let sub_size: usize = rootfs.size as usize;
+                if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, sub_ptr, sub_size, false) }
+                    .is_err()
+                {
+                    ::syslog::warn!("vfs_init_ramfs(): failed to mount ROOTFS at /");
+                }
+            }
+
+            // Mount MOUNTFS at "/mnt" if present.
+            if let Some(mountfs) =
+                ::multiimage::find_entry_by_tag(entries, &::multiimage::MOUNTFS_MMIO_TAG)
+            {
+                let sub_ptr: *mut u8 = unsafe { mount_ptr.add(mountfs.offset as usize) };
+                let sub_size: usize = mountfs.size as usize;
+                if unsafe { ::vfs::mount_image(MOUNT_DIR_PATH, sub_ptr, sub_size, false) }.is_err()
+                {
+                    ::syslog::warn!("vfs_init_ramfs(): failed to mount MOUNTFS at /mnt");
+                }
+            }
+        } else {
+            // Legacy single-image path.
+            if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, mount_ptr, total_size, false) }
+                .is_err()
+            {
+                ::syslog::warn!("vfs_init_ramfs(): failed to mount RAMFS image");
+                if !free_mmio_early {
+                    let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+                }
+                return false;
+            }
         }
 
         true
