@@ -49,7 +49,7 @@ pub static exe_global_value: i32 = 42;
 
 /// Opens a dynamic load library.
 fn open_library(path: &str) -> Result<DlHandle, Error> {
-    dlopen(path)
+    dlopen(path, false)
 }
 
 /// Closes a dynamic load library.
