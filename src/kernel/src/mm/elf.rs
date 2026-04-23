@@ -263,32 +263,48 @@ fn do_elf32_load(
 
         let phys_addr_end: usize = phys_addr_base + phdr.p_filesz as usize;
 
-        // Load segment page by page.
+        // Load segment: batch-allocate contiguous page runs, then copy data.
         debug!(
             "loading segment (virt_addr_base={:#x}, virt_addr_end={:#x}, phys_addr_base={:#x}, \
              phys_addr_end={:#x}, access={:?})",
             virt_addr_base, virt_addr_end, phys_addr_base, phys_addr_end, access
         );
 
-        let mut uframe_buf: Vec<UserFrame> = Vec::with_capacity(1);
-        for vaddr in (virt_addr_base..virt_addr_end).step_by(mem::PAGE_SIZE) {
-            let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
+        // Phase 1: Batch-allocate pages.
+        //
+        // Instead of allocating one page at a time, collect contiguous runs of
+        // unmapped pages that share the same `clear` requirement and allocate
+        // each run with a single `alloc_upages(nframes)` call.  This reduces
+        // the number of frame-allocator + page-table operations from O(pages)
+        // separate calls to O(runs), which is typically 2-3 per segment (one
+        // for the data region and one for the BSS region).
+        if !dry_run {
+            let mut run_start: Option<usize> = None;
+            let mut run_clear: bool = false;
+            let mut uframe_buf: Vec<UserFrame> = Vec::new();
 
-            // Check if address lies in user space.
-            if vaddr < USER_BASE {
-                let reason: &str = "invalid load address";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::BadFile, reason));
-            }
+            // Helper: flush a pending run of contiguous pages.
+            let flush_run = |mm: &mut VirtMemoryManager,
+                             vmem: &mut Vmem,
+                             buf: &mut Vec<UserFrame>,
+                             start: usize,
+                             end: usize,
+                             clear: bool,
+                             access: AccessPermission|
+             -> Result<(), Error> {
+                let nframes: usize = (end - start) / mem::PAGE_SIZE;
+                buf.clear();
+                buf.try_reserve(nframes).map_err(|_| {
+                    let reason: &str = "failed to allocate frame buffer for batch page allocation";
+                    error!("{reason} (nframes={nframes})");
+                    Error::new(ErrorCode::OutOfMemory, reason)
+                })?;
+                let start_vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(start)?;
+                mm.alloc_upages(vmem, start_vaddr, access, clear, buf)
+            };
 
-            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_address(vaddr)?;
-
-            // Check if we should perform the allocation.
-            if !dry_run {
-                let page_addr: usize = vaddr.into_raw_value();
-
-                // Scan prior segment ranges to detect overlap and compute the merged
-                // permission from all segments that cover this page.
+            for page_addr in (virt_addr_base..virt_addr_end).step_by(mem::PAGE_SIZE) {
+                // Scan prior segment ranges to detect overlap.
                 let mut already_mapped: bool = false;
                 let mut merged: AccessPermission = access;
                 for &(start, end, prev_access) in loaded_ranges.iter().take(loaded_count) {
@@ -299,51 +315,77 @@ fn do_elf32_load(
                 }
 
                 if already_mapped {
-                    // Page already mapped by a prior segment — apply merged permissions
-                    // to accommodate all segments sharing this page.
+                    // Flush any pending run before handling the overlap.
+                    if let Some(start) = run_start.take() {
+                        flush_run(mm, vmem, &mut uframe_buf, start, page_addr, run_clear, access)?;
+                    }
+                    let vaddr: PageAligned<VirtualAddress> =
+                        PageAligned::from_raw_value(page_addr)?;
                     mm.ctrl_upage(vmem, vaddr, merged)?;
                 } else {
-                    // Only clear pages that will NOT be fully overwritten by segment data.
-                    // A page is fully covered when the segment data for this page spans
-                    // the entire PAGE_SIZE bytes; in that case clearing is redundant.
-
-                    // Start of the physical/source-backed data for this page.
-                    let page_offset_in_segment: usize = vaddr.into_raw_value() - virt_addr_base;
-                    let page_phys_addr: usize =
-                        match phys_addr_base.checked_add(page_offset_in_segment) {
-                            Some(addr) => addr,
-                            None => {
-                                let reason: &str = "invalid physical address";
-                                error!("{reason}");
-                                return Err(Error::new(ErrorCode::BadFile, reason));
-                            },
-                        };
-                    // One-past-the-end if the full page were backed by segment data.
-                    let page_phys_addr_end: usize = match page_phys_addr.checked_add(mem::PAGE_SIZE)
-                    {
-                        Some(end) => end,
-                        None => {
+                    // Determine whether this page needs clearing.
+                    let page_offset: usize = page_addr - virt_addr_base;
+                    let page_phys: usize =
+                        phys_addr_base.checked_add(page_offset).ok_or_else(|| {
+                            let reason: &str = "invalid physical address";
+                            error!("{reason}");
+                            Error::new(ErrorCode::BadFile, reason)
+                        })?;
+                    let page_phys_end: usize =
+                        page_phys.checked_add(mem::PAGE_SIZE).ok_or_else(|| {
                             let reason: &str = "invalid physical address range";
                             error!("{reason}");
-                            return Err(Error::new(ErrorCode::BadFile, reason));
-                        },
-                    };
+                            Error::new(ErrorCode::BadFile, reason)
+                        })?;
+                    let needs_clear: bool =
+                        page_phys >= phys_addr_end || page_phys_end > phys_addr_end;
 
-                    // Page is entirely beyond segment data (pure BSS) — must be zeroed.
-                    let page_lies_in_bss: bool = page_phys_addr >= phys_addr_end;
-                    // Page straddles the segment-data/BSS boundary — trailing bytes must
-                    // be zeroed.
-                    let page_is_partially_covered: bool =
-                        page_phys_addr < phys_addr_end && page_phys_addr_end > phys_addr_end;
-                    mm.alloc_upages(
-                        vmem,
-                        vaddr,
-                        access,
-                        page_lies_in_bss || page_is_partially_covered,
-                        &mut uframe_buf,
-                    )?;
+                    match run_start {
+                        Some(_) if needs_clear == run_clear => {
+                            // Extend the current run (same clear requirement).
+                        },
+                        Some(start) => {
+                            // Clear requirement changed -- flush and start a new run.
+                            flush_run(
+                                mm,
+                                vmem,
+                                &mut uframe_buf,
+                                start,
+                                page_addr,
+                                run_clear,
+                                access,
+                            )?;
+                            run_start = Some(page_addr);
+                            run_clear = needs_clear;
+                        },
+                        None => {
+                            run_start = Some(page_addr);
+                            run_clear = needs_clear;
+                        },
+                    }
                 }
             }
+
+            // Flush the final run.
+            if let Some(start) = run_start {
+                flush_run(mm, vmem, &mut uframe_buf, start, virt_addr_end, run_clear, access)?;
+            }
+        }
+
+        // Phase 2: Copy segment data and update last_address.
+        // NOTE: The USER_BASE check is still needed here because Phase 1 is
+        // skipped during dry-run validation, so this loop is the only place
+        // that validates load addresses in that path.
+        for vaddr in (virt_addr_base..virt_addr_end).step_by(mem::PAGE_SIZE) {
+            let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
+
+            if vaddr < USER_BASE {
+                let reason: &str = "invalid load address";
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::BadFile, reason));
+            }
+
+            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_address(vaddr)?;
 
             // Update last address.
             if vaddr.into_raw_value() + mem::PAGE_SIZE > last_address {
