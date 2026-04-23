@@ -100,3 +100,46 @@ Write to /home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/verus-
 
 === Output (streaming) ===
 Let me check Verus syntax patterns used in this codebase and understand the proof structure better.
+Now I have a clear understanding of the syntax and constraints. Let me plan my approach and validate it with the rubber-duck agent before implementing.
+Main issue I see:
+
+- **Blocking — your new insert axiom is too strong without a freshness precondition.**  
+  `cache_lru_of` is specified as keys sorted by `last_used` (`lib.spec.rs:40-50`).  
+  So `cache_lru_of(new_entries) == cache_lru_of(old_entries).push(key)` is only valid if the inserted entry’s `last_used` is greater than every existing entry’s `last_used`. Without that, the axiom is not just hard to prove — it is **false** for some concrete maps, which would widen the trust boundary unsafely.  
+  **Fix:** either:
+  1. add the reviewer’s freshness precondition and the concrete invariant needed to prove it (`forall k in entries: entries[k].last_used <= counter`), or  
+  2. keep `put` as `external_body` for now.  
+  I would not merge the axiom in its current form.
+
+Other important notes:
+
+- **Blocking — `reveal(Cache::view) + reveal(cache_lru_of)` is not sufficient by itself after `evict()`.**  
+  `cache_lru_of` is uninterpreted on nonempty maps, so revealing it does not explain how the final concrete `insert` changes LRU order. You still need an explicit concrete-map relation for the post-insert state (i.e. your insert axiom/lemma).  
+  **Fix:** plan the final proof around:
+  - `evict()`’s abstract ensures for the pre-insert abstract state, and
+  - a concrete post-insert step from `btreemap_view_spec(pre_insert_entries).insert(...)` to the final `self@`.
+
+- **Non-blocking but likely proof blocker — absent-key remove equalities probably won’t be automatic.**  
+  I would not assume Verus derives `map.remove(absent) =~= map` on its own. Same for “remove absent leaves `cache_contents_of` unchanged.”  
+  **Fix:** expect to add explicit extensional assertions / helper lemmas for:
+  - `m.remove(k) =~= m` when `k ∉ dom(m)`
+  - `cache_contents_of(entries_after_absent_remove) =~= cache_contents_of(old_entries)`
+
+- **Non-blocking — don’t depend on `ghost mut` unless you’ve confirmed the syntax works here.**  
+  In this codebase, snapshots are typically immutable ghost locals (`let ghost old_self = *self;`). Since you only need a snapshot of the pre-insert map, `mut` seems unnecessary and may become a side issue.  
+  **Fix:** prefer a single immutable ghost snapshot of the pre-insert concrete state.
+
+One positive point:
+
+- The **remove+insert runtime rewrite itself looks semantically right** for `spec_put`; the risky part is the **new trusted LRU axiom**, not the exec code shape.
+
+So my recommendation is: **treat the missing `last_used` precondition as a blocker**. If you can’t afford the concrete invariant work now, keeping `put` as `external_body` is safer than adding an underconstrained axiom.
+Good feedback from the rubber-duck. Key takeaways: (1) the axiom needs care around the `last_used` precondition, (2) absent-key remove equalities need explicit assertions, (3) use immutable ghost snapshots. Let me implement iteratively — start minimal, fix errors.
+
+Let me first add the axiom to lib.proof.rs and rewrite the `put` function:
+Let me also check the spec_put_inv lemma and the View implementation:
+Let me check the BTreeMap insert spec and also look at how the verus syntax guide handles moved variables:
+Now I have a complete understanding. Let me implement the fix. I'll start with the axiom and the rewritten `put` function.
+Now let me make the changes. First, add the axiom to lib.proof.rs, then rewrite `put` in lib.rs:
+Now rewrite `put` in lib.rs:
+Now let me run verification:

@@ -227,7 +227,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     /// - `key`: The cache key to insert or update.
     /// - `value`: The value to store.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(
         requires
             old(self)@.inv(),
@@ -241,17 +240,47 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             return;
         }
 
-        // If the key is already present, update in place.
-        if let Some(entry) = self.entries.get_mut(&key) {
-            self.counter += 1;
-            entry.value = value;
-            entry.last_used = self.counter;
-            return;
+        // VERUS REWRITE: replace get_mut with remove+insert
+        // Avoids &mut reference from get_mut (unsupported by Verus).
+        let existed = btreemap_remove(&mut self.entries, &key);
+
+        proof_decl! {
+            let ghost mut entries_after_remove;
+            let ghost mut pre_insert_entries;
         }
 
-        // Evict the LRU entry if at capacity.
-        if self.entries.len() >= self.capacity {
-            self.evict();
+        proof! {
+            entries_after_remove = self.entries;
+        }
+
+        if existed.is_none() {
+            // Key was absent — need to prove inv holds for evict's precondition.
+            proof! {
+                reveal(<Cache<_, _> as View>::view);
+                reveal(cache_contents_of);
+                reveal(cache_lru_of);
+                broadcast use axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom;
+
+                // Map identity: removing absent key doesn't change the map.
+                assert(btreemap_view_spec(self.entries)
+                    =~= btreemap_view_spec(old(self).entries));
+
+                assert(cache_contents_of(self.entries)
+                    =~= cache_contents_of(old(self).entries));
+
+                // cache_lru_of: axiom gives filter, filter identity for absent key.
+                axiom_cache_lru_of_remove(old(self).entries, self.entries, key);
+                lemma_filter_neq_absent(cache_lru_of(old(self).entries), key);
+            }
+
+            // New key — may need eviction.
+            if self.entries.len() >= self.capacity {
+                self.evict();
+            }
+        }
+
+        proof! {
+            pre_insert_entries = self.entries;
         }
 
         self.counter += 1;
@@ -262,6 +291,48 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                 last_used: self.counter,
             },
         );
+
+        proof! {
+            broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
+                vstd::seq_lib::seq_to_set_is_finite,
+                axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom;
+
+            reveal(<Cache<_, _> as View>::view);
+            reveal(cache_contents_of);
+            reveal(cache_lru_of);
+
+            // Apply remove axiom on old(self).entries -> entries_after_remove.
+            axiom_cache_lru_of_remove(old(self).entries, entries_after_remove, key);
+
+            // Apply insert axiom on pre_insert_entries -> self.entries.
+            axiom_cache_lru_of_insert(
+                pre_insert_entries,
+                self.entries,
+                key,
+                CacheEntry { value, last_used: self.counter },
+            );
+
+            let old_view = old(self)@;
+
+            if existed.is_some() {
+                // Existed: remove + insert = overwrite.
+                // LRU: filter(!=key).push(key) = move_to_mru.
+                assert(cache_contents_of(self.entries)
+                    =~= old_view.contents.insert(key, value));
+            } else if old_view.contents.dom().len() >= old_view.capacity {
+                // New key at capacity: evict LRU victim + insert.
+                let victim = old_view.lru_order[0];
+                assert(cache_contents_of(self.entries)
+                    =~= old_view.contents.remove(victim).insert(key, value));
+            } else {
+                // New key below capacity: direct insert.
+                assert(cache_contents_of(self.entries)
+                    =~= old_view.contents.insert(key, value));
+            }
+
+            // spec_put preserves inv.
+            lemma_spec_put_inv(old(self)@, key, value);
+        }
     }
 
     ///

@@ -410,6 +410,25 @@ proof fn axiom_cache_lru_of_remove<K, V>(
         cache_lru_of(new_entries) == cache_lru_of(old_entries).filter(|k: K| k != key),
 {}
 
+// Axiom: inserting a new key-entry pair into entries appends the key at the
+// end of the LRU order. Sound because BTreeMap::insert for a new key does not
+// change last_used counters of existing entries, and the new entry (with the
+// highest counter value due to monotonic incrementing) sorts last.
+// Trust boundary: documented in trust.md.
+#[verifier::external_body]
+proof fn axiom_cache_lru_of_insert<K, V>(
+    old_entries: alloc::collections::BTreeMap<K, CacheEntry<V>>,
+    new_entries: alloc::collections::BTreeMap<K, CacheEntry<V>>,
+    key: K,
+    entry: CacheEntry<V>,
+)
+    requires
+        !btreemap_view_spec(old_entries).dom().contains(key),
+        btreemap_view_spec(new_entries) == btreemap_view_spec(old_entries).insert(key, entry),
+    ensures
+        cache_lru_of(new_entries) == cache_lru_of(old_entries).push(key),
+{}
+
 //==================================================================================================
 // Cache::remove Verification Lemma
 //==================================================================================================
