@@ -287,7 +287,9 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                     reveal(cache_contents_of);
                     broadcast use vstd::std_specs::btree::group_btree_axioms;
                     vstd::std_specs::btree::axiom_spec_btree_map_len(&self.entries);
-                    assert(self.entries@.dom().len() >= self.capacity as nat);
+                    // axiom gives: spec_btree_map_len(&self.entries) == self.entries@.len()
+                    // runtime: self.entries.len() >= self.capacity, capacity > 0
+                    assert(self.entries@.len() >= self.capacity as nat);
                     assert(cache_contents_of(self.entries).dom()
                         =~= self.entries@.dom());
                     assert(self@.contents.dom() =~= self.entries@.dom());
