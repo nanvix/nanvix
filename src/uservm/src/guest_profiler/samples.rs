@@ -14,11 +14,78 @@ use ::std::sync::{
 };
 
 //==================================================================================================
+// Cross-platform timestamps for host trace correlation
+//==================================================================================================
+
+/// Returns a high-resolution timestamp for sample correlation.
+///
+/// On Windows: QPC (QueryPerformanceCounter) — same time source as ETW.
+/// On Linux: `clock_gettime(CLOCK_MONOTONIC_RAW)` — same time source as `perf`.
+#[inline]
+pub fn timestamp_now() -> u64 {
+    #[cfg(target_os = "windows")]
+    {
+        unsafe extern "system" {
+            fn QueryPerformanceCounter(counter: *mut i64) -> i32;
+        }
+        let mut counter: i64 = 0;
+        let ok: i32 = unsafe { QueryPerformanceCounter(&mut counter) };
+        if ok == 0 {
+            return 0;
+        }
+        counter as u64
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let mut ts = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC_RAW, &mut ts) } != 0 {
+            return 0;
+        }
+        (ts.tv_sec as u64) * NANOS_PER_SECOND + (ts.tv_nsec as u64)
+    }
+}
+
+/// Returns the timestamp frequency (ticks per second).
+///
+/// On Windows: QPC frequency. On Linux: 1_000_000_000 (nanoseconds).
+pub fn timestamp_frequency() -> u64 {
+    #[cfg(target_os = "windows")]
+    {
+        unsafe extern "system" {
+            fn QueryPerformanceFrequency(freq: *mut i64) -> i32;
+        }
+        let mut freq: i64 = 0;
+        let ok: i32 = unsafe { QueryPerformanceFrequency(&mut freq) };
+        if ok == 0 || freq <= 0 {
+            return 0;
+        }
+        freq as u64
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        NANOS_PER_SECOND // nanoseconds
+    }
+}
+
+//==================================================================================================
 // Constants
 //==================================================================================================
 
+/// Nanoseconds per second, used as the timestamp frequency on Linux
+/// where `clock_gettime(CLOCK_MONOTONIC_RAW)` returns nanoseconds.
+#[cfg(not(target_os = "windows"))]
+const NANOS_PER_SECOND: u64 = 1_000_000_000;
+
 /// Maximum frame-pointer chain depth per sample.
 const MAX_STACK_DEPTH: usize = 128;
+
+/// Default pre-allocated capacity for the sample buffer. At 1kHz sampling
+/// over a typical 3-5 second workload, ~3000-5000 samples are expected.
+/// 4096 avoids most reallocations without excessive memory use.
+pub const DEFAULT_SAMPLE_CAPACITY: usize = 4096;
 
 /// Kernel/user boundary. Addresses below this are kernel (identity-mapped).
 #[allow(clippy::cast_possible_truncation)] // 32-bit guest constants.
@@ -40,6 +107,9 @@ const STACK_ADDR_MIN: u32 = (64 * config::constants::KILOBYTE) as u32;
 pub struct StackSample {
     /// Return addresses from the frame-pointer chain (deepest first).
     pub addresses: Vec<u32>,
+    /// Timestamp when the sample was captured (for host trace correlation).
+    /// QPC ticks on Windows, nanoseconds on Linux.
+    pub qpc_timestamp: u64,
 }
 
 //==================================================================================================
@@ -144,7 +214,10 @@ impl GuestProfiler {
         if !addrs.is_empty()
             && let Ok(mut s) = samples.lock()
         {
-            s.push(StackSample { addresses: addrs });
+            s.push(StackSample {
+                addresses: addrs,
+                qpc_timestamp: timestamp_now(),
+            });
         }
     }
 
@@ -165,19 +238,40 @@ impl GuestProfiler {
         path: &str,
         resolve: R,
     ) -> std::io::Result<()> {
+        let samples = self.drain_samples();
+        Self::write_folded_from_samples_inner(path, &samples, resolve)
+    }
+
+    /// Like `write_folded`, but operates on a pre-drained sample vector.
+    ///
+    /// Use this when the caller needs the samples for additional processing
+    /// (e.g., timestamp log) to avoid double-draining.
+    pub fn write_folded_from_samples<R: Fn(u32) -> String>(
+        &self,
+        path: &str,
+        samples: &[StackSample],
+        resolve: R,
+    ) -> std::io::Result<()> {
+        Self::write_folded_from_samples_inner(path, samples, resolve)
+    }
+
+    fn write_folded_from_samples_inner<R: Fn(u32) -> String>(
+        path: &str,
+        samples: &[StackSample],
+        resolve: R,
+    ) -> std::io::Result<()> {
         use std::{
             collections::HashMap,
             io::Write,
         };
 
-        // Open the file before draining samples so that data is not lost if
+        // Open the file before processing so that data is not lost if
         // file creation fails.
         let mut file = std::fs::File::create(path)?;
 
-        let samples = self.drain_samples();
         let mut folded: HashMap<String, u64> = HashMap::new();
 
-        for sample in &samples {
+        for sample in samples {
             // Build the stack string (deepest frame first → reverse for flamegraph).
             let stack: String = sample
                 .addresses

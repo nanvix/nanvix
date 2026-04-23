@@ -61,7 +61,14 @@ XPERF_PATHS = [
 
 
 def find_xperf():
-    """Locate xperf.exe on the system."""
+    """Locate xperf.exe on the system.
+
+    Checks NANVIX_XPERF_PATH env var first, then well-known install paths,
+    then PATH.
+    """
+    env_path = os.environ.get("NANVIX_XPERF_PATH")
+    if env_path and os.path.isfile(env_path):
+        return env_path
     for p in XPERF_PATHS:
         if os.path.isfile(p):
             return p
@@ -106,10 +113,23 @@ def run_xperf_merge(etl_path, output_path=None, xperf_path=None):
         cmd, capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
     if result.returncode != 0:
-        print(f"ERROR: xperf -merge failed (exit {result.returncode})", file=sys.stderr)
-        if result.stderr:
-            print(result.stderr[:500], file=sys.stderr)
-        sys.exit(1)
+        stderr_text = result.stderr[:500] if result.stderr else ""
+        if "Events were lost" in stderr_text or "Events were lost" in (
+            result.stdout or ""
+        ):
+            print(
+                f"WARNING: xperf -merge reported lost events (exit {result.returncode}). "
+                "Continuing with available data.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"ERROR: xperf -merge failed (exit {result.returncode})",
+                file=sys.stderr,
+            )
+            if result.stderr:
+                print(stderr_text, file=sys.stderr)
+            sys.exit(1)
 
     merged_size = os.path.getsize(output_path) / (1024 * 1024)
     print(f"[etl] Merged trace: {output_path} ({merged_size:.1f} MB)", file=sys.stderr)
@@ -483,10 +503,21 @@ def run_xperf_dump(etl_path, xperf_path=None, symbols=False, stacks=False):
     )
 
     if result.returncode != 0:
-        print(f"ERROR: xperf failed (exit {result.returncode})", file=sys.stderr)
-        if result.stderr:
-            print(result.stderr[:500], file=sys.stderr)
-        sys.exit(1)
+        stderr_text = result.stderr[:500] if result.stderr else ""
+        # "Events were lost" is a non-fatal warning — output is still usable.
+        if "Events were lost" in stderr_text or "Events were lost" in (
+            result.stdout or ""
+        ):
+            print(
+                f"WARNING: xperf reported lost events (exit {result.returncode}). "
+                "Data may be slightly incomplete but is still usable.",
+                file=sys.stderr,
+            )
+        else:
+            print(f"ERROR: xperf failed (exit {result.returncode})", file=sys.stderr)
+            if result.stderr:
+                print(stderr_text, file=sys.stderr)
+            sys.exit(1)
 
     # Filter out progress bars (lines with [1/2] etc.)
     lines = []

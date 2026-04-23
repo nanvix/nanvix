@@ -226,8 +226,19 @@ export HOST_RUST_FLAGS := $(if $(HOST_CPU),-C target-cpu=$(HOST_CPU))
 
 # Optimization Flags
 ifeq ($(RELEASE),yes)
-export BUILD_MODE := release
-export CARGO_PROFILE := --release
+  ifeq ($(PROFILER),yes)
+    # Profiling build: release performance + debug symbols + frame pointers.
+    # Uses the release-profiling Cargo profile (inherits release, adds
+    # debug=line-tables-only, strip=false) so that:
+    #   - nanvixd.pdb contains function symbols (resolvable by xperf/WPA)
+    #   - kernel.elf retains .symtab (resolvable by the guest profiler)
+    #   - Frame pointers are preserved for stack walking
+    export BUILD_MODE := release-profiling
+    export CARGO_PROFILE := --profile release-profiling
+  else
+    export BUILD_MODE := release
+    export CARGO_PROFILE := --release
+  endif
 export WASM_CARGO_PROFILE := --profile release-wasm
 export WASM_BUILD_MODE := release-wasm
 else
