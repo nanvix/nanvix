@@ -195,39 +195,38 @@ pub fn map_range(
     debug_assert!(end.is_aligned(PAGE_ALIGNMENT));
     debug_assert!(start < end);
 
-    // TODO: use iterator.
+    // If the range is empty, there's nothing to do.
+    if start == end {
+        return Ok(());
+    }
+
+    // Check if start is greater than end to prevent underflow in size calculation. This also guards
+    // against invalid ranges where the end address wraps around the address space.
+    if start > end {
+        let reason: &str = "map_range(): start address is greater than end address";
+        ::syslog::error!("{reason}");
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+
     let start: usize = start.into_raw_value();
     let end: usize = end.into_raw_value();
-    for vaddr in (start..end).step_by(mem::PAGE_SIZE) {
-        debug_assert!(vaddr != end);
+    let npages: usize = (end - start) / mem::PAGE_SIZE;
 
-        // Attempt to map page.
-        let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
-        if let Err(error) = kcall::mm::mmap(pid, vaddr, AccessPermission::RDWR) {
-            // Failed to map page, attempt to rollback.
-
-            ::syslog::error!(
-                "map_range(): failed to map page at {:X?}, rolling back (error={:?})",
-                vaddr,
-                error
-            );
-
-            // Attempt to unmap pages.
-            if let Err(_error) = unmap_range(pid, VirtualAddress::new(start), vaddr) {
-                // Failed to unmap range, warn.
-                ::syslog::warn!(
-                    "map_range(): failed to unmap pages at {:X?}..{:X?} (error={:?})",
-                    start,
-                    vaddr,
-                    _error
-                );
-            }
-
-            return Err(error);
-        }
-
-        // NOTE: pages allocated with mmap() are always zeroed.
+    // Use batch mmap kcall to map all pages in a single kernel transition.
+    if let Err(error) =
+        kcall::mm::mmap(pid, VirtualAddress::new(start), npages, AccessPermission::RDWR)
+    {
+        ::syslog::error!(
+            "map_range(): batch mmap failed at {:X?}..{:X?}, npages={} (error={:?})",
+            start,
+            end,
+            npages,
+            error
+        );
+        return Err(error);
     }
+
+    // NOTE: pages allocated with mmap() are always zeroed.
 
     Ok(())
 }
