@@ -283,7 +283,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             pre_insert_entries = self.entries;
         }
 
-        self.counter += 1;
+        self.counter = self.counter + 1;
         self.entries.insert(
             key,
             CacheEntry {

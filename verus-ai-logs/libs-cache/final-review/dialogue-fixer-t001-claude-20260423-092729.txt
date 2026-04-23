@@ -143,3 +143,4 @@ Now I have a complete understanding. Let me implement the fix. I'll start with t
 Now let me make the changes. First, add the axiom to lib.proof.rs, then rewrite `put` in lib.rs:
 Now rewrite `put` in lib.rs:
 Now let me run verification:
+Verus doesn't support compound assignment (`+=`). Let me fix this:
