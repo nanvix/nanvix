@@ -350,6 +350,11 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             } else if old_view.contents.dom().len() >= old_view.capacity {
                 // Evict case: pre_insert_entries = entries after evict.
                 let victim = old_view.lru_order[0];
+                // Re-establish identity: entries_after_remove == old entries (absent key).
+                assert(cache_contents_of(entries_after_remove)
+                    =~= old_view.contents);
+                assert(cache_lru_of(entries_after_remove) == old_view.lru_order);
+                // Evict postcondition maps through ghost variables.
                 assert(cache_contents_of(pre_insert_entries)
                     =~= old_view.contents.remove(victim));
                 assert(cache_contents_of(self.entries)
