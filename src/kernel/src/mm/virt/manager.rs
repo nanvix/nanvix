@@ -276,6 +276,11 @@ impl VirtMemoryManager {
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
+        if uframes.capacity() < nframes {
+            let reason: &str = "caller-supplied uframes vector has insufficient capacity";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
 
         // Validate that nframes is positive and the full range lies in user space.
         let range_size: usize = nframes.checked_mul(mem::PAGE_SIZE).ok_or_else(|| {
@@ -434,7 +439,8 @@ impl VirtMemoryManager {
     ///
     /// - `clear`: Clear frames?
     /// - `count`: Number of frames to allocate.
-    /// - `kframes`: Pre-allocated vector where allocated frames are placed.
+    /// - `kframes`: Pre-allocated vector where allocated frames are placed. It
+    ///   must have sufficient capacity for `count` entries.
     ///
     /// # Return Values
     ///
@@ -449,6 +455,11 @@ impl VirtMemoryManager {
     ) -> Result<(), Error> {
         if !kframes.is_empty() {
             let reason: &str = "caller-supplied kframes vector is not empty";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        if kframes.capacity() < count {
+            let reason: &str = "caller-supplied kframes vector has insufficient capacity";
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }

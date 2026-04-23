@@ -1912,15 +1912,26 @@ impl ProcessManager {
 
         while remaining > 0 {
             let count: usize = remaining.min(MMAP_BATCH_SIZE);
-            let mut uframes = Vec::with_capacity(count);
-            if let Err(e) = mm.alloc_upages(vmem, current_vaddr, access, true, count, &mut uframes)
+            let mut uframes = Vec::new();
+            let batch: usize = if uframes.try_reserve(count).is_ok() {
+                count
+            } else if uframes.try_reserve(1).is_ok() {
+                // Batch allocation failed; fall back to single-page allocation.
+                1
+            } else {
+                let reason: &str = "kheap: cannot allocate uframes vec for mmap";
+                error!("{reason}");
+                Self::rollback_mmap(mm, vmem, vaddr, current_vaddr);
+                return Err(Error::new(ErrorCode::OutOfMemory, reason));
+            };
+            if let Err(e) = mm.alloc_upages(vmem, current_vaddr, access, true, batch, &mut uframes)
             {
                 Self::rollback_mmap(mm, vmem, vaddr, current_vaddr);
                 return Err(e);
             }
             current_vaddr =
-                PageAligned::from_raw_value(current_vaddr.into_raw_value() + count * PAGE_SIZE)?;
-            remaining -= count;
+                PageAligned::from_raw_value(current_vaddr.into_raw_value() + batch * PAGE_SIZE)?;
+            remaining -= batch;
         }
 
         Ok(())
