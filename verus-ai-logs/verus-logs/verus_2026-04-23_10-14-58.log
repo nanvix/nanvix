@@ -1,0 +1,37 @@
+Timestamp: 2026-04-23_10-14-58
+Mode: cargo
+Crate: cache
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=8
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking cache v0.12.457 (/home/ruize/verus-ai-exp/verus-ai-lru-0422/target-systems/nanvix/src/libs/cache)
+error: disallowed: field expression for an opaque datatype
+   --> src/libs/cache/src/lib.rs:164:13
+    |
+140 | / pub struct Cache<K, V> {
+141 | |     /// Cached entries.
+142 | |     entries: BTreeMap<K, CacheEntry<V>>,
+143 | |     /// Monotonically increasing counter for LRU ordering.
+...   |
+146 | |     capacity: usize,
+147 | | }
+    | |_- Verus treats this datatype as 'opaque' outside `cache` (note that Verus always considers the most restrictive field for determining this)
+...
+164 |               result.counter == 0u64,
+    |               ^^^^^^^^^^^^^^ this field expression is disallowed because of datatype opaqueness
+    |
+    = help: note that because this is a 'ensures' clause of public function, this field expression must be well-formed everywhere, which is wider than `cache`
+
+error: could not compile `cache` (lib) due to 1 previous error

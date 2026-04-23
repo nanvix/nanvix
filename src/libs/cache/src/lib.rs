@@ -275,13 +275,8 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                 // and key not in dom because existed.is_none()).
                 let old_lru = cache_lru_of(old(self).entries);
                 assert(!old(self)@.contents.dom().contains(key));
-                assert(old(self)@.lru_order.to_set() == old(self)@.contents.dom());
                 assert(!old_lru.to_set().contains(key));
-                assert(!old_lru.contains(key)) by {
-                    if old_lru.contains(key) {
-                        vstd::seq_lib::lemma_seq_contains_to_set(old_lru, key);
-                    }
-                };
+                assert(!old_lru.contains(key));
 
                 // cache_lru_of: axiom gives filter, filter identity for absent key.
                 axiom_cache_lru_of_remove(old(self).entries, self.entries, key);
