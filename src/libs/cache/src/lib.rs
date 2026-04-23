@@ -161,6 +161,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         ensures
             result@ == CacheView::<K, V>::spec_new(capacity as nat),
             result@.inv(),
+            result.counter == 0u64,
     )]
     pub const fn new(capacity: usize) -> Self {
         let result = Self {
@@ -230,6 +231,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     #[verus_spec(
         requires
             old(self)@.inv(),
+            old(self).counter < u64::MAX,
         ensures
             self@ == old(self)@.spec_put(key, value),
             self@.inv(),
@@ -259,7 +261,8 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                 reveal(<Cache<_, _> as View>::view);
                 reveal(cache_contents_of);
                 reveal(cache_lru_of);
-                broadcast use axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom;
+                broadcast use axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom,
+                    vstd::set::group_set_axioms, vstd::map::group_map_axioms;
 
                 // Map identity: removing absent key doesn't change the map.
                 assert(btreemap_view_spec(self.entries)
@@ -268,9 +271,21 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                 assert(cache_contents_of(self.entries)
                     =~= cache_contents_of(old(self).entries));
 
+                // Key not in LRU sequence (from inv: to_set == contents.dom(),
+                // and key not in dom because existed.is_none()).
+                let old_lru = cache_lru_of(old(self).entries);
+                assert(!old(self)@.contents.dom().contains(key));
+                assert(old(self)@.lru_order.to_set() == old(self)@.contents.dom());
+                assert(!old_lru.to_set().contains(key));
+                assert(!old_lru.contains(key)) by {
+                    if old_lru.contains(key) {
+                        vstd::seq_lib::lemma_seq_contains_to_set(old_lru, key);
+                    }
+                };
+
                 // cache_lru_of: axiom gives filter, filter identity for absent key.
                 axiom_cache_lru_of_remove(old(self).entries, self.entries, key);
-                lemma_filter_neq_absent(cache_lru_of(old(self).entries), key);
+                lemma_filter_neq_absent(old_lru, key);
             }
 
             // New key — may need eviction.
@@ -350,6 +365,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         ensures
             self@ == old(self)@.spec_remove(*key),
             self@.inv(),
+            self.counter == old(self).counter,
     )]
     pub fn remove(&mut self, key: &K) {
         // VERUS REWRITE: originally self.entries.remove(key);
@@ -372,6 +388,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         ensures
             self@ == old(self)@.spec_clear(),
             self@.inv(),
+            self.counter == 0u64,
     )]
     pub fn clear(&mut self) {
         self.entries.clear();
@@ -418,6 +435,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             self@.lru_order == old(self)@.lru_order.subrange(1, old(self)@.lru_order.len() as int),
             self@.capacity == old(self)@.capacity,
             self@.inv(),
+            self.counter == old(self).counter,
     )]
     fn evict(&mut self) {
         // VERUS REWRITE: extracted iterator chain into find_lru_victim
