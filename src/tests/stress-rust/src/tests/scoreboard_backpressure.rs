@@ -204,7 +204,7 @@ fn scoreboard_pressure_worker_impl(worker_id: usize) -> Result<usize, Error> {
         let addr_raw: usize = region_base + page_offset;
         let addr: VirtualAddress = VirtualAddress::from_raw_value(addr_raw);
 
-        mmap(pid, addr, AccessPermission::RDWR)?;
+        mmap(pid, addr, 1, AccessPermission::RDWR)?;
         let byte_raw: usize = (worker_id ^ iteration) & SCOREBOARD_PRESSURE_BYTE_MASK;
         let byte: u8 = u8::try_from(byte_raw)
             .map_err(|_| Error::new(ErrorCode::ValueOutOfRange, "worker byte overflow"))?;
