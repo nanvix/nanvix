@@ -155,3 +155,5 @@ I need to prove `!cache_lru_of(old(self).entries).contains(key)` before calling 
 Now let me run verification again:
 Wrong function name. Let me search for the correct vstd function:
 The `to_set().contains(x) <==> contains(x)` should be derivable from `Seq::to_set` being `open`. Let me simplify the proof:
+The `counter` field can't appear in public ensures because the struct is opaque outside the crate. Let me use a saturating increment instead — no precondition changes needed:
+Now replace the counter arithmetic in `put` with a saturating increment:

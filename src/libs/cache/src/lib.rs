@@ -161,7 +161,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         ensures
             result@ == CacheView::<K, V>::spec_new(capacity as nat),
             result@.inv(),
-            result.counter == 0u64,
     )]
     pub const fn new(capacity: usize) -> Self {
         let result = Self {
@@ -231,7 +230,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     #[verus_spec(
         requires
             old(self)@.inv(),
-            old(self).counter < u64::MAX,
         ensures
             self@ == old(self)@.spec_put(key, value),
             self@.inv(),
@@ -293,7 +291,11 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             pre_insert_entries = self.entries;
         }
 
-        self.counter = self.counter + 1;
+        self.counter = if self.counter < u64::MAX {
+            self.counter + 1
+        } else {
+            self.counter
+        };
         self.entries.insert(
             key,
             CacheEntry {
@@ -360,7 +362,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         ensures
             self@ == old(self)@.spec_remove(*key),
             self@.inv(),
-            self.counter == old(self).counter,
     )]
     pub fn remove(&mut self, key: &K) {
         // VERUS REWRITE: originally self.entries.remove(key);
@@ -383,7 +384,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         ensures
             self@ == old(self)@.spec_clear(),
             self@.inv(),
-            self.counter == 0u64,
     )]
     pub fn clear(&mut self) {
         self.entries.clear();
@@ -430,7 +430,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             self@.lru_order == old(self)@.lru_order.subrange(1, old(self)@.lru_order.len() as int),
             self@.capacity == old(self)@.capacity,
             self@.inv(),
-            self.counter == old(self).counter,
     )]
     fn evict(&mut self) {
         // VERUS REWRITE: extracted iterator chain into find_lru_victim
