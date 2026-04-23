@@ -279,7 +279,7 @@ jobs:
         uses: ./.github/actions/native-setup
 
       - name: "Setup sccache"
-        uses: Mozilla-Actions/sccache-action@v0.0.9
+        uses: Mozilla-Actions/sccache-action@v0.0.10
         with:
           version: "v0.10.0"
 
