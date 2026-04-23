@@ -80,6 +80,8 @@ pub struct Args {
     tmp_directory: String,
     /// Optional snapshot path: when set, restore from snapshot instead of cold-booting.
     snapshot_path: Option<String>,
+    /// Optional host directory to mount on the guest (standalone mode only).
+    mount_directory: Option<String>,
     /// Optional GDB server port: when set, the uservm starts a GDB RSP server on this TCP port.
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
@@ -127,6 +129,8 @@ impl Args {
     pub const OPT_TMP_DIRECTORY: &'static str = "-tmp-dir";
     /// Command-line option for snapshot path.
     pub const OPT_SNAPSHOT: &'static str = "-snapshot";
+    /// Command-line option for host directory to mount on the guest (standalone mode only).
+    pub const OPT_MOUNT_DIRECTORY: &'static str = "-mount";
     /// Command-line option for GDB server port (standalone mode only).
     #[cfg(feature = "gdb")]
     pub const OPT_GDB_PORT: &'static str = "-gdb-port";
@@ -176,6 +180,7 @@ impl Args {
         let mut program_args: Vec<String> = Vec::new();
         let mut tmp_directory: String = DEFAULT_TMP_DIRECTORY.to_string();
         let mut snapshot_path: Option<String> = None;
+        let mut mount_directory: Option<String> = None;
         #[cfg(feature = "gdb")]
         let mut gdb_port: Option<u16> = None;
 
@@ -286,6 +291,23 @@ impl Args {
                     }
                     snapshot_path = Some(args[i].clone());
                 },
+                Self::OPT_MOUNT_DIRECTORY => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!(
+                            "missing value for: {}",
+                            Self::OPT_MOUNT_DIRECTORY
+                        ));
+                    }
+                    let path: &str = &args[i];
+                    let metadata = ::std::fs::metadata(path)
+                        .map_err(|_| anyhow::anyhow!("mount directory does not exist: {}", path))?;
+                    if !metadata.is_dir() {
+                        return Err(anyhow::anyhow!("mount path is not a directory: {}", path));
+                    }
+                    mount_directory = Some(args[i].clone());
+                },
                 // Set GDB server port (standalone mode only).
                 #[cfg(feature = "gdb")]
                 Self::OPT_GDB_PORT => {
@@ -347,6 +369,12 @@ impl Args {
             anyhow::bail!("{} is only supported in standalone builds", Self::OPT_SNAPSHOT);
         }
 
+        // Reject -mount in non-standalone builds.
+        #[cfg(not(feature = "standalone"))]
+        if mount_directory.is_some() {
+            anyhow::bail!("{} is only supported in standalone builds", Self::OPT_MOUNT_DIRECTORY);
+        }
+
         // Determine operation mode: HTTP mode is active if -http-addr is provided,
         // interactive mode is active if `--` separator with program name is provided.
         #[cfg(unix)]
@@ -402,6 +430,7 @@ impl Args {
             program_args,
             tmp_directory,
             snapshot_path,
+            mount_directory,
             #[cfg(feature = "gdb")]
             gdb_port,
         })
@@ -454,7 +483,9 @@ Options:
   {tmp_dir} <tmp_dir>                       Base directory for temporary files (Default: \
              {DEFAULT_TMP_DIRECTORY}).
   {snapshot} <path>                         Restore VM from snapshot instead of cold-booting \
-             (standalone mode only).{gdb_port_line}
+             (standalone mode only).
+  {mount} <host-dir>                       Mount a host directory on the guest at /mnt (standalone \
+             mode only).{gdb_port_line}
 ",
             http_usage = http_usage,
             program_name = program_name,
@@ -474,6 +505,7 @@ Options:
             l2_snapshot_path = Self::OPT_L2_SNAPSHOT_PATH,
             tmp_dir = Self::OPT_TMP_DIRECTORY,
             snapshot = Self::OPT_SNAPSHOT,
+            mount = Self::OPT_MOUNT_DIRECTORY,
             gdb_port_line = if cfg!(feature = "gdb") {
                 "\n  -gdb-port <port>                         GDB server port (standalone mode \
                  only)."
@@ -573,6 +605,19 @@ Options:
     ///
     pub fn snapshot_path(&self) -> Option<&str> {
         self.snapshot_path.as_deref()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the optional host directory to mount on the guest.
+    ///
+    /// # Returns
+    ///
+    /// The mount directory path, if present.
+    ///
+    pub fn mount_directory(&self) -> Option<&str> {
+        self.mount_directory.as_deref()
     }
 
     ///

@@ -85,17 +85,16 @@ fn main() {
     // Compute image size: either user-specified or auto-calculated.
     let content_size: u64 = dir_size(&source_dir);
     let image_size: u64 = match size_override {
-        Some(s) => s,
+        Some(s) => {
+            // User-specified size: still round up to page boundary.
+            let page_size: u64 = arch::mem::PAGE_SIZE as u64;
+            (s + page_size - 1) & !(page_size - 1)
+        },
         None => {
             let factor: f64 = headroom.unwrap_or(HEADROOM_FACTOR);
-            let computed: u64 = (content_size as f64 * factor) as u64;
-            computed.max(MIN_IMAGE_SIZE)
+            mkramfs::compute_image_size_with_factor(content_size, factor)
         },
     };
-
-    // Round up to page size so the guest VMM can use zero-copy file-backed mappings.
-    let page_size: u64 = arch::mem::PAGE_SIZE as u64;
-    let image_size: u64 = (image_size + page_size - 1) & !(page_size - 1);
 
     eprintln!(
         "mkramfs: source={} content={}B image={}B output={}",
@@ -109,13 +108,16 @@ fn main() {
 }
 
 //==================================================================================================
-// Image Generation
+// Argument Parsing
 //==================================================================================================
 
 /// Creates a FAT32 image at `output` populated with the contents of `source_dir`.
 fn generate_image(output: &Path, source_dir: &Path, size: u64) {
     // Create and format a zeroed FAT image.
-    mkramfs::mkfatfs(output, size as usize);
+    if let Err(e) = mkramfs::mkfatfs(output, size as usize) {
+        eprintln!("mkramfs: failed to create/format FAT image: {e}");
+        process::exit(EXIT_FAT);
+    }
 
     // Populate the image with the source directory contents.
     {

@@ -56,6 +56,8 @@ pub struct MicroVmArgs {
     /// When true, skip kernel/initrd/ramfs loading and vCPU reset because the VM state will be
     /// restored from a snapshot.
     pub restoring_from_snapshot: bool,
+    /// Optional host directory to mount on the guest (standalone mode only).
+    pub mount_directory: Option<String>,
     /// Shared coalescing flag for IKC IRQ notification (microvm only).
     #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
     pub ikc_pending: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -74,6 +76,7 @@ impl std::fmt::Debug for MicroVmArgs {
             .field("initrd_filename", &self.initrd_filename)
             .field("initrd_args", &self.initrd_args)
             .field("ramfs_filename", &self.ramfs_filename)
+            .field("mount_directory", &self.mount_directory)
             .finish()
     }
 }

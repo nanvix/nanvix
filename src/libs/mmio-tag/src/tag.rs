@@ -60,6 +60,19 @@ impl MmioTag {
     ///
     /// # Description
     ///
+    /// Returns the raw byte array backing this tag.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the underlying `[u8; TAG_LENGTH]` array.
+    ///
+    pub const fn as_bytes(&self) -> &[u8; TAG_LENGTH] {
+        &self.value
+    }
+
+    ///
+    /// # Description
+    ///
     /// Builds a tag from a 64-bit value encoded as eight hexadecimal characters.
     ///
     /// # Parameters

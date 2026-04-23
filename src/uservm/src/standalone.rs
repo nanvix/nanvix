@@ -149,6 +149,7 @@ impl StandaloneVmHandle {
         ramfs_filename: Option<String>,
         stderr: Option<String>,
         snapshot_path: Option<String>,
+        mount_directory: Option<String>,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
     ) -> (Self, StandaloneVmIo) {
         // Create internal VM channels. In standalone mode these are wired directly without an
@@ -184,6 +185,7 @@ impl StandaloneVmHandle {
             kernel_filename,
             counters,
             snapshot_path,
+            mount_directory,
             #[cfg(feature = "gdb")]
             gdb_port,
             #[cfg(feature = "profile-time")]
