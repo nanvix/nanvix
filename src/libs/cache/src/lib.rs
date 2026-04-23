@@ -350,9 +350,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                         =~= old_view.contents.remove(victim).insert(key, value));
 
                     lemma_spec_put_inv(old(self)@, key, value);
-                    assert(self@ == old(self)@.spec_put(key, value)) by {
-                        reveal(<Cache<_, _> as View>::view);
-                    };
                 }
             } else {
                 // ── NO-EVICT CASE ──
@@ -388,11 +385,9 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                     reveal(<Cache<_, _> as View>::view);
                     reveal(cache_contents_of);
                     reveal(cache_lru_of);
+                    reveal(CacheView::spec_put);
 
                     let old_view = old(self)@;
-
-                    // Insert axiom: self.entries@ == pre_insert_entries@.insert(key, entry)
-                    assert(self.entries@ == pre_insert_entries@.insert(key, CacheEntry { value, last_used: self.counter }));
 
                     axiom_cache_lru_of_remove(old(self).entries, entries_after_remove, key);
                     axiom_cache_lru_of_insert(
@@ -406,16 +401,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                     assert(cache_contents_of(self.entries)
                         =~= old_view.contents.insert(key, value));
 
-                    // Check each field of self@ vs spec_put:
-                    reveal(CacheView::spec_put);
-                    assert(self@.contents =~= old_view.spec_put(key, value).contents);
-                    assert(self@.lru_order =~= old_view.spec_put(key, value).lru_order);
-                    assert(self@.capacity == old_view.spec_put(key, value).capacity);
-
                     lemma_spec_put_inv(old(self)@, key, value);
-                    assert(self@ == old(self)@.spec_put(key, value)) by {
-                        reveal(<Cache<_, _> as View>::view);
-                    };
                 }
             }
         } else {
@@ -459,9 +445,6 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                     =~= old_view.contents.insert(key, value));
 
                 lemma_spec_put_inv(old(self)@, key, value);
-                assert(self@ == old(self)@.spec_put(key, value)) by {
-                    reveal(<Cache<_, _> as View>::view);
-                };
             }
         }
     }
