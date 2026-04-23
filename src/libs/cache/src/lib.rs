@@ -324,6 +324,9 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                     let old_view = old(self)@;
                     let victim = old_view.lru_order[0];
 
+                    // Now that insert axiom fires, establish the post-insert map:
+                    assert(self.entries@ == pre_insert_entries@.insert(key, CacheEntry { value, last_used: self.counter }));
+
                     axiom_cache_lru_of_remove(old(self).entries, entries_after_remove, key);
                     axiom_cache_lru_of_insert(
                         pre_insert_entries, self.entries, key,
