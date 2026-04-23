@@ -812,6 +812,32 @@ impl DynamicLibrary {
             .collect()
     }
 
+    /// Iterates over all defined (non-undefined) symbols exported by this
+    /// library, yielding `(name, absolute_address)` pairs.
+    pub fn exported_symbols(&self) -> Vec<(&str, usize)> {
+        let mut result: Vec<(&str, usize)> = Vec::new();
+        for sym in self.dynsym.iter() {
+            if sym.is_undefined() {
+                continue;
+            }
+            match self.dynstr.get_name(sym.name_offset()) {
+                Ok(name) if !name.is_empty() => {
+                    let addr: usize = self.load_address.into_raw_value() + sym.value() as usize;
+                    result.push((name, addr));
+                },
+                Err(e) => {
+                    ::syslog::warn!(
+                        "exported_symbols(): skipping symbol at offset {} (error={:?})",
+                        sym.name_offset(),
+                        e
+                    );
+                },
+                _ => {},
+            }
+        }
+        result
+    }
+
     /// Binds a dependency to the dynamic library.
     pub fn bind_dependency(
         &mut self,

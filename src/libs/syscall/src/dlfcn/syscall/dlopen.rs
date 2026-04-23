@@ -33,8 +33,8 @@ use ::sys::error::Error;
 //==================================================================================================
 
 /// Opens a dynamic library file.
-pub fn dlopen(filename: &str) -> Result<DlHandle, Error> {
-    ::syslog::trace!("dlopen(): filename={}", filename);
+pub fn dlopen(filename: &str, global: bool) -> Result<DlHandle, Error> {
+    ::syslog::trace!("dlopen(): filename={}, global={}", filename, global);
 
     // Ensure the global symbol table is populated so that symbols exported
     // by the main executable can be resolved during relocation, even if the
@@ -55,6 +55,11 @@ pub fn dlopen(filename: &str) -> Result<DlHandle, Error> {
     // Check if dynamic library is already opened.
     for (dlhandle, dlfile) in registry.iter() {
         if dlfile.lock().name() == filename {
+            // If the caller requests RTLD_GLOBAL on a library that was
+            // previously loaded without it, promote it to global scope now.
+            if global {
+                super::register_library_in_global_scope(dlfile);
+            }
             return Ok(*dlhandle);
         }
     }
@@ -78,7 +83,17 @@ pub fn dlopen(filename: &str) -> Result<DlHandle, Error> {
     match load_all_dependencies(&mut registry, new_dlfile)
         .and_then(|_| resolve_all_symbols(&mut registry, &handles_before))
     {
-        Ok(()) => Ok(handle),
+        Ok(()) => {
+            // If RTLD_GLOBAL was requested, publish the library's exported
+            // symbols into the global symbol table so subsequently loaded
+            // libraries can resolve them.
+            if global {
+                if let Some(dlfile) = registry.get(&handle) {
+                    super::register_library_in_global_scope(dlfile);
+                }
+            }
+            Ok(handle)
+        },
         Err(e) => {
             let new_handles: Vec<DlHandle> = registry
                 .keys()
