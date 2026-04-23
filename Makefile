@@ -296,11 +296,31 @@ endif
 # Verus Formal Verification
 #===================================================================================================
 
-# Path to the directory containing the Verus executable (no default; skip verification when unset).
-export VERUS_EXECUTABLE_DIR ?=
+# Path to the directory containing the Verus executable.
+# When unset, `ensure-verus` auto-installs the pinned version from
+# build/verus-version into $(VERUS_INSTALL_DIR) via scripts/setup/verus.sh.
+VERUS_INSTALL_DIR ?= $(HOME)/verus
+export VERUS_EXECUTABLE_DIR ?= $(VERUS_INSTALL_DIR)
 
 # List of crates to verify with Verus.
-VERUS_CRATES := bitmap slab raw-array sparse-bitmap
+VERUS_CRATES := bitmap slab raw-array sparse-bitmap kernel
+
+# Per-crate extra cargo arguments for Verus verification.
+VERUS_EXTRA_CARGO_ARGS_bitmap        = $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+VERUS_EXTRA_CARGO_ARGS_slab          = $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+VERUS_EXTRA_CARGO_ARGS_raw-array     = $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+VERUS_EXTRA_CARGO_ARGS_sparse-bitmap = $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+VERUS_EXTRA_CARGO_ARGS_kernel        = --features $(MACHINE),$(LOG_LEVEL) $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+
+# Per-crate RUSTFLAGS for Verus verification (default: KERNEL_RUST_FLAGS).
+VERUS_RUSTFLAGS_bitmap        = $(KERNEL_RUST_FLAGS)
+VERUS_RUSTFLAGS_slab          = $(KERNEL_RUST_FLAGS)
+VERUS_RUSTFLAGS_raw-array     = $(KERNEL_RUST_FLAGS)
+VERUS_RUSTFLAGS_sparse-bitmap = $(KERNEL_RUST_FLAGS)
+VERUS_RUSTFLAGS_kernel        = $(KERNEL_RUST_FLAGS)
+
+# Path to the verus-ai tool directory (for guardrails.py / tree-sitter).
+VERUS_AI_DIR ?= $(realpath $(CURDIR)/../..)
 
 # Platform-specific Verus binary name.
 ifeq ($(IS_WINDOWS),yes)
@@ -570,43 +590,35 @@ help:
 
 # Verifies all Verus-annotated crates.
 .PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
-verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+verify: $(addprefix verify-,$(VERUS_CRATES))
 
 # Ensures the correct Verus version is installed before verification.
-# When VERUS_EXECUTABLE_DIR is unset, verification is skipped.
-# When set, validates that the verus binary exists at the given path.
+# Auto-downloads the pinned release via scripts/setup/verus.sh when the
+# binary is missing or outdated.
 .PHONY: ensure-verus
 ensure-verus:
-ifeq ($(VERUS_EXECUTABLE_DIR),)
-	@echo "VERUS_EXECUTABLE_DIR is not set; skipping verification."
-else
 	@verus_dir="$(VERUS_EXECUTABLE_DIR)"; \
 	if command -v cygpath >/dev/null 2>&1; then \
 		verus_dir="$$(cygpath -u "$$verus_dir")"; \
 	fi; \
 	verus_path="$$verus_dir/$(VERUS_BINARY)"; \
 	if [ ! -f "$$verus_path" ]; then \
-		echo "Error: VERUS_EXECUTABLE_DIR is set to '$(VERUS_EXECUTABLE_DIR)' but no $(VERUS_BINARY) found there."; \
-		exit 1; \
+		echo "Verus not found at $$verus_path — installing..."; \
+		bash scripts/setup/verus.sh "$$verus_dir"; \
 	fi; \
 	if [ "$(IS_WINDOWS)" != "yes" ] && [ ! -x "$$verus_path" ]; then \
 		echo "Error: $(VERUS_BINARY) at '$$verus_path' is not executable."; \
 		exit 1; \
 	fi; \
 	echo "Using Verus installation at $(VERUS_EXECUTABLE_DIR)."
-endif
 
-# Pattern rule for verifying individual crates.
-# Verification is skipped when VERUS_EXECUTABLE_DIR is unset.
+# Uses scripts/verify.sh for verification + cheating detection + function coverage.
 $(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
-ifeq ($(VERUS_EXECUTABLE_DIR),)
-	@true
-else
-	$(VERUS_VERIFY_CMD) -p $* $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
-endif
-
-verify-kernel: ensure-verus
-	$(VERUS_VERIFY_CMD) -p kernel --features "microvm trace" $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+	$(if $(VERUS_EXECUTABLE_DIR),PATH="$(VERUS_EXECUTABLE_DIR):$$PATH") \
+	RUSTFLAGS=$(VERUS_RUSTFLAGS_$*) \
+	VERUS_EXTRA_CARGO_ARGS="$(VERUS_EXTRA_CARGO_ARGS_$*)" \
+	VERUS_AI_DIR="$(VERUS_AI_DIR)" \
+	$(SCRIPTS_DIR)/verify.sh --crate $* $(if $(MODULE),--module $(MODULE)) --log-dir verus-ai-logs
 
 # Fixes code linting issues.
 ifeq ($(IS_WINDOWS),yes)

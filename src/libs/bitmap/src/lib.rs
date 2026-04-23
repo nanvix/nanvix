@@ -303,6 +303,7 @@ impl Bitmap {
                 Err(_) => {
                     &&& !old(self)@.exists_contiguous_free_range(size as int)
                     &&& self@ == old(self)@
+                    &&& *self == *old(self)
                 },
             },
     )]

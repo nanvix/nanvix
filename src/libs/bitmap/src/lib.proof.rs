@@ -507,6 +507,7 @@ impl Bitmap {
         &&& self@.set_bits =~= old_self@.set_bits
         &&& self.usage <= self.number_of_bits - size
         &&& self.number_of_bits == old_self.number_of_bits
+        &&& *self == *old_self
         &&& initial_start as int <= self@.num_bits
         // Wrap-around state consistency.
         &&& !wrapped ==> start >= initial_start
@@ -553,6 +554,7 @@ impl Bitmap {
         &&& offset <= size
         &&& start_before_inner <= self.number_of_bits - size
         &&& self@.set_bits =~= old_self@.set_bits
+        &&& *self == *old_self
         &&& checked_before == start_before_inner as int
         // Positions before start_before_inner are already checked.
         &&& forall|p: int|
