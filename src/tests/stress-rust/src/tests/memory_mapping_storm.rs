@@ -75,7 +75,7 @@ pub fn run() -> Result<(), StressError> {
             AccessPermission::RDONLY
         };
 
-        mmap(pid, addr, perm)?;
+        mmap(pid, addr, 1, perm)?;
 
         if perm.is_writable() {
             mprotect(pid, addr, AccessPermission::RDONLY)?;

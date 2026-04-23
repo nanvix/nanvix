@@ -12,6 +12,7 @@ use crate::{
     },
     kcall2,
     kcall3,
+    kcall4,
     mm::{
         AccessPermission,
         Address,
@@ -33,18 +34,22 @@ fn split_tag(tag: u64) -> (u32, u32) {
 }
 
 //==================================================================================================
-// Map Memory Page
+// Map Memory Pages
 //==================================================================================================
 
 pub fn mmap(
     pid: ProcessIdentifier,
     vaddr: VirtualAddress,
+    npages: usize,
     access: AccessPermission,
 ) -> Result<(), Error> {
-    let result: i64 = kcall3!(
+    let npages_u32: u32 = u32::try_from(npages)
+        .map_err(|_| Error::new(ErrorCode::InvalidArgument, "npages exceeds u32 range"))?;
+    let result: i64 = kcall4!(
         KcallNumber::MemoryMap.into(),
         pid.try_into()?,
         vaddr.into_raw_value() as u32,
+        npages_u32,
         access.into()
     );
 
