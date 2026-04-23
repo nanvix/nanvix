@@ -117,22 +117,22 @@ impl Inner {
     ///
     /// # Parameters
     ///
-    /// - `addrs`: Mutable reference to a pre-allocated vector. The number of frames allocated
-    ///   equals `addrs.capacity()`.
+    /// - `count` - The number of frames to allocate.
+    /// - `addrs`: Mutable reference to a pre-allocated vector in which
+    ///   to store those frames' addresses.
     ///
     /// # Return Values
     ///
-    /// Upon success, `Ok(())` is returned and `addrs` is filled to capacity with contiguous
-    /// entries. Upon failure, an error is returned instead.
+    /// Upon success, `Ok(())` is returned and `addrs` is filled with `count`
+    /// contiguous entries. Upon failure, an error is returned instead.
     ///
-    fn alloc_range(&mut self, addrs: &mut Vec<FrameAddress>) -> Result<(), Error> {
+    fn alloc_range(&mut self, count: usize, addrs: &mut Vec<FrameAddress>) -> Result<(), Error> {
         if !addrs.is_empty() {
             let reason: &str = "addrs vector is not empty";
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
-        let count: usize = addrs.capacity();
         let index: usize = match self.bitmap.alloc_range(count) {
             Ok(index) => index,
             Err(error) => {
@@ -277,16 +277,17 @@ fn alloc() -> Result<FrameAddress, Error> {
 ///
 /// # Parameters
 ///
-/// - `addrs`: Mutable reference to a pre-allocated vector. The number of frames allocated
-///   equals `addrs.capacity()`.
+/// - `count`: Number of frames to allocate.
+/// - `addrs`: Mutable reference to a pre-allocated vector into which to
+///   store those frames' addresses.
 ///
 /// # Return Values
 ///
-/// Upon success, `Ok(())` is returned and `addrs` is filled to capacity with contiguous
-/// entries. Upon failure, an error is returned instead.
+/// Upon success, `Ok(())` is returned and `addrs` is filled with `count`
+/// contiguous entries. Upon failure, an error is returned instead.
 ///
-fn alloc_range(addrs: &mut Vec<FrameAddress>) -> Result<(), Error> {
-    instance().alloc_range(addrs)
+fn alloc_range(count: usize, addrs: &mut Vec<FrameAddress>) -> Result<(), Error> {
+    instance().alloc_range(count, addrs)
 }
 
 ///
@@ -422,15 +423,16 @@ impl Kpool {
     ///
     /// # Parameters
     ///
-    /// - `frames`: Mutable reference to a pre-allocated vector. The number of frames allocated
-    ///   equals `frames.capacity()`.
+    /// - `count`: Number of frames to allocate.
+    /// - `frames`: Mutable reference to a pre-allocated vector into which
+    ///   to store those frames' addresses.
     ///
     /// # Return Values
     ///
-    /// Upon success, `Ok(())` is returned and `frames` is filled to capacity with contiguous
-    /// entries. Upon failure, an error is returned instead.
+    /// Upon success, `Ok(())` is returned and `frames` is filled with `count`
+    /// contiguous entries. Upon failure, an error is returned instead.
     ///
-    pub fn alloc_many(&mut self, frames: &mut Vec<KernelFrame>) -> Result<(), Error> {
+    pub fn alloc_many(&mut self, count: usize, frames: &mut Vec<KernelFrame>) -> Result<(), Error> {
         // Check if caller-provided vector is not empty.
         if !frames.is_empty() {
             let reason: &str = "frames vector is not empty";
@@ -438,9 +440,8 @@ impl Kpool {
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
-        let count: usize = frames.capacity();
         let mut addrs: Vec<FrameAddress> = Vec::with_capacity(count);
-        alloc_range(&mut addrs)?;
+        alloc_range(count, &mut addrs)?;
         for addr in addrs {
             frames.push(KernelFrame::new(addr));
         }

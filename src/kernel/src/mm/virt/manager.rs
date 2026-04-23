@@ -251,8 +251,8 @@ impl VirtMemoryManager {
     /// - `vaddr`: Starting virtual address for the mapping.
     /// - `access`: Access permissions for the mapped pages.
     /// - `clear`: Clear pages after mapping?
+    /// - `nframes`: Number of pages to allocate.
     /// - `uframes`: Mutable reference to a pre-allocated vector for temporary frame storage.
-    ///   The number of pages allocated equals `uframes.capacity()`.
     ///
     /// # Return Values
     ///
@@ -265,9 +265,9 @@ impl VirtMemoryManager {
         mut vaddr: PageAligned<VirtualAddress>,
         access: AccessPermission,
         clear: bool,
+        nframes: usize,
         uframes: &mut Vec<UserFrame>,
     ) -> Result<(), Error> {
-        let nframes: usize = uframes.capacity();
         trace!("vaddr={:?}, nframes={}", vaddr, nframes);
 
         // The caller-supplied buffer must be empty; stale frames would cause double-mapping.
@@ -324,7 +324,7 @@ impl VirtMemoryManager {
         // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no concurrent
         // or re-entrant access to the physical memory manager is possible.
         let alloc_result: Result<(), Error> =
-            unsafe { PhysMemoryManager::get_mut() }.alloc_many_user_frames(uframes);
+            unsafe { PhysMemoryManager::get_mut() }.alloc_many_user_frames(nframes, uframes);
         if let Err(e) = alloc_result {
             uframes.clear();
             return Err(e);
@@ -433,8 +433,8 @@ impl VirtMemoryManager {
     /// # Parameters
     ///
     /// - `clear`: Clear frames?
+    /// - `count`: Number of frames to allocate.
     /// - `kframes`: Pre-allocated vector where allocated frames are placed.
-    ///   The number of frames allocated equals `kframes.capacity()`.
     ///
     /// # Return Values
     ///
@@ -444,6 +444,7 @@ impl VirtMemoryManager {
     pub fn alloc_kpages(
         &mut self,
         clear: bool,
+        count: usize,
         kframes: &mut Vec<KernelFrame>,
     ) -> Result<(), Error> {
         if !kframes.is_empty() {
@@ -454,7 +455,7 @@ impl VirtMemoryManager {
 
         // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no concurrent
         // or re-entrant access to the physical memory manager is possible.
-        unsafe { PhysMemoryManager::get_mut() }.alloc_many_kernel_frames(kframes)?;
+        unsafe { PhysMemoryManager::get_mut() }.alloc_many_kernel_frames(count, kframes)?;
         if clear {
             for kframe in kframes.iter_mut() {
                 kframe.clear();
