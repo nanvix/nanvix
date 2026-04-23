@@ -438,8 +438,8 @@ impl VirtMemoryManager {
     ///
     /// # Return Values
     ///
-    /// Upon success, `Ok(())` is returned and `kframes` is filled to capacity. Upon
-    /// failure, an error is returned instead.
+    /// Upon success, `Ok(())` is returned and `kframes` is filled with `count`
+    /// frames. Upon failure, an error is returned instead.
     ///
     pub fn alloc_kpages(
         &mut self,

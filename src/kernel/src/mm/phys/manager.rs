@@ -127,8 +127,7 @@ impl PhysMemoryManager {
     ///
     /// # Description
     ///
-    /// Allocates user frames into caller-provided storage, filling up to the vector's remaining
-    /// capacity.
+    /// Allocates user frames into caller-provided storage.
     ///
     /// The returned frames are not guaranteed to be physically contiguous.
     ///

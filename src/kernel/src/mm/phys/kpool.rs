@@ -425,7 +425,8 @@ impl Kpool {
     ///
     /// - `count`: Number of frames to allocate.
     /// - `frames`: Mutable reference to a pre-allocated vector into which
-    ///   to store those frames' addresses.
+    ///   to store those frames' addresses. It must be pre-allocated with
+    ///   capacity of at least `count`.
     ///
     /// # Return Values
     ///
@@ -436,6 +437,11 @@ impl Kpool {
         // Check if caller-provided vector is not empty.
         if !frames.is_empty() {
             let reason: &str = "frames vector is not empty";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        if frames.capacity() < count {
+            let reason: &str = "frames vector has insufficient capacity";
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
