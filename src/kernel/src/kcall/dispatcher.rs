@@ -109,7 +109,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         // Handle `debug()` locally.
         KcallNumber::Debug => debug::debug(pid, arg0, arg1),
         // Handle `mmap()` locally.
-        KcallNumber::MemoryMap => pm::mmap(pid, arg0, arg1, arg2),
+        KcallNumber::MemoryMap => pm::mmap(pid, arg0, arg1, arg2, arg3),
         // Handle `munmap()` locally.
         KcallNumber::MemoryUnmap => pm::munmap(pid, arg0, arg1),
         // Handle `mctrl()` locally.
