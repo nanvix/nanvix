@@ -229,6 +229,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     #[verus_spec(
         requires
             old(self)@.inv(),
+            vstd::std_specs::btree::key_obeys_cmp_spec::<K>(),
         ensures
             self@ == old(self)@.spec_put(key, value),
             self@.inv(),
