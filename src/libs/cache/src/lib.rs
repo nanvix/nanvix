@@ -356,6 +356,16 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                 }
             } else {
                 // ── NO-EVICT CASE ──
+                proof! {
+                    broadcast use vstd::std_specs::btree::group_btree_axioms;
+                    reveal(<Cache<_, _> as View>::view);
+                    reveal(cache_contents_of);
+                    // Bridge runtime len to spec len for path matching with spec_put:
+                    vstd::std_specs::btree::axiom_spec_btree_map_len(&self.entries);
+                    assert(self.entries@.len() < self.capacity as nat);
+                    assert(cache_contents_of(self.entries).dom() =~= self.entries@.dom());
+                    assert(self@.contents.dom().len() < self@.capacity);
+                }
                 proof! { pre_insert_entries = self.entries; }
 
                 self.counter = if self.counter < u64::MAX {
