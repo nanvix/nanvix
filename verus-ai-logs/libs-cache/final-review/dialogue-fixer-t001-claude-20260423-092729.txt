@@ -166,3 +166,6 @@ The evict case fails because Verus needs help connecting ghost variables through
 Let me add more explicit intermediate steps to help Verus connect the evict postcondition:
 The issue is PHI node merging — the evict postcondition is lost after the control flow merge. I need to capture `pre_insert_entries` and assert facts INSIDE each branch. Let me restructure:
 Now update the final proof block — remove the intermediate assertions that relied on PHI-merged facts:
+The PHI merge is still losing the evict fact. Let me check if `lemma_evict_view` can be called directly:
+The PHI merge loses branch-specific facts. I need to restructure so the insert and proof happen INSIDE each branch (no merge needed). The exec behavior is identical since only one branch executes:
+Let me do a complete rewrite of the `put` function with counter/insert/proof inside each branch:

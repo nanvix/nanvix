@@ -254,7 +254,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
         }
 
         if existed.is_none() {
-            // Key was absent — need to prove inv holds for evict's precondition.
+            // Key was absent — establish entries identity and LRU facts.
             proof! {
                 reveal(<Cache<_, _> as View>::view);
                 reveal(cache_contents_of);
@@ -269,8 +269,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                 assert(cache_contents_of(self.entries)
                     =~= cache_contents_of(old(self).entries));
 
-                // Key not in LRU sequence (from inv: to_set == contents.dom(),
-                // and key not in dom because existed.is_none()).
+                // Key not in LRU sequence.
                 let old_lru = cache_lru_of(old(self).entries);
                 assert(!old(self)@.contents.dom().contains(key));
                 assert(!old_lru.to_set().contains(key));
@@ -283,111 +282,151 @@ impl<K: Ord + Clone, V> Cache<K, V> {
 
             // New key — may need eviction.
             if self.entries.len() >= self.capacity {
+                // ── EVICT CASE ──
                 proof! {
                     reveal(<Cache<_, _> as View>::view);
                     reveal(cache_contents_of);
                     broadcast use axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom;
-                    // entries.len() >= capacity > 0 ⟹ contents non-empty.
                     assert(cache_contents_of(self.entries).dom()
                         =~= btreemap_view_spec(self.entries).dom());
                     assert(self@.contents.dom().len() > 0);
                 }
                 self.evict();
+
+                proof! { pre_insert_entries = self.entries; }
+
+                self.counter = if self.counter < u64::MAX {
+                    self.counter + 1
+                } else {
+                    self.counter
+                };
+                self.entries.insert(
+                    key,
+                    CacheEntry {
+                        value,
+                        last_used: self.counter,
+                    },
+                );
+
                 proof! {
-                    // Capture INSIDE evict branch so postcondition is live.
-                    pre_insert_entries = self.entries;
+                    broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
+                        vstd::seq_lib::seq_to_set_is_finite,
+                        axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom;
                     reveal(<Cache<_, _> as View>::view);
                     reveal(cache_contents_of);
                     reveal(cache_lru_of);
-                    // Evict postcondition, unfolded through ghost variables:
+
+                    let old_view = old(self)@;
+                    let victim = old_view.lru_order[0];
+
+                    axiom_cache_lru_of_remove(old(self).entries, entries_after_remove, key);
+                    axiom_cache_lru_of_insert(
+                        pre_insert_entries, self.entries, key,
+                        CacheEntry { value, last_used: self.counter },
+                    );
+
+                    // entries_after_remove == old entries (absent key identity)
+                    assert(cache_contents_of(entries_after_remove) =~= old_view.contents);
+                    assert(cache_lru_of(entries_after_remove) == old_view.lru_order);
+
+                    // Evict postcondition (live here, before PHI merge):
                     assert(cache_contents_of(pre_insert_entries)
                         == cache_contents_of(entries_after_remove).remove(
                             cache_lru_of(entries_after_remove)[0]));
+                    assert(cache_contents_of(pre_insert_entries)
+                        =~= old_view.contents.remove(victim));
+
+                    assert(cache_contents_of(self.entries)
+                        =~= cache_contents_of(pre_insert_entries).insert(key, value));
+                    assert(cache_contents_of(self.entries)
+                        =~= old_view.contents.remove(victim).insert(key, value));
+
+                    lemma_spec_put_inv(old(self)@, key, value);
                 }
             } else {
+                // ── NO-EVICT CASE ──
+                proof! { pre_insert_entries = self.entries; }
+
+                self.counter = if self.counter < u64::MAX {
+                    self.counter + 1
+                } else {
+                    self.counter
+                };
+                self.entries.insert(
+                    key,
+                    CacheEntry {
+                        value,
+                        last_used: self.counter,
+                    },
+                );
+
                 proof! {
-                    pre_insert_entries = self.entries;
+                    broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
+                        vstd::seq_lib::seq_to_set_is_finite,
+                        axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom;
+                    reveal(<Cache<_, _> as View>::view);
+                    reveal(cache_contents_of);
+                    reveal(cache_lru_of);
+
+                    let old_view = old(self)@;
+
+                    axiom_cache_lru_of_remove(old(self).entries, entries_after_remove, key);
+                    axiom_cache_lru_of_insert(
+                        pre_insert_entries, self.entries, key,
+                        CacheEntry { value, last_used: self.counter },
+                    );
+
+                    assert(cache_contents_of(pre_insert_entries) =~= old_view.contents);
+                    assert(cache_contents_of(self.entries)
+                        =~= cache_contents_of(pre_insert_entries).insert(key, value));
+                    assert(cache_contents_of(self.entries)
+                        =~= old_view.contents.insert(key, value));
+
+                    lemma_spec_put_inv(old(self)@, key, value);
                 }
             }
         } else {
-            proof! {
-                pre_insert_entries = self.entries;
-            }
-        }
+            // ── EXISTED CASE ──
+            proof! { pre_insert_entries = self.entries; }
 
-        self.counter = if self.counter < u64::MAX {
-            self.counter + 1
-        } else {
-            self.counter
-        };
-        self.entries.insert(
-            key,
-            CacheEntry {
-                value,
-                last_used: self.counter,
-            },
-        );
-
-        proof! {
-            broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
-                vstd::seq_lib::seq_to_set_is_finite,
-                axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom;
-
-            reveal(<Cache<_, _> as View>::view);
-            reveal(cache_contents_of);
-            reveal(cache_lru_of);
-
-            // Apply remove axiom on old(self).entries -> entries_after_remove.
-            axiom_cache_lru_of_remove(old(self).entries, entries_after_remove, key);
-
-            // Apply insert axiom on pre_insert_entries -> self.entries.
-            axiom_cache_lru_of_insert(
-                pre_insert_entries,
-                self.entries,
+            self.counter = if self.counter < u64::MAX {
+                self.counter + 1
+            } else {
+                self.counter
+            };
+            self.entries.insert(
                 key,
-                CacheEntry { value, last_used: self.counter },
+                CacheEntry {
+                    value,
+                    last_used: self.counter,
+                },
             );
 
-            // Key intermediate: map_values distributes over insert, so
-            // cache_contents_of(inserted) =~= cache_contents_of(before).insert(key, value).
-            assert(cache_contents_of(self.entries)
-                =~= cache_contents_of(pre_insert_entries).insert(key, value));
+            proof! {
+                broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
+                    vstd::seq_lib::seq_to_set_is_finite,
+                    axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom;
+                reveal(<Cache<_, _> as View>::view);
+                reveal(cache_contents_of);
+                reveal(cache_lru_of);
 
-            let old_view = old(self)@;
+                let old_view = old(self)@;
 
-            if existed.is_some() {
-                // pre_insert_entries = entries_after_remove (key removed).
+                axiom_cache_lru_of_remove(old(self).entries, entries_after_remove, key);
+                axiom_cache_lru_of_insert(
+                    pre_insert_entries, self.entries, key,
+                    CacheEntry { value, last_used: self.counter },
+                );
+
                 assert(cache_contents_of(pre_insert_entries)
                     =~= old_view.contents.remove(key));
-                // remove(key).insert(key, value) =~= insert(key, value)
+                assert(cache_contents_of(self.entries)
+                    =~= cache_contents_of(pre_insert_entries).insert(key, value));
                 assert(cache_contents_of(self.entries)
                     =~= old_view.contents.insert(key, value));
-            } else if old_view.contents.dom().len() >= old_view.capacity {
-                // Evict case: pre_insert_entries captured inside evict branch,
-                // so the derived fact is already available.
-                let victim = old_view.lru_order[0];
 
-                // These identities connect entries_after_remove to old_view:
-                assert(cache_contents_of(entries_after_remove)
-                    =~= old_view.contents);
-                assert(cache_lru_of(entries_after_remove) == old_view.lru_order);
-
-                // From branch-local assertion + substitution:
-                assert(cache_contents_of(pre_insert_entries)
-                    =~= old_view.contents.remove(victim));
-
-                assert(cache_contents_of(self.entries)
-                    =~= old_view.contents.remove(victim).insert(key, value));
-            } else {
-                // Simple insert: btreemap_remove was identity (absent key).
-                assert(cache_contents_of(pre_insert_entries)
-                    =~= old_view.contents);
-                assert(cache_contents_of(self.entries)
-                    =~= old_view.contents.insert(key, value));
+                lemma_spec_put_inv(old(self)@, key, value);
             }
-
-            // spec_put preserves inv.
-            lemma_spec_put_inv(old(self)@, key, value);
         }
     }
 
