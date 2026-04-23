@@ -1,0 +1,253 @@
+Timestamp: 2026-04-23_11-17-33
+Mode: cargo
+Crate: cache
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=7
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking vstd v0.0.0-2026-04-12-0118
+error[E0425]: cannot find type `Box` in this scope
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:663:60
+    |
+663 | pub broadcast axiom fn axiom_contains_box<Q, Value>(m: Map<Box<Q>, Value>, k: &Q)
+    |                                                            ^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+ 11 + use alloc::boxed::Box;
+    |
+
+error[E0425]: cannot find type `Box` in this scope
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:665:44
+    |
+665 |         #[trigger] contains_borrowed_key::<Box<Q>, Value, Q>(m, k) <==> m.contains_key(
+    |                                            ^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+ 11 + use alloc::boxed::Box;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Box`
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:666:13
+    |
+666 |             Box::new(*k),
+    |             ^^^ use of undeclared type `Box`
+    |
+help: consider importing this struct
+    |
+ 11 + use alloc::boxed::Box;
+    |
+
+error[E0425]: cannot find type `Box` in this scope
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:709:69
+    |
+709 | pub broadcast axiom fn axiom_maps_box_key_to_value<Q, Value>(m: Map<Box<Q>, Value>, q: &Q, v: Value)
+    |                                                                     ^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+ 11 + use alloc::boxed::Box;
+    |
+
+error[E0425]: cannot find type `Box` in this scope
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:711:49
+    |
+711 |         #[trigger] maps_borrowed_key_to_value::<Box<Q>, Value, Q>(m, q, v) <==> {
+    |                                                 ^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+ 11 + use alloc::boxed::Box;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Box`
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:712:21
+    |
+712 |             let k = Box::new(*q);
+    |                     ^^^ use of undeclared type `Box`
+    |
+help: consider importing this struct
+    |
+ 11 + use alloc::boxed::Box;
+    |
+
+error[E0425]: cannot find type `Box` in this scope
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:767:16
+    |
+767 |     old_m: Map<Box<Q>, Value>,
+    |                ^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+ 11 + use alloc::boxed::Box;
+    |
+
+error[E0425]: cannot find type `Box` in this scope
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:768:16
+    |
+768 |     new_m: Map<Box<Q>, Value>,
+    |                ^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+ 11 + use alloc::boxed::Box;
+    |
+
+error[E0425]: cannot find type `Box` in this scope
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:772:43
+    |
+772 |         #[trigger] borrowed_key_removed::<Box<Q>, Value, Q>(old_m, new_m, q) <==> new_m
+    |                                           ^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+ 11 + use alloc::boxed::Box;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Box`
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:773:29
+    |
+773 |             == old_m.remove(Box::new(*q)),
+    |                             ^^^ use of undeclared type `Box`
+    |
+help: consider importing this struct
+    |
+ 11 + use alloc::boxed::Box;
+    |
+
+error[E0425]: cannot find type `Box` in this scope
+    --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:1040:57
+     |
+1040 | pub broadcast axiom fn axiom_set_contains_box<Q>(m: Set<Box<Q>>, k: &Q)
+     |                                                         ^^^ not found in this scope
+     |
+help: consider importing this struct
+     |
+  11 + use alloc::boxed::Box;
+     |
+
+error[E0425]: cannot find type `Box` in this scope
+    --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:1042:48
+     |
+1042 |         #[trigger] set_contains_borrowed_key::<Box<Q>, Q>(m, k) <==> m.contains(Box::new(*k)),
+     |                                                ^^^ not found in this scope
+     |
+help: consider importing this struct
+     |
+  11 + use alloc::boxed::Box;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Box`
+    --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:1042:81
+     |
+1042 |         #[trigger] set_contains_borrowed_key::<Box<Q>, Q>(m, k) <==> m.contains(Box::new(*k)),
+     |                                                                                 ^^^ use of undeclared type `Box`
+     |
+help: consider importing this struct
+     |
+  11 + use alloc::boxed::Box;
+     |
+
+error[E0425]: cannot find type `Box` in this scope
+    --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:1076:61
+     |
+1076 | pub broadcast axiom fn axiom_set_box_key_to_value<Q>(m: Set<Box<Q>>, q: &Q, v: &Box<Q>)
+     |                                                             ^^^ not found in this scope
+     |
+help: consider importing this struct
+     |
+  11 + use alloc::boxed::Box;
+     |
+
+error[E0425]: cannot find type `Box` in this scope
+    --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:1076:81
+     |
+1076 | pub broadcast axiom fn axiom_set_box_key_to_value<Q>(m: Set<Box<Q>>, q: &Q, v: &Box<Q>)
+     |                                                                                 ^^^ not found in this scope
+     |
+help: consider importing this struct
+     |
+  11 + use alloc::boxed::Box;
+     |
+
+error[E0425]: cannot find type `Box` in this scope
+    --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:1078:47
+     |
+1078 |         #[trigger] sets_borrowed_key_to_key::<Box<Q>, Q>(m, q, v) <==> (m.contains(*v) && Box::new(
+     |                                               ^^^ not found in this scope
+     |
+help: consider importing this struct
+     |
+  11 + use alloc::boxed::Box;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Box`
+    --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:1078:91
+     |
+1078 |         #[trigger] sets_borrowed_key_to_key::<Box<Q>, Q>(m, q, v) <==> (m.contains(*v) && Box::new(
+     |                                                                                           ^^^ use of undeclared type `Box`
+     |
+help: consider importing this struct
+     |
+  11 + use alloc::boxed::Box;
+     |
+
+error[E0425]: cannot find type `Box` in this scope
+    --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:1123:64
+     |
+1123 | pub broadcast axiom fn axiom_set_box_key_removed<Q>(old_m: Set<Box<Q>>, new_m: Set<Box<Q>>, q: &Q)
+     |                                                                ^^^ not found in this scope
+     |
+help: consider importing this struct
+     |
+  11 + use alloc::boxed::Box;
+     |
+
+error[E0425]: cannot find type `Box` in this scope
+    --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:1123:84
+     |
+1123 | pub broadcast axiom fn axiom_set_box_key_removed<Q>(old_m: Set<Box<Q>>, new_m: Set<Box<Q>>, q: &Q)
+     |                                                                                    ^^^ not found in this scope
+     |
+help: consider importing this struct
+     |
+  11 + use alloc::boxed::Box;
+     |
+
+error[E0425]: cannot find type `Box` in this scope
+    --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:1125:50
+     |
+1125 |         #[trigger] sets_differ_by_borrowed_key::<Box<Q>, Q>(old_m, new_m, q) <==> new_m
+     |                                                  ^^^ not found in this scope
+     |
+help: consider importing this struct
+     |
+  11 + use alloc::boxed::Box;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Box`
+    --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/std_specs/btree.rs:1126:29
+     |
+1126 |             == old_m.remove(Box::new(*q)),
+     |                             ^^^ use of undeclared type `Box`
+     |
+help: consider importing this struct
+     |
+  11 + use alloc::boxed::Box;
+     |
+
+Some errors have detailed explanations: E0425, E0433.
+For more information about an error, try `rustc --explain E0425`.
+error: could not compile `vstd` (lib) due to 21 previous errors
