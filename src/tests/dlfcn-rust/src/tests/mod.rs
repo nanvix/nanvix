@@ -8,6 +8,7 @@ use ::sys::error::Error;
 //==================================================================================================
 
 mod dlfcn;
+mod dlfcn_global;
 mod dlfcn_pie;
 
 //==================================================================================================
@@ -18,5 +19,9 @@ mod dlfcn_pie;
 pub fn run_all() -> Result<(), Error> {
     dlfcn::run()?;
     dlfcn_pie::run()?;
+    // RTLD_GLOBAL tests run last because they permanently register symbols
+    // in the global scope (matching Linux semantics where global scope
+    // entries persist after dlclose).
+    dlfcn_global::run()?;
     Ok(())
 }

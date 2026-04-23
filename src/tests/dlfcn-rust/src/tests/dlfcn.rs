@@ -56,7 +56,7 @@ const _: () = assert!(
 
 /// Opens a dynamic load library.
 fn open_library(path: &str) -> Result<DlHandle, Error> {
-    dlopen(path)
+    dlopen(path, false)
 }
 
 /// Closes a dynamic load library.
