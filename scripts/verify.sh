@@ -262,9 +262,10 @@ VERUS_AI_DIR="${VERUS_AI_DIR:-$(dirname "$SCRIPT_DIR")}"
 
 CHEATING_DIR="${CRATE_SRC_DIR:-.}"
 
-# Use Python guardrails for AST-based detection (reliable, no false positives
-# on comments/strings).  Requires tree-sitter — no regex fallback.
-CHEATING_JSON="$(VERUS_AI_DIR="$VERUS_AI_DIR" CHEATING_DIR="$CHEATING_DIR" python3 -c '
+# --- Helper: run cheating detection on a directory, print JSON ---
+run_cheating_scan() {
+    local scan_dir="$1"
+    VERUS_AI_DIR="$VERUS_AI_DIR" CHEATING_DIR="$scan_dir" python3 -c '
 import sys, os, json
 sys.path.insert(0, os.environ["VERUS_AI_DIR"])
 from guardrails import detect_cheating
@@ -279,82 +280,13 @@ for rs_file in Path(os.environ["CHEATING_DIR"]).glob("**/*.rs"):
     combined["trusted"] += r.trusted_count
     combined["no_decreases"] += r.no_decreases_count
 print(json.dumps(combined))
-' 2>/dev/null || echo '{"error":"tree-sitter unavailable"}')"
+' 2>/dev/null || echo '{"error":"tree-sitter unavailable"}'
+}
 
-# Count cfg-gated exec code (cheating indicator).
-# Counts #[cfg(not(verus_keep_ghost))] and #[cfg(verus_keep_ghost)] on exec code.
-# Excludes cfg-gates applied to: use/import, include!, derive, feature attrs,
-# debug_assert!, and logging macros (info!/error!/warn!/trace!/debug!/log!).
-CFG_GATE_COUNT=0
-if [[ -n "$CRATE_SRC_DIR" && -d "$CRATE_SRC_DIR" ]]; then
-    CFG_GATE_COUNT="$(python3 -c "
-import re, sys
-from pathlib import Path
-
-src_dir = Path('$CRATE_SRC_DIR')
-count = 0
-cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
-
-for rs_file in sorted(src_dir.glob('**/*.rs')):
-    lines = rs_file.read_text().splitlines()
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if not cfg_pat.search(stripped):
-            continue
-        # Skip cfg_attr on derive or feature
-        if 'derive(' in stripped or 'feature(' in stripped:
-            continue
-        # Check what the cfg-gate applies to (next non-empty, non-attr line)
-        target = ''
-        for j in range(i + 1, min(i + 5, len(lines))):
-            t = lines[j].strip()
-            if not t or t.startswith('#['):
-                continue
-            target = t
-            break
-        # Allowed targets: use, include!, extern, mod declarations
-        if any(target.startswith(k) for k in ['use ', 'use(', 'include!', 'extern ', 'mod ']):
-            continue
-        # Allowed targets: debug_assert!, info!, error!, warn!, trace!, debug!, log!
-        if re.match(r'(debug_assert|info|error|warn|trace|debug|log)!\s*\(', target):
-            continue
-        count += 1
-
-print(count)
-" 2>/dev/null)" || CFG_GATE_COUNT=0
-fi
-
-CHEATING_AVAILABLE=false
-if echo "$CHEATING_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if 'assume' in d else 1)" 2>/dev/null; then
-    CHEATING_AVAILABLE=true
-    ASSUME_COUNT="$(echo "$CHEATING_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('assume',0))")"
-    EXTERNAL_BODY_COUNT="$(echo "$CHEATING_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('external_body',0))")"
-    ADMIT_COUNT="$(echo "$CHEATING_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('admit',0))")"
-    TRUSTED_COUNT="$(echo "$CHEATING_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('trusted',0))")"
-    NO_DECREASES_COUNT="$(echo "$CHEATING_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('no_decreases',0))")"
-else
-    echo "  ⚠️  Cheating detection unavailable (tree-sitter required)."
-    echo "     Set VERUS_AI_DIR to the verus-ai tool directory."
-    ASSUME_COUNT=0; EXTERNAL_BODY_COUNT=0; ADMIT_COUNT=0; TRUSTED_COUNT=0; NO_DECREASES_COUNT=0
-fi
-
-CHEATING_FOUND=false
-
-if [[ "$CHEATING_AVAILABLE" != "true" ]]; then
-    :  # Already printed warning above; don't print ✅
-elif [[ $((ASSUME_COUNT + EXTERNAL_BODY_COUNT + ADMIT_COUNT + TRUSTED_COUNT + NO_DECREASES_COUNT + CFG_GATE_COUNT)) -eq 0 ]]; then
-    echo "  ✅ No cheating detected."
-else
-    CHEATING_FOUND=true
-    [[ $ASSUME_COUNT -gt 0 ]]         && echo "  ⚠️  assume() calls: $ASSUME_COUNT"
-    [[ $EXTERNAL_BODY_COUNT -gt 0 ]]  && echo "  ⚠️  external_body: $EXTERNAL_BODY_COUNT"
-    [[ $ADMIT_COUNT -gt 0 ]]          && echo "  ⚠️  admit() calls: $ADMIT_COUNT"
-    [[ $TRUSTED_COUNT -gt 0 ]]        && echo "  ⚠️  trusted: $TRUSTED_COUNT"
-    [[ $NO_DECREASES_COUNT -gt 0 ]]   && echo "  ⚠️  exec_allows_no_decreases_clause: $NO_DECREASES_COUNT"
-    [[ $CFG_GATE_COUNT -gt 0 ]]       && echo "  ⚠️  cfg-gated exec code: $CFG_GATE_COUNT"
-
-    # Show which functions contain cheating patterns.
-    CHEATING_DETAIL="$(VERUS_AI_DIR="$VERUS_AI_DIR" CHEATING_DIR="$CHEATING_DIR" python3 -c '
+# --- Helper: get cheating detail (affected functions) for a directory ---
+get_cheating_detail() {
+    local scan_dir="$1"
+    VERUS_AI_DIR="$VERUS_AI_DIR" CHEATING_DIR="$scan_dir" python3 -c '
 import sys, os
 sys.path.insert(0, os.environ["VERUS_AI_DIR"])
 from pathlib import Path
@@ -371,7 +303,6 @@ for rs_file in sorted(Path(os.environ["CHEATING_DIR"]).glob("**/*.rs")):
             continue
         fn_name = name_node.text.decode()
         fn_text = fn_node.text.decode()
-        # Collect attribute text from preceding siblings
         attr_text = ""
         sib = fn_node.prev_sibling
         while sib and sib.type == "attribute_item":
@@ -389,12 +320,133 @@ for rs_file in sorted(Path(os.environ["CHEATING_DIR"]).glob("**/*.rs")):
             issues.append("trusted")
         if issues:
             line = fn_node.start_point[0] + 1
-            print(f"    - {fn_name} (line {line}): {", ".join(issues)}")
-' 2>/dev/null || true)"
-    if [[ -n "$CHEATING_DETAIL" ]]; then
-        echo "  Affected functions:"
-        echo "$CHEATING_DETAIL"
+            rel = rs_file.relative_to(Path(os.environ["CHEATING_DIR"]))
+            print(f"    - {rel}:{line} {fn_name}: {", ".join(issues)}")
+' 2>/dev/null || true
+}
+
+# Count cfg-gated exec code (cheating indicator).
+# When MODULE is set, counts only for module files; otherwise whole crate.
+count_cfg_gates() {
+    local scan_dir="$1"
+    python3 -c "
+import re, sys
+from pathlib import Path
+
+src_dir = Path('$scan_dir')
+count = 0
+cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+
+for rs_file in sorted(src_dir.glob('**/*.rs')):
+    lines = rs_file.read_text().splitlines()
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not cfg_pat.search(stripped):
+            continue
+        if 'derive(' in stripped or 'feature(' in stripped:
+            continue
+        target = ''
+        for j in range(i + 1, min(i + 5, len(lines))):
+            t = lines[j].strip()
+            if not t or t.startswith('#['):
+                continue
+            target = t
+            break
+        if any(target.startswith(k) for k in ['use ', 'use(', 'include!', 'extern ', 'mod ']):
+            continue
+        if re.match(r'(debug_assert|info|error|warn|trace|debug|log)!\s*\(', target):
+            continue
+        count += 1
+
+print(count)
+" 2>/dev/null
+}
+
+# --- Determine module-scoped cheating dir (if MODULE is set) ---
+MODULE_CHEATING_DIR=""
+if [[ -n "$MODULE" && -n "$CRATE_SRC_DIR" ]]; then
+    if [[ "$MODULE" == "root" ]]; then
+        MODULE_CHEATING_DIR=""  # root has no separate dir; skip module-scoped
+    else
+        MOD_CHEAT_PATH="${MODULE//:://}"
+        # Collect the module file(s) into a temp dir for scoped scanning
+        if [[ -f "$CRATE_SRC_DIR/$MOD_CHEAT_PATH.rs" || -d "$CRATE_SRC_DIR/$MOD_CHEAT_PATH" ]]; then
+            MODULE_CHEATING_DIR="$(mktemp -d)"
+            trap "rm -rf '$MODULE_CHEATING_DIR'" EXIT
+            [[ -f "$CRATE_SRC_DIR/$MOD_CHEAT_PATH.rs" ]] && cp "$CRATE_SRC_DIR/$MOD_CHEAT_PATH.rs" "$MODULE_CHEATING_DIR/"
+            if [[ -d "$CRATE_SRC_DIR/$MOD_CHEAT_PATH" ]]; then
+                cp -r "$CRATE_SRC_DIR/$MOD_CHEAT_PATH"/* "$MODULE_CHEATING_DIR/" 2>/dev/null || true
+            fi
+        fi
     fi
+fi
+
+# --- Run scans ---
+GLOBAL_CHEATING_JSON="$(run_cheating_scan "$CHEATING_DIR")"
+GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+
+CHEATING_AVAILABLE=false
+if echo "$GLOBAL_CHEATING_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if 'assume' in d else 1)" 2>/dev/null; then
+    CHEATING_AVAILABLE=true
+    ASSUME_COUNT="$(echo "$GLOBAL_CHEATING_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('assume',0))")"
+    EXTERNAL_BODY_COUNT="$(echo "$GLOBAL_CHEATING_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('external_body',0))")"
+    ADMIT_COUNT="$(echo "$GLOBAL_CHEATING_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('admit',0))")"
+    TRUSTED_COUNT="$(echo "$GLOBAL_CHEATING_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('trusted',0))")"
+    NO_DECREASES_COUNT="$(echo "$GLOBAL_CHEATING_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('no_decreases',0))")"
+    CFG_GATE_COUNT="$GLOBAL_CFG_GATE_COUNT"
+else
+    echo "  ⚠️  Cheating detection unavailable (tree-sitter required)."
+    echo "     Set VERUS_AI_DIR to the verus-ai tool directory."
+    ASSUME_COUNT=0; EXTERNAL_BODY_COUNT=0; ADMIT_COUNT=0; TRUSTED_COUNT=0; NO_DECREASES_COUNT=0
+    CFG_GATE_COUNT=0
+fi
+
+CHEATING_FOUND=false
+
+if [[ "$CHEATING_AVAILABLE" != "true" ]]; then
+    :
+elif [[ -n "$MODULE_CHEATING_DIR" ]]; then
+    # --- MODULE set: module cheating is primary, global is secondary ---
+    MOD_CHEATING_JSON="$(run_cheating_scan "$MODULE_CHEATING_DIR")"
+    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATING_DIR")" || MOD_CFG_GATE=0
+    MOD_SUM="$(echo "$MOD_CHEATING_JSON" | python3 -c "
+import sys,json; d=json.load(sys.stdin)
+print(d.get('assume',0)+d.get('external_body',0)+d.get('admit',0)+d.get('trusted',0)+d.get('no_decreases',0))" 2>/dev/null)" || MOD_SUM=0
+    MOD_SUM=$((MOD_SUM + MOD_CFG_GATE))
+
+    if [[ $MOD_SUM -eq 0 ]]; then
+        echo "  ✅ No cheating detected in module $MODULE."
+    else
+        CHEATING_FOUND=true
+        echo "  Module $MODULE:"
+        echo "$MOD_CHEATING_JSON" | python3 -c "
+import sys,json; d=json.load(sys.stdin)
+for k in ['assume','external_body','admit','trusted','no_decreases']:
+    v=d.get(k,0)
+    if v>0: print(f'    ⚠️  {k}: {v}')
+" 2>/dev/null
+        [[ $MOD_CFG_GATE -gt 0 ]] && echo "    ⚠️  cfg-gated exec code: $MOD_CFG_GATE"
+        MOD_DETAIL="$(get_cheating_detail "$MODULE_CHEATING_DIR")"
+        [[ -n "$MOD_DETAIL" ]] && echo "  Affected functions:" && echo "$MOD_DETAIL"
+    fi
+
+    # Global summary (secondary) — numbers + file
+    GLOBAL_TOTAL=$((ASSUME_COUNT + EXTERNAL_BODY_COUNT + ADMIT_COUNT + TRUSTED_COUNT + NO_DECREASES_COUNT + CFG_GATE_COUNT))
+    if [[ $GLOBAL_TOTAL -gt 0 ]]; then
+        echo "  Global: assume=$ASSUME_COUNT external_body=$EXTERNAL_BODY_COUNT admit=$ADMIT_COUNT trusted=$TRUSTED_COUNT cfg_gate=$CFG_GATE_COUNT"
+        CHEATING_DETAIL_FILE="${CRATE_SRC_DIR:-src}/cheating-detail.txt"
+        get_cheating_detail "$CHEATING_DIR" > "$CHEATING_DETAIL_FILE"
+        echo "  Detail: $CHEATING_DETAIL_FILE"
+    fi
+elif [[ $((ASSUME_COUNT + EXTERNAL_BODY_COUNT + ADMIT_COUNT + TRUSTED_COUNT + NO_DECREASES_COUNT + CFG_GATE_COUNT)) -eq 0 ]]; then
+    echo "  ✅ No cheating detected."
+else
+    # --- No MODULE: global cheating, write detail to file ---
+    CHEATING_FOUND=true
+    echo "  cheating: assume=$ASSUME_COUNT external_body=$EXTERNAL_BODY_COUNT admit=$ADMIT_COUNT trusted=$TRUSTED_COUNT no_decreases=$NO_DECREASES_COUNT cfg_gate=$CFG_GATE_COUNT"
+    CHEATING_DETAIL_FILE="${CRATE_SRC_DIR:-src}/cheating-detail.txt"
+    get_cheating_detail "$CHEATING_DIR" > "$CHEATING_DETAIL_FILE"
+    echo "  Detail: $CHEATING_DETAIL_FILE"
 fi
 
 echo ""
@@ -459,10 +511,24 @@ if echo "$COVERAGE_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); 
 
     if [[ "$COV_UNVERIFIED" -eq 0 ]]; then
         echo "  ✅ All $COV_TOTAL exec functions have contracts."
-    else
+    elif [[ -n "$MODULE" ]]; then
+        # Module-scoped: show full list inline.
         echo "  $COV_VERIFIED/$COV_TOTAL exec functions have contracts."
         echo "  Unverified functions:"
         echo "$COVERAGE_JSON" | python3 -c "import sys,json; [print(f'    - {n}') for n in json.load(sys.stdin)['unverified_fns']]"
+    else
+        # Whole-crate: too many to list inline — write to file.
+        COVERAGE_FILE="${CRATE_SRC_DIR:-src}/coverage-unverified.txt"
+        echo "$COVERAGE_JSON" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+with open('$COVERAGE_FILE', 'w') as f:
+    f.write(f\"# Unverified exec functions: {d['unverified']}/{d['total']}\n\")
+    for n in d['unverified_fns']:
+        f.write(f'  {n}\n')
+"
+        echo "  $COV_VERIFIED/$COV_TOTAL exec functions have contracts."
+        echo "  Unverified function list written to: $COVERAGE_FILE"
     fi
 else
     echo "  ⚠️  Coverage analysis unavailable (tree-sitter required)."
