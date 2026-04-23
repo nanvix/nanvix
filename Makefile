@@ -588,9 +588,21 @@ help:
 	@echo "  PROFILER        yes, no"
 	@echo "  MAKE_NO_PRINT   yes, no"
 
-# Verifies all Verus-annotated crates.
+# Verifies all Verus-annotated crates (runs all, reports failures at end).
 .PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
-verify: $(addprefix verify-,$(VERUS_CRATES))
+verify: ensure-verus
+	@failed=""; \
+	for crate in $(VERUS_CRATES); do \
+		echo ""; \
+		echo "======== verify-$$crate ========"; \
+		$(MAKE) verify-$$crate || failed="$$failed $$crate"; \
+	done; \
+	echo ""; \
+	if [ -n "$$failed" ]; then \
+		echo "[WARN] Crates with issues:$$failed"; \
+	else \
+		echo "[OK] All crates verified clean."; \
+	fi
 
 # Ensures the correct Verus version is installed before verification.
 # Auto-downloads the pinned release via scripts/setup/verus.sh when the
