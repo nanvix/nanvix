@@ -241,8 +241,10 @@ impl Inner {
     #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
+            old(self).inv(),
             addr.inv(),
         ensures
+            self.inv(),
             ({
                 let page_index = (addr@ - old(self)@.start) / spec_page_size();
                 let input_valid = {
