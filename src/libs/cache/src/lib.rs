@@ -244,7 +244,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
 
                 // Map identity: removing absent key doesn't change the map.
                 assert(self.entries@
-                    =~= old(self@.entries));
+                    =~= old(self).entries@);
 
                 assert(cache_contents_of(self.entries)
                     =~= cache_contents_of(old(self).entries));
@@ -458,12 +458,12 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     #[verus_verify(external_body)]
     #[verus_spec(ret =>
         ensures
-            *entries@.dom().len() > 0 ==> {
+            entries@.dom().len() > 0 ==> {
                 &&& ret is Some
                 &&& cache_lru_of(*entries).len() > 0
                 &&& ret->Some_0 == cache_lru_of(*entries)[0]
             },
-            *entries@.dom().len() == 0 ==> ret is None,
+            entries@.dom().len() == 0 ==> ret is None,
     )]
     fn find_lru_victim(entries: &BTreeMap<K, CacheEntry<V>>) -> Option<K> {
         // VERUS REWRITE: originally inlined in evict as iterator chain
