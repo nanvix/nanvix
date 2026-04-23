@@ -293,11 +293,26 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                     assert(self@.contents.dom().len() > 0);
                 }
                 self.evict();
+                proof! {
+                    // Capture INSIDE evict branch so postcondition is live.
+                    pre_insert_entries = self.entries;
+                    reveal(<Cache<_, _> as View>::view);
+                    reveal(cache_contents_of);
+                    reveal(cache_lru_of);
+                    // Evict postcondition, unfolded through ghost variables:
+                    assert(cache_contents_of(pre_insert_entries)
+                        == cache_contents_of(entries_after_remove).remove(
+                            cache_lru_of(entries_after_remove)[0]));
+                }
+            } else {
+                proof! {
+                    pre_insert_entries = self.entries;
+                }
             }
-        }
-
-        proof! {
-            pre_insert_entries = self.entries;
+        } else {
+            proof! {
+                pre_insert_entries = self.entries;
+            }
         }
 
         self.counter = if self.counter < u64::MAX {
@@ -348,26 +363,16 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                 assert(cache_contents_of(self.entries)
                     =~= old_view.contents.insert(key, value));
             } else if old_view.contents.dom().len() >= old_view.capacity {
-                // Evict case: pre_insert_entries = entries after evict.
+                // Evict case: pre_insert_entries captured inside evict branch,
+                // so the derived fact is already available.
                 let victim = old_view.lru_order[0];
 
-                // Re-establish identity: entries_after_remove == old entries (absent key).
+                // These identities connect entries_after_remove to old_view:
                 assert(cache_contents_of(entries_after_remove)
                     =~= old_view.contents);
                 assert(cache_lru_of(entries_after_remove) == old_view.lru_order);
 
-                // Evict postcondition unfolded through ghost variables:
-                // post_evict_self@.contents == pre_evict_self@.contents.remove(victim)
-                // <=> cache_contents_of(pre_insert_entries)
-                //     == cache_contents_of(entries_after_remove).remove(
-                //          cache_lru_of(entries_after_remove)[0])
-                assert(cache_contents_of(pre_insert_entries)
-                    == cache_contents_of(entries_after_remove).remove(
-                        cache_lru_of(entries_after_remove)[0]));
-
-                // Substitute identities:
-                assert(cache_contents_of(entries_after_remove).remove(victim)
-                    =~= old_view.contents.remove(victim));
+                // From branch-local assertion + substitution:
                 assert(cache_contents_of(pre_insert_entries)
                     =~= old_view.contents.remove(victim));
 

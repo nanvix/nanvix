@@ -164,3 +164,5 @@ Let me check the BTreeMap insert spec:
 Good — the insert spec gives `btreemap_view_spec(*m) == btreemap_view_spec(*old(m)).insert(k, v)`. Now I need intermediate assertions to connect `cache_contents_of` through `map_values` and `insert`. Let me add these to the proof block:
 The evict case fails because Verus needs help connecting ghost variables through the evict call. Let me add intermediate assertions:
 Let me add more explicit intermediate steps to help Verus connect the evict postcondition:
+The issue is PHI node merging — the evict postcondition is lost after the control flow merge. I need to capture `pre_insert_entries` and assert facts INSIDE each branch. Let me restructure:
+Now update the final proof block — remove the intermediate assertions that relied on PHI-merged facts:
