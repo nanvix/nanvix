@@ -90,6 +90,7 @@ impl Benchmark {
                 io_control_tx,
                 counters,
                 snapshot_path: None,
+                mount_directory: None,
                 #[cfg(feature = "gdb")]
                 gdb_port: None,
                 #[cfg(feature = "profile-time")]

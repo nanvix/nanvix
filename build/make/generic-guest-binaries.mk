@@ -18,7 +18,7 @@ MISC_RUST_FEATURES := $(strip $(MISC_RUST_FEATURES))
 MISC_RUST_CARGO_FEATURES := $(if $(MISC_RUST_FEATURES),--features "$(MISC_RUST_FEATURES)")
 
 # Guest binaries that support standalone deployment mode.
-STANDALONE_GUEST_BINARIES := file-rust linux-app thread-rust stress-rust arch-rust
+STANDALONE_GUEST_BINARIES := file-rust linux-app thread-rust stress-rust arch-rust mount-test mount-bench-nostd
 
 # Computes the cargo features string for a guest binary package.
 # test-kernel has its own overrides. When DEPLOYMENT_MODE=standalone, packages
@@ -102,6 +102,16 @@ endif
 		if [ -n "$$newest" ]; then $(CP_CMD) "$$newest" $(BINARIES_DIR)/vfs-test.img; fi
 	@newest=$$(ls -t $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/build/vfs-bench-nostd-*/out/$(VFS_BENCH_IMG) 2>/dev/null | head -n1); \
 		if [ -n "$$newest" ]; then $(CP_CMD) "$$newest" $(BINARIES_DIR)/$(VFS_BENCH_IMG); fi
+# Reset mount-test-data so that subsequent test runs always start with pristine input.
+# A previous test execution may have overwritten files via the copyback mechanism.
+	@$(RM_CMD) -rf $(BINARIES_DIR)/mount-test-data
+	@mkdir -p $(BINARIES_DIR)/mount-test-data/subdir
+	@printf 'mount-test-input\n' > $(BINARIES_DIR)/mount-test-data/input.txt
+	@printf 'nested-content\n' > $(BINARIES_DIR)/mount-test-data/subdir/nested.txt
+# Reset mount-bench-data similarly.
+	@$(RM_CMD) -rf $(BINARIES_DIR)/mount-bench-data
+	@mkdir -p $(BINARIES_DIR)/mount-bench-data
+	@dd if=/dev/zero bs=4096 count=1 2>/dev/null | tr '\0' '\253' > $(BINARIES_DIR)/mount-bench-data/bench-4k.bin
 
 check-guest-binaries:
 ifneq ($(_GUEST_BINS_REGULAR_PKGS),)
