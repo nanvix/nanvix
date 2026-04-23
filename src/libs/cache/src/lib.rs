@@ -288,6 +288,8 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                     broadcast use vstd::std_specs::btree::group_btree_axioms;
                     assert(cache_contents_of(self.entries).dom()
                         =~= self.entries@.dom());
+                    assert(self@.contents.dom() =~= self.entries@.dom());
+                    assert(self.entries@.dom().len() > 0);
                     assert(self@.contents.dom().len() > 0);
                 }
                 self.evict();
