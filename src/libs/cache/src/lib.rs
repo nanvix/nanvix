@@ -350,6 +350,9 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                         =~= old_view.contents.remove(victim).insert(key, value));
 
                     lemma_spec_put_inv(old(self)@, key, value);
+                    assert(self@ == old(self)@.spec_put(key, value)) by {
+                        reveal(<Cache<_, _> as View>::view);
+                    };
                 }
             } else {
                 // ── NO-EVICT CASE ──
@@ -391,6 +394,9 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                         =~= old_view.contents.insert(key, value));
 
                     lemma_spec_put_inv(old(self)@, key, value);
+                    assert(self@ == old(self)@.spec_put(key, value)) by {
+                        reveal(<Cache<_, _> as View>::view);
+                    };
                 }
             }
         } else {
@@ -434,6 +440,9 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                     =~= old_view.contents.insert(key, value));
 
                 lemma_spec_put_inv(old(self)@, key, value);
+                assert(self@ == old(self)@.spec_put(key, value)) by {
+                    reveal(<Cache<_, _> as View>::view);
+                };
             }
         }
     }
