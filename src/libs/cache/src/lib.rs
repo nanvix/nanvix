@@ -239,7 +239,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                 reveal(<Cache<_, _> as View>::view);
                 reveal(cache_contents_of);
                 reveal(cache_lru_of);
-                broadcast use axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom,
+                broadcast use vstd::std_specs::btree::axiom_spec_btree_map_len, vstd::std_specs::btree::axiom_btree_map_view_finite_dom,
                     vstd::set::group_set_axioms, vstd::map::group_map_axioms;
 
                 // Map identity: removing absent key doesn't change the map.
@@ -266,7 +266,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                 proof! {
                     reveal(<Cache<_, _> as View>::view);
                     reveal(cache_contents_of);
-                    broadcast use axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom;
+                    broadcast use vstd::std_specs::btree::axiom_spec_btree_map_len, vstd::std_specs::btree::axiom_btree_map_view_finite_dom;
                     assert(cache_contents_of(self.entries).dom()
                         =~= self.entries@.dom());
                     assert(self@.contents.dom().len() > 0);
@@ -291,7 +291,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                 proof! {
                     broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
                         vstd::seq_lib::seq_to_set_is_finite,
-                        axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom;
+                        vstd::std_specs::btree::axiom_spec_btree_map_len, vstd::std_specs::btree::axiom_btree_map_view_finite_dom;
                     reveal(<Cache<_, _> as View>::view);
                     reveal(cache_contents_of);
                     reveal(cache_lru_of);
@@ -343,7 +343,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
                 proof! {
                     broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
                         vstd::seq_lib::seq_to_set_is_finite,
-                        axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom;
+                        vstd::std_specs::btree::axiom_spec_btree_map_len, vstd::std_specs::btree::axiom_btree_map_view_finite_dom;
                     reveal(<Cache<_, _> as View>::view);
                     reveal(cache_contents_of);
                     reveal(cache_lru_of);
@@ -385,7 +385,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
             proof! {
                 broadcast use vstd::set::group_set_axioms, vstd::map::group_map_axioms,
                     vstd::seq_lib::seq_to_set_is_finite,
-                    axiom_spec_btree_map_len, axiom_btree_map_view_finite_dom;
+                    vstd::std_specs::btree::axiom_spec_btree_map_len, vstd::std_specs::btree::axiom_btree_map_view_finite_dom;
                 reveal(<Cache<_, _> as View>::view);
                 reveal(cache_contents_of);
                 reveal(cache_lru_of);
