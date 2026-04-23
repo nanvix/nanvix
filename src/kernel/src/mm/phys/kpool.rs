@@ -61,6 +61,31 @@ impl Inner {
     ///
     /// # Description
     ///
+    /// Creates a new kernel pool.
+    ///
+    /// # Return Values
+    ///
+    /// Upon success, the kernel pool.
+    ///
+    fn new(base: PageAligned<PhysicalAddress>, bitmap: Bitmap) -> Result<Inner, Error> {
+        // Check if bitmap spans across physically-addressable memory.
+        let bitmap_capacity: usize = bitmap.number_of_bits();
+        let kpool_size: usize = bitmap_capacity * mem::PAGE_SIZE;
+        if !is_valid_physical_region(base.into_raw_value(), kpool_size) {
+            let reason: &str = "kernel pool bitmap spans across physically-addressable memory";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        let num_frames: usize = bitmap.number_of_bits();
+        info!("kernel pool: {} frames, {} KB", num_frames, (num_frames * mem::PAGE_SIZE) / 1024,);
+
+        Ok(Inner { base, bitmap })
+    }
+
+    ///
+    /// # Description
+    ///
     /// Allocates a frame from the kernel pool.
     ///
     /// # Return Values
@@ -218,20 +243,10 @@ pub(super) unsafe fn init(
 
     trace!("base={base:?}");
 
-    // Check if bitmap spans across physically-addressable memory.
-    let bitmap_capacity: usize = bitmap.number_of_bits();
-    let kpool_size: usize = bitmap_capacity * mem::PAGE_SIZE;
-    if !is_valid_physical_region(base.into_raw_value(), kpool_size) {
-        let reason: &str = "kernel pool bitmap spans across physically-addressable memory";
-        error!("{reason}");
-        return Err(Error::new(ErrorCode::InvalidArgument, reason));
-    }
-
-    let num_frames: usize = bitmap.number_of_bits();
-    info!("kernel pool: {} frames, {} KB", num_frames, (num_frames * mem::PAGE_SIZE) / 1024,);
+    let inner = Inner::new(base, bitmap)?;
 
     // SAFETY: single-threaded boot; no other reference to `INSTANCE` exists.
-    unsafe { INSTANCE.write(Inner { base, bitmap }) };
+    unsafe { INSTANCE.write(inner) };
     INSTANCE_INIT.store(true, ORDER);
     Ok(Kpool { _private: () })
 }
