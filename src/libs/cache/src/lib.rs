@@ -90,7 +90,7 @@ pub struct CacheGuard<'a, V> {
 impl<V> Deref for CacheGuard<'_, V> {
     type Target = V;
 
-    #[verus_verify(external_body)]
+    // REMOVED external_body for testing
     #[verus_spec(ret =>
         ensures *ret == self@,
     )]
@@ -187,7 +187,7 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// An RAII guard providing access to the cached value, or `None` on cache miss.
     ///
-    // REMOVED external_body for testing
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self)@.inv(),
