@@ -441,7 +441,6 @@ use crate::hal::mem::spec_page_size;
 
 pub struct MemoryRegionView
 {
-    pub name: String,
     pub start: int,
     pub size: int,
     pub typ: MemoryRegionType,
@@ -456,7 +455,6 @@ impl<T: Address + View<V = int>> View for MemoryRegion<T>
     closed spec fn view(&self) -> MemoryRegionView
     {
         MemoryRegionView{
-            name: self.name,
             start: self.start@,
             size: self.size as int,
             typ: self.typ,
