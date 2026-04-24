@@ -14,3 +14,6 @@ Phases: caller-analysis → cheating-elimination
 PHASE: caller-analysis
 Module: frame
 ============================================================
+[2026-04-24 22:12:17] [PROVER] Running caller-analysis...
+[2026-04-24 22:12:17] [COPILOT] Running: copilot --model claude-opus-4.6 ...
+[2026-04-24 22:14:53]   ↳ prover done in 2m35s (exit=0)

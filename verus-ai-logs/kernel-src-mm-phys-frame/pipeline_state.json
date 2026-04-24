@@ -6,7 +6,7 @@
   "current_phase_idx": 0,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "271fa2ea-a47b-4ef2-98b0-8c396c262aec",
   "completed": false,
   "base_branch": "verus-ai/kpool",
   "verus_branch": "verus-ai/frame",
