@@ -995,3 +995,48 @@ Now I need to check whether the code has uncommitted changes, since I shouldn't 
 [RESULT ✓] bash: verus-ai-logs/kernel-src-mm-phys-kpool/cheating-elimination/prover-claude-20260424-215332.jsonl
 verus-ai-logs/kernel-src-mm-phys-kpool/cheating-elimination/prover-claude-20260424-215332.txt
 <exited with exit code 0>
+[RESULT ✓] bash: === Function Coverage ===
+  17/995 exec functions have contracts.
+  Unverified function list written to: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/coverage-unverified.txt
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assum...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+All crates verified clean. Now let me write the final report:
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/cheating-elimination/fix_report.md with 4953 characters
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+## Summary
+
+**Result: PASS** — All cheating in kpool has been eliminated.
+
+| Item | Before | After | Eliminated |
+|------|--------|-------|------------|
+| external_body | 4 | 0 | **4** |
+| admit/assume/assume_specification | 0 | 0 | 0 |
+| cfg-gated exec | 1\* | 1\* | 0 (false positive) |
+
+The 4 `external_body` markers on `Inner::new`, `alloc`, `alloc_range`, and `free` were already eliminated by the proving phase — bodies are fully verified with inline proofs. No `admit`, `assume`, or `assume_specification` exists in kpool files.
+
+**AST mismatches** (4 functions): All justified — `pa_into_raw` stdlib wrapper, pre-approved intermediate variables, equivalent `from_raw_value` rewrite, and VERUS REWRITE guards for preconditions/underflow.
+
+**Verification**: `make verify` passes across all crates with 0 errors.
+
+Reports written to:
+- `verus-ai-logs/kernel-src-mm-phys-kpool/cheating-elimination/fix_report.md`
+- `verus-ai-logs/kernel-src-mm-phys-kpool/trust.md`
+- `verus-ai-logs/kernel-src-mm-phys-kpool/verification_todo.md`
+
+
+=== Session End ===
+Session: b3e0949e-3f4a-4a36-91da-120046e43784
+Duration: 570.6s
+Exit code: 0
+JSONL log: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/cheating-elimination/prover-claude-20260424-215332.jsonl
