@@ -264,6 +264,9 @@ scratch_layout! {
     /// IDTR backing storage.
     IDTR               : size = idt::IDTR_SIZE,
                          align = WORD_ALIGNMENT;
+    /// Kernel heap backing storage (relocated from BSS to avoid dirtying CoW snapshot pages).
+    HEAP_STORAGE       : size = crate::mm::kheap::MIN_HEAP_SIZE,
+                         align = PAGE_ALIGNMENT;
 }
 
 //==================================================================================================
@@ -611,16 +614,8 @@ extern "C" fn hyperlight_pre_kmain() -> ! {
         static __KERNEL_END: u8;
     }
 
-    // Initializes the kernel heap once so FunctionCall deserialisation can allocate on every
-    // subsequent sandbox.call().  On Hyperlight the heap is only initialised here (during evolve);
-    // kmain skips heap init via `#[cfg(not(feature = "hyperlight"))]`.
-    if let Err(_e) = unsafe { crate::mm::kheap::init() } {
-        unsafe {
-            core::arch::asm!("cli", "2: hlt", "jmp 2b", options(noreturn));
-        }
-    }
-
-    // Compute the PEB base address and store a GuestHandle for reuse.
+    // Compute the PEB base address first — needed to derive the scratch region
+    // for the heap backing storage before the heap is initialised.
     let kernel_end: usize = unsafe { &__KERNEL_END as *const u8 as usize };
     let peb_base: usize = ::sys::mm::align_up(kernel_end, PAGE_ALIGNMENT)
         .expect("hyperlight_pre_kmain(): PEB align_up overflow");
@@ -642,6 +637,34 @@ extern "C" fn hyperlight_pre_kmain() -> ! {
         }
     }
 
+    // Derive the scratch-reserved base from the PEB input buffer pointer.
+    // After the GVA→GPA patch, input_stack.ptr equals the scratch base address.
+    // The scratch-reserved region starts after the input and output data buffers.
+    let scratch_base: usize = unsafe { (*peb_ptr).input_stack.ptr } as usize;
+    let scratch_reserved_base: usize =
+        scratch_base + INPUT_DATA_BUFFER_SIZE + OUTPUT_DATA_BUFFER_SIZE;
+    let heap_backing_ptr: *mut u8 = (scratch_reserved_base + HEAP_STORAGE_OFFSET) as *mut u8;
+
+    // Point the kernel heap at scratch-resident backing storage so that heap
+    // allocations do not dirty CoW snapshot pages.
+    if let Err(_e) =
+        unsafe { crate::mm::kheap::set_backing_storage(heap_backing_ptr, HEAP_STORAGE_SIZE) }
+    {
+        unsafe {
+            core::arch::asm!("cli", "2: hlt", "jmp 2b", options(noreturn));
+        }
+    }
+
+    // Initialises the kernel heap once so FunctionCall deserialisation can allocate on every
+    // subsequent sandbox.call().  On Hyperlight the heap is only initialised here (during evolve);
+    // kmain skips heap init via `#[cfg(not(feature = "hyperlight"))]`.
+    if let Err(_e) = unsafe { crate::mm::kheap::init() } {
+        unsafe {
+            core::arch::asm!("cli", "2: hlt", "jmp 2b", options(noreturn));
+        }
+    }
+
+    // Store a GuestHandle for reuse by nanvix_dispatch_function.
     unsafe {
         GUEST_HANDLE = Some(GuestHandle::init(peb_ptr));
     }
@@ -1222,12 +1245,13 @@ pub fn init(
         memory_regions.push_back(scratch_reserved_region);
         info!(
             "scratch reserved: [{:#010x}, {:#010x}) (frame_alloc={} B, kpool={} B, gdt={} B, \
-             size={:#x})",
+             heap_storage={} B, size={:#x})",
             scratch_reserved_base,
             scratch_reserved_base + SCRATCH_RESERVED_SIZE,
             FRAME_ALLOC_BITMAP_SIZE,
             KPOOL_BITMAP_SIZE,
             GDT_SIZE,
+            HEAP_STORAGE_SIZE,
             SCRATCH_RESERVED_SIZE,
         );
     }
