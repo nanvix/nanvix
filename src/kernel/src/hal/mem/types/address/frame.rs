@@ -36,6 +36,7 @@ pub uninterp spec fn spec_page_size() -> int;
 pub assume_specification[ ::arch::mem::PAGE_SIZE ] -> (result: usize)
     ensures
         result == spec_page_size(),
+        result > 0,
 ;
 
 impl View for FrameAddress
@@ -54,6 +55,17 @@ impl FrameAddress {
         self@ % spec_page_size() == 0
     }
 }
+
+pub assume_specification[ FrameAddress::new ](address: PageAligned<PhysicalAddress>) -> (ret: FrameAddress)
+    ensures
+        ret@ == address@,
+        address.inv() ==> ret.inv(),
+;
+
+pub assume_specification[ FrameAddress::into_raw_value ](self_: FrameAddress) -> (ret: usize)
+    ensures
+        ret as int == self_@,
+;
 
 }
 

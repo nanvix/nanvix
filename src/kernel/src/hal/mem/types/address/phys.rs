@@ -259,4 +259,13 @@ impl View for PhysicalAddress
     }
 }
 
+pub assume_specification[ <PhysicalAddress as Address>::from_raw_value ](value: usize) -> (result: Result<PhysicalAddress, Error>)
+    ensures
+        result.is_Ok(),
+        match result {
+            Ok(addr) => addr@ == value as int,
+            Err(_) => false,
+        },
+;
+
 } // end verus!

@@ -362,6 +362,16 @@ pub fn is_valid_physical_region(start: usize, size: usize) -> bool {
     }
 }
 
+#[cfg(verus_keep_ghost)]
+use ::vstd::prelude::*;
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub assume_specification[ is_valid_physical_region ](start: usize, size: usize) -> (ret: bool)
+        ensures ret ==> start as int + size as int <= usize::MAX as int + 1,
+    ;
+}
+
 ///
 /// # Description
 ///

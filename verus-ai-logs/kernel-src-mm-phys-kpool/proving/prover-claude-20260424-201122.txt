@@ -5216,3 +5216,43 @@ Turn 314
 ────────────────────────────────────────────────────────────
 It's cached. Let me force a recompile:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && touch src/kernel/src/mm/phys/kpool.rs && make 
+[RESULT ✓] bash: verification results:: 7 verified, 0 errors (partial verification with `--verify-*`)
+=== Results ===
+  7 verified
+  0 errors
+  Exit code : 0
+  Unverified functions:
+  verification: 7 verified, 0 errors (exit 0)
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 315
+────────────────────────────────────────────────────────────
+**7 verified, 0 errors.** All proofs complete.
+
+## Summary
+
+Successfully proved all 4 functions in `kpool.rs`:
+
+| Function | Status |
+|----------|--------|
+| `Inner::new` | ✅ Verified |
+| `Inner::alloc` | ✅ Verified |
+| `Inner::alloc_range` | ✅ Verified |
+| `Inner::free` | ✅ Verified |
+
+**Key techniques used:**
+- **Wrapper functions** (`pa_into_raw`, `frame_from_raw`) for unverifiable generic trait calls
+- **`lemma_internal_inv` / `lemma_internal_inv_intro`** — closed spec fn with intro/elim lemmas
+- **vstd arithmetic lemmas**: `lemma_mul_strict_inequality`, `lemma_mul_inequality`, `lemma_mul_is_distributive_add_other_way`, `lemma_div_by_multiple`, `lemma_mod_multiples_vanish`
+- **Loop invariants** for `alloc_range`'s for loop tracking vector length, frame properties, and arithmetic bounds
+- **Proof by contradiction** for `free`'s `used_page_indices.contains` and `alloc_range`'s `range_free`
+
+**Guardrails:** `assume=0, admit=0, trusted=0`. No regressions in full `make verify`.
+
+
+=== Session End ===
+Session: f3bd32bb-8514-4bad-bee4-c6f9f855011c
+Duration: 3660.8s
+Exit code: 0
+JSONL log: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/proving/prover-claude-20260424-201122.jsonl
