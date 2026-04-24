@@ -1406,3 +1406,143 @@ I need to add a View for FrameNumber and restructure the assume_specifications t
 Turn 34
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+error[E0117]: only traits defined in the current crate can be implemented for types defined outside of the crate
+  --> src/kernel/src/mm/phys/frame.spec.rs:14:1
+   |
+14 | impl View for FrameNum...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+I can't impl View for FrameNumber due to orphan rule. Let me use a different approach — create wrapper functions for the full conversion chains and simplify the specs:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+
+[THINKING] I can't impl `View` for `FrameNumber` because of the orphan rule — `FrameNumber` is from the `arch` crate and `View` is from `vstd`. Both are external.
+
+I need a different approach. Let me think about alternatives:
+
+1. Define a local spec fn that extracts the "raw value" from a FrameNumber at spec level
+2. Use `open spec fn` wrapper instead of View
+3. Something else
+
+Actually, for `external_type_specification` types in Verus, the way to get spec-level access is through `assume_specification` on the methods. But the problem is using those methods in spec mode.
+ 
+I'm realizing that `assume_specification` doesn't directly let me call exec functions in spec context. Instead, I should define a spec function that represents what the raw value of a FrameNumber is, using an uninterpreted function as a placeholder.
+
+Defining spec function...
+
+But wait, uninterpreted spec functions are banned outright, even for external types. The exception only applies to `View::view()` implementations on external types. Let me reconsider — I could use `external_type_specification` to define the type locally in this crate, which might give me more flexibility with how I specify its behavior.
+
+Actually, I'm realizing that `external_type_specification` creates a local mirror of the external type, but trait implementations still need to be on the original type itself. And since this code is behind `#[cfg(verus_keep_ghost)]`, the Rust orphan rule might not even apply during verification...
+
+but the error is coming from Rust's compiler frontend, not Verus's, so the rule is being enforced anyway.
+
+Let me try a different approach: instead of implementing View directly, I could define a spec function on FrameNumber itself using the external type specification, then connect it to `into_raw_value` through an assume. But I'm not sure if I can even add methods to an external type after bringing it in—let me test whether I can define an uninterpreted spec function on it.
+
+Actually, that won't work either since `uninterp` is restricted. Maybe I should restructure the assume_specifications to work with FrameAddress directly without needing to reference FrameNumber's raw value in spec context. But then I'm stuck: I need to express how FrameAddress relates to FrameNumber somehow, and without access to the raw value in spec mode, I'm not sure how to do that.
+
+Wait—Verus's assume_specification creates both exec and spec versions, where the spec version uses the ensures clause. So calling `FrameNumber::into_raw_value` in spec mode should work and return a value satisfying the ensures. But the error message suggests something's blocking this...
+
+Let me reconsider the assume_specification I wrote. I added a returns clause specifying that the result equals the view of self, but that fails because FrameNumber doesn't have a View defined. And in the from_raw_value spec, I can't call the exec function `into_raw_value` directly. I'm going in circles here.
+
+Maybe I should sidestep the individual conversion specs entirely and instead specify the full chain from bitmap index to frame address, since that's what actually matters for the invariant. But even then, I run into the same problem—I can't express the relationship between the intermediate FrameNumber and the final FrameAddress without being able to reference FrameNumber's properties in the spec.
+
+Let me try wrapping the entire conversion in a single function with a clear spec. For the allocation path, I'll create a function that takes a bitmap index and returns a FrameAddress, with a spec that directly relates the output to the input without needing to reason about the intermediate FrameNumber type. Similarly, for the free path, I'll wrap the conversion from FrameAddress back to bitmap index in a function with a spec that expresses the inverse relationship.
+
+The tricky part is that the original code has separate error handling for each step—from_raw_value can return None, and from_frame_number can return an error—but since I'm assuming both always succeed, I can unwrap both in the wrapper and express the combined postcondition directly. This means the original error paths become unreachable, which is a slight semantic change, but it keeps the wrapper minimal and focused on the happy path that the spec assumes.
+
+Now I'm wondering if I can add a spec method directly to FrameNumber without needing the uninterp keyword. A closed spec function should have an opaque body, but I need to avoid giving it a concrete (and wrong) definition like returning 0. The challenge is finding a way to declare it as uninterpreted without explicitly using uninterp syntax.
+
+Actually, looking back at the constraint more carefully — uninterp is only banned for standalone spec functions, not for methods on external types. Since FrameNumber is marked as external_body through external_type_specification, adding an uninterpreted View::view() method should be allowed as an exception to that rule.
+
+The real issue is the Rust orphan rule preventing me from implementing View for FrameNumber in the arch crate. I'm considering whether I can define the impl in the spec file itself, or if I need to use a different approach like broadcast or a spec wrapper instead.
+
+Actually, looking at the Verus docs more carefully, after `external_type_specification`, the type should be considered "defined" in the current crate for Verus purposes. But I'm not sure if that helps with the orphan rule. Let me search through the project to see how other crates handle View impls for external types.
+
+Wait, I think I've been overcomplicating this. Instead of trying to implement View directly, I can create wrapper functions in frame.rs that handle the entire conversion chain and provide direct specs for the operations I need—converting between FrameAddress and bitmap indices. This avoids the orphan rule entirely and gives me cleaner, more focused specs.
+
+Writing wrapper functions... I'm reconsidering the error handling approach—using a match statement instead of `ok_or` to handle the case where the frame number conversion fails, returning an out-of-memory error if the index is out of bounds.
+
+Now I'm refactoring the Inner methods to use these wrapper functions instead of chaining conversions directly, which should make the proofs cleaner since the specs now directly connect bitmap indices to frame addresses. For the free operation, I'm converting the frame address to a bitmap index and then clearing it, while for allocation, I'm getting an index from the bitmap and converting it back to a frame address.
+
+Writing wrapper functions... I'm realizing that if I use wrapper functions instead of calling the conversion methods directly, those assume_specifications for `FrameNumber::from_raw_value` and `FrameNumber::into_raw_value` won't actually be needed anymore. So I should strip those out and keep only the essential specs like FRAME_SIZE and initialization, then rely on the wrapper functions to handle the conversion chains cleanly.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+Now I need to add wrapper functions and modify the Inner methods to use them. Let me first add the wrappers:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 44. use ::vstd::prelude::*;
+45. 
+46. #[cfg(verus_keep_ghost)]
+47. include!("frame.spec.rs");
+48. 
+49. #[cfg(verus_keep_ghost)]
+50. include!("frame.proof.rs");
+51. 
+52. //==================================================================================================
+53. // Inner
+54. //============...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Now I need to modify the Inner methods to use these wrappers. Let me update each method:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 135. 
+136. /// Private state of the frame allocator singleton.
+137. #[verus_verify]
+138. struct Inner {
+139.     /// A sparse bitmap that keeps track of free/used frames.
+140.     bitmap: SparseBitmap,
+141. }
+142. 
+143. #[verus_verify]
+144. impl Inner {
+145.     ///
+146.     /// # Description
+147.  ...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 230.                 }
+231.             },
+232.     )]
+233.     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+234.         proof! { admit(); }
+235.         let frame_number: usize = frame.into_frame_number().into_raw_value();
+236.         match self.bitmap.clear(frame_number) {
+237....
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Now let me modify the Inner methods to use the wrapper functions. I'll start with `alloc`, `free`, and `book`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+Now update `alloc_range` to use wrapper functions:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1

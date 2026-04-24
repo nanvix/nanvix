@@ -11,12 +11,6 @@ use crate::hal::mem::spec_page_size;
 #[verifier::external_body]
 pub struct ExFrameNumber(FrameNumber);
 
-impl View for FrameNumber {
-    type V = int;
-
-    uninterp spec fn view(&self) -> int;
-}
-
 // ---------------------------------------------------------------------------
 // Assumed specs for arch crate functions
 // ---------------------------------------------------------------------------
@@ -27,39 +21,9 @@ pub assume_specification[ ::arch::mem::FRAME_SIZE ] -> (result: usize)
         result > 0,
 ;
 
-pub assume_specification[ FrameNumber::from_raw_value ](value: usize) -> (result: Option<FrameNumber>)
-    ensures
-        result.is_some(),
-        result matches Some(fn_val) ==> fn_val@ == value as int,
-;
-
-pub assume_specification[ FrameNumber::into_raw_value ](self_: FrameNumber) -> (result: usize)
-    ensures
-        result as int == self_@,
-;
-
-// ---------------------------------------------------------------------------
-// Assumed specs for kernel HAL functions
-// ---------------------------------------------------------------------------
-
-pub assume_specification[ FrameAddress::from_frame_number ](frame_number: FrameNumber) -> (result: Result<FrameAddress, Error>)
-    ensures
-        result.is_ok(),
-        result matches Ok(fa) ==> {
-            &&& fa@ == frame_number@ * spec_page_size()
-            &&& fa.inv()
-        },
-;
-
-pub assume_specification[ FrameAddress::into_frame_number ](self_: FrameAddress) -> (result: FrameNumber)
-    ensures
-        result@ == self_@ / spec_page_size(),
-;
-
-pub assume_specification[ PhysicalAddress::into_frame_number ](self_: PhysicalAddress) -> (result: FrameNumber)
-    ensures
-        result@ == self_@ / spec_page_size(),
-;
+// FrameNumber conversion assume_specifications are not needed because
+// frame.rs uses wrapper functions (frame_addr_to_bitmap_index, etc.)
+// that encapsulate the full conversion chain with external_body.
 
 // Generic trait methods (deref, start, size, into_raw_value) are annotated
 // directly on their impl methods with #[verus_verify(external_body)] in
