@@ -4965,3 +4965,14 @@ Turn 169
 ────────────────────────────────────────────────────────────
 Now run verification:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: error: postcondition not satisfied
+error: postcondition not satisfied
+verification results:: 7 verified, 2 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 170
+────────────────────────────────────────────────────────────
+Good progress! 7 verified, 2 errors — the coverage bridges and overflow are fixed. Now just the postcondition at Err returns. Let me see the details:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
