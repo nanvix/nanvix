@@ -778,3 +778,197 @@ Good. Now let me run the full verification to make sure everything passes:
 Turn 28
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  Module mm::phys::kpool:
+    ⚠️  cfg-gated exec code: 1
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Let me check exactly which cfg-gated exec code item the tool is flagging:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n 'cfg_gate\|cfg-gate\|cfg_gated\|cfg-ga
+
+[THINKING] The tool reports 1 cfg-gated exec code item for the kpool module. But all cfg(not(verus_keep_ghost)) items I found are on logging macros. Let me figure out exactly which item the tool is flagging. Let me look at the tool's script more carefully.
+
+Actually, let me check if the tool has a way to show which specific item it's flagging.
+[RESULT ✓] bash: 328:# Count cfg-gated exec code (cheating indicator).
+330:count_cfg_gates() {
+386:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+411:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATING_DIR")" || MOD_CFG_GATE=0
+428:        [[ $MOD_CFG_GATE -gt 0 ]] && ec...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && sed -n '328,365p' scripts/verify.sh
+[RESULT ✓] bash: # Count cfg-gated exec code (cheating indicator).
+# When MODULE is set, counts only for module files; otherwise whole crate.
+count_cfg_gates() {
+    local scan_dir="$1"
+    python3 -c "
+import re, sys
+from pathlib import Path
+
+src_dir = Path('$scan_dir')
+count = 0
+cfg_pat = re.compile(r'#\[cfg(_attr...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && sed -n '395,430p' scripts/verify.sh
+
+[THINKING] OK, so the cfg-gate detection tool:
+1. Finds `#[cfg(_attr)?(not()?verus_keep_ghost` patterns
+2. Skips if the line has `derive(` or `feature(`
+3. Looks at the next non-attribute, non-empty line as the "target"4. Skips if target starts with `use`, `include!`, `extern`, `mod`5. Skips if target matches logging macros: `debug_assert|info|error|warn|trace|debug|log`
+6. Counts everything else
+
+So the detection skips logging macros. But it reports 1 for kpool. Let me check what's not being matched. Maybe one of the targets doesn't match the regex.
+
+
+Let me trace through each cfg(not(verus_keep_ghost)) annotation in the file and see what target it's pointing to. I'm checking lines 103, 110, and 114 to see if they're being caught by the logging macro filter or if something's slipping through. I've verified all 10 matching lines should be skipped, but the tool is still reporting 1 error—let me check if it's also scanning the spec and proof files, since the glob pattern picks up all `.rs` files in the directory.
+[RESULT ✓] bash: NO_DECREASES_COUNT="$(echo "$GLOBAL_CHEATING_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('no_decreases',0))")"
+    CFG_GATE_COUNT="$GLOBAL_CFG_GATE_COUNT"
+else
+    echo "  ⚠️  Cheating detection unavailable (tree-sitter required)."
+    echo "     Set VERUS_AI_DIR to the verus...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep 'MODULE_CHEATING_DIR' scripts/verify.sh |
+[RESULT ✓] bash: MODULE_CHEATING_DIR=""
+        MODULE_CHEATING_DIR=""  # root has no separate dir; skip module-scoped
+            MODULE_CHEATING_DIR="$(mktemp -d)"
+            trap "rm -rf '$MODULE_CHEATING_DIR'" EXIT
+            [[ -f "$CRATE_SRC_DIR/$MOD_CHEAT_PATH.rs" ]] && cp "$CRATE_SRC_DIR/$MOD_CHEAT_PATH.rs...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -A5 'MODULE_CHEATING_DIR.*mktemp' scripts
+[RESULT ✓] bash: MODULE_CHEATING_DIR="$(mktemp -d)"
+            trap "rm -rf '$MODULE_CHEATING_DIR'" EXIT
+            [[ -f "$CRATE_SRC_DIR/$MOD_CHEAT_PATH.rs" ]] && cp "$CRATE_SRC_DIR/$MOD_CHEAT_PATH.rs" "$MODULE_CHEATING_DIR/"
+            if [[ -d "$CRATE_SRC_DIR/$MOD_CHEAT_PATH" ]]; then
+                cp -r "$C...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 -c "
+import re, sys
+from pathlib impor
+
+[THINKING] So the module cheating dir includes the module file (kpool.rs) AND all files in the module directory (kpool/). The kpool directory might contain other files. Let me check.Actually, kpool is not a directory in this case. The module path is `mm::phys::kpool`, so:
+- `MOD_CHEAT_PATH` = `mm/phys/kpool`
+- File: `CRATE_SRC_DIR/mm/phys/kpool.rs`
+- Dir: `CRATE_SRC_DIR/mm/phys/kpool/` (probably doesn't exist)
+
+
+The module scan only picks up kpool.rs, but the spec and proof files are siblings at `mm/phys/kpool.spec.rs` and `mm/phys/kpool.proof.rs`, so I need to verify whether the file copy logic actually captures those alongside the main module file. I see the issue now—the copy pattern only captures `kpool.rs` itself, not the related `kpool.spec.rs` and `kpool.proof.rs` files that sit in the same directory. So when I scan the copied files, I'm only getting the 10 cfg gates from `kpool.rs`, which are all on logging macros that should be filtered out anyway. Let me manually trace through the count_cfg_gates function to see if spec and proof files are being included somehow.
+[RESULT ✓] bash: Line 807: cfg=#[cfg(verus_keep_ghost)] -> target=verus! {
+Total: 1
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/upool:src/kernel/src/mm/phys
+
+[THINKING] The tool is flagging line 807: `#[cfg(verus_keep_ghost)]` with target `verus! {`. This is the `View` implementation for `KernelFrame`:
+
+```rust
+#[cfg(verus_keep_ghost)]
+verus! {
+
+impl View for KernelFrame
+{
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.base@
+    }
+}
+
+}
+```
+
+This is NOT cfg-gated exec code — it's a `spec fn` definition inside a `verus! {}` block, which only exists under `verus_keep_ghost`. This is purely spec code (View implementation) and is the correct way to add spec definitions.The tool's detection is a false positive here — it's looking for any `cfg(verus_keep_ghost)` that doesn't match known allowed patterns (imports, includes, derives, logging macros). But adding `impl View` for a type under `cfg(verus_keep_ghost)` is perfectly fine — it's adding spec-only code, not gating exec code.
+
+So the actual state is: zero real cheating items in kpool and one false positive from the detection tool flagging a spec-only View impl under cfg(verus_keep_ghost). Now I need to create the reports—fix_report.md, trust.md for external-bottom trust boundaries, and verification_todo.md for proof gaps—then confirm AST consistency and run full verification. For trust.md, the kpool module itself has no external_body or assume statements, though it does use `pa_into_raw`.
+
+That's an external_body wrapper in a dependency, so it's a dependency trust boundary rather than kpool-specific. For verification_todo.md, there are no proof gaps since all four Inner methods are fully verified. On AST consistency, I'm seeing four mismatches that are all justified: the `pa_into_raw(base)` call is a stdlib wrapper due to Verus limitations with complex generic method calls, the `let inner = ...; Ok(inner)` pattern is a pre-approved deviation, the `FrameAddress::from_raw_value(addr)?` rewrite is equivalent to the original function body, and the added guards in `alloc_range` and `free` are Verus requirements.
+
+Now I'm checking whether those four `external_body` items were in the original count. Looking at the base branch, all four Inner methods had `#[verus_verify(external_body)]`, so we've gone from four external_body annotations down to zero — they're all eliminated. Since the base branch had external_body on those functions, Verus didn't parse the cfg-gated exec code, so now I can verify the actual implementation.
+
+For the cfg-gated exec code count: the base branch had zero because the bodies weren't being verified. After the changes, there are ten cfg-gated logging macros (which are allowed) plus one cfg(verus_keep_ghost) on the View impl (spec code, also allowed) — the detection tool reports one but that's a false positive. Let me double-check if the base branch had any cfg-gated items in kpool to make sure I'm getting the before count right.
+[RESULT ✓] bash: 0
+<exited with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/upool:src/kernel/src/mm/phys
+[RESULT ✓] bash: 50:#[cfg(verus_keep_ghost)]
+53:#[cfg(verus_keep_ghost)]
+435:#[cfg(verus_keep_ghost)]
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/upool:src/kernel/src/mm/phys
+[RESULT ✓] bash: pub struct KernelFrame {
+    /// Frame address.
+    base: FrameAddress,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+
+use crate::hal::mem::spec_page_size;
+
+impl View for KernelFrame
+{
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.base@
+    }
+}
+
+}
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Now I have a complete understanding. Let me create the report files and run full verification. First, let me set up the output directory and write the reports:
+[TOOL] bash: mkdir -p /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/chea
+
+[THINKING] So line 435 in the base branch had the same `#[cfg(verus_keep_ghost)] verus! { ... }` block for `KernelFrame`'s `View` impl. So this is NOT a new addition — it existed in the base branch. The tool would also report 1 cfg-gated exec code for the base branch. But it's a false positive in both cases.
+
+OK, now I have the complete picture. Let me also run `python3 scripts/ast_consistency.py report` to get all details.
+
+Actually, let me also check if the `KpoolView` spec type is defined somewhere:
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/trust.md
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/trust.md with 1221 characters
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/verification_todo.md with 256 characters
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Now let me run the full crate verification to confirm no regressions:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -30
