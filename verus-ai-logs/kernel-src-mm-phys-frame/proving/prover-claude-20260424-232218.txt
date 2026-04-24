@@ -5091,3 +5091,113 @@ Turn 174
 Turn 175
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+note: verifying module mm::phys::frame
+
+note: while loop: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other p...
+
+────────────────────────────────────────────────────────────
+Turn 176
+────────────────────────────────────────────────────────────
+The issue is clear now — inside loop bodies, facts from before the loop are NOT available (standard Hoare logic). I need to add the exec→spec variable connections to the loop invariants:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Now I can see the real issue! The assertions `pc_sfn == start_frame_number as int` and `pc_efn == end_frame_number as int` FAIL. This means:
+
+1. `region@.start / spec_page_size() != start_frame_number as int`
+2. `(region@.start + region@.size) / spec_page_size() != end_frame_number as int`
+
+But wait, `start_frame_number = region_start_frame_number(region)` which has ensures `ret == region@.start / spec_page_size()`. So `start_frame_number as int == region@.start / spec_page_size()` should hold.
+
+
+The problem might be that `region_start_frame_number` is an external function, and while its ensures clause guarantees the relationship, Verus might not be carrying that fact through the loop body. Loop invariants only preserve facts that don't depend on mutable state, but `start_frame_number` is immutable, so the ensures should persist.
+
+Actually, I'm realizing that's not how Verus works—at loop entry, the verification context resets to just the invariant, discarding all prior facts unless they're part of the invariant or derivable from it. So the relationship `start_frame_number as int == region@.start / spec_page_size()` isn't available inside the loop body. I need to either add it to the loop invariant, re-prove it inside the loop, or find a different approach.
+
+Adding both frame number relationships to the invariant would make things more complex, but since `start_frame_number` is immutable and `region` is a shared reference, they should be trivially maintained. The real question is whether Verus preserves facts about immutable locals across loop boundaries—specifically, whether a fact like `x == 42` from a postcondition persists inside a subsequent loop, or if the issue is specifically about `old(self)` references inside the loop. a loop body, `old(self)` might reference different states depending on the loop iteration. But `old(self)` in ensures refers to the function entry state.
+
+Wait, but `start_frame_number` is a plain exec variable, not `old(self)`. The fact `start_frame_number == region@.start / spec_page_size()` should be an immutable fact.
+
+Hmm, but in Verus's verification model, when verifying a loop body, the prover context is:
+1. The invariant (assumed at start of each iteration)
+2. The loop guard condition
+3. Facts about immutable variables from the enclosing scope
+
+For item 3, Verus does include facts about immutable locals. But maybe the fact `start_frame_number == region@.start / spec_page_size()` is not considered "about an immutable local" because it involves `region@.start` and `spec_page_size()` which are spec expressions.
+
+Actually, I think Verus DOES preserve facts about immutable exec variables inside loops. The issue might be something else. Let me reconsider: `region_start_frame_number` is an `external_body` function with a spec that ensures the return value equals `region@.start / spec_page_size()`. After calling it and binding the result to `start_frame_number`, Verus should know that equality holds for the variable.
+
+But inside the loop body, Verus only assumes the loop invariant plus the guard condition—facts from before the loop aren't available unless explicitly included in the invariant. So I need to add both frame number equalities to all three loop invariants to make them available during verification.
+
+For the error proof blocks, I also need `spec_page_size() > 0`, which comes from `internal_inv`. Loop 1 already has `self.internal_inv()` in its invariant, but loop 2 only has `self.bitmap.inv()` and the coverage forall, so I need to check whether that's sufficient or if I need to add `internal_inv` there too. I do have `self.internal_inv()` in loop 2's invariant, so that's covered. But loop 3 is missing it — it only has `self.bitmap.inv()` and the coverage/freeness conditions, but not the full `internal_inv` which includes other constraints I need.
+
+Looking at what loop 3 actually requires: the `self.bitmap.set(index)` call only needs `self.bitmap.inv()`, which is already there. For the proof logic, I'm relying on `self.bitmap@.is_covered(index as int)` and set_bits facts, but when I call `self.lemma_inv_implies_wf()` I'd need `internal_inv`. I could derive it from the existing invariant pieces using `lemma_internal_inv_preserved`, since I have `bitmap.inv()` and `chunks =~=` which should be enough to reconstruct it.
+
+For loops 1 and 2, the Err returns definitely require `self.lemma_inv_implies_wf()`, and I already have `internal_inv` in both of those invariants, so that's fine.
+
+The real problem is I need to add variable equalities to track the relationship between `start_frame_number`, `end_frame_number`, and the region bounds. I should add constraints like `start_frame_number as int == region@.start / spec_page_size()` to each loop invariant—these should be trivially maintained since all the values involved are immutable. Though I'm realizing the invariant is a predicate, so I need to think about how to properly express this.
+
+Now I'm working through whether these equalities are actually available at each loop entry. The facts I proved before loop 1 should carry through to establish the invariant at loop 1 entry, but I need to verify that the immutable variable relationships persist after each loop exits. a loop exits, the verification context is:
+1. The negated loop guard
+2. The invariant (with the loop variable at its final value)
+3. Facts from the enclosing scope that were available before the loop (about immutable things)
+
+Wait, I'm confused about Verus's loop semantics. Let me look at this more carefully.
+
+In standard verification:
+- Before loop: context C
+- At loop entry: check invariant INV(init) under C
+- Inside loop body: assume INV(k), prove INV(k+1)
+- After loop: assume INV(final) && !guard
+
+Facts from C are NOT available inside the loop body (only INV is assumed). But facts from C ARE available after the loop exits (they're part of the surrounding context).
+
+So between loops 1 and 2 (and between 2 and 3), the fact `end_frame_number as int == (region@.start + region@.size) / spec_page_size()` IS available since it's in the surrounding context C. It's only inside each loop body that it's lost.
+
+I need to add this fact to the invariant of each loop so I can use it inside the loop body. The invariants are already quite long, so I'll be minimal and add the frame number calculations to each loop invariant, particularly at the Err paths for loops 1 and 2.
+[RESULT ✓] view: 835.         #[cfg(not(feature = "nightly-performance-optimizations"))]
+836.         #[verus_spec(
+837.             invariant
+838.                 self.bitmap.inv()
+839.                 && self.bitmap@ =~= old(self).bitmap@
+840.                 && self.internal_inv()
+841.                 && start_fr...
+
+────────────────────────────────────────────────────────────
+Turn 177
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 890.         // Check if all frames in the range are free.
+891.         #[verus_spec(
+892.             invariant
+893.                 self.bitmap.inv()
+894.                 && self.bitmap@ =~= old(self).bitmap@
+895.                 && self.internal_inv()
+896.                 && start_frame_number <=...
+
+────────────────────────────────────────────────────────────
+Turn 178
+────────────────────────────────────────────────────────────
+Now I'll add the variable connections to both invariants:
+[TOOL] report_intent: Fixing loop invariants
+[RESULT ✓] report_intent: Intent logged
+
+────────────────────────────────────────────────────────────
+Turn 179
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 180
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 181
+────────────────────────────────────────────────────────────
+Now run verification:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
