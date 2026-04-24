@@ -127,3 +127,80 @@ Function                                 Status               Verification
 ──────────────────────────────────────── ──────────────────── ────────────────
 Inner::alloc                             MISMATCH                             
 Inner::alloc_range                       MISMATCH...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/verus.
+PATH="/home/ruize/verus:$PATH" \
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+VERUS_EXTRA_CARGO_ARGS="--features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem --target /home/ruize/ve...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Good — verification passes, AST still shows 4 mismatches (expected since the exec changes remain, just now documented). Let me verify the fixer actually added the comments by reading the relevant lines:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 207. 
+208.             // Prove page-alignment for FrameAddress::from_raw_value precondition
+209.             assert(self.base@ % spec_page_size() == 0);
+210.         }
+211.         // VERUS REWRITE: pa_into_raw wrapper needed; FrameAddress::from_raw_value equivalent to FrameAddress::new(PageAligned...
+[RESULT ✓] view: 465.                 assert(b % m == 0int);
+466.                 assert(addr as int % m == 0int);
+467.             }
+468.             // VERUS REWRITE: from_raw_value is equivalent convenience API (see Inner::alloc)
+469.             let frame: FrameAddress = FrameAddress::from_raw_value(addr)?;
+470....
+[RESULT ✓] view: 628.         // Now addr@ >= self.base@ == old(self)@.start
+629.         // VERUS REWRITE: pa_into_raw wrapper needed (see Inner::alloc)
+630.         let index: usize = (addr.into_raw_value() - pa_into_raw(self.base)) / mem::PAGE_SIZE;
+631.         proof! {
+632.             assert(addr@ >= old(self)...
+[RESULT ✓] view: 385.         }
+386.         // VERUS REWRITE: pa_into_raw wrapper needed (see Inner::alloc)
+387.         let base_addr: usize = pa_into_raw(self.base) + index * mem::PAGE_SIZE;
+388.         proof! {
+389.             let ghost base_addr_spec = self.base@ + (index as int) * spec_page_size();
+390.     ...
+[RESULT ✓] view: 106.             },
+107.         };
+108.         // VERUS REWRITE: pa_into_raw wrapper needed because Verus cannot resolve generic trait .into_raw_value()
+109.         if !is_valid_physical_region(pa_into_raw(base), kpool_size) {
+110.             let reason: &str = "kernel pool bitmap spans across p...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+All 6 comments verified in place. Now let me also run the build to confirm:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && ./z build 2>&1 | tail -5
+[RESULT ✓] bash: SCCACHE not available or not configured.
+================================================================================
+
+[INFO]  Build parameters: 
+[OK]    Build complete.
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+All checks pass. Let me write the final review and the STOP file:
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/cheating-elimination/dialogue/turn_002_driver.md
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/cheating-elimination/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/cheating-elimination/dialogue/turn_002_driver.md with 2594 characters
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/cheating-elimination/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+**RESOLVED.** All 12 checklist items verified:
+
+- Items 1–7, 10–12: PASS (from turn 1)
+- Items 8 & 9: FIXED — fixer added all 6 requested `VERUS REWRITE` comments. Verified by reading actual code at lines 108, 128, 211, 386, 468, 629. Verification (`exit 0`), build (`OK`), and AST consistency (same 4 documented mismatches, no regressions) all confirmed.
+
+
+=== Session End ===
+Session: 6c9c58c1-466d-4a4f-97e2-d169840022f6
+Duration: 68.3s
+Exit code: 0
+JSONL log: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/cheating-elimination/dialogue-reviewer-t002-claude-20260424-221108.jsonl
