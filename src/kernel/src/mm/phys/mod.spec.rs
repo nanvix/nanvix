@@ -16,6 +16,8 @@ pub struct ExErrorCode(sys::error::ErrorCode);
 #[verifier::external_type_specification]
 pub struct ExError(sys::error::Error);
 
+pub assume_specification[ sys::error::Error::new ](code: sys::error::ErrorCode, reason: &'static str) -> (result: sys::error::Error);
+
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::reject_recursive_types(T)]

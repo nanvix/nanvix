@@ -2916,3 +2916,178 @@ Wait, but the assume_specification on PhysicalAddress::from_raw_value might caus
 
 
 PhysicalAddress implements Address directly rather than generically, so the trait bound should align properly. I'll keep it for now and remove it later if needed, then try building.
+[RESULT ✓] bash: |
+130 |                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+137 |             return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    |                        -------------------------...
+
+────────────────────────────────────────────────────────────
+Turn 145
+────────────────────────────────────────────────────────────
+Need an assume_specification for `Error::new`. Let me check if there's already a spec:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -rn 'assume_specification.*Error::new\|Er
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 146
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -rn 'assume_specification.*Error' src/ker
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.rs:262:pub assume_specification[ <PhysicalAddress as Address>::from_raw_value ](value: usize) -> (result: Result<PhysicalAddress, Error>)
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 147
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -rn 'Error::new\|assume_specification.*Er
+[RESULT ✓] bash: src/libs/bitmap/src/lib.rs:105:            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+src/libs/bitmap/src/lib.rs:111:            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+src/libs/bitmap/src/lib.rs:175:                return Err(Error::new(ErrorCode::InvalidArgumen...
+
+────────────────────────────────────────────────────────────
+Turn 148
+────────────────────────────────────────────────────────────
+Let me check how bitmap handles Error::new:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -rn 'assume_specification.*Error\|ExError
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 149
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -rn 'Error.*assume_spec\|assume_spec.*Err
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 150
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -rn 'ExError\|external_type_spec.*Error' 
+[RESULT ✓] bash: src/kernel/src/mm/phys/mod.spec.rs:15:pub struct ExErrorCode(sys::error::ErrorCode);
+src/kernel/src/mm/phys/mod.spec.rs:17:pub struct ExError(sys::error::Error);
+src/libs/error/src/lib.rs:533:pub struct ExError(crate::Error);
+src/libs/error/src/lib.rs:536:pub struct ExErrorCode(crate::ErrorCode);
+<e...
+
+────────────────────────────────────────────────────────────
+Turn 151
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/error/src/lib.rs
+[RESULT ✓] view: 530. verus! {
+531. 
+532. #[verifier::external_type_specification]
+533. pub struct ExError(crate::Error);
+534. 
+535. #[verifier::external_type_specification]
+536. pub struct ExErrorCode(crate::ErrorCode);
+537. 
+538. /// External specification for Error::new.
+539. pub assume_specification[ Error::new ...
+
+────────────────────────────────────────────────────────────
+Turn 152
+────────────────────────────────────────────────────────────
+The Error::new assume_specification already exists in the error crate. The issue is that the kernel's mod.spec.rs also defines ExError/ExErrorCode, causing a conflict with the one in the error crate. Let me check if the error crate is properly referenced:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n 'sys\|error' src/kernel/Cargo.toml | h
+[RESULT ✓] bash: 34:sys = { workspace = true }
+94:warn = ["error"]
+95:error = ["panic"]
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 153
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n '^sys\b\|^error\b' Cargo.toml | head -
+[RESULT ✓] bash: 125:error = { path = "src/libs/error", default-features = false }
+209:sys = { path = "src/libs/sys", default-features = false }
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 154
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n 'error' src/libs/sys/Cargo.toml | head
+[RESULT ✓] bash: 18:error = { workspace = true }
+32:    "error/rustc-dep-of-std",
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 155
+────────────────────────────────────────────────────────────
+So `sys` depends on `error`, and `kernel` depends on `sys`. The `Error` type in the kernel is `sys::error::Error`, which re-exports from the `error` crate. Since the `error` crate already has the `assume_specification[ Error::new ]`, it should work. The mod.spec.rs has the external_type_specification for the kernel's perspective.
+
+The issue might be that `Error::new` in the kernel is `sys::error::Error::new`, and the assume_spec is for `Error::new` (within the error crate). Let me check if the assume_spec needs to be duplicated:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -rn 'pub use.*Error\|Error.*re.export' sr
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 156
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -rn 'Error' src/libs/sys/src/error.rs 2>/
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 157
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn 'error' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sys/src/lib.rs | head -10
+[RESULT ✓] bash: 12:#![feature(likely_unlikely)] // Branch hints for unlikely error paths.
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 158
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn 'error\|Error' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sys/src/lib.rs | he
+[RESULT ✓] bash: 12:#![feature(likely_unlikely)] // Branch hints for unlikely error paths.
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 159
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sys/src/
+[RESULT ✓] bash: cheating-detail.txt  coverage-unverified.txt  exit_status.rs  lib.rs  sys
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 160
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sys/src/sys/
+[RESULT ✓] bash: config.rs  event  ipc  kcall  mm  mod.rs  number.rs  pm  time
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 161
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn 'error' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sys/src/sys/mod.rs | head 
+[RESULT ✓] bash: 12:pub use ::error;
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 162
+────────────────────────────────────────────────────────────
+So `sys::error` is `pub use ::error;` — a re-export of the entire `error` crate. Since the `error` crate already has assume_specification for Error::new, it should be available when verifying the kernel.
+
+The Verus error message was: `cannot find specification for call to sys::error::Error::new`. This might be because the external_type_specification in mod.spec.rs shadows the one from the error crate, or because the re-export path causes a mismatch.
+
+Let me add the assume_specification in mod.spec.rs:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] view: 14. #[verifier::external_type_specification]
+15. pub struct ExErrorCode(sys::error::ErrorCode);
+16. #[verifier::external_type_specification]
+17. pub struct ExError(sys::error::Error);
+18. 
+19. #[verifier::external_type_specification]
+20. #[verifier::external_body]
+
+────────────────────────────────────────────────────────────
+Turn 163
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 164
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
