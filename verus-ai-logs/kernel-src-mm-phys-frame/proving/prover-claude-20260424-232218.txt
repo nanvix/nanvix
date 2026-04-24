@@ -1546,3 +1546,14 @@ Now update `alloc_range` to use wrapper functions:
 Turn 42
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: - frame.rs:68 frame_addr_to_bitmap_index: external_body
+    - frame.rs:83 bitmap_index_to_frame_addr: external_body
+    - frame.rs:96 page_aligned_pa_to_bitmap_index: external_body
+    - frame.rs:107 region_start_frame_number: external_body
+    - frame.rs:117 region_size_raw: external_body
+    - fra...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
