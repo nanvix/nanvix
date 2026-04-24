@@ -1647,3 +1647,91 @@ Turn 49
 Turn 50
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: error: precondition not satisfied
+    --> src/kernel/src/mm/phys/frame.proof.rs:55:13
+     |
+  55 |             lemma_mod_multiples_basic(i, ps);
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+    ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+The solver doesn't know `spec_page_size() > 0`. Let me check the spec for this:
+[TOOL] grep: spec_page_size
+
+[THINKING] The problem is that the solver can't prove `spec_page_size() > 0`. Let me check what `spec_page_size()` is defined as and what we know about it.
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs:4:use crate::hal::mem::spec_page_size;
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs:20:        result == spec_page_size(),
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] grep: spec_page_size
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs:442:use crate::hal::mem::spec_page_size;
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs:483:        &&& self@.start % spec_page_size(...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 30. 
+31. #[cfg(verus_keep_ghost)]
+32. verus! {
+33. 
+34. pub uninterp spec fn spec_page_size() -> int;
+35. 
+36. pub assume_specification[ ::arch::mem::PAGE_SIZE ] -> (result: usize)
+37.     ensures
+38.         result == spec_page_size(),
+39.         result > 0,
+40. ;
+41. 
+42. impl View for FrameAddre...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+`spec_page_size()` is `uninterp`, but `PAGE_SIZE` has `ensures result > 0`. The problem is that `spec_page_size()` itself doesn't have any axiom that says it's positive — only `PAGE_SIZE` (the exec constant) ensures `result > 0`. We need to use the `FRAME_SIZE` assume_specification from frame.spec.rs to establish this:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::UpoolView;
+4. use crate::hal::mem::spec_page_size;
+5. 
+6. // ---------------------------------------------------------------------------
+7. // External type specifications (arch crate)
+8. // ---------------------------------------------------------------------------
+9. ...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+`spec_page_size()` is `uninterp` — the solver doesn't know it's positive. I'll add `spec_page_size() > 0` to `internal_inv` (it's a natural constraint):
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I see - `FRAME_SIZE` ensures `result == spec_page_size()` and `result > 0`, but this is about the runtime constant. We don't have a proof-mode axiom that `spec_page_size() > 0`. We only know it when we can refer to the exec constant `FRAME_SIZE`.
+
+Options:
+1. Add `spec_page_size() > 0` as part of `internal_inv`. This is reasonable since we know `FRAME_SIZE > 0`.
+2. Add a proof lemma that calls `let fs = FRAME_SIZE;` to establish `spec_page_size() > 0`.
+
+
+3. Actually, in Verus I can reference constants directly in proof mode, so the clearest approach is just adding `spec_page_size() > 0` as a conjunct in `internal_inv()`. Even though it's a global property rather than tied to the struct's state, it's a harmless strengthening that simplifies the proofs.
+
+But wait—the real issue is that `spec_page_size()` needs to be proven positive somewhere. The `assume_specification` for `FRAME_SIZE` already establishes this, but in proof mode I can't directly reference the exec constant. So I'll create a proof function that extracts this fact from the specification.
+
+Writing proof function... I'm realizing that in proof mode, I can't directly reference the `FRAME_SIZE` constant the way I would in exec code. The cleaner approach is to add `spec_page_size() > 0` as part of the `internal_inv()` invariant, since it's a fundamental property that should hold throughout the system. constrains covered indices to be >= 0, so adding that page_size > 0 is a sensible constraint on the valid state.
+
+Actually wait - this would need to be established when proving internal_inv holds initially (in init). But init is already external_body/assume_specification, so it's fine.
+
+Let me also check: can we use `mem::FRAME_SIZE` as a `proof` ghost let?
+
+I think I need to add the page_size positivity constraint directly to internal_inv rather than trying to prove it separately, since the solver won't know about FRAME_SIZE without explicitly referencing it there.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1

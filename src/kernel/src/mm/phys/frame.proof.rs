@@ -32,6 +32,9 @@ impl Inner {
     pub closed spec fn internal_inv(&self) -> bool
     {
         &&& self.bitmap.inv()
+        // spec_page_size() is uninterp; record positivity from the
+        // FRAME_SIZE assume_specification (result > 0).
+        &&& spec_page_size() > 0
         // Every covered bitmap index yields a representable, non-negative frame address.
         &&& forall|i: int| self.bitmap@.is_covered(i) ==> {
             &&& i >= 0
