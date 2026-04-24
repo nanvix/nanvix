@@ -208,3 +208,175 @@ Turn 6
 Turn 7
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=kernel::mm::phys::up
+[RESULT ✓] bash: - thread_state
+    - thread_state_mut
+    - harvest
+    - status
+    - write
+    - read
+    - write_bulk
+    - from
+    - from
+    - from
+    - new
+    - readb
+    - writeb
+    - new
+    - read
+    - write
+    - new
+    - write
+    - new
+    - read
+    - new
+    - read
+    - write
+    - new
+    - re...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Now let me scan the upool source files specifically for cheating items:
+[TOOL] report_intent: Detecting upool cheating items
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && for pattern in 'admit()' 'assume(' 'external_b
+
+[THINKING] The verification is running across the whole kernel crate. The cheating counts are for the entire kernel, not just upool. Let me focus on what's in the upool module specifically. Let me look at the actual cheating items in the upool files.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === admit() ===
+
+=== assume( ===
+
+=== external_body ===
+
+=== assume_specification ===
+
+=== cfg(not(verus_keep_ghost)) ===
+src/kernel/src/mm/phys/upool.rs:108:            #[cfg(not(verus_keep_ghost))]
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Good. Only one cheating candidate: a `cfg(not(verus_keep_ghost))` on line 108. Let me check what it gates:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 96. // NOTE: Drop must use verus!{} syntax because Verus requires
+97. // `opens_invariants none no_unwind` on Drop impls, which the
+98. // attribute-based syntax does not support.
+99. verus! {
+100. impl Drop for UserFrame {
+101.     fn drop(&mut self)
+102.         opens_invariants none
+103.         ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+The `#[cfg(not(verus_keep_ghost))]` on line 108 gates a logging macro (`error!`). Per verus-constraints, this is an **allowed** use — logging macros are explicitly listed as non-semantic items that can be cfg-gated.
+
+Now let me check the original source from the `exp` branch for AST consistency:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show exp:src/kernel/src/mm/phys/upool.rs 2
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use cra...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] stop_bash: {'shellId': '7'}
+[RESULT ✓] stop_bash: <command with id: 7 stopped>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show exp:src/kernel/src/mm/phys/upool.rs 2
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use cra...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Now let me run the AST consistency check:
+[TOOL] skill: ast-consistency
+[RESULT ✓] skill: Skill "ast-consistency" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running AST consistency check
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 scripts/ast_consistency.py --base-ref 
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: python3: can't open file '/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/scripts/ast_consistency.py': [Errno 2] No such file or directory
+<exited with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp -name "ast_consistency.py" 2>/dev/null | head -5
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/backup/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/verus-ai-sparse-bitmap-property-analysis-0416/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/verus-ai-sparse-bitmap-big-change-0416/scripts/ast_consis...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai/scri
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+Upool::alloc                             MATCH                                
+Upool::new                               MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+One MISMATCH on `UserFrame::drop`. Let me check the diff:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai/scri
+[RESULT ✓] bash: ## UserFrame::drop (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,5 +1,10 @@
+-    fn drop(&mut self) {
+-        if let Err(e) = frame::free(self.addr) {
+-            error!("failed to free user frame: {:?}", e);
++    fn drop(&mut self)
++        opens_invariants none
++        no_unwind
++    {
++   ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+The mismatch in `drop` has three differences:
+1. `opens_invariants none` / `no_unwind` — Verus-required annotations for Drop impl
+2. `e` → `_e` — variable rename to suppress unused-variable warning when `error!` is cfg-gated  
+3. `#[cfg(not(verus_keep_ghost))]` on `error!` — allowed (logging macro)
+
+Now let me verify the module compiles and verifies correctly:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=kernel::mm::phys::up
+
+[THINKING] There are three changes in the diff:
+
+1. `opens_invariants none` and `no_unwind` added to the `drop` function - these are Verus-specific annotations required for Drop impls, they are spec/proof annotations, not exec code changes.
+
+2. `e` renamed to `_e` - this is a variable rename to suppress unused-variable warnings when the `error!` macro is cfg-gated. The underlying exec logic is identical (`_e` and `e` have the same runtime semantics).
+
+3. The `error!` macro line is cfg-gated with `#[cfg(not(verus_keep_ghost))]` - the error! logging macro is a non-semantic item that's cfg-gated per verus-constraints allowed pattern.
+
+
+The AST consistency tool is flagging the Verus annotations as exec code changes, but they're actually spec-level constructs that don't affect runtime behavior. I need to verify whether the tool is correctly distinguishing between these proof annotations and actual executable code modifications. I've justified all three deviations—the Verus-specific annotations are legitimate requirements, the variable rename suppresses an unused warning, and the cfg attribute is necessary for the logging macro. Now I need to document these and verify the module compiles cleanly before generating the report.
