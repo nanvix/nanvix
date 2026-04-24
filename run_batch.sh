@@ -4,7 +4,7 @@
 # kpool and upool start from proving (already have specs from prior work).
 # All modules stop after cheating-elimination.
 
-set -euo pipefail
+#set -euo pipefail
 
 VERUS_AI_DIR="$HOME/verus-ai-exp/verus-ai-phy-mm-0423"
 NANVIX_DIR="$VERUS_AI_DIR/target-systems/nanvix"
