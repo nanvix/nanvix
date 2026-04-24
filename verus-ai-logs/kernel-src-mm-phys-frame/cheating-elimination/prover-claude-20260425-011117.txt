@@ -1157,3 +1157,35 @@ Turn 22
 ────────────────────────────────────────────────────────────
 Now let me verify this still passes:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: ⚠️  external_body: 9
+    ⚠️  cfg-gated exec code: 4
+  Affected functions:
+    - frame.rs:68 frame_addr_to_bitmap_index: external_body
+    - frame.rs:85 bitmap_index_to_frame_addr: external_body
+    - frame.rs:98 page_aligned_pa_to_bitmap_index: external_body
+    - frame.rs:109 region_start_frame_num...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Verification passes with 9 verified, 0 errors. Now let me create a minimal reproducer for the `..=` range limitation and document everything.
+[TOOL] bash: cat > /tmp/test_inclusive_range.rs << 'EOF'
+use vstd::prelude::*;
+
+verus! {
+
+fn test_inclusive_range(start: usize, end: 
+[RESULT ✓] bash: error[E0277]: the trait bound `std::ops::RangeInclusive<usize>: vstd::pervasive::ForLoopGhostIteratorNew` is not satisfied
+  --> /tmp/test_inclusive_range.rs:8:5
+   |
+ 8 | /     for i in start..=end
+ 9 | |         invariant start <= i,
+...  |
+12 | |     }
+   | |_____^ the trait `vstd::pervasive::For...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Good, confirmed. `RangeInclusive<usize>` lacks `ForLoopGhostIteratorNew`. Now let me also verify the full crate to check for regressions:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -20
