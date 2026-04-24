@@ -40,23 +40,9 @@ pub assume_specification[ FrameAddress::into_frame_number ](self_: FrameAddress)
 pub assume_specification[ PhysicalAddress::into_frame_number ](self_: PhysicalAddress) -> (result: FrameNumber)
 ;
 
-pub assume_specification[ <PageAligned<PhysicalAddress> as ::core::ops::Deref>::deref ](self_: &PageAligned<PhysicalAddress>) -> (result: &PhysicalAddress)
-;
-
-pub assume_specification[ <TruncatedMemoryRegion<PhysicalAddress>>::start ](self_: &TruncatedMemoryRegion<PhysicalAddress>) -> (result: PageAligned<PhysicalAddress>)
-    ensures
-        result@ == self_@.start,
-;
-
-pub assume_specification[ <TruncatedMemoryRegion<PhysicalAddress>>::size ](self_: &TruncatedMemoryRegion<PhysicalAddress>) -> (result: usize)
-    ensures
-        result as int == self_@.size,
-;
-
-pub assume_specification[ <PageAligned<PhysicalAddress> as Address>::into_raw_value ](self_: PageAligned<PhysicalAddress>) -> (result: usize)
-    ensures
-        result as int == self_@,
-;
+// Generic trait methods (deref, start, size, into_raw_value) are annotated
+// directly on their impl methods with #[verus_verify(external_body)] in
+// page.rs and region.rs — assume_specification cannot match generic signatures.
 
 // ---------------------------------------------------------------------------
 // Spec transition functions on UpoolView

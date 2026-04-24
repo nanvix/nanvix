@@ -3203,3 +3203,166 @@ Turn 116
 ────────────────────────────────────────────────────────────
 Now let me run verification to see if this fixes the compilation errors:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -30
+[RESULT ✓] bash: | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `kernel` (bin "kernel") generated 1 warning
+error: could not compile `kernel` (bin "kernel") due to 4 previous errors; 1 warning emitted
+
+=== Resul...
+
+────────────────────────────────────────────────────────────
+Turn 117
+────────────────────────────────────────────────────────────
+Good progress — down from 11 to 4 errors. Let me check what's left:
+[TOOL] bash: grep -E 'error\[|^error:' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/verus-logs/v
+[RESULT ✓] bash: error: assume_specification requires function type signature to match `kernel::hal::mem::types::address::aligned::page::PageAligned::deref` exactly 
+error: assume_specification requires function type signature to match `kernel::hal::mem::types::region::TruncatedMemoryRegion::start` exactly 
+error: a...
+
+────────────────────────────────────────────────────────────
+Turn 118
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn 'pub.*fn pa_into_raw\|pub use.*pa_into_raw' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix
+[TOOL] bash: grep -rn 'pub use\|pub mod' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/m
+
+[THINKING] So the non-generic `assume_specification` blocks (FrameNumber, FRAME_SIZE, FrameAddress, PhysicalAddress) all worked! But the generic methods (PageAligned::deref, TruncatedMemoryRegion::start/size, PageAligned::into_raw_value) failed because `assume_specification` requires exact type signature match, and the actual functions are generic.
+
+The rubber-duck was right — I can't use assume_specification for generic methods. I need a different approach for these 4 items.
+
+Options:1. Add `#[verus_verify(external_body)]` on the methods in their source files2. 
+
+Option 1 is the way to go. I'll add the external_body annotation directly to the generic methods in their source files — the deref and into_raw_value implementations in PageAligned, and the start method in TruncatedMemoryRegion.
+
+The real issue is that marking the impl block with `#[verus_verify]` forces Verus to process every method, including ones with compilation issues. Instead, I'll apply `#[verus_verify(external_body)]` across all methods in these impl blocks so Verus accepts them without trying to verify their internals. I realize that within a `#[verus_verify]` impl block, Verus will try to verify all methods unless they're marked with `#[verus_verify(external_body)]`, which means I need to add that annotation to every method to prevent compilation errors when they call functions Verus doesn't understand. Let me apply this pattern to the PageAligned implementation.
+
+Writing Verus annotations... I'm finishing out the remaining methods in the Address impl block, but this is getting repetitive with all the individual external_body annotations. Let me see if I can apply external_body to the entire impl block instead of decorating each method separately. I'm wondering if the real issue is that my `assume_specification` signatures don't match the actual monomorphized function signatures exactly. Let me trace through what the actual type signatures are for these methods and make sure my specifications align perfectly with them. I'm checking the function signatures I've extracted and they look right to me, but the error message is asking for an exact match on the full module path. Maybe the issue is that I'm using shortened names when Verus needs the complete qualified path like `kernel::hal::mem::types::address::aligned::page::PageAligned::deref`.
+
+Actually, wait—I think I've found the real problem. Verus is finding the function, but the type signatures genuinely don't match because the original function is generic with a type parameter `T`, while my specification is monomorphic for `PhysicalAddress`. The `assume_specification` mechanism apparently can't handle generic functions even when I'm trying to instantiate them concretely.
+
+So I need to take a different approach: remove these four failing assume_specifications and instead add the necessary Verus attributes directly to the source files.
+
+For the Deref impl, I just need to mark that one method. For the Address impl with its five-plus methods, I'll need external_body on each. And for TruncatedMemoryRegion, I only need to handle start() and size().
+
+But actually, there might be a cleaner way—what if I create small wrapper functions in the frame module that call these generic methods and mark those wrappers as external_body instead? I'm thinking of the pattern already used with `pa_into_raw`, where I can define a function that wraps the generic call...
+
+Writing wrapper function pattern... I see the constraint allows stdlib wrappers as a last resort—they're `#[inline]` and behaviorally identical, so changing the call sites from direct method calls to wrapper function calls should be acceptable. I'll create inline wrapper functions for all four generic methods that need specs, keeping the changes minimal and preserving the original semantics. I see that `pa_into_raw` is already defined in the HAL, so I should check if it's accessible from the phys module or if I need to create a similar wrapper there. The escalation ladder actually permits modifying exec code when necessary, with wrappers being the last resort—so using `pa_into_raw` in the `alloc_range` method might be the right approach if it's available.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs:94:pub fn pa_into_raw(pa: PageAligned<PhysicalAddress>) -> usize {
+<exited with exit code 0>
+[RESULT ✓] bash: 14:pub use self::types::{
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 119
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn 'pub use\|pub mod' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/t
+[TOOL] bash: grep -rn 'pub use\|pub mod' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/t
+[RESULT ✓] bash: 21:pub use ::sys::mm::{
+25:pub use aligned::*;
+26:pub use frame::*;
+27:pub use page::*;
+28:pub use pd::*;
+29:pub use phys::*;
+<exited with exit code 0>
+[RESULT ✓] bash: 8:pub mod access;
+9:pub mod address;
+10:pub mod region;
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 120
+────────────────────────────────────────────────────────────
+I need to modify the dependency source files to add `#[verus_verify(external_body)]` on the generic methods. Let me check exactly what methods each impl block has:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs
+
+[THINKING] Good — `pub use frame::*` in the address module means `pa_into_raw` is re-exported. So `crate::hal::mem::pa_into_raw` should be accessible from phys/frame.rs.
+
+But I still can't change exec code to use `pa_into_raw()` instead of `.into_raw_value()` without violating the exec code mutation constraint.
+
+Let me think about this differently. Maybe I should just modify the dependency source files directly. Adding `#[verus_verify]` annotations to functions in other modules is NOT exec code mutation — it's adding spec annotations, which is the whole point.
+ 
+So I'll add `#[verus_verify]` and `#[verus_verify(external_body)]` annotations to the generic methods in page.rs and region.rs — marking the Deref impl, the Address impl, and all their methods as verified.
+
+But wait, if I add `#[verus_verify]` to the impl block for `TruncatedMemoryRegion<T>`, Verus will try to verify every method, and any method without `external_body` will have its body checked, which could fail if it calls other unverified dependencies. I need to mark every single method in that impl with `#[verus_verify(external_body)]` to prevent Verus from checking their bodies — that's going to be a lot of annotations for all those methods.
+
+Let me count what I'm dealing with: `TruncatedMemoryRegion<T>` has at least 7-9 methods like `new()`, `new_mmio()`, `from_memory_region()`, plus the simple ones like `name()`, `start()`, `size()`, `typ()`, `perm()`, `cache_policy()`, and possibly `into_inner()`. Then for `PageAligned<T>`, there are 5 more methods including `into_raw_value()`, `from_raw_value()`, `align_up()`, `align_down()`, and `is_aligned()`.  And `Deref` adds one more with `deref()`. That's roughly 15 methods total that need the `#[verus_verify(external_body)]` annotation—it's doable but pretty invasive.
+
+I'm wondering if there's a cleaner approach. What if I use `#[verus_verify(external)]` on the impl block itself to treat the whole thing as external? But wait, that would just make Verus ignore everything, which is what's happening now and causing the error. Actually, there might be a distinction here between marking something as `external` versus not having any annotation at all.
+
+Looking at the error message more carefully, it says the function is "either declared outside the verus! macro or it is marked as `external`"—both cases result in the same rejection. So the real solution is to make these methods neither ignored nor external. They need to be `external_body` (with a trusted spec) or fully verified. That means I do need to annotate each method individually, and the impl block itself needs the `#[verus_verify]` attribute so Verus can actually see these methods in the first place.
+
+I could add about 15 method annotations, but each is just a single attribute line. Before I commit to that though, let me think if there's another way. The Inner methods are what's calling these generic dependency functions. If I could somehow make the Inner methods themselves not require body verification while still having specs... `external_body` would work, but that violates the spec-design constraint. I've also considered using `verus!` block syntax instead of attributes, or trying `assume_specification` on the Inner methods themselves, but none of these actually sidestep the core issue—external_body is external_body regardless of how it's written.
+
+I think modifying the dependency files is the right move. I'll add the annotations efficiently, starting with page.rs which only needs one method annotated in the Deref impl.
+
+Adding method annotations... I need to mark all the other methods in TruncatedMemoryRegion with `#[verus_verify(external_body)]` to prevent verification errors on the ones I'm not implementing.
+[RESULT ✓] view: 48. }
+49. 
+50. impl<T: Address> Address for PageAligned<T> {
+51.     fn into_raw_value(self) -> usize {
+52.         self.0.into_raw_value()
+53.     }
+54. 
+55.     ///
+56.     /// # Description
+57.     ///
+58.     /// Instantiates a new [`PageAligned`] from a raw value.
+59.     ///
+60.     /// # Para...
+[RESULT ✓] view: 279. impl<T: Address> TruncatedMemoryRegion<T> {
+280.     /// Creates a new truncated memory region.
+281.     pub fn new(
+282.         name: &str,
+283.         start: PageAligned<T>,
+284.         size: usize,
+285.         typ: MemoryRegionType,
+286.         perm: AccessPermission,
+287.     ) -> Resu...
+
+────────────────────────────────────────────────────────────
+Turn 121
+────────────────────────────────────────────────────────────
+The 4 remaining errors are for generic methods where `assume_specification` can't match the type signature. I'll add `#[verus_verify(external_body)]` directly on those methods in the dependency files. Let me also remove the failed assume_specifications from frame.spec.rs.
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs
+
+[THINKING] Now I have a clear picture of the code. Let me add `#[verus_verify]` on the impl blocks and `#[verus_verify(external_body)]` on all methods within them.
+
+For page.rs:
+- Deref impl: 1 method (deref)
+- Address impl: 8 methods (into_raw_value, from_raw_value, align_up, align_down, is_aligned, max_addr, as_ptr, as_mut_ptr)
+
+For region.rs:
+- TruncatedMemoryRegion<T> impl: 8 methods (new, new_mmio, from_memory_region, name, start, size, typ, perm, cache_policy) — actually 9
+
+
+- That's a lot of methods to annotate, but wait — maybe I can avoid the `#[verus_verify]` on the impl block entirely and use a `verus!` block with an internal path reference instead. Actually, that won't work because the error specifically said the function type signature needs to match exactly, which is a fundamental limitation with generic functions and assume_specification. Let me explore whether Verus has something like `external_fn` or another mechanism to register generic functions without relying on assume_specification, or if I need to reconsider the whole approach.
+
+What if I skip annotating the Inner methods with `#[verus_spec]` and instead apply `assume_specification` directly to them? That would give them specs while skipping body verification, similar to `external_body`. But the constraint says `assume_specification` is only for external functions outside the verification scope, and Inner methods are actually in this module. The practical problem is that if the Inner method bodies won't compile due to dependencies, I'm stuck between violating the constraint or leaving them unverified. Let me think through what options I actually have here.
+
+The free functions are already marked `external_body` with specs, and they call the Inner methods through the singleton. If the Inner methods also have specs but their bodies fail to compile, then the verification chain breaks — the free function specs reference Inner method behavior that's never actually verified. Maybe marking the Inner methods as `external_body` too would at least create a consistent spec-only chain, even if it's not ideal.
+
+But wait, the constraint says no `external_body` on current module functions, and the Inner methods are in the current module. So that won't work either. The real solution is to modify the dependency files directly — I need to add the necessary annotations to the impl blocks in page.rs and region.rs to make them compile.
+
+Actually, let me reconsider: what if I only add `#[verus_verify(external_body)]` on the specific methods without putting `#[verus_verify]` on the impl block itself? The proc macro should still process the individual method annotations and apply the external_body behavior.
+
+So I can be more surgical here—just annotate the 4 methods that actually need verification, leaving the rest untouched. Let me test this approach on the Deref implementation.
+
+Adding the annotation to deref...
+
+And doing the same for the Address trait's into_raw_value method...
+
+Then for the TruncatedMemoryRegion struct, I'll mark both the start and size methods with the external_body attribute...
+
+Now I need to clean up frame.spec.rs by removing those four assume_specification blocks that were working around the verification issues.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 122
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -30
