@@ -5252,3 +5252,14 @@ Turn 186
 Turn 187
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | grep -i "verif"
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/scripts/verify.sh --crate kernel  --log-dir verus-ai-logs
+=== Verus Verification (cargo mode) ===
+note: verifying root module
+note: verifying module mm::phys::frame
+  Unverified function list written to: /home/ruize/verus-ai-exp/ver...
+
+────────────────────────────────────────────────────────────
+Turn 188
+────────────────────────────────────────────────────────────
+Verification is cached and passed. Let me force a clean run to confirm:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cargo clean --manifest-path src/kernel/Cargo.t
