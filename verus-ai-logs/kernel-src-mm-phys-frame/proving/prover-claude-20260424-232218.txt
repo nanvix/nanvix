@@ -1557,3 +1557,82 @@ Turn 42
 Turn 43
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: assertion failed
+  --> src/kernel/src/mm/phys/frame.proof.rs:46:80
+   |
+46 |         assert forall|addr: int| self@.allocated_frames.contains(addr) implies addr % spec_page_size() == 0
+   |                                                            ...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+The lemma has arithmetic proof failures. Let me fix the proof with better hints:
+[TOOL] bash: grep -rn "lemma.*mul.*mod\|lemma.*mod.*mul\|mul_mod\|mod_mul" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/ 2>/dev
+
+[THINKING] The view compiles! But lemma_inv_implies_wf has proof failures. The SMT solver can't prove that `addr % spec_page_size() == 0` given `addr == i * spec_page_size()`. This is an arithmetic fact that needs a hint.
+
+The problem is: `addr == i * spec_page_size()` implies `addr % spec_page_size() == 0`.
+
+For integer `i` and `spec_page_size() > 0`, `(i * spec_page_size()) % spec_page_size() == 0` is always true. But the SMT solver might need a nudge.
+
+
+I'm adding assertions to guide the solver through the arithmetic, and I should look for existing modular arithmetic lemmas in vstd that might help with this modulo operation.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs:535:            lemma_mod_multiples_vanish(-k, x / c, d);
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs:570:            lemma_mod_multiples_vanish(-k, x, c * d);
+/home/ruize/verus-ai-exp/verus-ai-phy-...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n "lemma_mod_multiples_basic" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs | head -5
+[RESULT ✓] bash: 814:    lemma_mod_multiples_basic(m, z);
+838:    lemma_mod_multiples_basic(c, b);
+863:        lemma_mod_multiples_basic(c, b);
+1066:pub broadcast proof fn lemma_mod_multiples_basic(x: int, m: int)
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs
+[RESULT ✓] view: 1066. pub broadcast proof fn lemma_mod_multiples_basic(x: int, m: int)
+1067.     requires
+1068.         m > 0,
+1069.     ensures
+1070.         #[trigger] ((x * m) % m) == 0,
+1071. {
+1072.     lemma_mod_auto(m);
+1073.     broadcast use group_mul_properties_internal;
+1074. 
+1075.     let f = |u: int| ...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+Now I can use `lemma_mod_multiples_basic` to prove `(i * page_size) % page_size == 0`. Let me update the proof:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. /// Helper: convert a bitmap index to a frame (physical) address.
+4. pub open spec fn frame_addr_of(i: int) -> int {
+5.     i * spec_page_size()
+6. }
+7. 
+8. impl View for Inner {
+9.     type V = UpoolView;
+10. 
+11.     closed spec fn view(&self) -> UpoolView {
+12.         UpoolVie...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1

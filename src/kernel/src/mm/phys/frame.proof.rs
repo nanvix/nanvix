@@ -1,5 +1,7 @@
 verus! {
 
+use vstd::arithmetic::div_mod::*;
+
 /// Helper: convert a bitmap index to a frame (physical) address.
 pub open spec fn frame_addr_of(i: int) -> int {
     i * spec_page_size()
@@ -37,23 +39,27 @@ impl Inner {
         }
     }
 
-    /// Lemma: bitmap.inv() + internal_inv() ==> self@.wf().
+    /// Lemma: internal_inv() ==> self@.wf().
     proof fn lemma_inv_implies_wf(&self)
         requires self.internal_inv(),
         ensures self@.wf(),
     {
+        let ps = spec_page_size();
+
         // Page-alignment of allocated_frames
-        assert forall|addr: int| self@.allocated_frames.contains(addr) implies addr % spec_page_size() == 0
+        assert forall|addr: int| self@.allocated_frames.contains(addr) implies addr % ps == 0
         by {
             let i = choose|i: int| self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
             assert(self.bitmap@.set_bits.contains(i));
-            assert(addr == i * spec_page_size());
+            assert(addr == i * ps);
+            lemma_mod_multiples_basic(i, ps);
         }
         // Page-alignment of free_frames
-        assert forall|addr: int| self@.free_frames.contains(addr) implies addr % spec_page_size() == 0
+        assert forall|addr: int| self@.free_frames.contains(addr) implies addr % ps == 0
         by {
             let i = choose|i: int| self.bitmap@.is_covered(i) && !self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
-            assert(addr == i * spec_page_size());
+            assert(addr == i * ps);
+            lemma_mod_multiples_basic(i, ps);
         }
         // Disjointness
         assert(self@.allocated_frames.disjoint(self@.free_frames)) by {
@@ -62,10 +68,8 @@ impl Inner {
                 if self@.allocated_frames.contains(addr) && self@.free_frames.contains(addr) {
                     let i_alloc = choose|i: int| self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
                     let i_free = choose|i: int| self.bitmap@.is_covered(i) && !self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
-                    assert(i_alloc * spec_page_size() == i_free * spec_page_size());
-                    // Since page_size > 0, i_alloc == i_free
-                    assert(i_alloc == i_free);
-                    // Contradiction: i_alloc in set_bits but i_free not in set_bits
+                    assert(i_alloc * ps == i_free * ps);
+                    vstd::arithmetic::mul::lemma_mul_equality_converse(i_alloc, i_free, ps);
                 }
             }
         }
@@ -73,16 +77,20 @@ impl Inner {
         assert forall|addr: int| self@.allocated_frames.contains(addr) implies addr >= 0
         by {
             let i = choose|i: int| self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
-            // set_bits ⊆ covered (from bitmap wf), so i is covered, so i >= 0
             assert(self.bitmap@.set_bits.contains(i));
+            // set_bits ⊆ covered (from bitmap wf)
             assert(self.bitmap@.is_covered(i));
             assert(i >= 0);
+            assert(addr == i * ps);
+            vstd::arithmetic::mul::lemma_mul_nonnegative(i, ps);
         }
         // Non-negative free addresses
         assert forall|addr: int| self@.free_frames.contains(addr) implies addr >= 0
         by {
             let i = choose|i: int| self.bitmap@.is_covered(i) && !self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
             assert(i >= 0);
+            assert(addr == i * ps);
+            vstd::arithmetic::mul::lemma_mul_nonnegative(i, ps);
         }
     }
 }
