@@ -590,3 +590,24 @@ For more information, try '--help'.
 Turn 18
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: - init
+    - alloc
+    - alloc_range
+    - free
+    - new
+    - base
+    - clear
+    - deref
+    - deref_mut
+    - drop
+    - alloc
+    - alloc_many
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=9 admit=0 trusted=0 no_decreases=0 cfg_gate=7...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cargo clean -p kernel 2>&1 && make verify-kern
