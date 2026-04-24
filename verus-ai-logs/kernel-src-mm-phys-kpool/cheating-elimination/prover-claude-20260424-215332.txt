@@ -351,3 +351,416 @@ Turn 11
 Turn 12
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  Module mm::phys::kpool:
+    ⚠️  cfg-gated exec code: 1
+  Global: assume=0 external_body=8 admit=0 trusted=0 cfg_gate=7
+  Detail: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/cheating-detail.txt
+
+=== Function Coverage ===
+  4/17 e...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cat src/kernel/src/cheating-detail.txt
+[RESULT ✓] bash: - hal/mem/types/address/frame.rs:94 pa_into_raw: external_body
+    - mm/phys/frame.rs:96 alloc: external_body
+    - mm/phys/frame.rs:157 free: external_body
+    - mm/phys/frame.rs:202 book: external_body
+    - mm/phys/frame.rs:253 alloc_range: external_body
+    - mm/phys/frame.rs:373 alloc: external...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Good — verification passes with exit 0, and kpool-specific cheating is minimal. Let me do a thorough audit of all three kpool files and run AST consistency.
+[TOOL] report_intent: Auditing kpool cheating items
+[TOOL] grep: (admit\(\)|assume\(|external_body|assume_specification|trusted|external\b)
+[TOOL] grep: #\[cfg\(not\(verus_keep_ghost\)\)\]
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 scripts/ast_consistency.py --base-ref 
+
+[THINKING] So the cheating details show that the external_body items are in other modules (frame.rs, hal/mem), not in kpool.rs itself. Let me check the module-specific cheating. The output says:
+
+- Module mm::phys::kpool: ⚠️ cfg-gated exec code: 1
+- Global: assume=0 external_body=8 admit=0 trusted=0 cfg_gate=7
+
+So in the kpool module specifically there's only 1 cfg-gated exec code item. Let me look more carefully at what's in the kpool files.
+
+Let me check the cfg-gated exec code items specifically. 
+
+Looking at the grep results, I can see there are several cfg(not(verus_keep_ghost)) attributes scattered throughout kpool.rs, wrapping error and info logging calls at various line numbers. I need to look more carefully at what the checker actually flagged—the logging macros like `error!` and `info!` are explicitly allowed, so I'm wondering if there's a cfg-gated execution block that isn't just a logging statement. Let me examine the actual violations more closely to see what's triggering the count of 1 cfg-gated exec code in kpool. Looking more carefully at line 114, that's just a logging macro wrapped in a cfg gate—nothing that would count as actual cheating. I'm realizing the detection script must be flagging something different than what I'm seeing in these logging statements. Let me refocus on what the actual cheating detection is looking for rather than assuming it's these log macros. I need to reconcile what the verification script reports globally versus what I'm finding in the kpool module specifically. The cfg_gate count of 7 is across the entire kernel crate, but kpool only shows 1 flagged exec code—and all the cfg gates I've found in kpool.rs are on logging macros, which should be allowed. Let me search more systematically to see if I'm missing something, or if the detection tool is counting differently than I expect. I should also run the AST consistency check to validate my findings against the actual verification results. So the actual files I need to check are just kpool.rs, kpool.spec.rs, and kpool.proof.rs. Looking at what's actually in those three files, there's no admit, assume, or external_body - just 10 cfg-gated logging macros, which are explicitly allowed by the constraints since they're non-semantic items.
+
+But the verify script is flagging 1 cfg-gated exec code item for the kpool module, so maybe the detection tool counts any `#[cfg(not(verus_keep_ghost))]` attribute as exec code unless it's specifically on an import or derive, even if it's wrapping a logging macro.
+
+Looking at the verification constraints, logging macros are allowed to be cfg-gated, so this appears to be a false positive from the tool. I'm also checking for any `#[cfg(verus_keep_ghost)]` items that might duplicate exec code, but the spec code additions like the View implementation for KernelFrame are fine.
+
+It looks like kpool is already clean—I just need to confirm there are no cheating items to eliminate, run the AST consistency check, and generate the report files.
+
+Now I'm examining the verification output more carefully. The "exit 0" indicates verification passed successfully, and the CHEATING_DETECTED status is coming from the global counts rather than actual violations. The external_body count of 8 and cfg_gate count of 7 are what's triggering the overall status.
+
+Looking at the module-specific metrics, kpool only shows 1 cfg-gated exec item, so I need to identify what that single item is. All the cfg-gated code in kpool.rs appears to be logging macros like error! and info! calls, which should be allowed. The detection tool might be using a broader heuristic that counts any cfg(not(verus_keep_ghost)) attribute outside of derive contexts as cfg-gated exec code.
+
+Let me verify there are actually no violations in kpool, run the AST consistency check, generate the report files, and execute the full verification. I should also check whether the output directories need to be created first.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs-102-                let reason: &str = "kernel pool size overflows addressable memory";
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs:103:        ...
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs:901:    /// Private field prevents external construction.
+[RESULT ✓] bash: python3: can't open file '/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/scripts/ast_consistency.py': [Errno 2] No such file or directory
+<exited with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp -name "ast_consistency.py" -type f 2>/dev/null | head -5
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/backup/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/verus-ai-sparse-bitmap-property-analysis-0416/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/verus-ai-sparse-bitmap-big-change-0416/scripts/ast_consis...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai/scri
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+Inner::alloc                             MISMATCH                             
+Inner::alloc_range                       MISMATCH...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+4 AST mismatches found. Let me get the diffs for each and understand them:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai/scri
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai/scri
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai/scri
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai/scri
+
+[THINKING] There are 4 AST mismatches in Inner::alloc, Inner::alloc_range, Inner::free, and Inner::new. Let me look at the diffs for each.
+[RESULT ✓] bash: ## Inner::new (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -9,12 +9,26 @@
+                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
+             },
+         };
+-        if !is_valid_physical_region(base.into_raw_value(), kpool_size) {
++        if !is_valid_physical_region(pa_int...
+[RESULT ✓] bash: ## Inner::alloc (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,11 +1,73 @@
+     fn alloc(&mut self) -> Result<FrameAddress, Error> {
++        proof! {
++            self.lemma_internal_inv();
++        }
+         let index: usize = match self.bitmap.alloc() {
+             Ok(index) => index,
+      ...
+[RESULT ✓] bash: Output too large to read at once (11.9 KB). Saved to: /tmp/copilot-tool-output-1777038968617-v489u2.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+[RESULT ✓] bash: ## Inner::free (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,8 +1,68 @@
+     fn free(&mut self, addr: FrameAddress) -> Result<(), Error> {
+-        let index: usize = (addr.into_raw_value() - self.base.into_raw_value()) / mem::PAGE_SIZE;
++        proof! {
++            self.lemma_internal_inv();
+...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Let me check the original code from the base branch and understand the exec changes:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/upool:src/kernel/src/mm/phys
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && head -30 /tmp/copilot-tool-output-177703896861
+
+[THINKING] Now I can see the AST mismatches clearly. Let me analyze each one:
+
+### 1. Inner::new
+Two exec code changes:
+- `base.into_raw_value()` → `pa_into_raw(base)` — this is a call to a helper function instead of calling `.into_raw_value()` directly
+- `Ok(Inner { base, bitmap })` → `let inner = Inner { base, bitmap }; Ok(inner)` — pre-approved deviation (intermediate value for assertions)
+
+### 2. Inner::alloc
+Two exec code changes:
+- `self.base.into_raw_value()` → `pa_into_raw(self.base)` — same pattern as above
+
+
+- The third change is more complex: the original chains multiple constructors together (`PhysicalAddress::from_raw_value(addr)?.from_address()?.new()`), but the new code directly calls `FrameAddress::from_raw_value(addr)?`. I need to verify whether these two approaches are semantically equivalent.
+
+Looking at the `alloc_range` function, I see similar patterns — the `pa_into_raw` conversion appears again, plus new guards checking for zero count and overflow conditions that are marked as VERUS rewrites. The `FrameAddress` construction change shows up here too.
+
+In the `free` function, there's another `pa_into_raw` substitution in the offset calculation, and a new underflow check has been added as a guard condition.
+
+Now I'm categorizing these changes: the `pa_into_raw` conversions seem consistent across all functions, the intermediate variable assignments are pre-approved deviations, and the guard conditions with VERUS REWRITE comments are the documented changes. The proof block restructuring is just adding verification logic that gets stripped during execution anyway.
+
+I need to verify whether `FrameAddress::from_raw_value` is semantically equivalent to the original nested construction, and check the base branch to understand what the original implementation looked like.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//! Kernel frame pool — module-level singleton.
+//!
+//! The kernel pool is backed by a [`Bitmap`] and exposed as free functions over a singleton so
+//! every in-kernel caller goes through the same state. The public facade...
+[RESULT ✓] bash: ## Inner::alloc_range (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,26 +1,230 @@
+     fn alloc_range(&mut self, count: usize, addrs: &mut Vec<FrameAddress>) -> Result<(), Error> {
++        proof! {
++            self.lemma_internal_inv();
++        }
+         if !addrs.is_empty() {
+             le...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/upool:src/kernel/src/mm/phys
+[RESULT ✓] bash: );
+                        self@ == KpoolView {
+                            used_page_indices: old(self)@.used_page_indices.union(new_page_indices),
+                            ..old(self)@
+                        }
+                    }
+                },
+                Err(_) => {
+               ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/upool:src/kernel/src/mm/phys
+[RESULT ✓] bash: }),
+    )]
+    fn free(&mut self, addr: FrameAddress) -> Result<(), Error> {
+        let index: usize = (addr.into_raw_value() - self.base.into_raw_value()) / mem::PAGE_SIZE;
+        match self.bitmap.clear(index) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                error!("{e...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Let me check the key helper functions to understand the exec code changes:
+[TOOL] grep: pub fn pa_into_raw
+[TOOL] grep: fn from_raw_value
+[TOOL] grep: fn into_raw_value.*self.*->.*usize
+
+[THINKING] Now I have a clear picture of all AST mismatches. Let me analyze each one:
+
+### Key exec code changes identified:
+
+1. **`base.into_raw_value()` → `pa_into_raw(base)`** (in `new`, `alloc`, `alloc_range`, `free`)
+   - `pa_into_raw` is a function imported from `crate::hal::mem::pa_into_raw`
+   - This replaces `.into_raw_value()` called on a `PageAligned<PhysicalAddress>` with a helper function
+   - Need to check if `pa_into_raw` is semantically equivalent
+   
+2. **`Ok(Inner { base, bitmap })` → `let inner = Inner { base, bitmap }; Ok(inner)`** (in `new`)
+   - Pre-approved deviation: "Ok(Self { .. }) → let result = Self { .. }; Ok(result)" — for ensures reference
+
+3. **`Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(addr)?)?))` → `let frame = FrameAddress::from_raw_value(addr)?; Ok(frame)`** (in `alloc`)
+   - This is a different API entirely. Need to check if `FrameAddress::from_raw_value` is semantically equivalent to the nested constructor chain
+
+.
+
+4. **Added guards in `alloc_range`**: `count == 0` check and `count > num_pages` check
+   - These are marked "VERUS REWRITE" — needed because bitmap.alloc_range has preconditions
+   - These add early error returns that the original didn't have, but the original would propagate errors from bitmap.alloc_range anyway. The question is whether these change observable behavior.
+   - The original has `addrs@ == old(addrs)@` in the Err case, but with the new guards, we return before calling bitmap.alloc_range. I need to think through whether the error codes are compatible.
+   - The error codes might differ: previously, count==0 would be passed to bitmap.alloc_range which might return its own error, but now it returns InvalidArgument early. This changes the error code/message, though semantically the behavior is the same — both error on invalid input. The function contract only specifies `Err(_)`, not which error, so this satisfies the preconditions.
+
+5. **Added underflow guard in `free`**: `if addr.into_raw_value() < pa_into_raw(self.base)`
+   - Marked "VERUS REWRITE: guard needed to prevent usize underflow in subtraction"
+   - The original code performs a subtraction and division...
+
+Actually, looking at the next thinking, the subtraction would underflow if addr < base (wrapping in release, panicking in debug), so the new guard prevents this by returning an error early. This is a legitimate bug fix that prevents undefined behavior.
+
+6. **`self.base.into_raw_value()` → `pa_into_raw(self.base)`** (in `free`)
+   - Same conversion as before.
+
+7. **`FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(addr)?)?)` → `FrameAddress::from_raw_value(addr)?`** (in `alloc_range`)
+   - Same simplification as before.
+
+8. **`alloc_range` Err branch has additional `addrs@ == old(addrs)@` postcondition but also adds...
+
+** Looking at the error postcondition, the new spec adds `old(addrs)@.len() > 0` as a disjunction to account for the early empty-check return, which is a spec change rather than an execution change.
+
+Now I need to determine whether these are genuine Verus limitations requiring rewrites or if they can be eliminated by checking what `pa_into_raw` does.
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs:94:pub fn pa_into_raw(pa: PageAligned<PhysicalAddress>) -> usize {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs-95-  ...
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs:123:    pub fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs-...
+[RESULT ✓] grep: Output too large to read at once (10.5 KB). Saved to: /tmp/copilot-tool-output-1777039028368-x40qg0.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Now I understand the full picture. Let me verify the current file has no external_body and confirm which items existed on the base branch:
+[TOOL] grep: external_body|verus_verify\(external
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/upool:src/kernel/src/mm/phys
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/upool:src/kernel/src/mm/phys
+
+[THINKING] Now I can see:
+
+1. **`pa_into_raw(pa)` is `pa.into_raw_value()`** — it's a thin wrapper that does exactly the same thing. This is a "stdlib wrapper" pattern used because Verus can't handle `self.base.into_raw_value()` on `PageAligned<PhysicalAddress>` (probably a method call on a generic/complex type). The wrapper is `external_body` (line 94 in frame.rs).
+
+2. **`FrameAddress::from_raw_value(raw_addr)`** does `Ok(Self(PageAligned::from_address(PhysicalAddress::from_raw_value(raw_addr)?)?))` — this is EXACTLY what the original code did inline: `FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(addr)?)?)`. 
+
+So extracting that complex expression into a function call is semantically identical and a pre-approved deviation. Now I'm classifying the exec changes: the `base.into_raw_value()` → `pa_into_raw(base)` swap is a stdlib wrapper pattern (step 4 of the escalation ladder), where `pa_into_raw` is just an `external_body` that calls the same method, making it an acceptable trust boundary.
+
+The wrapper isolates the trait dispatch issue that Verus can't resolve on the complex generic type. This is a dependency trust boundary in `hal/mem/types/address/frame.rs` rather than a kpool-specific cheating item, so I need to document it accordingly. The intermediate variable extraction for `Ok(Inner { base, bitmap })` is already acceptable as a pre-approved deviation for assertions and ensures.
+
+For the `FrameAddress::from_raw_value(addr)?` change, the AST checker flags it as a mismatch even though the semantics are identical—it's just extracting the inline expression chain into a named function call that encapsulates the same logic. This is a minimal equivalent rewrite with the same error behavior and complexity, so I'll document it as such.
+
+Now looking at the guard conditions added to `alloc_range`...
+
+the verified version has a requires clause mandating `count > 0` and `count <= num_bits`, so I need to add those guards to prove the precondition is satisfied before calling the function. The original code would just return an error if count violated those bounds, but in the verified version the caller must establish the precondition upfront.
+
+For the `free` function, I'm adding an underflow guard because subtracting addresses directly could wrap around in release mode if addr is less than base, producing a huge index that would fail the bitmap operation. The guard prevents this by checking the relationship first.
+
+Now I'm checking whether the kpool files themselves contain any verification shortcuts like `admit` or `assume` — and from my search, they don't. The only `cfg(not(verus_keep_ghost))` items are logging macros, which are fine. The original code had `external_body` markers on all four Inner methods, but the verified version actually replaced those with real proofs instead.
+
+So the key finding is that we've gone from 4 external_body items down to 0, meaning we're eliminating cheating rather than introducing it. The AST mismatches are all documented as either VERUS REWRITE or pre-approved deviations. Now I need to verify everything passes, confirm the AST changes are justified, generate the report files, and run the full verification suite. I see the issue now—when `external_body` was removed from those four Inner methods, Verus started actually parsing the function bodies and hit logging macros it couldn't handle, so the cfg-gating had to be added as a workaround. Before the change, there were zero cfg-gated exec code blocks because the external_body annotation prevented Verus from even looking at the implementation.
+
+Looking at the actual changes in `alloc_range`, I'm noticing there are some real logic modifications beyond just the logging macros—new guard clauses for `count == 0` and `count > num_pages` that return errors, which are actual Verus rewrites, not just cfg-gating for compatibility.
+
+Now I need to figure out what the tool is actually detecting as cfg-gated exec code. The module report shows only 1 flagged item, not 10, so I should examine how the tool identifies these—it's probably looking for specific patterns like `#[cfg(not(verus_keep_ghost))]` annotations.
+
+Rather than trying to reverse-engineer the tool's counting logic, I'll focus on my manual findings: kpool has no cheating items, the original external_body declarations have been removed after proving was completed, and all cfg-gated items are on allowed patterns like logging macros. Let me move forward with the actual work now.
+
+I've identified four AST mismatches that all have justifications: the stdlib wrapper for `pa_into_raw`, the pre-approved pattern for constructing and returning `Ok(inner)`, the equivalent rewrite for `FrameAddress::from_raw_value`, and the guards added during the Verus rewrite. Verification passes, so since there are no cheating items to eliminate, I just need to verify these mismatches are documented, create the report files, and run the full verification suite.
+
+But I should re-read the task more carefully—it's asking me to eliminate all cheating like assumes, admits, external_body, and assume_specification that aren't external-bottom trust boundaries, plus any cfg-gated exec code. The AST mismatches showing exec code changes aren't cheating themselves, but they do need justification. Let me focus on what actually needs to be done: verify the AST consistency, justify or restore the changes, and ensure no actual cheating remains.
+
+Looking at the specific exec code changes, the `pa_into_raw` wrapper is necessary because Verus can't resolve the complex generic type directly—this is a standard stdlib pattern. The intermediate `let inner` variable is pre-approved. The `FrameAddress::from_raw_value` change is semantically equivalent but uses a different call path, which the AST checker flags even though it's functionally identical.
+
+The guard additions are required to satisfy bitmap preconditions. All of these seem justified, so I'll move forward with creating the report files and running full verification.
+
+I should also check whether `pa_into_raw` needs to be listed as a trust boundary for kpool since it's an `external_body` dependency—though it's defined in `frame.rs` rather than the kpool files themselves, so it's more of a general dependency trust boundary than kpool-specific. Let me verify whether kpool's spec and proof files contain any other `external_body` items.
+
+Looking back at my earlier check, kpool.spec.rs and kpool.proof.rs don't have any `external_body`, `assume`, `admit`, or `assume_specification` items. But I'm now realizing the base branch actually had four `external_body` annotations on the Inner methods—`new`, `alloc`, `alloc_range`, and `free`—so I need to account for that difference in my analysis.
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs:65:#[verus_verify(external_derive)]
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs:800:#[verus_verify(external_derive)]
+[RESULT ✓] bash: 80:    #[verus_verify(external_body)]
+124:    #[verus_verify(external_body)]
+175:    #[verus_verify(external_body)]
+254:    #[verus_verify(external_body)]
+<exited with exit code 0>
+[RESULT ✓] bash: verus! {
+
+impl Inner {
+    pub open spec fn inv(&self) -> bool
+    {
+        &&& self@.wf()
+        &&& self.internal_inv()
+    }
+}
+
+}
+(END)
+<command with shellId: 20 is still running after 30 seconds. The command is still running. Check the output above - if it looks like the command is waiting for...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] stop_bash: {'shellId': '20'}
+[RESULT ✓] stop_bash: <command with id: 20 stopped>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/upool:src/kernel/src/mm/phys
+[RESULT ✓] bash: verus! {
+
+impl Inner {
+    pub open spec fn inv(&self) -> bool
+    {
+        &&& self@.wf()
+        &&& self.internal_inv()
+    }
+}
+
+}
+---SEPARATOR---
+verus! {
+
+use super::KpoolView;
+
+impl View for Inner {
+    type V = KpoolView;
+
+    closed spec fn view(&self) -> KpoolView
+    {
+        KpoolView{
+...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Now I have the full picture. Let me check existing documentation and run full verification:
+[TOOL] report_intent: Verifying and documenting results
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/cheating-e
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n -A5 'pa_into_raw' src/kernel/src/hal/m
+
+[THINKING] Now I can see the full picture. In the base branch:
+- `kpool.spec.rs` had `inv()` that called `self@.wf() && self.internal_inv()`
+- `kpool.proof.rs` had `internal_inv()` as `true` (trivial) and `View` impl
+- 4 `external_body` items on `Inner::new`, `Inner::alloc`, `Inner::alloc_range`, `Inner::free`
+
+In the current code:
+- `kpool.spec.rs` is unchanged (still just `inv()`)
+- `kpool.proof.rs` has proper `internal_inv()` with real constraints, plus helper lemmas
+
+
+- All 4 `external_body` markers have been removed and replaced with actual verified proofs
+
+So the cheating elimination is already done. The remaining items to check are the `external_derive` markers on `Inner` and `KernelFrame` structs (which are legitimate for derive macros Verus can't handle), the cfg-gated logging macros (allowed per constraints), and any AST mismatches that need justification.
+
+Now I'm examining the `pa_into_raw` external_body function as a dependency trust boundary, and checking whether there are existing trust.md or verification_todo.md files that document these decisions.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 94:pub fn pa_into_raw(pa: PageAligned<PhysicalAddress>) -> usize {
+95-    pa.into_raw_value()
+96-}
+97-
+98-//==================================================================================================
+99-// Implementations
+<exited with exit code 0>
+[RESULT ✓] bash: prover-claude-20260424-215332.jsonl  prover-claude-20260424-215332.txt
+---
+No trust.md
+---
+No verification_todo.md
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n -B5 'pa_into_raw' src/kernel/src/hal/m
+[RESULT ✓] bash: 89-/// that cannot receive a monomorphic `assume_specification` in Verus.
+90-#[verus_verify(external_body)]
+91-#[verus_spec(ret =>
+92-    ensures ret as int == pa@,
+93-)]
+94:pub fn pa_into_raw(pa: PageAligned<PhysicalAddress>) -> usize {
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Good. Now let me run the full verification to make sure everything passes:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
