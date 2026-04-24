@@ -1673,3 +1673,65 @@ use crate::{
 This should work. Now I'm wondering if the `Address` trait import is actually necessary — `FrameAddress` has its own `into_raw_value` method, so I might not need it unless `PageAligned::from_address` or other methods depend on the trait being in scope.
 
 Looking back at the original code, `Address` was imported, and it's probably used elsewhere in the file like with `KernelFrame`, so I'll keep it to be safe. Let me run verification and see if this passes.
+[RESULT ✓] bash: note: verifying module mm::phys::kpool
+
+verification results:: 7 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.31s
+
+=== Results ===
+  7 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::phy...
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+7 verified, 0 errors! Now let me check for warnings and confirm no kpool.rs external_body:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n 'external_body' src/kernel/src/mm/phys
+[RESULT ✓] bash: 
+<exited with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n 'warning' verus-ai-logs/verus-logs/ver
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+Zero external_body in kpool.rs, zero warnings. Now let me verify build succeeds:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make build 2>&1 | tail -10
+[RESULT ✓] bash: Output too large to read at once (11.1 KB). Saved to: /tmp/copilot-tool-output-1777038452203-evucuf.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make build 2>&1 | grep -E '^error|Finished|war
+[RESULT ✓] bash: {"reason":"compiler-message","package_id":"path+file:///home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel#0.12.469","manifest_path":"/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/Cargo.toml","target":{"kind":["bin"],"crate_types":["bin"],"...
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+Build succeeds. There's an unused import warning for `Address`. Let me fix that:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make build 2>&1 | grep -E 'error|warning.*kpoo
+[RESULT ✓] bash: {"reason":"compiler-artifact","package_id":"path+file:///home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel#0.12.469","manifest_path":"/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/Cargo.toml","target":{"kind":["custom-build"],"crate_types"...
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+Clean build, no warnings. Let me also re-verify to confirm verification still passes:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
