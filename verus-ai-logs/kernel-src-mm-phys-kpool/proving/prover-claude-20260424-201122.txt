@@ -5199,3 +5199,12 @@ Let me do a final review of the complete state:
 Turn 312
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: Exit code : 0
+  Unverified functions:
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 313
+────────────────────────────────────────────────────────────
+Let me get the definitive count:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
