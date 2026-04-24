@@ -1,0 +1,36 @@
+Timestamp: 2026-04-24_23-40-57
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::frame
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=18
+  admit=7
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+error[E0252]: the name `spec_page_size` is defined multiple times
+ --> src/kernel/src/mm/phys/frame.proof.rs:3:5
+  |
+3 | use crate::hal::mem::spec_page_size;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `spec_page_size` reimported here
+  |
+ ::: src/kernel/src/mm/phys/frame.spec.rs:4:5
+  |
+4 | use crate::hal::mem::spec_page_size;
+  |     ------------------------------- previous import of the value `spec_page_size` here
+  |
+  = note: `spec_page_size` must be defined only once in the value namespace of this module
+
+For more information about this error, try `rustc --explain E0252`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
