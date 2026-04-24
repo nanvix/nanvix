@@ -3366,3 +3366,52 @@ Now I need to clean up frame.spec.rs by removing those four assume_specification
 Turn 122
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -30
+[RESULT ✓] bash: 162 | | }
+    | |_^
+
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: cached (no recompilation), — (exit 101)
+  status: VERIFY_FAILED (continui...
+
+────────────────────────────────────────────────────────────
+Turn 123
+────────────────────────────────────────────────────────────
+Progress — down to 2 errors. Let me check:
+[TOOL] bash: grep -E 'error\[|^error:' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/verus-logs/v
+[RESULT ✓] bash: error: In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.
+error: In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.
+error: could not...
+
+────────────────────────────────────────────────────────────
+Turn 124
+────────────────────────────────────────────────────────────
+The trait impls need `#[verus_verify]` on the entire impl, and `#[verus_verify(external_body)]` on all methods. Let me fix both:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] Both errors are about trait impl methods needing the entire impl to be verified. This means `#[verus_verify(external_body)]` on individual trait impl methods doesn't work — I need to wrap the ENTIRE impl in `#[verus_verify]` (or `verus!`).
+
+The two trait impls are:
+1. `impl<T: Address> Deref for PageAligned<T>` — deref method
+2. `impl<T: Address> Address for PageAligned<T>` — into_raw_value method
+
+For TruncatedMemoryRegion::start() and size(), these are inherent methods (not trait impls), so `#[verus_verify(external_body)]` on individual methods should work. Let me verify by checking the error details...
+
+
+Actually, looking more carefully at the errors, they're specifically about the two trait impl blocks in page.rs — the Deref and Address impls. The TruncatedMemoryRegion inherent methods shouldn't have the same issue. So I need to wrap those entire trait impl blocks with `#[verus_verify]`.
+
+Adding the attributes to trait impls... Writing trait methods...
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 125
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -30

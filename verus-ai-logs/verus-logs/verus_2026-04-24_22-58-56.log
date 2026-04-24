@@ -1,0 +1,213 @@
+Timestamp: 2026-04-24_22-58-56
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=18
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+warning: unreachable expression
+   --> src/kernel/src/mm/phys/frame.rs:269:9
+    |
+269 | /          for index in start_frame_number..end_frame_number {
+270 | |/             match self.bitmap.test(index) {
+271 | ||                 Ok(false) => continue,
+272 | ||                 Ok(true) => {
+273 | ||                     let conflicting_addr: usize = index * mem::FRAME_SIZE;
+...   ||
+284 | ||                 Err(err) => return Err(err),
+285 | ||             }
+    | ||_____________- any code following this `match` expression is unreachable, as all arms diverge
+286 | |          }
+    | |__________^ unreachable expression
+    |
+    = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/upool.rs:107:26
+    |
+107 |         if let Err(_e) = frame::free(self.addr) {
+    |                          ^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:380:9
+    |
+380 |         frame.inv(),
+    |         ----------- failed precondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+  --> src/kernel/src/mm/phys/frame.rs:92:5
+   |
+92 |     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:79:13
+    |
+ 79 |               self.inv(),
+    |               ^^^^^^^^^^ failed this postcondition
+...
+112 | /         match FrameAddress::from_frame_number(frame_number) {
+113 | |             Ok(frame_address) => Ok(frame_address),
+114 | |             Err(error) => {
+115 | |                 #[cfg(not(verus_keep_ghost))]
+...   |
+118 | |             },
+119 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:80:13
+    |
+ 80 | /             match result {
+ 81 | |                 Ok(frame) => {
+ 82 | |                     &&& frame.inv()
+ 83 | |                     &&& old(self)@.free_frames.contains(frame@)
+...   |
+ 90 | |             },
+    | |_____________^ failed this postcondition
+...
+112 | /         match FrameAddress::from_frame_number(frame_number) {
+113 | |             Ok(frame_address) => Ok(frame_address),
+114 | |             Err(error) => {
+115 | |                 #[cfg(not(verus_keep_ghost))]
+...   |
+118 | |             },
+119 | |         }
+    | |_________- at the end of the function body
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:93:41
+    |
+ 93 |         let frame_number: usize = match self.bitmap.alloc() {
+    |                                         ^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/libs/sparse-bitmap/src/lib.rs:290:13
+    |
+290 |             old(self).inv(),
+    |             --------------- failed precondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/frame.rs:152:5
+    |
+152 |     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:140:13
+    |
+140 |               self.inv(),
+    |               ^^^^^^^^^^ failed this postcondition
+...
+154 | /         match self.bitmap.clear(frame_number) {
+155 | |             Ok(()) => Ok(()),
+156 | |             Err(error) => {
+157 | |                 #[cfg(not(verus_keep_ghost))]
+...   |
+160 | |             },
+161 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:141:13
+    |
+141 | /             match result {
+142 | |                 Ok(()) => {
+143 | |                     &&& old(self)@.allocated_frames.contains(frame@)
+144 | |                     &&& self@ == old(self)@.spec_free(frame@)
+...   |
+150 | |             },
+    | |_____________^ failed this postcondition
+...
+154 | /         match self.bitmap.clear(frame_number) {
+155 | |             Ok(()) => Ok(()),
+156 | |             Err(error) => {
+157 | |                 #[cfg(not(verus_keep_ghost))]
+...   |
+160 | |             },
+161 | |         }
+    | |_________- at the end of the function body
+
+error: precondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:154:15
+     |
+ 154 |         match self.bitmap.clear(frame_number) {
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+    ::: src/libs/sparse-bitmap/src/lib.rs:1689:13
+     |
+1689 |             old(self).inv(),
+     |             --------------- failed precondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/frame.rs:194:5
+    |
+194 |     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:182:13
+    |
+182 |               self.inv(),
+    |               ^^^^^^^^^^ failed this postcondition
+...
+196 | /         match self.bitmap.set(frame_number) {
+197 | |             Ok(()) => Ok(()),
+198 | |             Err(error) => {
+199 | |                 #[cfg(not(verus_keep_ghost))]
+...   |
+202 | |             },
+203 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:183:13
+    |
+183 | /             match result {
+184 | |                 Ok(()) => {
+185 | |                     &&& old(self)@.free_frames.contains(phys_addr@)
+186 | |                     &&& self@ == old(self)@.spec_book(phys_addr@)
+...   |
+192 | |             },
+    | |_____________^ failed this postcondition
+...
+196 | /         match self.bitmap.set(frame_number) {
+197 | |             Ok(()) => Ok(()),
+198 | |             Err(error) => {
+199 | |                 #[cfg(not(verus_keep_ghost))]
+...   |
+202 | |             },
+203 | |         }
+    | |_________- at the end of the function body
+
+error: precondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:196:15
+     |
+ 196 |         match self.bitmap.set(frame_number) {
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+    ::: src/libs/sparse-bitmap/src/lib.rs:1621:13
+     |
+1621 |             old(self).inv(),
+     |             --------------- failed precondition
+
+error: for-loops do not yet support continue
+   --> src/kernel/src/mm/phys/frame.rs:271:30
+    |
+271 |                 Ok(false) => continue,
+    |                              ^^^^^^^^
+
+warning: `kernel` (bin "kernel") generated 1 warning
+error: could not compile `kernel` (bin "kernel") due to 11 previous errors; 1 warning emitted
