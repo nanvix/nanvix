@@ -262,8 +262,13 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     // On Hyperlight the heap is already initialized during the evolve phase
     // (`hyperlight_pre_kmain`) so that FunctionCall deserialization can allocate.
     #[cfg(not(feature = "hyperlight"))]
-    if let Err(e) = unsafe { kheap::init() } {
-        panic!("failed to initialize kernel heap: {:?}", e);
+    {
+        if let Err(e) = unsafe { crate::hal::platform::setup_heap_backing_storage() } {
+            panic!("failed to set up heap backing storage: {:?}", e);
+        }
+        if let Err(e) = unsafe { kheap::init() } {
+            panic!("failed to initialize kernel heap: {:?}", e);
+        }
     }
 
     #[cfg(feature = "test")]
