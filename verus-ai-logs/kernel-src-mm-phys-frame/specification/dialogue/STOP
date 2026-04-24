@@ -1,0 +1,13 @@
+RESOLVED
+
+All 14 checklist items verified as PASS or FIXED:
+
+- Items 1, 3: FIXED by fixer (init contract via assume_specification, addr>=0 moved to wf())
+- Items 2, 4, 6, 9: PASS with documented singleton-pattern limitations (Option A applied)
+- Items 5, 7, 8, 10, 12, 13, 14: PASS (no changes needed)
+- Item 11: SKIP (advisory)
+
+Key verification:
+- `MODULE=mm::phys::frame make verify-kernel` → 7 verified, 0 errors (exit 0)
+- Fixer claim confirmed: init() cannot use external_body (Verus &mut limitation)
+- Cheating counts expected for specification phase: admit=7, external_body=4 (module)

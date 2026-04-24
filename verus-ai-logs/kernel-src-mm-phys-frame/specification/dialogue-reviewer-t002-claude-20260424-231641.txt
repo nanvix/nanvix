@@ -521,3 +521,48 @@ The fixer's claim is **confirmed**: Verus cannot compile `init()` even with `ext
 Turn 20
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && MODULE=mm::phys::frame make verify-kernel 2>&1
+[RESULT ✓] bash: Detail: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/cheating-detail.txt
+
+=== Function Coverage ===
+  7/9 exec functions have contracts.
+  Unverified functions:
+    - instance
+    - init
+
+=== Summary ===
+  verification: 7 verified, 0 errors (exit 0)
+  cheating: ...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Good — restored and passing. Now I have all the evidence to write the comprehensive Turn 2 review.
+[TOOL] report_intent: Writing Turn 2 review
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/specification/dialogue/turn_002_driver.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/specification/dialogue/turn_002_driver.md with 7699 characters
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Now create the STOP file since all items are resolved:
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/specification/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/specification/dialogue/STOP with 593 characters
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Review complete. **All 14 checklist items: RESOLVED.**
+
+Key findings from Turn 2:
+- **Verified fixer's claim**: `init()` truly cannot use `#[verus_verify(external_body)]` — Verus rejects `INSTANCE.write()` with `"&mut types not yet supported"`. The `assume_specification` workaround is justified.
+- **3 items FIXED**: `init()` contract added, `addr >= 0` moved to `wf()`, view naming documented.
+- **4 items accepted with documentation**: Tautological public API specs are an inherent singleton-pattern limitation; `Inner` methods carry the strong specs.
+- Verification passes: 7 verified, 0 errors.
+
+
+=== Session End ===
+Session: 4bdeff39-cae7-47ee-b88d-480dcaa3499e
+Duration: 336.5s
+Exit code: 0
+JSONL log: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/specification/dialogue-reviewer-t002-claude-20260424-231641.jsonl
