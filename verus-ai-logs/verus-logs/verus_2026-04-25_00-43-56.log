@@ -1,0 +1,381 @@
+Timestamp: 2026-04-25_00-43-56
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::frame
+Exit code: 101
+5 verified
+4 errors
+
+Cheating patterns:
+  assume=0
+  external_body=24
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=11
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+note: verifying module mm::phys::frame
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:765:13
+    |
+765 | /             ({
+766 | |                 let start_frame_number = region@.start / spec_page_size();
+767 | |                 let end_frame_number = (region@.start + region@.size) / spec_page_size();
+768 | |                 let frame_numbers = vstd::set_lib::set_int_range(start_frame_number, end_frame_number);
+...   |
+780 | |             }),
+    | |______________^ failed this postcondition
+...
+876 |                   return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    |                   ---------------------------------------------------------- at this exit
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:765:13
+    |
+765 | /             ({
+766 | |                 let start_frame_number = region@.start / spec_page_size();
+767 | |                 let end_frame_number = (region@.start + region@.size) / spec_page_size();
+768 | |                 let frame_numbers = vstd::set_lib::set_int_range(start_frame_number, end_frame_number);
+...   |
+780 | |             }),
+    | |______________^ failed this postcondition
+...
+934 |                       return Err(Error::new(ErrorCode::OutOfMemory, reason));
+    |                       ------------------------------------------------------ at this exit
+
+note: recommendation not met: cannot prove that there exists values that satisfy the condition of the choose expression
+   --> src/kernel/src/mm/phys/frame.rs:960:21
+    |
+960 | /                     old(self).bitmap@.chunks.contains(c)
+961 | |                     && c.0 <= index as int
+962 | |                     && (index as int) < c.0 + c.1;
+    | |_________________________________________________^
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/frame.rs:963:24
+    |
+963 |                 assert(self.bitmap@.chunks.contains(witness_chunk));
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+note: recommendation not met: cannot prove that there exists values that satisfy the condition of the choose expression
+    --> src/kernel/src/mm/phys/frame.rs:1064:25
+     |
+1064 | /                         old(self).bitmap@.chunks.contains(c)
+1065 | |                         && c.0 <= i && i < c.0 + c.1;
+     | |____________________________________________________^
+
+error: assertion failed
+    --> src/kernel/src/mm/phys/frame.rs:1066:28
+     |
+1066 |                     assert(self.bitmap@.chunks.contains(cov_chunk));
+     |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+note: automatically chose triggers for this expression:
+  --> src/kernel/src/mm/phys/frame.proof.rs:39:13
+   |
+39 |           &&& forall|i: int| self.bitmap@.is_covered(i) ==> {
+   |  _____________^
+40 | |             &&& i >= 0
+41 | |             &&& frame_addr_of(i) <= usize::MAX as int
+42 | |         }
+   | |_________^
+
+note:   trigger 1 of 1:
+  --> src/kernel/src/mm/phys/frame.proof.rs:39:28
+   |
+39 |         &&& forall|i: int| self.bitmap@.is_covered(i) ==> {
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> src/kernel/src/mm/phys/frame.proof.rs:55:21
+   |
+55 |             let i = choose|i: int| self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+  --> src/kernel/src/mm/phys/frame.proof.rs:55:81
+   |
+55 |             let i = choose|i: int| self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+   |                                                                                 ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> src/kernel/src/mm/phys/frame.proof.rs:63:21
+   |
+63 | ... = choose|i: int| self.bitmap@.is_covered(i) && !self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+  --> src/kernel/src/mm/phys/frame.proof.rs:63:112
+   |
+63 | ...!self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+   |                                                  ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> src/kernel/src/mm/phys/frame.proof.rs:72:35
+   |
+72 |                     let i_alloc = choose|i: int| self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+   |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+  --> src/kernel/src/mm/phys/frame.proof.rs:72:95
+   |
+72 |                     let i_alloc = choose|i: int| self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+   |                                                                                               ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> src/kernel/src/mm/phys/frame.proof.rs:73:34
+   |
+73 | ... = choose|i: int| self.bitmap@.is_covered(i) && !self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+  --> src/kernel/src/mm/phys/frame.proof.rs:73:125
+   |
+73 | ...!self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+   |                                                  ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> src/kernel/src/mm/phys/frame.proof.rs:84:21
+   |
+84 |             let i = choose|i: int| self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+  --> src/kernel/src/mm/phys/frame.proof.rs:84:81
+   |
+84 |             let i = choose|i: int| self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+   |                                                                                 ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> src/kernel/src/mm/phys/frame.proof.rs:94:21
+   |
+94 | ... = choose|i: int| self.bitmap@.is_covered(i) && !self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+  --> src/kernel/src/mm/phys/frame.proof.rs:94:112
+   |
+94 | ...!self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+   |                                                  ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:114:9
+    |
+114 |         assert forall|i: int| self.bitmap@.is_covered(i) implies
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:114:31
+    |
+114 |         assert forall|i: int| self.bitmap@.is_covered(i) implies
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:514:21
+    |
+514 |                     assert forall|i: int|
+    |                     ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:515:73
+    |
+515 |                         old(self).bitmap@.set_bits.contains(i) && fa == frame_addr_of(i)
+    |                                                                         ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:718:21
+    |
+718 |                     assert forall|i: int|
+    |                     ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:721:34
+    |
+721 |                         && fa == frame_addr_of(i)
+    |                                  ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:858:33
+    |
+858 |                           let w = choose|i: int|
+    |  _________________________________^
+859 | |                             old(self).bitmap@.is_covered(i)
+860 | |                             && !old(self).bitmap@.set_bits.contains(i)
+861 | |                             && fa == frame_addr_of(i);
+    | |_____________________________________________________^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:861:38
+    |
+861 | ...                   && fa == frame_addr_of(i);
+    |                                ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:908:37
+    |
+908 |   ...                   let w = choose|i: int|
+    |  _______________________________^
+909 | | ...                       old(self).bitmap@.is_covered(i)
+910 | | ...                       && !old(self).bitmap@.set_bits.contains(i)
+911 | | ...                       && fa == frame_addr_of(i);
+    | |___________________________________________________^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:911:42
+    |
+911 | ...                   && fa == frame_addr_of(i);
+    |                                ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:959:49
+    |
+959 |                   let witness_chunk: (int, int) = choose|c: (int, int)|
+    |  _________________________________________________^
+960 | |                     old(self).bitmap@.chunks.contains(c)
+961 | |                     && c.0 <= index as int
+962 | |                     && (index as int) < c.0 + c.1;
+    | |_________________________________________________^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:960:21
+    |
+960 |                     old(self).bitmap@.chunks.contains(c)
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:992:13
+    |
+992 |             assert forall|addr: int| frames.contains(addr)
+    |             ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:992:38
+    |
+992 |             assert forall|addr: int| frames.contains(addr)
+    |                                      ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1009:29
+     |
+1009 |                       let i = choose|i: int|
+     |  _____________________________^
+1010 | |                         self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+     | |_____________________________________________________________________________________^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1010:70
+     |
+1010 |                         self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+     |                                                                      ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1019:29
+     |
+1019 |                       let i = choose|i: int|
+     |  _____________________________^
+1020 | |                         old(self).bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+     | |__________________________________________________________________________________________^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1020:75
+     |
+1020 |                         old(self).bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+     |                                                                           ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1004:13
+     |
+1004 |             assert forall|addr: int|
+     |             ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1005:17
+     |
+1005 |                 self@.allocated_frames.contains(addr) <==>
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1039:29
+     |
+1039 |                       let i = choose|i: int|
+     |  _____________________________^
+1040 | |                         self.bitmap@.is_covered(i)
+1041 | |                         && !self.bitmap@.set_bits.contains(i)
+1042 | |                         && addr == frame_addr_of(i);
+     | |___________________________________________________^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1042:36
+     |
+1042 |                         && addr == frame_addr_of(i);
+     |                                    ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1058:29
+     |
+1058 |                       let i = choose|i: int|
+     |  _____________________________^
+1059 | |                         old(self).bitmap@.is_covered(i)
+1060 | |                         && !old(self).bitmap@.set_bits.contains(i)
+1061 | |                         && addr == frame_addr_of(i);
+     | |___________________________________________________^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1061:36
+     |
+1061 |                         && addr == frame_addr_of(i);
+     |                                    ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1063:49
+     |
+1063 |                       let cov_chunk: (int, int) = choose|c: (int, int)|
+     |  _________________________________________________^
+1064 | |                         old(self).bitmap@.chunks.contains(c)
+1065 | |                         && c.0 <= i && i < c.0 + c.1;
+     | |____________________________________________________^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1064:25
+     |
+1064 |                         old(self).bitmap@.chunks.contains(c)
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1034:13
+     |
+1034 |             assert forall|addr: int|
+     |             ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1035:17
+     |
+1035 |                 self@.free_frames.contains(addr) <==>
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+    --> src/kernel/src/mm/phys/frame.rs:1034:13
+     |
+1034 |             assert forall|addr: int|
+     |             ^^^^^^
+
+verification results:: 5 verified, 4 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 4 previous errors
