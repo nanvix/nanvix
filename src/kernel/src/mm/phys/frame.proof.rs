@@ -83,7 +83,6 @@ impl Inner {
         by {
             let i = choose|i: int| self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
             assert(self.bitmap@.set_bits.contains(i));
-            // set_bits ⊆ covered (from bitmap wf)
             assert(self.bitmap@.is_covered(i));
             assert(i >= 0);
             assert(addr == i * ps);
@@ -96,6 +95,26 @@ impl Inner {
             assert(i >= 0);
             assert(addr == i * ps);
             vstd::arithmetic::mul::lemma_mul_nonnegative(i, ps);
+        }
+    }
+
+    /// Lemma: when bitmap state is preserved (chunks unchanged, inv() maintained),
+    /// internal_inv is preserved from the old state.
+    proof fn lemma_internal_inv_preserved(&self, old_inner: &Inner)
+        requires
+            old_inner.internal_inv(),
+            self.bitmap.inv(),
+            self.bitmap@.chunks =~= old_inner.bitmap@.chunks,
+        ensures
+            self.internal_inv(),
+    {
+        // spec_page_size() > 0 is a global fact from old_inner.internal_inv()
+        // bitmap.inv() is given
+        // forall covered(i): chunks unchanged means is_covered is the same
+        assert forall|i: int| self.bitmap@.is_covered(i) implies
+            i >= 0 && frame_addr_of(i) <= usize::MAX as int
+        by {
+            assert(old_inner.bitmap@.is_covered(i));
         }
     }
 }

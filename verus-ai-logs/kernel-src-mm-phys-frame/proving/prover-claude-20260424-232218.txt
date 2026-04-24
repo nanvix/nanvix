@@ -2659,3 +2659,99 @@ Turn 78
 Turn 79
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:205:13
+    |
+205 |               self.inv(),
+    |               ^^^^^^^^^^ failed this postcondition
+...
+224 | /         match self.bitmap.clear(frame_number...
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+The issue is that `self.internal_inv()` isn't being established. I need to prove it explicitly. Let me fix both branches:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Two errors:
+1. `postcondition not satisfied: self.inv()` — at the end of the Ok branch. The proof is not establishing `self.inv()`.
+2. `precondition not satisfied: self.internal_inv()` in the Err branch's `lemma_inv_implies_wf()` call.
+
+Let me think about what's happening:
+
+For the Err branch (line 302):
+- I'm calling `self.lemma_inv_implies_wf()` which requires `self.internal_inv()`.
+- But I need to first establish `self.internal_inv()`.
+- Since bitmap unchanged: `self.bitmap.inv()` holds (from clear() Err postcondition).
+
+
+- The global `spec_page_size() > 0` carries over since it's a constant, and the forall condition about covered chunks is preserved since chunks are unchanged. The SMT solver might just need help connecting these facts from the old state to the new one.
+- For the Ok branch after clear(), the bitmap's invariant holds from the postcondition, and since chunks and the forall condition don't depend on the bitmap mutation, they remain valid. But I need to explicitly prove `self.internal_inv()` before calling `lemma_inv_implies_wf()`, since that lemma only establishes `wf()` and I need both parts of the full invariant.
+
+I'm adding assertions to establish each component of `internal_inv()` — the bitmap invariant, the page size constraint, and the forall condition about covered indices — before invoking the lemma.
+
+Still writing proof assertions...
+[RESULT ✓] view: 280.                         }
+281.                     }
+282.                     assert forall|addr: int|
+283.                         old(self)@.free_frames.contains(addr) || addr == fa
+284.                         implies self@.free_frames.contains(addr)
+285.                     by {
+286.       ...
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 320.                     by {
+321.                         if self@.allocated_frames.contains(addr) {
+322.                             let i = choose|i: int|
+323.                                 #[trigger] self.bitmap@.set_bits.contains(i)
+324.                                 && addr == frame_addr_o...
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+I need to add `internal_inv` establishment before calling `lemma_inv_implies_wf`. Let me add a helper proof function for this:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use vstd::arithmetic::div_mod::*;
+4. 
+5. /// Helper: convert a bitmap index to a frame (physical) address.
+6. pub open spec fn frame_addr_of(i: int) -> int {
+7.     i * spec_page_size()
+8. }
+9. 
+10. impl View for Inner {
+11.     type V = UpoolView;
+12. 
+13.     closed spec fn view...
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+I need to add a helper that establishes `internal_inv` after bitmap operations that preserve chunks:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+Now update the `free` method to call `lemma_internal_inv_preserved` before `lemma_inv_implies_wf`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+Now fix the Err branch too:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
