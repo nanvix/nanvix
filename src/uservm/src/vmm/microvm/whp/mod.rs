@@ -38,12 +38,18 @@ use crate::{
             Guest,
             GuestState,
         },
-        microvm::whp::vcpu::{
-            VirtualProcessor,
-            VirtualProcessorExitContext,
-            VirtualProcessorExitReasonRef,
+        microvm::{
+            mount,
+            whp::vcpu::{
+                VirtualProcessor,
+                VirtualProcessorExitContext,
+                VirtualProcessorExitReasonRef,
+            },
         },
-        ramfs::RamFs,
+        ramfs::{
+            MultiRamFs,
+            RamFs,
+        },
     },
 };
 use ::anyhow::Result;
@@ -459,29 +465,53 @@ impl Vmm {
             #[cfg(feature = "profile-time")]
             let ramfs_load_start: Instant = Instant::now();
 
-            let ramfs_region: Option<(usize, usize)> =
-                if let Some(ramfs_filename) = args.ramfs_filename.as_deref() {
-                    let initrd_end: usize = match guest.initrd_region() {
-                        Some((base, size)) => match base.checked_add(size) {
-                            Some(end) => end,
-                            None => {
-                                let reason: String = "initrd region overflowed while computing \
-                                                      ramfs placement"
-                                    .to_string();
-                                error!("new(): {reason}");
-                                anyhow::bail!(reason)
-                            },
+            let ramfs_region: Option<(usize, usize)> = {
+                let initrd_end: usize = match guest.initrd_region() {
+                    Some((base, size)) => match base.checked_add(size) {
+                        Some(end) => end,
+                        None => {
+                            let reason: String = "initrd region overflowed while computing ramfs \
+                                                  placement"
+                                .to_string();
+                            error!("new(): {reason}");
+                            anyhow::bail!(reason)
                         },
-                        None => ::config::microvm::DEFAULT_INITRD_BASE,
-                    };
+                    },
+                    None => ::config::microvm::DEFAULT_INITRD_BASE,
+                };
 
+                if let Some(ref mount_dir) = args.mount_directory {
+                    // Build a FAT image from the host directory.
+                    // The TempPath ensures the file is cleaned up on all paths (including errors).
+                    let (mountfs_temp, _mountfs_size) =
+                        mount::build_mount_image(Path::new(mount_dir))?;
+                    let mountfs_path: &Path = mountfs_temp.as_ref();
+
+                    // Compute the multi-image layout (zero-copy: no concatenated file).
+                    let rootfs_path: Option<PathBuf> =
+                        args.ramfs_filename.as_ref().map(PathBuf::from);
+                    let layout: ::multiimage::MultiImageLayout =
+                        mount::compute_unified_layout(rootfs_path.as_deref(), mountfs_path)?;
+
+                    // Open all sub-image files and map them directly into guest memory.
+                    let multi_ramfs: MultiRamFs = MultiRamFs::open(layout)?;
+                    let (ramfs_base, ramfs_size) =
+                        multi_ramfs.load_into_virtual_memory(&mut vmem, initrd_end)?;
+                    vmem.attach_backing_files(multi_ramfs.into_files());
+
+                    // TempPath drops here (or on error), removing the temporary file.
+                    drop(mountfs_temp);
+                    Some((ramfs_base, ramfs_size))
+                } else if let Some(ramfs_filename) = args.ramfs_filename.as_deref() {
+                    // Legacy single-image path.
                     let ramfs: RamFs = RamFs::open(Path::new(ramfs_filename))?;
                     let (ramfs_base, ramfs_size) =
                         ramfs.load_into_virtual_memory(&mut vmem, initrd_end)?;
                     Some((ramfs_base, ramfs_size))
                 } else {
                     None
-                };
+                }
+            };
 
             RamFs::write_registers(&mut vmem, ramfs_region)?;
 
