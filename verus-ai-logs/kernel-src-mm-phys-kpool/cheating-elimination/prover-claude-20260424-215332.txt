@@ -764,3 +764,17 @@ Turn 27
 ────────────────────────────────────────────────────────────
 Good. Now let me run the full verification to make sure everything passes:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: === Verus Verification (cargo mode) ===
+=== Results ===
+=== Cheating Pattern Check ===
+=== Function Coverage ===
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  coverage: 4/17 exec functions have contracts
+  status: CHEATING_DETECTED
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
