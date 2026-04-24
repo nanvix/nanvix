@@ -4722,3 +4722,246 @@ Still 4 errors. Let me see the full error details:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
 
 [THINKING] Still 4 errors. Let me see the details:
+[RESULT ✓] bash: error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:765:13
+    |
+765 | /             ({
+766 | |                 let start_frame_number = region@.start / spec_page_size();
+767 | |                 let end_frame_number = (region@.start + region@.size) / spec_page_size();
+768 | |  ...
+
+────────────────────────────────────────────────────────────
+Turn 165
+────────────────────────────────────────────────────────────
+Let me look at the specific lines where errors occur more carefully and try a different approach for the coverage bridge:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] OK, the errors are:
+
+1. **Postcondition** at line 876 (Err from loop 1) — still failing
+2. **Postcondition** at line 934 (Err from loop 2) — still failing
+3. **Assertion failed** at line 963 — `self.bitmap@.chunks.contains(witness_chunk)` in loop 3
+4. **Assertion failed** at line 1066 — `self.bitmap@.chunks.contains(cov_chunk)` in post-loop
+
+The postcondition failures are still present. The overflow is fixed (no more "arithmetic overflow" error)!
+
+
+For errors 3 and 4, the real issue is that the `choose` expression itself can't find a witness — Verus can't prove that `old(self).bitmap@.chunks` actually contains any chunk satisfying the condition, so the assertion about membership in the new state becomes impossible to verify.
+
+Looking at how `is_covered` is actually defined, it checks for a chunk in `self.chunks` where the index falls within that chunk's range. The problem might be a type mismatch — `is_covered` expects a `usize` parameter, but I'm potentially passing something that doesn't align with how the chunks are being matched. I'm second-guessing myself on how Verus handles type coercion between `int` and `usize` in spec mode — `usize` should be bounded by `[0, usize::MAX]`, so when `is_covered` expects a `usize` argument but receives an `int`, there's likely an implicit range constraint. The real problem is that the `choose` expression can't find a chunk satisfying the `is_covered` condition, possibly because the function signature or its preconditions aren't aligning with what the proof expects. I'm verifying that when I instantiate the loop invariant with `j = index as int`, the type conversion works correctly—since `index` is `usize`, converting to `int` gives a non-negative value, so converting back to `usize` recovers the original. My `choose` clause should then match the existential in `is_covered` by selecting the appropriate chunk that contains this index.
+
+But Verus is rejecting the proof, saying it can't find values satisfying the condition. The problem might be the trigger on the forall—if Verus auto-selected a trigger like `is_covered(j)`, it would only instantiate when it sees that exact predicate applied to `index as int`, but I haven't explicitly asserted that yet.
+
+Actually, I think I see the issue now: I need to assert `old(self).bitmap@.is_covered(index as int)` before the choose statement so the forall trigger fires and instantiates with the right value. The issue might be that the forall trigger in the invariant doesn't match `old(self).bitmap@.is_covered(index as int)` the way I'm expecting. When Verus encounters the assertion, it should try to instantiate the forall by matching the trigger, but if the trigger pattern is different, the instantiation won't happen and the assertion will fail to prove. Maybe Verus auto-selects a different trigger. Let me try a different approach: explicitly instantiate the forall by asserting the antecedent.
+
+Actually wait, looking at the invariant more carefully, the trigger could be `old(self).bitmap@.is_covered(j)` or a simpler expression. In Verus, for implications `P(j) ==> Q(j)`, the trigger is usually based on `Q(j)` or `P(j)`.
+
+Let me think about this differently. In loop 3, `old(self)` refers to the function entry state, not the loop start state. So the invariant's `old(self).bitmap@.is_covered(j)` means coverage at function entry, which should be consistent with what I'm asserting in the loop body. But I need to make sure the coverage fact for `old(self)` is actually being used by the solver. to be established by the PREVIOUS loops. Loop 1 establishes coverage for `self` (not `old(self)`) in its invariant — `forall|j| sfn <= j < index ==> self.bitmap@.is_covered(j)`. After loop 1 completes, `self.bitmap@.is_covered(j)` for `j in [sfn, efn)`. And since `self.bitmap@ =~= old(self).bitmap@` (loop 1 invariant), we have `old(self).bitmap@.is_covered(j)` for `j in [sfn, efn)`.
+
+But does Verus carry this fact from loop 1's postcondition into loop 2's invariant and then into loop 3? Loop 2 maintains the coverage fact through its own invariant, so after loop 2 exits, I still have `forall|j| sfn <= j < efn ==> self.bitmap@.is_covered(j)`. The question is whether loop 3's invariant can reference `old(self).bitmap@.is_covered(j)` — Verus might not automatically derive this from the chunks equality, even though the coverage holds for both the current and original bitmap states. this fact about `old(self)` (function entry) was never explicitly established.
+
+Hmm wait. Let me reconsider. Loop 1 says `self.bitmap@ =~= old(self).bitmap@`. This is because loops 1 and 2 are read-only (find_chunk and test don't modify the bitmap). After loop 2, `self.bitmap@ =~= old(self).bitmap@` still holds (from loop 2 invariant).
+
+So at loop 3 entry: `forall|j| sfn <= j < efn ==> self.bitmap@.is_covered(j)` (from loop 2 postcondition) AND `self.bitmap@ =~= old(self).bitmap@` (from loop 2 postcondition). Therefore `old(self).bitmap@.is_covered(j)` for j in [sfn, efn).
+
+The issue is that Verus needs to establish this coverage property at loop 3's entry point to satisfy the invariant. Since the bitmap hasn't been modified yet and I have both the equivalence between current and original state plus the coverage facts from loop 2, I should be able to derive that the original bitmap also satisfies the coverage condition. The invariant is being established at loop entry, so that's not the issue. The assertion failure is happening inside the loop body itself. The invariant states that for all `j` in the range `[sfn, efn)`, a coverage property should hold based on the bitmap state, and this should be available throughout the loop since it's a universal quantification over a fixed range that doesn't change as the loop variable iterates.
+
+The real problem is that when I try to choose a witness chunk from the bitmap's chunks, Verus can't satisfy that constraint—even though I've asserted the coverage property. The issue seems to be that the coverage assertion and the chunk selection are working with different aspects of the bitmap state, so proving one doesn't automatically give me what I need for the other. 1 succeeds, then step 2 should work because `is_covered` is defined as an existential over chunks. If step 1 fails, then step 2 also fails.
+
+Hmm, but Verus says "recommendation not met: cannot prove that there exists values that satisfy the condition." This is about the choose expression, not about the preceding assertion. Maybe the assertion succeeds but the choose still fails because the is_covered definition uses a different formulation than my choose pattern?
+
+Let me check: is the choose pattern EXACTLY matching the is_covered definition?
+
+is_covered(index):
+```
+exists|chunk: (int, int)| self.chunks.contains(chunk) && chunk.0 <= index as int && (index as int) < chunk.0 + chunk.1
+```
+
+Wait, inside is_covered, `self` refers to SparseBitmapView, not to `old(self)`. And `index` is the parameter. So when I expand `old(self).bitmap@.is_covered(index as int)`, I need to trace through the type conversions carefully—`index` starts as `usize`, gets cast to `int` for the is_covered call, and there might be some implicit coercion happening that's making the patterns not match exactly. I'm realizing the trigger mismatch might be the real issue here—when the forall quantifies over `j: int` but I'm asserting with `index: usize`, Verus might not recognize them as the same due to the type coercion. Let me try explicitly casting `index` to `int` in the assertion to match the forall's trigger pattern, or alternatively assert with the uncoerced type to see if that helps the SMT solver connect them. I'm trying a different tactic with `assert forall` to prove coverage for all frames in the range, but I'm running into the same fundamental problem—I need to show that `is_covered` depends only on the chunks, which are equal between old and new states, but I'm struggling to bridge that gap in the proof. I'm realizing the real problem: even though `is_covered` is an open spec function, Verus still can't automatically prove the existential condition in the choose expression. The witness I'm trying to extract from the old state should satisfy the condition for the new state, but Verus isn't connecting that the chunks are extensionally equal and therefore the same witness works. I need to manually provide that proof rather than relying on Verus to figure it out. I'm wondering if `old(self)` actually works as expected in loop invariants within attribute mode—it's supposed to refer to the function entry state, but I'm not entirely sure Verus interprets it correctly in that context. Let me trace through the existing loop invariants to see if I've already used `old(self)` successfully elsewhere, which would suggest it's valid.
+
+Actually, looking more carefully at the loop 3 error, the invariant itself passed at entry, so the problem isn't with `old(self)` in the invariant declaration. The real issue is that when I try to invoke the invariant's forall condition inside the loop body to prove coverage, something breaks. I suspect the problem is a type mismatch: the invariant uses `j: int`, but `is_covered` expects `index: usize`, and Verus might not be automatically coercing between these types in the way I expect.
+
+Let me try rewriting the invariant to avoid this type mixing altogether by using `usize` directly instead of `int`.
+
+Actually, I think the real issue is that I need to help Verus instantiate the forall quantifier from the invariant. Let me add an explicit assertion that triggers the instantiation with the current loop index, so Verus can extract the chunk witness I need. I'm trying different approaches to trigger the forall instantiation—using explicit assertions with proof blocks, or potentially restructuring how I track the covered chunks. There's a type mismatch issue with `is_covered` expecting `usize` that might be complicating things. The bounded range means both quantifiers cover the same values in practice, so switching to `usize` should work. I need to update the loop 3 invariant to use `usize` instead of `int` to match the trigger pattern, though loops 1 and 2 don't seem to have the same verification issue since the problem only surfaces when I actually try to use the coverage assertion.
+
+Let me try rewriting the invariant with `usize` quantifiers, but I'm running into a type mismatch—`set_bits.contains` expects `int` while the loop variable would be `usize`. Rather than juggling conversions, I should try storing the coverage fact directly as a raw chunk existential in the invariant instead of relying on `is_covered`.
+
+Actually, the simplest approach might be to use an `assert forall` block that re-establishes coverage for `self` from `old(self)` by leveraging the fact that chunks are equal and `is_covered` depends only on chunks—though I need to make sure the inner assertion about `old(self)` coverage actually holds.
+
+Let me think about this from Z3's perspective. The invariant gives me a forall statement over the frame range, and when I assert a specific instance like `old(self).bitmap@.is_covered(index as int)`, Z3 should match that against the trigger and instantiate the forall with the right index value, which would then let me derive the coverage property I need.
+
+But wait—I'm realizing the issue might be a type mismatch. The forall quantifies over `int`, but `is_covered` actually expects `usize` as its parameter. Verus is probably inserting a coercion from `int` to `usize` in the Z3 encoding, so the trigger becomes something like `is_covered(bitmap, j_as_usize)` rather than just `is_covered(bitmap, j)`. When I then assert with `index as int`, the types might not align properly for the trigger to fire. as int)`, the Z3 encoding would be `is_covered(bitmap, (index_as_int) as usize)`. But `index_as_int as usize = index` (since index is already usize and non-negative). So the trigger would be `is_covered(bitmap, index)`.
+
+The forall trigger is `is_covered(bitmap, j_as_usize)`. For matching, we need `j_as_usize = index`. This requires Z3 to figure out that `j_as_usize = index` when `j = index as int`. Since `j as usize = (index as int) as usize = index` (for non-negative index), this should be satisfiable. But Z3 might not automatically simplify `(int_to_usize(int_of_usize(index))) = index`.
+
+This is a classic trigger and coercion mismatch in Verus. The solution is to align the quantifier variable type with the function parameter type to avoid unnecessary coercions. I'll rewrite the invariant to use `usize` directly, so the trigger becomes `is_covered(bitmap, j)` where both `j` and `index` are `usize` and match without conversion. For the `set_bits` forall, I need to keep `int` since that's what the `contains` method expects.
+
+Now I'm checking whether changing just the coverage forall to `usize` will work with the loop postconditions, since loop 2 currently quantifies over `int` values. entry proof needs to convert from `int` to `usize` quantification. 
+
+Hmm, this could cause additional issues at loop entry. Let me think...
+
+Actually, between loop 2 and loop 3, I can add a proof block to re-establish the coverage with the correct types. But this might not be necessary if Verus handles the conversion automatically.
+
+Maybe there's a simpler fix. Instead of changing the invariant, let me add a lemma call in the loop 3 body that explicitly bridges coverage by unpacking the `is_covered` definition and asserting the bounds conditions to trigger the forall instantiation from the invariant.
+
+Hmm, this is going in circles. Let me try yet another approach and add an explicit helper function or lemma that bridges the gap. coverage via chunks equality. This way, I give Verus an explicit proof.
+
+In the proof file, I can add a lemma that transfers coverage from one sparse bitmap view to another by asserting that their chunks are equivalent, then using a witness to show the covering interval exists in both.
+
+Wait, but `SparseBitmapView` might not be visible in the proof file's scope, and the `is_covered` function might need to be opened. Actually, this should work in a `verus!{}` block in the proof file.
+
+Let me check the existing errors more carefully. There are 4 errors total: two postcondition failures at the error returns in loops 1 and 2, and two assertion failures in the coverage bridges for loops 3 and post-loop. For the postcondition failures, the issue is likely that I'm asserting `self@ =~= old(self)@` but the postcondition expects `self@ == old(self)@`, which might be a stricter equality requirement. The issue is that `self@ == old(self)@` requires exact equality, but in Verus, struct equality for `UpoolView` should work the same way as extensional equality for `Set<int>` fields—so `a == b` means both `allocated_frames` and `free_frames` are equal. Let me verify whether the equality check is actually the problem or if it's something else with how `frames.subset_of(...)` is being evaluated. The `=~=` operator is just Verus's way of expressing extensional equality, which it translates to a forall statement and then proves equivalent to `==`. So asserting `self@ =~= old(self)@` should be sufficient to prove `self@ == old(self)@`. But I'm wondering if the postcondition failure is actually because the `frames` variable in my proof block is a different object than the one referenced in the postcondition's let expression, even though they have the same value. When Verus evaluates the postcondition, it's checking whether the spec expression holds, and that expression depends on how `frames` is defined in the ensures clause.
+
+Looking at the four conditions that need to hold for the postcondition to pass, I've verified each one from the wrapper ensures and my proof block. But the real question is whether Verus actually connects the `frames` I'm reasoning about in my proof with the `frames` that appears in the postcondition's let binding.
+
+The postcondition defines `frames` as a mapped set of frame numbers, and my proof constructs the same set using the same formula—just with the cast values `sfn` and `efn` that I've already shown equal the spec versions. So they should be identical.
+
+The trickier issue is whether the fact I proved about `end_frame_number as int` being equal to `(region@.start + region@.size) / spec_page_size()` is still available when I reach the Err return inside the first loop. That equality was established in a proof block after line 805, but I'm not certain if Verus maintains that fact in scope at the error path.
+
+Let me add explicit assertions right at the Err return to verify each component of the postcondition separately, rather than relying on Verus to connect the pieces automatically. I'm realizing the issue might be a mismatch between the `frames` set I proved in the error path and the `spec_frames` the postcondition expects—they could be different if `end_frame_number as int` doesn't equal `(region@.start + region@.size) / spec_page_size()`, so I need to verify that equality holds in my proof.
+
+Looking at the code flow, I established that equality in a proof block before the loop, which should be available inside the loop body since it's in function scope. Let me add explicit assertions at the error returns to verify each postcondition component and narrow down where the mismatch is occurring.
+
+The real issue might be with `self.inv()` in the postcondition—specifically whether `lemma_inv_implies_wf` preserves `self.internal_inv()` or just proves `self@.wf()`. I need to check what that lemma actually guarantees. I'm checking whether the postcondition `self.inv()` holds at function exit, particularly in the Err path—the loop invariant provides `self.internal_inv()` and the lemma gives `self@.wf()`, so both pieces should be available. The lemma takes `&self` so it doesn't modify anything, which means the invariant stays intact through the call. it's a proof function taking `&self`, it doesn't modify self.
+
+OK, so after the lemma call, `self.inv()` holds. And `self@ =~= old(self)@` is asserted. And `!frames.subset_of(...)` is asserted. So the postcondition SHOULD hold.
+
+Unless there's a scope issue with the proof assertions. In Verus, assertions in `proof!{}` blocks might not persist outside the block. But the `return Err(...)` is AFTER the proof block, not inside it. So the facts proved should still be available at the return point, even though there are some exec statements in between like setting up the error message and logging.
+
+Let me try adding explicit postcondition checks right before the return statement, using the exact postcondition expressions from the function signature. I'm trying to explicitly connect the exec variables to the spec postcondition variables by asserting that `start_frame_number` and `end_frame_number` match their spec definitions, which should help Verus see why the postcondition holds. The issue might be that the connection between exec and spec variables isn't obvious to the prover, so making it explicit could resolve the proof.
+
+Actually, I'm realizing that facts proven before the loop should still be available inside the loop body since `end_frame_number` is immutable and hasn't changed. The loop invariants give us access to the loop variable's current value and facts about its range, but immutable variables from the surrounding scope should remain valid unless they depend on mutable state that's been modified.
+
+In this case, `region@` is a shared reference (immutable), and `start_frame_number` is an immutable local, so those facts should persist through the loop. The tricky part is that `self` does change with each iteration, but since loops 1 and 2 don't mutate `self`, the invariant `self.bitmap@ =~= old(self).bitmap@` should hold throughout.
+
+Let me just try adding explicit postcondition-matching assertions and see what fails—that'll tell me exactly what needs fixing. I should also tackle the coverage bridge issue by taking a different approach.
+
+Instead of relying on `choose`, I'll manually open the `is_covered` definition. For existentials, I might need to provide witnesses explicitly. Actually, I'm wondering if there's a type mismatch—`is_covered` expects `usize` but I might be passing `int`. Let me try adjusting the choose pattern to use `index` directly instead of casting it...
+
+Wait, that won't work since `c.0` is `int` and `index` is `usize`. The choose pattern needs to match the `is_covered` definition exactly, which converts `index` to `int` internally. So my pattern with `c.0 <= index as int && (index as int) < c.0 + c.1` should be correct. But if Verus still can't prove the existential, the real issue might be that it can't prove `old(self).bitmap@.is_covered(index)` in the first place. Let me check whether the forall in the invariant has the right type.
+
+Actually, looking at the forall: `j: int` is being passed to `is_covered` which expects `usize`. Verus auto-converts `j` to `usize`, but the Z3 encoding might introduce a coercion function that's causing issues with the proof.
+
+The solution is to change the forall to use `usize` directly instead of `int`, eliminating the type coercion between the quantified variable and the function parameter. This should help Z3 match the trigger pattern more reliably. Though this does shift the comparisons from `int` to `usize` semantics, which needs to be verified.
+
+But I'm noticing that loop 2's coverage invariant didn't report errors, so the issue might be specific to loop 3. I should focus on fixing just that invariant and the post-loop proof that depends on it. Let me reconsider what `old(self)` actually refers to in loop 3's context — in Verus attribute mode, it should always point to the pre-function state, but I want to make sure that's what's happening here. So the real problem is that loop 3's invariant might not even be established at entry—Verus can't automatically bridge the `is_covered` predicate from `self` to `old(self)` even when the underlying chunks are provably equal, which is the same coverage bridging issue I keep running into.
+
+But wait, Verus didn't report an invariant establishment error for loop 3, which means it somehow proved `old(self).bitmap@.is_covered(j)` at entry. That contradicts my analysis—if it can prove it at the loop entry, why is it failing inside the loop body?
+
+Actually, I think the issue is how the invariant gets used. At loop entry, Verus checks and establishes the invariant. Then at each iteration start, it assumes the invariant holds, so `old(self).bitmap@.is_covered(j)` should be available for all `j` in the range. Inside the loop body, instantiating that forall with `j = index as int` should give me what I need, but maybe the trigger pattern isn't matching correctly. Or perhaps `old(self)` is being treated differently inside the loop body than I expect—let me think about whether the snapshot semantics are consistent here.
+
+Actually, let me try a different approach entirely. Instead of relying on the invariant's forall to trigger, I could add an explicit helper invariant that directly states the coverage property for `self` at each iteration. But wait, that would be stronger than what I can actually prove—the coverage only applies to the original range, not to `self` changing during the loop. Let me reconsider what invariant would actually hold after each `self.bitmap.set(index)` call.
+
+The key insight is that `set()` preserves the chunk structure, so if the chunks matched before the call, they still match after. Since the existing invariant already guarantees `self.bitmap@.chunks =~= old(self).bitmap@.chunks`, and `set()` doesn't change chunks, that invariant is maintained throughout the loop.
+
+Now I'm realizing the real blocker: Verus can't automatically infer that coverage is preserved just from knowing chunks are equal, because the `is_covered` predicate uses an existential that needs to be explicitly re-opened. I should write a lemma that bridges this gap.
+
+Writing the coverage preservation lemma... I'm refining the lemma to use `usize` directly for the index parameter, which avoids casting issues. Now I need to verify that the coverage property holds when the chunks are equivalent—the proof should show that if a position is covered in one view, it's covered in the other since they share the same chunks.
+
+I'll add this lemma to the proof file inside a `verus!{}` block, then call it from the loop body to establish that the bitmap remains covered after each iteration, rather than inlining the choose logic each time. I'm realizing the standalone function approach won't work either since I need to connect it back to the actual bitmap state. Let me step back and think about what I'm really trying to prove here.
+
+The problem is that I have three facts: the old bitmap was covered over a range, the chunks haven't changed, and I need to show the current bitmap is covered at a specific index. These should compose together, but Verus isn't making that connection automatically. I think I need to explicitly instantiate the forall invariant with the current loop index and then use the chunk equivalence to bridge from the old state to the new one. I'm realizing the issue might be earlier than I thought—the assertion that `old(self).bitmap@.is_covered(index as int)` should pass from the forall, but maybe it's actually failing too. Let me check what the error message says about that line versus the choose statement, since if the assertion itself doesn't hold, then the choose will definitely fail. Still writing proof logic... assert forall ... implies self.bitmap@.chunks.contains(c)` tells Verus that any chunk in old is also in self. Combined with the knowledge that `old(self).bitmap@.is_covered(index as int)` (i.e., there exists such a chunk in old), Verus should derive that the chunk is also in self, proving `self.bitmap@.is_covered(index as int)`.
+
+Hmm, but this requires Z3 to chain the existential from `is_covered` with the forall I'm asserting. Z3 should be able to do this.
+
+Actually, I think the issue might be even simpler. Perhaps `is_covered` in the invariant and `is_covered` in the assertion use different internal representations due to the `old(self)` vs `self` difference.
+
+Wait, I see the real problem now. The `is_covered` definition expands differently depending on whether I'm looking at old chunks or current chunks—they're existentials over two separate sets. So I need to explicitly connect them. The `choose` approach won't work because it needs me to already know the existential holds, but I've only asserted the old version.
+
+Let me try a different approach: instead of using `choose`, I'll manually construct the proof by asserting the invariant gives me the chunk in old, then asserting the invariant also tells me chunks are preserved, then combining these facts. third assertion fails, it means the forall instantiation doesn't work (trigger issue). If it succeeds, the choose should work too.
+
+Let me just try this and see.
+
+Actually, a much simpler test: what if I DON'T use choose at all, and instead just use the `=~=` on chunks directly? I'm asserting that the chunks are extensionally equal, then relying on Verus to automatically propagate the existential witness from the old state to the new one since the sets are equivalent.
+
+Let me commit to this approach: assert the old coverage holds, assert the chunks are extensionally equal via the invariant, then assert the new coverage holds. If that doesn't work, I'll add a lemma to help bridge the gap.
+[RESULT ✓] view: 953.                 && (forall|j: int| start_frame_number as int <= j < end_frame_number as int ==> !old(self).bitmap@.set_bits.contains(j)),
+954.         )]
+955.         for index in start_frame_number..end_frame_number {
+956.             proof! {
+957.                 // Bridge coverage from old(s...
+
+────────────────────────────────────────────────────────────
+Turn 166
+────────────────────────────────────────────────────────────
+The issue is that `choose` on the `old(self)` chunks fails — likely a trigger mismatch between `int`/`usize` in the forall. Let me write a dedicated lemma in the proof file to bridge coverage:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use vstd::arithmetic::div_mod::*;
+4. 
+5. /// Helper: convert a bitmap index to a frame (physical) address.
+6. pub open spec fn frame_addr_of(i: int) -> int {
+7.     i * spec_page_size()
+8. }
+9. 
+10. impl View for Inner {
+11.     type V = UpoolView;
+12. 
+13.     closed spec fn view...
+
+────────────────────────────────────────────────────────────
+Turn 167
+────────────────────────────────────────────────────────────
+The `choose` approach for bridging coverage fails. Let me use `assert forall ... by` instead — this worked in `lemma_internal_inv_preserved`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I see! In `lemma_internal_inv_preserved`, at line 117, the code does `assert(old_inner.bitmap@.is_covered(i))` where `i: int` — and this assertion must work because `chunks =~= old_chunks` means the `is_covered` definitions are equivalent. This works in the proof file's `verus!{}` block.
+
+But in frame.rs attribute mode, the same pattern doesn't work. The issue might be that in `verus!{}` blocks, `is_covered(i: int)` is called differently than in attribute mode.
+
+Actually, wait. Looking at `lemma_internal_inv_preserved` more carefully:
+
+
+The forall quantifier establishes that whenever `self.bitmap@.is_covered(i)` holds, certain bounds follow, and the proof justifies this by showing the same property held for `old_inner.bitmap@` due to the equivalence between the old and new chunks.
+
+But I'm realizing I need the reverse direction for loop 3—deriving `self.is_covered(i)` from `old(self).is_covered(i)`—and I'm not sure if the direction of the equivalence supports that. matter? The existential transfer should work in BOTH directions since `chunks =~=` is symmetric.
+
+Actually, looking at the lemma again: it asserts `old_inner.bitmap@.is_covered(i)` in the `by` block. This is a FORWARD assertion — the by block is a proof for the `assert forall`. The antecedent is `self.bitmap@.is_covered(i)`. The by block proves the consequent by first establishing `old_inner.bitmap@.is_covered(i)` (which works because chunks are equal), then using `old_inner.internal_inv()`.
+
+So Verus CAN derive `old_inner.is_covered(i)` from `self.is_covered(i)` and `chunks =~=`. But can it work in reverse? The trigger is `self.bitmap@.is_covered(i)`, so when Verus sees that, it instantiates the forall. But I need to prove `self.is_covered`, not `old.is_covered`. The issue is that inside the `by` block, I'm assuming `self.is_covered(i)` as the antecedent, but then asserting `old.is_covered(i)` — which means I need a way to go from the old state back to the new state.
+
+Let me try using `assert forall ... by` to establish coverage for the current state directly, leveraging the fact that chunks are equal in both directions.
+
+Still writing proof logic... I see how the proof works now—when the antecedent `self.bitmap@.is_covered(i)` is assumed in the forall, it expands to an existential claim about chunks in `self.bitmap`. Since the chunks are equivalent between `self` and `old_inner`, that same chunk must exist in the old state, which directly gives us `old_inner.bitmap@.is_covered(i)`.
+
+Now I'm trying to apply this same reasoning to my loop invariant—I want to use `assert forall` to establish that all frame numbers in my range are covered in the current state, leveraging the fact that they're covered in the old state.
+
+Still writing proof code... I see the issue now — the `by` block doesn't directly establish that `self.is_covered(i)` holds, but rather leverages the assumption that it does to prove the consequent through the old invariant. Since `self.is_covered(i)` is already assumed in the forall, Verus can connect it to `old_inner.is_covered(i)` via the chunks equality, then apply the old invariant to derive the bounds constraint.
+
+For my case, I'm trying to prove `self.bitmap@.is_covered(j)` for the range `sfn <= j < efn`, but I only have information about the old state in the `by` block, so I need to figure out how to bridge that gap to establish the new state's coverage. assert `old(self).bitmap@.is_covered(j)` which is proved from the invariant's forall.
+
+Then, can Verus derive `self.bitmap@.is_covered(j)` from `old(self).bitmap@.is_covered(j)` and `chunks =~=`? I think Verus can do this automatically if `is_covered` is `open`, since it can see the definition and reason that `old.chunks.contains(c) == self.chunks.contains(c)` for all `c`, making the existential equivalence follow. But Z3 might not automatically propagate this with existentials, so I should test it.
+
+Actually, the reverse direction in `lemma_internal_inv_preserved` works because Z3 can automatically derive `old_inner.bitmap@.is_covered(i)` from `self.bitmap@.is_covered(i)` using the chunk equivalence.
+
+For the forward direction, the same logic should apply: if `old.is_covered(j)` holds via some witness chunk, then that same witness satisfies the condition for `self.is_covered(j)` since the chunks are equivalent. Z3 handles this by using the Skolem constant from the existential in the old state and verifying it works in the new state.
+
+The issue might be that `old(self)` references complicate things for Z3 in the loop. Let me try using `assert forall ... by { ... }` to guide the proof, which I've used successfully elsewhere in this file. The key question is whether the `by` block can instantiate the invariant's forall with the specific `j` value and verify that `old(self).bitmap@.is_covered(j)` holds given the bounds `sfn <= j < efn`.
+
+I'll implement this by replacing the choose-based approach with an `assert forall` that quantifies over the frame number range, using a `by` block to assert the coverage property from the old state. Then I'll add the post-loop proof to handle the specific index case.
+
+For the postcondition issue at error returns, I'm reconsidering whether `self@ =~= old(self)@` actually implies `self@ == old(self)@`. In Verus, `=~=` is extensional equality for datatypes, meaning it checks field-by-field equality, so it should give us the `==` we need—but let me verify this is working correctly at the error paths. && ...`. For `Set<int>`, `a =~= b` means `forall x: a.contains(x) == b.contains(x)`. And in Verus, `a =~= b` implies `a == b` for `Set`.
+
+So `self@ =~= old(self)@` should imply `self@ == old(self)@` for UpoolView. 
+
+But maybe the issue is that `self@ =~= old(self)@` itself fails? Let me check: I assert `self@.allocated_frames =~= old(self)@.allocated_frames` and `self@.free_frames =~= old(self)@.free_frames`, then assert `self@ =~= old(self)@`. If the individual component assertions succeed, the struct assertion should succeed automatically.
+
+But maybe the individual assertions fail? In the Err paths, I have `self.bitmap@ =~= old(self).bitmap@` from the loop invariant. Since `allocated_frames` is defined as a set comprehension over `self.bitmap@.set_bits`, and `self.bitmap@.set_bits =~= old(self).bitmap@.set_bits` follows from the bitmap equivalence, Verus should be able to derive that `self@.allocated_frames =~= old(self)@.allocated_frames` automatically. But maybe it's not making that connection—I need to check whether Verus can reason through the set comprehension definition to establish the equivalence. I'm trying to prove that the allocated_frames remain unchanged by using a forall assertion with explicit case analysis—if an address is in the allocated frames before or after, I can witness the corresponding bit index and show it exists in both the old and new bitmap states.
+
+Actually, let me step back and try a simpler approach with just the reflexivity assertion to see if that's sufficient. If not, I can add more detailed proofs later. I'm also realizing that the `View` implementation uses `closed spec fn`, which means Verus can see the definition within the same module where the proofs are written, so the visibility shouldn't be an issue for the proof to access the underlying bitmap structure.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 168
+────────────────────────────────────────────────────────────
+Now fix the post-loop coverage bridge (line ~1062):
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 169
+────────────────────────────────────────────────────────────
+Now run verification:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
