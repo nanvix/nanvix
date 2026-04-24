@@ -3107,3 +3107,179 @@ Turn 165
 ────────────────────────────────────────────────────────────
 Progress! 1 verified, 4 errors. The compilation errors are resolved. Now I have verification errors. Let me see the full output:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 166
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cat verus-ai-logs/verus-logs/verus_2026-04-24_
+[RESULT ✓] bash: Crate: kernel
+Directory: N/A
+Module: mm::phys::kpool
+Exit code: 101
+1 verified
+4 errors
+--
+83 |         result.is_Ok(),
+   |                ^^^^^
+
+note: verifying module mm::phys::kpool
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors...
+
+────────────────────────────────────────────────────────────
+Turn 167
+────────────────────────────────────────────────────────────
+Now I need to add proof blocks. Let me write proof blocks for each function. First, let me view the full current state of kpool.rs:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+
+[THINKING] OK, so the verification errors are:
+
+1. **alloc**: `frame_from_raw` — `result.is_Ok()` fails — need to prove `addr` is page-aligned. Also overflow in `pa_into_raw(self.base) + index * mem::PAGE_SIZE` and `index * mem::PAGE_SIZE`.
+
+2. **alloc_range**: Multiple overflow errors and postcondition failure (for the Err path from bitmap.alloc_range).
+
+3. **free**: Postcondition not satisfied.
+
+Let me now add proof blocks to each function to help the prover.
+
+Let me think about what needs to happen for each function:
+
+
+For `Inner::new`, I need to check which function was actually verified. Looking at the log, `frame_from_raw` is external_body so it's trivially verified, but the real issue is that when `alloc` calls it, the precondition isn't being satisfied — specifically, I need to prove that `addr` is page-aligned before passing it to `frame_from_raw`. The errors are happening in the `alloc` function body. I need to prove that the address we're constructing satisfies the precondition for `frame_from_raw`, which requires the address to be page-aligned. Since the base address is already page-aligned by the invariant and we're adding multiples of `PAGE_SIZE`, the alignment should hold, but I need to work through the arithmetic to make it explicit to the verifier.
+
+I also need to handle overflow checks—proving that multiplying the index by `PAGE_SIZE` doesn't overflow, and that adding it to the base address stays within bounds. The invariant gives me an upper bound on the total addressable range, and since the index is constrained by the bitmap's bit count, I can show the sum stays within `usize::MAX`.
+
+Now I'm ready to write out the proof blocks for each of the four functions, starting with the constructor and moving through allocation, deallocation, and range allocation.
+[RESULT ✓] view: 95.     )?))
+96. }
+97. 
+98. #[verus_verify]
+99. impl Inner {
+100.     ///
+101.     /// # Description
+102.     ///
+103.     /// Creates a new kernel pool.
+104.     ///
+105.     /// # Return Values
+106.     ///
+107.     /// Upon success, the kernel pool.
+108.     ///
+109.     #[verus_spec(result =>
+11...
+
+────────────────────────────────────────────────────────────
+Turn 168
+────────────────────────────────────────────────────────────
+Now I need to add proof blocks. Let me update the functions with proof assertions:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 169
+────────────────────────────────────────────────────────────
+Now add proof to alloc:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 170
+────────────────────────────────────────────────────────────
+Now add proof to free:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 309. 
+310.         let base_addr: usize = pa_into_raw(self.base) + index * mem::PAGE_SIZE;
+311.         for i in 0..count {
+312.             let addr: usize = base_addr + i * mem::PAGE_SIZE;
+313.             let frame: FrameAddress = frame_from_raw(addr)?;
+314.             addrs.push(frame);
+315.   ...
+
+────────────────────────────────────────────────────────────
+Turn 171
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 355.                         &&& !input_valid
+356.                         &&& self@ == old(self)@
+357.                     },
+358.                 }
+359.             }),
+360.     )]
+361.     fn free(&mut self, addr: FrameAddress) -> Result<(), Error> {
+362.         let index: usize = (addr.into_raw...
+
+────────────────────────────────────────────────────────────
+Turn 172
+────────────────────────────────────────────────────────────
+Let me check the BitmapView definition for the relationship between is_bit_set and set_bits:
+[TOOL] bash: grep -n 'is_bit_set\|set_bits' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/src/l
+
+[THINKING] For `free`:
+- `addr.into_raw_value()` returns `addr@` (from FrameAddress spec)
+- `pa_into_raw(self.base)` returns `self.base@` (from pa_into_raw spec)
+- `addr@ >= self.base@` (from requires: `addr@ >= old(self)@.start`)
+- So the subtraction doesn't underflow
+- `index = (addr@ - self.base@) / PAGE_SIZE`
+- The spec uses `page_index = (addr@ - old(self)@.start) / spec_page_size()`
+
+
+- I need to show `index as int == page_index`
+
+For the `clear` result, the Ok case requires `index < self.bitmap@.num_bits` and `old(self).bitmap@.is_bit_set(index)`, which map to `page_index < num_pages` and `used_page_indices.contains(page_index)`. The Err case handles `index >= self.bitmap@.num_bits` or `!old(self).bitmap@.is_bit_set(index)`, corresponding to `!input_valid`. Now I need to verify that the subtraction `addr.into_raw_value() - pa_into_raw(self.base)` doesn't underflow.
+
+Since `addr@ >= self.base@` from the requires clause and both values convert to their integer equivalents correctly, I have `addr.into_raw_value() >= pa_into_raw(self.base)`, so no underflow occurs. The division also can't overflow for usize. The core relationship I'm establishing is that `index` (computed as `(addr@ - self.base@) / spec_page_size()`) equals `page_index` from the spec, where `old(self)@.start == self.base@`.
+
+For the bitmap.clear operation, the Ok case transforms `bitmap.set_bits` to remove the index, which maps to removing `page_index` from `used_page_indices`. The Err case preserves the entire state. The postcondition for `self.inv()` holds because clear preserves `bitmap.inv()` and `base` doesn't change, so both components of `internal_inv` remain satisfied.
+
+Now I'm checking whether bitmap.clear's specification actually guarantees that `num_bits` stays constant — looking at the postcondition, it does include that `num_bits` is preserved, along with the set_bits removal and usage update. I'm checking the actual spec from the source file to verify whether `self@.num_bits == old(self)@.num_bits` is explicitly stated there, since I want to make sure my understanding matches what's documented. I'm checking the clear specification for the `clear` method to verify what postconditions are actually stated in the Ok case—specifically whether `num_bits` is preserved and what happens to the bit states and usage count. I'm verifying the postconditions for the clear operation—checking that the bit at the given index is now unset, the total number of bits remains unchanged, all other bits stay the same, the set of cleared bits is updated correctly, and the usage count decreases by one. Now I need to look at what happens in the error case.
+
+For the error branch, I'm confirming that either the index is out of bounds or the bit was already unset, and that the state remains completely unchanged. Then I'm moving on to proving the well-formedness condition for KpoolView after a free operation—specifically that `num_pages > 0`. Since the bitmap's `num_bits` is guaranteed to be positive by its invariant, and `num_pages` gets set to that value, I need to trace through how the bitmap's invariant ensures this property holds. So I've established that `self.bitmap@.num_bits > 0` holds after the clear operation by tracing through the wellformedness conditions and the invariant from the old state. The remaining elements in `set_bits` are still within the valid range since they were a subset of the originally valid elements. Now I need to verify the `free` postcondition for the error case, specifically that `self.base` remains unchanged—let me check what actually happens in the free function.
+
+Looking at the code, `self.base` is only read to compute the index, never modified, and only `self.bitmap.clear` is called. Since `clear`'s spec guarantees the bitmap is unchanged in the error case, both the bitmap and base stay the same, so the overall state equality holds. The `pa_into_raw` function takes `self.base` by value, and since `PageAligned<PhysicalAddress>` is `Copy`, this doesn't affect the proof.
+
+Now I need to handle the subtraction overflow check in the free function when computing the offset from `addr.into_raw_value() - pa_into_raw(self.base)`.
+
+Since the precondition guarantees that `addr >= self.base@`, the subtraction won't underflow. The numerator after subtracting the base fits in usize, and dividing by PAGE_SIZE (which is positive) won't cause division by zero, so both operations are safe.
+
+For the spec side, I need to verify that `page_index = (addr@ - old(self)@.start) / spec_page_size()` matches up correctly with the implementation.
+
+Now looking at what the clear operation returns: if it succeeds, the index it provides must be less than the bitmap's bit count, which corresponds to the page being within bounds. The spec also confirms the bit gets cleared in the resulting state. I'm verifying that the Ok case in the bitmap clear operation corresponds to a valid input in the kpool spec—both require the bit to be set and the index to be in bounds—while the Err case maps to invalid input where either the index is out of range or the bit isn't set. Now I need to write this up formally.
+
+Actually, I'm realizing I need to clarify the relationship between `is_bit_set` on the BitmapView and the `set_bits` property that defines `used_page_indices`—specifically, whether a bit being set in the bitmap guarantees it appears in the set of set bits.
+[RESULT ✓] bash: 21:    pub set_bits: Set<int>,
+26:    /// Requires set_bits to be finite (enforced by Bitmap::inv()).
+28:        self.set_bits.len() as int
+33:        exists|i: int| 0 <= i < self.num_bits && !self.set_bits.contains(i)
+38:        forall|i: int| 0 <= i < self.num_bits ==> self.set_bits.contains(i)
+43...
+
+────────────────────────────────────────────────────────────
+Turn 173
+────────────────────────────────────────────────────────────
+`is_bit_set(index)` = `set_bits.contains(index)`. So `old(self).bitmap@.is_bit_set(index as int)` ↔ `old(self).bitmap@.set_bits.contains(index as int)` ↔ `old(self)@.used_page_indices.contains(index as int)`.
+
+Now let me also check the `is_full` spec to understand the Err case for alloc:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/src/lib.spec.rs
+[RESULT ✓] view: 36.     /// Returns true if the bitmap is full (all bits set).
+37.     pub open spec fn is_full(&self) -> bool {
+38.         forall|i: int| 0 <= i < self.num_bits ==> self.set_bits.contains(i)
+39.     }
+40. 
+41.     /// Returns true if the bitmap is empty (no bits set).
+42.     pub open spec fn is_e...
+
+────────────────────────────────────────────────────────────
+Turn 174
+────────────────────────────────────────────────────────────
+Good. `is_full` means `forall|i| 0 <= i < num_bits ==> set_bits.contains(i)`, which is exactly what we need for alloc's Err case.
+
+Now let me write the proof for `free`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 175
+────────────────────────────────────────────────────────────
+Now let me try building before tackling alloc_range (the hardest one):
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
