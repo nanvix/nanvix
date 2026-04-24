@@ -1,8 +1,5 @@
 verus! {
 
-use super::UpoolView;
-use crate::hal::mem::spec_page_size;
-
 impl View for Inner {
     type V = UpoolView;
 

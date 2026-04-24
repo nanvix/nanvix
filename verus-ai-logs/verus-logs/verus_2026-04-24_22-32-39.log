@@ -1,0 +1,142 @@
+Timestamp: 2026-04-24_22-32-39
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: kernel::mm::phys::frame
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=2
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+warning: unreachable expression
+   --> src/kernel/src/mm/phys/frame.rs:263:9
+    |
+263 | /          for index in start_frame_number..end_frame_number {
+264 | |/             match self.bitmap.test(index) {
+265 | ||                 Ok(false) => continue,
+266 | ||                 Ok(true) => {
+267 | ||                     let conflicting_addr: usize = index * mem::FRAME_SIZE;
+...   ||
+277 | ||                 Err(err) => return Err(err),
+278 | ||             }
+    | ||_____________- any code following this `match` expression is unreachable, as all arms diverge
+279 | |          }
+    | |__________^ unreachable expression
+    |
+    = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+error: complex arguments to &mut parameters are currently unsupported
+   --> src/kernel/src/macros.rs:189:10
+    |
+189 |                   &mut crate::klog::Klog::get(
+    |  ______________________^
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+192 | |                     extract_function_name!()
+193 | |                 ),
+    | |_________________^
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:96:17
+    |
+ 96 |                   error!("{error:?}");
+    |                   ------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: complex arguments to &mut parameters are currently unsupported
+   --> src/kernel/src/macros.rs:189:10
+    |
+189 |                   &mut crate::klog::Klog::get(
+    |  ______________________^
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+192 | |                     extract_function_name!()
+193 | |                 ),
+    | |_________________^
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:154:17
+    |
+154 |                   error!("{error:?} (frame={frame:?})");
+    |                   ------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: complex arguments to &mut parameters are currently unsupported
+   --> src/kernel/src/macros.rs:189:10
+    |
+189 |                   &mut crate::klog::Klog::get(
+    |  ______________________^
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+192 | |                     extract_function_name!()
+193 | |                 ),
+    | |_________________^
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:195:17
+    |
+195 |                   error!("{error:?} (phys_addr={phys_addr:?})");
+    |                   --------------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: complex arguments to &mut parameters are currently unsupported
+   --> src/kernel/src/macros.rs:189:10
+    |
+189 |                   &mut crate::klog::Klog::get(
+    |  ______________________^
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+192 | |                     extract_function_name!()
+193 | |                 ),
+    | |_________________^
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:257:17
+    |
+257 |                   error!("{} (frame={:#010x}, region={:?})", reason, uncovered_addr, region);
+    |                   -------------------------------------------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> src/kernel/src/mm/phys/frame.rs:350:5
+    |
+350 |     unsafe { INSTANCE.write(Inner { bitmap }) };
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> src/kernel/src/mm/phys/frame.rs:364:5
+    |
+364 |     instance().alloc()
+    |     ^^^^^^^^^^
+
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> src/kernel/src/mm/phys/frame.rs:377:5
+    |
+377 |     instance().free(frame)
+    |     ^^^^^^^^^^
+
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> src/kernel/src/mm/phys/frame.rs:392:5
+    |
+392 |     instance().book(phys_addr)
+    |     ^^^^^^^^^^
+
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> src/kernel/src/mm/phys/frame.rs:406:5
+    |
+406 |     instance().alloc_range(region)
+    |     ^^^^^^^^^^
+
+warning: `kernel` (bin "kernel") generated 1 warning
+error: could not compile `kernel` (bin "kernel") due to 9 previous errors; 1 warning emitted

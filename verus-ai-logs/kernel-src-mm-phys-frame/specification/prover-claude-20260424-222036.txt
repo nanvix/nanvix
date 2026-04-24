@@ -1124,3 +1124,107 @@ Turn 37
 ────────────────────────────────────────────────────────────
 Good. Now let me run verification to see where we stand:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && MODULE=kernel::mm::phys::frame make verify-ker
+[RESULT ✓] bash: - readb
+    - writeb
+    - new
+    - read
+    - write
+    - new
+    - write
+    - new
+    - read
+    - new
+    - read
+    - write
+    - new
+    - read
+    - write
+    - new
+    - read
+    - write
+    - new
+    - read
+    - new
+    - write
+    - new
+    - read
+    - write
+    - new
+    - read
+    - w...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -E 'error\[|^error:' verus-ai-logs/verus-
+[RESULT ✓] bash: error[E0252]: the name `UpoolView` is defined multiple times
+error[E0252]: the name `spec_page_size` is defined multiple times
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+The imports clash. Let me check how kpool handles this:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs
+
+[THINKING] The issue is that `frame.spec.rs` imports `UpoolView` and `spec_page_size`, but these are already imported in `frame.proof.rs` which is also included. Both files are included into frame.rs via `include!`, and they both import the same names.
+
+Let me check: frame.spec.rs has `use super::UpoolView; use crate::hal::mem::spec_page_size;` inside `verus!{}`, and frame.proof.rs also has `use super::UpoolView; use crate::hal::mem::spec_page_size;` inside `verus!{}`.
+
+
+When both files are included, the `include!` macro pastes their contents directly, so frame.rs ends up with duplicate `use` statements for the same names across separate `verus!` blocks. Since each `verus!` block creates its own scope, the imports shouldn't actually conflict with each other.
+
+But wait — the error message about "defined multiple times" suggests the `verus!` macro might not be creating separate module scopes the way I thought. If it's just a proc macro that doesn't isolate the imports, then having the same `use` statements in the same file would cause a duplicate import error. I should probably remove the redundant imports from one of the files to fix this. I need to figure out the right approach for handling imports across these included files. The key issue is that spec.rs is included first and evaluated before proof.rs, so if I remove imports from spec.rs, they won't be available when that block runs. I think the cleanest solution is to consolidate all imports into one location — either keeping them in spec.rs since it's evaluated first, or moving everything to the main file before the includes happen.
+[RESULT ✓] view: 52. use ::vstd::prelude::*;
+53. 
+54. #[cfg(verus_keep_ghost)]
+55. include!("kpool.spec.rs");
+56. 
+57. #[cfg(verus_keep_ghost)]
+58. include!("kpool.proof.rs");
+59. 
+60. //==================================================================================================
+61. // Inner
+62. //============...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::KpoolView;
+4. 
+5. impl View for Inner {
+6.     type V = KpoolView;
+7. 
+8.     closed spec fn view(&self) -> KpoolView
+9.     {
+10.         KpoolView{
+11.             start: self.base@,
+12.             num_pages: self.bitmap@.num_bits as int,
+13.             used_page_in...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+The problem is duplicate imports across spec and proof files. Let me remove imports from proof.rs (keep in spec.rs since it's included first):
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I see — kpool.proof.rs only imports `KpoolView`, but kpool.spec.rs only has `inv()` without any imports. Let me check kpool.spec.rs:
+
+```rust
+verus! {
+impl Inner {
+    pub open spec fn inv(&self) -> bool    {
+        &&& self@.wf()
+        &&& self.internal_inv()    }
+}
+}
+```No imports. So it uses `self@` and `self.internal_inv()` which don't require explicit imports because `self` is in scope and `wf()` is on the View type (which is available via `self@` which returns `KpoolView`).
+
+
+For frame.spec.rs, I need `UpoolView` explicitly since I'm adding `impl UpoolView` blocks, and I'll need `spec_page_size` for the `addr >= 0` constraint. The cleanest approach is to keep the imports in spec.rs where they're needed and strip them from proof.rs to avoid duplication.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && MODULE=kernel::mm::phys::frame make verify-ker
