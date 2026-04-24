@@ -3916,3 +3916,36 @@ Turn 154
 ────────────────────────────────────────────────────────────
 Now run verification again:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -20
+[RESULT ✓] bash: === Results ===
+  20 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=18 admit=7 trusted=0 no_decreases=0 cfg_gate=7
+  Detail: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/cheating-detail.txt
+
+=== Function Co...
+
+────────────────────────────────────────────────────────────
+Turn 155
+────────────────────────────────────────────────────────────
+0 verification errors! Now let's check `make build` for dual compilation:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make build 2>&1 | tail -10
+[RESULT ✓] bash: Output too large to read at once (12.4 KB). Saved to: /tmp/copilot-tool-output-1777043044329-ym6flj.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 156
+────────────────────────────────────────────────────────────
+[TOOL] bash: tail -5 /tmp/copilot-tool-output-1777043044329-ym6flj.txt
+[RESULT ✓] bash: Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+{"reason":"compiler-artifact","package_id":"path+file:///home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel#0.12.469","manifest_path":"/home/ruize/verus-ai-exp/verus-...
+
+────────────────────────────────────────────────────────────
+Turn 157
+────────────────────────────────────────────────────────────
+Build succeeded. Now check `make verify` for regression:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify 2>&1 | tail -15
