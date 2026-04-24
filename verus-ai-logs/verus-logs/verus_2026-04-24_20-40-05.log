@@ -1,0 +1,68 @@
+Timestamp: 2026-04-24_20-40-05
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::kpool
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=13
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+error: cannot find attribute `verus_verify` in this scope
+   --> src/kernel/src/hal/platform/microvm/mod.rs:352:3
+    |
+352 | #[verus_verify(external_body)]
+    |   ^^^^^^^^^^^^
+    |
+help: consider importing this attribute macro
+    |
+ 14 + use vstd::prelude::verus_verify;
+    |
+
+error: cannot find attribute `verus_spec` in this scope
+   --> src/kernel/src/hal/platform/microvm/mod.rs:353:3
+    |
+353 | #[verus_spec(ret =>
+    |   ^^^^^^^^^^
+    |
+help: consider importing this attribute macro
+    |
+ 14 + use vstd::prelude::verus_spec;
+    |
+
+error[E0425]: cannot find function `from_address` in this scope
+  --> src/kernel/src/hal/mem/types/address/aligned/page.rs:45:12
+   |
+45 |     pub fn from_address(addr: T) -> Result<Self, Error> {
+   |            ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `new` in this scope
+  --> src/kernel/src/hal/mem/types/address/frame.rs:72:12
+   |
+72 |     pub fn new(address: PageAligned<PhysicalAddress>) -> Self {
+   |            ^^^ not found in this scope
+
+error[E0425]: cannot find function `from_raw_value` in this scope
+   --> src/kernel/src/hal/mem/types/address/phys.rs:155:8
+    |
+155 |     fn from_raw_value(value: usize) -> Result<Self, Error> {
+    |        ^^^^^^^^^^^^^^
+    |
+help: you might have meant to call the associated function
+    |
+155 |     fn Self::from_raw_value(value: usize) -> Result<Self, Error> {
+    |        ++++++
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `kernel` (bin "kernel") due to 5 previous errors
