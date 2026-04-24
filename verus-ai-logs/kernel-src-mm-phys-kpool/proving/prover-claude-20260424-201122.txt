@@ -3369,3 +3369,209 @@ error: assertion failed
 Turn 182
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: --> src/kernel/src/mm/phys/kpool.rs:190:5
+    |
+190 |     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/kpool.rs:213:20
+    |
+213 |             assert((index as int) * spec_page...
+
+────────────────────────────────────────────────────────────
+Turn 183
+────────────────────────────────────────────────────────────
+I need to use vstd arithmetic lemmas for non-linear multiplication. Let me check what's available:
+[TOOL] bash: grep -n 'pub proof fn lemma_mul' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/mul.rs 2>/dev/null | head
+
+[THINKING] OK, let me analyze the errors:
+
+1. **alloc (line 213)**: `(index as int) * spec_page_size() < self.bitmap@.num_bits * spec_page_size()` — this should follow from `index < num_bits` and `spec_page_size() > 0`. The prover might not handle this non-linear arithmetic automatically. I need to help it with intermediate steps or use `vstd::arithmetic` lemmas.
+
+2. **alloc (line 223)**: Similar assertion failure — likely cascading from the first.
+
+3. **alloc_range (line 258/304)**: Postcondition failure at Err return — the `bitmap.alloc_range` Err case postcondition needs to map to kpool's Err postcondition. 
+
+The kpool Err postcondition says `forall|i: int| !old(self)@.range_free(i, count as int)`, but bitmap's Err says `!old(self)@.exists_contiguous_free_range(size as int)`. I need to establish how these two conditions relate to each other.
+
+4. **alloc_range overflows (lines 308, 310)**: Same non-linear arithmetic pattern as alloc — need to prove the overflow checks don't fail.
+
+5. **free (line 379)**: `old(self)@.used_page_indices.contains(page_index)` — need to show that `is_bit_set` implies `set_bits.contains`.
+
+For error 1, the issue is `(index as int) * spec_page_size() < self.bitmap@.num_bits * spec_page_size()`. Given `index < num_bits` and `spec_page_size() > 0`, this should follow from the property that multiplying both sides of an inequality by a positive constant preserves the inequality. Z3 struggles with non-linear arithmetic, so I'll need to either use a helper lemma from vstd's arithmetic module or break down the multiplication in a way the solver can handle.
+
+Let me try a more direct approach: instead of fighting the multiplication comparison, I'll assert the final no-overflow bound using what I know—that `self.base@ + self.bitmap@.num_bits * spec_page_size() <= usize::MAX + 1`, `index < self.bitmap@.num_bits`, and `self.base@ >= 0`. This means `index * spec_page_size()` is strictly less than `self.bitmap@.num_bits * spec_page_size()`, which I can establish through multiplication monotonicity. Verus should have a lemma for this in its arithmetic library.
+
+For the free error at line 379, I need to show that `old(self)@.used_page_indices.contains(page_index)` holds after the bitmap clear succeeds. Since the clear returned Ok, I know the bit was definitely set before—the Err case would have triggered if the index was out of bounds or the bit wasn't set. So in the Ok case, the bit must have been set in the old state.
+
+But looking at the Ok postcondition more carefully, it doesn't explicitly state that `old(self)@.is_bit_set(index as int)` was true—it only tells me what's true after the clear. I need to reason backwards from the Err case to establish what must have been true before. The postcondition for the Err case tells me what must be true when it fails, so by exhaustiveness, the Ok case must satisfy the negation of that condition — meaning the index is valid and the bit was actually set. Verus should be able to deduce this automatically from the match structure, though it depends on whether the Err arm's conditions are stated precisely enough for the prover to recognize the logical complement.
+
+Looking at the actual match postcondition structure, when we're in the Ok branch, Verus gives us the Ok-specific conditions but doesn't automatically infer the negation of the Err conditions as additional facts. So I'm getting `index < self@.num_bits` and the updated set_bits, but I'm missing the crucial fact that `old(self)@.is_bit_set(index as int)` must have been true for the operation to succeed. I need to figure out how to establish this missing piece.
+
+Let me reconsider what `set_bits.remove(index)` actually tells us semantically. If the index wasn't in the set to begin with, remove would be a no-op, and since `usage()` is defined as the length of `set_bits`, the usage wouldn't decrease by 1 as the postcondition claims. So the postcondition `old(self)@.usage() - 1 = self@.usage()` combined with the remove operation actually forces the conclusion that the index must have been in the original set.
+
+The question is whether Verus can automatically derive this contradiction when the precondition doesn't explicitly require the index to be present—it would need to recognize that a no-op remove can't satisfy the usage decrease, which requires some reasoning about set semantics and arithmetic.
+
+I think I need to be more direct here and add an assertion that walks through the logic: if the index wasn't in the old set_bits, then removing it would be a no-op and usage wouldn't change, but since usage did decrease by 1, the index must have been present. I'm wondering if I should try a different approach using the error case to derive the complement property. Let me look back at the actual bitmap clear specification from the library to see if it explicitly states that the bit must be set in the Ok case.
+
+Looking at the spec, the Ok case confirms that after clearing, the bit is unset and the number of bits stays the same, which means if the operation succeeds, the index must have been valid. In the error case, we get that either the index is out of bounds or the bit was already unset, and the bitmap remains unchanged. So the key insight is that the Ok case guarantees `index < self@.num_bits`, which combined with the successful clear operation tells us the bit was originally set. I need to reconsider whether Verus gives me the negation of the error condition in the Ok branch—it doesn't, I only get the Ok postconditions directly. So I'm working from just `self@.usage() == old(self)@.usage() - 1` and `self@.set_bits == old(self)@.set_bits.remove(index as int)` to prove the bit was actually set. If the bit wasn't in the set, then removing it wouldn't change anything, but the usage decreased, which is a contradiction—so the bit must have been there. - 1`, which is a contradiction. So I need to add assertions to guide Z3 through this reasoning. I'm inserting a lemma call to establish that the set is finite, then using proof by contradiction to show that the index must have been in the original set—if it wasn't, the remove operation would be a no-op and the usage wouldn't decrease.
+
+I can call `lemma_set_bits_finite()` on the ghost bitmap value in proof mode, and I found it defined in the spec file. Now I need to think through the alloc function issues and what assertion is actually failing there.
+
+The key problem is proving that `(index as int) * spec_page_size() < self.bitmap@.num_bits * spec_page_size()` given that `index < num_bits` and `spec_page_size() > 0`. I should look for multiplication lemmas in the vstd arithmetic module that can handle this strict inequality case.
+[RESULT ✓] bash: 43:pub proof fn lemma_mul_is_mul_pos(x: int, y: int)
+53:pub proof fn lemma_mul_basics(x: int)
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 184
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n 'pub proof fn\|pub broadcast proof fn' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/mul_interna
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 185
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn 'strict_inequality\|mul_inequality\|mul_increases\|mul_strict' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vs
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/README.md:42:use vstd::arithmetic::mul::{lemma_mul_inequality, lemma_mul_is_commutative, lemma_mul_is_distributive_sub_other_way};
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/README.md:64:            lemma_mul_inequality...
+
+────────────────────────────────────────────────────────────
+Turn 186
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n 'pub proof fn\|pub broadcast proof fn' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/mul.rs 2>/d
+[RESULT ✓] bash: 25:pub broadcast proof fn lemma_mul_is_mul_recursive(x: int, y: int)
+43:pub proof fn lemma_mul_is_mul_pos(x: int, y: int)
+53:pub proof fn lemma_mul_basics(x: int)
+64:pub broadcast proof fn lemma_mul_basics_1(x: int)
+72:pub broadcast proof fn lemma_mul_basics_2(x: int)
+80:pub broadcast proof fn lemma...
+
+────────────────────────────────────────────────────────────
+Turn 187
+────────────────────────────────────────────────────────────
+Let me look at `lemma_mul_strict_inequality`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/mul.rs
+[RESULT ✓] view: 164. pub broadcast proof fn lemma_mul_inequality(x: int, y: int, z: int)
+165.     requires
+166.         x <= y,
+167.         z >= 0,
+168.     ensures
+169.         #[trigger] (x * z) <= #[trigger] (y * z),
+170. {
+171.     lemma_mul_induction_auto(z, |u: int| u >= 0 ==> x * u <= y * u);
+172. }
+173. 
+1...
+
+────────────────────────────────────────────────────────────
+Turn 188
+────────────────────────────────────────────────────────────
+Now let me also check what modules need importing in kpool.rs:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 30. use ::arch::mem;
+31. use ::core::{
+32.     hint::unlikely,
+33.     mem::MaybeUninit,
+34.     ops::{
+35.         Deref,
+36.         DerefMut,
+37.     },
+38.     sync::atomic::{
+39.         AtomicBool,
+40.         Ordering,
+41.     },
+42. };
+43. use ::sys::error::{
+44.     Error,
+45.     ErrorCode...
+
+────────────────────────────────────────────────────────────
+Turn 189
+────────────────────────────────────────────────────────────
+Now let me update the proof.rs file to include the necessary vstd imports and the alloc/free proof blocks. Actually, I should put the proof helper code in kpool.proof.rs and the inline proof! blocks in the functions themselves in kpool.rs:
+
+Let me first fix `alloc` with the multiplication lemma:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 190
+────────────────────────────────────────────────────────────
+Now fix the `free` proof — need to prove `old(self)@.used_page_indices.contains(page_index)`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 191
+────────────────────────────────────────────────────────────
+Now let me also add proof to alloc_range. First let me look at the current state:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 280.                         self@ == KpoolView {
+281.                             used_page_indices: old(self)@.used_page_indices.union(new_page_indices),
+282.                             ..old(self)@
+283.                         }
+284.                     }
+285.                 },
+286.            ...
+
+────────────────────────────────────────────────────────────
+Turn 192
+────────────────────────────────────────────────────────────
+Now let me add comprehensive proofs including alloc_range. Let me update alloc_range with proof blocks:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+
+[THINKING] Let me think about what the alloc_range proof needs.
+
+The Err case at line 298 (addrs not empty): Since we added `old(addrs)@.len() == 0` to the requires, this branch is unreachable. Verus should be able to figure this out because `addrs.is_empty()` returns `addrs@.len() == 0`, and `old(addrs)@.len() == 0` means addrs is empty (addrs hasn't been modified yet), so `!addrs.is_empty()` is false. Wait, the requires says `old(addrs)@.len() == 0`, but at this point we haven't modified addrs, so addrs@ == old(addrs)@. So `addrs@.len() == 0`, and `addrs.is_empty()` returns true, so `!addrs.is_empty()` is false. 
+
+The branch is unreachable and the postcondition should hold vacuously, but I'm realizing the postcondition for the Err case requires either `count == 0` or that no range is free. At the `addrs.is_empty` branch, count might not be 0, so I need to verify the second part of that disjunction holds.
+
+Actually, since we added `old(addrs)@.len() == 0` as a precondition, this branch becomes unreachable—Verus won't need to verify the postcondition here because it can prove the condition is always false. The key insight is that `old(addrs)@.len() == 0` means `addrs@.len() == 0` at this point, so `addrs.is_empty()` will always return true.
+
+But the actual error is coming from the `bitmap.alloc_range` failure case at line 304, not the empty check. The bitmap's postcondition requires that no contiguous free range of the requested size exists, while the kpool spec requires that no individual range is free. I need to figure out how these two conditions relate to each other.
+
+Looking at the actual definitions: `exists_contiguous_free_range` checks if there's a starting position where all bits in a range are unset, while `range_free` checks if all page indices in a range are absent from the used set. The key insight is that `exists_contiguous_free_range(n)` should imply the existence of at least one free range of size `n`, which contradicts what the kpool spec needs to prove. I'm mapping the logical equivalences between the bitmap representation and the range-checking predicates—`used_page_indices` corresponds to the set bits, and checking if all bits are unset in a range is equivalent to verifying none of those page indices are in use. Since `num_bits` equals `num_pages`, I can now connect `exists_contiguous_free_range(count)` directly to the bitmap operations.
+
+Now I'm verifying the negation: when no contiguous free range exists, it means for every possible starting position, either it's out of bounds or there's at least one bit set within that range. I see that the logical equivalence holds, so now I need to help Verus verify this by adding a proof block that expands the definitions and lets the Z3 solver handle the quantifier matching through assertions about what `range_free` requires in terms of the bitmap's bit states. I'm working through the logical equivalences here—`range_free` is true when there's a contiguous block of unset bits, and `exists_contiguous_free_range` checks whether such a block exists for a given count. So when the count is positive, finding a contiguous free range is equivalent to finding some starting position where all bits in that range are unset.
+
+Now I need to prove the contrapositive: when no contiguous free range exists for a given count, then no valid starting position satisfies the range_free condition. This is the core equivalence I'm building toward.
+
+For the `alloc_range` function, the main challenges are proving arithmetic doesn't overflow, establishing loop invariants that track which bits get set, and then verifying the postcondition holds—that the returned addresses are correct and the frame state is properly updated. I should tackle the simpler functions first to build up the necessary lemmas, then apply them to `alloc_range`.
+
+For `alloc` specifically, I need to be careful about the postconditions: the frame invariant should hold by construction, and the page index calculation needs to match the specification exactly. `) = `!old(self)@.used_page_indices.contains(index)` ✓. Now I'm verifying that the view's state matches the expected postcondition—checking that the start address and page count remain unchanged, while the set of used page indices correctly reflects the newly allocated page.
+
+I need to add assertions to prove the frame address calculation. Specifically, I'm establishing that the frame pointer equals the base address plus the offset for the given index, then showing that `(frame@ - old(self)@.start) / spec_page_size() == index`. This requires a division lemma to handle the integer arithmetic—something like `(a * b) / b == a` when `b > 0`, which vstd should provide or Z3 can handle directly.
+
+Now I'm moving on to the `alloc_range` function. I need to add proof blocks for both the error case (when no contiguous free range exists) and loop invariants for the success case. For the error path, I'm setting up an assertion that contradicts the existence of a contiguous free range by showing that if such a range existed, it would contradict the precondition.
+
+For the loop invariant, I need to establish that the addresses list grows correctly...
+
+Writing proof logic...
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 193
+────────────────────────────────────────────────────────────
+Now let me also add a proof to the alloc Ok case to help with the postcondition:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 228.         let addr: usize = pa_into_raw(self.base) + index * mem::PAGE_SIZE;
+229.         proof! {
+230.             assert(addr as int == self.base@ + (index as int) * spec_page_size());
+231.             assert(addr as int % spec_page_size() == 0);
+232.         }
+233.         Ok(frame_from_raw(ad...
+
+────────────────────────────────────────────────────────────
+Turn 194
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 195
+────────────────────────────────────────────────────────────
+Now let me run verification:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
