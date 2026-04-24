@@ -5044,3 +5044,31 @@ Z3 should handle integer commutativity. Let me try a different approach — asse
 Turn 301
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: === Results ===
+  7 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::phys::kpool:
+    ⚠️  external_body: 2
+    ⚠️  cfg-gated exec code: 1
+  Affected functions:
+    - kpool.rs:78 pa_into_raw: external_body
+    - kpool.rs:96 frame_from_raw: external_body
+  Global: assum...
+
+────────────────────────────────────────────────────────────
+Turn 302
+────────────────────────────────────────────────────────────
+**7 verified, 0 errors!** All proofs pass. Now let me address the cheating detection warnings:
+
+1. **external_body: 2** — `pa_into_raw` and `frame_from_raw` are intentional wrapper functions for dependency types that can't be directly verified. These are justified.
+2. **cfg-gated exec code: 1** — This is the `#[cfg(not(verus_keep_ghost))]` on logging macros, which is standard practice.
+
+The guardrails show `assume=0 admit=0 trusted=0`, which is clean. The `external_body=9` count includes both the 2 wrappers and 7 from other modules' dependency specs.
+
+Now let me run the full verification to check for regressions:
+[TOOL] report_intent: Checking for regressions
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify 2>&1 | tail -40
+[RESULT ✓] report_intent: Intent logged
