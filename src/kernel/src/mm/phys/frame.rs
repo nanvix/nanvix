@@ -72,7 +72,6 @@ impl Inner {
     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -133,7 +132,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -178,7 +176,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -223,7 +220,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -362,7 +358,6 @@ pub(super) unsafe fn init(bitmap: SparseBitmap) -> Result<(), Error> {
 }
 
 /// Allocate a frame.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         match result {
@@ -378,7 +373,6 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
 // and the attribute-based syntax does not support `no_unwind`.
 verus! {
 /// Free a frame previously returned by [`alloc`].
-#[verifier::external_body]
 pub(super) fn free(frame: FrameAddress) -> (result: Result<(), Error>)
     opens_invariants none
     no_unwind
