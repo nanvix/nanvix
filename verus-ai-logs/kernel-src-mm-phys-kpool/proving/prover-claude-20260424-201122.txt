@@ -2487,3 +2487,168 @@ Turn 110
 ────────────────────────────────────────────────────────────
 Now let me try to build to see if the dependency specs compile correctly:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: |
+445 | use crate::hal::mem::spec_page_size;
+    |     ------------------------------- previous import of the value `spec_page_size` here
+    |
+    = note: `spec_page_size` must be defined only once in the value namespace of this module
+
+error: cannot find macro `verus` in this scope
+   --> src/kern...
+
+────────────────────────────────────────────────────────────
+Turn 111
+────────────────────────────────────────────────────────────
+Two issues:
+1. Duplicate import of `spec_page_size` in kpool.proof.rs — it's already imported elsewhere
+2. `verus!` macro not found in microvm/mod.rs
+
+Let me fix both:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 112
+────────────────────────────────────────────────────────────
+Now check if spec_page_size is imported in kpool.rs:
+[TOOL] bash: grep -n 'spec_page_size\|use.*spec' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/m
+[RESULT ✓] bash: 133:                    let page_index = (frame@ - old(self)@.start) / spec_page_size();
+194:                            let page_index = (addr - old(self)@.start) / spec_page_size();
+197:                            &&& addr == addrs@[0]@ + which_frame * spec_page_size()
+201:                        ...
+
+────────────────────────────────────────────────────────────
+Turn 113
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 440. }
+441. 
+442. #[cfg(verus_keep_ghost)]
+443. verus! {
+444. 
+445. use crate::hal::mem::spec_page_size;
+446. 
+447. impl View for KernelFrame
+448. {
+449.     type V = int;
+450. 
+451.     closed spec fn view(&self) -> int
+452.     {
+453.         self.base@
+454.     }
+455. }
+456. 
+457. }
+458. 
+459. im...
+
+────────────────────────────────────────────────────────────
+Turn 114
+────────────────────────────────────────────────────────────
+Good, spec_page_size is imported in kpool.rs's verus! block. The proof file includes it via include, so it's in scope. The duplicate import in the proof.rs was the issue.
+
+Now fix the microvm issue - I need to check how other modules reference verus! in the kernel:
+[TOOL] bash: grep -rn 'use vstd\|#\[cfg(verus_keep_ghost)\]' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/
+[RESULT ✓] bash: 365:#[cfg(verus_keep_ghost)]
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 115
+────────────────────────────────────────────────────────────
+The `verus!` macro needs to be imported. Let me check how other files do it:
+[TOOL] bash: grep -rn 'use.*verus_macro\|verus_macro_attr' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/ke
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 116
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn '#\[macro_use\]\|extern crate.*verus\|use.*verus' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 117
+────────────────────────────────────────────────────────────
+[TOOL] bash: head -30 /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use cra...
+
+────────────────────────────────────────────────────────────
+Turn 118
+────────────────────────────────────────────────────────────
+frame.rs uses `use ::vstd::prelude::*;`. The microvm mod.rs doesn't have that import. Let me add it:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/platform/microvm/mod.rs
+[RESULT ✓] view: 14. use crate::{
+15.     collections::{
+16.         Bitmap,
+17.         RawArray,
+18.     },
+19.     hal::{
+20.         arch::x86::{
+21.             self,
+22.             cpu::idt,
+23.             mem::gdt,
+24.             Arch,
+25.         },
+26.         io::{
+27.             IoMemoryAllocator,
+28....
+
+────────────────────────────────────────────────────────────
+Turn 119
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/platform/microvm/mod.rs
+[RESULT ✓] view: 60.         idt::Idte,
+61.         idtr::Idtr,
+62.         pic,
+63.     },
+64.     mem,
+65.     mem::gdt::Gdte,
+66. };
+67. use ::sparse_bitmap::SparseBitmap;
+68. use ::sys::error::{
+69.     Error,
+70.     ErrorCode,
+71. };
+72. 
+73. #[cfg(feature = "whp")]
+74. use crate::hal::platform::region_tags::L...
+
+────────────────────────────────────────────────────────────
+Turn 120
+────────────────────────────────────────────────────────────
+I need to add `use ::vstd::prelude::*;` import. But this will fail on non-verus builds. Actually, many files in the kernel already use `use ::vstd::prelude::*;` at the top level. Let me just add it:
+[TOOL] bash: grep -n 'vstd' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/platform/microvm/m
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 121
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n 'vstd' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/Cargo.toml | head -5
+
+[THINKING] The file doesn't import vstd at all. I need to add the import, but I also need it to be conditional on verus. Actually, looking at the crate structure, `vstd::prelude::*` is available as a dependency. In frame.rs, it's imported at the top level with `use ::vstd::prelude::*;`. Let me check if this causes issues for non-verus builds...
+
+Actually, looking at the Cargo.toml of the kernel:
+[RESULT ✓] bash: 41:vstd = { workspace = true }
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 122
+────────────────────────────────────────────────────────────
+Good. Let me add a cfg-gated import and the assume_specification. Actually, let me just put the `use vstd::prelude::*` inside the `#[cfg(verus_keep_ghost)] verus!{}` block like other spec-only code:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/platform/microvm/mod.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/platform/microvm/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 123
+────────────────────────────────────────────────────────────
+Now let me try building again:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
