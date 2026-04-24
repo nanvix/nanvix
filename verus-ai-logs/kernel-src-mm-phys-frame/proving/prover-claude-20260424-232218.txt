@@ -2853,3 +2853,10 @@ Let me trace through the requires clause more carefully: `old(self).inv()` shoul
 Turn 92
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
