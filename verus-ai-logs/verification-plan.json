@@ -1,11 +1,5 @@
 {
-  "source": {
-    "file": "src/kernel/src/mm/phys/manager.rs",
-    "crate": "kernel",
-    "module": "mm::phys::manager"
-  },
-  "project_dir": ".",
-  "depth": 50,
+  "target": "src/kernel/src/mm/phys/manager.rs",
   "entries": [
     "src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::init",
     "src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::get_mut",
@@ -13,122 +7,19 @@
     "src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::alloc_kernel_frame",
     "src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::alloc_many_kernel_frames"
   ],
-  "summary": {
-    "total_dep_crates": 7,
-    "total_dep_modules": 13,
-    "dep_crates": [
-      "arch",
-      "bitmap",
-      "error",
-      "kernel",
-      "raw-array",
-      "sparse-bitmap",
-      "sys"
-    ],
-    "dep_modules": [
-      "arch::x86::mem::paging::frame::number",
-      "bitmap::root",
-      "error::root",
-      "kernel::hal::mem::types::address::aligned::page",
-      "kernel::hal::mem::types::address::frame",
-      "kernel::hal::mem::types::address::phys",
-      "kernel::mm::phys::frame",
-      "kernel::mm::phys::kpool",
-      "kernel::mm::phys::upool",
-      "raw-array::root",
-      "sparse-bitmap::root",
-      "sys::sys::mm::address",
-      "sys::sys::mm::address::virt"
-    ]
-  },
-  "modules": {
-    "kernel::mm::phys::manager": {
-      "crate": "kernel",
-      "module": "mm::phys::manager",
+  "total_modules": 14,
+  "cycles_broken": 0,
+  "steps": [
+    {
+      "step": 1,
+      "module": "kernel::mm::phys::manager",
       "file": "src/kernel/src/mm/phys/manager.rs",
-      "depth": 0,
-      "dependencies": {
-        "kernel::mm::phys::kpool": {
-          "crate": "kernel",
-          "module": "mm::phys::kpool",
-          "file": "src/kernel/src/mm/phys/kpool.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs",
-          "symbols": [
-            {
-              "name": "alloc",
-              "kind": "fn",
-              "context": "line 136"
-            },
-            {
-              "name": "alloc",
-              "kind": "fn",
-              "context": "line 370"
-            },
-            {
-              "name": "alloc",
-              "kind": "fn",
-              "context": "line 533"
-            },
-            {
-              "name": "alloc_many",
-              "kind": "fn",
-              "context": "line 554"
-            },
-            {
-              "name": "alloc_range",
-              "kind": "fn",
-              "context": "line 203"
-            },
-            {
-              "name": "alloc_range",
-              "kind": "fn",
-              "context": "line 390"
-            },
-            {
-              "name": "instance",
-              "kind": "fn",
-              "context": "line 310"
-            },
-            {
-              "name": "new",
-              "kind": "fn",
-              "context": "line 454"
-            }
-          ]
-        },
-        "kernel::mm::phys::upool": {
-          "crate": "kernel",
-          "module": "mm::phys::upool",
-          "file": "src/kernel/src/mm/phys/upool.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs",
-          "symbols": [
-            {
-              "name": "alloc",
-              "kind": "fn",
-              "context": "line 123"
-            },
-            {
-              "name": "new",
-              "kind": "fn",
-              "context": "line 44"
-            }
-          ]
-        },
-        "error::root": {
-          "crate": "error",
-          "module": "root",
-          "file": "src/libs/error/src/lib.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/error/src/lib.rs",
-          "symbols": [
-            {
-              "name": "new",
-              "kind": "fn",
-              "context": "line 460"
-            }
-          ]
-        }
-      },
-      "fn_verification_order": [
+      "depends_on": [
+        "error::root",
+        "kernel::mm::phys::kpool",
+        "kernel::mm::phys::upool"
+      ],
+      "functions": [
         {
           "name": "PhysMemoryManager::init",
           "line": 84,
@@ -154,7 +45,7 @@
         },
         {
           "name": "PhysMemoryManager::alloc_many_kernel_frames",
-          "line": 194,
+          "line": 203,
           "calls_in_module": [],
           "cross_module_deps": [
             "error::root",
@@ -163,47 +54,22 @@
         },
         {
           "name": "PhysMemoryManager::alloc_kernel_frame",
-          "line": 174,
+          "line": 183,
           "calls_in_module": [],
           "cross_module_deps": [
             "kernel::mm::phys::kpool"
           ]
         }
-      ],
-      "unresolved_count": 0,
-      "external_count": 0
+      ]
     },
-    "kernel::mm::phys::upool": {
-      "crate": "kernel",
-      "module": "mm::phys::upool",
+    {
+      "step": 2,
+      "module": "kernel::mm::phys::upool",
       "file": "src/kernel/src/mm/phys/upool.rs",
-      "depth": 0,
-      "dependencies": {
-        "kernel::mm::phys::frame": {
-          "crate": "kernel",
-          "module": "mm::phys::frame",
-          "file": "src/kernel/src/mm/phys/frame.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs",
-          "symbols": [
-            {
-              "name": "alloc",
-              "kind": "fn",
-              "context": "line 96"
-            },
-            {
-              "name": "alloc",
-              "kind": "fn",
-              "context": "line 365"
-            },
-            {
-              "name": "instance",
-              "kind": "fn",
-              "context": "line 326"
-            }
-          ]
-        }
-      },
-      "fn_verification_order": [
+      "depends_on": [
+        "kernel::mm::phys::frame"
+      ],
+      "functions": [
         {
           "name": "UserFrame::new",
           "line": 44,
@@ -220,280 +86,19 @@
             "kernel::mm::phys::frame"
           ]
         }
-      ],
-      "unresolved_count": 0,
-      "external_count": 0
+      ]
     },
-    "kernel::mm::phys::kpool": {
-      "crate": "kernel",
-      "module": "mm::phys::kpool",
-      "file": "src/kernel/src/mm/phys/kpool.rs",
-      "depth": 0,
-      "dependencies": {
-        "bitmap::root": {
-          "crate": "bitmap",
-          "module": "root",
-          "file": "src/libs/bitmap/src/lib.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/src/lib.rs",
-          "symbols": [
-            {
-              "name": "alloc",
-              "kind": "fn",
-              "context": "line 250"
-            },
-            {
-              "name": "alloc_range",
-              "kind": "fn",
-              "context": "line 310"
-            },
-            {
-              "name": "index_unchecked",
-              "kind": "fn",
-              "context": "line 706"
-            }
-          ]
-        },
-        "error::root": {
-          "crate": "error",
-          "module": "root",
-          "file": "src/libs/error/src/lib.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/error/src/lib.rs",
-          "symbols": [
-            {
-              "name": "new",
-              "kind": "fn",
-              "context": "line 460"
-            }
-          ]
-        },
-        "kernel::hal::mem::types::address::frame": {
-          "crate": "kernel",
-          "module": "hal::mem::types::address::frame",
-          "file": "src/kernel/src/hal/mem/types/address/frame.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs",
-          "symbols": [
-            {
-              "name": "FrameAddress",
-              "kind": "fn",
-              "context": "line 29"
-            },
-            {
-              "name": "from_frame_number",
-              "kind": "fn",
-              "context": "line 77"
-            },
-            {
-              "name": "new",
-              "kind": "fn",
-              "context": "line 65"
-            }
-          ]
-        },
-        "kernel::hal::mem::types::address::aligned::page": {
-          "crate": "kernel",
-          "module": "hal::mem::types::address::aligned::page",
-          "file": "src/kernel/src/hal/mem/types/address/aligned/page.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs",
-          "symbols": [
-            {
-              "name": "PageAligned",
-              "kind": "fn",
-              "context": "line 32"
-            },
-            {
-              "name": "from_address",
-              "kind": "fn",
-              "context": "line 36"
-            },
-            {
-              "name": "into_raw_value",
-              "kind": "fn",
-              "context": "line 51"
-            }
-          ]
-        },
-        "sys::sys::mm::address": {
-          "crate": "sys",
-          "module": "sys::mm::address",
-          "file": "src/libs/sys/src/sys/mm/address/mod.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sys/src/sys/mm/address/mod.rs",
-          "symbols": [
-            {
-              "name": "from_raw_value",
-              "kind": "fn",
-              "context": "line 49"
-            },
-            {
-              "name": "into_raw_value",
-              "kind": "fn",
-              "context": "line 51"
-            },
-            {
-              "name": "is_aligned",
-              "kind": "fn",
-              "context": "line 98"
-            }
-          ]
-        }
-      },
-      "fn_verification_order": [
-        {
-          "name": "instance",
-          "line": 310,
-          "calls_in_module": [],
-          "cross_module_deps": []
-        },
-        {
-          "name": "Inner::alloc_range",
-          "line": 203,
-          "calls_in_module": [],
-          "cross_module_deps": [
-            "bitmap::root",
-            "error::root",
-            "kernel::hal::mem::types::address::aligned::page",
-            "kernel::hal::mem::types::address::frame",
-            "sys::sys::mm::address"
-          ]
-        },
-        {
-          "name": "Inner::alloc",
-          "line": 136,
-          "calls_in_module": [],
-          "cross_module_deps": [
-            "bitmap::root",
-            "kernel::hal::mem::types::address::aligned::page",
-            "kernel::hal::mem::types::address::frame",
-            "sys::sys::mm::address"
-          ]
-        },
-        {
-          "name": "alloc_range",
-          "line": 390,
-          "calls_in_module": [
-            "Inner::alloc_range",
-            "instance"
-          ],
-          "cross_module_deps": []
-        },
-        {
-          "name": "KernelFrame::new",
-          "line": 454,
-          "calls_in_module": [],
-          "cross_module_deps": []
-        },
-        {
-          "name": "alloc",
-          "line": 370,
-          "calls_in_module": [
-            "Inner::alloc",
-            "instance"
-          ],
-          "cross_module_deps": []
-        },
-        {
-          "name": "Kpool::alloc_many",
-          "line": 554,
-          "calls_in_module": [
-            "KernelFrame::new",
-            "alloc_range"
-          ],
-          "cross_module_deps": [
-            "error::root"
-          ]
-        },
-        {
-          "name": "Kpool::alloc",
-          "line": 533,
-          "calls_in_module": [
-            "KernelFrame::new",
-            "alloc"
-          ],
-          "cross_module_deps": []
-        }
-      ],
-      "unresolved_count": 0,
-      "external_count": 0
-    },
-    "kernel::mm::phys::frame": {
-      "crate": "kernel",
-      "module": "mm::phys::frame",
+    {
+      "step": 3,
+      "module": "kernel::mm::phys::frame",
       "file": "src/kernel/src/mm/phys/frame.rs",
-      "depth": 0,
-      "dependencies": {
-        "arch::x86::mem::paging::frame::number": {
-          "crate": "arch",
-          "module": "x86::mem::paging::frame::number",
-          "file": "src/libs/arch/src/x86/mem/paging/frame/number.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/paging/frame/number.rs",
-          "symbols": [
-            {
-              "name": "FrameNumber",
-              "kind": "fn",
-              "context": "line 21"
-            },
-            {
-              "name": "from_raw_value",
-              "kind": "fn",
-              "context": "line 47"
-            },
-            {
-              "name": "into_raw_value",
-              "kind": "fn",
-              "context": "line 64"
-            }
-          ]
-        },
-        "sparse-bitmap::root": {
-          "crate": "sparse-bitmap",
-          "module": "root",
-          "file": "src/libs/sparse-bitmap/src/lib.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs",
-          "symbols": [
-            {
-              "name": "alloc",
-              "kind": "fn",
-              "context": "line 307"
-            }
-          ]
-        },
-        "kernel::hal::mem::types::address::frame": {
-          "crate": "kernel",
-          "module": "hal::mem::types::address::frame",
-          "file": "src/kernel/src/hal/mem/types/address/frame.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs",
-          "symbols": [
-            {
-              "name": "FrameAddress",
-              "kind": "fn",
-              "context": "line 29"
-            },
-            {
-              "name": "from_frame_number",
-              "kind": "fn",
-              "context": "line 77"
-            },
-            {
-              "name": "new",
-              "kind": "fn",
-              "context": "line 65"
-            }
-          ]
-        },
-        "error::root": {
-          "crate": "error",
-          "module": "root",
-          "file": "src/libs/error/src/lib.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/error/src/lib.rs",
-          "symbols": [
-            {
-              "name": "new",
-              "kind": "fn",
-              "context": "line 460"
-            }
-          ]
-        }
-      },
-      "fn_verification_order": [
+      "depends_on": [
+        "arch::x86::mem::paging::frame::number",
+        "error::root",
+        "kernel::hal::mem::types::address::frame",
+        "sparse-bitmap::root"
+      ],
+      "functions": [
         {
           "name": "Inner::alloc",
           "line": 96,
@@ -520,59 +125,104 @@
           ],
           "cross_module_deps": []
         }
-      ],
-      "unresolved_count": 0,
-      "external_count": 0
+      ]
     },
-    "kernel::hal::mem::types::address::frame": {
-      "crate": "kernel",
-      "module": "hal::mem::types::address::frame",
-      "file": "src/kernel/src/hal/mem/types/address/frame.rs",
-      "depth": 0,
-      "dependencies": {
-        "kernel::hal::mem::types::address::aligned::page": {
-          "crate": "kernel",
-          "module": "hal::mem::types::address::aligned::page",
-          "file": "src/kernel/src/hal/mem/types/address/aligned/page.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs",
-          "symbols": [
-            {
-              "name": "PageAligned",
-              "kind": "fn",
-              "context": "line 32"
-            },
-            {
-              "name": "from_address",
-              "kind": "fn",
-              "context": "line 36"
-            },
-            {
-              "name": "into_raw_value",
-              "kind": "fn",
-              "context": "line 51"
-            }
+    {
+      "step": 4,
+      "module": "kernel::mm::phys::kpool",
+      "file": "src/kernel/src/mm/phys/kpool.rs",
+      "depends_on": [
+        "bitmap::root",
+        "error::root",
+        "kernel::hal::mem::types::address::aligned::page",
+        "kernel::hal::mem::types::address::frame",
+        "sys::sys::mm::address"
+      ],
+      "functions": [
+        {
+          "name": "instance",
+          "line": 322,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "Inner::alloc_range",
+          "line": 214,
+          "calls_in_module": [],
+          "cross_module_deps": [
+            "bitmap::root",
+            "error::root",
+            "kernel::hal::mem::types::address::aligned::page",
+            "kernel::hal::mem::types::address::frame",
+            "sys::sys::mm::address"
           ]
         },
-        "kernel::hal::mem::types::address::phys": {
-          "crate": "kernel",
-          "module": "hal::mem::types::address::phys",
-          "file": "src/kernel/src/hal/mem/types/address/phys.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs",
-          "symbols": [
-            {
-              "name": "PhysicalAddress",
-              "kind": "fn",
-              "context": "line 37"
-            },
-            {
-              "name": "from_number",
-              "kind": "fn",
-              "context": "line 95"
-            }
+        {
+          "name": "Inner::alloc",
+          "line": 147,
+          "calls_in_module": [],
+          "cross_module_deps": [
+            "bitmap::root",
+            "kernel::hal::mem::types::address::aligned::page",
+            "kernel::hal::mem::types::address::frame",
+            "sys::sys::mm::address"
           ]
+        },
+        {
+          "name": "alloc_range",
+          "line": 402,
+          "calls_in_module": [
+            "Inner::alloc_range",
+            "instance"
+          ],
+          "cross_module_deps": []
+        },
+        {
+          "name": "KernelFrame::new",
+          "line": 466,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "alloc",
+          "line": 382,
+          "calls_in_module": [
+            "Inner::alloc",
+            "instance"
+          ],
+          "cross_module_deps": []
+        },
+        {
+          "name": "Kpool::alloc_many",
+          "line": 567,
+          "calls_in_module": [
+            "KernelFrame::new",
+            "alloc_range"
+          ],
+          "cross_module_deps": [
+            "error::root"
+          ]
+        },
+        {
+          "name": "Kpool::alloc",
+          "line": 545,
+          "calls_in_module": [
+            "KernelFrame::new",
+            "alloc"
+          ],
+          "cross_module_deps": []
         }
-      },
-      "fn_verification_order": [
+      ]
+    },
+    {
+      "step": 5,
+      "module": "kernel::hal::mem::types::address::frame",
+      "file": "src/kernel/src/hal/mem/types/address/frame.rs",
+      "depends_on": [
+        "kernel::hal::mem::types::address::aligned::page",
+        "kernel::hal::mem::types::address::phys"
+      ],
+      "functions": [
         {
           "name": "FrameAddress",
           "line": 29,
@@ -598,122 +248,17 @@
             "kernel::hal::mem::types::address::phys"
           ]
         }
-      ],
-      "unresolved_count": 0,
-      "external_count": 0
+      ]
     },
-    "kernel::hal::mem::types::address::aligned::page": {
-      "crate": "kernel",
-      "module": "hal::mem::types::address::aligned::page",
-      "file": "src/kernel/src/hal/mem/types/address/aligned/page.rs",
-      "depth": 0,
-      "dependencies": {
-        "sys::sys::mm::address": {
-          "crate": "sys",
-          "module": "sys::mm::address",
-          "file": "src/libs/sys/src/sys/mm/address/mod.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sys/src/sys/mm/address/mod.rs",
-          "symbols": [
-            {
-              "name": "from_raw_value",
-              "kind": "fn",
-              "context": "line 49"
-            },
-            {
-              "name": "into_raw_value",
-              "kind": "fn",
-              "context": "line 51"
-            },
-            {
-              "name": "is_aligned",
-              "kind": "fn",
-              "context": "line 98"
-            }
-          ]
-        },
-        "error::root": {
-          "crate": "error",
-          "module": "root",
-          "file": "src/libs/error/src/lib.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/error/src/lib.rs",
-          "symbols": [
-            {
-              "name": "new",
-              "kind": "fn",
-              "context": "line 460"
-            }
-          ]
-        }
-      },
-      "fn_verification_order": [
-        {
-          "name": "PageAligned",
-          "line": 32,
-          "calls_in_module": [],
-          "cross_module_deps": []
-        },
-        {
-          "name": "PageAligned::into_raw_value",
-          "line": 51,
-          "calls_in_module": [],
-          "cross_module_deps": [
-            "sys::sys::mm::address"
-          ]
-        },
-        {
-          "name": "PageAligned::from_address",
-          "line": 36,
-          "calls_in_module": [
-            "PageAligned"
-          ],
-          "cross_module_deps": [
-            "error::root",
-            "sys::sys::mm::address"
-          ]
-        }
-      ],
-      "unresolved_count": 0,
-      "external_count": 0
-    },
-    "bitmap::root": {
-      "crate": "bitmap",
-      "module": "root",
+    {
+      "step": 6,
+      "module": "bitmap::root",
       "file": "src/libs/bitmap/src/lib.rs",
-      "depth": 0,
-      "dependencies": {
-        "raw-array::root": {
-          "crate": "raw-array",
-          "module": "root",
-          "file": "src/libs/raw-array/src/lib.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/raw-array/src/lib.rs",
-          "symbols": [
-            {
-              "name": "get_mut",
-              "kind": "fn",
-              "context": "line 167"
-            },
-            {
-              "name": "set",
-              "kind": "fn",
-              "context": "line 321"
-            }
-          ]
-        },
-        "error::root": {
-          "crate": "error",
-          "module": "root",
-          "file": "src/libs/error/src/lib.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/error/src/lib.rs",
-          "symbols": [
-            {
-              "name": "new",
-              "kind": "fn",
-              "context": "line 460"
-            }
-          ]
-        }
-      },
-      "fn_verification_order": [
+      "depends_on": [
+        "error::root",
+        "raw-array::root"
+      ],
+      "functions": [
         {
           "name": "Bitmap::index_unchecked",
           "line": 706,
@@ -739,59 +284,17 @@
           ],
           "cross_module_deps": []
         }
-      ],
-      "unresolved_count": 0,
-      "external_count": 0
+      ]
     },
-    "kernel::hal::mem::types::address::phys": {
-      "crate": "kernel",
-      "module": "hal::mem::types::address::phys",
+    {
+      "step": 7,
+      "module": "kernel::hal::mem::types::address::phys",
       "file": "src/kernel/src/hal/mem/types/address/phys.rs",
-      "depth": 0,
-      "dependencies": {
-        "arch::x86::mem::paging::frame::number": {
-          "crate": "arch",
-          "module": "x86::mem::paging::frame::number",
-          "file": "src/libs/arch/src/x86/mem/paging/frame/number.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/paging/frame/number.rs",
-          "symbols": [
-            {
-              "name": "FrameNumber",
-              "kind": "fn",
-              "context": "line 21"
-            },
-            {
-              "name": "from_raw_value",
-              "kind": "fn",
-              "context": "line 47"
-            },
-            {
-              "name": "into_raw_value",
-              "kind": "fn",
-              "context": "line 64"
-            }
-          ]
-        },
-        "sys::sys::mm::address::virt": {
-          "crate": "sys",
-          "module": "sys::mm::address::virt",
-          "file": "src/libs/sys/src/sys/mm/address/virt.rs",
-          "abs_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sys/src/sys/mm/address/virt.rs",
-          "symbols": [
-            {
-              "name": "VirtualAddress",
-              "kind": "fn",
-              "context": "line 32"
-            },
-            {
-              "name": "new",
-              "kind": "fn",
-              "context": "line 42"
-            }
-          ]
-        }
-      },
-      "fn_verification_order": [
+      "depends_on": [
+        "arch::x86::mem::paging::frame::number",
+        "sys::sys::mm::address::virt"
+      ],
+      "functions": [
         {
           "name": "PhysicalAddress",
           "line": 37,
@@ -809,46 +312,50 @@
             "sys::sys::mm::address::virt"
           ]
         }
-      ],
-      "unresolved_count": 0,
-      "external_count": 0
+      ]
     },
-    "sys::sys::mm::address": {
-      "crate": "sys",
-      "module": "sys::mm::address",
-      "file": "src/libs/sys/src/sys/mm/address/mod.rs",
-      "depth": 0,
-      "dependencies": {},
-      "fn_verification_order": [
+    {
+      "step": 8,
+      "module": "kernel::hal::mem::types::address::aligned::page",
+      "file": "src/kernel/src/hal/mem/types/address/aligned/page.rs",
+      "depends_on": [
+        "error::root",
+        "sys::sys::mm::address"
+      ],
+      "functions": [
         {
-          "name": "is_aligned",
-          "line": 98,
+          "name": "PageAligned",
+          "line": 32,
           "calls_in_module": [],
           "cross_module_deps": []
         },
         {
-          "name": "into_raw_value",
+          "name": "PageAligned::into_raw_value",
           "line": 51,
           "calls_in_module": [],
-          "cross_module_deps": []
+          "cross_module_deps": [
+            "sys::sys::mm::address"
+          ]
         },
         {
-          "name": "from_raw_value",
-          "line": 49,
-          "calls_in_module": [],
-          "cross_module_deps": []
+          "name": "PageAligned::from_address",
+          "line": 36,
+          "calls_in_module": [
+            "PageAligned"
+          ],
+          "cross_module_deps": [
+            "error::root",
+            "sys::sys::mm::address"
+          ]
         }
-      ],
-      "unresolved_count": 0,
-      "external_count": 0
+      ]
     },
-    "raw-array::root": {
-      "crate": "raw-array",
-      "module": "root",
+    {
+      "step": 9,
+      "module": "raw-array::root",
       "file": "src/libs/raw-array/src/lib.rs",
-      "depth": 0,
-      "dependencies": {},
-      "fn_verification_order": [
+      "depends_on": [],
+      "functions": [
         {
           "name": "RawArrayStorage::get_mut",
           "line": 167,
@@ -863,34 +370,28 @@
           ],
           "cross_module_deps": []
         }
-      ],
-      "unresolved_count": 0,
-      "external_count": 0
+      ]
     },
-    "error::root": {
-      "crate": "error",
-      "module": "root",
-      "file": "src/libs/error/src/lib.rs",
-      "depth": 0,
-      "dependencies": {},
-      "fn_verification_order": [
+    {
+      "step": 10,
+      "module": "sparse-bitmap::root",
+      "file": "src/libs/sparse-bitmap/src/lib.rs",
+      "depends_on": [],
+      "functions": [
         {
-          "name": "Error::new",
-          "line": 460,
+          "name": "SparseBitmap::alloc",
+          "line": 309,
           "calls_in_module": [],
           "cross_module_deps": []
         }
-      ],
-      "unresolved_count": 0,
-      "external_count": 0
+      ]
     },
-    "arch::x86::mem::paging::frame::number": {
-      "crate": "arch",
-      "module": "x86::mem::paging::frame::number",
+    {
+      "step": 11,
+      "module": "arch::x86::mem::paging::frame::number",
       "file": "src/libs/arch/src/x86/mem/paging/frame/number.rs",
-      "depth": 0,
-      "dependencies": {},
-      "fn_verification_order": [
+      "depends_on": [],
+      "functions": [
         {
           "name": "FrameNumber",
           "line": 21,
@@ -911,17 +412,54 @@
           ],
           "cross_module_deps": []
         }
-      ],
-      "unresolved_count": 0,
-      "external_count": 0
+      ]
     },
-    "sys::sys::mm::address::virt": {
-      "crate": "sys",
-      "module": "sys::mm::address::virt",
+    {
+      "step": 12,
+      "module": "sys::sys::mm::address",
+      "file": "src/libs/sys/src/sys/mm/address/mod.rs",
+      "depends_on": [],
+      "functions": [
+        {
+          "name": "is_aligned",
+          "line": 98,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "into_raw_value",
+          "line": 51,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "from_raw_value",
+          "line": 49,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        }
+      ]
+    },
+    {
+      "step": 13,
+      "module": "error::root",
+      "file": "src/libs/error/src/lib.rs",
+      "depends_on": [],
+      "functions": [
+        {
+          "name": "Error::new",
+          "line": 460,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        }
+      ]
+    },
+    {
+      "step": 14,
+      "module": "sys::sys::mm::address::virt",
       "file": "src/libs/sys/src/sys/mm/address/virt.rs",
-      "depth": 0,
-      "dependencies": {},
-      "fn_verification_order": [
+      "depends_on": [],
+      "functions": [
         {
           "name": "VirtualAddress",
           "line": 32,
@@ -936,26 +474,7 @@
           ],
           "cross_module_deps": []
         }
-      ],
-      "unresolved_count": 0,
-      "external_count": 0
-    },
-    "sparse-bitmap::root": {
-      "crate": "sparse-bitmap",
-      "module": "root",
-      "file": "src/libs/sparse-bitmap/src/lib.rs",
-      "depth": 0,
-      "dependencies": {},
-      "fn_verification_order": [
-        {
-          "name": "SparseBitmap::alloc",
-          "line": 307,
-          "calls_in_module": [],
-          "cross_module_deps": []
-        }
-      ],
-      "unresolved_count": 0,
-      "external_count": 0
+      ]
     }
-  }
+  ]
 }
