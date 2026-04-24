@@ -68,6 +68,15 @@ struct Inner {
 
 #[verus_verify]
 impl Inner {
+    ///
+    /// # Description
+    ///
+    /// Creates a new kernel pool.
+    ///
+    /// # Return Values
+    ///
+    /// Upon success, the kernel pool.
+    ///
     #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
@@ -81,21 +90,23 @@ impl Inner {
                 &&& kpool@.used_page_indices == Set::<int>::new(|i: int| bitmap@.is_bit_set(i))
             },
     )]
-    pub(super) unsafe fn new(
-        base: PageAligned<PhysicalAddress>,
-        bitmap: Bitmap,
-    ) -> Result<Inner, Error> {
+    fn new(base: PageAligned<PhysicalAddress>, bitmap: Bitmap) -> Result<Inner, Error> {
         // Check if bitmap spans across physically-addressable memory.
         let bitmap_capacity: usize = bitmap.number_of_bits();
-        let kpool_size: usize = bitmap_capacity * mem::PAGE_SIZE;
+        let kpool_size: usize = match bitmap_capacity.checked_mul(mem::PAGE_SIZE) {
+            Some(size) => size,
+            None => {
+                let reason: &str = "kernel pool size overflows addressable memory";
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            },
+        };
         if !is_valid_physical_region(base.into_raw_value(), kpool_size) {
             let reason: &str = "kernel pool bitmap spans across physically-addressable memory";
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
-
-        let num_frames: usize = bitmap.number_of_bits();
-        info!("kernel pool: {} frames, {} KB", num_frames, (num_frames * mem::PAGE_SIZE) / 1024,);
+        info!("kernel pool: {} frames, {} KB", bitmap_capacity, kpool_size / 1024,);
 
         Ok(Inner { base, bitmap })
     }
@@ -152,28 +163,28 @@ impl Inner {
     ///
     /// # Parameters
     ///
-    /// - `addrs`: Mutable reference to a pre-allocated vector that will be filled with
-    ///   contiguous frame addresses. Must be empty on entry.
-    /// - `count`: Number of contiguous frames to allocate.
+    /// - `count` - The number of frames to allocate.
+    /// - `addrs`: Mutable reference to a pre-allocated vector in which
+    ///   to store those frames' addresses.
     ///
     /// # Return Values
     ///
-    /// Upon success, `Ok(())` is returned and `addrs` contains `count` contiguous entries. Upon
-    /// failure, an error is returned instead.
+    /// Upon success, `Ok(())` is returned and `addrs` is filled with `count`
+    /// contiguous entries. Upon failure, an error is returned instead.
     ///
     #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
-            old(addrs)@.len() == 0,
-            count > 0,
         ensures
             self.inv(),
             match result {
                 Ok(()) => {
+                    &&& old(addrs)@.len() == 0
+                    &&& count > 0
                     &&& addrs@.len() == count
                     &&& forall|which_frame: int| #![trigger addrs@[which_frame]]
-                        0 <= which_frame < addrs@.len() ==> {
+                        0 <= which_frame < count ==> {
                             let frame = addrs@[which_frame];
                             let addr = frame@;
                             let page_index = (addr - old(self)@.start) / spec_page_size();
@@ -194,18 +205,19 @@ impl Inner {
                     }
                 },
                 Err(_) => {
-                    &&& forall|i: int| !old(self)@.range_free(i, count as int)
+                    &&& count == 0 || forall|i: int| !old(self)@.range_free(i, count as int)
                     &&& self@ == old(self)@
                     &&& addrs@ == old(addrs)@
                 },
             },
     )]
-    fn alloc_range(&mut self, addrs: &mut Vec<FrameAddress>, count: usize) -> Result<(), Error> {
+    fn alloc_range(&mut self, count: usize, addrs: &mut Vec<FrameAddress>) -> Result<(), Error> {
         if !addrs.is_empty() {
             let reason: &str = "addrs vector is not empty";
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
+
         let index: usize = match self.bitmap.alloc_range(count) {
             Ok(index) => index,
             Err(error) => {
@@ -378,17 +390,17 @@ fn alloc() -> Result<FrameAddress, Error> {
 ///
 /// # Parameters
 ///
-/// - `addrs`: Mutable reference to a pre-allocated vector that will be filled with
-///   contiguous frame addresses. Must be empty on entry.
-/// - `count`: Number of contiguous frames to allocate.
+/// - `count`: Number of frames to allocate.
+/// - `addrs`: Mutable reference to a pre-allocated vector into which to
+///   store those frames' addresses.
 ///
 /// # Return Values
 ///
-/// Upon success, `Ok(())` is returned and `addrs` contains `count` contiguous entries. Upon
-/// failure, an error is returned instead.
+/// Upon success, `Ok(())` is returned and `addrs` is filled with `count`
+/// contiguous entries. Upon failure, an error is returned instead.
 ///
-fn alloc_range(addrs: &mut Vec<FrameAddress>, count: usize) -> Result<(), Error> {
-    instance().alloc_range(addrs, count)
+fn alloc_range(count: usize, addrs: &mut Vec<FrameAddress>) -> Result<(), Error> {
+    instance().alloc_range(count, addrs)
 }
 
 ///
@@ -542,25 +554,31 @@ impl Kpool {
     ///
     /// # Parameters
     ///
-    /// - `frames`: Mutable reference to a pre-allocated vector that will be filled with
-    ///   contiguous kernel frames. Must be empty on entry.
-    /// - `count`: Number of contiguous frames to allocate.
+    /// - `count`: Number of frames to allocate.
+    /// - `frames`: Mutable reference to a pre-allocated vector into which
+    ///   to store those frames' addresses. It must be pre-allocated with
+    ///   capacity of at least `count`.
     ///
     /// # Return Values
     ///
-    /// Upon success, `Ok(())` is returned and `frames` contains `count` contiguous entries.
-    /// Upon failure, an error is returned instead.
+    /// Upon success, `Ok(())` is returned and `frames` is filled with `count`
+    /// contiguous entries. Upon failure, an error is returned instead.
     ///
-    pub fn alloc_many(&mut self, frames: &mut Vec<KernelFrame>, count: usize) -> Result<(), Error> {
+    pub fn alloc_many(&mut self, count: usize, frames: &mut Vec<KernelFrame>) -> Result<(), Error> {
         // Check if caller-provided vector is not empty.
         if !frames.is_empty() {
             let reason: &str = "frames vector is not empty";
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
+        if frames.capacity() < count {
+            let reason: &str = "frames vector has insufficient capacity";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
 
         let mut addrs: Vec<FrameAddress> = Vec::with_capacity(count);
-        alloc_range(&mut addrs, count)?;
+        alloc_range(count, &mut addrs)?;
         for addr in addrs {
             frames.push(KernelFrame::new(addr));
         }

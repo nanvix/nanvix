@@ -62,7 +62,7 @@ fn test_mmap_munmap() -> bool {
     let vaddr: VirtualAddress = USER_MMAP_END;
 
     // Map a page.
-    match ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
+    match ::sys::kcall::mm::mmap(mypid, vaddr, 1, AccessPermission::RDONLY) {
         Ok(_) => (),
         Err(_) => return false,
     }
@@ -106,7 +106,7 @@ fn test_mmap_write_munmap() -> bool {
     let vaddr: VirtualAddress = USER_MMAP_END;
 
     // Map a page.
-    match ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::WRONLY) {
+    match ::sys::kcall::mm::mmap(mypid, vaddr, 1, AccessPermission::WRONLY) {
         Ok(_) => (),
         Err(_) => return false,
     }
@@ -167,7 +167,7 @@ fn test_mmap_munmap_many_times_inplace() -> bool {
         let vaddr: VirtualAddress = USER_MMAP_END;
 
         // Map a page.
-        match ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
+        match ::sys::kcall::mm::mmap(mypid, vaddr, 1, AccessPermission::RDONLY) {
             Ok(_) => (),
             Err(_) => return false,
         }
@@ -216,7 +216,7 @@ fn test_mmap_munmap_many_times_rolling() -> bool {
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
 
         // Map a page.
-        match ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
+        match ::sys::kcall::mm::mmap(mypid, vaddr, 1, AccessPermission::RDONLY) {
             Ok(_) => (),
             Err(_) => return false,
         }
@@ -260,7 +260,7 @@ fn test_mmap_munmap_return_zeros() -> bool {
     let vaddr: VirtualAddress = USER_MMAP_END;
 
     // Map a page.
-    if ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::WRONLY).is_err() {
+    if ::sys::kcall::mm::mmap(mypid, vaddr, 1, AccessPermission::WRONLY).is_err() {
         return false;
     }
 
@@ -277,7 +277,7 @@ fn test_mmap_munmap_return_zeros() -> bool {
     }
 
     // Map the page again to read.
-    if ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::RDONLY).is_err() {
+    if ::sys::kcall::mm::mmap(mypid, vaddr, 1, AccessPermission::RDONLY).is_err() {
         return false;
     }
 
@@ -305,6 +305,89 @@ fn test_mmap_munmap_return_zeros() -> bool {
 }
 
 //==================================================================================================
+// Tests multi-page mmap()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Maps multiple pages in a single `mmap()` call, verifies they are zeroed, and unmaps them.
+///
+/// # Returns
+///
+/// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
+///
+fn test_mmap_multi_page() -> bool {
+    const NPAGES: usize = 4;
+
+    // Acquire memory management capability.
+    if ::sys::kcall::pm::capctl(Capability::MemoryManagement, true).is_err() {
+        return false;
+    }
+
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
+        Ok(pid) => pid,
+        Err(_) => return false,
+    };
+
+    let base_vaddr: VirtualAddress = USER_MMAP_END;
+
+    // Map multiple pages in a single call.
+    if ::sys::kcall::mm::mmap(mypid, base_vaddr, NPAGES, AccessPermission::RDWR).is_err() {
+        return false;
+    }
+
+    // Verify all pages are zeroed.
+    let zeros: [u8; PAGE_SIZE] = [0; PAGE_SIZE];
+    for i in 0..NPAGES {
+        let page_addr: usize = base_vaddr.into_raw_value() + i * PAGE_SIZE;
+        let mut data: [u8; PAGE_SIZE] = [0xFF; PAGE_SIZE];
+        let ptr: *const u8 = page_addr as *const u8;
+        unsafe {
+            ptr.copy_to(data.as_mut_ptr(), data.len());
+        }
+        if zeros != data {
+            return false;
+        }
+    }
+
+    // Write a marker to each page.
+    for i in 0..NPAGES {
+        let page_addr: usize = base_vaddr.into_raw_value() + i * PAGE_SIZE;
+        let ptr: *mut u8 = page_addr as *mut u8;
+        unsafe {
+            *ptr = (i + 1) as u8;
+        }
+    }
+
+    // Read back markers.
+    for i in 0..NPAGES {
+        let page_addr: usize = base_vaddr.into_raw_value() + i * PAGE_SIZE;
+        let ptr: *const u8 = page_addr as *const u8;
+        let val: u8 = unsafe { *ptr };
+        if val != (i + 1) as u8 {
+            return false;
+        }
+    }
+
+    // Unmap all pages.
+    for i in 0..NPAGES {
+        let page_addr: usize = base_vaddr.into_raw_value() + i * PAGE_SIZE;
+        let vaddr: VirtualAddress = VirtualAddress::from_raw_value(page_addr);
+        if ::sys::kcall::mm::munmap(mypid, vaddr).is_err() {
+            return false;
+        }
+    }
+
+    // Release memory management capability.
+    if ::sys::kcall::pm::capctl(Capability::MemoryManagement, false).is_err() {
+        return false;
+    }
+
+    true
+}
+
+//==================================================================================================
 // Public Standalone Functions
 //==================================================================================================
 
@@ -319,4 +402,5 @@ pub fn test() {
     crate::test!(test_mmap_munmap_many_times_inplace());
     crate::test!(test_mmap_munmap_many_times_rolling());
     crate::test!(test_mmap_munmap_return_zeros());
+    crate::test!(test_mmap_multi_page());
 }

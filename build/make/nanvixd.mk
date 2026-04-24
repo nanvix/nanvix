@@ -19,9 +19,18 @@ ifeq ($(DEPLOYMENT_MODE),standalone)
 all-nanvixd: all-host-binaries-mkramfs all-guest-binaries
 endif
 
+# PDB filename for Windows symbol resolution (xperf, WPA, debuggers).
+NANVIXD_PDB := nanvixd.pdb
+
 all-nanvixd: init
 	$(HOST_CARGO_BUILD_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/nanvixd$(CARGO_EXE_SUFFIX) $(BINARIES_DIR)/nanvixd.$(HOST_BIN_EXT)
+ifeq ($(IS_WINDOWS),yes)
+	# Copy PDB alongside the exe for symbol resolution.
+	@if [ -f "$(OBJECTS_DIR)/$(BUILD_MODE)/$(NANVIXD_PDB)" ]; then \
+		cp -f "$(OBJECTS_DIR)/$(BUILD_MODE)/$(NANVIXD_PDB)" "$(BINARIES_DIR)/$(NANVIXD_PDB)"; \
+	fi
+endif
 	# Build the standalone rootfs image from a seed directory using mkramfs.
 ifeq ($(DEPLOYMENT_MODE),standalone)
 	@mkdir -p $(BINARIES_DIR)/standalone-rootfs-seed/lib

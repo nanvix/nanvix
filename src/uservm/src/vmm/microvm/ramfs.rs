@@ -13,8 +13,10 @@ use ::anyhow::Result;
 use ::arch::mem::PAGE_SIZE;
 use ::log::{
     error,
+    info,
     trace,
 };
+use ::multiimage::MultiImageLayout;
 #[cfg(target_os = "linux")]
 use ::std::fs::Metadata;
 use ::std::{
@@ -369,5 +371,240 @@ impl RamFs {
         })?;
 
         Ok(())
+    }
+}
+
+//==================================================================================================
+// Multi-Image RAMFS
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Encapsulates a multi-image RAMFS layout comprising a HEAD page and one or more sub-image files.
+///
+/// Instead of creating a single concatenated file on disk, this struct holds the pre-built HEAD
+/// page and open file handles for each sub-image. The VMM backends map each file directly into
+/// guest memory (zero-copy) at the offsets computed by the multi-image layout.
+///
+#[derive(Debug)]
+pub struct MultiRamFs {
+    /// Pre-built HEAD page bytes (header + entries).
+    head_page: std::vec::Vec<u8>,
+    /// Open file handles paired with their guest memory offset (relative to ramfs_base).
+    files: std::vec::Vec<(File, usize)>,
+    /// Total size of the multi-image container (HEAD + all page-aligned sub-images).
+    total_size: usize,
+}
+
+impl MultiRamFs {
+    ///
+    /// # Description
+    ///
+    /// Opens all sub-image files described by the layout and prepares them for zero-copy
+    /// mapping into guest memory.
+    ///
+    /// # Parameters
+    ///
+    /// - `layout`: The multi-image layout produced by [`multiimage::compute_multiimage_layout`].
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns a `MultiRamFs` descriptor. Otherwise, returns an error.
+    ///
+    pub fn open(layout: MultiImageLayout) -> Result<Self> {
+        trace!(
+            "MultiRamFs::open(): {} regions, total_size={}",
+            layout.regions.len(),
+            layout.total_size
+        );
+
+        let mut files: std::vec::Vec<(File, usize)> =
+            std::vec::Vec::with_capacity(layout.regions.len());
+
+        for region in &layout.regions {
+            let file: File = File::open(&region.path).map_err(|e| {
+                let reason: String =
+                    format!("failed to open sub-image (path={:?}, error={e:?})", region.path);
+                error!("MultiRamFs::open(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+
+            // Validate that the file size matches what the layout expects.
+            let actual_size: u64 = file
+                .metadata()
+                .map_err(|e| {
+                    let reason: String = format!(
+                        "failed to query sub-image metadata (path={:?}, error={e:?})",
+                        region.path
+                    );
+                    error!("MultiRamFs::open(): {reason}");
+                    anyhow::anyhow!(reason)
+                })?
+                .len();
+
+            if actual_size != region.size as u64 {
+                let reason: String = format!(
+                    "sub-image size changed since layout was computed (path={:?}, expected={}, \
+                     actual={actual_size})",
+                    region.path, region.size
+                );
+                error!("MultiRamFs::open(): {reason}");
+                anyhow::bail!(reason);
+            }
+
+            files.push((file, region.offset));
+        }
+
+        Ok(Self {
+            head_page: layout.head_page,
+            files,
+            total_size: layout.total_size,
+        })
+    }
+
+    /// Returns the total page-aligned size of the multi-image container.
+    fn total_size(&self) -> usize {
+        self.total_size
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Loads this multi-image RAMFS near the end of guest memory, writing the HEAD page and
+    /// memory-mapping each sub-image file at its computed offset (zero-copy).
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Virtual memory that will host the RAMFS.
+    /// - `initrd_end`: The first byte immediately after the initrd contents in guest memory.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns the guest-physical base address and total size where the RAMFS
+    /// was loaded. Otherwise, returns an error.
+    ///
+    pub fn load_into_virtual_memory(
+        &self,
+        vmem: &mut VirtualMemory,
+        initrd_end: usize,
+    ) -> Result<(usize, usize)> {
+        trace!(
+            "MultiRamFs::load_into_virtual_memory(): total_size={}, initrd_end={:#010x}",
+            self.total_size, initrd_end
+        );
+
+        let ramfs_size: usize = self.total_size();
+        let memory_size: usize = vmem.get_size();
+
+        if !ramfs_size.is_multiple_of(PAGE_SIZE) {
+            let reason: String = format!(
+                "multi-image total size is not page-aligned (total_size={ramfs_size}, \
+                 page_size={PAGE_SIZE})"
+            );
+            error!("MultiRamFs::load_into_virtual_memory(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if ramfs_size > memory_size {
+            let reason: String = format!(
+                "multi-image exceeds guest memory size (total_size={ramfs_size}, \
+                 memory_size={memory_size})"
+            );
+            error!("MultiRamFs::load_into_virtual_memory(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        let min_available_base: usize = match initrd_end.checked_add(RAMFS_MIN_SLACK_BYTES) {
+            Some(value) => value,
+            None => {
+                let reason: &str = "overflow while computing required ramfs slack";
+                error!("MultiRamFs::load_into_virtual_memory(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        if min_available_base > memory_size {
+            let reason: String = format!(
+                "guest memory ({memory_size}) is smaller than initrd end plus slack \
+                 ({min_available_base})",
+            );
+            error!("MultiRamFs::load_into_virtual_memory(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        let ramfs_base: usize = match memory_size.checked_sub(ramfs_size) {
+            Some(base) => base,
+            None => {
+                let reason: String = format!(
+                    "multi-image does not fit in guest memory (total_size={ramfs_size}, \
+                     memory_size={memory_size})",
+                );
+                error!("MultiRamFs::load_into_virtual_memory(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        debug_assert!(
+            ramfs_base.is_multiple_of(PAGE_SIZE),
+            "ramfs_base ({ramfs_base:#x}) must be page-aligned"
+        );
+
+        if ramfs_base < min_available_base {
+            let available: usize = match memory_size.checked_sub(min_available_base) {
+                Some(value) => value,
+                None => {
+                    let reason: &str = "underflow while computing available guest memory for ramfs";
+                    error!("MultiRamFs::load_into_virtual_memory(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            };
+            let reason: String = format!(
+                "multi-image conflicts with initrd requirements (total_size={ramfs_size}, \
+                 available_for_ramfs={available}, required_slack={} bytes)",
+                RAMFS_MIN_SLACK_BYTES,
+            );
+            error!("MultiRamFs::load_into_virtual_memory(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Write the HEAD page into guest memory (committed/anonymous memory).
+        vmem.write_bytes(ramfs_base as u64, &self.head_page)?;
+        info!("MultiRamFs::load_into_virtual_memory(): wrote HEAD page at {:#010x}", ramfs_base);
+
+        // Build the list of file-backed regions and map them all at once.
+        let regions: std::vec::Vec<(usize, &File)> = self
+            .files
+            .iter()
+            .map(|(file, offset)| (ramfs_base + offset, file))
+            .collect();
+        vmem.remap_files_at(&regions)?;
+
+        for &(guest_addr, _) in &regions {
+            trace!(
+                "MultiRamFs::load_into_virtual_memory(): mapped sub-image at {:#010x}",
+                guest_addr
+            );
+        }
+
+        info!(
+            "MultiRamFs::load_into_virtual_memory(): loaded multi-image (base={:#010x}, \
+             size={ramfs_size})",
+            ramfs_base
+        );
+
+        Ok((ramfs_base, ramfs_size))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Extracts the open file handles from this `MultiRamFs`, consuming it.
+    ///
+    /// The returned files must be kept alive for the VM's lifetime so that the memory-mapped
+    /// regions remain valid.
+    ///
+    pub fn into_files(self) -> std::vec::Vec<File> {
+        self.files.into_iter().map(|(file, _offset)| file).collect()
     }
 }

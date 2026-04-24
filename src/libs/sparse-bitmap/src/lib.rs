@@ -36,6 +36,7 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+use ::vstd::prelude::*;
 
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
@@ -144,6 +145,7 @@ impl Chunk {
 ///
 #[verus_verify(external_derive)]
 #[derive(Debug)]
+#[verus_verify]
 pub struct SparseBitmap {
     /// Chunks, sorted by `offset` and non-overlapping. Populated at
     /// construction time by [`Self::new`]; never mutated afterwards.

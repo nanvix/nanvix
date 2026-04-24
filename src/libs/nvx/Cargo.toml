@@ -15,6 +15,7 @@ alloc = { version = "1.0.1", optional = true, package = "rustc-std-workspace-all
 cfg-if = { workspace = true }
 config = { workspace = true }
 elf = { workspace = true }
+multiimage = { workspace = true, optional = true }
 syslog = { workspace = true, default-features = true }
 sys = { workspace = true, features = ["kcall"] }
 core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
@@ -30,7 +31,7 @@ sysalloc = { workspace = true }
 [features]
 default = ["staticlib"]
 staticlib = []
-standalone = ["dep:vfs"]
+standalone = ["dep:vfs", "dep:multiimage"]
 hyperlight = []
 rustc-dep-of-std = [
     "alloc",

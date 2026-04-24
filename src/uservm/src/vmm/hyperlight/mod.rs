@@ -592,6 +592,15 @@ impl Vmm {
         self.vmem.clone()
     }
 
+    /// Enable the guest profiler (no-op on Hyperlight backend).
+    ///
+    /// Hyperlight does not support guest stack sampling because it does not
+    /// expose guest registers or memory in the same way as WHP/KVM.
+    /// Returns a profiler with an empty sample buffer.
+    pub fn enable_guest_profiler(&mut self) -> crate::guest_profiler::GuestProfiler {
+        crate::guest_profiler::GuestProfiler::new(0) // No sampling on Hyperlight.
+    }
+
     pub async fn load_snapshot(&self, filepath: String) -> Result<()> {
         let reason: String = format!("load_snapshot(): not implemented for filepath={}", filepath);
         error!("{}", reason);

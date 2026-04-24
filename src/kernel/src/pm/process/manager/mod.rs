@@ -501,6 +501,7 @@ impl ProcessManager {
             args_vaddr,
             AccessPermission::RDWR,
             true,
+            1,
             &mut Vec::with_capacity(1),
         )?;
         vmem.copy_to_user_unaligned(
@@ -525,6 +526,7 @@ impl ProcessManager {
             envp_vaddr,
             AccessPermission::RDWR,
             true,
+            1,
             &mut Vec::with_capacity(1),
         )?;
 
@@ -564,12 +566,14 @@ impl ProcessManager {
         // will leak underlying pages.
         let initial_stack_base: PageAligned<VirtualAddress> =
             PageAligned::from_raw_value(user_stack.top().into_raw_value() - USER_STACK_MIN_SIZE)?;
+        let count = USER_STACK_MIN_SIZE / PAGE_SIZE;
         mm.alloc_upages(
             &mut vmem,
             initial_stack_base,
             AccessPermission::RDWR,
             true,
-            &mut Vec::with_capacity(USER_STACK_MIN_SIZE / PAGE_SIZE),
+            count,
+            &mut Vec::with_capacity(count),
         )?;
 
         //==============================================================
@@ -1873,16 +1877,101 @@ impl ProcessManager {
         Ok(Some((state.pid(), status)))
     }
 
+    ///
+    /// # Description
+    ///
+    /// Maps one or more pages into the address space of a process.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Virtual memory manager.
+    /// - `pid`: Process identifier.
+    /// - `vaddr`: Page-aligned base virtual address to map.
+    /// - `npages`: Number of pages to map.
+    /// - `access`: Access permissions for the mapped pages.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, `Ok(())` is returned. Otherwise, an error is returned instead.
+    ///
     pub fn mmap(
         &mut self,
         mm: &mut VirtMemoryManager,
         pid: ProcessIdentifier,
         vaddr: PageAligned<VirtualAddress>,
+        npages: usize,
         access: AccessPermission,
     ) -> Result<(), Error> {
+        /// Maximum number of pages to allocate per batch. Caps the Vec allocation on the kheap.
+        const MMAP_BATCH_SIZE: usize = 16;
+
         let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let vmem: &mut Vmem = process.state_mut().vmem_mut();
-        mm.alloc_upages(vmem, vaddr, access, true, &mut Vec::with_capacity(1))
+        let mut current_vaddr: PageAligned<VirtualAddress> = vaddr;
+        let mut remaining: usize = npages;
+
+        while remaining > 0 {
+            let count: usize = remaining.min(MMAP_BATCH_SIZE);
+            let mut uframes = Vec::new();
+            let batch: usize = if uframes.try_reserve(count).is_ok() {
+                count
+            } else if uframes.try_reserve(1).is_ok() {
+                // Batch allocation failed; fall back to single-page allocation.
+                1
+            } else {
+                let reason: &str = "kheap: cannot allocate uframes vec for mmap";
+                error!("{reason}");
+                Self::rollback_mmap(mm, vmem, vaddr, current_vaddr);
+                return Err(Error::new(ErrorCode::OutOfMemory, reason));
+            };
+            if let Err(e) = mm.alloc_upages(vmem, current_vaddr, access, true, batch, &mut uframes)
+            {
+                Self::rollback_mmap(mm, vmem, vaddr, current_vaddr);
+                return Err(e);
+            }
+            current_vaddr =
+                PageAligned::from_raw_value(current_vaddr.into_raw_value() + batch * PAGE_SIZE)?;
+            remaining -= batch;
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Rolls back a partial `mmap` by unmapping all pages in the range
+    /// `[base_vaddr, failed_vaddr)`. Best-effort: individual unmap failures are logged
+    /// but do not prevent the remaining pages from being cleaned up.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Virtual memory manager.
+    /// - `vmem`: Virtual memory space containing the mappings.
+    /// - `base_vaddr`: Starting virtual address of the region to roll back.
+    /// - `failed_vaddr`: Virtual address where the allocation failed (exclusive upper bound).
+    ///
+    fn rollback_mmap(
+        mm: &mut VirtMemoryManager,
+        vmem: &mut Vmem,
+        base_vaddr: PageAligned<VirtualAddress>,
+        failed_vaddr: PageAligned<VirtualAddress>,
+    ) {
+        let mut raw: usize = base_vaddr.into_raw_value();
+        let end: usize = failed_vaddr.into_raw_value();
+        while raw < end {
+            match PageAligned::from_raw_value(raw) {
+                Ok(addr) => {
+                    if let Err(e) = mm.try_unmap_upage(vmem, addr) {
+                        warn!("mmap rollback: failed to unmap page (vaddr={raw:#x}, error={e:?})");
+                    }
+                },
+                Err(_) => {
+                    warn!("mmap rollback: invalid page address (vaddr={raw:#x})");
+                },
+            }
+            raw += PAGE_SIZE;
+        }
     }
 
     pub fn munmap(
@@ -2136,7 +2225,7 @@ impl ProcessManager {
         let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(page_addr)?;
         let pid: ProcessIdentifier = self.get_pid();
         debug!("demand-paging stack page (pid={pid:?}, vaddr={vaddr:?})");
-        self.mmap(mm, pid, vaddr, AccessPermission::RDWR)?;
+        self.mmap(mm, pid, vaddr, 1, AccessPermission::RDWR)?;
 
         Ok(true)
     }

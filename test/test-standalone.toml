@@ -149,3 +149,17 @@ executor = "terminal"
 program = "./bin/linux-app.elf"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
+
+
+#===================================================================================================
+# Host Mount Tests
+#===================================================================================================
+
+[[tests]]
+executor = "terminal"
+program = "./bin/mount-test.elf"
+extra_nanvixd_args = "-mount ./bin/mount-test-data"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 0
+runs_on = ["microvm"]

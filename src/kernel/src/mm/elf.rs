@@ -340,6 +340,7 @@ fn do_elf32_load(
                         vaddr,
                         access,
                         page_lies_in_bss || page_is_partially_covered,
+                        1,
                         &mut uframe_buf,
                     )?;
                 }

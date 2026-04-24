@@ -84,6 +84,8 @@ pub struct StandaloneConfig {
     pub(crate) console_file: Option<String>,
     /// Optional snapshot path for restoring VM state instead of cold-booting.
     pub(crate) snapshot_path: Option<String>,
+    /// Optional host directory to mount on the guest.
+    pub(crate) mount_directory: Option<String>,
     /// Optional GDB server port for debugging the guest.
     #[cfg(feature = "gdb")]
     pub(crate) gdb_port: Option<u16>,
@@ -101,6 +103,7 @@ impl StandaloneConfig {
     /// - `ramfs_filename`: Optional path to a RAM filesystem image.
     /// - `console_file`: Optional file path for guest stderr capture.
     /// - `snapshot_path`: Optional snapshot path for restoring VM state instead of cold-booting.
+    /// - `mount_directory`: Optional host directory to mount on the guest.
     /// - `gdb_port`: Optional GDB server port.
     ///
     pub fn new(
@@ -108,6 +111,7 @@ impl StandaloneConfig {
         ramfs_filename: Option<String>,
         console_file: Option<String>,
         snapshot_path: Option<String>,
+        mount_directory: Option<String>,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
     ) -> Self {
         Self {
@@ -115,6 +119,7 @@ impl StandaloneConfig {
             ramfs_filename,
             console_file,
             snapshot_path,
+            mount_directory,
             #[cfg(feature = "gdb")]
             gdb_port,
         }
@@ -280,6 +285,7 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
             state.config.ramfs_filename.clone(),
             state.config.console_file.clone(),
             state.config.snapshot_path.clone(),
+            state.config.mount_directory.clone(),
             #[cfg(feature = "gdb")]
             state.config.gdb_port,
         );

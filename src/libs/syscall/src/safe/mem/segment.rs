@@ -248,7 +248,7 @@ fn map_range(
     debug_assert!(end.is_aligned(PAGE_ALIGNMENT));
     debug_assert!(start < end);
 
-    // TODO: use iterator.
+    // TODO: use batch mmap to map all pages in a single kernel transition.
     let start: usize = start.into_raw_value();
     let end: usize = end.into_raw_value();
     for vaddr in (start..end).step_by(PAGE_SIZE) {
@@ -256,7 +256,7 @@ fn map_range(
 
         // Attempt to map page.
         let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
-        if let Err(error) = mmap(pid, vaddr, access) {
+        if let Err(error) = mmap(pid, vaddr, 1, access) {
             // Failed to map page, attempt to rollback.
 
             ::syslog::error!(

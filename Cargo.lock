@@ -68,7 +68,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -79,7 +79,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -90,7 +90,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "arch"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cfg-if",
  "compiler_builtins",
@@ -103,7 +103,7 @@ dependencies = [
 
 [[package]]
 name = "arch-rust"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "arch",
  "cc",
@@ -194,7 +194,7 @@ checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
 
 [[package]]
 name = "bitmap"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "error",
  "rand 0.10.1",
@@ -247,11 +247,11 @@ dependencies = [
 
 [[package]]
 name = "build-utils"
-version = "0.12.461"
+version = "0.12.469"
 
 [[package]]
 name = "bump-allocator"
-version = "0.12.461"
+version = "0.12.469"
 
 [[package]]
 name = "bumpalo"
@@ -273,7 +273,7 @@ checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "c-bindings-rust"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "config",
  "libc_string",
@@ -286,7 +286,7 @@ dependencies = [
 
 [[package]]
 name = "cache"
-version = "0.12.461"
+version = "0.12.469"
 
 [[package]]
 name = "cc"
@@ -419,7 +419,7 @@ dependencies = [
 
 [[package]]
 name = "config"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "build-utils",
  "cfg-if",
@@ -475,7 +475,7 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
 name = "containerd-shim-nanvix-v1"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -501,7 +501,7 @@ dependencies = [
 
 [[package]]
 name = "control-plane-api"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "config",
@@ -748,7 +748,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -764,7 +764,7 @@ dependencies = [
 
 [[package]]
 name = "dlfcn-rust"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -784,7 +784,7 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
 name = "echo-client"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "http-body-util",
@@ -799,7 +799,7 @@ dependencies = [
 
 [[package]]
 name = "echo-rust-nostd"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -813,7 +813,7 @@ dependencies = [
 
 [[package]]
 name = "echo-wasm-rust"
-version = "0.12.461"
+version = "0.12.469"
 
 [[package]]
 name = "either"
@@ -823,7 +823,7 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "elf"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "goblin",
  "num_enum",
@@ -873,12 +873,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "error"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-core",
@@ -894,7 +894,7 @@ checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
 
 [[package]]
 name = "fat32"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "error",
  "fatfs",
@@ -911,7 +911,7 @@ dependencies = [
 
 [[package]]
 name = "file-rust"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -1247,7 +1247,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hello-rust-nostd"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -1258,7 +1258,7 @@ dependencies = [
 
 [[package]]
 name = "hello-wasm"
-version = "0.12.461"
+version = "0.12.469"
 
 [[package]]
 name = "home"
@@ -1316,7 +1316,7 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
 name = "hwloc"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "libc",
@@ -1674,9 +1674,9 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jiff"
-version = "0.2.23"
+version = "0.2.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a3546dc96b6d42c5f24902af9e2538e82e39ad350b0c766eb3fbf2d8f3d8359"
+checksum = "f00b5dbd620d61dfdcb6007c9c1f6054ebd75319f163d886a9055cec1155073d"
 dependencies = [
  "jiff-static",
  "log",
@@ -1687,9 +1687,9 @@ dependencies = [
 
 [[package]]
 name = "jiff-static"
-version = "0.2.23"
+version = "0.2.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a8c8b344124222efd714b73bb41f8b5120b27a7cc1c75593a6ff768d9d05aa4"
+checksum = "e000de030ff8022ea1da3f466fbb0f3a809f5e51ed31f6dd931c35181ad8e6d7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1764,7 +1764,7 @@ dependencies = [
 
 [[package]]
 name = "kernel"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "arch",
  "bitmap",
@@ -1781,7 +1781,7 @@ dependencies = [
  "no_fail",
  "paste",
  "raw-array",
- "slab 0.12.461",
+ "slab 0.12.469",
  "sorted-vec",
  "sparse-bitmap",
  "static_assert",
@@ -1848,7 +1848,7 @@ checksum = "52ff2c0fe9bc6cb6b14a0592c2ff4fa9ceb83eea9db979b0487cd054946a2b8f"
 
 [[package]]
 name = "libc_stdlib"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cfg-if",
  "compiler_builtins",
@@ -1864,7 +1864,7 @@ dependencies = [
 
 [[package]]
 name = "libc_string"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "sysapi",
 ]
@@ -1886,7 +1886,7 @@ dependencies = [
 
 [[package]]
 name = "linux-app"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -1912,7 +1912,7 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "linuxd"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "config",
@@ -1973,7 +1973,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
 name = "memd"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -2004,7 +2004,7 @@ dependencies = [
 
 [[package]]
 name = "memory-rust"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -2041,7 +2041,7 @@ dependencies = [
 
 [[package]]
 name = "misc-rust"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -2056,14 +2056,14 @@ dependencies = [
 
 [[package]]
 name = "mkimage"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "multibin",
 ]
 
 [[package]]
 name = "mkramfs"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "arch",
  "fatfs",
@@ -2071,7 +2071,38 @@ dependencies = [
 
 [[package]]
 name = "mmio-tag"
-version = "0.12.461"
+version = "0.12.469"
+
+[[package]]
+name = "mount-bench-nostd"
+version = "0.12.469"
+dependencies = [
+ "build-utils",
+ "cc",
+ "cfg-if",
+ "fatfs",
+ "libc_string",
+ "mkramfs",
+ "nvx",
+ "sys",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
+name = "mount-test"
+version = "0.12.469"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_string",
+ "nvx",
+ "sys",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
 
 [[package]]
 name = "mshv-bindings"
@@ -2099,9 +2130,18 @@ dependencies = [
 
 [[package]]
 name = "multibin"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "error",
+]
+
+[[package]]
+name = "multiimage"
+version = "0.12.469"
+dependencies = [
+ "config",
+ "mmio-tag",
+ "tempfile",
 ]
 
 [[package]]
@@ -2112,7 +2152,7 @@ checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
 
 [[package]]
 name = "nanvix"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "config",
@@ -2132,7 +2172,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-bench"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "build-utils",
@@ -2153,7 +2193,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-http"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "config",
@@ -2176,7 +2216,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-oci"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "log",
@@ -2186,7 +2226,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-registry"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "bytes",
@@ -2202,7 +2242,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-sandbox"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "build-utils",
@@ -2226,7 +2266,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-sandbox-cache"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2239,7 +2279,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-shim-core"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2255,7 +2295,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-shim-proto"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2275,7 +2315,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-shim-standalone"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2292,7 +2332,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-terminal"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "config",
@@ -2307,7 +2347,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-test"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2326,7 +2366,7 @@ dependencies = [
 
 [[package]]
 name = "nanvixd"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2339,7 +2379,7 @@ dependencies = [
 
 [[package]]
 name = "network-rust"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -2391,11 +2431,11 @@ dependencies = [
 
 [[package]]
 name = "no_fail"
-version = "0.12.461"
+version = "0.12.469"
 
 [[package]]
 name = "noop-rust-nostd"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -2407,7 +2447,7 @@ dependencies = [
 
 [[package]]
 name = "noop-wasm-rust"
-version = "0.12.461"
+version = "0.12.469"
 
 [[package]]
 name = "nu-ansi-term"
@@ -2415,7 +2455,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2450,12 +2490,13 @@ dependencies = [
 
 [[package]]
 name = "nvx"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cfg-if",
  "compiler_builtins",
  "config",
  "elf",
+ "multiimage",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
  "sys",
@@ -2546,9 +2587,9 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "pastey"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b867cad97c0791bbd3aaa6472142568c6c9e8f71937e98379f584cfb0cf35bec"
+checksum = "c5a797f0e07bdf071d15742978fc3128ec6c22891c31a3a931513263904c982a"
 
 [[package]]
 name = "percent-encoding"
@@ -2610,7 +2651,7 @@ dependencies = [
 
 [[package]]
 name = "posix"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cfg-if",
  "num_enum",
@@ -2655,7 +2696,7 @@ dependencies = [
 
 [[package]]
 name = "proc"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -2697,7 +2738,7 @@ dependencies = [
 
 [[package]]
 name = "procd"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -2710,7 +2751,7 @@ dependencies = [
 
 [[package]]
 name = "profiler"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cfg-if",
  "log",
@@ -2973,7 +3014,7 @@ checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
 name = "raw-array"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cfg-if",
  "error",
@@ -3167,14 +3208,14 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "rustls"
-version = "0.23.38"
+version = "0.23.39"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69f9466fb2c14ea04357e91413efb882e2a6d4a406e625449bc0a5d360d53a21"
+checksum = "7c2c118cb077cca2822033836dfb1b975355dfb784b5e8da48f7b6c5db74e60e"
 dependencies = [
  "aws-lc-rs",
  "once_cell",
@@ -3224,7 +3265,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3235,9 +3276,9 @@ checksum = "f87165f0995f63a9fbeea62b64d10b4d9d8e78ec6d7d51fb2125fda7bb36788f"
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.12"
+version = "0.103.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8279bb85272c9f10811ae6a6c547ff594d6a7f3c6c6b02ee9726d1d0dcfcdd06"
+checksum = "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e"
 dependencies = [
  "aws-lc-rs",
  "ring",
@@ -3457,7 +3498,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "slab"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "bitmap",
  "error",
@@ -3474,7 +3515,7 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "snapshot-rust-nostd"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3491,16 +3532,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "sorted-vec"
-version = "0.12.461"
+version = "0.12.469"
 
 [[package]]
 name = "sparse-bitmap"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "bitmap",
  "error",
@@ -3541,7 +3582,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "static_assert"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-core",
@@ -3549,7 +3590,7 @@ dependencies = [
 
 [[package]]
 name = "strace"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "clap",
@@ -3557,7 +3598,7 @@ dependencies = [
 
 [[package]]
 name = "stress-rust"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3644,7 +3685,7 @@ dependencies = [
 
 [[package]]
 name = "sys"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "compiler_builtins",
  "config",
@@ -3656,7 +3697,7 @@ dependencies = [
 
 [[package]]
 name = "sysalloc"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "arch",
  "compiler_builtins",
@@ -3672,7 +3713,7 @@ dependencies = [
 
 [[package]]
 name = "sysapi"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "compiler_builtins",
  "config",
@@ -3682,7 +3723,7 @@ dependencies = [
 
 [[package]]
 name = "syscall"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "arch",
  "cfg-if",
@@ -3705,7 +3746,7 @@ dependencies = [
 
 [[package]]
 name = "syscomm"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "config",
  "libc",
@@ -3716,7 +3757,7 @@ dependencies = [
 
 [[package]]
 name = "syslog"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cfg-if",
  "compiler_builtins",
@@ -3729,7 +3770,7 @@ dependencies = [
 
 [[package]]
 name = "syslog-macros"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3776,7 +3817,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3790,7 +3831,7 @@ dependencies = [
 
 [[package]]
 name = "test-kernel"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "arch",
  "cc",
@@ -3805,7 +3846,7 @@ dependencies = [
 
 [[package]]
 name = "test-mmio-fault"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "arch",
  "cc",
@@ -3818,7 +3859,7 @@ dependencies = [
 
 [[package]]
 name = "testd"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "arch",
  "cc",
@@ -3873,7 +3914,7 @@ dependencies = [
 
 [[package]]
 name = "thread-rust"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -4152,7 +4193,7 @@ dependencies = [
 
 [[package]]
 name = "type-safe"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-alloc",
@@ -4215,7 +4256,7 @@ dependencies = [
 
 [[package]]
 name = "user-vm-api"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "config",
@@ -4227,7 +4268,7 @@ dependencies = [
 
 [[package]]
 name = "uservm"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "anyhow",
  "arch",
@@ -4235,6 +4276,7 @@ dependencies = [
  "config",
  "control-plane-api",
  "elf",
+ "fatfs",
  "gdbstub",
  "gdbstub_arch",
  "hyperlight-host",
@@ -4242,7 +4284,9 @@ dependencies = [
  "kvm-ioctls",
  "libc",
  "log",
+ "mkramfs",
  "multibin",
+ "multiimage",
  "profiler",
  "serde",
  "serde_cbor",
@@ -4252,6 +4296,7 @@ dependencies = [
  "syscall",
  "syscomm",
  "syslog",
+ "tempfile",
  "tokio",
  "user-vm-api",
  "vmm-sys-util",
@@ -4348,7 +4393,7 @@ dependencies = [
 
 [[package]]
 name = "vfs"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "error",
  "fat32",
@@ -4359,11 +4404,11 @@ dependencies = [
 
 [[package]]
 name = "vfs-bench-common"
-version = "0.12.461"
+version = "0.12.469"
 
 [[package]]
 name = "vfs-bench-nostd"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "build-utils",
  "cc",
@@ -4384,7 +4429,7 @@ dependencies = [
 
 [[package]]
 name = "vfs-test"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -4550,7 +4595,7 @@ dependencies = [
 
 [[package]]
 name = "wasmd"
-version = "0.12.461"
+version = "0.12.469"
 dependencies = [
  "cc",
  "cfg-if",
@@ -4686,7 +4731,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5124,9 +5169,9 @@ checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
 
 [[package]]
 name = "winnow"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09dac053f1cd375980747450bfc7250c264eaae0583872e845c0c7cd578872b5"
+checksum = "2ee1708bef14716a11bae175f579062d4554d95be2c6829f518df847b7b3fdd0"
 
 [[package]]
 name = "wit-bindgen"
