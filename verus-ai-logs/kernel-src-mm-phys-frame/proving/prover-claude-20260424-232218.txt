@@ -4137,3 +4137,74 @@ $(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
 Turn 137
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: Using Verus installation at /home/ruize/verus.
+PATH="/home/ruize/verus:$PATH" \
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+VERUS_EXTRA_CARGO_ARGS="--features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem --target /home/ruize/ve...
+
+────────────────────────────────────────────────────────────
+Turn 138
+────────────────────────────────────────────────────────────
+The `let ghost` syntax isn't available in attribute mode. I need to use inline expressions instead. Let me fix this:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The issue is `let ghost ps = ...;` — in attribute mode, `let ghost` is not valid Rust syntax. In Verus attribute mode, ghost variables are declared differently.
+
+Let me check the verus-syntax skill to understand how ghost variables are declared in attribute mode...
+
+Actually, looking at the earlier successful proofs (free, book, alloc), I used `proof!{ ... }` blocks. I didn't use `let ghost`. Let me check how I handled ghost variables in those methods.
+
+Actually, looking at the error, the issue is `let ghost ps = spec_page_size();`. In attribute mode, the correct way to declare ghost variables is inside a `proof! { }` block, or perhaps the syntax is different.
+
+
+I'm realizing that `let ghost` syntax only works inside `verus!{}` blocks, not in attribute mode. In attribute mode, ghost variables need to live in `proof!{ }` blocks, but then they're scoped locally and can't be referenced in loop invariants that need them. This creates a scoping problem where the ghost variables I need for the invariants aren't accessible outside their proof blocks. I need to inline all the ghost variable definitions since I can't use `let ghost` statements in attribute mode. This means replacing `sfn`, `efn`, `ps`, and `frames` with their actual expressions throughout the loop invariants and proof blocks, which will be verbose but should compile.
+
+However, I realize I can define a helper spec function instead — something that takes the start and end frame numbers and returns the computed set of frames. This way I avoid repeating that long set comprehension expression everywhere, keeping the code more readable while still working within the constraints.
+
+For the proof blocks themselves, I can declare local variables scoped to each `proof!{}` block to hold intermediate values like the page size and frame numbers. Then for the loop invariants, I'll use inline forall expressions directly in the spec annotations rather than trying to reference external variables — this keeps everything self-contained and verifiable.
+
+Looking at the first loop's invariants, I don't actually need those helper variables since they only reference bitmap state and the loop bounds. The second loop is where I need to check what's required.
+
+Checking loop invariants...
+
+I'm verifying the bitmap state transitions and frame number constraints across these verification conditions. The key insight is that I need to handle the type conversions consistently—casting `start_frame_number` and `end_frame_number` to `int` throughout the assertions. For the proof blocks, I'll introduce local ghost variables for these values each time rather than relying on attributes, which should simplify the verification. Let me start rewriting the actual code now, though this is going to be tedious with all the invariant specifications.
+
+Actually, I'm second-guessing whether Verus even supports `let ghost` declarations in attribute mode. Looking at the documentation, ghost code goes inside `proof! { ... }` blocks, but I'm not sure if ghost variable bindings work the same way outside of those blocks. The error message I'm seeing suggests the syntax might not be recognized. Let me check if there's a different annotation or approach for declaring ghost variables in this context. I see the issue — `let ghost` syntax only works inside `verus!{}` blocks, not at the exec level. Since the earlier proofs use `proof!{}` blocks for their declarations, I should do the same here: either inline the expressions directly or wrap them in proof blocks instead of trying to use `let ghost` at the top level.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 139
+────────────────────────────────────────────────────────────
+Now I need to replace all `sfn`, `efn`, `ps`, `frames` references with inline expressions. Let me do a comprehensive replacement:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 808.         proof! {
+809.             let ps = spec_page_size();
+810.             lemma_fundamental_div_mod(region@.size, ps);
+811.             vstd::arithmetic::mul::lemma_mul_is_commutative(ps, num_frames as int);
+812.             assert((num_frames as int) * ps == region@.size);
+813.            ...
+
+────────────────────────────────────────────────────────────
+Turn 140
+────────────────────────────────────────────────────────────
+I need to replace all `sfn`, `efn`, `ps`, `frames` in the remaining code. Let me do this with targeted edits. First, let me see lines 1002+:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1000.                 if self@.free_frames.contains(addr) {
+1001.                     let i = choose|i: int|
+1002.                         self.bitmap@.is_covered(i)
+1003.                         && !self.bitmap@.set_bits.contains(i)
+1004.                         && addr == frame_addr_of(i);
+1005.  ...
+
+────────────────────────────────────────────────────────────
+Turn 141
+────────────────────────────────────────────────────────────
+Now I need to replace all the ghost variable references with inline expressions. The references to `sfn`, `efn`, `ps`, and `frames` appear throughout the proof code. Let me do a bulk replacement of the section from line 822 to 1041:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 142
+────────────────────────────────────────────────────────────
+Now let me run the verification again:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1

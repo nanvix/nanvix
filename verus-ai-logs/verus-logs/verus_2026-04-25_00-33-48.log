@@ -1,0 +1,71 @@
+Timestamp: 2026-04-25_00-33-48
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::frame
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=24
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=11
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+error[E0308]: mismatched types
+   --> src/kernel/src/mm/phys/frame.rs:823:31
+    |
+823 |           #[verus_spec(invariant(
+    |  _______________________________^
+824 | |             self.bitmap.inv(),
+825 | |             self.bitmap@ =~= old(self).bitmap@,
+826 | |             self.internal_inv(),
+827 | |             start_frame_number <= index && index <= end_frame_number,
+828 | |             forall|j: int| start_frame_number as int <= j < index as int ==> self.bitmap@.is_covered(j),
+829 | |         ))]
+    | |_________^ expected `bool`, found `(bool, bool, bool, bool, bool)`
+    |
+    = note: expected type `bool`
+              found tuple `(bool, bool, bool, bool, bool)`
+
+error[E0308]: mismatched types
+   --> src/kernel/src/mm/phys/frame.rs:866:31
+    |
+866 |           #[verus_spec(invariant(
+    |  _______________________________^
+867 | |             self.bitmap.inv(),
+868 | |             self.bitmap@ =~= old(self).bitmap@,
+869 | |             self.internal_inv(),
+...   |
+872 | |             forall|j: int| start_frame_number as int <= j < index as int ==> !self.bitmap@.set_bits.contains(j),
+873 | |         ))]
+    | |_________^ expected `bool`, found `(bool, bool, bool, bool, bool, bool)`
+    |
+    = note: expected type `bool`
+              found tuple `(bool, bool, bool, bool, bool, bool)`
+
+error[E0308]: mismatched types
+   --> src/kernel/src/mm/phys/frame.rs:927:31
+    |
+927 |   ...   #[verus_spec(invariant(
+    |  _____________________________^
+928 | | ...       self.bitmap.inv(),
+929 | | ...       self.bitmap@.chunks =~= old(self).bitmap@.chunks,
+930 | | ...       self.bitmap@.set_bits =~= old(self).bitmap@.set_bits.union(
+...   |
+935 | | ...       forall|j: int| start_frame_number as int <= j < end_frame_number as int ==> !old(self).bitmap@.set_...
+936 | | ...   ))]
+    | |_______^ expected `bool`, found `(bool, bool, bool, bool, bool, bool)`
+    |
+    = note: expected type `bool`
+              found tuple `(bool, bool, bool, bool, bool, bool)`
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `kernel` (bin "kernel") due to 3 previous errors
