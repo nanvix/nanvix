@@ -2652,3 +2652,31 @@ Turn 123
 ────────────────────────────────────────────────────────────
 Now let me try building again:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: Channel   : <default>
+  Extra args: --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem --target /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/build/targets/x86-kernel.json
+  Timestamp : 2026-04-24_20-43-07
+
+note: verif...
+
+────────────────────────────────────────────────────────────
+Turn 124
+────────────────────────────────────────────────────────────
+The issue is that `verus!` macro itself needs to be in scope before it can be used. Let me add a separate import:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/platform/microvm/mod.rs
+
+[THINKING] The `verus!` macro is not found because when `#[cfg(verus_keep_ghost)]` is active, the `use vstd::prelude::*` import inside the `verus!{}` block itself isn't available at the point where `verus!` needs to be resolved. The `use` inside `verus!{}` is processed after the macro is expanded, but the macro name itself needs to be in scope first.
+
+I need to import the `verus` macro at the module level. Let me check how other files handle this. Looking at frame.rs:
+```rust
+use ::vstd::prelude::*;
+
+
+```
+
+This is at the top of the file unconditionally. Since `vstd` is always a dependency (it's just a no-op crate for non-verus builds), I can add a conditional import before the `verus!` block to bring the macro into scope when needed.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/platform/microvm/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 125
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
