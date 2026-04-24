@@ -1747,3 +1747,61 @@ Turn 56
 Turn 57
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: assertion failed
+  --> src/kernel/src/mm/phys/frame.proof.rs:69:38
+   |
+69 |             assert forall|addr: int| !(self@.allocated_frames.contains(addr) && self@.free_frames.contains(addr))
+   |                                      ^^^^^^^^^^^^^^^^...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n "lemma_mul_equality_converse" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/mul.rs
+[RESULT ✓] bash: 234:pub broadcast proof fn lemma_mul_equality_converse(m: int, x: int, y: int)
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/mul.rs
+[RESULT ✓] view: 234. pub broadcast proof fn lemma_mul_equality_converse(m: int, x: int, y: int)
+235.     requires
+236.         m != 0,
+237.         #[trigger] (m * x) == #[trigger] (m * y),
+238.     ensures
+239.         x == y,
+240. {
+241.     lemma_mul_induction_auto(m, |u| x > y && 0 < u ==> x * u > y * u);
+242. ...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+The signature is `(m, x, y)` with `m * x == m * y ==> x == y`. But I have `i_alloc * ps == i_free * ps`, which is `x * m == y * m`. I need to swap arguments:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+Wait, the signature is `(m, x, y)` where `m*x == m*y`. So I need `ps * i_alloc == ps * i_free`. But I have `i_alloc * ps == i_free * ps`. Let me use `lemma_mul_is_commutative` first:
+[TOOL] bash: grep -n "lemma_mul_is_commutative\|lemma_mul_commute" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/mul.
+[RESULT ✓] bash: 134:pub broadcast proof fn lemma_mul_is_commutative(x: int, y: int)
+306:    lemma_mul_is_commutative(x, y - z);
+307:    lemma_mul_is_commutative(x, y);
+308:    lemma_mul_is_commutative(x, z);
+319:    lemma_mul_is_commutative,
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1

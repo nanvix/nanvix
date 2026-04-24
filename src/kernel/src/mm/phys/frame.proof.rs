@@ -72,7 +72,9 @@ impl Inner {
                     let i_alloc = choose|i: int| self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
                     let i_free = choose|i: int| self.bitmap@.is_covered(i) && !self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
                     assert(i_alloc * ps == i_free * ps);
-                    vstd::arithmetic::mul::lemma_mul_equality_converse(i_alloc, i_free, ps);
+                    vstd::arithmetic::mul::lemma_mul_is_commutative(i_alloc, ps);
+                    vstd::arithmetic::mul::lemma_mul_is_commutative(i_free, ps);
+                    vstd::arithmetic::mul::lemma_mul_equality_converse(ps, i_alloc, i_free);
                 }
             }
         }
