@@ -3283,3 +3283,20 @@ Turn 175
 ────────────────────────────────────────────────────────────
 Now let me try building before tackling alloc_range (the hardest one):
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423" \
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/scripts/verify.sh --crate kernel --module mm::phys::kpool --log-dir verus-ai-logs
+=== Verus Verification (cargo mode) ===
+  Crate     : kernel
+  Module    : mm::phys::kp...
+
+────────────────────────────────────────────────────────────
+Turn 176
+────────────────────────────────────────────────────────────
+Good, only 1 error: can't call exec function `pa_into_raw` inside `proof!{}` block. I need to use the spec `self.base@` instead:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 177
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
