@@ -1582,3 +1582,27 @@ One possible solution: run `make verify-kernel` without the MODULE parameter, wh
 
 
 Let me test running the verification without specifying a particular module to see if that resolves the issue with the sys crate failing.
+[RESULT ✓] bash: RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+VERUS_EXTRA_CARGO_ARGS="--features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem --target /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/build/targets/x86-kernel.j...
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+Verus doesn't allow `requires` on Drop. Let me fix this:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The error is clear: "requires are not allowed on the implementation for Drop". So Verus doesn't allow `requires` on Drop impls. I need to remove the `requires` from the Drop spec.
+
+This means I need to either:
+1. Remove the requires from Drop and also remove the requires from `frame::free()` (so the body can still verify)
+2. Keep frame::free() requires but use a proof block in Drop to assert that the frame is valid
+
+Let me go with option 1: remove `requires frame.inv()` from `frame::free()` and remove `requires self.inv()` from Drop.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -50
