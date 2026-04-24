@@ -348,3 +348,57 @@ Turn 27
 Turn 28
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && MODULE=mm::phys::frame make verify-kernel 2>&1
+[RESULT ✓] bash: - frame.rs:383 alloc: external_body
+    - frame.rs:415 book: external_body
+    - frame.rs:429 alloc_range: external_body
+  Global: assume=0 external_body=18 admit=7 trusted=0 cfg_gate=7
+  Detail: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/cheating-detail.txt
+
+...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -A5 'error:' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/verus-logs/verus_202
+[RESULT ✓] bash: error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -B5 'error:' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/verus-logs/verus_202
+[RESULT ✓] bash: 56 - ;
+ 52 + pub assume_specification[ super::init(/* hal::mem::types::address::aligned::page::PageAligned<hal::mem::types::address::phys::PhysicalAddress> */, /* alloc::collections::LinkedList<hal::mem::types::region::TruncatedMemoryRegion<hal::mem::types::address::phys::PhysicalAddress>> */, /* &a...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+The `assume_specification` for `init()` doesn't match — `init()` has a different signature than expected. Let me check the full `init()` function signature:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 335.         panic!("frame allocator used before init()");
+336.     }
+337. 
+338.     // SAFETY: `INSTANCE_INIT` is `true`, so `INSTANCE` has been fully written by `init()`.
+339.     // The kernel is single-threaded with interrupts disabled, so no concurrent access is possible.
+340.     unsafe { INST...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n 'pub(super) unsafe fn init' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/m
+[RESULT ✓] bash: 
+<exited with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+The `init` function's `assume_specification` fails because the path is wrong — `super::init` resolves to the module-level `init` which might be a different function. The error shows Verus matched a different `init` function with different parameters. Let me check what `super` resolves to from within the `verus!{}` block in frame.spec.rs:
+
+The `include!` places frame.spec.rs inside frame.rs, so `super` means `mm::phys`. The error message shows it matched a different `init` function. The correct path should be the init function within frame.rs itself. Since the spec file is included inside the `frame` module, I should use `self::init` or just `init`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && MODULE=mm::phys::frame make verify-kernel 2>&1

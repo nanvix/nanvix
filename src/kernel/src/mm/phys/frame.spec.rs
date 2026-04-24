@@ -49,7 +49,7 @@ pub assume_specification[ PhysicalAddress::into_frame_number ](self_: PhysicalAd
 // Verus cannot compile even with external_body. Spec provided here instead.
 // ---------------------------------------------------------------------------
 
-pub assume_specification[ super::init ](bitmap: SparseBitmap) -> (result: Result<(), Error>)
+pub assume_specification[ init ](bitmap: SparseBitmap) -> (result: Result<(), Error>)
     ensures
         // Singleton pattern: state not expressible without ghost accessor.
         result.is_ok() || result.is_err(),
