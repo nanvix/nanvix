@@ -1,0 +1,126 @@
+{
+  "module": "kernel-src-mm-phys-upool",
+  "generated_at": "2026-04-24T20:11:22.727485",
+  "total_calls": 4,
+  "calls_with_usage": 4,
+  "calls_timed_out": 0,
+  "calls_failed": 0,
+  "total_duration_s": 2434.4,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "total_tokens": 0,
+  "per_phase": {
+    "proving": {
+      "calls": 2,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 1948.7
+    },
+    "cheating-elimination": {
+      "calls": 2,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 485.7
+    }
+  },
+  "per_role": {
+    "prover": {
+      "calls": 2,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 1706.7
+    },
+    "dialogue-reviewer-t1": {
+      "calls": 2,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 727.7
+    }
+  },
+  "calls": [
+    {
+      "timestamp": "2026-04-24T19:55:55.257465",
+      "phase": "proving",
+      "role": "prover",
+      "model": "claude-opus-4.6",
+      "exit_code": 0,
+      "session_id": "317023c8-e49e-4641-bcf4-fd2041a5fba0",
+      "log_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/proving/prover-claude-20260424-193047.txt",
+      "duration_s": 1507.5,
+      "usage": {
+        "premiumRequests": 3,
+        "totalApiDurationMs": 1327891,
+        "sessionDurationMs": 1506241,
+        "codeChanges": {
+          "linesAdded": 83,
+          "linesRemoved": 16,
+          "filesModified": [
+            "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.spec.rs",
+            "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs",
+            "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-04-24T20:03:16.654438",
+      "phase": "proving",
+      "role": "dialogue-reviewer-t1",
+      "model": "claude-opus-4.6",
+      "exit_code": 0,
+      "session_id": "8a63231d-3f50-4125-ae0b-63c597751b44",
+      "log_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/proving/dialogue-reviewer-t001-claude-20260424-195555.txt",
+      "duration_s": 441.2,
+      "usage": {
+        "premiumRequests": 3,
+        "totalApiDurationMs": 181238,
+        "sessionDurationMs": 439805,
+        "codeChanges": {
+          "linesAdded": 164,
+          "linesRemoved": 0,
+          "filesModified": []
+        }
+      }
+    },
+    {
+      "timestamp": "2026-04-24T20:06:36.081776",
+      "phase": "cheating-elimination",
+      "role": "prover",
+      "model": "claude-opus-4.6",
+      "exit_code": 0,
+      "session_id": "02658a0b-1749-4c02-bf7c-270f763a2762",
+      "log_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/cheating-elimination/prover-claude-20260424-200316.txt",
+      "duration_s": 199.2,
+      "usage": {
+        "premiumRequests": 3,
+        "totalApiDurationMs": 147808,
+        "sessionDurationMs": 197880,
+        "codeChanges": {
+          "linesAdded": 64,
+          "linesRemoved": 0,
+          "filesModified": []
+        }
+      }
+    },
+    {
+      "timestamp": "2026-04-24T20:11:22.628458",
+      "phase": "cheating-elimination",
+      "role": "dialogue-reviewer-t1",
+      "model": "claude-opus-4.6",
+      "exit_code": 0,
+      "session_id": "bf04ab49-94c2-4b3a-a57a-7e28c218004d",
+      "log_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/cheating-elimination/dialogue-reviewer-t001-claude-20260424-200636.txt",
+      "duration_s": 286.5,
+      "usage": {
+        "premiumRequests": 3,
+        "totalApiDurationMs": 230395,
+        "sessionDurationMs": 285178,
+        "codeChanges": {
+          "linesAdded": 169,
+          "linesRemoved": 0,
+          "filesModified": []
+        }
+      }
+    }
+  ]
+}

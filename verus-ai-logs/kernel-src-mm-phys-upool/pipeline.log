@@ -48,3 +48,15 @@ Module: upool
 [2026-04-24 20:11:22]   ↳ dialogue-reviewer-t1 done in 4m46s (exit=0)
 [2026-04-24 20:11:22] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-04-24 20:11:22] [DIALOGUE] cheating-elimination ended after 1 turns: RESOLVED (287s)
+[2026-04-24 20:11:22] [PHASE] cheating-elimination: dialogue-RESOLVED (8m05s)
+[2026-04-24 20:11:22] [CHEATING] external_body: 11 (10 on user fns)
+[2026-04-24 20:11:22] ✅ cheating-elimination: PASS (0/0)
+
+============================================================
+PIPELINE COMPLETE: upool
+  ✅ proving                   dialogue-RESOLVED        32m29s (1 dialogue turns)
+  ✅ cheating-elimination      dialogue-RESOLVED         8m05s (1 dialogue turns)
+  ──────────────────────────────────────────────────────────
+  Total: 40m35s
+============================================================
+[2026-04-24 20:11:22] [USAGE] Summary: 4 calls, 0 tokens, 40m34s total → /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/usage_summary.json
