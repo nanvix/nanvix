@@ -4135,3 +4135,555 @@ Duplicate import. Let me remove the one in the proof file:
 Turn 238
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: --> src/kernel/src/mm/phys/kpool.rs:281:13
+    |
+281 | /             match result {
+282 | |                 Ok(()) => {
+283 | |                     &&& old(addrs)@.len() == 0
+284 | |                     &&& count > 0
+...   |
+311 | |                 },
+312 | |             },
+    | |_____________^ fai...
+
+────────────────────────────────────────────────────────────
+Turn 239
+────────────────────────────────────────────────────────────
+Progress — 4 verified (was 2), 3 errors. The issues are:
+
+1. **alloc_range Ok postcondition (line 281)** — loop body doesn't establish the postcondition
+2. **alloc_range Err proof (line 337)** — `range_free` contradiction not proven
+3. **alloc_range loop body (lines 387, 389)** — `spec_page_size() > 0` and index+i bound not available in loop
+
+The loop issues (3) are because `lemma_internal_inv()` was called before bitmap.alloc_range mutated self.bitmap. After the mutation, `self.internal_inv()` may not hold anymore. Let me think...
+
+After `bitmap.alloc_range()` succeeds:
+- `self.bitmap.inv()` holds (from bitmap.alloc_range ensures)
+- `self.bitmap@.num_bits == old(self).bitmap@.num_bits` (from ensures)
+- `self.base` is unchanged
+- So `self.internal_inv()` still holds
+
+But the verifier doesn't know this because `internal_inv` is closed. I need to re-establish it. Let me add a `lemma_internal_inv_intro` call after `bitmap.alloc_range`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 354.                 error!("{error:?} (count={count})");
+355.                 return Err(error);
+356.             },
+357.         };
+358. 
+359.         proof! {
+360.             // index from bitmap.alloc_range: 0 <= index < num_bits, index + count <= num_bits
+361.             assert(0 <= index < s...
+
+────────────────────────────────────────────────────────────
+Turn 240
+────────────────────────────────────────────────────────────
+The problem: after `bitmap.alloc_range` mutates `self`, the verifier lost `spec_page_size() > 0` and other internal_inv properties. Even though we asserted them at line 363, the mutation of `self.bitmap` might have invalidated the proof context (even though `spec_page_size()` is a global spec fn unrelated to `self`).
+
+Wait — `spec_page_size()` is `pub open spec fn spec_page_size() -> int`. It's a pure spec function. Its value can't change. The issue is that `spec_page_size() > 0` was established by `lemma_internal_inv`, but the loop might not preserve it.
+
+Actually, the issue is simpler: Verus loops require loop invariants. Without `invariant` clauses, nothing from the pre-loop context is available inside the loop. So I need loop invariants.
+
+Let me now check how to write loop invariants in Verus attribute syntax:
+[TOOL] grep: loop.*invariant|invariant_ensures
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/SKILL.md:3:description: "Verus attribute-based syntax reference for exec functions. Covers #[verus_spec], #[verus_verify], proof!{}, proof_decl!{}, loop invariants. See GUIDE.md for advanced patterns, syntax_attr.rs for the official example....
+
+────────────────────────────────────────────────────────────
+Turn 241
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n 'loop_invariant\|verus_loop\|#\[invariant\]\|invariant_ensures\|for.*invariant' /home/ruize/verus-ai-exp/verus-a
+[RESULT ✓] bash: 3:description: "Verus attribute-based syntax reference for exec functions. Covers #[verus_spec], #[verus_verify], proof!{}, proof_decl!{}, loop invariants. See GUIDE.md for advanced patterns, syntax_attr.rs for the official example."
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 242
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n 'invariant' /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/SKILL.md | head -20
+[RESULT ✓] bash: 3:description: "Verus attribute-based syntax reference for exec functions. Covers #[verus_spec], #[verus_verify], proof!{}, proof_decl!{}, loop invariants. See GUIDE.md for advanced patterns, syntax_attr.rs for the official example."
+21:| Loop invariants | `#[verus_spec(invariant ...)]` on loop |
+86...
+
+────────────────────────────────────────────────────────────
+Turn 243
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/SKILL.md
+[RESULT ✓] view: 75. #[verus_spec(ret =>
+76.     requires x > 0,
+77.     ensures ret == x,
+78. )]
+79. fn wrapper(x: u32) -> u32 { x }
+80. ```
+81. 
+82. ## Loop Invariants
+83. 
+84. ```rust
+85. #[verus_spec(
+86.     invariant
+87.         v@ =~= Seq::new(i as nat, |k| k as u32),
+88. )]
+89. for i in 0..n {
+90.     v.push...
+
+────────────────────────────────────────────────────────────
+Turn 244
+────────────────────────────────────────────────────────────
+Good — `#[verus_spec(invariant ...)]` on for loops. Let me also check the GUIDE.md for more detail:
+[TOOL] bash: grep -n 'invariant\|for.*in.*0\.\.' /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/GUIDE.md | head -30
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 245
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai/docs -name 'GUIDE.md' 2>/dev/null
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/GUIDE.md
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 246
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/GUIDE.md
+[RESULT ✓] view: 1. # Verus Attribute Syntax — Advanced Guide
+2. 
+3. Companion to `SKILL.md`. Covers patterns needed less frequently.
+4. See also `syntax_attr.rs` in this directory for the official Verus example.
+5. 
+6. ---
+7. 
+8. ## Ghost/Tracked Parameters (`with` clause)
+9. 
+10. Functions can accept ghost/tracked...
+
+────────────────────────────────────────────────────────────
+Turn 247
+────────────────────────────────────────────────────────────
+Now I know the loop invariant syntax. Let me write proper loop invariants for the `for i in 0..count` loop. The key facts I need in the loop body:
+
+1. `spec_page_size() > 0` — global fact
+2. `self.base@ >= 0` — unchanged by loop
+3. `self.bitmap@.num_bits` — unchanged (bitmap not modified in loop)
+4. `(index as int) + (count as int) <= self.bitmap@.num_bits` — from alloc_range ensures
+5. `self.base@ + self.bitmap@.num_bits * spec_page_size() <= usize::MAX + 1` — overflow bound
+6. `self.base@ % spec_page_size() == 0` — from base.inv()
+7. `base_addr as int == self.base@ + (index as int) * spec_page_size()` — from pre-loop computation
+8. `addrs@.len() == i as int` — loop iteration tracking
+9. Frame properties for pushed frames
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 380.         proof! {
+381.             let ghost base_addr_spec = self.base@ + (index as int) * spec_page_size();
+382.             assert(base_addr as int == base_addr_spec);
+383.         }
+384.         for i in 0..count
+385.         {
+386.             proof! {
+387.                 assert(spec_page_...
+
+────────────────────────────────────────────────────────────
+Turn 248
+────────────────────────────────────────────────────────────
+Now I need to add `#[verus_spec(invariant ...)]` on the for loop. Let me also check what the postcondition expects for the Ok case:
+
+Looking at the ensures:
+- `addrs@.len() == count` — need `addrs@.len() == i` as invariant  
+- `forall|which_frame: int| 0 <= which_frame < count ==> { ... frame.inv() && page_index ... addr == addrs@[0]@ + which_frame * spec_page_size() }`
+- `self@ == KpoolView { used_page_indices: old(self)@.used_page_indices.union(new_page_indices), ..old(self)@ }`
+
+The last part about `self@` — `self` is not modified in the loop (only addrs is). The bitmap was already modified by `bitmap.alloc_range`. So I need to prove:
+- `self@.used_page_indices == old(self)@.used_page_indices.union(...)` — from bitmap.alloc_range's set_bits postcondition
+
+Let me now write the complete loop with invariants:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 249
+────────────────────────────────────────────────────────────
+Wait, I also changed `base_addr + i * mem::PAGE_SIZE` to `pa_into_raw(self.base) + (index + i) * mem::PAGE_SIZE`. This changes the exec code. Let me revert that — I should keep the original computation `base_addr + i * mem::PAGE_SIZE`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 250
+────────────────────────────────────────────────────────────
+Now, looking at the overflow for `base_addr + i * mem::PAGE_SIZE`:
+- `base_addr = base@ + index * page_size`
+- `i * page_size`: need `i < count` and `count * page_size <= usize::MAX`
+- `base_addr + i * page_size = base@ + (index + i) * page_size <= base@ + (num_bits - 1) * page_size`
+
+Wait, actually the overflow proof is more subtle. `base_addr + i * PAGE_SIZE` computes as:
+1. `i * PAGE_SIZE` — need this not to overflow usize
+2. `base_addr + (i * PAGE_SIZE)` — need this not to overflow usize
+
+Since `i < count`, `count <= num_bits`, `index + count <= num_bits`:
+- `i * page_size < count * page_size <= num_bits * page_size` (by lemma_mul_strict_inequality)
+- `base_addr + i * page_size = base@ + index*page_size + i*page_size = base@ + (index + i)*page_size`
+- `index + i < index + count <= num_bits`
+- `(index + i)*page_size < num_bits * page_size` (by lemma_mul_strict_inequality)
+- `base@ + (index + i)*page_size < base@ + num_bits*page_size <= usize::MAX + 1`
+- So `base_addr + i * page_size <= usize::MAX`
+
+The proof in the loop body already has `lemma_mul_strict_inequality` for `(index + i, num_bits, page_size)`. I also need `lemma_mul_strict_inequality(i, count, page_size)` to prove `i * page_size` doesn't overflow. Let me add that:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 392.                 self.base@ % spec_page_size() == 0,
+393.                 self.base.inv(),
+394.                 self.bitmap.inv(),
+395.                 self.bitmap@.num_bits == old(self).bitmap@.num_bits,
+396.                 self.base@ + self.bitmap@.num_bits * spec_page_size() <= usize::MAX as...
+
+────────────────────────────────────────────────────────────
+Turn 251
+────────────────────────────────────────────────────────────
+I need to also prove `i * PAGE_SIZE` doesn't overflow usize separately:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 252
+────────────────────────────────────────────────────────────
+Now for the `range_free` contradiction in the Err case. Let me look at the definition of `range_free`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] view: 32. impl KpoolView {
+33. 
+34.     pub open spec fn wf(&self) -> bool
+35.     {
+36.         &&& self.num_pages > 0
+37.         &&& self.start % spec_page_size() == 0
+38.         &&& forall|i: int| self.used_page_indices.contains(i) ==> 0 <= i < self.num_pages
+39.     }
+40. 
+41.     pub open spec fn r...
+
+────────────────────────────────────────────────────────────
+Turn 253
+────────────────────────────────────────────────────────────
+And `exists_contiguous_free_range`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/src/lib.spec.rs
+[RESULT ✓] view: 60. 
+61.     /// Helper spec function: check if all bits in range [start, end) are set.
+62.     pub open spec fn all_bits_set_in_range(&self, start: int, end: int) -> bool {
+63.         forall|i: int| start <= i < end ==> self.is_bit_set(i)
+64.     }
+65. 
+66.     /// Helper spec function: check if a...
+
+────────────────────────────────────────────────────────────
+Turn 254
+────────────────────────────────────────────────────────────
+OK, so `exists_contiguous_free_range(n)` = `exists|start| has_free_range_at(start, n)` = `exists|start| 0 <= start && start + n <= num_bits && all_bits_unset_in_range(start, start + n)`.
+
+And `range_free(first_page_index, count)` = `count > 0 && 0 <= first_page_index <= num_pages - count && forall|i| first_page_index <= i < first_page_index + count ==> !used_page_indices.contains(i)`.
+
+The Err proof needs: `!exists_contiguous_free_range(count) ==> forall|start| !range_free(start, count)`.
+
+If `range_free(start, count)` holds, then:
+- `count > 0`
+- `0 <= start <= num_pages - count`, so `start + count <= num_pages == num_bits`
+- `forall|i| start <= i < start + count ==> !used_page_indices.contains(i)`
+- Since `used_page_indices == set_bits`, this means `!set_bits.contains(i)` i.e., `!is_bit_set(i)`
+- That's `all_bits_unset_in_range(start, start + count)`
+- With `0 <= start` and `start + count <= num_bits`, this gives `has_free_range_at(start, count)`
+- Which witnesses `exists_contiguous_free_range(count)` — contradiction
+
+The current proof attempts this but fails at the `assert` level. Let me check what's in the proof:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 325.         let index: usize = match self.bitmap.alloc_range(count) {
+326.             Ok(index) => index,
+327.             Err(error) => {
+328.                 proof! {
+329.                     // bitmap.alloc_range Err: no contiguous free range exists
+330.                     assert(!old(self).bi...
+
+────────────────────────────────────────────────────────────
+Turn 255
+────────────────────────────────────────────────────────────
+The problem might be that `is_bit_set(j)` is defined as `set_bits.contains(j)` but Verus can't automatically unfold this. Let me add the trigger hint. Also, I need to explicitly show `has_free_range_at`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 256
+────────────────────────────────────────────────────────────
+Now I also need to handle the Ok postcondition for alloc_range. After the loop, I need:
+1. `addrs@.len() == count` — from loop invariant at termination (i == count)
+2. Frame properties — from loop invariant
+3. `self@ == KpoolView { used_page_indices: old(self)@.used_page_indices.union(new_page_indices), ..old(self)@ }`
+
+The third property requires connecting `BitmapView::range_set(index, index + count)` from bitmap.alloc_range's ensures to `new_page_indices = Set::<int>::new(|i| first_page_index <= i < first_page_index + count)`.
+
+Let me check what `BitmapView::range_set` is:
+[TOOL] grep: range_set
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/src/lib.spec.rs:52:    pub open spec fn range_set(start: int, end: int) -> Set<int> {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/src/lib.spec.rs:109:    /// range_set(lo, hi) ...
+
+────────────────────────────────────────────────────────────
+Turn 257
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/src/lib.spec.rs
+[RESULT ✓] view: 52.     pub open spec fn range_set(start: int, end: int) -> Set<int> {
+53.         Set::new(|i: int| start <= i < end)
+54.     }
+55. 
+56.     /// Well-formedness: set_bits only contains valid indices.
+57.     pub open spec fn wf(&self) -> bool {
+58.         forall|i: int| self.set_bits.contains(i) =...
+
+────────────────────────────────────────────────────────────
+Turn 258
+────────────────────────────────────────────────────────────
+So `BitmapView::range_set(start, end) = Set::new(|i| start <= i < end)`. And in the postcondition, `new_page_indices = Set::<int>::new(|i| first_page_index <= i < first_page_index + count)`.
+
+`first_page_index = (addrs@[0]@ - old(self)@.start) / spec_page_size()`. After the loop, `addrs@[0]@ = self.base@ + index * spec_page_size()`. So `first_page_index = (self.base@ + index * page_size - self.base@) / page_size = (index * page_size) / page_size = index`.
+
+So `new_page_indices = Set::new(|i| index <= i < index + count)` = `BitmapView::range_set(index, index + count)`.
+
+From bitmap.alloc_range ensures: `self.bitmap@.set_bits == old(self).bitmap@.set_bits.union(BitmapView::range_set(index, index + count))`.
+And `self@.used_page_indices == self.bitmap@.set_bits` (from View).
+And `old(self)@.used_page_indices == old(self).bitmap@.set_bits` (from View).
+
+So `self@.used_page_indices == old(self)@.used_page_indices.union(BitmapView::range_set(index, index + count))`.
+
+And the postcondition wants `self@ == KpoolView { used_page_indices: old(self)@.used_page_indices.union(new_page_indices), ..old(self)@ }` where `new_page_indices == BitmapView::range_set(index, index + count)`.
+
+I need to prove `new_page_indices == BitmapView::range_set(index, index + count)` by showing they have the same membership.
+
+Also I need to prove the postcondition about individual frames: `page_index = (addr - start) / page_size`. Given `addr = base@ + (index + j) * page_size`, we get `page_index = ((index + j) * page_size) / page_size`. I need a division-cancellation lemma: `(n * p) / p == n` for `p > 0`.
+
+Let me search vstd for that:
+[TOOL] bash: grep -n 'lemma_div_mul_cancel\|fn.*div.*mul\|fn.*mul.*div' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic
+[RESULT ✓] bash: 696:pub broadcast proof fn lemma_div_multiples_vanish_quotient(x: int, a: int, d: int)
+737:pub broadcast proof fn lemma_div_multiples_vanish_fancy(x: int, b: int, d: int)
+776:pub broadcast proof fn lemma_div_multiples_vanish(x: int, d: int)
+789:pub broadcast proof fn lemma_div_by_multiple(b: int, d:...
+
+────────────────────────────────────────────────────────────
+Turn 259
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs
+[RESULT ✓] view: 789. pub broadcast proof fn lemma_div_by_multiple(b: int, d: int)
+790.     requires
+791.         0 <= b,
+792.         0 < d,
+793.     ensures
+794.         #![trigger ((b * d) / d)]
+795.         (b * d) / d == b,
+796. {
+797.     lemma_div_multiples_vanish(b, d);
+798.     broadcast use group_mul_prope...
+
+────────────────────────────────────────────────────────────
+Turn 260
+────────────────────────────────────────────────────────────
+`lemma_div_by_multiple(b, d)`: requires `0 <= b, 0 < d`, ensures `(b * d) / d == b`.
+
+But I need `((index + j) * page_size) / page_size == index + j`. That matches with `b = index + j`, `d = page_size`.
+
+Now let me add the post-loop proof. I need to view the full alloc_range function:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 430.                 vstd::arithmetic::mul::lemma_mul_strict_inequality(
+431.                     (index as int) + (i as int),
+432.                     self.bitmap@.num_bits,
+433.                     spec_page_size(),
+434.                 );
+435.                 // (index+i) * page_size < num_bits *...
+
+────────────────────────────────────────────────────────────
+Turn 261
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 450.             let frame: FrameAddress = frame_from_raw(addr)?;
+451.             addrs.push(frame);
+452.         }
+453. 
+454.         Ok(())
+455.     }
+456. 
+457.     ///
+458.     /// # Description
+459.     ///
+460.     /// Frees a previously allocated frame in the kernel pool.
+461.     ///
+462.  ...
+
+────────────────────────────────────────────────────────────
+Turn 262
+────────────────────────────────────────────────────────────
+I need to add a proof block after the loop (before `Ok(())`):
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 263
+────────────────────────────────────────────────────────────
+I also need to add `BitmapView` to the imports. Let me check if it's already imported:
+[TOOL] grep: BitmapView
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs:342:                            // is_bit_set(j) == set_bits.contains(j) (from BitmapView)
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs:517:     ...
+
+────────────────────────────────────────────────────────────
+Turn 264
+────────────────────────────────────────────────────────────
+`BitmapView` is used in proof blocks. I need to make sure it's in scope. Let me check the imports:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Kernel frame pool — module-level singleton.
+5. //!
+6. //! The kernel pool is backed by a [`Bitmap`] and exposed as free functions over a singleton so
+7. //! every in-kernel caller goes through the same sta...
+
+────────────────────────────────────────────────────────────
+Turn 265
+────────────────────────────────────────────────────────────
+I need to import `BitmapView` from the bitmap crate. Let me check where it's defined:
+[TOOL] grep: pub struct BitmapView
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/src/lib.spec.rs:16:pub struct BitmapView {
+
+────────────────────────────────────────────────────────────
+Turn 266
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n 'use.*Bitmap\|pub use.*Bitmap\|mod.*bitmap' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 267
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn 'use.*Bitmap\|pub use.*Bitmap' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/s
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 268
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn 'Bitmap' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/collections.rs 2>/d
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 269
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/collections -name '*.rs' 2>/dev/
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/collections/mod.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/collections/mod.rs:8:pub use ::bitmap::*;
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/k...
+
+────────────────────────────────────────────────────────────
+Turn 270
+────────────────────────────────────────────────────────────
+So `pub use ::bitmap::*;` re-exports everything from the bitmap crate. `BitmapView` should be accessible via `crate::collections::BitmapView`. Let me add the import:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 17. use crate::{
+18.     collections::Bitmap,
+19.     hal::{
+20.         mem::{
+21.             Address,
+22.             FrameAddress,
+23.             PageAligned,
+24.             PhysicalAddress,
+25.         },
+26.         platform::is_valid_physical_region,
+27.     },
+28. };
+29. use ::alloc::vec::...
+
+────────────────────────────────────────────────────────────
+Turn 271
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 272
+────────────────────────────────────────────────────────────
+Now I also need the `spec_page_size` import for the proof code. It's already imported on line 663+ (from the verus block at the bottom). Let me check:
+[TOOL] grep: spec_page_size
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs:83:    requires raw_addr as int % spec_page_size() == 0,
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs:145:            // kpool_size == bitmap_cap...
+
+────────────────────────────────────────────────────────────
+Turn 273
+────────────────────────────────────────────────────────────
+Good, `spec_page_size` is used in the `#[verus_spec]` attributes and proof blocks. It's imported at file level. Let me verify:
+[TOOL] bash: grep -n 'use.*spec_page_size' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys
+[RESULT ✓] bash: 772:use crate::hal::mem::spec_page_size;
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 274
+────────────────────────────────────────────────────────────
+It's imported in a verus block at line 772. Let me check:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 768. 
+769. #[cfg(verus_keep_ghost)]
+770. verus! {
+771. 
+772. use crate::hal::mem::spec_page_size;
+773. 
+774. impl View for KernelFrame
+775. {
+776.     type V = int;
+777. 
+778.     closed spec fn view(&self) -> int
+779.     {
+780.         self.base@
+781.     }
+782. }
+783. 
+784. }
+785. 
+
+────────────────────────────────────────────────────────────
+Turn 275
+────────────────────────────────────────────────────────────
+This import is scoped inside the `verus!{}` block. The `proof!{}` blocks inside `#[verus_verify] impl Inner` need `spec_page_size` to be in scope. Let me check if there's a top-level import:
+[TOOL] bash: grep -n 'spec_page_size\|use crate::hal::mem' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/ke
+[RESULT ✓] bash: 83:    requires raw_addr as int % spec_page_size() == 0,
+145:            // kpool_size == bitmap_capacity * PAGE_SIZE == bitmap@.num_bits * spec_page_size()
+147:            assert(spec_page_size() > 0);
+149:            assert(kpool_size as int == bitmap_capacity as int * spec_page_size());
+178:     ...
+
+────────────────────────────────────────────────────────────
+Turn 276
+────────────────────────────────────────────────────────────
+It's used heavily in the `#[verus_spec]` attributes and `proof!{}` blocks. Since the `#[verus_verify]` impl block and `#[verus_spec]` attributes are processed by Verus, `spec_page_size` needs to be in scope at the module level. Let me add a cfg-gated import:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 277
+────────────────────────────────────────────────────────────
+Wait — the `spec_page_size` import might conflict with the one in the verus block at line 772. Let me remove that one:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 770. 
+771. #[cfg(verus_keep_ghost)]
+772. verus! {
+773. 
+774. use crate::hal::mem::spec_page_size;
+775. 
+776. impl View for KernelFrame
+777. {
+778.     type V = int;
+779. 
+780.     closed spec fn view(&self) -> int
+781.     {
+782.         self.base@
+783.     }
+784. }
+785. 
+786. }
+787. 
+788. impl Kern...
+
+────────────────────────────────────────────────────────────
+Turn 278
+────────────────────────────────────────────────────────────
+The verus block has its own `use crate::hal::mem::spec_page_size;`. Since both are `cfg(verus_keep_ghost)`, they might conflict. Actually, `verus!{}` creates an anonymous scope, so the import inside `verus!{}` is local. But the top-level one might already be available. Let me check — actually, it won't conflict because the `verus!{}` expansion creates nested scopes. But let me remove it just to be safe:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 279
+────────────────────────────────────────────────────────────
+Now let me run verification again:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1

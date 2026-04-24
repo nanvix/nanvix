@@ -1,0 +1,84 @@
+Timestamp: 2026-04-24_21-06-49
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::kpool
+Exit code: 101
+4 verified
+3 errors
+
+Cheating patterns:
+  assume=0
+  external_body=9
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+warning: use of deprecated method `vstd::prelude::ResultAdditionalSpecFns::is_Ok`: is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html
+   --> src/kernel/src/hal/mem/types/address/phys.rs:264:16
+    |
+264 |         result.is_Ok(),
+    |                ^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `vstd::prelude::ResultAdditionalSpecFns::is_Ok`: is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html
+  --> src/kernel/src/mm/phys/kpool.rs:87:16
+   |
+87 |         result.is_Ok(),
+   |                ^^^^^
+
+note: verifying module mm::phys::kpool
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/kpool.rs:178:13
+    |
+178 | /             match result {
+179 | |                 Ok(frame) => {
+180 | |                     let page_index = (frame@ - old(self)@.start) / spec_page_size();
+181 | |                     &&& frame.inv()
+...   |
+192 | |                 },
+193 | |             },
+    | |_____________^ failed this postcondition
+...
+258 |           Ok(frame)
+    |           --------- at the end of the function body
+
+note: while loop: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/kpool.rs:416:9
+    |
+416 | /         for i in 0..count
+417 | |         {
+418 | |             proof! {
+...   |
+455 | |             addrs.push(frame);
+456 | |         }
+    | |_________^
+
+error: possible arithmetic underflow/overflow
+   --> src/kernel/src/mm/phys/kpool.rs:444:31
+    |
+444 |             let addr: usize = base_addr + i * mem::PAGE_SIZE;
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/kpool.rs:446:24
+    |
+446 |                 assert(addr as int == self.base@ + ((index as int) + (i as int)) * spec_page_size());
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/kpool.rs:510:24
+    |
+510 |                 assert(!old(self)@.used_page_indices.contains(page_index));
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 4 verified, 3 errors (partial verification with `--verify-*`)
+warning: `kernel` (bin "kernel") generated 2 warnings
+error: could not compile `kernel` (bin "kernel") due to 4 previous errors; 2 warnings emitted
