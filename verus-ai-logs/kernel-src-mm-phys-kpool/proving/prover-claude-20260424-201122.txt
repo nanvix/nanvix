@@ -2680,3 +2680,34 @@ This is at the top of the file unconditionally. Since `vstd` is always a depende
 Turn 125
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: error: assume_specification trait bound mismatch
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:233:1
+    |
+233 | pub assume_specification<T: Address + View<V = int>>[ <PageAligned<T> as Address>::into_raw_value ](self_: PageAligned<T>) -> (ret: usize)
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^...
+
+────────────────────────────────────────────────────────────
+Turn 126
+────────────────────────────────────────────────────────────
+The trait bound mismatch is because `Address::into_raw_value` doesn't have the `View` bound. Let me use a concrete type instead:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] The issue with `into_raw_value` is that the trait bounds don't match. The `Address` trait function `into_raw_value(self) -> usize` has different bounds than what I specified. The trait bound `View<V = int>` is only from the spec block, not the original trait.
+
+Let me fix the assume_specification to match the exact trait bounds of the original function. The `Address` trait's `into_raw_value` only requires `T: Address`, not `T: Address + View<V = int>`.
+
+Actually, the error says the external function's bounds are:
+- T: Sized
+
+
+- T: Address
+
+But my proxy has additional constraints like `T: View` with `V == int`, which don't exist in the original. I need to strip those down to just `T: Address`. The problem is that without the `View` bound, I can't use `self_@` in the ensures clause, so I'll need to find a different way to specify the postcondition.
+
+Since `into_raw_value` on `PageAligned<T>` where `T: Address` returns a `usize`, and the `View` implementation is separate, I can't rely on that trait in the spec. Instead, I'll add the `assume_specification` directly for the concrete type `PageAligned<PhysicalAddress>` as it's used in kpool.rs.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 127
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
