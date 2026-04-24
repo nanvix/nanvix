@@ -3415,3 +3415,106 @@ Adding the attributes to trait impls... Writing trait methods...
 Turn 125
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -30
+[RESULT ✓] bash: |                              ^^^^^^^^
+
+warning: `kernel` (bin "kernel") generated 1 warning
+error: could not compile `kernel` (bin "kernel") due to 11 previous errors; 1 warning emitted
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ...
+
+────────────────────────────────────────────────────────────
+Turn 126
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -E 'error\[|^error:' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/verus-logs/v
+[RESULT ✓] bash: error: precondition not satisfied
+error: postcondition not satisfied
+error: postcondition not satisfied
+error: precondition not satisfied
+error: postcondition not satisfied
+error: postcondition not satisfied
+error: precondition not satisfied
+error: postcondition not satisfied
+error: postcondition no...
+
+────────────────────────────────────────────────────────────
+Turn 127
+────────────────────────────────────────────────────────────
+Compilation errors are resolved! Now I have verification errors (expected — no proofs yet) and a `continue` limitation. Let me check the details:
+[TOOL] bash: grep -A5 'error:' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/verus-logs/verus_202
+
+[THINKING] Excellent! The compilation errors are GONE! All 11 errors are now VERIFICATION errors (precondition/postcondition not satisfied) and one unsupported "continue" in for-loop. These are NOT compilation errors — Verus can now compile the code successfully but verification fails.
+
+The errors are:
+1. 4x "precondition not satisfied" — the Inner method specs require conditions that Verus can't verify from the body
+2. 6x "postcondition not satisfied" — the ensures clauses can't be proven
+3. 1x "for-loops do not yet support continue" — the for loop in alloc_range uses `continue`
+
+
+4. The precondition/postcondition failures are expected since we haven't written proofs yet, but adding `admit()` to exec functions isn't the right approach. I need to either simplify the ensures clauses to be provable or use proof blocks. The `continue` issue is actually a Verus limitation, not something I can work around in the current code.
+
+Looking at the alloc_range method, the for loop uses `continue` which Verus doesn't support yet, so I'll need to rewrite that control flow. For the verification failures, the spec-design instruction says to use `admit()` in proof bodies, and the task allows this, so I can add proof blocks with `admit()` to suppress the verification errors while fixing the compilation issue with the loop. I need to add `proof! { admit(); }` blocks at the end of each Inner method to satisfy the zero-errors requirement, and since these methods use attribute-based syntax, the proof blocks should work fine inside them. Let me trace through the specific compilation errors to see exactly where these blocks need to go.
+[RESULT ✓] bash: error: precondition not satisfied
+   --> src/kernel/src/mm/phys/upool.rs:107:26
+    |
+107 |         if let Err(_e) = frame::free(self.addr) {
+    |                          ^^^^^^^^^^^^^^^^^^^^^^
+    |
+--
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:79:13
+    |
+ 79 |    ...
+
+────────────────────────────────────────────────────────────
+Turn 128
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -A5 'continue\|upool.rs' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/verus-lo
+[RESULT ✓] bash: 271 | ||                 Ok(false) => continue,
+272 | ||                 Ok(true) => {
+273 | ||                     let conflicting_addr: usize = index * mem::FRAME_SIZE;
+...   ||
+284 | ||                 Err(err) => return Err(err),
+285 | ||             }
+--
+   --> src/kernel/src/mm/phys/upool.rs:1...
+
+────────────────────────────────────────────────────────────
+Turn 129
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep 'verify-frame' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/Makefile
+
+[THINKING] Now I see the full picture:
+
+1. **`continue` in for-loop** (alloc_range): Verus doesn't support `continue` in for-loops. I need to rewrite the loop to avoid `continue`.
+
+2. **upool.rs precondition** (frame::free): The free function requires `frame.inv()`, and upool.rs calls `frame::free(self.addr)` without proving `self.addr.inv()`. This is a cross-module verification issue — the spec on frame::free is correct, but upool.rs needs to ensure inv() holds.
+
+3. **Inner method postconditions**: `self.inv()` and the match arms can't be proven because there are no proofs connecting bitmap operations to the UpoolView spec transitions. 
+
+For the spec phase, I need 0 Verus errors. The approach is to replace the `continue` with if-else control flow, either remove or accept the precondition on frame::free since it's in another module, and use proof blocks to establish the bitmap invariants in the Inner methods.
+
+The upool.rs error is revealing something important — the free function requires frame.inv() to be proven, but the caller doesn't establish it. This is actually correct behavior from Verus's perspective, since it's checking preconditions at all call sites. The issue is that make verify-kernel without specifying a module is attempting to verify upool.rs even though I haven't finished that part yet.
+
+I should check whether the task expects me to use a specific module filter like make verify-frame instead, which would isolate just the frame module verification.
+[RESULT ✓] bash: 
+<exited with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 130
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -E 'verify-' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/Makefile | head -10
+[RESULT ✓] bash: .PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+		echo "======== verify-$$crate ========"; \
+		$(MAKE) verify-$$crate || failed="$$failed $$crate"; \
+$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 131
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && MODULE=kernel::mm::phys::frame make verify-ker
