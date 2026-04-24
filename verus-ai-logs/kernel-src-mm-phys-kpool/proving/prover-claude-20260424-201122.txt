@@ -3583,3 +3583,205 @@ Turn 196
 ────────────────────────────────────────────────────────────
 Progress! 2 verified, 3 errors. Let me get the details:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: --> src/kernel/src/mm/phys/kpool.rs:190:5
+    |
+190 |     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/kpool.rs:173:13
+    |
+173 | /             match result {
+--
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 197
+────────────────────────────────────────────────────────────
+I need to make `internal_inv` visible for proofs. Let me change it from `closed` to `open`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+
+[THINKING] Let me analyze the remaining errors:
+
+1. **alloc postcondition (line 173/244)**: The page_index computation in the ensures doesn't match. I need to prove `(frame@ - old(self)@.start) / spec_page_size() == index as int`. The issue is that `frame@ - old(self)@.start = index * spec_page_size()`, and `(index * spec_page_size()) / spec_page_size() = index`. But Z3 might not automatically prove this. I need a division lemma.
+
+2. **alloc assertion (line 231)**: `addr as int % spec_page_size() == 0`. 
+
+For the second issue, I'm working with the fact that `addr = base@ + index * page_size`, so I need to show `(base@ + index * page_size) % page_size == 0`. Since `base@` is already page-aligned, this reduces to showing that `(index * page_size) % page_size == 0`, which should follow from modular arithmetic properties. I'll need to apply the right lemmas to get Z3 to recognize this pattern.
+
+For the `alloc_range` assertion, I'm trying to connect `range_free(start, count)` to `exists_contiguous_free_range(count)` — if those bits are unset in the range, then a contiguous free range of that size must exist. The challenge is formalizing this relationship in a way the proof checker accepts.
+
+The overflow issue with `index * mem::PAGE_SIZE` is trickier — my inequality lemma didn't provide enough constraints to rule out overflow, so I need to strengthen the preconditions or find a more direct way to bound the multiplication. The issue is that `index * page_size` itself overflows before adding to the base pointer. I need `index * page_size` to stay within `usize::MAX`, and from the invariant I can derive that `index * page_size < num_bits * page_size <= usize::MAX + 1 - base@`. Since base is non-negative, this gives me `index * page_size <= usize::MAX`, but the real constraint is that the multiplication of two `usize` values must not overflow — so I need `(index as int) * (PAGE_SIZE as int) <= usize::MAX as int`.
+
+Now for the `alloc_range` preconditions: I need to verify that `spec_page_size() > 0` holds at the call site. This comes from `internal_inv`, and since `self.inv()` is preserved after `bitmap.alloc_range` modifies the bitmap, the invariant still holds and I can use that fact. in the same module, so maybe I can access it there. Let me check if `internal_inv` being `closed` prevents access within the impl block itself — I think it only prevents external callers from seeing it, not internal uses.
+
+Actually, the real issue is that `closed spec fn` hides the definition from the verifier entirely, even within the module. So I need to either expose `internal_inv` as `open` or create proof lemmas that extract the specific properties I need. The standard approach would be to add helper lemmas that reveal what `internal_inv` guarantees without exposing the full definition. I'm realizing that `closed` in Verus makes the body opaque everywhere, even within the module, so I'd need to use `reveal()` or switch to `open` to expose the internals in proofs. The typical pattern is to keep `internal_inv()` closed while making the public `inv()` open so callers can see it references the internal invariant without exposing its details. - Inside the module, proof code can `reveal(Inner::internal_inv)` to access the body
+
+Actually, I think Verus has `reveal` for `closed` specs. Let me check the verus syntax docs.
+
+From the verus-syntax skill I loaded earlier... Actually, let me just try changing `internal_inv` to `pub open spec fn` instead of `pub closed spec fn`. This would make it visible everywhere, but since it's only used within the module, this is fine.
+
+Actually wait — `pub closed spec fn` is in kpool.proof.rs. The "closed" is important for the abstraction boundary. But during proof development, we need to access it. In Verus attribute syntax, `closed` specs defined in the same crate can be revealed with `reveal(Inner::internal_inv)` in proof blocks. But I'm not sure if this works with the attribute-based syntax.
+
+Let me try the simpler approach instead: just make `internal_inv` `open` rather than `closed`. Since `inv()` is already `pub open` and calls `internal_inv()`, exposing `internal_inv` as `open` too keeps everything consistent and accessible.
+
+────────────────────────────────────────────────────────────
+Turn 198
+────────────────────────────────────────────────────────────
+It's in kpool.proof.rs:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 199
+────────────────────────────────────────────────────────────
+Now let me also fix the alloc_range proof issues. First, the assertion about `exists_contiguous_free_range` in the Err case — I need to show the link between `range_free` and `exists_contiguous_free_range`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 310.         }
+311. 
+312.         let index: usize = match self.bitmap.alloc_range(count) {
+313.             Ok(index) => index,
+314.             Err(error) => {
+315.                 proof! {
+316.                     // bitmap.alloc_range Err: no contiguous free range exists
+317.                    ...
+
+────────────────────────────────────────────────────────────
+Turn 200
+────────────────────────────────────────────────────────────
+The issue is that I'm trying to assert `old(self).bitmap@.all_bits_unset_in_range(start, start + count)` from `old(self)@.range_free(start, count)`, but Verus doesn't see the connection between `used_page_indices.contains(i)` and `bitmap@.is_bit_set(i)`.
+
+Let me fix this by expanding the definitions more explicitly:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 201
+────────────────────────────────────────────────────────────
+Now fix the overflow for `index * mem::PAGE_SIZE` on line 357. I need to add an assertion that `index * page_size <= usize::MAX`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 341.                 error!("{error:?} (count={count})");
+342.                 return Err(error);
+343.             },
+344.         };
+345. 
+346.         proof! {
+347.             // index from bitmap.alloc_range: 0 <= index < num_bits, index + count <= num_bits
+348.             assert(0 <= index < s...
+
+────────────────────────────────────────────────────────────
+Turn 202
+────────────────────────────────────────────────────────────
+I see the issue — `lemma_mul_inequality` requires `x <= y` and `z >= 0`. `index <= self.bitmap@.num_bits` is true since `index < num_bits`. But the resulting bound is `index * page_size <= num_bits * page_size`. I need to assert that `index * page_size <= usize::MAX`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 203
+────────────────────────────────────────────────────────────
+Now fix the loop proof blocks. The precondition failures are in `lemma_mul_strict_inequality` calls:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 372.         {
+373.             proof! {
+374.                 // Prove i * PAGE_SIZE doesn't overflow
+375.                 // i < count, and index + count <= num_bits
+376.                 // So index + i < num_bits, hence (index + i) * page_size < num_bits * page_size
+377.                 vstd::arit...
+
+────────────────────────────────────────────────────────────
+Turn 204
+────────────────────────────────────────────────────────────
+The issues are:
+1. `lemma_mul_strict_inequality(i, count, spec_page_size())` — precondition `z > 0` fails because Verus can't see `spec_page_size() > 0` (it's in `internal_inv` which we made `open`). But we need to re-assert it.
+2. `lemma_mul_strict_inequality(index + i, num_bits, spec_page_size())` — precondition `x < y` fails because `index + i` might equal `num_bits` when `i = count - 1` and `index + count = num_bits`.
+
+Wait, `index + count <= num_bits` and `i < count`, so `index + i <= index + count - 1 <= num_bits - 1 < num_bits`. So `index + i < num_bits` should hold. But I need to assert this.
+
+Also, for `spec_page_size() > 0`: since I changed internal_inv to `open`, and `old(self).inv()` is in the requires, `spec_page_size() > 0` should be available from `old(self).internal_inv()`. But after `bitmap.alloc_range` modifies `self`, we need to be careful. Let me add explicit assertions:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 205
+────────────────────────────────────────────────────────────
+Now let me also fix the alloc page-alignment assertion. The issue is `addr % spec_page_size() == 0`. Let me use modular arithmetic:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 225.             // Prove page-alignment for frame_from_raw precondition
+226.             assert(self.base@ % spec_page_size() == 0);
+227.         }
+228.         let addr: usize = pa_into_raw(self.base) + index * mem::PAGE_SIZE;
+229.         proof! {
+230.             assert(addr as int == self.base@...
+
+────────────────────────────────────────────────────────────
+Turn 206
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n 'pub.*proof fn.*mod.*multiple\|pub.*proof fn.*mod_add\|pub.*proof fn.*mod_mult' /home/ruize/verus-ai-exp/verus-a
+
+[THINKING] The assertion `addr as int % spec_page_size() == 0` fails. We know:- `self.base@ % spec_page_size() == 0`
+- `addr = self.base@ + (index as int) * spec_page_size()`
+
+So `addr % spec_page_size() = (self.base@ + index * spec_page_size()) % spec_page_size()`.
+
+In Verus, `vstd::arithmetic::div_mod` has modular arithmetic lemmas. Let me look for one:
+- `lemma_mod_multiples_basic`: `(n * m) % m == 0` for `m > 0, n >= 0`
+
+
+- `lemma_mod_add_multiples_vanish`: `(b + n * m) % m == b % m` for `m > 0`
+
+If I apply this with `b = self.base@`, `n = index`, and `m = spec_page_size()`, I get `(self.base@ + index * spec_page_size()) % spec_page_size() = self.base@ % spec_page_size() = 0`. Now I need to locate these lemmas in the library.
+[RESULT ✓] bash: 1066:pub broadcast proof fn lemma_mod_multiples_basic(x: int, m: int)
+1082:pub broadcast proof fn lemma_mod_add_multiples_vanish(b: int, m: int)
+1093:pub broadcast proof fn lemma_mod_sub_multiples_vanish(b: int, m: int)
+1105:pub broadcast proof fn lemma_mod_multiples_vanish(a: int, b: int, m: int)
+1...
+
+────────────────────────────────────────────────────────────
+Turn 207
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs
+[RESULT ✓] view: 1105. pub broadcast proof fn lemma_mod_multiples_vanish(a: int, b: int, m: int)
+1106.     requires
+1107.         0 < m,
+1108.     ensures
+1109.         #[trigger] ((m * a + b) % m) == b % m,
+1110.     decreases
+1111.             (if a > 0 {
+1112.                 a
+1113.             } else {
+1114.   ...
+
+────────────────────────────────────────────────────────────
+Turn 208
+────────────────────────────────────────────────────────────
+`lemma_mod_multiples_vanish(a, b, m)` proves `(m * a + b) % m == b % m`. So I can use it with `a = index`, `b = self.base@`, `m = spec_page_size()`:
+
+`(spec_page_size() * index + self.base@) % spec_page_size() == self.base@ % spec_page_size() == 0`
+
+But the expression is `self.base@ + index * spec_page_size()`, which is the same as `index * spec_page_size() + self.base@`. With commutativity of `*` and `+`, this equals `spec_page_size() * index + self.base@`.
+
+Let me use the lemma:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 209
+────────────────────────────────────────────────────────────
+Also fix the same alignment issue in alloc_range's loop:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 395.                 assert(self.base@ + self.bitmap@.num_bits * spec_page_size() <= usize::MAX as int + 1);
+396.                 assert(self.base@ >= 0);
+397.                 assert((i as int) * spec_page_size() <= usize::MAX as int);
+398.                 assert(base_addr as int + (i as int) * spec...
+
+────────────────────────────────────────────────────────────
+Turn 210
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 211
+────────────────────────────────────────────────────────────
+Now let me run verification again:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1

@@ -16,7 +16,7 @@ impl View for Inner {
 }
 
 impl Inner {
-    pub closed spec fn internal_inv(&self) -> bool
+    pub open spec fn internal_inv(&self) -> bool
     {
         &&& self.base.inv()
         &&& self.bitmap.inv()
