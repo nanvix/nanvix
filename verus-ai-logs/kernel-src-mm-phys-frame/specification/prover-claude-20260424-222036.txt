@@ -2332,3 +2332,874 @@ Adding `#[verus_verify]` to a generic trait impl like `impl<T: Address> Deref fo
 Turn 101
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && MODULE=kernel::mm::phys::kpool make verify-ker
+[RESULT ✓] bash: - set_baud_rate
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 101)
+  cheating: assume=0 external_body=6 admit=0 trusted=0 no_decreases=0 cfg_gate=7
+  coverage: 19/995 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verus-logs/verus_2026-04-2...
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -E 'error\[|^error:' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/verus-logs/v
+[RESULT ✓] bash: error: could not find module kernel::mm::phys::kpool specified by --verify-module or --verify-only-module
+error: could not compile `kernel` (bin "kernel") due to 1 previous error; 1 warning emitted
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn 'external_type_specification' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/ 2>/dev/n
+[TOOL] bash: grep -rn 'external_type_specification' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/source/vstd/ 2>/dev/null | hea
+
+[THINKING] Interesting - kpool can't be found by Verus either. Let me check the exact module paths that Verus expects. The issue is that in Verus's view, the module path starts from the crate root. Let me check how other verified modules are referenced.
+
+Actually, the "could not find module" error seems like the same issue as frame. But the full verification (without MODULE filter) showed 11 actual errors. Let me try running the full verification WITHOUT the MODULE filter.Wait, I already did that above - the full verification showed the 11 errors from frame.rs. Those errors prevent compilation, so even the kpool module can't be found because compilation fails.
+
+
+The 11 errors in frame.rs are blocking everything else, so I need to tackle those first. I'll add `assume_specification` in frame.spec.rs for all the dependency functions that frame.rs's Inner methods call. The existing codebase already uses this pattern for workspace-internal code like FrameAddress::new and PAGE_SIZE, so I'll follow that precedent and add the needed specifications.
+
+Now I'm mapping out the specifications I need to write for FrameNumber's type definition, its conversion methods from_raw_value and into_raw_value, the FRAME_SIZE constant which maps to spec_page_size(), and FrameAddress::from_frame_number with its result constraints.
+
+Continuing with the address conversion methods—FrameAddress::into_frame_number and PhysicalAddress::into_frame_number both need specifications that relate frame numbers back to addresses through multiplication and division by page size. For the generic deref and start() methods, I'll need monomorphic wrapper functions since I can't use assume_specification directly on generic code.
+
+But here's the problem: the exec code already calls these generic methods directly through chains like `region.start().into_raw_value()`, and I can't modify the exec code to use wrappers instead. So I'm stuck between needing wrappers for the generic methods but having no way to actually use them from the places that call these methods. Looking at the generic methods issue, Verus actually does handle generic functions—the problem is just that these methods aren't annotated. If I add `#[verus_verify(external_body)]` and `#[verus_spec]` to the generic implementations in the dependency files, Verus should accept them. I'll need to modify the HAL dependency files to annotate the methods for PageAligned and TruncatedMemoryRegion, then set up the specifications in frame.spec.rs for FrameNumber and FRAME_SIZE.
+
+Actually, wait—I'm realizing some of these errors might be coming from functions called within the Inner method bodies themselves, not necessarily the generic wrappers.
+
+What if I just mark the Inner methods as `external_body`? Then Verus wouldn't try to verify their bodies and wouldn't need specs for all these dependency functions. The constraint says no `external_body` on the current module, but these free functions are already marked that way. The constraint does mention a practical exception: using `admit()` in proof bodies to bypass verification. But that won't help here since these are compilation errors—Verus can't even parse the bodies, so `admit()` won't solve it. I need to reconsider whether the constraint actually applies to this situation or if there's a different approach.
+
+Looking at the escalation ladder from the constraint: verify as-is fails because the dependency functions lack specs, searching vstd doesn't help, and a minimal rewrite would require replacing all dependency calls with specced alternatives. That's a lot of work. The real issue is that these dependency functions simply don't have specs yet. The proper solution is to add specs to them directly—when a module gets verified, its dependencies should get specs added. Let me just do this properly and add the necessary specs to the dependency files. I'll start by planning which files need modification and then execute it efficiently.
+
+I'm realizing the `assume_specification` blocks for FrameAddress already exist in the HAL file within a `#[cfg(verus_keep_ghost)]` block, so I could add more there. But for functions in other files like phys.rs, page.rs, and region.rs, I need to figure out where to place the assume_specification blocks—frame.spec.rs seems like the right place since it's the spec file.
+
+Now I'm thinking about consolidating everything into frame.spec.rs: all the assume_specification blocks for the missing dependency functions plus an external_type_specification for FrameNumber. I'm drafting how to define the external type specification, but I need to check the Verus documentation to get the syntax right since the error message suggests I can add a Verus specification to the FrameNumber type.
+
+Searching the codebase for existing examples of external_type_specification...
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod.spec.rs:14:#[verifier::external_type_specification]
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod.spec.rs:16:#[verifier::external_type_specification]
+/home/...
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // This file contains specification functions and view types.
+7. 
+8. verus! {
+9. 
+10. use crate::hal::mem::spec_page_size;
+11. 
+12. pub uninterp spec fn byte_at_a...
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] Now I see the pattern for `external_type_specification`. It's straightforward:
+```rust
+#[verifier::external_type_specification]
+pub struct ExFrameNumber(arch::mem::paging::FrameNumber);
+```
+
+Now let me plan all the assume_specification blocks I need to add to frame.spec.rs:
+
+1. **FrameNumber type**:
+```rust
+#[verifier::external_type_specification]
+pub struct ExFrameNumber(::arch::mem::paging::FrameNumber);
+```
+
+2. **FrameNumber::from_raw_value**:
+
+
+Writing assume_specification...
+
+Wait, I need to reconsider the field visibility in the external type specification since FrameNumber has a private field, so I'd need to expose it as public in the external representation.
+
+Actually, looking at how ExError is structured, the external_type_specification just wraps the actual type directly without exposing individual fields — it's a newtype wrapper that tells Verus the shape of the type. So for a tuple struct, I'd follow that same pattern. FrameNumber which is `struct FrameNumber(usize)`, the specification should be a newtype wrapper like `ExFrameNumber(::arch::mem::paging::FrameNumber)` — not exposing the internal fields, just wrapping the original type itself.
+
+Now I need to write the `assume_specification` blocks for the conversion functions, starting with `from_raw_value` and `into_raw_value`.
+
+I'm realizing there's a constraint here—I can't directly reference `FrameNumber::MAX` in the specification since it's a const defined outside of Verus, so I'd need to create a separate assumption for that constant first. This is getting complicated, so let me reconsider the approach and figure out what's actually necessary to verify.
+
+Looking at what the Inner methods actually depend on, I need specifications for a few key conversions: `from_raw_value` needs to establish that converting a usize to FrameNumber and back preserves the value, and that invalid indices return None; `into_raw_value` should just return the stored value; and `from_frame_number` needs to compute the frame address as frame_number multiplied by FRAME_SIZE.
+
+The fourth conversion, `into_frame_number`, divides the address by FRAME_SIZE to recover the original frame number. For the spec phase, these dependency specs can be lightweight—Verus just needs enough information to compile without errors. But looking at the ensures clause for Inner::alloc, which checks that the frame is in the free set and that the internal state updates correctly, Verus actually needs to verify those properties, not just compile them, so the specs need to be precise enough to support that verification.
+
+Wait, I'm conflating two different problems. The errors I'm seeing are compilation errors—Verus doesn't even recognize these types and functions yet. Adding assume_specification declarations will make them known to the type checker, which should resolve the compilation phase. The actual verification of whether the ensures clauses hold can be deferred to the proving phase with admit(). So my strategy is to add the minimum assume_specifications needed, using trivial ensures like `true` where I can't easily express the postconditions in terms of abstract View types. This gets us to zero compilation errors in the spec phase, and then the proving phase can strengthen these specs with actual proofs.
+
+Adding the external type specifications... Writing specification definitions... I need to figure out how to apply `assume_specification` to the monomorphized versions of these generic methods on `TruncatedMemoryRegion<PhysicalAddress>`. The `start` and `size` methods are defined generically but I'm working with the concrete instantiation, so I'm exploring whether Verus supports bracket syntax to target specific type instantiations, or if I should use a `#[verus_verify]` annotation instead.
+
+Let me look at what annotations are already applied to the `TruncatedMemoryRegion` struct itself to understand the verification setup better. I'm looking at the Verus verification attributes scattered throughout the region.rs file, checking what's being verified at those specific line numbers.
+[RESULT ✓] view: 30. //==================================================================================================
+31. 
+32. ///
+33. /// # Description
+34. ///
+35. /// A type that represents the type of a memory region.
+36. ///
+37. #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+38. #[verus_verify]
+39. pub enum Me...
+[RESULT ✓] view: 270. ///
+271. /// # Description
+272. ///
+273. /// A memory region that has been truncated to a multiple of a page size.
+274. ///
+275. #[verus_verify(external_derive)]
+276. #[derive(Clone)]
+277. pub struct TruncatedMemoryRegion<T: Address>(MemoryRegion<PageAligned<T>>);
+278. 
+279. impl<T: Address> Tr...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n 'pub.*FRAME_SIZE\|pub.*use.*FRAME_SIZE\|pub.*mod.*mem\|pub.*use.*mem' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0
+[TOOL] bash: grep -n 'FRAME_SHIFT\|FRAME_SIZE' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/
+[TOOL] bash: grep -rn 'pub use\|pub mod' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/me
+
+[THINKING] Now I have a good understanding of all the types and methods. Let me think about the best approach.
+
+The fundamental issue is:
+1. Inner methods have `#[verus_spec]` so Verus tries to compile their bodies
+2. The bodies call functions that Verus doesn't know about
+
+I have two high-level approaches:
+A) Add specs for ALL dependency functions — complex, many files
+B) Mark Inner methods as `external_body` — simple but violates spec-design constraint
+
+Given the complexity of approach A (I'd need to modify 5+ dependency files, handle generics, etc.), and the fact that the free functions are ALREADY `external_body`, let me reconsider approach B more carefully.
+ 
+Actually, looking at the escalation ladder in the constraints, the `external_body` restriction is aspirational rather than absolute. When a module depends on 10+ unspecced functions across multiple crates, the practical path is to mark those methods as `external_body` rather than chase down specs everywhere.
+
+Wait, I need to reread this more carefully. The constraint actually allows `external_body` on dependency functions from other modules—it's only functions within the current module (frame.rs) that can't use it. So the Inner methods staying in frame.rs shouldn't be marked `external_body`, but I can use `external_body` on the actual dependency functions or fall back to `assume_specification`.
+
+I'm thinking the right approach is to add specs for all the dependency functions using `assume_specification` in frame.spec.rs, following the existing pattern. For the generic methods like `PageAligned::deref` and `TruncatedMemoryRegion::start`, I could create monomorphic wrapper functions with `#[verifier::external_body]` in frame.spec.rs, but then I realize that doesn't actually help—Verus still sees the direct calls to the generic methods in the exec code and won't know what they do just because I've defined wrappers that aren't being called.
+
+Let me try a different approach: what if I annotate the generic functions directly with `#[verus_verify(external_body)]` and specs in their source files? I could add these attributes to the trait impl methods themselves, like on `PageAligned<T: Address>::deref`, but I'm not sure if Verus even allows annotating trait impl methods with `#[verus_verify]` attributes.
+
+Actually, I think `#[verifier::external_body]` inside a verus! block might work instead. But this is getting complicated. Let me step back and try something simpler: what if I add `assume_specification` for all the non-generic functions, and then use `#[verus_verify(external_body)]` with specs on the generic functions in their source files? That seems like the right direction—I need to figure out exactly what goes where.
+
+For the spec file, I'd add external type specifications and assumptions for FrameNumber and its methods, plus the frame address conversions. Then in the actual implementation file, I'd annotate the generic Deref impl and any other methods that need it. But wait, the Deref impl is generic, so I need to think about whether that annotation even works there...
+
+Let me try putting `#[verus_verify(external_body)]` on the deref method itself. The tricky part is that I can't use `#[verus_spec]` on a trait method implementation without wrapping the whole impl block in `#[verus_verify]`, so I'd need to annotate the impl block first, then mark the deref method as external_body.
+
+But wait—the `Address` trait isn't known to Verus, so if I put `#[verus_verify]` on the impl block, Verus will try to process it and fail because `Address` isn't a Verus-recognized trait. This is turning into a dependency chain problem.
+
+Looking at what actually works in the codebase, the pattern is to create a wrapper function like `pa_into_raw` that's marked as external_body and has the spec attached to it, rather than trying to annotate the generic trait methods directly.
+
+The real issue is that exec code in frame.rs calls `pa.into_raw_value()` directly, not through a wrapper, so even if the wrapper exists, Verus still errors on the direct call. I could change the exec code to use the wrapper instead, but that violates the constraint against modifying existing exec code. Let me check if that constraint actually applies here—it says not to change function signatures or control flow, but using a different function call might be acceptable.
+
+Actually, looking at the source integrity escalation ladder, stdlib wrappers are allowed as a last resort if they're `#[inline]` and behaviorally identical to the original. The question is whether this applies to non-stdlib calls like `into_raw_value()`.
+
+But I'm realizing I could take a different approach entirely — instead of changing exec code, what if I just add spec annotations to the dependency files themselves? Adding `#[verus_verify]` annotations isn't "exec code mutation," it's exactly what we're supposed to do. The risk is that Verus might fail compiling those files if their dependencies aren't specced, but `external_body` should prevent that by skipping the function bodies.
+
+So my plan is to add `#[verus_verify(external_body)]` annotations directly to the generic implementations in the dependency files, starting with the `Deref` impl in `page.rs`. I need to understand what Verus means when it says a function is ignored because it's declared outside the verus! macro or marked as external. The issue is that functions in regular Rust code aren't automatically tracked by Verus unless they're annotated with `#[verus_verify]`. Once I add that annotation, Verus will recognize the function, and with `#[verus_verify(external_body)]`, it will trust the provided specification without verifying the implementation. I'm uncertain whether this annotation works on trait implementations for foreign traits like `core::ops::Deref`, so I need to test that approach carefully.
+
+Looking at my options, I can either place the function in a `verus!{}` block, add the `#[verus_verify]` attribute, or use `assume_specification` for monomorphic functions. For generic functions, Verus requires either the `#[verus_verify]` annotation or a monomorphic wrapper. Let me try applying `#[verus_verify(external_body)]` to the impl blocks first—if it handles generics properly, that's the cleanest solution; otherwise I'll create wrapper functions instead.
+
+Wait, looking at these error messages more carefully, I'm seeing the fully resolved concrete types without generic parameters. These are the monomorphized versions that Verus has already instantiated, which means `assume_specification` could actually work here. I need to check the syntax for specifying methods with their concrete types and provide the expected function signature. I'm working through the syntax for assume_specification with trait methods, and I've found the pattern by looking at existing code — it uses the `<Type as Trait>::method` format. Now I'm planning to consolidate all the assume_specifications into frame.spec.rs, including external type specifications and specifications for constants like FRAME_SIZE with their required ensures clauses. Defining trait specifications... I'm realizing that `into_frame_number` takes `self` by value, but the auto-deref chain from `PageAligned<PhysicalAddress>` only gives me a reference, so `PhysicalAddress` must be `Copy` for this to work seamlessly.
+
+Looking at the error messages, Verus is explicitly calling `deref` rather than doing transparent auto-deref, which means I need to provide a spec for the `deref` method. The same issue appears with other method calls like `region.start()` on `TruncatedMemoryRegion<PhysicalAddress>`.
+
+I'm realizing that these `assume_specification` blocks need to be placed in the correct module scope—since `frame.spec.rs` is included into `frame.rs` in the `phys` module, I need to make sure the specs are accessible from where they're being called.
+
+Looking at existing examples, `assume_specification` can reference items across different modules and crates, so that's not a blocker. But I'm now wondering if there might be naming conflicts or scope issues when the HAL's `frame.rs` also has similar specifications.
+
+Actually, I realize I don't need to duplicate `PAGE_SIZE` — the error is specifically about `FRAME_SIZE`, which is a distinct constant even though it equals `PAGE_SIZE`. The question is whether the correct path is `::arch::mem::FRAME_SIZE` (as a re-export) or if I need to reference the full path `arch::x86::mem::constants::FRAME_SIZE`.
+
+Let me check what the arch crate actually exports publicly.
+[RESULT ✓] bash: 96:pub const FRAME_SHIFT: usize = PAGE_SHIFT;
+103:pub const FRAME_SIZE: usize = PAGE_SIZE;
+<exited with exit code 0>
+[RESULT ✓] bash: 14:pub mod gdt;
+16:pub mod gdtr;
+18:pub use crate::x86_64::mem::gdtr;
+19:pub mod paging;
+21:pub use constants::*;
+<exited with exit code 0>
+[RESULT ✓] bash: 18:pub use crate::x86_64::mem::gdtr;
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 107
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn 'pub use\|pub mod' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/me
+[TOOL] bash: grep -rn 'pub use\|pub mod' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/me
+
+[THINKING] Good. So `FRAME_SIZE` is re-exported via `pub use constants::*` in `mod.rs`, so the public path is `::arch::mem::FRAME_SIZE`. And it equals `PAGE_SIZE`.
+
+Now let me also check the FrameNumber path:
+[RESULT ✓] bash: 14:pub use number::FrameNumber;
+<exited with exit code 0>
+[RESULT ✓] bash: 17:pub use flags::*;
+18:pub use frame::FrameNumber;
+19:pub use pde::*;
+20:pub use pte::*;
+21:pub use table::*;
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 108
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n 'impl View\|impl.*View.*for\|type V' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/ker
+[TOOL] bash: grep -n 'impl View\|type V\|spec fn view\|spec fn inv' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanv
+[TOOL] bash: grep -n 'impl View\|type V\|spec fn view\|spec fn inv' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanv
+
+[THINKING] So the public path for `FrameNumber` is `::arch::mem::paging::FrameNumber`.
+
+Now let me plan the complete set of assume_specification blocks to add to frame.spec.rs. I'll put them all inside the existing `verus!` block.
+
+Let me also check: are there any View types defined for PageAligned, PhysicalAddress, or TruncatedMemoryRegion? I need to know their `@` (view) values for the specs.
+
+Actually, looking at frame.rs (HAL), FrameAddress already has:```rustimpl View for FrameAddress {
+    type V = int;
+
+
+```
+
+I can see that FrameAddress's view implementation uses `self.0@` where `self.0` is `PageAligned<PhysicalAddress>`, so the view of PageAligned must be defined somewhere. The assume_specification for FrameAddress::new shows that `address@` is used directly, which means PageAligned<PhysicalAddress> has a View implementation that returns an int value.
+
+```
+[RESULT ✓] bash: 206:impl<T: Address + View<V = int>> View for PageAligned<T>
+208:    type V = int;
+<exited with exit code 0>
+[RESULT ✓] bash: 252:impl View for PhysicalAddress
+254:    type V = int;
+256:    closed spec fn view(&self) -> int
+<exited with exit code 0>
+[RESULT ✓] bash: 453:    type V = MemoryRegionView;
+455:    closed spec fn view(&self) -> MemoryRegionView
+469:    type V = MemoryRegionView;
+471:    closed spec fn view(&self) -> MemoryRegionView
+479:    pub open spec fn inv(&self) -> bool
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 109
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs
+[RESULT ✓] view: 200. 
+201. #[cfg(verus_keep_ghost)]
+202. verus! {
+203. 
+204. use crate::hal::mem::spec_page_size;
+205. 
+206. impl<T: Address + View<V = int>> View for PageAligned<T>
+207. {
+208.     type V = int;
+209. 
+210.     closed spec fn view(&self) -> int
+211.     {
+212.         self.0@
+213.     }
+214. }
+215. ...
+[RESULT ✓] view: 248. 
+249. #[cfg(verus_keep_ghost)]
+250. verus! {
+251. 
+252. impl View for PhysicalAddress
+253. {
+254.     type V = int;
+255. 
+256.     closed spec fn view(&self) -> int
+257.     {
+258.         self.0@
+259.     }
+260. }
+261. 
+262. pub assume_specification[ <PhysicalAddress as Address>::from_raw_valu...
+[RESULT ✓] view: 440. use crate::hal::mem::spec_page_size;
+441. 
+442. pub struct MemoryRegionView
+443. {
+444.     pub start: int,
+445.     pub size: int,
+446.     pub typ: MemoryRegionType,
+447.     pub perm: AccessPermission,
+448.     pub cache_policy: Option<MmioCachePolicy>,
+449. }
+450. 
+451. impl<T: Address + Vi...
+
+────────────────────────────────────────────────────────────
+Turn 110
+────────────────────────────────────────────────────────────
+Now I have a clear picture. The 11 errors are all about missing specs for dependency functions. I need to add `assume_specification` blocks. Let me consult the rubber-duck agent on my approach before implementing.
+[TOOL] task: {'name': 'rubber-duck-deps', 'agent_type': 'rubber-duck', 'description': 'Critiq
+
+[THINKING] Now I have all the information I need. Let me draft the complete frame.spec.rs additions.
+
+For each dependency function, I need to determine:
+1. The correct `assume_specification` path
+2. The `requires`/`ensures` (keeping them minimal for now)
+
+Here's my plan:
+
+**External type specification:**
+```rust
+#[verifier::external_type_specification]
+pub struct ExFrameNumber(::arch::mem::paging::FrameNumber);
+```
+
+**Arch crate constants/functions:**
+
+1. `FRAME_SIZE`:
+```rust
+pub assume_specification[ ::arch::mem::FRAME_SIZE ] -> (result: usize)
+    ensures
+        result == spec_page_size(),
+        result > 0,
+;
+```
+I notice there's already an `assume_specification` for `PAGE_SIZE` in the HAL frame.rs, and since `FRAME_SIZE` equals `PAGE_SIZE`, both map to `spec_page_size()`. They're different constants though, so I need separate specifications for each.
+
+2. `FrameNumber::from_raw_value`:
+Writing specification for constructor...
+
+3. `FrameNumber::into_raw_value`:
+Writing specification for conversion...
+
+**Kernel HAL functions:**
+
+4. `FrameAddress::from_frame_number`:
+Writing specification for frame address creation...
+
+5. `FrameAddress::into_frame_number`:
+Writing specification for frame number extraction...
+
+6. `PhysicalAddress::into_frame_number`:
+Writing specification for physical address conversion...
+
+7. `PageAligned<PhysicalAddress>::deref`:
+Now I'm working on the Deref trait implementation for PageAligned<PhysicalAddress>, which returns a reference to PhysicalAddress. This one's a bit tricky since it's a trait impl rather than a standalone function, so I need to use the full path with the trait specification.
+
+Looking at the existing code in phys.rs, I can see that trait methods use the `<Type as Trait>::method` syntax, so that should work here too. Though I'm wondering if Verus will handle `core::ops::Deref` properly or if I need to use the fully qualified `::core::ops::Deref` path instead.
+
+8. `TruncatedMemoryRegion`...
+
+Writing assume_specification declarations... I'm checking for conflicts with existing assume_specifications — PAGE_SIZE, FRAME_SIZE, and the various FrameAddress and PhysicalAddress methods all look clear since they're either different constants or different methods. SparseBitmap doesn't need specs since it already has verus_verify annotations, so I just need to focus on adding specs for those 11 items causing errors. I need to verify that the imports in frame.rs will work correctly when frame.spec.rs is included, since the spec file will need to reference types like `Error` and `ErrorCode` that are imported at the module level. can use `FrameNumber`, `FrameAddress`, `PageAligned<PhysicalAddress>`, etc. directly since they're imported.
+
+But wait — inside a `verus!` block, can I reference items imported in the parent file? Since `include!` pastes the content, yes — the imports are in scope.
+
+But frame.spec.rs already has `use super::UpoolView;` and `use crate::hal::mem::spec_page_size;`. These `use` statements are inside the `verus!` block. I should add my imports there too if needed.
+
+Actually, looking at frame.spec.rs more carefully, the `use super::UpoolView` imports from the parent module and `use crate::hal::mem::spec_page_size` imports from the HAL. Inside the verus! block, I have access to these and to the parent file's imports. The `assume_specification` uses imported names directly, so in phys/frame.spec.rs, I should be able to use `FrameAddress::from_frame_number` without needing full paths.
+
+Now I'm drafting the final frame.spec.rs content, being careful not to duplicate existing assume_specifications from the HAL frame.rs file since those are in a different module and already compiled. I need to check whether having the same assume_specification in two files would cause conflicts — but actually, I don't need to duplicate existing ones since they're already available.
+
+So I'm identifying which functions still need assume_specifications: FrameNumber itself, its from_raw_value and into_raw_value methods, FRAME_SIZE, FrameAddress::from_frame_number and into_frame_number, PhysicalAddress::into_frame_number, PageAligned::deref, and TruncatedMemoryRegion::start.
+
+Now I need to write the spec file, and I'm checking the syntax for how to wrap the external_type_specification for FrameNumber inside a verus! block.
+
+Writing the spec file... I'm checking whether `external_body` is necessary for FrameNumber — looking at similar types like ExErrorCode and ExError, they use just `external_type_specification` without it, so for a simple newtype wrapper I should be fine with that alone.
+
+Now I need to verify that Option is properly handled by Verus since `from_raw_value` returns `Option<FrameNumber>`, and then I'm running into an error about the Deref implementation that I need to investigate more carefully.
+
+Looking at the error message, it seems Verus is showing the monomorphized path for `PageAligned::deref`, but I need to figure out the correct syntax for the assume_specification. Based on the existing pattern in the code that uses `<Type as Trait>::method`, I should try the trait method syntax with the concrete type.
+
+Writing assume_specification for Deref... I'm considering using `assume_specification` for the monomorphized Deref implementation and other functions like `TruncatedMemoryRegion::start` that Verus can't verify directly. For the chained call `region.start().into_frame_number()`, I need to handle both the deref operation and the subsequent method call on `PhysicalAddress`.
+
+The most pragmatic approach is to write out all the necessary `assume_specification` declarations in frame.spec.rs, run the verifier, and then iterate on any remaining errors. Before I do that though, I need to verify the correct canonical path for `FrameNumber` since the import uses `arch::mem::paging::FrameNumber` but the actual definition might be elsewhere due to re-exports.
+
+Looking at the error messages Verus produced, they show the internal mangled path, but for `assume_specification` I should use the public path that Rust resolves. Since `FrameNumber` is already imported in the current file via `use ::arch::mem::paging::FrameNumber;`, I can reference it directly by name within the verus! block.
+
+I notice there aren't any existing `assume_specification` declarations in frame.spec.rs yet, though there are some in the HAL files. For the paths I'm adding, I'll use the imported names directly since they're available in scope. Now I need to think through the `#[verifier::external_type_specification]` for `FrameNumber` — since it's a newtype wrapping `usize`, the `ExFrameNumber` specification needs to properly represent that structure.
+
+Defining the external type specification... I'm deciding whether to add `#[verifier::external_body]` to the FrameNumber specification since it's a simple newtype struct with a private field, then I'll move on to writing the frame.spec.rs file and consider whether to add a View for FrameNumber.
+
+Writing the spec file... Still writing specifications... I'm checking whether multiple assume_specifications can reference the same constant without conflicts, and realizing that `FrameNumber::MAX` only appears in specific contexts where its spec isn't needed since the containing function is already assume_specification'd. value (which I'm assume_specification'ing), so I don't need to spec it.
+
+Actually, wait. Let me re-check: is `FrameNumber::MAX` used inside any Inner method? Looking at Inner::alloc, it calls from_raw_value which uses MAX internally. But since I'm assume_specification'ing from_raw_value, the body isn't checked. So I don't need to spec MAX.
+
+OK, I'm satisfied with the plan. Let me now write the code and test it.
+
+One more concern: in phys/frame.rs, will the `assume_specification` blocks in frame.spec.rs conflict with the ones in HAL frame.rs? They're in different modules but both compiled into the same kernel binary. In Verus, you can't have two different assume_specifications for the same function, but I need to check if assume_specifications in different modules are allowed. The HAL frame.rs has assume_specifications for PAGE_SIZE, FrameAddress::new, and related functions, while my frame.spec.rs would have assume_specifications for FRAME_SIZE and FrameNumber::from_raw_value — these are all different functions, so there shouldn't be a conflict.
+
+But I'm still concerned about `<PageAligned<PhysicalAddress> as Address>::into_raw_value`. Let me check if there's already an assume_specification for this in the codebase.
+
+Looking at `pa_into_raw`, I see it's a wrapper function with its own external body and spec, but that's separate from providing a spec for the underlying method itself. The wrapper and the assume_specification are different things, so there's no conflict there.
+
+Now I need to write out the complete updated frame.spec.rs file while being careful to preserve all existing content. I should also think through what ensures clauses I actually need on the assume_specification directives.
+
+The Inner method specs already have ensures that reference things like `frame.inv()` and `frame@` (the FrameAddress view), which are defined in the HAL frame.rs, so those will compile fine. But for Verus to actually verify those ensures, it would need to understand the relationship between the bitmap operations and the frame allocation behavior.
+
+Since I'm in the spec phase and just need compilation to pass, I'll keep the assume_specifications minimal. Verus won't try to verify the ensures on Inner methods unless I run with the frame module specified — the 11 errors I'm seeing are compilation errors, not verification errors, and adding assume_specification fixes those. If verification fails later, I can handle that separately.
+
+But I'm concerned about adding so many assume_specifications — the cheating detector will flag them, and the task says "0 Verus errors". I need to figure out if that means zero of everything or just zero actual verification failures.
+
+Actually, the spec-design skill allows assume_specification for trust boundaries, and these dependency functions are exactly that — they'll be verified later. The task doesn't explicitly forbid assume_specifications, just errors. Let me write the code.
+
+One thing I need to verify first: `SparseBitmap::find_chunk` returns `Option<&Chunk>`, and I need to make sure Verus knows about the Chunk type. Since SparseBitmap is in a crate with `#[verus_verify]` and has specs defined for both the type and its methods, Verus should have all the information it needs.
+
+Looking at the grep results, `SparseBitmap::test`, `alloc`, `set`, and `clear` all have `#[verus_spec]` annotations, so they're all accessible to Verus. As for `usize::saturating_add`, it's a core method that either Verus knows about or the code path containing it isn't being checked — since it's not mentioned in the 11 errors, I'll assume it's fine.
+
+Now examining the actual loop more carefully, I see it's iterating through frame numbers and checking the bitmap, then calculating addresses using `region.start().into_raw_value()`, `region.size()`, and `mem::FRAME_SIZE`. These are exactly the methods I need to spec out, so my plan covers them. I should check whether vstd already has a spec for `saturating_add` or if I need to handle it separately.
+
+Looking at the error list, `saturating_add` isn't mentioned, which means Verus either handles it natively or there's already a vstd spec for it—either way, I can move forward without worrying about it now. I also notice `Error::new` and `ErrorCode` are already covered by existing specifications in mod.spec.rs, so those are taken care of.
+
+Time to actually write the frame.spec.rs file...
+[TOOL] skill: review-methodology
+[RESULT ✓] skill: Skill "review-methodology" loaded successfully. Follow the instructions in the skill context.
+[TOOL] report_intent: Reviewing Verus specs
+[TOOL] rg: assume_specification|external_type_specification|external_body|verus_spec|FRAME_SIZE|FrameNumber|PageAligned<PhysicalAddress>|TruncatedMemoryRegion<PhysicalAddress>|into_frame_number|from_frame_number
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`SparseBitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller (upool, kpool, an...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::UpoolView;
+4. use crate::hal::mem::spec_page_size;
+5. 
+6. // ---------------------------------------------------------------------------
+7. // Spec transition functions on UpoolView
+8. // ---------------------------------------------------------------------------
+9. 
+10...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // This file contains specification functions and view types.
+7. 
+8. verus! {
+9. 
+10. use crate::hal::mem::spec_page_size;
+11. 
+12. pub uninterp spec fn byte_at_a...
+[RESULT ✓] rg: Output too large to read at once (34.1 KB). Saved to: /tmp/copilot-tool-output-1777042216076-jo9470.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+[TOOL] rg: assume_specification\[|external_type_specification
+[TOOL] glob: **/*frame*.rs
+[TOOL] rg: spec_page_size|PAGE_SIZE|FRAME_SIZE
+[RESULT ✓] glob: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/fram...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/raw-array/src/lib.rs:203:#[verus_verify(external_type_specification)]
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod.spec.rs:14:#[verifier::external_type_specification]
+/home/...
+[RESULT ✓] rg: Output too large to read at once (24.5 KB). Saved to: /tmp/copilot-tool-output-1777042221295-iyexv4.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/mod.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 230.     fn as_ptr(&self) -> *const u8 {
+231.         self.0.as_ptr()
+232.     }
+233. 
+234.     fn as_mut_ptr(&self) -> *mut u8 {
+235.         self.0.as_mut_ptr()
+236.     }
+237. }
+238. 
+239. impl core::fmt::Debug for PhysicalAddress {
+240.     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fm...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+[TOOL] rg: struct PageAligned|impl .*Deref for PageAligned|into_frame_number\(|into_raw_value\(|from_address\(|spec fn inv\(&self\).*PageAligned|TruncatedMemoryRegion
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs:164:        let start_raw_addr: usize = start.clone().into_raw_value();
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs:277:pub struct...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs
+[TOOL] rg: external_body\)]\s*pub fn .*into_raw|external_body\)]\s*pub fn .*start\(|external_body\)]\s*pub fn .*deref|cannot receive a monomorphic assume_specification
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 260. impl<T: Address> Ord for MemoryRegion<T> {
+261.     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+262.         self.start.cmp(&other.start)
+263.     }
+264. }
+265. 
+266. //==================================================================================================
+267. // Truncated ...
+[RESULT ✓] rg: No matches found.
+[TOOL] rg: struct FrameNumber|impl FrameNumber|from_raw_value|into_raw_value|FRAME_SIZE|FRAME_SHIFT|PAGE_SIZE
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/mem/paging/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/mem/mod.rs
+[RESULT ✓] rg: Output too large to read at once (175.7 KB). Saved to: /tmp/copilot-tool-output-1777042240111-sgo4cf.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (firs...
+[TOOL] glob: **/arch/**/paging/**/*.rs
+[TOOL] rg: struct FrameNumber|pub const FRAME_SIZE|pub const PAGE_SIZE|impl FrameNumber
+[RESULT ✓] glob: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/paging/table.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/paging/pte.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/constants.rs:47:pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/constants.rs:103:pub const FRAME_SIZE: usize = PAG...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/constants.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/paging/mod.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 35. ///
+36. /// # Description
+37. ///
+38. /// Log2 PAGE_SIZE
+39. ///
+40. pub const PAGE_SHIFT: usize = 12;
+41. 
+42. ///
+43. /// # Description
+44. ///
+45. /// Number of bytes in a page.
+46. ///
+47. pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
+48. 
+49. ///
+50. /// # Description
+51. ///
+52. /// Mask f...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. //==================================================================================================
+4. // Modules
+5. //=============================================================================================...
+[TOOL] rg: assume_specification|external_body|detect_cheating|cheating
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] rg: Output too large to read at once (47.1 KB). Saved to: /tmp/copilot-tool-output-1777042262521-8yh3gk.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/crate-analysis/SKILL.md
+[TOOL] rg: trust\.md|verification-todo\.md
+[RESULT ✓] view: 182. ## assume_specification
+183. 
+184. `assume_specification` provides specs for std library or external functions
+185. whose body Verus cannot verify (because vstd does not include them).
+186. These are **external-bottom** trust assumptions (see **spec-design** skill) —
+187. unverified axioms that...
+[RESULT ✓] view: 1. ---
+2. name: crate-analysis
+3. description: "Principles for verification order in multi-file Rust crates. Verify top-level modules first (top-down), writing dependency specs on demand as verification drills down. The pipeline tool handles ordering automatically."
+4. ---
+5. 
+6. # Crate Verificatio...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/specification/prover-claude-20260424-222036.jsonl
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/view-design/prover-claude-20260424-2...
+[TOOL] rg: assume_specification|external_body|trust.md|cheating
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/cheating-elimination/fix_report.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/cheating-elimination/fix_report.md
+[RESULT ✓] view: 1. # Cheating Elimination Report: kpool
+2. 
+3. ## Cheating Counts (before → after)
+4. 
+5. | Item | Before | After | Eliminated |
+6. |------|--------|-------|------------|
+7. | admit() | 0 | 0 | 0 |
+8. | assume() | 0 | 0 | 0 |
+9. | external_body | 4 | 0 | 4 |
+10. | assume_specification | 0 | 0 | 0 |
+...
+[RESULT ✓] view: 1. # Cheating Elimination Report: upool
+2. 
+3. ## Cheating Counts (before → after)
+4. | Item | Before | After | Eliminated |
+5. |------|--------|-------|------------|
+6. | admit() | 0 | 0 | 0 |
+7. | assume() | 0 | 0 | 0 |
+8. | external_body | 0 | 0 | 0 |
+9. | assume_specification | 0 | 0 | 0 |
+10. |...
+[RESULT ✓] rg: Output too large to read at once (3.3 MB). Saved to: /tmp/copilot-tool-output-1777042279356-1j7fp2.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first ...
+[TOOL] rg: pa_into_raw|into_raw_value\(\).*PageAligned|TruncatedMemoryRegion<PhysicalAddress>|into_frame_number\(
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 80.     /// # Return Values
+81.     ///
+82.     /// Upon success, the kernel pool.
+83.     ///
+84.     #[verus_spec(result =>
+85.         requires
+86.             base.inv(),
+87.             bitmap.inv(),
+88.         ensures
+89.             result matches Ok(kpool) ==> {
+90.                 &&& kpoo...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs:24:            pa_into_raw,
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs:108:        // VERUS REWRITE: pa_into_raw wrapper needed because Verus c...
+[TOOL] rg: assume_specification\[\s*<[^\]]+>
+[TOOL] rg: Deref>::deref|TruncatedMemoryRegion<.*>::start|PageAligned<.*>::into_raw_value
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs:262:pub assume_specification[ <PhysicalAddress as Address>::from_raw_value ](value: usize) -> (result: Result<PhysicalAddress, Error>)
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs:88:/// needed because `PageAligned<T>::into_raw_value` is a generic trait method
+[TOOL] rg: pub use .*pa_into_raw|pa_into_raw
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/mod.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs:94:pub fn pa_into_raw(pa: PageAligned<PhysicalAddress>) -> usize {
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs
+[TOOL] rg: from_number\(|into_frame_number\(
+[RESULT ✓] view: 70.     /// # Safety
+71.     ///
+72.     /// Behavior is undefined if the provided memory-mapped I/O address is invalid.
+73.     ///
+74.     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
+75.         Ok(Self(addr))
+76.     }
+77. 
+78.     pub fn into_virtual_address(se...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs:95:    pub fn from_number(frame: FrameNumber) -> Self {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs:100:    pub fn int...
+**Blocking Issues**
+
+1. **Monomorphized `assume_specification` on generic methods is a bad bet**
+   - **Impact:** Your plan may still fail to compile, especially for `Deref`, `PageAligned<PhysicalAddress>::into_raw_value`, and `TruncatedMemoryRegion<PhysicalAddress>::start/size`.
+   - **Why:** The codebase already documents that Verus could **not** handle a monomorphic spec for the generic trait method `PageAligned<T>::into_raw_value`, and worked around it with the `pa_into_raw` wrapper instead (`hal/mem/types/address/frame.rs:85-96`).
+   - **Fix:** Don’t add `assume_specification` for items 8-11. Use thin wrappers / rewrites instead.
+
+2. **You are adding too much avoidable trust**
+   - **Impact:** Even if compilation succeeds, this will likely be flagged in cheating-elimination and create cleanup debt.
+   - **Why:** The methodology treats `assume_specification` as trust for external-bottom APIs, not as the default way to unblock same-repo dependencies. The kpool work explicitly converged to **0 `assume_specification`** and used a wrapper for the generic call (`verus-ai-logs/.../kpool/cheating-elimination/fix_report.md`).
+   - **Fix:** Shrink the trust surface first:
+     - `alloc()`: avoid `FrameNumber` + `FrameAddress::from_frame_number`; compute raw addr and use existing `FrameAddress::from_raw_value`.
+     - `free()/book()/alloc_range()`: use existing raw-value specs (`FrameAddress::into_raw_value`, `pa_into_raw`) and divide by `PAGE_SIZE`.
+     - Only wrap the truly unavoidable region accessors.
+
+**Non-Blocking Issues**
+
+1. **`FRAME_SIZE` should not get its own assumed spec**
+   - **Impact:** Redundant / easy to diverge.
+   - **Why:** `FRAME_SIZE` is just an alias of `PAGE_SIZE` (`arch/.../constants.rs:47,103`), and `PAGE_SIZE` already has a Verus spec (`hal/mem/types/address/frame.rs:36-40`).
+   - **Fix:** Reuse `PAGE_SIZE` / `spec_page_size()` or rewrite `mem::FRAME_SIZE` uses to `mem::PAGE_SIZE`.
+
+2. **`true` / empty ensures are too weak**
+   - **Impact:** You may get past parsing, but proving `frame.rs` will stall immediately.
+   - **Why:** These methods are conversions/accessors; their source gives easy, meaningful contracts.
+   - **Fix:** At minimum state source-faithful relations, e.g. raw-value identity, alignment, and `region.start()/size()` matching `region@`.
+
+**Suggestions**
+
+1. **Eliminate `FrameNumber` from `frame.rs` body if possible**
+   - This removes items 1-3 and 5-7 almost entirely.
+
+2. **Put dependency trust at the dependency boundary**
+   - If you truly need wrappers/specs for region accessors, place them near `region.rs` / address types, not all in `frame.spec.rs`.
+
+**Direct answers to your concerns**
+- **1. Generic trait path?** I would **not rely on it**.
+- **2. Cheating detector?** **Yes, likely flagged** as new `assume_specification` trust items.
+- **3. Minimal ensures?** Fine for bare compilation, **not sufficient for real progress**.
+- **4. Conflicts?** No obvious duplicate-path conflict, but `FRAME_SIZE` is redundant and consumer-local specs risk later mismatch.
+[RESULT ✓] task: **Blocking Issues**
+
+1. **Monomorphized `assume_specification` on generic methods is a bad bet**
+   - **Impact:** Your plan may still fail to compile, especially for `Deref`, `PageAligned<PhysicalAddress>::into_raw_value`, and `TruncatedMemoryRegion<PhysicalAddress>::start/size`.
+   - **Why:** The c...
+
+────────────────────────────────────────────────────────────
+Turn 111
+────────────────────────────────────────────────────────────
+Let me check the Address trait and try a pragmatic approach:
+[TOOL] bash: grep -n 'pub trait Address\|fn into_raw_value\|fn from_raw_value\|fn is_aligned' /home/ruize/verus-ai-exp/verus-ai-phy-m
+
+[THINKING] Good feedback. The key points:
+
+1. Generic trait method `assume_specification` is unreliable — the codebase already had to work around this with `pa_into_raw` wrapper
+2. I should minimize the trust surface by reusing existing specs
+3. FRAME_SIZE is redundant with PAGE_SIZE — I should use `mem::PAGE_SIZE` instead
+4. Minimal ensures are fine for compilation but should have meaningful ones
+
+Let me reconsider my approach based on this feedback:
+
+**Key insight from feedback:** Eliminate FrameNumber from the code paths if possible.
+
+Looking at the Inner methods:
+- `alloc()`: bitmap.alloc() → index → FrameNumber::from_raw_value → FrameAddress::from_frame_number
+
+
+- `free()`: frame.into_frame_number().into_raw_value() → index → bitmap.clear(index)
+
+I could bypass FrameNumber by computing addresses directly from indices, but both approaches require modifying the exec code, which is off-limits. The feedback seems to assume I have more flexibility here than I actually do.
+
+Let me refocus: I'll keep my original approach but handle the generic trait methods differently. I still need FRAME_SIZE since the exec code references it directly. For those generic methods, instead of trying to eliminate them, I'll annotate the generic impl blocks themselves with `#[verus_verify(external_body)]` to mark them as external dependencies. This way I'm not changing the exec code itself, just adding verification annotations to the source files where these methods are defined.
+
+I'm going to apply this to the Deref implementation for PageAligned, the Address trait impl for PageAligned, and the start/size methods in TruncatedMemoryRegion. Let me work through adding these annotations to the impl blocks...
+
+Writing verification annotations... I'm wondering if I can use `assume_specification` with just the monomorphized type path without the trait qualifier—so `PageAligned::<PhysicalAddress>::deref` instead of the full trait path. The error message shows Verus sees it as `PageAligned::deref`, so maybe I can try specifying the assumption with that simpler path format.
+
+Actually, let me step back and try a different strategy altogether: instead of wrestling with `assume_specification` for these generic trait methods, I'll annotate them directly in their source files with `#[verus_verify(external_body)]` and `#[verus_spec]`, which should let Verus recognize them as annotated functions.
+
+Adding annotations to the Deref impl...
+
+But wait, that won't work either because `#[verus_verify(external_body)]` on a method requires the entire impl block to be marked with `#[verus_verify]`, and if I do that, Verus will need to understand the `Address` trait bound, which isn't itself annotated for Verus verification. I need to check whether `Address` is already set up for Verus or if I need to annotate it first.
+
+Actually, I'm overcomplicating this. Let me just try using `assume_specification` with the full path that Verus reports in the error and see if it works. If not, I can iterate from there.
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 112
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn 'pub trait Address' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sys/ 2>/dev/nu
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sys/src/sys/mm/address/mod.rs:31:pub trait Address
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 113
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sys/src/sys/mm/address/mod.rs
+[RESULT ✓] view: 25. 
+26. //==================================================================================================
+27. // Traits
+28. //==================================================================================================
+29. 
+30. #[verus_verify]
+31. pub trait Address
+32. where
+33.     Self: ...
+
+────────────────────────────────────────────────────────────
+Turn 114
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs
+
+[THINKING] The `Address` trait IS annotated with `#[verus_verify]`. So Verus knows about it. This means I CAN add `#[verus_verify]` on `impl<T: Address> ... for PageAligned<T>` because Verus knows about the `Address` trait.
+
+But wait, the `Address` trait has supertrait bounds: `core::fmt::Debug + Clone + PartialEq + Eq + PartialOrd + Ord`. These are standard traits that Verus should know about (or at least not error on for external_body functions).
+
+OK so my approach for generic methods:1. 
+
+I'll add `#[verus_verify]` with `#[verus_verify(external_body)]` to the generic impl blocks in both page.rs and region.rs, then write specs for the methods Verus needs to see — the deref and into_raw_value methods for PageAligned, and the start method for TruncatedMemoryRegion.
+[RESULT ✓] view: 48. }
+49. 
+50. impl<T: Address> Address for PageAligned<T> {
+51.     fn into_raw_value(self) -> usize {
+52.         self.0.into_raw_value()
+53.     }
+54. 
+55.     ///
+56.     /// # Description
+57.     ///
+58.     /// Instantiates a new [`PageAligned`] from a raw value.
+59.     ///
+60.     /// # Para...
+[RESULT ✓] view: 275. #[verus_verify(external_derive)]
+276. #[derive(Clone)]
+277. pub struct TruncatedMemoryRegion<T: Address>(MemoryRegion<PageAligned<T>>);
+278. 
+279. impl<T: Address> TruncatedMemoryRegion<T> {
+280.     /// Creates a new truncated memory region.
+281.     pub fn new(
+282.         name: &str,
+283.  ...
+
+────────────────────────────────────────────────────────────
+Turn 115
+────────────────────────────────────────────────────────────
+Based on the rubber-duck feedback, I'll add meaningful `assume_specification` blocks for non-generic deps, and modify source files for generic methods. Let me implement this step by step.
+[TOOL] report_intent: Adding dependency specifications
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+
+[THINKING] OK, so:
+- `Address` trait IS `#[verus_verify]`
+- `PageAligned<T>` struct has `#[verus_verify(external_derive)]`
+- `TruncatedMemoryRegion<T>` struct has `#[verus_verify(external_derive)]`
+- But the impl blocks for `PageAligned` (Deref, Address) and `TruncatedMemoryRegion` DON'T have `#[verus_verify]`
+
+My plan:
+
+**For arch crate items (1-4):** Add `external_type_specification` and `assume_specification` in frame.spec.rs
+
+
+**For kernel HAL non-generic functions (5-7):** Add `assume_specification` in frame.spec.rs
+**For kernel HAL generic methods (8-11):** I need to add `#[verus_verify]` on the impl blocks themselves, then annotate the individual methods with `#[verus_verify(external_body)]` and `#[verus_spec]` with appropriate ensures clauses. I'll apply this to page.rs and region.rs.
+
+Adding annotations to the impl blocks...
+
+But I'm realizing a problem: if I put `#[verus_verify]` on the impl block, Verus will try to verify all methods inside it, not just the ones I've marked with `external_body`. I need to think through which methods actually need verification and which ones should be treated as external. The distinction is that `#[verus_verify(external_body)]` treats the specs as trusted, while `#[verus_verify(external)]` ignores the code entirely. For the PageAligned Address impl, since only `into_raw_value` is actually used in frame.rs, I could mark the entire impl block as `external_body` to skip verification of all the other methods without needing individual specs for them. I'm realizing that `assume_specification` might be the cleanest path forward—I can apply it to the specific monomorphized functions without touching the impl blocks, and if that doesn't work for generics, I'll fall back to wrapper functions. Let me just try writing out the complete frame.spec.rs file and see what Verus tells me, since the error messages will guide me toward the right solution. Actually, I wonder if I can just add `#[verus_spec]` directly on the generic methods themselves without any `#[verus_verify]` attribute on the impl block—that might give me the granular control I need.
+
+Looking at this deref implementation, I'm questioning whether `#[verus_verify(external_body)]` on the method would even be processed if the impl block doesn't have `#[verus_verify]` to begin with. The proc-macro might need that top-level attribute to recognize and process the method-level attributes at all, so I should check the Verus documentation to understand how attribute processing actually works here.
+
+But honestly, the fastest way forward is to just write out the assume_specification for all 11 items in frame.spec.rs and run the verifier to see what actually fails. I'll try a few different syntax variations for the generic method paths and let the compiler tell me what works. If the dependency source files need modification, I'll do that based on the actual errors I get.
+
+Writing the external type specifications now...
+
+Defining assume_specification for the arch crate constants and FrameNumber methods... Writing specification methods...
+
+Now I'm checking whether the necessary traits like `Address` from `sys::mm` and `core::ops::Deref` are actually in scope within the verus block, since they need to be available for these method specifications to work correctly. I need to verify that `MemoryRegionView` is properly exported from the module so I can use it in the ensures clause, since the view implementation shows that dereferencing a `TruncatedMemoryRegion` gives me a `MemoryRegionView` that I can reference in the specification.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 116
+────────────────────────────────────────────────────────────
+Now let me run verification to see if this fixes the compilation errors:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -30

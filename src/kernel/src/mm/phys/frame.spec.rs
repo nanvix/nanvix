@@ -4,6 +4,61 @@ use super::UpoolView;
 use crate::hal::mem::spec_page_size;
 
 // ---------------------------------------------------------------------------
+// External type specifications (arch crate)
+// ---------------------------------------------------------------------------
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExFrameNumber(FrameNumber);
+
+// ---------------------------------------------------------------------------
+// Assumed specs for arch crate functions
+// ---------------------------------------------------------------------------
+
+pub assume_specification[ ::arch::mem::FRAME_SIZE ] -> (result: usize)
+    ensures
+        result == spec_page_size(),
+        result > 0,
+;
+
+pub assume_specification[ FrameNumber::from_raw_value ](value: usize) -> (result: Option<FrameNumber>)
+;
+
+pub assume_specification[ FrameNumber::into_raw_value ](self_: FrameNumber) -> (result: usize)
+;
+
+// ---------------------------------------------------------------------------
+// Assumed specs for kernel HAL functions
+// ---------------------------------------------------------------------------
+
+pub assume_specification[ FrameAddress::from_frame_number ](frame_number: FrameNumber) -> (result: Result<FrameAddress, Error>)
+;
+
+pub assume_specification[ FrameAddress::into_frame_number ](self_: FrameAddress) -> (result: FrameNumber)
+;
+
+pub assume_specification[ PhysicalAddress::into_frame_number ](self_: PhysicalAddress) -> (result: FrameNumber)
+;
+
+pub assume_specification[ <PageAligned<PhysicalAddress> as ::core::ops::Deref>::deref ](self_: &PageAligned<PhysicalAddress>) -> (result: &PhysicalAddress)
+;
+
+pub assume_specification[ <TruncatedMemoryRegion<PhysicalAddress>>::start ](self_: &TruncatedMemoryRegion<PhysicalAddress>) -> (result: PageAligned<PhysicalAddress>)
+    ensures
+        result@ == self_@.start,
+;
+
+pub assume_specification[ <TruncatedMemoryRegion<PhysicalAddress>>::size ](self_: &TruncatedMemoryRegion<PhysicalAddress>) -> (result: usize)
+    ensures
+        result as int == self_@.size,
+;
+
+pub assume_specification[ <PageAligned<PhysicalAddress> as Address>::into_raw_value ](self_: PageAligned<PhysicalAddress>) -> (result: usize)
+    ensures
+        result as int == self_@,
+;
+
+// ---------------------------------------------------------------------------
 // Spec transition functions on UpoolView
 // ---------------------------------------------------------------------------
 

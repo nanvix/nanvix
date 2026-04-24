@@ -1,0 +1,72 @@
+Timestamp: 2026-04-24_22-55-16
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=7
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+warning: unreachable expression
+   --> src/kernel/src/mm/phys/frame.rs:269:9
+    |
+269 | /          for index in start_frame_number..end_frame_number {
+270 | |/             match self.bitmap.test(index) {
+271 | ||                 Ok(false) => continue,
+272 | ||                 Ok(true) => {
+273 | ||                     let conflicting_addr: usize = index * mem::FRAME_SIZE;
+...   ||
+284 | ||                 Err(err) => return Err(err),
+285 | ||             }
+    | ||_____________- any code following this `match` expression is unreachable, as all arms diverge
+286 | |          }
+    | |__________^ unreachable expression
+    |
+    = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+error: assume_specification requires function type signature to match `kernel::hal::mem::types::address::aligned::page::PageAligned::deref` exactly 
+             assume_specification provided: `for<'_> (&hal::mem::types::address::aligned::page::PageAligned<hal::mem::types::address::phys::PhysicalAddress>) -> &hal::mem::types::address::phys::PhysicalAddress`
+             expected:                      `for<T> for<'_> (&hal::mem::types::address::aligned::page::PageAligned<T>) -> &<hal::mem::types::address::aligned::page::PageAligned<T> as core::ops::Deref>::Target`
+  --> src/kernel/src/mm/phys/frame.spec.rs:43:1
+   |
+43 | pub assume_specification[ <PageAligned<PhysicalAddress> as ::core::ops::Deref>::deref ](self_: &PageAligned<PhysicalAddress>) -> (result: &PhysicalAddress)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: assume_specification requires function type signature to match `kernel::hal::mem::types::region::TruncatedMemoryRegion::start` exactly 
+             assume_specification provided: `for<'_> (&hal::mem::types::region::TruncatedMemoryRegion<hal::mem::types::address::phys::PhysicalAddress>) -> hal::mem::types::address::aligned::page::PageAligned<hal::mem::types::address::phys::PhysicalAddress>`
+             expected:                      `for<T> for<'_> (&hal::mem::types::region::TruncatedMemoryRegion<T>) -> hal::mem::types::address::aligned::page::PageAligned<T>`
+  --> src/kernel/src/mm/phys/frame.spec.rs:46:1
+   |
+46 | pub assume_specification[ <TruncatedMemoryRegion<PhysicalAddress>>::start ](self_: &TruncatedMemoryRegion<PhysicalAddress>) -> (result: PageAligned<PhysicalAddress>)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: assume_specification requires function type signature to match `kernel::hal::mem::types::region::TruncatedMemoryRegion::size` exactly 
+             assume_specification provided: `for<'_> (&hal::mem::types::region::TruncatedMemoryRegion<hal::mem::types::address::phys::PhysicalAddress>) -> usize`
+             expected:                      `for<T> for<'_> (&hal::mem::types::region::TruncatedMemoryRegion<T>) -> usize`
+  --> src/kernel/src/mm/phys/frame.spec.rs:51:1
+   |
+51 | pub assume_specification[ <TruncatedMemoryRegion<PhysicalAddress>>::size ](self_: &TruncatedMemoryRegion<PhysicalAddress>) -> (result: usize)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: assume_specification requires function type signature to match `kernel::hal::mem::types::address::aligned::page::PageAligned::into_raw_value` exactly 
+             assume_specification provided: `(hal::mem::types::address::aligned::page::PageAligned<hal::mem::types::address::phys::PhysicalAddress>) -> usize`
+             expected:                      `for<T> (hal::mem::types::address::aligned::page::PageAligned<T>) -> usize`
+  --> src/kernel/src/mm/phys/frame.spec.rs:56:1
+   |
+56 | pub assume_specification[ <PageAligned<PhysicalAddress> as Address>::into_raw_value ](self_: PageAligned<PhysicalAddress>) -> (result: usize)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `kernel` (bin "kernel") generated 1 warning
+error: could not compile `kernel` (bin "kernel") due to 4 previous errors; 1 warning emitted
