@@ -2257,3 +2257,233 @@ Turn 89
 ────────────────────────────────────────────────────────────
 So the command is `make verify-kernel MODULE=mm::phys::kpool`:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: error[E0425]: cannot find function `new` in this scope
+  --> src/kernel/src/hal/mem/types/address/frame.rs:72:12
+   |
+72 |     pub fn new(address: PageAligned<PhysicalAddress>) -> Self {
+   |            ^^^ not found in this scope
+
+error[E0425]: cannot find function `from_raw_value` in this scope
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+The error is because `#[verus_spec]` on functions in non-`#[verus_verify]` impl blocks doesn't work. I need to use `assume_specification` in the `verus!{}` block instead. Let me fix this:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] The error is that Verus can't find `new` and `from_raw_value` in scope. This is because when these functions have `#[verus_verify(external_body)]` and `#[verus_spec]` attributes, Verus tries to verify the specs, but the functions are in a non-verified impl block.
+
+Looking at the frame.rs file - the `impl FrameAddress` block starting at line 64 is NOT marked with `#[verus_verify]`. So when I add `#[verus_verify(external_body)]` to individual methods, Verus doesn't know the parent impl block is for verification.
+
+
+The real issue is that I'm applying `#[verus_spec]` to functions in a non-`#[verus_verify]` impl block, which creates a scope problem. For functions outside a verified block, I should be using `assume_specification` within a `verus!{}` macro instead.
+
+But wait—`assume_specification` is meant for external code I don't control, not my own functions. For my own impl blocks, I need to add `#[verus_verify]` to the block itself and mark individual functions with `#[verus_verify(external_body)]` if needed.
+
+Let me try wrapping the impl blocks with `#[verus_verify]`, though I need to be careful since some functions in there might not be suitable for verification. Looking at `impl FrameAddress`, it contains `new`, `into_physical_address`, `into_page_address`, and `from_frame`—I should check which ones actually need verification.
+
+Actually, I think the real issue is that when Verus processes `#[verus_spec]`, it's trying to call `new()` as a regular function, but it can't find it in scope because of how the attribute is being applied.
+
+Let me switch to using `assume_specification` instead, which I can place directly in the existing verus! block in frame.rs.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+Now add assume_specifications in the verus! block:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 30. 
+31. #[cfg(verus_keep_ghost)]
+32. verus! {
+33. 
+34. pub uninterp spec fn spec_page_size() -> int;
+35. 
+36. pub assume_specification[ ::arch::mem::PAGE_SIZE ] -> (result: usize)
+37.     ensures
+38.         result == spec_page_size(),
+39.         result > 0,
+40. ;
+41. 
+42. impl View for FrameAddre...
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+Now fix PageAligned similarly - remove the inline attributes and use assume_specification:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+Now add assume_specifications in page.rs's verus! block:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] view: 210.     closed spec fn view(&self) -> int
+211.     {
+212.         self.0@
+213.     }
+214. }
+215. 
+216. impl<T: Address + View<V = int>> PageAligned<T>
+217. {
+218.     pub open spec fn inv(&self) -> bool
+219.     {
+220.         self@ % spec_page_size() == 0
+221.     }
+222. }
+223. 
+224. }
+225. 
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+Now fix PhysicalAddress::from_raw_value the same way:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+Now add assume_specification in phys.rs's verus! block:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] view: 258.         self.0@
+259.     }
+260. }
+261. 
+262. } // end verus!
+263. 
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+Now let me also add is_valid_physical_region spec. Since it's not in a trait, using assume_specification:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/platform/microvm/mod.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/platform/microvm/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+Now I need to add the assume_specification for is_valid_physical_region. Let me check if there's a verus! block in the microvm mod.rs:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n 'verus_keep_ghost\|verus!' src/kernel/
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+No verus! block. I need to add one. Let me check the imports and other details:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/platform/microvm/mod.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/platform/microvm/mod.rs
+[RESULT ✓] view: 345. /// - `size`: Size of the region in bytes.
+346. ///
+347. /// # Returns
+348. ///
+349. /// `true` if the entire region lies within physical memory, `false` otherwise.
+350. ///
+351. #[inline(always)]
+352. pub fn is_valid_physical_region(start: usize, size: usize) -> bool {
+353.     // Reject zero-...
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/platform/microvm/mod.rs
+[RESULT ✓] view: 363. }
+364. 
+365. ///
+366. /// # Description
+367. ///
+368. /// Returns the maximum physical address on the Microvm platform.
+369. ///
+370. /// All physical memory is contiguous starting at GPA 0 up to `MEMORY_SIZE`.
+371. ///
+372. /// # Returns
+373. ///
+374. /// The maximum physical address value.
+37...
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+I'll add the verus! block with the assume_specification right after the function:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/platform/microvm/mod.rs
+
+────────────────────────────────────────────────────────────
+Turn 107
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/platform/microvm/mod.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/platform/microvm/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 108
+────────────────────────────────────────────────────────────
+Now let me strengthen the internal_inv and write the proofs. First, let me write the complete proof file:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::KpoolView;
+4. 
+5. impl View for Inner {
+6.     type V = KpoolView;
+7. 
+8.     closed spec fn view(&self) -> KpoolView
+9.     {
+10.         KpoolView{
+11.             start: self.base@,
+12.             num_pages: self.bitmap@.num_bits as int,
+13.             used_page_in...
+
+────────────────────────────────────────────────────────────
+Turn 109
+────────────────────────────────────────────────────────────
+Now let me write the strengthened internal_inv and proof bodies:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 110
+────────────────────────────────────────────────────────────
+Now let me try to build to see if the dependency specs compile correctly:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
