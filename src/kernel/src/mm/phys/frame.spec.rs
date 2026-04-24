@@ -11,6 +11,12 @@ use crate::hal::mem::spec_page_size;
 #[verifier::external_body]
 pub struct ExFrameNumber(FrameNumber);
 
+impl View for FrameNumber {
+    type V = int;
+
+    uninterp spec fn view(&self) -> int;
+}
+
 // ---------------------------------------------------------------------------
 // Assumed specs for arch crate functions
 // ---------------------------------------------------------------------------
@@ -24,10 +30,12 @@ pub assume_specification[ ::arch::mem::FRAME_SIZE ] -> (result: usize)
 pub assume_specification[ FrameNumber::from_raw_value ](value: usize) -> (result: Option<FrameNumber>)
     ensures
         result.is_some(),
-        result matches Some(fn_val) ==> fn_val.into_raw_value() == value,
+        result matches Some(fn_val) ==> fn_val@ == value as int,
 ;
 
 pub assume_specification[ FrameNumber::into_raw_value ](self_: FrameNumber) -> (result: usize)
+    ensures
+        result as int == self_@,
 ;
 
 // ---------------------------------------------------------------------------
@@ -38,19 +46,19 @@ pub assume_specification[ FrameAddress::from_frame_number ](frame_number: FrameN
     ensures
         result.is_ok(),
         result matches Ok(fa) ==> {
-            &&& fa@ == frame_number.into_raw_value() as int * spec_page_size()
+            &&& fa@ == frame_number@ * spec_page_size()
             &&& fa.inv()
         },
 ;
 
 pub assume_specification[ FrameAddress::into_frame_number ](self_: FrameAddress) -> (result: FrameNumber)
     ensures
-        result.into_raw_value() as int == self_@ / spec_page_size(),
+        result@ == self_@ / spec_page_size(),
 ;
 
 pub assume_specification[ PhysicalAddress::into_frame_number ](self_: PhysicalAddress) -> (result: FrameNumber)
     ensures
-        result.into_raw_value() as int == self_@ / spec_page_size(),
+        result@ == self_@ / spec_page_size(),
 ;
 
 // Generic trait methods (deref, start, size, into_raw_value) are annotated
