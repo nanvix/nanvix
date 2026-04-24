@@ -380,3 +380,66 @@ Now let me verify the module compiles and verifies correctly:
 
 
 The AST consistency tool is flagging the Verus annotations as exec code changes, but they're actually spec-level constructs that don't affect runtime behavior. I need to verify whether the tool is correctly distinguishing between these proof annotations and actual executable code modifications. I've justified all three deviations—the Verus-specific annotations are legitimate requirements, the variable rename suppresses an unused warning, and the cfg attribute is necessary for the logging macro. Now I need to document these and verify the module compiles cleanly before generating the report.
+[RESULT ✓] bash: cheating: assume=0 external_body=11 admit=0 trusted=0 no_decreases=0 cfg_gate=6
+  Detail: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/cheating-detail.txt
+    - handle_sleep_error
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cat src/kernel/src/cheating-detail.txt 2>/dev/
+[RESULT ✓] bash: - mm/phys/frame.rs:96 alloc: external_body
+    - mm/phys/frame.rs:157 free: external_body
+    - mm/phys/frame.rs:202 book: external_body
+    - mm/phys/frame.rs:253 alloc_range: external_body
+    - mm/phys/frame.rs:373 alloc: external_body
+    - mm/phys/frame.rs:382 free: external_body
+    - mm/phys/...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+The cheating items (external_body, cfg_gate) listed are in **other modules** (frame.rs, kpool.rs), not in upool. The upool module itself has **zero** cheating items — no admits, assumes, external_body, or assume_specification within its own files.
+
+The only cfg-gate in upool is the `error!` logging macro, which is explicitly allowed.
+
+Now let me create the output files:
+[TOOL] report_intent: Writing elimination report
+[TOOL] bash: mkdir -p /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/chea
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/ 2>/dev/nu
+[RESULT ✓] bash: body_removed_source.rs	pipeline.log	     proving	  verification-plan.json
+cheating-elimination	pipeline_state.json  usage.jsonl
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/trust.md 2
+[RESULT ✓] bash: 
+<exited with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/trust.md
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/verification_todo.md
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/trust.md with 210 characters
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/verification_todo.md with 101 characters
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/cheating-elimination/fix_report.md with 1807 characters
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Now run full crate verification to confirm no regressions:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | grep -E '(Summary|ve
