@@ -1481,3 +1481,104 @@ Turn 57
 ────────────────────────────────────────────────────────────
 Good. Now let's run verification:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::upool 2>&1
+[RESULT ✓] bash: Using Verus installation at /home/ruize/verus.
+PATH="/home/ruize/verus:$PATH" \
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+VERUS_EXTRA_CARGO_ARGS="--features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem --target /home/ruize/ve...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -r "verify-module\|verify_module" scripts
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && for f in verus-ai-logs/verus-logs/*.log; do st
+
+[THINKING] The issue is: "could not find module mm::phys::upool specified by --verify-module or --verify-only-module" and the available modules listed are from the `sys` crate, not the `kernel` crate. The problem is that the verification command applies the `--verify-module` flag globally to ALL crates being compiled, including dependency crates like `sys`. The `sys` crate doesn't have a `mm::phys::upool` module, so it fails.
+
+This seems like a Verus tooling issue. Let me check if there's a way to specify the module only for the kernel crate. Let me look at how the verify script invokes cargo verus:
+
+
+I'm looking at how the cargo verus command is constructed with the module flag passed to the compiler, and it seems the flag applies globally across all crates being built. Let me search through other successful kernel module verifications to see if there's a different approach or flag I'm missing.
+[RESULT ✓] bash: scripts/verify.sh:        CMD+=(-- --verify-module "$MODULE")
+scripts/verify.sh:        CMD+=(--verify-module "$MODULE")
+<exited with exit code 0>
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && for f in verus-ai-logs/verus-logs/*.log; do mo
+[RESULT ✓] bash: verus-ai-logs/verus-logs/verus_2026-04-24_19-32-33.log: Module: mm::phys::upool
+verus-ai-logs/verus-logs/verus_2026-04-24_19-34-04.log: Module: root
+verus-ai-logs/verus-logs/verus_2026-04-24_19-45-15.log: Module: mm::phys::upool
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cat src/libs/sys/Cargo.toml | grep -A3 "verus\
+
+[THINKING] It seems like no module-specific verification has succeeded. The issue is that `--verify-module` is applied to all crates, including `sys`. Let me check if there's a way to make `--verify-module` only apply to the target crate. 
+
+Looking at the error more carefully:
+```
+error: could not find module mm::phys::upool specified by --verify-module or --verify-only-module
+       available modules are:       - sys::mm::access
+       - sys::mm::address       - sys::mm::address::virt
+       - sys::mm::alignment       or use --verify-root
+error: could not compile `sys` (lib) due to 1 previous error```
+
+
+The problem is that when `--verify-module mm::phys::upool` gets passed to the workspace, the `sys` crate fails because it doesn't contain that module path—this is a Verus limitation where the flag applies globally across all crates. I need to either run verification without the module filter to check everything, or find a way to exclude the `sys` crate from this constraint.
+
+Let me look more carefully at the cargo verus documentation and how the `--` separator works, since it might be handled differently than standard cargo. I should also check if there's a crate-specific Verus configuration I can adjust, or just try running the full verification without the MODULE flag to see if that works.
+[RESULT ✓] bash: [package.metadata.verus]
+verify = true
+
+[dependencies]
+config = { workspace = true }
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep "VERUS_CRATES" Makefile | head -3
+[RESULT ✓] bash: VERUS_CRATES := bitmap slab raw-array sparse-bitmap kernel
+.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+	for crate in $(VERUS_CRATES); do \
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && PATH="/home/ruize/verus:$PATH" verus --help 2>
+
+[THINKING] `sys` is not in VERUS_CRATES, but it has `verify = true` in its Cargo.toml. When doing `cargo verus verify -p kernel`, all dependencies with `verify = true` are also verified. The `--verify-module` flag applies to all of them.
+
+The issue is that the `--verify-module mm::phys::upool` flag is being passed to the `sys` crate which doesn't have that module. This causes a compilation error.
+
+Let me check if there's a way to handle this. Maybe I should use `--verify-only-module` instead or maybe there's a different flag.
+
+
+Actually, I need to look at what Verus flags are available to see if there's a better option for scoping the verification to specific modules.
+[RESULT ✓] bash: --verify-root   Verify just the root module of crate
+        --verify-module MODULE
+                        Verify just one submodule and its descendants within
+                        the crate (e.g. 'foo' or 'foo::bar'), can be repeated
+--
+        --verify-only-module MODULE
+                      ...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -60
+
+[THINKING] OK, so `--verify-module` verifies a module within a crate. The issue is that cargo verus verify applies it to all crates. The `sys` crate is compiled as a dependency and it too sees the `--verify-module mm::phys::upool` flag.
+
+Let me see if there's a way to make the sys crate NOT fail when the module doesn't exist. Looking at the error: "could not find module mm::phys::upool specified by --verify-module". This is a hard error.
+
+One possible solution: run `make verify-kernel` without the MODULE parameter, which verifies all modules. This would be slower but should work.
+
+
+Let me test running the verification without specifying a particular module to see if that resolves the issue with the sys crate failing.

@@ -1,0 +1,40 @@
+Timestamp: 2026-04-24_19-46-04
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+89 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+note: verifying root module
+
+    Checking sys v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sys)
+verification results:: 4 verified, 0 errors
+    Checking raw-array v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/raw-array)
+    Checking arch v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch)
+    Checking elf v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/elf)
+verification results:: 0 verified, 0 errors
+    Checking bitmap v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap)
+verification results:: 69 verified, 0 errors
+    Checking sparse-bitmap v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap)
+    Checking slab v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/slab)
+verification results:: 35 verified, 0 errors
+verification results:: 89 verified, 0 errors
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+error: requires are not allowed on the implementation for Drop
+   --> src/kernel/src/mm/phys/upool.rs:101:5
+    |
+101 |     fn drop(&mut self) {
+    |     ^^^^^^^^^^^^^^^^^^
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
