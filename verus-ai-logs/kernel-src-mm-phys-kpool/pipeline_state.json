@@ -1,0 +1,16 @@
+{
+  "module_name": "kpool",
+  "log_name": "kernel-src-mm-phys-kpool",
+  "source_path": "src/kernel/src/mm/phys/kpool.rs",
+  "current_phase": "proving",
+  "current_phase_idx": 3,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_session_id": null,
+  "completed": false,
+  "base_branch": "verus-ai/upool",
+  "verus_branch": "verus-ai/kpool",
+  "phase_boundary_shas": {},
+  "rollback_counts": {},
+  "rollback_context": ""
+}

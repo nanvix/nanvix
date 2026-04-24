@@ -1,0 +1,16 @@
+[2026-04-24 20:11:22] [BRANCH] Base: verus-ai/upool → Verus: verus-ai/kpool
+[2026-04-24 20:11:22] [ABSTRACTION] Body-removed source: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/body_removed_source.rs (18080 -> 13624 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: kpool
+Source: src/kernel/src/mm/phys/kpool.rs
+Crate:  kpool
+Branch: verus-ai/kpool (base: verus-ai/upool)
+Phases: proving → cheating-elimination
+############################################################
+
+============================================================
+PHASE: proving
+Module: kpool
+============================================================

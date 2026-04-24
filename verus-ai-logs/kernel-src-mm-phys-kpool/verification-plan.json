@@ -1,0 +1,480 @@
+{
+  "target": "src/kernel/src/mm/phys/manager.rs",
+  "entries": [
+    "src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::init",
+    "src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::get_mut",
+    "src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::alloc_many_user_frames",
+    "src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::alloc_kernel_frame",
+    "src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::alloc_many_kernel_frames"
+  ],
+  "total_modules": 14,
+  "cycles_broken": 0,
+  "steps": [
+    {
+      "step": 1,
+      "module": "kernel::mm::phys::manager",
+      "file": "src/kernel/src/mm/phys/manager.rs",
+      "depends_on": [
+        "error::root",
+        "kernel::mm::phys::kpool",
+        "kernel::mm::phys::upool"
+      ],
+      "functions": [
+        {
+          "name": "PhysMemoryManager::init",
+          "line": 84,
+          "calls_in_module": [],
+          "cross_module_deps": [
+            "error::root"
+          ]
+        },
+        {
+          "name": "PhysMemoryManager::get_mut",
+          "line": 118,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "PhysMemoryManager::alloc_many_user_frames",
+          "line": 146,
+          "calls_in_module": [],
+          "cross_module_deps": [
+            "error::root",
+            "kernel::mm::phys::upool"
+          ]
+        },
+        {
+          "name": "PhysMemoryManager::alloc_many_kernel_frames",
+          "line": 203,
+          "calls_in_module": [],
+          "cross_module_deps": [
+            "error::root",
+            "kernel::mm::phys::kpool"
+          ]
+        },
+        {
+          "name": "PhysMemoryManager::alloc_kernel_frame",
+          "line": 183,
+          "calls_in_module": [],
+          "cross_module_deps": [
+            "kernel::mm::phys::kpool"
+          ]
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "module": "kernel::mm::phys::upool",
+      "file": "src/kernel/src/mm/phys/upool.rs",
+      "depends_on": [
+        "kernel::mm::phys::frame"
+      ],
+      "functions": [
+        {
+          "name": "UserFrame::new",
+          "line": 44,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "Upool::alloc",
+          "line": 123,
+          "calls_in_module": [
+            "UserFrame::new"
+          ],
+          "cross_module_deps": [
+            "kernel::mm::phys::frame"
+          ]
+        }
+      ]
+    },
+    {
+      "step": 3,
+      "module": "kernel::mm::phys::frame",
+      "file": "src/kernel/src/mm/phys/frame.rs",
+      "depends_on": [
+        "arch::x86::mem::paging::frame::number",
+        "error::root",
+        "kernel::hal::mem::types::address::frame",
+        "sparse-bitmap::root"
+      ],
+      "functions": [
+        {
+          "name": "Inner::alloc",
+          "line": 96,
+          "calls_in_module": [],
+          "cross_module_deps": [
+            "arch::x86::mem::paging::frame::number",
+            "error::root",
+            "kernel::hal::mem::types::address::frame",
+            "sparse-bitmap::root"
+          ]
+        },
+        {
+          "name": "instance",
+          "line": 326,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "alloc",
+          "line": 365,
+          "calls_in_module": [
+            "Inner::alloc",
+            "instance"
+          ],
+          "cross_module_deps": []
+        }
+      ]
+    },
+    {
+      "step": 4,
+      "module": "kernel::mm::phys::kpool",
+      "file": "src/kernel/src/mm/phys/kpool.rs",
+      "depends_on": [
+        "bitmap::root",
+        "error::root",
+        "kernel::hal::mem::types::address::aligned::page",
+        "kernel::hal::mem::types::address::frame",
+        "sys::sys::mm::address"
+      ],
+      "functions": [
+        {
+          "name": "instance",
+          "line": 322,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "Inner::alloc_range",
+          "line": 214,
+          "calls_in_module": [],
+          "cross_module_deps": [
+            "bitmap::root",
+            "error::root",
+            "kernel::hal::mem::types::address::aligned::page",
+            "kernel::hal::mem::types::address::frame",
+            "sys::sys::mm::address"
+          ]
+        },
+        {
+          "name": "Inner::alloc",
+          "line": 147,
+          "calls_in_module": [],
+          "cross_module_deps": [
+            "bitmap::root",
+            "kernel::hal::mem::types::address::aligned::page",
+            "kernel::hal::mem::types::address::frame",
+            "sys::sys::mm::address"
+          ]
+        },
+        {
+          "name": "alloc_range",
+          "line": 402,
+          "calls_in_module": [
+            "Inner::alloc_range",
+            "instance"
+          ],
+          "cross_module_deps": []
+        },
+        {
+          "name": "KernelFrame::new",
+          "line": 466,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "alloc",
+          "line": 382,
+          "calls_in_module": [
+            "Inner::alloc",
+            "instance"
+          ],
+          "cross_module_deps": []
+        },
+        {
+          "name": "Kpool::alloc_many",
+          "line": 567,
+          "calls_in_module": [
+            "KernelFrame::new",
+            "alloc_range"
+          ],
+          "cross_module_deps": [
+            "error::root"
+          ]
+        },
+        {
+          "name": "Kpool::alloc",
+          "line": 545,
+          "calls_in_module": [
+            "KernelFrame::new",
+            "alloc"
+          ],
+          "cross_module_deps": []
+        }
+      ]
+    },
+    {
+      "step": 5,
+      "module": "kernel::hal::mem::types::address::frame",
+      "file": "src/kernel/src/hal/mem/types/address/frame.rs",
+      "depends_on": [
+        "kernel::hal::mem::types::address::aligned::page",
+        "kernel::hal::mem::types::address::phys"
+      ],
+      "functions": [
+        {
+          "name": "FrameAddress",
+          "line": 29,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "FrameAddress::new",
+          "line": 65,
+          "calls_in_module": [
+            "FrameAddress"
+          ],
+          "cross_module_deps": []
+        },
+        {
+          "name": "FrameAddress::from_frame_number",
+          "line": 77,
+          "calls_in_module": [
+            "FrameAddress"
+          ],
+          "cross_module_deps": [
+            "kernel::hal::mem::types::address::aligned::page",
+            "kernel::hal::mem::types::address::phys"
+          ]
+        }
+      ]
+    },
+    {
+      "step": 6,
+      "module": "bitmap::root",
+      "file": "src/libs/bitmap/src/lib.rs",
+      "depends_on": [
+        "error::root",
+        "raw-array::root"
+      ],
+      "functions": [
+        {
+          "name": "Bitmap::index_unchecked",
+          "line": 706,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "Bitmap::alloc_range",
+          "line": 310,
+          "calls_in_module": [
+            "Bitmap::index_unchecked"
+          ],
+          "cross_module_deps": [
+            "error::root",
+            "raw-array::root"
+          ]
+        },
+        {
+          "name": "Bitmap::alloc",
+          "line": 250,
+          "calls_in_module": [
+            "Bitmap::alloc_range"
+          ],
+          "cross_module_deps": []
+        }
+      ]
+    },
+    {
+      "step": 7,
+      "module": "kernel::hal::mem::types::address::phys",
+      "file": "src/kernel/src/hal/mem/types/address/phys.rs",
+      "depends_on": [
+        "arch::x86::mem::paging::frame::number",
+        "sys::sys::mm::address::virt"
+      ],
+      "functions": [
+        {
+          "name": "PhysicalAddress",
+          "line": 37,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "PhysicalAddress::from_number",
+          "line": 95,
+          "calls_in_module": [
+            "PhysicalAddress"
+          ],
+          "cross_module_deps": [
+            "arch::x86::mem::paging::frame::number",
+            "sys::sys::mm::address::virt"
+          ]
+        }
+      ]
+    },
+    {
+      "step": 8,
+      "module": "kernel::hal::mem::types::address::aligned::page",
+      "file": "src/kernel/src/hal/mem/types/address/aligned/page.rs",
+      "depends_on": [
+        "error::root",
+        "sys::sys::mm::address"
+      ],
+      "functions": [
+        {
+          "name": "PageAligned",
+          "line": 32,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "PageAligned::into_raw_value",
+          "line": 51,
+          "calls_in_module": [],
+          "cross_module_deps": [
+            "sys::sys::mm::address"
+          ]
+        },
+        {
+          "name": "PageAligned::from_address",
+          "line": 36,
+          "calls_in_module": [
+            "PageAligned"
+          ],
+          "cross_module_deps": [
+            "error::root",
+            "sys::sys::mm::address"
+          ]
+        }
+      ]
+    },
+    {
+      "step": 9,
+      "module": "raw-array::root",
+      "file": "src/libs/raw-array/src/lib.rs",
+      "depends_on": [],
+      "functions": [
+        {
+          "name": "RawArrayStorage::get_mut",
+          "line": 167,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "RawArray::set",
+          "line": 321,
+          "calls_in_module": [
+            "RawArrayStorage::get_mut"
+          ],
+          "cross_module_deps": []
+        }
+      ]
+    },
+    {
+      "step": 10,
+      "module": "sparse-bitmap::root",
+      "file": "src/libs/sparse-bitmap/src/lib.rs",
+      "depends_on": [],
+      "functions": [
+        {
+          "name": "SparseBitmap::alloc",
+          "line": 309,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        }
+      ]
+    },
+    {
+      "step": 11,
+      "module": "arch::x86::mem::paging::frame::number",
+      "file": "src/libs/arch/src/x86/mem/paging/frame/number.rs",
+      "depends_on": [],
+      "functions": [
+        {
+          "name": "FrameNumber",
+          "line": 21,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "FrameNumber::into_raw_value",
+          "line": 64,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "FrameNumber::from_raw_value",
+          "line": 47,
+          "calls_in_module": [
+            "FrameNumber"
+          ],
+          "cross_module_deps": []
+        }
+      ]
+    },
+    {
+      "step": 12,
+      "module": "sys::sys::mm::address",
+      "file": "src/libs/sys/src/sys/mm/address/mod.rs",
+      "depends_on": [],
+      "functions": [
+        {
+          "name": "is_aligned",
+          "line": 98,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "into_raw_value",
+          "line": 51,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "from_raw_value",
+          "line": 49,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        }
+      ]
+    },
+    {
+      "step": 13,
+      "module": "error::root",
+      "file": "src/libs/error/src/lib.rs",
+      "depends_on": [],
+      "functions": [
+        {
+          "name": "Error::new",
+          "line": 460,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        }
+      ]
+    },
+    {
+      "step": 14,
+      "module": "sys::sys::mm::address::virt",
+      "file": "src/libs/sys/src/sys/mm/address/virt.rs",
+      "depends_on": [],
+      "functions": [
+        {
+          "name": "VirtualAddress",
+          "line": 32,
+          "calls_in_module": [],
+          "cross_module_deps": []
+        },
+        {
+          "name": "VirtualAddress::new",
+          "line": 42,
+          "calls_in_module": [
+            "VirtualAddress"
+          ],
+          "cross_module_deps": []
+        }
+      ]
+    }
+  ]
+}
