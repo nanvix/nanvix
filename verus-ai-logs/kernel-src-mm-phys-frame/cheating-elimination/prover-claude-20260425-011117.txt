@@ -1208,3 +1208,86 @@ Turn 25
 [THINKING] Hmm, it says "cached (no recompilation)". This means Verus didn't actually re-verify the code. But the module-specific run with `MODULE=mm::phys::frame` did show "9 verified, 0 errors". The full crate is cached.
 
 Let me force a re-verification by touching the file or using some flag.
+[RESULT ✓] bash: === Results ===
+  22 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=24 admit=0 trusted=0 no_decreases=0 cfg_gate=11
+  Detail: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/cheating-detail.txt
+
+=== Function C...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+22 verified, 0 errors across the full crate. No regressions. Now let me create the output directory and write the reports.
+[TOOL] report_intent: Writing output reports
+[TOOL] bash: mkdir -p /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/chea
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/trust.md
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/trust.md with 4656 characters
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/verification_todo.md with 4551 characters
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Now let me create the full fix report:
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/cheating-elimination/fix_report.md with 8225 characters
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Now let me clean up the temp file and do a final check:
+[TOOL] bash: rm -f /tmp/test_inclusive_range.rs
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git diff --stat
+[RESULT ✓] bash: 
+<exited with exit code 0>
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs                                             |  2 ++
+ .../cheating-elimination/prover-claude-20260425-011117.jsonl                | 64 +++++++++++++++++++++++++++++++++++++
+ .../cheating-elimination/prover-claude-20260425-011117.txt                  | 44 ++++++++++++++...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] stop_bash: {'shellId': '35'}
+[RESULT ✓] stop_bash: <command with id: 35 stopped>
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git --no-pager diff src/kernel/src/mm/phys/fra
+[RESULT ✓] bash: diff --git a/src/kernel/src/mm/phys/frame.rs b/src/kernel/src/mm/phys/frame.rs
+index b9733d9a5..ec1949acb 100644
+--- a/src/kernel/src/mm/phys/frame.rs
++++ b/src/kernel/src/mm/phys/frame.rs
+@@ -73,6 +73,8 @@ fn frame_addr_to_bitmap_index(self_: FrameAddress) -> usize {
+ // VERUS REWRITE: wraps FrameN...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Good — the only code change is the added precondition. Let me verify the files were created correctly:
+[TOOL] bash: ls -la /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/
+[RESULT ✓] bash: total 96
+drwxrwxr-x 1 ruize ruize   462 Apr 25 01:25 .
+drwxrwxr-x 1 ruize ruize   248 Apr 24 22:12 ..
+-rw-rw-r-- 1 ruize ruize  9038 Apr 24 22:12 body_removed_source.rs
+-rw-rw-r-- 1 ruize ruize  1386 Apr 25 01:02 bugs.md
+drwxrwxr-x 1 ruize ruize   136 Apr 24 22:12 caller-analysis
+-rw-rw-r-- 1 ruize ...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+All outputs created. Let me do one final verification run to confirm everything is clean:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
