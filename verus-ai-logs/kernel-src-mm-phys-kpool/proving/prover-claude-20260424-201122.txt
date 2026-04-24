@@ -3091,3 +3091,19 @@ Turn 163
 Turn 164
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: 313 | |             }),
+    | |______________^ failed this postcondition
+...
+317 | /         match self.bitmap.clear(index) {
+318 | |             Ok(()) => Ok(()),
+319 | |             Err(error) => {
+320 | |                 #[cfg(not(verus_keep_ghost))]
+...   |
+323 | |             },
+324 | |        ...
+
+────────────────────────────────────────────────────────────
+Turn 165
+────────────────────────────────────────────────────────────
+Progress! 1 verified, 4 errors. The compilation errors are resolved. Now I have verification errors. Let me see the full output:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
