@@ -371,7 +371,6 @@ pub(super) unsafe fn init(bitmap: SparseBitmap) -> Result<(), Error> {
 
 /// Allocate a frame.
 /// Singleton pattern: state transition tracked by Inner::alloc.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         match result {
@@ -404,7 +403,6 @@ pub(super) fn free(frame: FrameAddress) -> (result: Result<(), Error>)
 
 /// Reserve a frame so [`alloc`] will skip it.
 /// Singleton pattern: state transition tracked by Inner::book.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_addr.inv(),
@@ -418,7 +416,6 @@ pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error>
 
 /// Book every frame in the given physical memory region.
 /// Singleton pattern: state transition tracked by Inner::alloc_range.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         region.inv(),

@@ -74,3 +74,4 @@ Key verification:
 PHASE: proving
 Module: frame
 ============================================================
+[2026-04-24 23:22:18] [STRIP-EXT] removed 3 external_body attribute(s) from /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
