@@ -1606,3 +1606,439 @@ Let me go with option 1: remove `requires frame.inv()` from `frame::free()` and 
 Turn 65
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -50
+[RESULT ✓] bash: Using Verus installation at /home/ruize/verus.
+PATH="/home/ruize/verus:$PATH" \
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+VERUS_EXTRA_CARGO_ARGS="--features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem --target /home/ruize/ve...
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423 && grep -rn "opens_invariants" target-systems/nanvix/src/ vstd/ --inclu
+
+[THINKING] Now the error is: "the implementation for Drop must be marked opens_invariants none". This is a Verus requirement for Drop implementations. Let me check how to add this annotation.
+
+In Verus, `opens_invariants none` is a spec modifier that says the function doesn't open any atomic invariants. For Drop, this is required because Drop can be called in various contexts.
+
+In the verus_spec attribute syntax, I probably need to add `opens_invariants none`. Let me check the syntax...
+
+Actually, looking at the verus attribute syntax, I need to figure out how to express `opens_invariants none`. In the verus! {} macro style, it would be:
+
+
+Checking the syntax for opens_invariants...
+[RESULT ✓] bash: vstd/array.rs:163:    opens_invariants none
+vstd/atomic.rs:171:            opens_invariants none
+vstd/atomic.rs:184:            opens_invariants none
+vstd/atomic.rs:208:            opens_invariants none
+vstd/atomic.rs:234:            opens_invariants none
+vstd/atomic.rs:253:            opens_invaria...
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423 && grep -rn "opens_invariants" target-systems/nanvix/src/ --include="*.
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -B5 -A5 "opens_invariants none" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/array.rs | head -15
+[RESULT ✓] bash: #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::ref_mut_array_unsizing_coercion")]
+pub fn ref_mut_array_unsizing_coercion<T, const N: usize>(r: &mut [T; N]) -> (out: &mut [T])
+    ensures
+        out.view() === old(r).view(),
+        final(out).view() === final(r).view(),
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/syntax_attr.rs 2>/dev/null | grep -B3 -A3 "opens_invarian
+
+[THINKING] In the `verus! {}` macro syntax, `opens_invariants none` goes after `ensures` and before the body. But for the attribute-based syntax, I need to figure out where to place it. Let me check the verus-syntax skill examples or the syntax_attr.rs file.
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "opens_invariants" /home/ruize/verus-ai-exp/verus-ai/ --include="*.rs" --include="*.md" 2>/dev/null | head -10
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md:372:| "Drop can't be implemented" | Drop works in verus! with `opens_invariants none no_unwind` |
+/home/ruize/verus-ai-exp/verus-ai/tree-sitter-verus/examples/raw-array.rs:125:    opens_invariants none
+/home/ruize/verus-ai-exp/verus-...
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -B3 -A3 "opens_invariants none" /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md | head -10
+[RESULT ✓] bash: | "Need external_body for Vec/HashMap" | vstd provides full spec for Vec, HashMap, String etc. |
+| "Can't do recursive specs" | Recursive spec fns work with `decreases` clause |
+| "Can't verify array indexing" | `arr[i]` with bounds proof works fine |
+| "Drop can't be implemented" | Drop works in ve...
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "verus_spec.*opens_invariants\|opens_invariants.*verus_spec\|no_unwind" /home/ruize/verus-ai-exp/verus-ai/ --in
+
+[THINKING] So the spec-design skill says "Drop works in verus! with `opens_invariants none no_unwind`". This means for Drop, I need to add `opens_invariants none no_unwind` in the spec. For the attribute-based syntax, I need to add this to the `#[verus_spec]` attribute.But I'm not sure of the exact attribute syntax. Let me check if there's an `opens_invariants` keyword in verus_spec attribute. Let me search for examples in the verus test suite.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/tree-sitter-verus/examples/raw-array.rs:126:    no_unwind
+/home/ruize/verus-ai-exp/verus-ai/tree-sitter-verus/examples/raw-array.rs:155:    no_unwind
+/home/ruize/verus-ai-exp/verus-ai/tree-sitter-verus/examples/raw-array.rs:173:    no_unwind
+/home/ruize/verus-ai-exp...
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -B10 -A5 "opens_invariants none" /home/ruize/verus-ai-exp/verus-ai/tree-sitter-verus/examples/raw-array.rs | head -
+[RESULT ✓] bash: // External type specification for LayoutError.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExLayoutError(core::alloc::LayoutError);
+
+/// Specification for Layout::array::<T>(len).
+/// Succeeds when len * size_of::<T>() does not overflow isize::MAX.
+pub assume_spec...
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "opens_invariants\|no_unwind" /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/ --include="*.rs" --in
+
+[THINKING] These examples use `opens_invariants none` in the `verus! {}` macro syntax. For the attribute-based syntax (`#[verus_spec]`), I need to figure out how to add `opens_invariants none no_unwind`.
+
+Let me check if the verus-syntax GUIDE or syntax_attr.rs has examples with `opens_invariants`. Actually, I should look at how to express this in the attribute style. The `verus_spec` attribute can contain `requires`, `ensures`, `decreases`, `returns`, `with`. Can it also contain `opens_invariants` and `no_unwind`?
+
+
+Looking at the verus source code for attribute parsing, I'm realizing that maybe I should just use a `verus! {}` block for the Drop impl instead—the spec-design skill explicitly mentions "Drop works in verus! with opens_invariants none no_unwind". But the verus-constraints documentation only lists spec fn and proof fn definitions as typical uses for `verus! {}` blocks, so I'm not sure if Drop impls are actually supported there.
+
+The real constraint is that exec functions like Drop::drop must use attribute-based syntax according to the source integrity rules, but I'm not confident the attribute syntax supports `opens_invariants` at all. Let me check what `#[verus_spec]` actually allows.
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai/ -name "*.rs" | xargs grep -l "verus_spec.*opens\|opens.*verus_spec" 2>/dev/null 
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "verus_spec" /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/syntax_attr.rs 2>/dev/null | head -5; e
+[RESULT ✓] bash: 20:#[verus_spec(sum =>
+58:#[verus_spec(
+96:#[verus_spec(
+186:#[verus_spec(
+214:#[verus_spec()]
+---
+328 /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/syntax_attr.rs
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "opens_invariants\|no_unwind" /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/syntax_attr.rs 2>/dev/
+[RESULT ✓] bash: 
+<exited with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp -name "*.rs" -path "*/verus*" | xargs grep -l "#\[verus_spec.*opens_invariants" 2>/dev/nul
+
+[THINKING] The syntax_attr.rs example doesn't have `opens_invariants` or `no_unwind`. Let me check the verus source code to understand how attribute syntax handles these:
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp -name "*.rs" -path "*/rust_verify*" | xargs grep -l "opens_invariants" 2>/dev/null | head 
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/rust_verify/src/verus_items.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/rust_verify/src/fn_call_to_vir.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/rust_verify/src/rust_to_vir_func.rs
+/home/ruize/verus-ai-e...
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n "opens_invariants.*none\|drop.*opens\|Drop.*opens" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/ru
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "impl Drop" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/rust_verify_test/tests/ | head -10
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/rust_verify_test/tests/mut_refs.rs:2576:        impl Drop for X {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/rust_verify_test/tests/traits.rs:2924:        impl Drop for A {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/...
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '2970,3020p' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/rust_verify_test/tests/traits.rs
+[RESULT ✓] bash: {
+                let x = 1 / 0;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] disallow_external_body_drop_with_requires verus_code! {
+        struct A { v: u64 }
+
+        impl Drop for A {
+            #[verifier::external_body]
+            fn drop(&mut self)
+       ...
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '2575,2600p' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/rust_verify_test/tests/mut_refs.rs
+
+[THINKING] From the test cases, I can see:
+1. Drop cannot have `requires`
+2. Drop MUST have `opens_invariants none`
+3. Drop MUST have `no_unwind`Let me find a working example:
+[RESULT ✓] bash: impl Drop for X {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            {
+            }
+        }
+
+        fn test(x: X, r: &'static mut u64) {
+            let mut x = x;
+            x.s = r;
+            assert(has_resolved(x.s)); // FAILS
+       ...
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "opens_invariants\|no_unwind" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/rust_verify/src/rust_t
+
+[THINKING] Good. So in the `verus! {}` macro syntax, Drop requires:```rust
+impl Drop for X {
+    fn drop(&mut self)
+        opens_invariants none
+        no_unwind
+    {
+        // body
+    }
+}
+```
+
+But I need the attribute-based syntax. The attribute equivalent would be... I need to figure out if `#[verus_spec]` supports `opens_invariants` and `no_unwind`. Let me check the verus source code for the attribute syntax parser:
+[RESULT ✓] bash: 2335:        unsupported_err_unless!(matches!(mask_spec, None), span, "opens_invariants");
+2337:        unsupported_err_unless!(body.is_none(), span, "opens_invariants");
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '2320,2350p' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/rust_verify/src/rust_to_vir_func.rs
+[RESULT ✓] bash: ..p.x.clone()
+                    })
+                })
+                .collect(),
+        );
+        ret = ret
+            .new_x(vir::ast::ParamX { typ: subst_typ(&typ_substs, &ret.x.typ), ..ret.x.clone() });
+
+        unsupported_err_unless!(require.len() == 0, span, "requires clauses");
+        ...
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "opens_invariants\|no_unwind\|mask_spec\|unwind_spec" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/sourc
+
+[THINKING] It seems like the `opens_invariants` and `no_unwind` might not be supported in the attribute syntax for `assume_specification`. Let me check how they handle these for regular exec functions with `#[verus_spec]`.Let me look at how the verus attribute parser handles `opens_invariants` and `no_unwind`:
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source -name "*.rs" | xargs grep -l "verus_spec.*opens\|parse.*
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "opens_invariants\|no_unwind" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/verus_attr/src/ 2>/dev
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source -name "*.rs" | xargs grep -l "opens_invariants" 2>/dev/n
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/builtin/src/lib.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/builtin_macros/src/syntax.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/rust_verify/src/verus_items.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-042...
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n "opens_invariants" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/builtin_macros/src/syntax.rs | hea
+[RESULT ✓] bash: 552:        let opens_invariants = self.take_ghost(&mut spec.invariants);
+796:        if let Some(SignatureInvariants { token: _, set }) = opens_invariants {
+801:                            quote_spanned_builtin!(verus_builtin, any.span() => #verus_builtin::opens_invariants_any()),
+809:             ...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '540,560p' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/builtin_macros/src/syntax.rs
+[RESULT ✓] bash: // function name
+        fn_ident: &Ident,
+        generics: Option<impl ToTokens>,
+        inputs: (Option<impl ToTokens>, impl ToTokens), // optional self and args
+        is_async_fn: bool,                              // is the function an async function
+    ) -> Vec<Stmt> {
+        let requires...
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "verus_spec\|verus_verify\|parse_verus\|attr_verus" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/
+
+[THINKING] Looking at the verus macro code, `opens_invariants` and `no_unwind` are parsed from `spec.invariants` and `spec.unwind`. These are part of the function signature spec in the `verus! {}` macro syntax.
+
+For the attribute-based syntax (`#[verus_spec]`), I need to check if `opens_invariants` and `no_unwind` are supported. Let me look for the attribute parsing code:
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/builtin_macros/src/attr_rewrite.rs:7:///   with `#[verus_verify].
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/builtin_macros/src/attr_rewrite.rs:8:/// - Functions used for verification need to be annotated with `#[verus_spec ....
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n "opens_invariants\|no_unwind\|invariants\|unwind" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/bui
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n "macro_rules.*verus\|verus.*macro" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/builtin/src/lib.rs
+
+[THINKING] The attribute-based syntax (`#[verus_spec]`) does NOT support `opens_invariants` or `no_unwind`. These are only available in the `verus! {}` macro syntax.
+
+So for the Drop impl, I have a problem: Verus requires `opens_invariants none no_unwind` on Drop, but the attribute syntax doesn't support it.
+
+Options:
+1. Put the Drop impl in a `verus! {}` block 
+2. Find another way to express it with attributes
+
+Looking at the verus-constraints skill more carefully:
+> `verus! { }` blocks are still used for: spec fn and proof fn definitions (in .spec.rs and .proof.rs), Type-level specs (broadcast, impl View, etc.)
+
+
+> Minimal equivalent rewrites are allowed when Verus genuinely cannot express a construct.
+
+The skill doesn't say verus! blocks are *only* for those things, and the constraint about exec functions is specifically about preferring attribute-based syntax. But if attributes can't express a required feature like `opens_invariants`, then using a verus! block as a fallback seems justified under the "minimal equivalent rewrites" exception.
+
+So I could wrap the Drop impl in a verus! block to add the necessary annotations...
+
+Defining the Drop impl with the required invariant and unwinding constraints...
+
+But now I'm realizing a critical issue: if the Drop impl lives inside verus! {}, the macro would strip it out during normal compilation when verus_keep_ghost isn't enabled, which means the Drop implementation wouldn't exist at all in the compiled code. I need to understand how the verus! macro actually behaves in non-Verus compilation mode to figure out if this approach would even work.
+[RESULT ✓] bash: 858:// Used by verus_state_machines_macros codegen
+2262:        ::verus_builtin_macros::verus_proof_macro_exprs!($crate::decreases_to_internal!($($x)*))
+2278:        ::verus_builtin_macros::verus_proof_macro_exprs!($crate::verus_builtin::decreases_to_internal!($($x)*))
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n "verus!" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/builtin_macros/src/lib.rs 2>/dev/null | head
+[RESULT ✓] bash: 106:/// Like verus!, but for use inside a (non-trait) impl
+112:/// Like verus!, but for use inside a trait impl
+396:before it is transformed by `verus!`, rather than trying to manipulate the more complicated output
+397:of `verus!`.  To work with the verus_syn representation, complete this additional...
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '80,130p' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/builtin_macros/src/lib.rs
+[RESULT ✓] bash: EraseGhost::EraseAll => true,
+        }
+    }
+}
+
+// Proc macros must reside at the root of the crate
+#[proc_macro]
+pub fn fndecl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    proc_macro::TokenStream::from(fndecl::fndecl(proc_macro2::TokenStream::from(input)))
+}
+
+#[proc_macro]
+pub ...
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "opens_invariants_none\|no_unwind\|unwind" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/builtin_m
+
+[THINKING] I see that `verus!` calls `cfg_erase()` which may erase or keep ghost code depending on configuration. Under `verus_keep_ghost` (Verus mode), it keeps everything. Under normal compilation, it erases ghost code.
+
+But the key question is: does the `verus!` macro keep exec items like struct impls, or does it strip everything that has ghost annotations?
+
+Looking at the code, the `verus!` macro processes items and either keeps them or erases them based on the mode. In erase mode (normal compilation), spec functions and proof functions are removed, but exec functions are kept (with ghost annotations stripped).
+
+
+So wrapping the Drop impl in `verus! {}` means the exec code stays intact during normal compilation while the verification-only annotations like `opens_invariants none no_unwind` get stripped out. However, I need to check how the `#[cfg(not(verus_keep_ghost))]` conditional inside the function body interacts with this—whether it still applies when the whole impl is wrapped.
+
+Looking at how `frame.rs` handles this, functions with `external_body` can use `error!` macros inside `#[verus_verify]` blocks, but my Drop impl actually has a verified body, so I need to verify that `error!` works correctly inside the `verus! {}` wrapper.
+
+My approach is to cfg-gate the `error!` line since logging macros are allowed per Verus constraints, then keep the actual frame freeing logic in the verified body. But I need to check whether I can even put a Drop impl inside `verus! {}` when it's an exec function—the constraints say all specs on exec functions must use attribute-based syntax.
+
+Looking at the escalation ladder, attribute syntax doesn't support `opens_invariants none no_unwind`, so I need to find an equivalent way to express this constraint outside of the attribute system.
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -c "opens_invariants\|no_unwind" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/builtin_macros/src/attr
+[RESULT ✓] bash: 0
+<exited with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+The attribute syntax doesn't support `opens_invariants none no_unwind` which Verus requires for Drop. I need to use `verus! {}` block for the Drop impl. Let me restructure:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] The attribute-based syntax does NOT support `opens_invariants` or `no_unwind`. But Verus REQUIRES these on Drop implementations. So I need to put the Drop impl inside a `verus! {}` block (or `verus_trait_impl!`).Since the attribute syntax genuinely can't express this, using `verus! {}` for the Drop impl is the correct approach. This is a genuine Verus limitation.
+
+Let me also think about an alternative: can I just NOT verify the Drop impl at all? If I don't add `#[verus_verify]` to the Drop impl block, would Verus just skip it?
+
+
+Actually, removing the verification attribute would let Verus ignore the Drop impl, but then I'd lose function coverage since the task requires all functions to be verified. So I'll go with wrapping the Drop impl in a `verus! {}` block instead, which is the proper way to handle this limitation.
+
+The key insight is that the `verus! {}` macro strips out the verification annotations during normal compilation while keeping the exec code, so the Drop impl can live inside it without causing conflicts. The remaining issue is that I need to conditionally compile the `error!` macro call depending on whether we're in Verus verification mode or normal compilation. The issue is that `verus! {}` is a proc macro that runs before Rust's cfg processing, so it would still try to parse the `error!` macro call even though it's cfg-gated. I need to find a way to either keep the macro call outside the verus block or ensure the verus macro can handle the cfg attribute properly. to be able to handle this.
+
+Actually, looking at how `verus! {}` handles unknown macros - it might just pass them through. Let me check...
+
+Actually, looking at the existing code in `frame.rs` - the `Inner` impl is annotated with `#[verus_verify]`, and `Inner::alloc()` has `external_body`. The `error!` macro is inside the body. Since `external_body` skips the body, the `error!` macro isn't an issue.
+
+For our Drop impl inside `verus! {}`, the `error!` macro is in the body AND the body IS verified. But with `#[cfg(not(verus_keep_ghost))]`, the line would be removed in Verus mode.
+
+Now I'm tracing through what the verus proc macro actually sees when it processes the Drop implementation - it encounters the exec trait impl with its verification annotations, then the function body containing the conditional compilation attribute wrapping the error macro call. I'm realizing the verus proc macro should handle `error!(...)` fine since it just passes through regular Rust macro invocations without executing them. Let me test this approach, though I should also weigh whether skipping the Drop verification entirely might be simpler—that would give me 5/6 function coverage instead of the required 6/6.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -40
