@@ -2042,3 +2042,33 @@ Now I'm tracing through what the verus proc macro actually sees when it processe
 Turn 100
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -40
+[RESULT ✓] bash: 13 |           self.addr.inv()
+   |           ^^^^^^^^^ this field expression is disallowed because of datatype opaqueness
+   |
+  ::: src/kernel/src/mm/phys/upool.rs:32:1
+   |
+32 | / pub struct UserFrame {
+33 | |     /// Frame address.
+34 | |     addr: FrameAddress,
+35 | | }
+   | |_- Verus treats th...
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+The `addr` field is private, so `inv()` can't be `pub open`. Let me make it `pub closed`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.spec.rs
+
+[THINKING] The error is about the `inv()` spec function being `pub open` but accessing private fields of `UserFrame`. The issue is that `addr` is a private field, and `pub open spec fn inv()` is visible everywhere. Since `UserFrame.addr` is private (not `pub`), Verus can't allow `pub open` to access it from outside the module.
+
+Solutions:
+1. Make `inv()` `pub closed spec fn` instead of `pub open`2. Make `addr` pub
+3. Use a `closed` visibility for `inv()`
+
+`closed` means the definition is opaque outside the module. This is actually fine since callers don't need to see inside `inv()`. Let me change it:
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -40

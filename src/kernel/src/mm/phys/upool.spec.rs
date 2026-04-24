@@ -9,7 +9,7 @@ impl View for UserFrame {
 }
 
 impl UserFrame {
-    pub open spec fn inv(&self) -> bool {
+    pub closed spec fn inv(&self) -> bool {
         self.addr.inv()
     }
 }

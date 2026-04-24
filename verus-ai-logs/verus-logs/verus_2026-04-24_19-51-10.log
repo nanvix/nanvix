@@ -1,0 +1,54 @@
+Timestamp: 2026-04-24_19-51-10
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+6 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/upool.rs:101:5
+    |
+101 |     fn drop(&mut self)
+    |     ^^^^^^^^^^^^^^^^^^
+
+error: callee may open invariants that caller cannot
+   --> src/kernel/src/mm/phys/frame.rs:380:1
+    |
+380 | pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ invariants opened by callee
+    |
+   ::: src/kernel/src/mm/phys/upool.rs:102:26
+    |
+102 |         opens_invariants none
+    |                          ^^^^ invariants opened by caller
+...
+107 |         if let Err(_e) = frame::free(self.addr) {
+    |                          ^^^^^^^^^^^^^^^^^^^^^^ at this call-site
+
+error: cannot show this call will not unwind, in function marked 'no_unwind'
+   --> src/kernel/src/mm/phys/upool.rs:107:26
+    |
+107 |         if let Err(_e) = frame::free(self.addr) {
+    |                          ^^^^^^^^^^^^^^^^^^^^^^ call to kernel::mm::phys::frame::free might unwind
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:380:1
+    |
+380 | pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+    | ------------------------------------------------------------ perhaps you need to mark this function as 'no_unwind'?
+
+verification results:: 6 verified, 1 errors
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
