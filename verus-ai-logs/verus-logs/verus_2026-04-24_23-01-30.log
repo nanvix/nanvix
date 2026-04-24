@@ -1,0 +1,120 @@
+Timestamp: 2026-04-24_23-01-30
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+17 verified
+4 errors
+
+Cheating patterns:
+  assume=0
+  external_body=18
+  admit=4
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/upool.rs:107:26
+    |
+107 |         if let Err(_e) = frame::free(self.addr) {
+    |                          ^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:386:9
+    |
+386 |         frame.inv(),
+    |         ----------- failed precondition
+
+note: while loop: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/frame.rs:262:9
+    |
+262 | /         for index in start_frame_number..end_frame_number {
+263 | |             if self.bitmap.find_chunk(index).is_none() {
+264 | |                 let uncovered_addr: usize = index * mem::FRAME_SIZE;
+265 | |                 let reason: &str = "frame index not covered by any bitmap chunk";
+...   |
+270 | |         }
+    | |_________^
+
+note: while loop: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/frame.rs:273:9
+    |
+273 | /         for index in start_frame_number..end_frame_number {
+274 | |             match self.bitmap.test(index) {
+275 | |                 Ok(false) => {
+...   |
+292 | |         }
+    | |_________^
+
+note: while loop: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/frame.rs:295:9
+    |
+295 | /         for index in start_frame_number..end_frame_number {
+296 | |             if let Err(error) = self.bitmap.set(index) {
+297 | |                 #[cfg(not(verus_keep_ghost))]
+298 | |                 error!("{error:?} (region={region:?})");
+...   |
+301 | |         }
+    | |_________^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:227:13
+    |
+227 |             self.inv(),
+    |             ^^^^^^^^^^ failed this postcondition
+...
+299 |                 return Err(error);
+    |                 ----------------- at this exit
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:263:16
+    |
+263 |             if self.bitmap.find_chunk(index).is_none() {
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/libs/sparse-bitmap/src/lib.rs:413:13
+    |
+413 |             self.inv(),
+    |             ---------- failed precondition
+
+error: possible arithmetic underflow/overflow
+   --> src/kernel/src/mm/phys/frame.rs:264:45
+    |
+264 |                 let uncovered_addr: usize = index * mem::FRAME_SIZE;
+    |                                             ^^^^^^^^^^^^^^^^^^^^^^^
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:274:19
+    |
+274 |             match self.bitmap.test(index) {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/libs/sparse-bitmap/src/lib.rs:250:13
+    |
+250 |             self.inv(),
+    |             ---------- failed precondition
+
+error: possible arithmetic underflow/overflow
+   --> src/kernel/src/mm/phys/frame.rs:279:51
+    |
+279 |                     let conflicting_addr: usize = index * mem::FRAME_SIZE;
+    |                                                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+error: precondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:296:33
+     |
+ 296 |             if let Err(error) = self.bitmap.set(index) {
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^
+     |
+    ::: src/libs/sparse-bitmap/src/lib.rs:1621:13
+     |
+1621 |             old(self).inv(),
+     |             --------------- failed precondition
+
+verification results:: 17 verified, 4 errors
+error: could not compile `kernel` (bin "kernel") due to 7 previous errors
