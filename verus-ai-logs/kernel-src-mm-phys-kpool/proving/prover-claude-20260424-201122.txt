@@ -4717,3 +4717,76 @@ Turn 281
 ────────────────────────────────────────────────────────────
 Let me get more context:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: 87 |         result.is_Ok(),
+   |                ^^^^^
+
+note: verifying module mm::phys::kpool
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/kpool.rs:178:13
+    |
+178 | /             match result {
+179 | |                 Ok(frame) => {
+180 | |                     let page_index ...
+
+────────────────────────────────────────────────────────────
+Turn 282
+────────────────────────────────────────────────────────────
+Wait, that says "4 errors" but "3 errors" in the verification results. Let me re-count:
+1. Line 178: postcondition not satisfied (alloc_range postcondition — the `Ok` case, failing at the for loop's `?` operator, i.e., `frame_from_raw` returning Err)
+2. Line 444: arithmetic overflow in `base_addr + i * mem::PAGE_SIZE`
+3. Line 446: assertion `addr == base@ + (index+i)*page_size` failed
+4. Line 510: assertion `!old(self)@.used_page_indices.contains(page_index)` failed
+
+Wait, actually: error at line 178 with the snippet ending at line 456 — this is the postcondition for `alloc_range` failing. The `?` at line 450 (`frame_from_raw(addr)?`) — if it returns Err, we return from alloc_range with Err, but the postcondition expects the Err branch to match `count == 0 || forall|i| !range_free(...)`, etc.
+
+Actually the problem is that `frame_from_raw` can return Err (because it's marked `Result<FrameAddress, Error>`). If it does, the `?` propagates the error, and the postcondition's Err branch must hold. But in our case, we've already proven the address is valid (page-aligned, etc.), so `frame_from_raw` should return Ok. The spec of `frame_from_raw` ensures Ok if `raw_addr % spec_page_size() == 0`. We've proven that... but the postcondition still needs to match.
+
+Wait, let me look at `frame_from_raw`'s spec more carefully:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 78. fn pa_into_raw(pa: PageAligned<PhysicalAddress>) -> usize {
+79.     pa.into_raw_value()
+80. }
+81. 
+82. /// Wrapper: constructs a [`FrameAddress`] from a raw address.
+83. #[verus_verify(external_body)]
+84. #[verus_spec(result =>
+85.     requires raw_addr as int % spec_page_size() == 0,
+86.     en...
+
+────────────────────────────────────────────────────────────
+Turn 283
+────────────────────────────────────────────────────────────
+Good — `frame_from_raw` is `external_body` with `ensures result.is_Ok()` when `raw_addr % spec_page_size() == 0`. So if we've proven the alignment, it always returns Ok, and the `?` will never trigger. But the verifier still needs to check what happens if the `?` triggers (Err propagation path).
+
+Actually, since `result.is_Ok()` is ensured, the Err branch is unreachable. The `?` should be fine. But the postcondition verification might need to handle the potential Err path from `?`.
+
+Hmm, in Verus, the `?` operator on a function with `ensures result.is_Ok()` should know that the Err path is dead. But the postcondition failure at line 178 ending at line 456 suggests the for loop's postcondition or the propagation is causing issues.
+
+Wait, let me re-read the error more carefully. The postcondition at lines 178-193 is for `alloc` (not `alloc_range`). Let me check:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 170.     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
+171.     /// returned instead.
+172.     ///
+173.     #[verus_spec(result =>
+174.         requires
+175.             old(self).inv(),
+176.         ensures
+177.             self.inv(),
+178.             ...
+
+────────────────────────────────────────────────────────────
+Turn 284
+────────────────────────────────────────────────────────────
+The postcondition at line 178 is for `alloc`, but the "at the end of the function body" is at line 456 — that doesn't match `alloc`. Let me check again...
+
+Actually wait, the verifier output says:
+```
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/kpool.rs:178
+...
+   --> src/kernel/src/mm/phys/kpool.rs:456
+```
+
+Line 456 would be in `alloc_range`. But line 178 is the `alloc` postcondition. That seems wrong. Let me look at the actual log more carefully:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
