@@ -1735,3 +1735,15 @@ Turn 78
 ────────────────────────────────────────────────────────────
 Clean build, no warnings. Let me also re-verify to confirm verification still passes:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: verification results:: 7 verified, 0 errors (partial verification with `--verify-*`)
+  7 verified
+  0 errors
+  Unverified functions:
+  verification: 7 verified, 0 errors (exit 0)
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+Now let me run the full `make verify` to check for regressions:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify 2>&1 | tail -30
