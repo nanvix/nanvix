@@ -651,10 +651,7 @@ jobs:
           name: windows-build-${{ matrix.machine-type }}-${{ matrix.build-type }}-${{
             matrix.memory-size }}mb
           retention-days: 1
-          path: |
-            bin/*.exe
-            bin/*.elf
-            bin/*.img
+          path: bin/
 
   # Run the full standalone test suite on Windows Hypervisor Platform using nanvix-test.exe,
   # mirroring the Linux CI integration-test stage.
