@@ -1303,3 +1303,19 @@ Turn 27
 ────────────────────────────────────────────────────────────
 Let me run verification to see if the updated spec/proof files compile:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: error: could not compile `kernel` (bin "kernel") due to 1 previous error
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: cached (no recompilation), — (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+There's a compile error. Let me see the full error:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
