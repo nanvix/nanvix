@@ -1,0 +1,34 @@
+Timestamp: 2026-04-24_19-34-04
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: root
+Exit code: 101
+0 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=9
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+    Checking vstd v0.0.0-2026-04-12-0118
+verification results:: 0 verified, 0 errors (partial verification with `--verify-*`)
+    Checking error v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/error)
+note: verifying root module
+
+verification results:: 0 verified, 0 errors (partial verification with `--verify-*`)
+    Checking sys v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sys)
+    Checking multibin v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/multibin)
+
+thread 'rustc' (3304527) panicked at rust_verify/src/user_filter.rs:137:9:
+Some modules were not found in the krate modules
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: could not compile `sys` (lib)
+
+Caused by:
+  process didn't exit successfully: `/home/ruize/verus/verus /home/ruize/.cargo/bin/rustc --crate-name sys --edition=2021 src/libs/sys/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata -C opt-level=3 -C embed-bitcode=no -C codegen-units=1 -C debuginfo=2 --warn=warnings --deny=unexpected_cfgs '--deny=clippy::all' --check-cfg 'cfg(verus_keep_ghost)' --check-cfg 'cfg(verus_keep_ghost_body)' --check-cfg 'cfg(target_os, values("nanvix"))' -C debug-assertions=on --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("compiler_builtins", "core", "kcall", "rustc-dep-of-std", "std"))' -C metadata=13c53737b867ab31 -C extra-filename=-bb1eab35d4a35c11 --out-dir /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/target/x86-kernel/debug/deps --target /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/build/targets/x86-kernel.json -C incremental=/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/target/x86-kernel/debug/incremental -L dependency=/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/target/x86-kernel/debug/deps -L dependency=/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/target/debug/deps --extern 'noprelude:alloc=/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/target/x86-kernel/debug/deps/liballoc-1028bb8b2eb8a457.rlib' --extern 'noprelude:compiler_builtins=/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/target/x86-kernel/debug/deps/libcompiler_builtins-25294a8dd9f691b0.rlib' --extern config=/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/target/x86-kernel/debug/deps/libconfig-a5b5b012eb847cc4.rmeta --extern 'noprelude:core=/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/target/x86-kernel/debug/deps/libcore-911be94e27848a21.rlib' --extern error=/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/target/x86-kernel/debug/deps/liberror-de6b926b657eaff8.rmeta --extern static_assert=/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/target/x86-kernel/debug/deps/libstatic_assert-a2ba54a4bd4369b1.rmeta --extern vstd=/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/target/x86-kernel/debug/deps/libvstd-c21810fc9df2a988.rmeta -Z unstable-options -C relocation-model=static -C prefer-dynamic=no` (exit status: 1)

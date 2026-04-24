@@ -405,3 +405,202 @@ Turn 13
 Turn 14
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::upool 2>&1
+[RESULT ✓] bash: - view
+       - wrapping
+       - wrapping::i128_specs
+       - wrapping::i16_specs
+       - wrapping::i32_specs
+       - wrapping::i64_specs
+       - wrapping::i8_specs
+       - wrapping::isize_specs
+       - wrapping::u128_specs
+       - wrapping::u16_specs
+       - wrapping::u32_specs
+       - wr...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cat verus-ai-logs/verus-logs/verus_2026-04-24_
+
+[THINKING] The verification failed because of a vstd compilation error, not an error in my code. Let me check the detailed error. The issue seems to be with the `--verify-module` parameter - it might be selecting a module that causes issues. Let me look more closely at the error.
+
+Actually wait, the error says "could not compile `vstd` (lib) due to 1 previous error". This seems like a vstd compilation issue, not my module's issue. Let me check the full log for more detail.
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cat verus-ai-logs/verus-logs/verus_2026-04-24_
+[RESULT ✓] bash: error: could not find module mm::phys::upool specified by --verify-module or --verify-only-module
+error: could not compile `vstd` (lib) due to 1 previous error
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && ls verus-ai-logs/verus-logs/ | head -20
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n "verify.*module\|--verify-module\|VERU
+
+[THINKING] The issue is the module path. It's looking for `mm::phys::upool` but the correct module path might need the full crate path. Let me check how other modules are specified. The module in the kernel crate would be something like `mm::phys::upool` but maybe the verify script formats it differently.
+
+Let me check how the module is specified for other verify targets that work.
+[RESULT ✓] bash: 24:MODULE=""
+42:  --module MODULE       Module path to verify (e.g., "kernel::pm::thread").
+67:            MODULE="$2"
+157:    if [[ "$MODULE" == "root" ]]; then
+159:    elif [[ -n "$MODULE" ]]; then
+160:        CMD+=(-- --verify-module "$MODULE")
+162:    LABEL="${CRATE_NAME}::${MODULE:-all}"
+166:  ...
+[RESULT ✓] bash: verus_2026-04-24_19-11-54.log
+verus_2026-04-24_19-11-59.log
+verus_2026-04-24_19-12-03.log
+verus_2026-04-24_19-12-04.log
+verus_2026-04-24_19-12-13.log
+verus_2026-04-24_19-13-12.log
+verus_2026-04-24_19-13-13.log
+verus_2026-04-24_19-13-14.log
+verus_2026-04-24_19-13-15.log
+verus_2026-04-24_19-13-17.log
+...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n "mod " src/kernel/src/mm/phys/mod.rs |
+[RESULT ✓] bash: 8:pub(crate) mod frame;
+9:mod kpool;
+10:mod manager;
+11:mod upool;
+14:mod test;
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n "mod " src/kernel/src/mm/mod.rs | head
+[RESULT ✓] bash: 14:pub mod elf;
+15:mod phys;
+16:mod virt;
+25:pub mod kheap;
+36:pub mod kstack;
+37:pub mod ustack;
+40:pub mod kredzone;
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n "mod " src/kernel/src/lib.rs 2>/dev/nu
+[RESULT ✓] bash: ---
+src/kernel/src/debug.rs
+src/kernel/src/kargs.rs
+src/kernel/src/kimage.rs
+src/kernel/src/klog.rs
+src/kernel/src/kmain.rs
+src/kernel/src/kmod.rs
+src/kernel/src/kpanic.rs
+src/kernel/src/macros.rs
+src/kernel/src/multibin.rs
+src/kernel/src/stdio.rs
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cat src/kernel/Cargo.toml | grep -A3 "\[lib\]"
+[RESULT ✓] bash: 
+<exited with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && ls src/kernel/src/lib.rs 2>/dev/null || echo "
+[RESULT ✓] bash: no lib.rs
+src/kernel/src/kmain.rs:101:mod mm;
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep "Module\|verify-module" verus-ai-logs/ver
+
+[THINKING] The kernel is a binary crate with `kmain.rs` containing `mod mm`. The module path from the crate root would be `mm::phys::upool`. But the verify tool said "could not find module mm::phys::upool". 
+
+Let me check how other successful verifications were run. Let me look at the log files to see which module paths work.
+[RESULT ✓] bash: Module: <all>
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && for f in verus-ai-logs/verus-logs/*.log; do m=
+[RESULT ✓] bash: verus-ai-logs/verus-logs/verus_2026-04-24_19-32-33.log: Module: mm::phys::upool
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep "Crate\b" verus-ai-logs/verus-logs/verus_
+[RESULT ✓] bash: Crate: kernel
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cat src/kernel/Cargo.toml | head -30
+
+[THINKING] The module path `mm::phys::upool` failed. Let me check how the kernel binary crate names its root module. For a binary crate (as opposed to a library crate), the root module might be the crate name. Let me look at the Cargo.toml for the kernel.
+[RESULT ✓] bash: # Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "kernel"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Nanvix Kernel"
+homepage.workspace = true
+
+[package.metadata.verus]
+verify = t...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n "verify-module\|verify_module\|--verif
+[RESULT ✓] bash: 6:#   Cargo mode:  ./verify.sh --crate <crate_name> [OPTIONS]
+158:        CMD+=(-- --verify-root)
+160:        CMD+=(-- --verify-module "$MODULE")
+186:        CMD+=(--verify-module "$MODULE")
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/scripts/verify.sh
+[RESULT ✓] view: 140.     fi
+141. 
+142.     # Build cargo verus command with optional toolchain channel and extra args.
+143.     CARGO_CMD="cargo"
+144.     if [[ -n "${CARGO_CHANNEL:-}" ]]; then
+145.         CARGO_CMD="cargo +${CARGO_CHANNEL}"
+146.     fi
+147. 
+148.     # shellcheck disable=SC2206
+149.     CMD=($CAR...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=root 2>&1 | tail -20
+
+[THINKING] The issue is that the binary crate has `kmain.rs` as the entry point, and `mod mm` is declared inside `kmain.rs`. The Verus `--verify-module` needs the module path relative to the crate root. Since the crate root is `kmain.rs` (a binary crate), and `mm` is declared as a module within it, the correct path should be `mm::phys::upool`.
+
+But wait, it said "could not find module mm::phys::upool". Let me look more carefully at the error. Maybe the module is not properly exported or the verus `--verify-module` has a different format for binary crates.
+
+
+Let me experiment with different module path formats to see what actually works with the kernel crate.
