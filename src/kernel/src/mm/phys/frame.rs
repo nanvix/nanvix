@@ -362,13 +362,29 @@ pub(super) unsafe fn init(bitmap: SparseBitmap) -> Result<(), Error> {
 }
 
 /// Allocate a frame.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        match result {
+            Ok(frame) => frame.inv(),
+            Err(_) => true,
+        },
+)]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
     instance().alloc()
 }
 
+// NOTE: free uses verus! syntax because Drop::drop requires `no_unwind`,
+// and the attribute-based syntax does not support `no_unwind`.
+verus! {
 /// Free a frame previously returned by [`alloc`].
-pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+#[verifier::external_body]
+pub(super) fn free(frame: FrameAddress) -> (result: Result<(), Error>)
+    opens_invariants none
+    no_unwind
+{
     instance().free(frame)
+}
 }
 
 /// Reserve a frame so [`alloc`] will skip it.

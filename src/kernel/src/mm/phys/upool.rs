@@ -27,12 +27,14 @@ use ::sys::error::Error;
 ///
 /// A type that represents a user frame.
 ///
+#[verus_verify(external_derive)]
 #[derive(Debug)]
 pub struct UserFrame {
     /// Frame address.
     addr: FrameAddress,
 }
 
+#[verus_verify]
 impl UserFrame {
     ///
     /// # Description
@@ -47,6 +49,12 @@ impl UserFrame {
     ///
     /// A user frame.
     ///
+    #[verus_spec(ret =>
+        requires addr.inv(),
+        ensures
+            ret.inv(),
+            ret@ == addr@,
+    )]
     pub fn new(addr: FrameAddress) -> Self {
         Self { addr }
     }
@@ -60,6 +68,9 @@ impl UserFrame {
     ///
     /// The physical address of the target user frame.
     ///
+    #[verus_spec(ret =>
+        ensures ret@ == self@,
+    )]
     pub fn address(&self) -> FrameAddress {
         self.addr
     }
@@ -73,18 +84,32 @@ impl UserFrame {
     ///
     /// The frame address.
     ///
+    #[verus_spec(ret =>
+        ensures ret@ == self@,
+    )]
     pub fn leak(self) -> FrameAddress {
         let this: ManuallyDrop<Self> = ManuallyDrop::new(self);
         this.addr
     }
 }
 
+// NOTE: Drop must use verus!{} syntax because Verus requires
+// `opens_invariants none no_unwind` on Drop impls, which the
+// attribute-based syntax does not support.
+verus! {
 impl Drop for UserFrame {
-    fn drop(&mut self) {
-        if let Err(e) = frame::free(self.addr) {
-            error!("failed to free user frame: {:?}", e);
+    fn drop(&mut self)
+        opens_invariants none
+        no_unwind
+    {
+        // VERUS REWRITE: renamed e -> _e to suppress unused-variable warning
+        // when the error! logging macro is cfg-gated out under Verus.
+        if let Err(_e) = frame::free(self.addr) {
+            #[cfg(not(verus_keep_ghost))]
+            error!("failed to free user frame: {:?}", _e);
         }
     }
+}
 }
 
 //==================================================================================================
@@ -97,12 +122,14 @@ impl Drop for UserFrame {
 /// Thin facade over the module-level [`frame`](super::frame) allocator. Exists as a distinct type
 /// so user-frame allocation has its own entry point ([`Upool::alloc`] returning [`UserFrame`]).
 ///
+#[verus_verify(external_derive)]
 #[derive(Debug)]
 pub struct Upool {
     /// Private field prevents external construction.
     _private: (),
 }
 
+#[verus_verify]
 impl Upool {
     ///
     /// # Description
@@ -113,6 +140,7 @@ impl Upool {
     ///
     /// A user frame pool.
     ///
+    #[verus_spec]
     pub(super) fn new() -> Self {
         Self { _private: () }
     }
@@ -126,6 +154,13 @@ impl Upool {
     ///
     /// Upon success, a user frame is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(ret =>
+        ensures
+            match ret {
+                Ok(frame) => frame.inv(),
+                Err(_) => true,
+            },
+    )]
     pub fn alloc(&mut self) -> Result<UserFrame, Error> {
         let addr: FrameAddress = frame::alloc()?;
         Ok(UserFrame::new(addr))
