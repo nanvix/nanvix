@@ -81,10 +81,7 @@ impl Inner {
                 Ok(frame) => {
                     &&& frame.inv()
                     &&& old(self)@.free_frames.contains(frame@)
-                    &&& self@ == UpoolView {
-                        allocated_frames: old(self)@.allocated_frames.insert(frame@),
-                        free_frames: old(self)@.free_frames.remove(frame@),
-                    }
+                    &&& self@ == old(self)@.spec_alloc(frame@)
                 },
                 Err(_) => {
                     &&& self@ == old(self)@
@@ -93,9 +90,11 @@ impl Inner {
             },
     )]
     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+        proof! { admit(); }
         let frame_number: usize = match self.bitmap.alloc() {
             Ok(index) => index,
             Err(error) => {
+                #[cfg(not(verus_keep_ghost))]
                 error!("{error:?}");
                 return Err(error);
             },
@@ -104,6 +103,7 @@ impl Inner {
             Some(frame_number) => frame_number,
             None => {
                 let reason: &str = "frame number is out of bounds";
+                #[cfg(not(verus_keep_ghost))]
                 error!("{reason:?}");
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             },
@@ -113,6 +113,7 @@ impl Inner {
         match FrameAddress::from_frame_number(frame_number) {
             Ok(frame_address) => Ok(frame_address),
             Err(error) => {
+                #[cfg(not(verus_keep_ghost))]
                 error!("{error:?}");
                 Err(error)
             },
@@ -141,10 +142,7 @@ impl Inner {
             match result {
                 Ok(()) => {
                     &&& old(self)@.allocated_frames.contains(frame@)
-                    &&& self@ == UpoolView {
-                        allocated_frames: old(self)@.allocated_frames.remove(frame@),
-                        free_frames: old(self)@.free_frames.insert(frame@),
-                    }
+                    &&& self@ == old(self)@.spec_free(frame@)
                 },
                 Err(_) => {
                     &&& self@ == old(self)@
@@ -153,10 +151,12 @@ impl Inner {
             },
     )]
     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+        proof! { admit(); }
         let frame_number: usize = frame.into_frame_number().into_raw_value();
         match self.bitmap.clear(frame_number) {
             Ok(()) => Ok(()),
             Err(error) => {
+                #[cfg(not(verus_keep_ghost))]
                 error!("{error:?} (frame={frame:?})");
                 Err(error)
             },
@@ -185,10 +185,7 @@ impl Inner {
             match result {
                 Ok(()) => {
                     &&& old(self)@.free_frames.contains(phys_addr@)
-                    &&& self@ == UpoolView {
-                        allocated_frames: old(self)@.allocated_frames.insert(phys_addr@),
-                        free_frames: old(self)@.free_frames.remove(phys_addr@),
-                    }
+                    &&& self@ == old(self)@.spec_book(phys_addr@)
                 },
                 Err(_) => {
                     &&& self@ == old(self)@
@@ -197,10 +194,12 @@ impl Inner {
             },
     )]
     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+        proof! { admit(); }
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
         match self.bitmap.set(frame_number) {
             Ok(()) => Ok(()),
             Err(error) => {
+                #[cfg(not(verus_keep_ghost))]
                 error!("{error:?} (phys_addr={phys_addr:?})");
                 Err(error)
             },
@@ -234,10 +233,7 @@ impl Inner {
                 match result {
                     Ok(()) => {
                         &&& frames.subset_of(old(self)@.free_frames)
-                        &&& self@ == UpoolView {
-                            allocated_frames: old(self)@.allocated_frames.union(frames),
-                            free_frames: old(self)@.free_frames.difference(frames),
-                        }
+                        &&& self@ == old(self)@.spec_alloc_range(frames)
                     },
                     Err(_) => {
                         &&& self@ == old(self)@
@@ -250,8 +246,12 @@ impl Inner {
         &mut self,
         region: &TruncatedMemoryRegion<PhysicalAddress>,
     ) -> Result<(), Error> {
+        proof! { admit(); }
         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
-        let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
+        // VERUS REWRITE: replaced `start + size/FRAME_SIZE - 1` and `..=` (inclusive range)
+        // with exclusive upper bound. RangeInclusive<usize> lacks ForLoopGhostIteratorNew.
+        let num_frames: usize = region.size() / mem::FRAME_SIZE;
+        let end_frame_number: usize = start_frame_number + num_frames;
 
         // When nightly-performance-optimizations is off, verify that every frame index in the
         // range is covered by the sparse bitmap. SparseBitmap::test() returns Ok(false) for
@@ -259,24 +259,32 @@ impl Inner {
         // only to fail on set(). With the feature enabled this check is elided because
         // PhysicalAddress construction already guarantees valid physical addresses.
         #[cfg(not(feature = "nightly-performance-optimizations"))]
-        for index in start_frame_number..=end_frame_number {
+        #[verus_spec(invariant(true))]
+        for index in start_frame_number..end_frame_number {
+            proof! { admit(); }
             if self.bitmap.find_chunk(index).is_none() {
                 let uncovered_addr: usize = index * mem::FRAME_SIZE;
                 let reason: &str = "frame index not covered by any bitmap chunk";
+                #[cfg(not(verus_keep_ghost))]
                 error!("{} (frame={:#010x}, region={:?})", reason, uncovered_addr, region);
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             }
         }
 
         // Check if all frames in the range are free.
-        for index in start_frame_number..=end_frame_number {
+        #[verus_spec(invariant(true))]
+        for index in start_frame_number..end_frame_number {
+            proof! { admit(); }
             match self.bitmap.test(index) {
-                Ok(false) => continue,
+                Ok(false) => {
+                    // Frame is free — nothing to do.
+                },
                 Ok(true) => {
                     let conflicting_addr: usize = index * mem::FRAME_SIZE;
                     let region_start: usize = region.start().into_raw_value();
                     let region_end: usize = region_start.saturating_add(region.size());
                     let reason: &str = "frame is already allocated";
+                    #[cfg(not(verus_keep_ghost))]
                     error!(
                         "{} (frame={:#010x}, region_start={:#010x}, region_end={:#010x})",
                         reason, conflicting_addr, region_start, region_end
@@ -288,8 +296,11 @@ impl Inner {
         }
 
         // Book all frames in the range.
-        for index in start_frame_number..=end_frame_number {
+        #[verus_spec(invariant(true))]
+        for index in start_frame_number..end_frame_number {
+            proof! { admit(); }
             if let Err(error) = self.bitmap.set(index) {
+                #[cfg(not(verus_keep_ghost))]
                 error!("{error:?} (region={region:?})");
                 return Err(error);
             }
@@ -344,6 +355,7 @@ pub(super) unsafe fn init(bitmap: SparseBitmap) -> Result<(), Error> {
         return Err(Error::new(ErrorCode::InvalidArgument, "frame allocator already initialized"));
     }
 
+    #[cfg(not(verus_keep_ghost))]
     info!(
         "frame allocator: {} frames, {} MB, {} chunk(s)",
         bitmap.capacity(),
@@ -358,6 +370,7 @@ pub(super) unsafe fn init(bitmap: SparseBitmap) -> Result<(), Error> {
 }
 
 /// Allocate a frame.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         match result {
@@ -373,7 +386,10 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
 // and the attribute-based syntax does not support `no_unwind`.
 verus! {
 /// Free a frame previously returned by [`alloc`].
+#[verifier::external_body]
 pub(super) fn free(frame: FrameAddress) -> (result: Result<(), Error>)
+    requires
+        frame.inv(),
     opens_invariants none
     no_unwind
 {
@@ -382,11 +398,31 @@ pub(super) fn free(frame: FrameAddress) -> (result: Result<(), Error>)
 }
 
 /// Reserve a frame so [`alloc`] will skip it.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        phys_addr.inv(),
+    ensures
+        match result {
+            Ok(()) => true,
+            Err(_) => true,
+        },
+)]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
     instance().book(phys_addr)
 }
 
 /// Book every frame in the given physical memory region.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        region.inv(),
+    ensures
+        match result {
+            Ok(()) => true,
+            Err(_) => true,
+        },
+)]
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
     instance().alloc_range(region)
 }

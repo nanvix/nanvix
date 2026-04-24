@@ -344,11 +344,13 @@ impl<T: Address> TruncatedMemoryRegion<T> {
     }
 
     /// Returns the first valid address that lies in the target memory region.
+    #[verus_verify(external_body)]
     pub fn start(&self) -> PageAligned<T> {
         self.0.start()
     }
 
     /// Returns the size of the target memory region.
+    #[verus_verify(external_body)]
     pub fn size(&self) -> usize {
         self.0.size()
     }

@@ -98,6 +98,7 @@ impl UserFrame {
 // attribute-based syntax does not support.
 verus! {
 impl Drop for UserFrame {
+    #[verifier::external_body]
     fn drop(&mut self)
         opens_invariants none
         no_unwind

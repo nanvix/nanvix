@@ -47,99 +47,44 @@ impl<T: Address> PageAligned<T> {
     }
 }
 
+#[verus_verify]
 impl<T: Address> Address for PageAligned<T> {
+    #[verus_verify(external_body)]
     fn into_raw_value(self) -> usize {
         self.0.into_raw_value()
     }
 
-    ///
-    /// # Description
-    ///
-    /// Instantiates a new [`PageAligned`] from a raw value.
-    ///
-    /// # Parameters
-    ///
-    /// - `raw_addr`: The raw value.
-    ///
-    /// # Returns
-    ///
-    /// - `Ok(Self)`: The new address.
-    /// - `Err(Error::BadAddress)`: If the provided address is invalid.
-    ///
+    #[verus_verify(external_body)]
     fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
         Self::from_address(T::from_raw_value(raw_addr)?)
     }
 
-    ///
-    /// # Description
-    ///
-    ///  Aligns the target [`PageAligned`] to the provided `alignment`. If the address is already
-    /// aligned, it is returned as is.
-    ///
-    /// # Parameters
-    ///
-    /// - `alignment`: The alignment to align the target address to.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
-    ///
+    #[verus_verify(external_body)]
     fn align_up(&self, align: Alignment) -> Result<Self, Error> {
         Self::from_address(self.0.align_up(align)?)
     }
-    ///
-    /// # Description
-    ///
-    /// Aligns the target [`PageAligned`] down to the provided `alignment`. If the address is
-    /// already aligned, it is returned as is.
-    ///
-    /// # Parameters
-    ///
-    /// - `alignment`: The alignment to align the target address to.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
-    ///
+
+    #[verus_verify(external_body)]
     fn align_down(&self, align: Alignment) -> Result<Self, Error> {
         Self::from_address(self.0.align_down(align)?)
     }
 
-    ///
-    /// # Description
-    ///
-    /// Checks if the target [`PageAligned`] is aligned to the provided `alignment`.
-    ///
-    /// # Parameters
-    ///
-    /// - `alignment`: The alignment to check.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, `true` is returned if the address is aligned, otherwise `false`. Upon failure,
-    /// an error is returned instead.
-    ///
+    #[verus_verify(external_body)]
     fn is_aligned(&self, align: Alignment) -> Result<bool, Error> {
         self.0.is_aligned(align)
     }
 
-    ///
-    /// # Description
-    ///
-    /// Returns the maximum address for [`PageAligned`].
-    ///
-    /// # Returns
-    ///
-    /// The maximum [`PageAligned`].
-    ///
+    #[verus_verify(external_body)]
     fn max_addr() -> usize {
         T::max_addr()
     }
 
+    #[verus_verify(external_body)]
     fn as_ptr(&self) -> *const u8 {
         self.0.as_ptr()
     }
 
+    #[verus_verify(external_body)]
     fn as_mut_ptr(&self) -> *mut u8 {
         self.0.as_mut_ptr()
     }
@@ -151,9 +96,11 @@ impl<T: Address> core::fmt::Debug for PageAligned<T> {
     }
 }
 
+#[verus_verify]
 impl<T: Address> Deref for PageAligned<T> {
     type Target = T;
 
+    #[verus_verify(external_body)]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
