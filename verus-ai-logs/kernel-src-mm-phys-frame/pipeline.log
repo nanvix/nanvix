@@ -1,0 +1,16 @@
+[2026-04-24 22:12:17] [BRANCH] Base: verus-ai/kpool → Verus: verus-ai/frame
+[2026-04-24 22:12:17] [ABSTRACTION] Body-removed source: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/body_removed_source.rs (13865 -> 9038 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: frame
+Source: src/kernel/src/mm/phys/frame.rs
+Crate:  frame
+Branch: verus-ai/frame (base: verus-ai/kpool)
+Phases: caller-analysis → cheating-elimination
+############################################################
+
+============================================================
+PHASE: caller-analysis
+Module: frame
+============================================================
