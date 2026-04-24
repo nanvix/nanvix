@@ -1,0 +1,40 @@
+Timestamp: 2026-04-24_23-23-08
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::frame
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=15
+  admit=7
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> src/kernel/src/mm/phys/frame.rs:383:5
+    |
+383 |     instance().alloc()
+    |     ^^^^^^^^^^
+
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> src/kernel/src/mm/phys/frame.rs:414:5
+    |
+414 |     instance().book(phys_addr)
+    |     ^^^^^^^^^^
+
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> src/kernel/src/mm/phys/frame.rs:427:5
+    |
+427 |     instance().alloc_range(region)
+    |     ^^^^^^^^^^
+
+error: could not compile `kernel` (bin "kernel") due to 3 previous errors
