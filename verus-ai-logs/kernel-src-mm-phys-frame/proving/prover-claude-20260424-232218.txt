@@ -4707,3 +4707,18 @@ Turn 163
 ────────────────────────────────────────────────────────────
 Now run verification again:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: error: postcondition not satisfied
+error: postcondition not satisfied
+error: assertion failed
+error: assertion failed
+verification results:: 5 verified, 4 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 4 previous errors
+<exited with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 164
+────────────────────────────────────────────────────────────
+Still 4 errors. Let me see the full error details:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+
+[THINKING] Still 4 errors. Let me see the details:
