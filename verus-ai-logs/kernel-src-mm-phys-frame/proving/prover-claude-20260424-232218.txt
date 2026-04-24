@@ -4292,3 +4292,17 @@ Fixing the loop invariants...
 Turn 146
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1039:36
+     |
+1039 |                         && addr == frame_addr_of(i);
+     |                                    ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1012:...
+
+────────────────────────────────────────────────────────────
+Turn 147
+────────────────────────────────────────────────────────────
+Progress! It compiles now — 5 verified, 4 errors. Let me see the actual errors:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
