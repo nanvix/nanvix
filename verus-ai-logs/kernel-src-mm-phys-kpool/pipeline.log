@@ -32,3 +32,10 @@ Module: kpool
 [2026-04-24 21:53:32]   ↳ dialogue-reviewer-t2 done in 4m23s (exit=0)
 [2026-04-24 21:53:32] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-04-24 21:53:32] [DIALOGUE] proving ended after 2 turns: RESOLVED (2468s)
+[2026-04-24 21:53:32] [PHASE] proving: dialogue-RESOLVED (1h42m09s)
+[2026-04-24 21:53:32] ✅ proving: PASS (0/0)
+
+============================================================
+PHASE: cheating-elimination
+Module: kpool
+============================================================

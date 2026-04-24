@@ -2,15 +2,31 @@
   "module_name": "kpool",
   "log_name": "kernel-src-mm-phys-kpool",
   "source_path": "src/kernel/src/mm/phys/kpool.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
-  "completed_phases": [],
-  "phase_results": {},
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
+  "phase_results": {
+    "proving": {
+      "phase": "proving",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-RESOLVED",
+      "review_file": null,
+      "duration_s": 6129.4,
+      "review_rounds": 2
+    }
+  },
   "prover_session_id": "f3bd32bb-8514-4bad-bee4-c6f9f855011c",
   "completed": false,
   "base_branch": "verus-ai/upool",
   "verus_branch": "verus-ai/kpool",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "proving": "a8440ea1cb1d7a4727cc149b914e37a456d9e583"
+  },
   "rollback_counts": {},
   "rollback_context": ""
 }
