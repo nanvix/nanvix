@@ -1,0 +1,94 @@
+Timestamp: 2026-04-24_20-12-20
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::kpool
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=7
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+error: complex arguments to &mut parameters are currently unsupported
+   --> src/kernel/src/macros.rs:189:10
+    |
+189 |                   &mut crate::klog::Klog::get(
+    |  ______________________^
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+192 | |                     extract_function_name!()
+193 | |                 ),
+    | |_________________^
+    |
+   ::: src/kernel/src/mm/phys/kpool.rs:99:17
+    |
+ 99 |                   error!("{reason}");
+    |                   ------------------ in this macro invocation
+    |
+    = note: this error originates in the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: complex arguments to &mut parameters are currently unsupported
+   --> src/kernel/src/macros.rs:189:10
+    |
+189 |                   &mut crate::klog::Klog::get(
+    |  ______________________^
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+192 | |                     extract_function_name!()
+193 | |                 ),
+    | |_________________^
+    |
+   ::: src/kernel/src/mm/phys/kpool.rs:149:17
+    |
+149 |                   error!("{error:?}");
+    |                   ------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: complex arguments to &mut parameters are currently unsupported
+   --> src/kernel/src/macros.rs:189:10
+    |
+189 |                   &mut crate::klog::Klog::get(
+    |  ______________________^
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+192 | |                     extract_function_name!()
+193 | |                 ),
+    | |_________________^
+    |
+   ::: src/kernel/src/mm/phys/kpool.rs:214:13
+    |
+214 |               error!("{reason}");
+    |               ------------------ in this macro invocation
+    |
+    = note: this error originates in the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: complex arguments to &mut parameters are currently unsupported
+   --> src/kernel/src/macros.rs:189:10
+    |
+189 |                   &mut crate::klog::Klog::get(
+    |  ______________________^
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+192 | |                     extract_function_name!()
+193 | |                 ),
+    | |_________________^
+    |
+   ::: src/kernel/src/mm/phys/kpool.rs:283:17
+    |
+283 |                   error!("{error:?} (addr={addr:?})");
+    |                   ----------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: could not compile `kernel` (bin "kernel") due to 4 previous errors
