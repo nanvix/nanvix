@@ -1843,3 +1843,492 @@ Let me check what other verify-module paths look like that work. Let me look at 
 
 
 Actually, I realize all my runs have failed with various compilation errors. The first one had RangeInclusive errors, so I never actually got to test the module path. Let me try removing the MODULE filter entirely to see if the whole verification passes.
+[RESULT ✓] bash: pub struct ExFrameNumber(arch::mem::paging::FrameNumber);
+
+warning: `kernel` (bin "kernel") generated 1 warning
+error: could not compile `kernel` (bin "kernel") due to 11 previous errors; 1 warning emitted
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 101
+
+=== Summary (pre-guardrail...
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -E 'error\[|^error:' verus-ai-logs/verus-
+[RESULT ✓] bash: error: `arch::x86::mem::paging::frame::number::impl&%0::from_raw_value` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+error: cannot use function `kernel::hal::mem::types::address::frame::FrameAddress::from_frame_number` which is ig...
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+Many dependency functions need specs. Let me check what already exists:
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src -name "*.spec.rs" -path "*/sparse*" 2>/dev/
+
+[THINKING] OK, now I see the real picture. The Inner methods have `#[verus_spec]` so Verus tries to verify their bodies. But the bodies call various dependency functions that Verus doesn't know about:
+
+1. `FrameNumber::from_raw_value` — needs `assume_specification`
+2. `FrameAddress::from_frame_number` — marked as `external`
+3. `FrameNumber::into_raw_value` — needs `assume_specification`
+4. `FrameAddress::into_frame_number` — marked as `external`
+5. `PhysicalAddress::into_frame_number` — marked as `external`
+
+
+6. `PageAligned::deref` — marked as `external`
+7. `TruncatedMemoryRegion::start` — marked as `external`
+8. `TruncatedMemoryRegion::size` — marked as `external`
+9. `FRAME_SIZE` — needs `assume_specification`
+10. `PageAligned::into_raw_value` — marked as `external`
+11. `FrameNumber` type — needs `external_type_specification`
+
+The core issue is that all these dependency functions and types from other modules and crates need formal specifications before Verus can reason about them, either through `assume_specification`, `external` declarations, or `external_type_specification`.
+
+Looking back at what specs already exist for `FrameAddress`, I see that `new`, `into_raw_value`, and `from_raw_value` all have `assume_specification`, but the conversion methods like `from_frame_number` and `into_frame_number` are missing specs. The same gap exists for `FrameNumber` and constants like `FRAME_SIZE` — they need formal specifications to satisfy Verus's verification requirements.
+
+Since these functions live in different crates or non-Verus-annotated code, I need to add `assume_specification` declarations in the spec file rather than annotating the functions themselves. Let me trace through which dependency functions are actually invoked in the Inner methods to determine exactly what needs specs. I'm tracing through the `alloc_range` method now, which converts the region's start address to a frame number, checks the region size, and then iterates through the bitmap to find available chunks and mark them as allocated.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.spec.rs
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Fixing dependency specs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.spec.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (12.6 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: File too large to read at once (13.8 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::UpoolView;
+4. use crate::hal::mem::spec_page_size;
+5. 
+6. // ---------------------------------------------------------------------------
+7. // Spec transition functions on UpoolView
+8. // ---------------------------------------------------------------------------
+9. 
+10...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl View for Inner {
+4.     type V = UpoolView;
+5. 
+6.     uninterp spec fn view(&self) -> UpoolView;
+7. }
+8. 
+9. impl Inner {
+10.     pub closed spec fn internal_inv(&self) -> bool
+11.     {
+12.         true
+13.     }
+14. }
+15. 
+16. }
+17. 
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 80.             match result {
+81.                 Ok(frame) => {
+82.                     &&& frame.inv()
+83.                     &&& old(self)@.free_frames.contains(frame@)
+84.                     &&& self@ == old(self)@.spec_alloc(frame@)
+85.                 },
+86.                 Err(_) => {
+87. ...
+[RESULT ✓] view: 300. 
+301. //==================================================================================================
+302. // Constants
+303. //==================================================================================================
+304. 
+305. // Use relaxed ordering for all atomic operations to ...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`SparseBitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller (upool, kpool, an...
+[RESULT ✓] view: 180.             phys_addr.inv(),
+181.         ensures
+182.             self.inv(),
+183.             match result {
+184.                 Ok(()) => {
+185.                     &&& old(self)@.free_frames.contains(phys_addr@)
+186.                     &&& self@ == old(self)@.spec_book(phys_addr@)
+187.   ...
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+Let me understand the dependency situation better:
+[TOOL] bash: grep -E 'arch|sparse.bitmap' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/Cargo.toml | head -10
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.spec.rs
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src -name "*.spec.rs" -path "*hal/mem*" -o -nam
+
+[THINKING] Now I understand the full picture. The 11 errors all come from the **Inner method bodies**. The Inner methods are `#[verus_verify]` and have `#[verus_spec]` so Verus tries to compile and verify their bodies. But the bodies call dependency functions that don't have Verus specs.
+
+I have two options:
+1. Add `assume_specification` for ALL the dependency functions (FrameNumber, FrameAddress, SparseBitmap, etc.) — this is a lot of work and creates many trust assumptions
+2. Mark Inner methods as `external_body` — but this violates the spec-design rule
+   
+Actually, re-reading the constraint: "No `external_body` on current module" means the Inner methods can't use it since they're in the current module. The real solution is to add specs on the dependency functions themselves, which is what the constraints expect. I need to check what specs already exist — SparseBitmap has a spec file, so I should look at what's already there and what's missing.
+
+For the other dependencies like FrameNumber, FrameAddress, PageAligned, and the others in the kernel and arch crates, I need to figure out whether they're in the workspace and whether they already have specs or need `assume_specification` instead.
+[RESULT ✓] view: File too large to read at once (12.6 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] bash: "src/libs/arch",
+        "src/libs/sparse-bitmap",
+        "src/tests/arch-rust",
+arch = { path = "src/libs/arch", default-features = false }
+gdbstub_arch = { version = "0.3", default-features = false }
+sparse-bitmap = { path = "src/libs/sparse-bitmap", default-features = false }
+<exited with exit c...
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.spec.rs
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src -name "*.spec.rs" -o -name "*.proof.rs" | s
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // Helper spec functions
+5. //==================================================================================================
+6. 
+7. /// Sum of elements in `s` from index `fr...
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phy...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.spec.rs
+[TOOL] bash: grep -rn 'verus_spec\|assume_specification\|external_body\|verus_verify' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/t
+[TOOL] bash: grep -rn 'verus_spec\|assume_specification\|external_body\|verus_verify' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/t
+
+[THINKING] Let me check the sparse-bitmap spec more to see which methods have specs. Also check what specs exist for FrameAddress, FrameNumber, etc. in the hal module.
+[RESULT ✓] view: 60. 
+61.         // set_bits only contains covered indices
+62.         &&& forall|idx: int| #![auto] self.set_bits.contains(idx)
+63.             ==> self.is_covered(idx)
+64. 
+65.         // set_bits is finite (required for len()/cardinality)
+66.         &&& self.set_bits.finite()
+67.     }
+68. 
+69. ...
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs:30:#[verus_verify(external_derive)]
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs:35:#[verus_verify(external_der...
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.spec.rs
+[TOOL] bash: grep -n 'verus_spec\|assume_specification\|external_body\|verus_verify\|fn alloc\|fn clear\|fn set\|fn test\|fn find_chu
+
+[THINKING] OK, so:
+- `arch` crate has NO Verus annotations at all
+- `FrameAddress` has some `assume_specification` already (new, into_raw_value, from_raw_value)
+- But NOT: `FrameAddress::from_frame_number`, `FrameAddress::into_frame_number`
+- `PhysicalAddress` has `assume_specification` for `from_raw_value`
+- But NOT: `PhysicalAddress::into_frame_number`
+- `PageAligned` has `external_derive` but no method specs
+- But NOT: `PageAligned::deref`, `PageAligned::into_raw_value`, `PageAligned::into_frame_number`
+
+
+- `TruncatedMemoryRegion` needs specs for start() and size() methods
+- `FrameNumber` needs an external type specification with assume_specification for its raw value conversions
+- `mem::FRAME_SIZE` needs an assume_specification
+- Now I need to check what the sparse-bitmap methods require, since the Inner implementation calls alloc() and clear() on the bitmap
+
+, along with set(), test(), and find_chunk() operations
+[RESULT ✓] view: 160.     /// Whether all bits are set (full).
+161.     pub open spec fn is_full(&self) -> bool {
+162.         forall|idx: int| #![auto] self.is_covered(idx) ==> self.set_bits.contains(idx)
+163.     }
+164. 
+165.     /// Whether no bits are set (empty).
+166.     pub open spec fn is_empty(&self) -> boo...
+[RESULT ✓] bash: 59:#[verus_verify(external_derive)]
+66:#[verus_verify]
+69:    #[verus_spec(result =>
+78:    #[verus_spec(result =>
+90:    #[verus_spec(result =>
+101:    #[verus_spec(result =>
+146:#[verus_verify(external_derive)]
+148:#[verus_verify]
+168:#[verus_verify]
+248:    #[verus_spec(result =>
+257:    pub fn t...
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+Let me check the existing HAL specs for FrameAddress:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] Good news: SparseBitmap already has Verus specs on its methods (`alloc`, `set`, `clear`, `find_chunk`, `test`). Let me check the actual specs on those methods to understand what Verus already knows about them.
+
+The bigger problem is the dependency functions that DON'T have specs:
+1. `FrameNumber::from_raw_value` — arch crate, needs `assume_specification`
+2. `FrameNumber::into_raw_value` — arch crate, needs `assume_specification`
+3. `FrameAddress::from_frame_number` — kernel crate (but external from frame.rs), needs `#[verus_spec]` or `assume_specification`
+
+
+4. `FrameAddress::into_frame_number` — kernel crate, same
+5. `PhysicalAddress::into_frame_number` — kernel crate, same
+6. `PageAligned::deref` — kernel crate, same
+7. `PageAligned::into_raw_value` — kernel crate, same
+8. `TruncatedMemoryRegion::start()` — kernel crate, same
+9. `TruncatedMemoryRegion::size()` — kernel crate, same
+10. `mem::FRAME_SIZE` — arch crate, needs `assume_specification`
+11. And there's at least one more that got cut off.
+
+This is a substantial list of dependencies that need specifications. The spec design says these should get specs, so I need to figure out where to add them. For the arch crate items, I can use `assume_specification`, but for the kernel hal modules, I'd normally use `#[verus_spec]` with `external_body`. The constraint says dependency functions in other modules can be marked with `external_body` and contracts, but I'm realizing I can't annotate functions in other files from `frame.spec.rs` directly. Though actually, `assume_specification` should work for pulling in those external specs.
+
+Let me check what's already been specified in the existing frame.rs and HAL files — I see `FrameAddress` has some assumed specs for `new` and the raw value conversions, but I need to verify whether `from_frame_number` and `into_frame_number` are covered.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+Let me check the FrameNumber type and other dependency functions:
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch -name "*.rs" | xargs grep -l 'Fra
+[TOOL] bash: grep -n 'pub struct\|fn from_raw\|fn into_raw\|FRAME_SIZE' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/
+
+[THINKING] OK so now I see what's already defined in frame.rs (HAL version):
+- `assume_specification` for FrameAddress::new, into_raw_value, from_raw_value, arch::mem::PAGE_SIZE
+- `pa_into_raw` external_body wrapper function
+
+But missing:
+- `FrameAddress::from_frame_number` — no spec
+- `FrameAddress::into_frame_number` — no spec
+
+For the other dependency functions, let me check:
+- `PageAligned::deref` — in aligned/page.rs
+- `PageAligned::into_frame_number` — in aligned/page.rs
+
+
+- `PhysicalAddress::into_frame_number` — in phys.rs  
+- `TruncatedMemoryRegion::start()` and `size()` — in region.rs
+- `FrameNumber::from_raw_value` and `into_raw_value` — in arch crate
+
+So my strategy is to add specifications for the arch crate functions first, then handle the kernel HAL functions with either `assume_specification` or `#[verus_spec]` plus `external_body` wrappers depending on what's already there.
+
+Actually, wait — I'm realizing the constraint about `assume_specification` only applies to external dependencies, not workspace-internal code. For functions within the workspace, I need to add `#[verus_spec]` annotations directly to those functions rather than using `assume_specification`. That means I'll need to modify the actual source files in phys.rs, region.rs, and the arch crate to add the spec annotations there. I'm realizing there's a precedent here — the arch crate already uses `assume_specification` for PAGE_SIZE and FrameAddress methods, so I should follow that pattern for FrameNumber functions too. But the key distinction is that methods on types defined in the kernel crate itself, like `FrameAddress::from_frame_number`, should get `#[verus_spec]` directly rather than `assume_specification`.
+
+The problem is that `from_frame_number` depends on a chain of other functions that also need specs, which creates a deep dependency problem. I'm considering two alternatives: either mark the Inner methods as `external_body` (which violates the constraint), or add `assume_specification` for all the dependency functions in `frame.spec.rs` since they're in different unverified modules anyway, following the existing precedent with FrameAddress specs.
+
+Looking at the actual constraint more carefully, I should be adding `#[verus_spec]` annotations with `external_body` directly on the dependency functions themselves in their original modules—since they're in other files, `external_body` is appropriate to skip their body verification. I'll focus on the simpler functions like `FrameAddress::from_frame_number`, `into_frame_number` in the HAL frame.rs, and the PageAligned methods like `deref`, `into_frame_number`, and `into_raw_value`.
+
+For the arch crate functions that are causing the errors, I need to use `assume_specification` in frame.spec.rs since arch is a separate crate, and I should also add `external_type_specification` for the `FrameNumber` type itself and `assume_specification` for `FRAME_SIZE`.
+
+The other issue is that several functions like `FrameAddress::from_frame_number`, `FrameAddress::into_frame_number`, `PhysicalAddress::into_frame_number`, `PageAligned::deref`, and `TruncatedMemoryRegion::start` are declared outside the verus! macro, so they need to either be wrapped in verus! or marked with `#[verus_spec]` to be usable in verified code.
+
+I'm thinking through a practical strategy here: for the arch crate types like `FrameNumber` and `FRAME_SIZE`, I'll use `assume_specification` in the frame.spec.rs file since they're external to the kernel crate. For the kernel HAL types like `FrameAddress`, I need to be more careful about adding annotations to dependency files, since their implementations might also call unspecified functions—using `external_body` would skip verification of those bodies. I'm realizing that `assume_specification` is meant for external dependencies, not internal workspace code, so I should use `#[verus_verify(external_body)]` with `#[verus_spec]` instead—placing these annotations directly on the functions in the HAL files where the existing specs already live. Hmm, but `assume_specification` is already used for `FrameAddress::new`, `into_raw_value`, `from_raw_value` in the same file. So the pattern is established. The reason these use `assume_specification` is that:
+- The functions are NOT in a verus! block
+- They're regular Rust functions
+- Verus needs `assume_specification` to give them specs without being in verus!
+
+Actually wait, the functions DO have `#[verus_verify]` on the impl block? No, the FrameAddress impl is a regular Rust impl. There's no `#[verus_verify]` on it. So the functions inside are not known to Verus. The `assume_specification` gives Verus a spec for these functions.
+
+So the approach should be: for functions in the HAL/kernel crate that aren't in verus! blocks and lack annotations, I can either use `assume_specification` in the existing verus! block or add `#[verus_verify(external_body)]` with `#[verus_spec]` directly on the function. Since the codebase already follows the `assume_specification` pattern, I'll stick with that for consistency. For the arch crate types, I'll need both `assume_specification` and `external_type_specification`. But here's the catch: even if I add `assume_specification` for `FrameNumber::from_raw_value` in the HAL frame.rs file, the phys/frame.rs file still won't know about it because Verus needs visibility into those specs.
+
+Looking at the 11 errors more carefully, they're all coming from the Inner methods that have `#[verus_spec]`, which means Verus is trying to verify them. The errors are mostly about unsupported or ignored functions from the arch crate and functions outside verus! blocks.
+
+The key insight is that I need `assume_specification` for the arch crate items (like `FrameNumber::from_raw_value` and `FRAME_SIZE`) and either `assume_specification` or annotations for the kernel crate functions that are outside verus!. The cleanest solution is to add all the missing `assume_specification` and `external_type_specification` declarations in frame.spec.rs so everything is centralized and I don't have to modify multiple dependency files.
+
+But I'm running into a constraint that says `assume_specification` should only be used for third-party dependencies and std library functions, not workspace-internal code. However, the arch crate is part of the workspace, and there's already precedent in the existing code where `assume_specification` is used for workspace-internal items like `arch::mem::PAGE_SIZE`. So the rule seems flexible in practice, or I'm misinterpreting what counts as "workspace-internal code" versus external dependencies that happen to be in the workspace. I see the existing codebase already uses `assume_specification` for arch crate functions since they aren't annotated with `#[verus_verify]`, so I'll follow that pattern. For kernel crate functions though, I can actually add `#[verus_verify(external_body)]` and `#[verus_spec]` directly to functions like `FrameAddress::from_frame_number` and `into_frame_number` in the source files, which gives Verus proper specifications without needing assumptions. I'm going to try this approach for the kernel crate dependencies where I have access to the source.
+
+Actually, I'm realizing these functions might have complex trait implementations and generics that make adding `#[verus_spec]` tricky, and modifying all those files creates a lot of surface area for changes. The more pragmatic approach is to use `assume_specification` for all dependency functions—both arch and kernel HAL—and add them in the frame.spec.rs file or in the existing `#[cfg(verus_keep_ghost)]` section.
+
+This works because these are all simple HAL abstraction wrappers with straightforward specs that match the API documentation, and when those modules get verified later, the assumptions can be replaced with actual verified specs. I can add the `assume_specification` blocks in the existing `#[cfg(verus_keep_ghost)]` section in frame.rs where the other assumptions already live, which is the cleanest approach.
+
+Actually, I just realized `assume_specification` can be placed anywhere in the codebase to annotate a function, not just in its defining module — so I could consolidate all of them in frame.spec.rs instead. Now I need to figure out how `external_type_specification` works for the FrameNumber type, since the error message suggests that's what I need for handling unsupported types.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/paging/frame/mod.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/paging/frame/number.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/s...
+[RESULT ✓] bash: 21:pub struct FrameNumber(usize);
+29:    pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+47:    pub fn from_raw_value(value: usize) -> Option<Self> {
+64:    pub fn into_raw_value(self) -> usize {
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[TOOL] bash: grep -n 'FRAME_SIZE\|pub const' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x8
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] bash: 19:pub const WORD_SIZE: usize = ::core::mem::size_of::<u32>();
+26:pub const WORD_ALIGNMENT: Alignment = Alignment::Align4;
+33:pub const WORD_SHIFT: usize = WORD_SIZE.trailing_zeros() as usize;
+40:pub const PAGE_SHIFT: usize = 12;
+47:pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
+54:pub const PAGE_MAS...
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn 'FRAME_SIZE' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/ | h
+
+[THINKING] I notice there's no `FRAME_SIZE` constant. Let me check how `mem::FRAME_SIZE` is defined:
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/paging/frame/number.rs:29:    pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/constants.rs:103:pu...
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n 'FRAME_SIZE\|MAX_ADDRESS' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/
+[RESULT ✓] bash: 89:pub const MAX_ADDRESS: usize = usize::MAX;
+103:pub const FRAME_SIZE: usize = PAGE_SIZE;
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n 'fn into_frame_number\|fn start\|fn size\|fn deref\|impl.*Deref' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/t
+[TOOL] bash: grep -n 'fn into_frame_number' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/me
+[TOOL] bash: grep -n 'fn start\|fn size' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/t
+
+[THINKING] OK now I have a clear picture. Let me plan the approach:
+
+Since `FRAME_SIZE == PAGE_SIZE` and PAGE_SIZE already has `assume_specification` (in HAL frame.rs), I should use `spec_page_size()` for both.
+
+For the arch crate functions/types, I'll add `assume_specification` and `external_type_specification` in `frame.spec.rs`. For kernel HAL functions that need specs, I have two options:
+
+1. Add `assume_specification` in `frame.spec.rs`
+2. Add `#[verus_verify(external_body)]` + `#[verus_spec]` in the dependency files
+
+
+Option 1 is simpler and follows the existing pattern, so I'll go with that. I need to add specification blocks for the FrameNumber type and its methods, FRAME_SIZE constant, and FrameAddress conversion functions.
+
+The tricky part is handling the generic methods like PageAligned and TruncatedMemoryRegion — Verus requires monomorphic specs for `assume_specification`, so I'll need to work around that limitation for those generic implementations.
+
+Now I'm tracing through the actual call chain in the Inner::alloc method to see which functions need specifications and which ones already have them. I need to verify whether `PageAligned<PhysicalAddress>` actually has an `into_frame_number` method or if it's relying on a `Deref` implementation to access the underlying `PhysicalAddress` method.
+[RESULT ✓] bash: 100:    pub fn into_frame_number(self) -> FrameNumber {
+<exited with exit code 0>
+[RESULT ✓] bash: 195:    pub fn start(&self) -> T {
+200:    pub fn size(&self) -> usize {
+347:    pub fn start(&self) -> PageAligned<T> {
+352:    pub fn size(&self) -> usize {
+<exited with exit code 0>
+[RESULT ✓] bash: 154:impl<T: Address> Deref for PageAligned<T> {
+157:    fn deref(&self) -> &Self::Target {
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs
+[RESULT ✓] view: 95.     pub fn from_number(frame: FrameNumber) -> Self {
+96.         let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
+97.         Self(VirtualAddress::new(addr))
+98.     }
+99. 
+100.     pub fn into_frame_number(self) -> FrameNumber {
+101.         let raw_addr: usize = self.0.into_raw_valu...
+[RESULT ✓] view: 145.     }
+146. }
+147. 
+148. impl<T: Address> core::fmt::Debug for PageAligned<T> {
+149.     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+150.         write!(f, "{:?}", self.0)
+151.     }
+152. }
+153. 
+154. impl<T: Address> Deref for PageAligned<T> {
+155.     type Target = T;
+15...
+[RESULT ✓] view: 340.     }
+341. 
+342.     pub fn name(&self) -> String {
+343.         self.0.name()
+344.     }
+345. 
+346.     /// Returns the first valid address that lies in the target memory region.
+347.     pub fn start(&self) -> PageAligned<T> {
+348.         self.0.start()
+349.     }
+350. 
+351.     /// Returns ...
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+Let me check how kpool handles the same dependency problem:
+[TOOL] bash: grep -n 'verus_spec\|external_body\|verus_verify\|assume_specification' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/ta
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.spec.rs
+
+[THINKING] Now I have a clear picture. Let me take the pragmatic approach: instead of fighting the dependency graph by adding specs to each dependency function, I should make the Inner methods `external_body`. I know the constraint says "No external_body on current module", but:
+
+1. The Inner methods call 10+ dependency functions without specs
+2. Adding specs for all dependencies would require modifying 6+ files across 3 crates
+3. The free functions are ALREADY external_body
+4. The constraint says to use `admit()` but that only works for proof failures, not compilation errors
+
+Wait, there's a better approach. Let me reconsider...
+
+
+Actually, the constraint is pushing me toward the escalation ladder: isolate the problematic calls, check vstd for patterns, or rewrite to avoid un-specced dependencies. The real fix is to add specs for those dependency functions properly. Let me work through the arch crate functions that need specs...
+
+For the kernel HAL functions, I need to add `#[verus_verify(external_body)]` with `#[verus_spec]` annotations directly in their source files. But I'm hitting a snag with generic methods like `PageAligned<T>::deref` — those are trickier to handle with external specs.
+
+Looking at how the codebase already solved this, there's a pattern of creating monomorphic wrapper functions like `pa_into_raw` that act as trust boundaries for generic trait methods that can't receive `assume_specification` directly in Verus.
+
+For the Deref case, I'd need to rewrite the Inner methods to call a wrapper instead of using Deref internally, but that's an exec code mutation which isn't allowed. However, the real issue might be simpler—the Deref function is being ignored because it's not in a verus! block and lacks annotations. If I add the proper `#[verus_verify` attribute, Verus might actually handle it correctly for known types.
+
+Adding `#[verus_verify]` to a generic trait impl like `impl<T: Address> Deref for PageAligned<T>` is risky though—Verus might struggle with generic trait implementations. Let me look at how kpool.rs handles similar situations, since it probably calls these same functions.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl Inner {
+4.     pub open spec fn inv(&self) -> bool
+5.     {
+6.         &&& self@.wf()
+7.         &&& self.internal_inv()
+8.     }
+9. }
+10. 
+11. }
+12. 
+[RESULT ✓] bash: 65:#[verus_verify(external_derive)]
+73:#[verus_verify]
+84:    #[verus_spec(result =>
+146:    #[verus_spec(result =>
+260:    #[verus_spec(result =>
+396:        #[verus_spec(
+570:    #[verus_spec(result =>
+806:#[verus_verify(external_derive)]
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && MODULE=kernel::mm::phys::kpool make verify-ker
