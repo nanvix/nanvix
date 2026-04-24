@@ -5,7 +5,8 @@
   "current_phase": "cheating-elimination",
   "current_phase_idx": 4,
   "completed_phases": [
-    "proving"
+    "proving",
+    "cheating-elimination"
   ],
   "phase_results": {
     "proving": {
@@ -18,14 +19,26 @@
       "review_file": null,
       "duration_s": 6129.4,
       "review_rounds": 2
+    },
+    "cheating-elimination": {
+      "phase": "cheating-elimination",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-RESOLVED",
+      "review_file": null,
+      "duration_s": 1125.0,
+      "review_rounds": 2
     }
   },
   "prover_session_id": "b3e0949e-3f4a-4a36-91da-120046e43784",
-  "completed": false,
+  "completed": true,
   "base_branch": "verus-ai/upool",
   "verus_branch": "verus-ai/kpool",
   "phase_boundary_shas": {
-    "proving": "a8440ea1cb1d7a4727cc149b914e37a456d9e583"
+    "proving": "a8440ea1cb1d7a4727cc149b914e37a456d9e583",
+    "cheating-elimination": "b7cb24bedb718a598f8d5a5bd20c94cb910d803a"
   },
   "rollback_counts": {},
   "rollback_context": ""
