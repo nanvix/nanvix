@@ -501,6 +501,7 @@ impl ProcessManager {
             args_vaddr,
             AccessPermission::RDWR,
             true,
+            1,
             &mut Vec::with_capacity(1),
         )?;
         vmem.copy_to_user_unaligned(
@@ -525,6 +526,7 @@ impl ProcessManager {
             envp_vaddr,
             AccessPermission::RDWR,
             true,
+            1,
             &mut Vec::with_capacity(1),
         )?;
 
@@ -564,12 +566,14 @@ impl ProcessManager {
         // will leak underlying pages.
         let initial_stack_base: PageAligned<VirtualAddress> =
             PageAligned::from_raw_value(user_stack.top().into_raw_value() - USER_STACK_MIN_SIZE)?;
+        let count = USER_STACK_MIN_SIZE / PAGE_SIZE;
         mm.alloc_upages(
             &mut vmem,
             initial_stack_base,
             AccessPermission::RDWR,
             true,
-            &mut Vec::with_capacity(USER_STACK_MIN_SIZE / PAGE_SIZE),
+            count,
+            &mut Vec::with_capacity(count),
         )?;
 
         //==============================================================
@@ -1906,16 +1910,12 @@ impl ProcessManager {
         let mut current_vaddr: PageAligned<VirtualAddress> = vaddr;
         let mut remaining: usize = npages;
 
-        // `alloc_upages` derives the page count from `uframes.capacity()`, so the Vec capacity
-        // must exactly equal the number of pages we intend to map per iteration.  We use
-        // `try_reserve_exact` for fallible allocation with an exact capacity: first attempt a
-        // batch of `count` pages, falling back to a single page, and finally returning OOM.
         while remaining > 0 {
             let count: usize = remaining.min(MMAP_BATCH_SIZE);
             let mut uframes = Vec::new();
-            let batch: usize = if uframes.try_reserve_exact(count).is_ok() {
+            let batch: usize = if uframes.try_reserve(count).is_ok() {
                 count
-            } else if uframes.try_reserve_exact(1).is_ok() {
+            } else if uframes.try_reserve(1).is_ok() {
                 // Batch allocation failed; fall back to single-page allocation.
                 1
             } else {
@@ -1924,7 +1924,8 @@ impl ProcessManager {
                 Self::rollback_mmap(mm, vmem, vaddr, current_vaddr);
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             };
-            if let Err(e) = mm.alloc_upages(vmem, current_vaddr, access, true, &mut uframes) {
+            if let Err(e) = mm.alloc_upages(vmem, current_vaddr, access, true, batch, &mut uframes)
+            {
                 Self::rollback_mmap(mm, vmem, vaddr, current_vaddr);
                 return Err(e);
             }
