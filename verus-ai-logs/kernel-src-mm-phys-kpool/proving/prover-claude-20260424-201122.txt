@@ -3575,3 +3575,11 @@ Turn 195
 ────────────────────────────────────────────────────────────
 Now let me run verification:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: warning: use of deprecated method `vstd::prelude::ResultAdditionalSpecFns::is_Ok`: is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html
+warning: use of deprecated method `vstd::prelude::ResultAdditionalSpecFns::is_Ok`: is_Variant is d...
+
+────────────────────────────────────────────────────────────
+Turn 196
+────────────────────────────────────────────────────────────
+Progress! 2 verified, 3 errors. Let me get the details:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
