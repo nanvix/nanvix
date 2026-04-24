@@ -1,0 +1,106 @@
+Timestamp: 2026-04-24_21-01-58
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::kpool
+Exit code: 101
+4 verified
+3 errors
+
+Cheating patterns:
+  assume=0
+  external_body=9
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+warning: use of deprecated method `vstd::prelude::ResultAdditionalSpecFns::is_Ok`: is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html
+   --> src/kernel/src/hal/mem/types/address/phys.rs:264:16
+    |
+264 |         result.is_Ok(),
+    |                ^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `vstd::prelude::ResultAdditionalSpecFns::is_Ok`: is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html
+  --> src/kernel/src/mm/phys/kpool.rs:83:16
+   |
+83 |         result.is_Ok(),
+   |                ^^^^^
+
+note: verifying module mm::phys::kpool
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/kpool.rs:174:13
+    |
+174 | /             match result {
+175 | |                 Ok(frame) => {
+176 | |                     let page_index = (frame@ - old(self)@.start) / spec_page_size();
+177 | |                     &&& frame.inv()
+...   |
+188 | |                 },
+189 | |             },
+    | |_____________^ failed this postcondition
+...
+254 |           Ok(frame)
+    |           --------- at the end of the function body
+
+note: while loop: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/kpool.rs:384:9
+    |
+384 | /         for i in 0..count
+385 | |         {
+386 | |             proof! {
+387 | |                 assert(spec_page_size() > 0);
+...   |
+421 | |             addrs.push(frame);
+422 | |         }
+    | |_________^
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/kpool.rs:314:5
+    |
+314 |     fn alloc_range(&mut self, count: usize, addrs: &mut Vec<FrameAddress>) -> Result<(), Error> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/kpool.rs:281:13
+    |
+281 | /             match result {
+282 | |                 Ok(()) => {
+283 | |                     &&& old(addrs)@.len() == 0
+284 | |                     &&& count > 0
+...   |
+311 | |                 },
+312 | |             },
+    | |_____________^ failed this postcondition
+...
+424 |           Ok(())
+    |           ------ at the end of the function body
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/kpool.rs:337:47
+    |
+337 |                     assert forall|start: int| !old(self)@.range_free(start, count as int) by {
+    |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/kpool.rs:387:24
+    |
+387 |                 assert(spec_page_size() > 0);
+    |                        ^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/kpool.rs:389:24
+    |
+389 |                 assert((index as int) + (i as int) < self.bitmap@.num_bits);
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 4 verified, 3 errors (partial verification with `--verify-*`)
+warning: `kernel` (bin "kernel") generated 2 warnings
+error: could not compile `kernel` (bin "kernel") due to 5 previous errors; 2 warnings emitted

@@ -1,7 +1,6 @@
 verus! {
 
 use super::KpoolView;
-use crate::hal::mem::spec_page_size;
 
 impl View for Inner {
     type V = KpoolView;
