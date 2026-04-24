@@ -105,6 +105,7 @@ impl Inner {
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             },
         };
+        // VERUS REWRITE: pa_into_raw wrapper needed because Verus cannot resolve generic trait .into_raw_value()
         if !is_valid_physical_region(pa_into_raw(base), kpool_size) {
             let reason: &str = "kernel pool bitmap spans across physically-addressable memory";
             #[cfg(not(verus_keep_ghost))]
@@ -124,6 +125,7 @@ impl Inner {
             assert(base@ >= 0);
         }
 
+        // VERUS REWRITE: intermediate binding for proof block (pre-approved deviation)
         let inner = Inner { base, bitmap };
         proof! {
             inner.lemma_internal_inv_intro();
@@ -206,6 +208,7 @@ impl Inner {
             // Prove page-alignment for FrameAddress::from_raw_value precondition
             assert(self.base@ % spec_page_size() == 0);
         }
+        // VERUS REWRITE: pa_into_raw wrapper needed; FrameAddress::from_raw_value equivalent to FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(addr)?)?)
         let addr: usize = pa_into_raw(self.base) + index * mem::PAGE_SIZE;        proof! {
             assert(addr as int == self.base@ + (index as int) * spec_page_size());
             // Prove page alignment: (base@ + index * page_size) % page_size == 0
@@ -380,6 +383,7 @@ impl Inner {
             // Prove base@ + index * page_size doesn't overflow
             assert(self.base@ + (index as int) * spec_page_size() <= usize::MAX as int);
         }
+        // VERUS REWRITE: pa_into_raw wrapper needed (see Inner::alloc)
         let base_addr: usize = pa_into_raw(self.base) + index * mem::PAGE_SIZE;
         proof! {
             let ghost base_addr_spec = self.base@ + (index as int) * spec_page_size();
@@ -461,6 +465,7 @@ impl Inner {
                 assert(b % m == 0int);
                 assert(addr as int % m == 0int);
             }
+            // VERUS REWRITE: from_raw_value is equivalent convenience API (see Inner::alloc)
             let frame: FrameAddress = FrameAddress::from_raw_value(addr)?;
             addrs.push(frame);
         }
@@ -621,6 +626,7 @@ impl Inner {
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
         // Now addr@ >= self.base@ == old(self)@.start
+        // VERUS REWRITE: pa_into_raw wrapper needed (see Inner::alloc)
         let index: usize = (addr.into_raw_value() - pa_into_raw(self.base)) / mem::PAGE_SIZE;
         proof! {
             assert(addr@ >= old(self)@.start);
