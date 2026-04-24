@@ -1,7 +1,5 @@
 verus! {
 
-use crate::hal::mem::spec_page_size;
-
 /// Helper: convert a bitmap index to a frame (physical) address.
 pub open spec fn frame_addr_of(i: int) -> int {
     i * spec_page_size()
