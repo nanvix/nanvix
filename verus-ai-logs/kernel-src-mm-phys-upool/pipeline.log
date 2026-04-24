@@ -1,0 +1,20 @@
+[PIPELINE] NOTE: spec file missing, creating empty stub: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.spec.rs
+[PIPELINE] NOTE: proof file missing, creating empty stub: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.proof.rs
+[PIPELINE] NOTE: added 'use vstd::prelude::*;' to /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs
+[PIPELINE] NOTE: added cfg-gated include!(upool.spec.rs, upool.proof.rs) to /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs
+[2026-04-24 19:30:47] [BRANCH] Base: exp → Verus: verus-ai/upool
+[2026-04-24 19:30:47] [ABSTRACTION] Body-removed source: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/body_removed_source.rs (3155 -> 2803 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: upool
+Source: src/kernel/src/mm/phys/upool.rs
+Crate:  upool
+Branch: verus-ai/upool (base: exp)
+Phases: proving → cheating-elimination
+############################################################
+
+============================================================
+PHASE: proving
+Module: upool
+============================================================

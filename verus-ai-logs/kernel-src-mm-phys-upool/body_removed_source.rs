@@ -47,9 +47,7 @@ impl UserFrame {
     ///
     /// A user frame.
     ///
-    pub fn new(addr: FrameAddress) -> Self {
-        Self { addr }
-    }
+    pub fn new(addr: FrameAddress) -> Self { ... }
 
     ///
     /// # Description
@@ -60,9 +58,7 @@ impl UserFrame {
     ///
     /// The physical address of the target user frame.
     ///
-    pub fn address(&self) -> FrameAddress {
-        self.addr
-    }
+    pub fn address(&self) -> FrameAddress { ... }
 
     ///
     /// # Description
@@ -73,18 +69,11 @@ impl UserFrame {
     ///
     /// The frame address.
     ///
-    pub fn leak(self) -> FrameAddress {
-        let this: ManuallyDrop<Self> = ManuallyDrop::new(self);
-        this.addr
-    }
+    pub fn leak(self) -> FrameAddress { ... }
 }
 
 impl Drop for UserFrame {
-    fn drop(&mut self) {
-        if let Err(e) = frame::free(self.addr) {
-            error!("failed to free user frame: {:?}", e);
-        }
-    }
+    fn drop(&mut self) { ... }
 }
 
 //==================================================================================================
@@ -113,9 +102,7 @@ impl Upool {
     ///
     /// A user frame pool.
     ///
-    pub(super) fn new() -> Self {
-        Self { _private: () }
-    }
+    pub(super) fn new() -> Self { ... }
 
     ///
     /// # Description
@@ -126,8 +113,5 @@ impl Upool {
     ///
     /// Upon success, a user frame is returned. Upon failure, an error is returned instead.
     ///
-    pub fn alloc(&mut self) -> Result<UserFrame, Error> {
-        let addr: FrameAddress = frame::alloc()?;
-        Ok(UserFrame::new(addr))
-    }
+    pub fn alloc(&mut self) -> Result<UserFrame, Error> { ... }
 }
