@@ -5220,3 +5220,14 @@ Turn 183
 ────────────────────────────────────────────────────────────
 Zero admits, zero assumes. Now let me run the full kernel verification for regression check:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -5
+[RESULT ✓] bash: cheating: assume=0 external_body=24 admit=0 trusted=0 no_decreases=0 cfg_gate=11
+  coverage: 24/1000 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verus-logs/verus_2026-04-25_00-56-07.log
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 184
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | grep -E "verificatio
