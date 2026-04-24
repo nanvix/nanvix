@@ -2646,3 +2646,16 @@ Writing the inline proof...
 Turn 78
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: - frame.rs:117 region_size_raw: external_body
+    - frame.rs:128 region_start_raw: external_body
+    - frame.rs:172 alloc: admit
+    - frame.rs:414 book: admit
+    - frame.rs:464 alloc_range: admit
+    - frame.rs:605 alloc: external_body
+    - frame.rs:637 book: external_body
+    - frame.rs:651 allo...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
