@@ -1,0 +1,34 @@
+Timestamp: 2026-04-25_00-31-37
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::frame
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=24
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=11
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+error: expected one of `:`, `;`, `=`, `@`, or `|`, found `ps`
+   --> src/kernel/src/mm/phys/frame.rs:807:19
+    |
+807 |         let ghost ps = spec_page_size();
+    |                   ^^ expected one of `:`, `;`, `=`, `@`, or `|`
+
+error: expected `;`
+   --> src/kernel/src/mm/phys/frame.rs:807:19
+    |
+807 |         let ghost ps = spec_page_size();
+    |                   ^^
+
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

@@ -19,6 +19,7 @@ pub assume_specification[ ::arch::mem::FRAME_SIZE ] -> (result: usize)
     ensures
         result == spec_page_size(),
         result > 0,
+        result >= 2,
 ;
 
 // FrameNumber conversion assume_specifications are not needed because

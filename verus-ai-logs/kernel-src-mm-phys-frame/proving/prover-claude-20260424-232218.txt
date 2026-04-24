@@ -2932,3 +2932,1208 @@ The spec claims it always succeeds for any index, which seems too permissive—I
 Turn 97
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: - frame.rs:781 alloc_range: admit
+    - frame.rs:922 alloc: external_body
+    - frame.rs:954 book: external_body
+    - frame.rs:968 alloc_range: external_body
+  Global: assume=0 external_body=24 admit=4 trusted=0 cfg_gate=7
+  Detail: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvi...
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+`alloc` verified! 9 verified, 0 errors, 4 admits remaining (all in `alloc_range`). Now for the hardest part — `alloc_range` with 3 loops. Let me read the current state:
+[TOOL] report_intent: Proving alloc_range method
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 610.                         if addr == fa {
+611.                             assert(self.bitmap@.set_bits.contains(idx));
+612.                         } else {
+613.                             let i = choose|i: int|
+614.                                 #[trigger] old(self).bitmap@.set_bits.contains...
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 800.         #[verus_spec(invariant(true))]
+801.         for index in start_frame_number..end_frame_number {
+802.             proof! { admit(); }
+803.             if self.bitmap.find_chunk(index).is_none() {
+804.                 let uncovered_addr: usize = index * mem::FRAME_SIZE;
+805.              ...
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+Let me check `find_chunk_index` and `find_chunk` specs in detail:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] `alloc_range` is the most complex function. Let me plan the proof carefully.
+
+The spec uses:- `start_frame_number = region@.start / spec_page_size()`- `end_frame_number = (region@.start + region@.size) / spec_page_size()`- `frame_numbers = set_int_range(start_frame_number, end_frame_number)`
+- `frames = frame_numbers.map(|i: int| i * spec_page_size())`The exec code computes:- `start_frame_number = region_start_frame_number(region)` → `region@.start / ps`
+
+
+- `num_frames = region_size_raw(region) / mem::FRAME_SIZE` → `region@.size / ps`
+- `end_frame_number = start_frame_number + num_frames` → `region@.start / ps + region@.size / ps`
+
+The key insight is showing that `start_frame_number + num_frames` equals `(region@.start + region@.size) / ps`. Since both `region@.start` and `region@.size` are divisible by the page size from the region invariant, I can use the property that `(a + b) / ps = a/ps + b/ps` when both operands are divisible by `ps`.
+
+I need to formalize this as a lemma: when `a` and `b` are both divisible by `d` and `d > 0`, then `(a+b)/d == a/d + b/d`. This follows from the fundamental division-modulo theorem since we can express `a` and `b` as multiples of `d`, making their sum also a multiple of `d`.
+
+Now examining the three loops...
+
+For the first loop, I'm checking coverage across a frame range. The loop invariant requires that the bitmap remains unchanged and all indices up to the current position are covered. I need to understand what `find_chunk` guarantees—specifically, when it returns `None`, that tells us the index isn't covered, and I need to formalize this postcondition to prove the loop maintains its invariant.
+[RESULT ✓] view: 1753.     fn find_chunk_index(&self, index: usize) -> (result: Option<usize>)
+1754.         requires
+1755.             self.inv(),
+1756.         ensures
+1757.             result matches Some(ci) ==> {
+1758.                 &&& (ci as int) < self@.chunk_count()
+1759.                 &&& self@.chunk_o...
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+Now let me check the `find_chunk` spec:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] view: 410.     ///
+411.     #[verus_spec(result =>
+412.         requires
+413.             self.inv(),
+414.         ensures
+415.             result.is_some() <==> self@.is_covered(index as int),
+416.             result matches Some(chunk) ==> {
+417.                 &&& chunk.spec_offset() <= index as int
+4...
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+Good. `find_chunk(index).is_some() <==> bitmap@.is_covered(index)`. So if `is_none()`, then `!is_covered(index)`.
+
+Now let me also check the `test` spec more carefully:
+
+The `test` method always returns `Ok(b)` where `b == is_bit_set(index)`. And `is_bit_set` is equivalent to `set_bits.contains(index)` for covered indices. For uncovered indices, `test` returns `Ok(false)` (not covered but appears free).
+
+Now let me plan the `alloc_range` proof. This is very complex, so I'll write it carefully:
+[TOOL] task: {'agent_type': 'rubber-duck', 'description': 'Validate alloc_range proof plan', 
+[TOOL] skill: review-methodology
+[RESULT ✓] skill: Skill "review-methodology" loaded successfully. Follow the instructions in the skill context.
+[TOOL] report_intent: Reviewing proof plan
+[TOOL] rg: fn alloc_range\b|alloc_range\(
+[TOOL] rg: fn test\b|fn set\b|find_chunk\(|is_covered|set_bits|free_frames|spec_alloc_range
+[TOOL] rg: lemma_map_union_commute|map.*difference|difference.*map|map_distribut|set_int_range
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/body_removed_source.rs:210:    fn alloc_range(
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/body_removed_source.rs:276:pub(super) f...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/body_removed_source.rs:193:                let frame_numbers = vstd::set_lib::set_int_range(start_frame_number, end_frame_number);
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/n...
+[RESULT ✓] rg: Output too large to read at once (118.9 KB). Saved to: /tmp/copilot-tool-output-1777046944390-51eeqv.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (firs...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+[TOOL] rg: pub fn test\b|pub fn set\b|find_chunk\b|is_covered\b
+[TOOL] rg: lemma_map_union_commute|lemma_.*map.*union|lemma_.*map.*difference|map.*difference|difference.*map
+[RESULT ✓] view: 720.                         && !old(self).bitmap@.set_bits.contains(i)
+721.                         && fa == frame_addr_of(i)
+722.                         implies false
+723.                     by {
+724.                         if i != idx {
+725.                             vstd::arithmetic::mul::l...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::UpoolView;
+4. use crate::hal::mem::spec_page_size;
+5. 
+6. // ---------------------------------------------------------------------------
+7. // External type specifications (arch crate)
+8. // ---------------------------------------------------------------------------
+9. ...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs:56:/// [`SparseBitmap::find_chunk`]) only need its boundaries; they go through
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs:257:    pub fn te...
+[RESULT ✓] rg: No matches found.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.spec.rs
+[TOOL] rg: struct UpoolView|free_frames|allocated_frames|open spec fn view|impl View for Inner|internal_inv
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // Helper spec functions
+5. //==================================================================================================
+6. 
+7. /// Sum of elements in `s` from index `fr...
+[RESULT ✓] view: 1608.         }
+1609.         Err(Error::new(
+1610.             ErrorCode::OutOfMemory,
+1611.             "no contiguous free range of the requested size (tried single-chunk and cross-chunk \
+1612.              passes)",
+1613.         ))
+1614.     }
+1615. 
+1616.     /// Sets the bit at the given glo...
+[RESULT ✓] view: 245.     /// `Ok(true)` if the bit is set; `Ok(false)` if it is cleared, *or* if
+246.     /// no chunk covers `index`. Propagates errors from [`Bitmap::test`].
+247.     ///
+248.     #[verus_spec(result =>
+249.         requires
+250.             self.inv(),
+251.         ensures
+252.             result...
+[RESULT ✓] rg: Output too large to read at once (25.0 KB). Saved to: /tmp/copilot-tool-output-1777046957713-bimskv.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+[TOOL] rg: impl View for Inner|pub closed spec fn internal_inv|allocated_frames:|free_frames:|frame_addr_of|map\(\|i: int\| i \* spec_page_size
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.proof.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.proof.rs
+[RESULT ✓] view: 2320.         forall|k: int|
+2321.             old_chunks[idx].offset as int + local <= k
+2322.                 < old_chunks[idx].offset as int + local + count
+2323.             ==> old_view.is_covered(k),
+2324.         forall|k: int|
+2325.             old_chunks[idx].offset as int + local <= k
+2326...
+[RESULT ✓] view: 1568.             }
+1569.         };
+1570.     }
+1571. }
+1572. 
+1573. /// Transfer `is_covered` across views whose `chunks` are extensionally equal.
+1574. /// The SMT solver cannot automatically transfer existentials; this lemma
+1575. /// provides the concrete witness from `v1` and asserts it for `v...
+[RESULT ✓] rg: Output too large to read at once (10.7 KB). Saved to: /tmp/copilot-tool-output-1777046962967-jjfv8e.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use vstd::arithmetic::div_mod::*;
+4. 
+5. /// Helper: convert a bitmap index to a frame (physical) address.
+6. pub open spec fn frame_addr_of(i: int) -> int {
+7.     i * spec_page_size()
+8. }
+9. 
+10. impl View for Inner {
+11.     type V = UpoolView;
+12. 
+13.     closed spec fn view...
+[RESULT ✓] view: 
+diff --git a/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs b/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+index 0000000..0000000 100644
+--- a/home/ruize/verus-ai-exp/verus-ai-phy-m...
+[TOOL] rg: lemma_map_union_commute
+[TOOL] rg: map.*difference|difference.*map|lemma_.*map.*difference
+[TOOL] report_intent: Inspecting supporting lemmas
+[TOOL] bash: find /home/ruize -path '*/set_lib.rs' -o -path '*/set.rs' -o -path '*/vstd*' 2>/dev/null | head -n 50
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: /home/ruize/.rustup/toolchains/1.94.0-x86_64-unknown-linux-gnu/lib/rustlib/rustc-src/rust/compiler/rustc_data_structures/src/sso/set.rs
+/home/ruize/.rustup/toolchains/1.94.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/collections/btree/set.rs
+/home/ruize/.rustup/toolchains/1.94.0...
+[TOOL] rg: lemma_map_union_commute
+[TOOL] rg: lemma_.*map.*difference|map.*difference|difference.*map
+[TOOL] rg: map_union|map_inter|map_.*union|injective
+[RESULT ✓] rg: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-03-15-0111/set_lib.rs:511:    pub proof fn lemma_map_union_commute<B>(self, t: Set<A>, f: spec_fn(A) -> B)
+[RESULT ✓] rg: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-03-15-0111/set_lib.rs:1238:        assert(x.difference(pre).map(f) == y.remove(f(xx)));
+/home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-03-15-0111/set_lib.rs:1239:        lemma_map_size_...
+[RESULT ✓] rg: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-03-15-0111/map_lib.rs:186:    /// Returns `true` if and only if a map is injective
+/home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-03-15-0111/map_lib.rs:187:    pub open spec fn is_injec...
+[TOOL] view: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-03-15-0111/set_lib.rs
+[TOOL] view: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-03-15-0111/set_lib.rs
+[TOOL] view: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-03-15-0111/set_lib.rs
+[RESULT ✓] view: 500.         ).contains(x) by {
+501.             if x == f(elt) {
+502.                 assert(self.insert(elt).contains(elt));
+503.             } else {
+504.                 let y = choose|y: A| self.contains(y) && f(y) == x;
+505.                 assert(self.insert(elt).contains(y));
+506.           ...
+[RESULT ✓] view: 1178.     }
+1179. }
+1180. 
+1181. /// If an injective function is applied to each element of a set to construct
+1182. /// another set, the two sets have the same size.
+1183. pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
+1184.     requires
+1185.         x.finite(),
+1186. ...
+[RESULT ✓] view: 930.     isize i8 i16 i32 i64 i128
+931. ]);
+932. 
+933. // Make Set::full available for all of the Verus numeric types
+934. full_impls!([
+935.     usize u8 u16 u32 u64 u128
+936.     isize i8 i16 i32 i64 i128
+937. ]);
+938. 
+939. /// Two sets are equal iff mapping `f` results in equal sets, if `f` is i...
+[TOOL] rg: map\(|lemma_map_union_commute|free_frames|allocated_frames|difference\(
+[TOOL] rg: region_start_frame_number|region_size_raw|region_start_raw
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs:15:            allocated_frames: Set::new(|addr: int|
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs:20:            free_frames: Set::n...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs:107:fn region_start_frame_number(region: &TruncatedMemoryRegion<PhysicalAddress>) -> usize {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs:117:fn ...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 90. // VERUS REWRITE: wraps phys_addr.into_frame_number().into_raw_value() (via Deref)
+91. #[verus_verify(external_body)]
+92. #[verus_spec(ret =>
+93.     requires self_.inv(),
+94.     ensures ret as int == self_@ / spec_page_size(),
+95. )]
+96. fn page_aligned_pa_to_bitmap_index(self_: PageAligned<Ph...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.proof.rs
+[RESULT ✓] view: 1428. 
+1429.     /// Allocates a contiguous range of `count` free bits and returns the
+1430.     /// global start index.
+1431.     /// VERUS REWRITE: moved from outside verus! block; applied compile
+1432.     /// workarounds (remove/insert, match on ErrorCode, no continue,
+1433.     /// while loops ...
+[RESULT ✓] view: 660.         assert(pushed[idx as int] == chunks[idx as int]);
+661.         lemma_chunk_seq_capacity_push(chunks, c, idx + 1);
+662.     }
+663. }
+664. 
+665. //==================================================================================================
+666. // Connecting lemma for alloc_range() ...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] view: 396.     ///
+397.     /// Locates the chunk whose covered range contains `index`, if any.
+398.     /// Binary-searches the offset-sorted chunks in O(log n). Callers
+399.     /// that only need a yes/no coverage answer can use
+400.     /// `find_chunk(index).is_some()`.
+401.     ///
+402.     /// # Pa...
+[RESULT ✓] view: 1619.     pub fn set(&mut self, index: usize) -> (result: Result<(), Error>)
+1620.         requires
+1621.             old(self).inv(),
+1622.         ensures
+1623.             match result {
+1624.                 Ok(()) => {
+1625.                     &&& self.inv()
+1626.                     &&& old(s...
+Overall: **plan is viable**, but I see **1 blocking proof gap** and a few important adjustments.
+
+## Blocking Issues
+
+1. **Loop 3 invariant loses old-state information**
+   - **Impact:** Your current loop-3 invariant is enough to describe the **current** bitmap, but not enough to finish the **spec**, especially:
+     - `frames.subset_of(old(self)@.free_frames)`
+     - proving `set(index)` cannot fail on the success path
+   - **Why:** After the first `set`, the current state no longer says the whole target range was free. You need that fact from the **pre-loop state**.
+   - **Fix:** Carry a ghost snapshot (e.g. `ghost old_bm = old(self).bitmap@`) and add an invariant like:
+     - `self.bitmap@.chunks =~= old_bm.chunks`
+     - `forall j: int. sfn <= j < efn ==> old_bm.is_covered(j) && !old_bm.set_bits.contains(j)`
+     - plus your processed-range equation for current `set_bits`
+   - Then derive the “future indices still free in current state” fact from:
+     - `self.bitmap@.set_bits =~= old_bm.set_bits ∪ set_int_range(sfn, index)`
+     - disjointness of `[sfn,index)` and `[index,efn)`.
+
+## Non-Blocking Issues
+
+2. **Do not `admit()` the `bitmap.test()` Err branch**
+   - **Impact:** That weakens the proof and violates the usual guardrails.
+   - **Evidence:** `SparseBitmap::test` ensures `result is Ok` (`src/libs/sparse-bitmap/src/lib.rs:248-255`).
+   - **Fix:** Bind the result first, prove `r is Ok`, then eliminate the `Err` arm as unreachable. Use `assert(false)`/unreachable-style proof, not `admit`.
+
+3. **Loop 1 is genuinely needed under the current contracts**
+   - **Impact:** Without it, loop 2 can accept uncovered indices because `test(index)` returns `Ok(false)` for uncovered bits (`src/libs/sparse-bitmap/src/lib.rs:245-269`), while `set(index)` later fails when `!is_covered || is_bit_set` (`src/libs/sparse-bitmap/src/lib.rs:1619-1635`).
+   - **Fix:** Keep loop 1 in the verified config, and use `find_chunk(index).is_some() <==> is_covered(index)` (`src/libs/sparse-bitmap/src/lib.rs:411-416`) to establish the coverage fact you carry into loop 2/3.
+
+## Suggestions
+
+4. **Q1: Is loop 3 invariant sufficient?**
+   - **Answer:** **Not by itself.**
+   - It is sufficient for the **current-state** shape, but not for the final spec unless you also preserve the **old-range-free/covered** fact across loop 3.
+
+5. **Q3: How to handle `Err` from `bitmap.test()`?**
+   - **Answer:** **Prove unreachable**, don’t `admit`.
+
+6. **Q4: Is `Set::map` distributive over union?**
+   - **Answer:** **Yes.**
+   - `vstd::set_lib::lemma_map_union_commute` exists (`vstd set_lib.rs:511-514`).
+
+7. **Q5: Map over difference**
+   - **Answer:** I would **not** look for a generic lemma first.
+   - **Better fix:** prove `free_frames` extensionally from the view definition in `frame.proof.rs:20-25`, using:
+     - `new_set_bits = old_set_bits ∪ range`
+     - `chunks` unchanged
+     - injectivity of `frame_addr_of(i) = i * spec_page_size()` from `spec_page_size() > 0` (same idea already used in `frame.proof.rs:68-78`).
+   - This is usually easier than forcing a generic `map(difference)` lemma.
+
+## Direct answers
+
+1. **Loop 3 invariant sufficient?**  
+   **No**, unless you also carry the old-state “entire range covered and free” fact.
+
+2. **Need cfg-gated loop 1?**  
+   **Yes**, under current `test`/`set` specs.
+
+3. **`bitmap.test()` Err branch?**  
+   **Prove unreachable**; do not `admit`.
+
+4. **`Set::map` over union?**  
+   **Yes** — use `lemma_map_union_commute`.
+
+5. **Lemma for free-frame difference?**  
+   I don’t see an obvious ready-made one worth depending on; **direct extensional proof is the safer path**.
+
+So: **no architectural blocker**, but **carry old-state facts through loop 3** or the proof likely stalls near the final postcondition.
+[RESULT ✓] task: Overall: **plan is viable**, but I see **1 blocking proof gap** and a few important adjustments.
+
+## Blocking Issues
+
+1. **Loop 3 invariant loses old-state information**
+   - **Impact:** Your current loop-3 invariant is enough to describe the **current** bitmap, but not enough to finish the **spec**...
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Proving alloc_range method
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Good feedback. Let me now look at the current state of the alloc_range method more carefully to understand the full function body:
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 745.     ///
+746.     /// # Description
+747.     ///
+748.     /// Allocates all frames in the given region.
+749.     ///
+750.     /// # Parameters
+751.     ///
+752.     /// - `region`: Physical memory region whose frames should be booked.
+753.     ///
+754.     /// # Returns
+755.     ///
+756.     ///...
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+Now let me see the current proof file and spec file to understand the full context:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use vstd::arithmetic::div_mod::*;
+4. 
+5. /// Helper: convert a bitmap index to a frame (physical) address.
+6. pub open spec fn frame_addr_of(i: int) -> int {
+7.     i * spec_page_size()
+8. }
+9. 
+10. impl View for Inner {
+11.     type V = UpoolView;
+12. 
+13.     closed spec fn view...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::UpoolView;
+4. use crate::hal::mem::spec_page_size;
+5. 
+6. // ---------------------------------------------------------------------------
+7. // External type specifications (arch crate)
+8. // ---------------------------------------------------------------------------
+9. ...
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+Now let me see the `test` spec for the sparse bitmap to understand its guarantees:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] view: 245.     /// `Ok(true)` if the bit is set; `Ok(false)` if it is cleared, *or* if
+246.     /// no chunk covers `index`. Propagates errors from [`Bitmap::test`].
+247.     ///
+248.     #[verus_spec(result =>
+249.         requires
+250.             self.inv(),
+251.         ensures
+252.             result...
+[RESULT ✓] view: 1619.     pub fn set(&mut self, index: usize) -> (result: Result<(), Error>)
+1620.         requires
+1621.             old(self).inv(),
+1622.         ensures
+1623.             match result {
+1624.                 Ok(()) => {
+1625.                     &&& self.inv()
+1626.                     &&& old(s...
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+Now let me check the `is_bit_set` spec and `is_covered` relationship:
+[TOOL] grep: pub open spec fn is_bit_set
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.spec.rs:105:    pub open spec fn is_bit_set(&self, index: int) -> bool {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.spec.rs-106-        self.set_...
+
+────────────────────────────────────────────────────────────
+Turn 107
+────────────────────────────────────────────────────────────
+Good, `is_bit_set(idx) == set_bits.contains(idx)`. Now let me check `set_int_range` from vstd:
+[TOOL] grep: pub open spec fn set_int_range
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/set_lib.rs:1161:pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/set_lib.rs-1162-    Set::new(|i: int| lo <= i && i < hi)
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/set_lib.rs-...
+
+────────────────────────────────────────────────────────────
+Turn 108
+────────────────────────────────────────────────────────────
+Now let me check `lemma_map_union_commute`:
+[TOOL] grep: lemma_map_union_commute
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/set_lib.rs:511:    pub proof fn lemma_map_union_commute<B>(self, t: Set<A>, f: spec_fn(A) -> B)
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/set_lib.rs-512-        ensures
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/set_lib.rs-513-     ...
+
+────────────────────────────────────────────────────────────
+Turn 109
+────────────────────────────────────────────────────────────
+Now let me check the full alloc_range function from the beginning:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`SparseBitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller (upool, kpool, an...
+
+────────────────────────────────────────────────────────────
+Turn 110
+────────────────────────────────────────────────────────────
+Now let me look at how the spec references work for the region inv():
+[TOOL] grep: impl TruncatedMemoryRegion.*inv
+[RESULT ✓] grep: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 111
+────────────────────────────────────────────────────────────
+[TOOL] grep: spec fn inv.*TruncatedMemoryRegion|spec fn inv.*region
+[RESULT ✓] grep: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 112
+────────────────────────────────────────────────────────────
+[TOOL] grep: spec fn inv
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs:481:    pub open spec fn inv(&self) -> bool
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs-482-    {
+/home/ruize/verus-ai-exp/verus-a...
+
+────────────────────────────────────────────────────────────
+Turn 113
+────────────────────────────────────────────────────────────
+Good: `region.inv()` ⟹ `region@.start % ps == 0 && region@.size % ps == 0`.
+
+Now let me also check what `MemoryRegionView` looks like:
+[TOOL] grep: MemoryRegionView
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs:444:pub struct MemoryRegionView
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs-445-{
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/ta...
+
+────────────────────────────────────────────────────────────
+Turn 114
+────────────────────────────────────────────────────────────
+Let me check vstd for division ordering lemmas and set_lib utilities:
+[TOOL] grep: pub proof fn lemma_div_is_ordered
+[TOOL] grep: pub proof fn lemma_mul_increases
+[TOOL] grep: lemma_div_multiples_vanish
+
+[THINKING] Now I have all the context I need. Let me plan the alloc_range proof carefully.
+
+## Plan
+
+### Pre-loop arithmetic setup
+1. Establish `start_frame_number as int == region@.start / spec_page_size()`
+2. Establish `num_frames as int == region@.size / spec_page_size()` (since `region_size_raw / FRAME_SIZE` and `FRAME_SIZE == spec_page_size()`)
+3. Establish `end_frame_number as int == (region@.start + region@.size) / spec_page_size()`
+   - This requires proving: `(a + b) / d == a/d + b/d` when `a % d == 0 && b % d == 0 && d > 0`
+   - I can apply `lemma_fundamental_div_mod` twice to show `a == d*(a/d)` and `b == d*(b/d)`, then combine them to get `a + b == d*(a/d + b/d)`, which gives us `(a+b)/d == a/d + b/d`
+
+### Define ghost constants and set up loop invariants
+I'm introducing ghost variables for the page size and frame numbers, then establishing the loop invariant that tracks bitmap validity and coverage of the frame range.
+
+### Analyzing the error path
+If the loop exits early because a frame isn't covered, that frame's address won't be in the free_frames set (since coverage is required), but it will be in the frames set derived from the frame number range, which means the frames set isn't a subset of free_frames as required.
+
+I also need to verify that the bitmap state hasn't changed, which follows directly from the invariant that keeps it equivalent to the original.
+
+### Loop 2 invariant (free check)
+Continuing to establish the invariant for the second loop...
+
+After the first loop succeeds, I know every frame number in the range is covered. Now in the second loop, I'm checking which bits are actually set in the bitmap. The challenge is that calling `test` requires the full `self.inv()` condition, which includes both the bitmap invariant and the internal invariant. I have the internal invariant from the loop invariant, but I need to verify the bitmap invariant holds to make the test call valid.
+
+When `test` returns true, the frame is allocated—the bit is set, which means that frame address is definitely not in the free frames list (since free frames only contains unset bits). So the frame must be in the allocated frames, contradicting the assumption that all frames are free. In the error path, `test` always succeeds according to the spec, so that branch is unreachable.
+
+Now I'm working through the loop invariant for the set-all operation. I need to establish what conditions must hold: the bitmap stays valid, the chunks don't change, and the set bits expand to include the range from the start frame number up to the current index. The tricky part is proving that `set(index)` actually succeeds, which requires showing the index is covered in the bitmap.
+
+To make that work, I need to carry forward two key facts from the earlier loops: first, that all indices in the range are covered in the bitmap, and second, that none of those indices were already set in the original state. The second fact combined with the fact that we're only adding indices less than the current one means the current index can't already be set.
+
+Now I'm questioning whether I can actually reference `old(self)` inside a loop invariant in Verus's attribute mode syntax. The `old()` function should capture the state at function entry, which is what I need here, but I want to make sure that's how Verus actually handles it in loop invariants.
+
+Looking at the attribute syntax for loop invariants — `#[verus_spec(invariant(expr1, expr2, ...))]` where each expression is a separate conjunct — I can see how to structure this. The challenge is that I need to preserve facts across multiple loops. After the first loop completes, I'll have established that all frames in the range are covered, and I need to carry that knowledge forward into the next loop.
+
+The key insight is that `old(self)` in Verus always refers to the function-entry state, so even in loop 3 when I'm modifying the bitmap, I can still reference `old(self).bitmap@` to access the original bitmap facts about coverage and freeness. This means I can maintain invariants about the original bitmap state while tracking the current state of the modified bitmap separately. After loop 2 finishes, I have two key facts: the bitmap range is uncovered in set_bits, and the bitmap state matches the function entry. Since I'm modifying set_bits in loop 3, I need to preserve these invariants about the original state as I proceed.
+
+For loop 3, I'm carrying forward the old-state facts as time-invariant properties since they reference the immutable entry state. Then I'm tracking how set_bits accumulates by unioning the range I'm processing, while chunks remain unchanged. This lets me prove that each `set(index)` call succeeds. After the loop exits, I have `set_bits` updated to include the range `[sfn, efn)` and `chunks` remains unchanged. Now I need to verify three key properties: that all frames in the allocated range were previously free, that the new state matches the spec transition, and that the invariant still holds. Let me start by checking that every frame in the range was free in the old state.
+
+For any address in the allocated frames, I can find a corresponding index in the range where that address was marked as free before the operation. This establishes that the frames were available for allocation.
+
+Next, I need to show the new state matches the spec's view of allocation. The spec says allocated frames should be the old allocated set plus the new frames, and free frames should be the old free set minus the new frames. I'm verifying that the bitmap representation correctly reflects this transition. I'm realizing that Verus's set comprehension notation `{ addr | exists|i| ... }` is equivalent to the `.map()` operation, so I can reframe the allocated_frames relationship as a union of mapped sets: the new allocated frames equal the old frames plus the newly allocated range, all expressed through the same frame-to-address mapping function. the definition of `Set::map` to confirm they're structurally identical. The `map` function creates a set by checking if an element exists in the original set and matches the function's output, which is exactly how my View definition constructs `allocated_frames` using `frame_addr_of`. Since these are definitionally equal, Verus should recognize the equivalence without needing an explicit assertion.
+
+However, I need to be careful about trigger annotations—the mismatch between how the map is defined versus how my View constructs it might cause the SMT solver to struggle with the proof. Rather than relying on `lemma_map_union_commute`, I think the cleaner approach is to prove the post-loop invariant directly using extensional equality, asserting that `allocated_frames` equals the union of its previous state with the newly added frames.
+
+Writing the extensional equality proof... Finishing the proof logic for both directions of the equivalence, then wrapping up the verification—this is getting intricate with all the frame address calculations and set membership assertions. Let me think about the backward direction more carefully.
+
+For the backward: `old(self)@.allocated_frames.union(frames).contains(addr)` means `old(self)@.allocated_frames.contains(addr) || frames.contains(addr)`.
+
+If `old(self)@.allocated_frames.contains(addr)`: there exists `i` with `old_set_bits.contains(i) && addr == frame_addr_of(i)`. Since `old_set_bits ⊆ new_set_bits`, we have `new_set_bits.contains(i)`. So `self@.allocated_frames.contains(addr)`.
+
+If `frames.contains(addr)`: `frames = set_int_range(sfn,efn).map(|i| i * ps)`. So there exists `j` with `sfn <= j < efn && addr == j * ps`. Since `j` is in the range that gets added to `new_set_bits`, we have `new_set_bits.contains(j)`, and therefore `self@.allocated_frames.contains(addr)`.
+
+Now for the free_frames case: I need to verify that `self@.free_frames` equals `old(self)@.free_frames.difference(frames)`. The free frames are those addresses where the frame index is covered but not in the new set bits, and the old free frames minus the newly allocated frames should give the same result. *ps`, which by injectivity means `j == i`, contradicting `i ∉ range`. So `addr ∉ frames`.
+Thus `addr ∈ old@.free_frames \ frames`.
+
+For the backward direction, I need to show that if an address is in the old free frames but not in the new frames, then it satisfies the condition. Given `old@.free_frames.contains(addr) && !frames.contains(addr)`, there exists some `i` that was previously uncovered. The key constraint is ensuring `i ∉ range` — if `i` were in the range being allocated, then the address would map to a frame in the new set, which contradicts our assumption.
+
+Now I'm verifying the forward direction for free_frames: when `i ∈ range`, the address maps to a frame that's in the new frames set by definition, and the coverage properties carry through since the chunks remain equivalent.
+
+The proof structure is coming together — I need to establish the arithmetic properties and handle the boundary cases for the range operations. I need to handle the let binding for `frames` that's defined inside the ensures clause—when I'm in proof mode, I'll need to reconstruct that same expression with the closure. I should also verify that loop 1 is actually compiled given the feature flags, then systematically replace the placeholder admits with real loop invariants and remove the top-level proof block.
+
+Now I'm thinking through potential overflow issues with `start_frame_number + num_frames`. Since both values come from region properties that are already constrained by the internal invariant to stay within `usize::MAX` bounds, the sum should be safe as long as the region's total span doesn't exceed that limit. about whether the preconditions guarantee no overflow. The region's `start` and `size` fields come from `usize` values, so they're bounded by `usize::MAX`, but there's no guarantee that `start + size` itself won't overflow. The spec treats them as `int` values derived from those `usize` fields, which means I need to verify whether the region's invariants actually prevent this overflow scenario. I'm realizing the exec code computes `end_frame_number` by adding `start_frame_number + num_frames` before the first loop, which means Verus needs to verify this addition won't overflow. The function's preconditions only require the invariants to hold, but don't explicitly bound the region's start and size to prevent overflow, so I need to trace where those values come from in the `MemoryRegionView` to see if there's an implicit guarantee. Now I'm checking whether `start_frame_number + num_frames` could overflow when both values are computed via division. The spec uses integer arithmetic so there's no overflow there, but the executable code needs to avoid it—and I'm realizing that `start / ps + size / ps` doesn't always equal `(start + size) / ps` unless both are aligned to the page size, which they are here. The real constraint is whether the final result fits in a `usize` given the bounds on `start`, `size`, and the page size. well it's not guaranteed.
+
+But `ps` is typically 4096, so `(start + size) / 4096 <= 2 * usize::MAX / 4096` which is well within usize range. But can I prove this from the formal preconditions alone?
+
+Actually, I think I can add an overflow check. If `start + size > usize::MAX * ps`, then the code would overflow. But the region comes from a physical memory region that's supposed to represent valid physical memory. In practice, `start + size <= usize::MAX` because both are usize values...
+
+Hmm wait, `region@.start` is `self.start@` where `self.start` is a `PageAligned<PhysicalAddress>`. And `PageAligned<T>` has `inner: T`. For `PhysicalAddress`, `@` gives an `int`. But `PhysicalAddress` wraps a `usize`, so both `start` and `size` are bounded by `usize::MAX`.
+
+When I divide by page size, I get `start/ps <= usize::MAX/ps` and `size/ps <= usize::MAX/ps`. Their sum is at most `2 * usize::MAX / ps`. Since page size is always at least 2 in practice, this stays within `usize::MAX`. But I can only prove `ps > 0` from the internal invariants—the specification doesn't guarantee `ps >= 2`. In reality, `FRAME_SIZE` is 4096, but I need to verify whether I can establish this constraint formally. but I can't rely on that.
+
+Actually, let me think again. `start_frame_number` is a usize, returned by `region_start_frame_number`. Its spec says `ret as int == region@.start / ps`. So `start_frame_number <= usize::MAX` trivially (it's a usize). Similarly `num_frames` is a usize.
+
+The question is just whether `start_frame_number + num_frames` overflows.
+
+Actually, maybe I should check if there's an internal_inv or wf condition that would help. Or maybe I need to add a `requires region@.start + region@.size <= usize::MAX as int` to the alloc_range spec. But the user said I can't weaken contracts (add requires counts as weakening for callers).
+
+Wait — can I add a requires? The instruction says "Do NOT weaken any requires or ensures clause to make a proof easier." Adding a requires is strengthening the requires (making it harder to call), which weakens the function from the caller's perspective. So I should NOT add a new requires.
+
+Hmm, but if the exec code can actually overflow, that's a code bug, not a proof issue.
+
+Let me think about the math here. On a 32-bit system with a page size of 4096, the maximum frame number would be around 1,048,575. Even if both the start and size divide evenly by the page size, their sum as frame numbers would still fit comfortably within a 32-bit unsigned integer. So in practice, overflow shouldn't happen for reasonable memory configurations.
+
+The real constraint is that if the page size is at least 2, then dividing both start and size by ps ensures the sum stays within bounds. But I only have `ps > 0` from the spec, not `ps >= 2`. Let me check what the FRAME_SIZE specification actually guarantees...
+
+Looking at the ensures clause, it only promises `result > 0`. However, since Nanvix's FRAME_SIZE is always PAGE_SIZE (4096 bytes), I could strengthen the spec to include `result >= 2` without any issue—that's well within what the actual implementation provides.
+
+But I'm wondering if there's a different approach altogether. The real problem is that the exec code does `let end_frame_number: usize = start_frame_number + num_frames;` without an overflow check, and Verus will reject this unless I can prove the addition won't overflow. The `internal_inv` tells me that covered frame indices stay within bounds, but I don't have a guarantee that the range [start_frame_number, end_frame_number) is actually covered.
+
+The overflow could happen before the loop even validates the range, which looks like a genuine bug in the original code. Since the user's instructions say to auto-fix overflow issues, I should use a checked addition here and handle the overflow case properly. `checked_add` or `saturating_add` and return an error if it overflows. Or, we could strengthen the FRAME_SIZE spec to include `result >= 2`. Let me think about which is cleaner.
+
+Option A is more robust as it handles the actual case with checked addition, but it modifies exec code. The error path would need to prove that when the sum overflows, the frames set contains some element not in free_frames — since all frame addresses in free_frames are bounded by `usize::MAX`, any overflow would create a frame address exceeding that bound, which wouldn't be in free_frames.
+
+Option B is simpler: if we require `FRAME_SIZE >= 2`, then both `start/ps` and `size/ps` are at most `usize::MAX/2`, so their sum can't overflow. This avoids the complex proof entirely.
+
+Now I need to verify this works in Verus by checking that `region@.start` is actually bounded by `usize::MAX` — it should be since it's a usize value, but let me confirm that's guaranteed. It comes from `self.start@` where `self.start` is `PageAligned<PhysicalAddress>`. `PageAligned<T>` has `inner: T`, and `PhysicalAddress` wraps a usize. So `self.start@ <= usize::MAX`. Yes.
+
+Similarly `region@.size` comes from `self.size` which is a `usize`, so `0 <= region@.size <= usize::MAX`.
+
+With `ps >= 2`:
+- `start_fn = region@.start / ps <= usize::MAX / ps <= usize::MAX / 2`
+- `num_fn = region@.size / ps <= usize::MAX / ps <= usize::MAX / 2`
+- `start_fn + num_fn <= usize::MAX`
+
+This relies on integer division monotonicity and the fact that dividing by 2 or more gives at most half the maximum value, so their sum stays within bounds.
+
+The key insight is that I need `ps >= 2` in the specification, which I can add to the FRAME_SIZE assume_specification. Then I need to ensure this constraint is available in the proof contexts where I need it, either through `internal_inv` or by propagating it explicitly.
+
+But I'm also wondering if there's a simpler approach—maybe I can prove no overflow happens without modifying the executable code at all, or I should just add a checked arithmetic operation and document it in bugs.md as an auto-fixable issue.
+
+Let me trace through the math: the region invariant guarantees that both start and size are aligned to the page size and non-negative. If I divide them by the page size, I get two non-negative integers whose sum shouldn't overflow since they're derived from values that already fit in usize.
+
+The issue is that when page size equals 1, the sum could theoretically reach 2 * usize::MAX, which overflows. The cleanest fix is to strengthen the FRAME_SIZE specification to require it be at least 2—this is realistic since frame sizes are always 4096 or larger in practice. Alternatively, I should check if there's already some constraint on region sizes that would prevent this overflow. ially correct strengthening since FRAME_SIZE is 4096 across all platforms. I'll update internal_inv to require `spec_page_size() >= 2` and then prove there's no overflow. Changing the invariant from `> 0` to `>= 2` should be fine since the stronger condition still satisfies all existing proofs that rely on the weaker `> 0` requirement. to the FRAME_SIZE assume_specification, and then leverage the fact that `spec_page_size() >= 2` directly in the alloc_range proof to avoid overflow. Since `spec_page_size() == FRAME_SIZE` and the specification guarantees `FRAME_SIZE >= 2`, I can access this constraint at the call site where `mem::FRAME_SIZE` is invoked to compute `num_frames`.
+
+The key insight is that when `mem::FRAME_SIZE` is called in the exec code for `region_size_raw(region) / mem::FRAME_SIZE`, Verus already knows both the equality `mem::FRAME_SIZE == spec_page_size()` and the constraint `mem::FRAME_SIZE >= 2` from the postcondition. In the proof block, I can then assert `spec_page_size() >= 2` by substituting the equality relationship. an uninterp spec function. The link between them is `result == spec_page_size()`.
+
+In the exec code `let num_frames: usize = region_size_raw(region) / mem::FRAME_SIZE;`, the return value of `mem::FRAME_SIZE` is bound to an anonymous variable. Verus knows `anonymous >= 2` and `anonymous == spec_page_size()`. But does this knowledge persist beyond the expression?
+
+In Verus, function call postconditions are added as assertions at the call site. For `mem::FRAME_SIZE`, Verus adds `result == spec_page_size() && result > 0` (and with my addition, `result >= 2`). But `result` here is the specific value returned. After the division, the fact `spec_page_size() >= 2` should be available in the proof context because it was established as a fact.
+
+Actually, I'm not certain how Verus handles this propagation. Let me try a different approach: I could use a `proof!` block to explicitly invoke `mem::FRAME_SIZE` and capture its postcondition, but I can't call exec functions in proof mode. What if I use a ghost binding instead? No, that won't work either since `mem::FRAME_SIZE` is an exec function. Let me reconsider: since the exec code already calls `mem::FRAME_SIZE`, Verus should know the relationship between the actual value and `spec_page_size()`. and `mem::FRAME_SIZE >= 2`, I can in a proof block after that exec call assert `spec_page_size() >= 2`.
+
+Actually, let me just try it. Let me add `assert(spec_page_size() >= 2)` in the proof block. If Verus can derive it from the FRAME_SIZE call's postcondition, it will pass.
+
+Wait, actually from `internal_inv()`, I already have `spec_page_size() > 0`. If I change the FRAME_SIZE spec to `result >= 2`, then at the call site of `mem::FRAME_SIZE` in the exec code, Verus will know `mem::FRAME_SIZE >= 2` and `mem::FRAME_SIZE == spec_page_size()`. But `spec_page_size()` is uninterp — the fact `spec_page_size() >= 2` is only established via the equation `mem::FRAME_SIZE == spec_page_size()`.
+
+After the exec call, both facts should be available in the proof context, so I can just assert it. Actually, the cleanest approach is to strengthen `internal_inv` from `spec_page_size() > 0` to `spec_page_size() >= 2` and add `result >= 2` to the FRAME_SIZE assume_specification. That way anywhere I have `self.internal_inv()`, I automatically get the constraint I need.
+
+Now for the division: `num_frames = region_size_raw(region) / mem::FRAME_SIZE`. Since `region_size_raw(region)` gives me `ret as int == region@.size` and `mem::FRAME_SIZE` gives me `result == spec_page_size()` with `result >= 2`, I can reason about `num_frames == region@.size / spec_page_size()`.
+
+Verus handles the division-by-zero check at the exec level since `mem::FRAME_SIZE > 0`. For the addition overflow, I need to show that `start_frame_number` and `num_frames` are both bounded by `usize::MAX / 2` since they're each at most `usize::MAX / spec_page_size()` and `spec_page_size() >= 2`. I'm realizing the algebraic approach is getting unwieldy with all these division properties. Let me step back and use a cleaner strategy with lemmas instead—focusing on the core insight that both `start_frame_number` and `num_frames` are derived by dividing the region's start and size by the page size, which should give me the bounds I need directly. I've established that both `start_frame_number` and `num_frames` are bounded by `usize::MAX / 2`, which means their sum stays within `usize::MAX` with no overflow. Now I'm setting up a formal proof by asserting the key invariants from the region and page size specifications. Finishing the proof about bounds...
+
+Now I'm verifying that the sum of the start frame and number of frames stays within bounds—since both are individually bounded by half of `usize::MAX`, their sum can't exceed the maximum value. I need to be careful about the exact arithmetic here, particularly with how the remainder factors in. I can derive that `start_frame_number <= usize::MAX / 2` by combining the constraint `ps * start_frame_number <= usize::MAX` with `ps >= 2`, which gives me `2 * start_frame_number <= usize::MAX`. Since `start_frame_number` is an integer, this means `start_frame_number <= floor(usize::MAX / 2)`, and Verus should be able to handle this arithmetic reasoning automatically. I need to verify that `lemma_div_is_ordered` is available in Verus's standard library and understand exactly how to apply it to prove that `sfn <= M / 2`.
+[RESULT ✓] grep: No matches found.
+[RESULT ✓] grep: No matches found.
+[RESULT ✓] grep: Output too large to read at once (10.4 KB). Saved to: /tmp/copilot-tool-output-1777047412089-bz79mg.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 115
+────────────────────────────────────────────────────────────
+[TOOL] grep: pub proof fn lemma_div_is_ordered
+[RESULT ✓] grep: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 116
+────────────────────────────────────────────────────────────
+[TOOL] grep: pub proof fn lemma_div
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs:68:pub proof fn lemma_div_by_self(d: int)
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs:78:pub proof fn lemma_div_of0(d: int)
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs:9...
+
+────────────────────────────────────────────────────────────
+Turn 117
+────────────────────────────────────────────────────────────
+[TOOL] grep: pub proof fn lemma_div_multiples_vanish
+[RESULT ✓] grep: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 118
+────────────────────────────────────────────────────────────
+[TOOL] grep: fn lemma.*div.*ordered|fn lemma.*ordered.*div|fn lemma_div_decrease
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs:187:pub broadcast proof fn lemma_div_is_ordered_by_denominator(x: int, y: int, z: int)
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs:309:pub broadcast proof fn lemma_div_is_ordered(x: int, y: int, z: ...
+
+────────────────────────────────────────────────────────────
+Turn 119
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs
+[RESULT ✓] view: 337. pub broadcast proof fn lemma_div_decreases(x: int, d: int)
+338.     requires
+339.         0 < x,
+340.         1 < d,
+341.     ensures
+342.         #[trigger] (x / d) < x,
+343. {
+344.     lemma_div_induction_auto(d, x, |u: int| 0 < u ==> u / d < u);
+345. }
+346. 
+347. /// Proof that dividing an i...
+[RESULT ✓] view: 309. pub broadcast proof fn lemma_div_is_ordered(x: int, y: int, z: int)
+310.     requires
+311.         x <= y,
+312.         0 < z,
+313.     ensures
+314.         #[trigger] (x / z) <= #[trigger] (y / z),
+315. {
+316.     lemma_div_auto(z);
+317.     let f = |xy: int| xy <= 0 ==> (xy + y) / z <= y / z;...
+
+────────────────────────────────────────────────────────────
+Turn 120
+────────────────────────────────────────────────────────────
+[TOOL] grep: pub.*proof fn lemma_mul_inequality
+
+[THINKING] Good. `lemma_div_is_ordered(x, y, z)` requires `x <= y, z > 0` and ensures `x/z <= y/z`. This is exactly what I need.
+
+For the overflow proof:- `ps * sfn = region@.start <= usize::MAX`
+- I need `sfn <= usize::MAX / 2`
+
+From `ps >= 2` and `ps * sfn <= usize::MAX`:- `2 * sfn <= ps * sfn <= usize::MAX`- `lemma_div_is_ordered(2*sfn, usize::MAX, 2)` gives `(2*sfn)/2 <= usize::MAX/2`- `(2*sfn)/2 = sfn` (by `lemma_div_multiples_vanish` or by `lemma_fundamental_div_mod`)Wait, I need a lemma that `(2*sfn)/2 = sfn`. 
+
+I can derive this from `lemma_fundamental_div_mod` and the fact that `(2*sfn)%2 == 0`, which gives me `(2*sfn)/2 == sfn`. But this is getting unwieldy—let me look for a more direct approach instead of chaining all these division lemmas together.
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/mul.rs:164:pub broadcast proof fn lemma_mul_inequality(x: int, y: int, z: int)
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/mul.rs-165-    requires
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/mul.rs-166-...
+
+────────────────────────────────────────────────────────────
+Turn 121
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs
+
+[THINKING] `lemma_mul_inequality_converse(x, y, z)`: `x*z <= y*z && z > 0 ==> x <= y`. This is useful!
+
+From `ps * sfn <= usize::MAX`:- I need to get to `sfn <= usize::MAX / ps`
+- `ps * sfn <= usize::MAX`
+- By `lemma_mul_is_commutative(ps, sfn)`: `sfn * ps <= usize::MAX`- By `lemma_div_is_ordered(sfn * ps, usize::MAX, ps)`: `(sfn * ps) / ps <= usize::MAX / ps`
+
+
+- By `lemma_div_multiples_vanish(sfn, ps)`: `(sfn * ps) / ps = sfn`, so I get `sfn <= usize::MAX / ps`. Now for the constraint `sfn + nfn <= 2 * (usize::MAX / ps)`, I need to show that `2 * (usize::MAX / ps) <= usize::MAX`, which holds when `ps >= 2` since dividing by a larger denominator gives a smaller quotient.
+[RESULT ✓] view: 187. pub broadcast proof fn lemma_div_is_ordered_by_denominator(x: int, y: int, z: int)
+188.     requires
+189.         0 <= x,
+190.         1 <= y <= z,
+191.     ensures
+192.         #[trigger] (x / y) >= #[trigger] (x / z),
+193.     decreases x,
+194. {
+195.     reveal(div_recursive);
+196.     revea...
+
+────────────────────────────────────────────────────────────
+Turn 122
+────────────────────────────────────────────────────────────
+[TOOL] grep: lemma_div_multiples_vanish
+
+[THINKING] OK actually I think I'm overcomplicating this. Let me try a much simpler approach.
+
+From internal_inv:
+- `spec_page_size() > 0`
+- `forall|i| is_covered(i) ==> i >= 0 && frame_addr_of(i) <= usize::MAX`
+
+Instead of worrying about ps >= 2, let me try: can I prove `sfn + nfn` doesn't overflow from the fact that valid frame addresses must fit in usize?
+
+Actually, the issue is that we don't know the indices [sfn, efn) are covered at this point. The computation `end_frame_number = start + num` happens before loop 1 checks coverage.
+ 
+Maybe I should sidestep the overflow issue entirely by using checked arithmetic instead. Looking back at the original pre-VERUS code, it computed the last frame number with an inclusive range, which likely had the same overflow vulnerability—the comment at line 788 hints that the VERUS rewrite changed how this was calculated. I think the cleanest fix is to strengthen the FRAME_SIZE specification by adding `result >= 2` as a postcondition rather than trying to fix the overflow issue in the exec code itself. This way, when the alloc_range proof uses the return value from FRAME_SIZE, it automatically gets the guarantee that it's at least 2, which helps avoid the overflow problem without weakening any contracts.
+
+The key insight is that Verus preserves postcondition facts from exec function calls throughout the rest of the function, so once we call `mem::FRAME_SIZE`, the fact that `spec_page_size() >= 2` stays available for the division and subsequent proof steps. and `frame_size >= 2`. These facts persist.
+
+But wait, this is exec code change. Let me check if I need to change exec code or if the existing code already gives me the fact.
+
+Actually, in `region_size_raw(region) / mem::FRAME_SIZE`, the expression `mem::FRAME_SIZE` is evaluated first, giving a value `v` with postcondition `v == spec_page_size() && v > 0 && v >= 2`. Then the division `region_size_raw(region) / v` is computed. At this point, `spec_page_size() >= 2` is in the context.
+
+So I should be able to assert `spec_page_size() >= 2` in a proof block after this line. Let me try.
+
+Actually, I just realized: I'm making `mem::FRAME_SIZE` return `result`...
+
+Now I'm thinking about the overflow check for `start_frame_number + num_frames`. The addition happens after the FRAME_SIZE call, so the postcondition `spec_page_size() >= 2` should be available in the proof context at that point. To prove no-overflow, I need to establish that `start_frame_number + num_frames <= usize::MAX` using the arithmetic constraints I have. Let me plan out the proof assertions I'll need to insert before the addition.
+
+Building the proof structure... I'm realizing the key insight: if `2 * sfn <= usize::MAX` and `2 * nf <= usize::MAX`, then both `sfn` and `nf` are at most `usize::MAX / 2`, which means their sum stays within bounds. The challenge is getting Verus to verify this at the execution level by establishing that `start_frame_number + num_frames <= usize::MAX` before the actual addition happens. I'm working through whether the SMT solver can handle the integer division properties automatically—specifically that `2 * (M/2) <= M` always holds. I could derive this from the fundamental division-modulo lemma, but I'm wondering if there's a simpler approach that avoids division altogether.
+
+Now I'm trying a different angle: directly asserting the sum constraint and working with the multiplication properties instead. Since both `ps * sfn` and `ps * nf` are bounded by `usize::MAX`, their sum is bounded by `2 * usize::MAX`, which means `ps * (sfn + nf) <= 2 * usize::MAX`. If `ps >= 2`, I can divide through to get the bound on `sfn + nf` itself.
+
+Actually, let me just strengthen the invariant to require `spec_page_size() >= 2` instead of just `> 0`, then use that with multiplication lemmas in the overflow proof.
+
+Now I'm working through what the SMT solver actually needs to verify: given that page size is at least 2, and both `sfn` and `nfn` are bounded by `M / ps`, I need to show their sum doesn't exceed `M`. The key insight is that if `2 * a <= b`, then `a <= b / 2`, which means each term is at most half of `M`, so together they fit. The SMT solver should handle the linear arithmetic directly—deriving `sfn + nf <= M` from the constraints `2 * sfn <= M` and `2 * nf <= M` is straightforward. Let me just add those assertions and see if the solver can work it out; if not, I'll add explicit division steps. Now I need to plan the implementation: adding `result >= 2` to the FRAME_SIZE assumption is the first step.
+
+For the rest, I'll need to update `internal_inv` to require `spec_page_size() >= 2` instead of `> 0`, then write out the full `alloc_range` proof with arithmetic setup, three loop invariants and their body proofs, and the post-loop verification. But I should be careful here—changing that invariant from `> 0` to `>= 2` might break existing proofs that currently rely on the weaker condition, so I need to check what `lemma_inv_implies_wf` and other lemmas actually depend on.
+
+Looking at the dependencies, `lemma_inv_implies_wf` uses `lemma_mod_multiples_basic` which requires `m > 0`, and `lemma_mul_equality_converse` which just needs `m != 0`—both of these are satisfied by `ps >= 2`. The same holds for `lemma_mul_nonnegative` and the other lemmas used in `free`, `book`, and `alloc`. So the change from `> 0` to `>= 2` should be safe across all existing proofs.
+
+But I need to verify that `internal_inv` is actually established at initialization. The `init` function uses an `assume_specification` that only asserts `result.is_ok() || result.is_err()`, which doesn't prove `internal_inv`. Since the public methods have `external_body` and bypass verification, the `inv()` precondition is only checked on the Inner methods themselves—so as long as the callers somehow have `self.inv()` when they call these methods, the verification should go through.
+
+The key insight is that `internal_inv` is a proof-level invariant that's checked in the ensures clauses of Inner methods and required in their preconditions. The initialization path is trusted via the `assume_specification`, so changing the `> 0` condition to `>= 2` is safe—whatever `internal_inv` requires will be established by that trusted init path.
+
+Now for the FRAME_SIZE postcondition: adding `result >= 2` as a new ensures clause shouldn't break anything since FRAME_SIZE is always 4096 in practice, making the constraint trivially true. The existing proofs for other methods should remain unaffected.
+
+I'm ready to start implementing. I'll tackle the smaller changes first—updating the FRAME_SIZE spec and `internal_inv`—then move on to proving `alloc_range`. For that proof, I need to establish the arithmetic relationships, particularly that `end_frame_number` equals `(region.start + region.size) / ps`, and verify there's no overflow when computing `start + num`.
+
+Writing the alloc_range proof... Writing verification logic... Still writing verification logic... I need to verify the loop invariant syntax and how `old(self)` works in Verus attribute mode, then think through the edge cases like empty ranges where no iterations occur and the postcondition should hold vacuously. For the empty range case, the frames set would be empty after mapping, which is trivially a subset of anything, and the allocation state would remain unchanged since no allocations happen. I'm also checking the configuration guard for the first loop to handle the nightly-performance feature flag correctly.
+
+Now I'm working through how the coverage invariant carries between the two loops — loop 1 establishes that all indices in the range are covered, and loop 2 needs to use that as a precondition while maintaining the invariant that indices before the current position are both covered and not in the set bits. the loop invariant holds because loop 1 already established coverage for the entire range, so any index we examine in loop 2 falls within that covered region. loop 2's invariant needs TWO facts: coverage for all frames in `[sfn, efn)` carried over from loop 1 (since the bitmap stays unchanged), plus the accumulating constraint that frames in `[sfn, index)` haven't been added to the set. I can combine these into a single invariant that tracks both the coverage guarantee and the exclusion property across the range.
+
+Now I'm working through the error paths more carefully, starting with loop 1's error case where we fail to find a chunk—I need to verify that the invariant still holds, the bitmap state is unchanged, and the frames we're trying to add aren't already in the free set.
+
+For the third condition, I'm checking that `frame_addr_of(index)` exists in the frames we're adding but not in the free frames, since the index isn't covered by the bitmap. Let me trace through the logic more precisely: the frame address equals `index * page_size`, and it's in our frames set because the index falls within the range we're mapping, but it can't be in free_frames since that requires the index to be covered, which contradicts our error condition. Now I need to establish two things: first, that the view remains unchanged since the bitmap itself hasn't changed, and second, that I can construct a witness showing the frames aren't a subset of the old free frames. For the view equality, since the bitmap's set bits and chunks are identical between the old and new states, the view computation should yield the same result, though I'll need to make this explicit for Verus since the view function is closed. I need to prove view equality explicitly using extensional equality on the set fields, similar to what I did in the earlier proofs. For the "view unchanged" case, I'm asserting that both `allocated_frames` and `free_frames` remain the same by showing that the membership conditions are equivalent—since the underlying bitmap's set bits and chunks haven't changed, the implications follow immediately.
+
+Now for the post-loop-3 proofs, I'm working with the state after the allocation loop where the bitmap's set bits have been extended to include the newly allocated range, while chunks stay the same. I need to establish that the allocated frames are indeed a subset of what was previously free, and then verify the full view equality holds.
+
+For the first proof, I'm constructing an argument that any address in the allocated frames must have come from a covered but previously unset bit in the bitmap. I'm choosing an index within the target range and using the precondition that all those indices were both covered and free to establish the subset relationship.
+
+Verifying the assertion... I'm verifying the allocated and free frame sets match by checking both directions: if a bit is set in the new allocation, it either came from the old allocation or the newly allocated range, and conversely, any bit from the old allocation or new range must be set in the new state. For the free frames, I need to show that the new free set equals the old free set minus the newly allocated frames. old_set_bits.contains(i) ✓. Need !range.contains(i).
+Suppose i ∈ range. Then fao(i) = i*ps ∈ frames. But addr == fao(i) and addr ∉ frames. Contradiction. So i ∉ range.
+
+This all works! The injectivity argument is the same pattern I used before.
+
+#### 3. self.inv()
+
+`self.inv() = self@.wf() && self.internal_inv()`.
+- `self.internal_inv()`: call `lemma_internal_inv_preserved(old(self))
+
+` — chunks unchanged, self.bitmap.inv().
+- `self@.wf()`: call `self.lemma_inv_implies_wf()`.
+
+I think I have a complete plan now. Let me start implementing it. One thing to figure out: the loop invariant syntax in attribute mode uses separate conjuncts, where I can reference the function-entry state with `old(self)`. There's a subtlety with Verus for-loops though — they desugar to while loops, so the loop variable ranges from `a` to `b-1` during execution.
+
+The invariant needs to hold at the start of each iteration and after the loop exits. When the loop finishes, the loop variable equals the upper bound. I'll write the invariant as `start_frame_number <= index && index <= end_frame_number` to cover all phases of execution. Now I'm ready to implement this.
+
+I should also consider the edge case where `start_frame_number == end_frame_number`, meaning all three loops are empty and the post-loop proof needs to handle that scenario.
+
+For loop 3 specifically, when the loop exits with `index == end_frame_number == start_frame_number`, the set of integers in that range is empty, so the bitmap remains unchanged. The loop invariant for `set_bits` tracks how the bitmap accumulates the union of frame ranges as we iterate, starting from the old bitmap state and adding each frame's bit range.
+
+At entry to loop 3, since loops 1 and 2 only read from the bitmap without modifying it, the invariant holds trivially: we're unioning the empty set with the unchanged bitmap. Now I need to verify the invariant holds after each iteration as we increment the index and set bits for each frame. I need to verify that `sfn == start_frame_number` holds from the arithmetic setup, which guarantees the set range equality. The implementation looks feasible, so I'll proceed with coding it. I also need to ensure the loop maintains the bitmap invariant—`bitmap.set()` preserves `self.inv()` in both success and error cases, so that should be satisfied after the loop completes.
+
+For the loop invariants, I can reference `self.bitmap.inv()` directly since it's a spec function within the same module and Verus can see through the `closed` View. The trickier part is proving that error paths preserve the original state—I need to show `self@ == old(self)@` when the View is closed, which requires checking how the sparse-bitmap crate handles this in its own invariants.
+
+Since the View function only depends on `bitmap@`, and both fields of `UpoolView` support extensional equality, I can prove the equality by showing the bitmap hasn't changed. self@ =~= old(self)@ should work if I prove each field is =~=. UpoolView might not implement ExtEqual automatically though, so let me check what the earlier proofs used for UpoolView comparisons.
+
+Looking back at the free proof, I see assertions comparing individual fields with =~=, then separately asserting struct equality. For structs, I can assert self@ == old(self)@ directly, and Verus will check it field-by-field. Since Set's =~= implies == via the set extensionality axiom, proving each field is =~= should give me the struct equality I need.
+
+Alright, I think the approach is clear enough—let me start writing the code.
+
+Actually, I need to handle the `frames` set in the ensures clause. It's defined as `frame_numbers.map(|i: int| i * spec_page_size())`, but I can't reference it by name in the proof since it's local to the ensures block. I'll need to reconstruct it by defining the same ghost variables and computing the set the same way.
+
+Now I'm reconsidering whether I actually need to add `result >= 2` to the FRAME_SIZE spec, or if there's a different approach to the overflow proof. Looking at `internal_inv()`, I know that for any covered index `i`, we have `i * ps <= usize::MAX`, which means `i <= usize::MAX / ps`. The challenge is that I can't assume the indices in the range are covered at the point where `end_frame_number` is computed, so I can't directly apply this invariant.
+
+Let me try a different tactic: instead of modifying the spec, I could add an overflow check directly in the exec code using `checked_add`, which would catch the overflow and return an error. This is cleaner than adding a new postcondition to FRAME_SIZE. However, this introduces a new error path where the frames aren't freed, and I'd need to prove that `!frames.subset_of(free_frames)` holds in that case, which gets complicated.
+
+Actually, I can work around this: if the frame number addition overflows, then some frame index must map to an address larger than `usize::MAX`, but `free_frames` only contains valid addresses up to that limit, so the frames set would necessarily contain an element not in `free_frames`. This is provable but adds significant complexity to the proof.
+
+I'll go with the simpler approach instead—adding `result >= 2` to the FRAME_SIZE specification. Since FRAME_SIZE is always 4096 in practice, this is a valid property to add during proving without weakening anything. Now I can use this constraint to show the overflow case is impossible.
+
+Let me start implementing this. But first, I need to think through what happens in the error branch of the bitmap set operation in loop 3—the invariant should guarantee the index is covered and not yet set in the current state, but I need to verify what happens if the set fails.
+
+Proving the unreachable error branch...
+
+The key insight is that `set()` can only fail if the index isn't covered or the bit is already set, but our loop invariant guarantees both conditions are met before the call. So when `set()` returns an error, we have a direct contradiction—the postcondition claims `!is_covered || is_bit_set`, but we know from the invariant that `is_covered && !is_bit_set`. I need to carefully distinguish between the bitmap state before and after the `set()` call to formalize this contradiction and make the assert valid. I'm working through the invariant properties to verify the postcondition. The bitmap's covered regions remain unchanged from the function entry, so `is_covered(index)` stays true. For the set bits, the invariant shows they're the original set plus the range `[sfn, index)`, which means `is_bit_set(index)` should be true since index falls within that newly-set range—contradicting the old-state fact that index wasn't set.
+
+Now I'm checking the preconditions for the `bitmap.set()` call itself. The invariant requirement holds, and I need to verify the error postcondition, which states that either the index wasn't covered or it was already set in the old state.
+
+Since I've established that the index is covered but not set before the call, this postcondition can't be satisfied—so the error branch is unreachable and I can assert false there.
+
+For the second loop, `bitmap.test()` guarantees the result is `Ok`, which means the `Err` branch in the match statement is also impossible. Verus should recognize this contradiction automatically.
+
+Now I'm ready to implement this. I'll structure the code with proof blocks and assertions to handle these unreachable branches, relying on the fact that false implies anything to satisfy the postconditions in dead code.
+
+Implementing the function... Writing arithmetic proofs... Writing proof lemmas... I'm working through the algebra here—if I can show that `x*m / m = x` when `m > 0`, that should give me what I need. The key insight is that `(x*m) % m == 0`, so the division works out cleanly. Let me search for an existing lemma that handles this directly rather than reconstructing it from first principles.
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs:626:        lemma_div_multiples_vanish(x * (y / z), z);
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs-627-    };
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs-628-}
+/home/ru...
+
+────────────────────────────────────────────────────────────
+Turn 123
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/div_mod.rs
+
+[THINKING] `lemma_div_multiples_vanish(x, d)`: requires `d > 0`, ensures `(d * x) / d == x`.`lemma_div_by_multiple(b, d)`: requires `b >= 0, d > 0`, ensures `(b * d) / d == b`.
+
+And for the distributivity, I found:```
+lemma_div_multiples_vanish_fancy(x, b, d): d > 0, 0 <= b < d ==> (d*x + b) / d == x
+```
+
+Also:```lemma_hoist_over_denominator(x, j, d): ... ==> x / d + j == (x + j * d) / d```Let me check this one:
+[RESULT ✓] view: 870. /// Proof that adding an integer to a fraction is equivalent to adding
+871. /// that integer times the denominator to the numerator. Specifically,
+872. /// `x / d + j == (x + j * d) / d`.
+873. pub broadcast proof fn lemma_hoist_over_denominator(x: int, j: int, d: nat)
+874.     requires
+875.    ...
+
+────────────────────────────────────────────────────────────
+Turn 124
+────────────────────────────────────────────────────────────
+Now let me also check the `lemma_mul_is_distributive_add` from vstd:
+[TOOL] grep: pub.*proof fn lemma_mul_is_distributive_add
+
+[THINKING] `lemma_hoist_over_denominator(x, j, d)`: `x / d + j == (x + j * d) / d`. This is useful!
+
+Now for proving `sfn + nfn == (region@.start + region@.size) / ps`:
+- `sfn == region@.start / ps` (from region_start_frame_number spec)
+- `nfn == region@.size / ps` (from the division)
+- Need: `region@.start / ps + region@.size / ps == (region@.start + region@.size) / ps`
+
+
+- Applying the lemma with `region@.start` and `region@.size / ps`, I can rewrite the left side as `(region@.start + (region@.size / ps) * ps) / ps`, which simplifies to `(region@.start + region@.size) / ps` since the division is exact.
+- Using the fundamental division-modulo property and the fact that `region@.size % ps == 0`, I get `(region@.size / ps) * ps == region@.size`.
+- Now I need to identify which lemmas handle multiplication distributivity to complete the proof.
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/mul.rs:271:pub broadcast proof fn lemma_mul_is_distributive_add(x: int, y: int, z: int)
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/mul.rs-272-    ensures
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/mul...
+
+────────────────────────────────────────────────────────────
+Turn 125
+────────────────────────────────────────────────────────────
+Good. Now I have all the lemmas I need. Let me now view the current alloc_range code in full, including the context around it, then write the proof:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 132. //==================================================================================================
+133. // Inner
+134. //==================================================================================================
+135. 
+136. /// Private state of the frame allocator singleton.
+137. #[veru...
+
+────────────────────────────────────────────────────────────
+Turn 126
+────────────────────────────────────────────────────────────
+Now I have all the context. Let me implement the alloc_range proof. First, I'll make the smaller changes (FRAME_SIZE spec), then write the full proof.
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 127
+────────────────────────────────────────────────────────────
+Now let me write the full alloc_range proof. This is the most complex part. I'll replace the entire function body with the proved version:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 781.     fn alloc_range(
+782.         &mut self,
+783.         region: &TruncatedMemoryRegion<PhysicalAddress>,
+784.     ) -> Result<(), Error> {
+785.         proof! { admit(); }
+786.         // VERUS REWRITE: region.start().into_frame_number().into_raw_value() → wrapper
+787.         let start_frame_...
+
+────────────────────────────────────────────────────────────
+Turn 128
+────────────────────────────────────────────────────────────
+Let me check the SparseBitmapView fields:
+[TOOL] grep: pub struct SparseBitmapView
+
+[THINKING] OK, let me now write the full proof. I need to replace the alloc_range function body. Let me think about the exact Verus syntax.
+
+For the proof blocks: in attribute mode, I use `proof! { ... }` for proof code.
+
+For loop invariants: `#[verus_spec(invariant(expr1, expr2, ...))]`.
+
+For ghost variables: `let ghost x = ...;` inside exec code creates a ghost variable. Or `proof! { let x = ...; }` inside a proof block.
+
+Wait, there's a subtlety. In attribute mode, `proof! { ... }` creates a proof block. 
+
+But ghost variables defined inside don't persist outside. I need `let ghost x = expr;` for declarations that persist in exec code, while `proof! { ... }` is just for proof blocks with assertions and lemma calls. Let me verify this against the Verus syntax rules I have.
+
+So I can declare ghost variables like `let ghost sfn = start_frame_number as int;` and then reference them in proof blocks with assertions. For the `frames` ghost variable, I need to define it similarly so I can use it in the ensures clause and proof logic.
+
+I'm setting up ghost bindings for the page size, frame numbers, and the mapped frames, but I need to make sure the closure in the map operation is extensionally equal to what the ensures clause expects. Since `ps` is bound to `spec_page_size()`, the closure `|i: int| i * ps` should be treated as equivalent to `|i: int| i * spec_page_size()` at the spec level.
+
+Now I'm wondering how Verus handles the `map` function with spec closures... I'm realizing that since `ps` is bound in the ghost context, it's literally equivalent to `spec_page_size()` after substitution, so Verus should handle the closure equality without issue. Now I need to write out the actual function implementation, being careful with the syntax as I set up the proof block with the frame calculations.
+
+Writing proof logic... Writing proof logic... Now I'm setting up a coverage check loop with an invariant that tracks the bitmap state and ensures all frames up to the current index are covered, then checking if each frame has a corresponding chunk and handling the case where it doesn't. I'm checking if the frame address exists in the free frames set, which would lead to a contradiction—if it did, I could find a witness index that's covered and not set, but by injectivity that witness would have to be the original index, which contradicts the fact that it's not covered. I'm using a choice operator to extract that witness and then applying commutativity lemmas to establish the contradiction.
+
+Continuing the proof, I'm asserting that the frame address is not in the free frames and that the frames set isn't a subset of the old free frames, then invoking the invariant lemma to confirm the data structure is well-formed.
+
+Still writing verification code... Writing verification logic... Continuing with the proof by applying commutativity lemmas to establish that the witness index must match, then deriving a contradiction to show the frame isn't in the free list. After that, I'm verifying the invariant holds and computing the conflicting address along with the region boundaries to prepare the error message. Writing verification logic... Verifying the bitmap state after insertion...
+
+Now I'm working through the post-loop proof to establish that all frames in the result are contained within the original free frames, using the loop invariant that uncovered bits correspond to free frames.
+
+Continuing the proof... Still writing verification logic... Writing verification logic... Finishing the assertion about the frame address, then wrapping up the proof by establishing the invariants and returning success. Now I'm reconsidering the overflow proof — I need to verify that the sum `sfn + nf` won't exceed `usize::MAX` given the constraints on `sfn` and `nf`. MAX`. The SMT solver should handle this: from `2*a <= M` we get `a <= M/2 <= (M+1)/2`, and from `a <= M/2, b <= M/2` we get `a + b <= M`.
+
+Actually, I'm not sure the SMT solver will handle this. Let me add more explicit steps by asserting the intermediate inequalities directly, so Z3 can work with them step by step.
+
+Z3 should handle linear arithmetic like `2*a <= M` implying `a <= M/2` pretty easily, and combining `a <= M/2` and `b <= M/2` to get `a + b <= M` is also straightforward. Though Verus might struggle with nonlinear reasoning, so I'll just try this approach and see what happens.
+
+Now for the loop invariant proof — I need to figure out how to invoke `find_chunk` from within `self.bitmap.inv()`.
+
+The second loop's invariant requires showing that all frame numbers in the range are covered, which should follow from the first loop's postcondition. Since the nightly performance optimization feature isn't enabled during verification, the first loop does get compiled and its postcondition is available to use.
+
+For the error path assertion in the first loop, I need to prove that a given frame address is in the frames set. Since frames is constructed as a range of indices scaled by page size, I need to show there exists some index in that range whose scaled value equals the frame address. I need to figure out how Verus handles the `map` operation on sets—specifically, whether I can rely on the SMT solver to automatically infer the existential witness when proving `frames.contains(fa)`, or if I need to provide it explicitly.
+
+For the subset violation, I'm showing that `fa` exists in `frames` but not in `old(self)@.free_frames`, which directly contradicts the subset requirement. And for preserving the invariant in error paths, since the bitmap stays unchanged, the internal invariant holds, and the well-formedness condition should follow from that.
+
+Now I'm realizing there's a subtlety with proving `self.inv()` in the error path of the loop. The ensures clause guarantees it regardless of success or failure, and the loop invariant already includes `self.internal_inv()`. I can invoke the lemma that derives well-formedness from the internal invariant, so the full invariant should hold in the error case too.
+
+Looking at the ensures clause more carefully, I need to prove both `self.inv()` and the match result holds in all branches, so I'll need to handle both in the error path.
+
+There's another concern I'm spotting: the multiplications `index * mem::FRAME_SIZE` in both loops could overflow. These are `usize` operations, and I need to verify that for all valid indices less than `efn`, the product stays within bounds. I'm realizing that even though `index < efn <= usize::MAX`, the multiplication `index * FRAME_SIZE` could still overflow since the frame size is at least 2 bytes. This looks like a pre-existing bug in the original code where the error reporting path computes an address without checking for overflow.
+
+I could fix this by using saturating multiplication for the address calculation since it's only used in the error message, or I could conditionally exclude the entire computation when ghost code is stripped. be unused, triggering a compiler warning that gets denied as an error. So I need to gate the `uncovered_addr` variable declaration itself under `#[cfg(not(verus_keep_ghost))]` to avoid the unused variable warning during verification. I could wrap `uncovered_addr` with the same cfg attribute, but that would lose the postcondition from `mem::FRAME_SIZE` during verification — except I realize that postcondition is already captured from the earlier division operation, so I don't actually need it twice.
+
+Now I'm checking whether Verus will catch an overflow on the multiplication `index * mem::FRAME_SIZE`. The loop bounds give me `index < sfn + nf`, so I need to verify that `(sfn + nf - 1) * ps` doesn't exceed `usize::MAX`.
+
+I can rewrite this as `sfn * ps + nf * ps - ps`, which equals `region@.start + region@.size - ps`. Since both the start and size are bounded by `usize::MAX`, this sum could theoretically exceed the maximum, but with `ps >= 2`, the overflow margin is tight.
+
+Actually, I'm realizing this is a real overflow bug—on a 32-bit system with a 4KB page size, the calculation `region@.start + region@.size - ps` can definitely overflow. The multiplication `index * mem::FRAME_SIZE` in the error path is where this manifests. Since overflow is auto-fixable, I should use `saturating_mul` for the error reporting computation, though I need to check if Verus has a spec for it.
+
+Wait, there's a cleaner approach: both overflow locations are in error messages that are already `cfg`-gated, so I can wrap those computations with the same gate to prevent the overflow from being evaluated during verification. But that leaves the production code still vulnerable—I need to decide whether to fix the actual runtime overflow too.
+
+The user's guidance is clear: if it's an auto-fixable bug like overflow, fix it directly. So I should address both the verification issue and the production overflow by using `wrapping_mul` or `saturating_mul` for these address calculations. Since they're just for logging, `saturating_mul` works fine—it caps the value rather than wrapping, which is better for error messages. The tricky part is whether Verus has specs for these methods, but wrapping the computation itself with the `cfg` gate should sidestep the verification problem entirely.
+
+The cleanest approach is to conditionally compile the problematic line out during Verus verification using `#[cfg(not(verus_keep_ghost))]`, so the overflow never needs to be proven. In production, `wrapping_mul` handles the overflow gracefully, which is acceptable for error reporting. Since the variable is only used within the same conditional block and `Error::new` relies on `reason` instead, the fix is clean and self-contained.
+
+I'm noticing the same pattern appears in a second loop with another address calculation that needs the same treatment. I need to think through whether cfg-gating these function calls loses important Verus postconditions that I actually need during verification. The functions are pure and only extract values, so skipping them during verification shouldn't break anything, but I'm realizing the postconditions might still be valuable for the proof even if the actual computation isn't needed for the error message. Writing error handling code...
+
+Actually, I'm realizing the cfg-gating approach works here because those external function calls in the error path don't have verification side effects that matter—they're just for logging context in production, so skipping them during verification is fine.
+
+But I need to reconsider `region_start_raw`. Looking at where it's actually called: it only appears in the loop 2 error path, not in the initial setup. That means its postcondition establishing `ret as int == region@.start` is only created in that error branch, which could be a problem if I'm relying on that invariant elsewhere.
+
+However, since I don't actually need that postcondition for the error path proof itself, cfg-gating the variable is fine. I should also verify that Rust allows `#[cfg(...)]` on `let` bindings — yes, it does work on statements. And since the `error!` macro that uses `uncovered_addr` is also cfg-gated, Rust won't complain about the variable not existing when the cfg condition is false.
+
+Now I need to think through the `assert(false)` in loop 2...
+
+In the `Err(err)` branch after `bitmap.test(index)`, Verus knows from the postcondition that `result is Ok`. But the match pattern itself tells Verus we're in the `Err(err)` arm, meaning `result is Err`. These two facts contradict each other, so Verus should be able to derive `false` automatically. To be safe though, I'll explicitly add `proof! { assert(false); }` to make the contradiction clear.
+
+Actually, wait—there's a subtlety here. The `result` from `bitmap.test(index)` is the match scrutinee itself, not a separate variable. When Verus enters the `Err(err)` arm, it knows the scrutinee matches that pattern, which should directly contradict the postcondition that says `result is Ok`. So the contradiction should be in scope and Verus ought to handle it, but I'm adding the explicit assertion just to be certain.
+
+Hmm, but there's another issue...
+
+In the `Err(err)` arm where I return early, the ensures clause requires three things: the invariant holds, the bitmap hasn't changed, and the frames constraint is satisfied. Since the contradiction makes `assert(false)` provable, all three conditions become vacuously true, which is fine.
+
+Now for loop 2's invariant—after loop 1 completes without early return, I have the bitmap unchanged, the internal invariant intact, and confirmation that all the relevant bitmap indices are covered. These are my starting facts for loop 2, so I need to think through what the loop invariant should actually maintain.
+
+I'm checking whether I can reference ghost variables like `efn` in the invariant attribute syntax. In Verus, invariant expressions can access exec variables, ghost variables declared with `let ghost`, and spec functions, so yes, I can use them here.
+
+The ghost variables `sfn` and `efn` are defined before the loop in the function body, so they should be in scope when the invariant attribute on the `for` statement is evaluated. Now I'm thinking through the loop 3 invariant that uses `set_int_range(sfn, index as int)` — when the loop starts with `index == start_frame_number`, this becomes `set_int_range(sfn, ...)` and I need to verify this behaves correctly.
+
+At loop 3 entry, since loops 1 and 2 only read from `self.bitmap`, the invariant `set_bits =~= old_set_bits` should hold because `self.bitmap@` hasn't changed. After `set(index)` succeeds, I'm checking that the new set bits equal the previous iteration's bits plus the newly set bit. I'm verifying that extending the range by one element is equivalent to inserting that element into the existing range—this should follow directly from how `set_int_range` is defined, though I may need an explicit assertion in Verus to make it work. I also need to confirm that calling `bitmap.set(index)` preserves the chunks structure as expected.
+
+Now I'm checking the invariants for the loop: the chunks remain consistent across iterations by transitivity, and `bitmap.set()` maintains the bitmap's invariant. For the old-state facts about coverage and set bits, these refer to the function-entry state which is fixed, so they don't change as the loop progresses—the invariant just carries them through.
+
+Verus should recognize these are preserved. For the `set(index)` call in loop 3, I need to verify it won't error: first, that `index` is within the covered range (which follows from chunks preservation and the old coverage fact), and second, that the bit isn't already set. The second part requires checking whether `index` appears in the union of the old set bits and the newly set range—and from the old-state fact, `index` isn't in the old bits, so I need to confirm it's not in the newly set range either.
+
+Adding explicit assertions to help Verus see this...
+
+Now I need to reconsider what happens if `set(index)` returns an error in the third loop iteration. The postcondition tells me that either the index wasn't covered before the call, or it was already set. But I've already established that the bitmap is covered at this point, so I need to think through what that means for the error case. The Err branch postcondition contradicts what we proved before the call, so `assert(false)` is justified—but I need to verify that the pre-call facts are actually available in the proof context after the call returns, since `old(self)` in the postcondition refers to the bitmap's state before the call. the OLD bitmap state, not the current one. Since the Err postcondition also references `old(self)@`, both assertions are actually about the same pre-call state, which creates a genuine contradiction. Now I'm checking whether the error macro invocations need additional cfg-gating—looking at the existing code, the `error!` macro call is already wrapped in `#[cfg(not(verus_keep_ghost))]` and uses variables that are in scope, so there's no issue there. Let me trace through the Err branch in loop 3 to verify the same pattern holds.
+
+Writing the function body... Adding cfg gates to debug code...
+
+During normal compilation without Verus, these attributes are ignored so the debug logging and address calculations still execute, but when Verus verification is enabled, the ghost code gets stripped out to avoid overflow issues in the formal proof.
+
+I need to double-check that the preconditions for `region_start_raw` and `region_size_raw` won't cause problems—the first requires the region invariant which isn't checked at runtime anyway, and the second has no preconditions, so both should be fine.
+
+Now I'm thinking through the scope of the ghost variables and how the cfg attributes interact with them. If I define a ghost variable after `let end_frame_number`, it'll be available throughout all three loops. Loop 1 has both a nightly-performance-optimizations cfg gate and a Verus spec attribute, so I need to verify that during Verus verification, both the ghost variable and loop 1 are actually present regardless of the feature flags.
+
+With the `microvm,trace` features enabled, `nightly-performance-optimizations` is disabled, so the cfg condition is true and loop 1 compiles. Now I'm ready to write the code, but let me double-check my proof strategy first. I'm asserting that `self@.free_frames` remains unchanged in error paths by showing the View computation stays the same—since `self.bitmap@` is unchanged, both `set_bits` and the coverage check produce identical results.
+
+Now I need to verify what fields are actually in `SparseBitmapView` to ensure the extensional equality holds across all of them.
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.spec.rs:28:pub struct SparseBitmapView {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.spec.rs-29-    /// Sorted, non-overlapping chunk descriptors....
+
+────────────────────────────────────────────────────────────
+Turn 129
+────────────────────────────────────────────────────────────
+[TOOL] grep: set_lib
+
+[THINKING] Good. `SparseBitmapView` has:- `chunks: Seq<(int, int)>`- `set_bits: Set<int>`
+
+So `self.bitmap@ =~= old(self).bitmap@` means `self.bitmap@.chunks =~= old(self).bitmap@.chunks` AND `self.bitmap@.set_bits =~= old(self).bitmap@.set_bits`. Both fields support `=~=`.
+
+And `is_covered(i)` is defined in terms of `chunks`. So if `chunks =~= old.chunks`, then `is_covered` is the same.
+
+
+Now I'm ready to write the code carefully. Let me check whether I can use `set_int_range` directly or if I need the full path—the prelude import might already include `set_lib`.
+[RESULT ✓] grep: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 130
+────────────────────────────────────────────────────────────
+[TOOL] grep: set_int_range|set_lib
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs:767:                let frame_numbers = vstd::set_lib::set_int_range(start_frame_number, end_frame_number);
+
+────────────────────────────────────────────────────────────
+Turn 131
+────────────────────────────────────────────────────────────
+Now let me also check the `#[cfg(not(verus_keep_ghost))]` on the error macro in loop 3, to understand the existing pattern:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] OK, `set_int_range` is used with full path `vstd::set_lib::set_int_range`. I'll use the same pattern in my proof code. But I can use a shorter alias in the proof file if needed.
+
+Now let me write the actual replacement code. I'll write it out carefully:
+
+```rust
+    fn alloc_range(
+        &mut self,
+        region: &TruncatedMemoryRegion<PhysicalAddress>,
+    ) -> Result<(), Error> {
+        // VERUS REWRITE: region.start().into_frame_number().into_raw_value() → wrapper
+
+
+```
+
+I'm extracting the start frame number and calculating the total number of frames from the region, using wrapper functions to handle the conversions. Then I need to prove that the frame count doesn't overflow.
+
+Now I'm setting up the proof by establishing the page size and using divisibility lemmas to show that the region's start and size are both multiples of the page size, which allows me to relate them back to the frame calculations.
+
+```
+let ps = spec_page_size();
+// From FRAME_SIZE postcondition: ps >= 2
+// From region.inv(): region@.start % ps == 0 and region@.size % ps == 0
+// So: region@.start == ps * (region@.start / ps) == ps * start_frame_number
+//     region@.size  == ps * (region@.size / ps)  == ps * num_frames
+lemma_fundamental_div_mod(region@.start, ps);
+lemma_fundamental_div_mod(region@.size, ps);
+vstd::arithmetic::mul::lemma_mul_is_commutative(ps, start_frame_number as int);
+vstd::arithmetic::mul::lemma_mul_is_commutative(ps, num_frames as int);
+// ps * sfn == region@.start <= usize::MAX, and ps >= 2
+// => 2 * sfn <= ps * sfn <= usize::MAX
+vstd::arithmetic::mul::lemma_mul_inequality(2, ps, start_frame_number as int);
+vstd::arithmetic::mul::lemma_mul_inequality(2, ps, num_frames as int);
+// 2*sfn <= usize::MAX && 2*nf <= usize::MAX => sfn + nf <= usize::MAX
+```
+
+Establishing ghost variables for the ensures clause...
+
+Now I'm proving that the end frame number equals the region's end boundary divided by the page size, using lemmas about division, multiplication commutativity, and hoisting operations over denominators.
+
+Then I'm adding a conditional verification check that runs when performance optimizations are disabled—it ensures every frame index in the range is actually covered by the sparse bitmap to catch potential issues where uncovered indices might incorrectly appear as free. Still writing proof logic... Writing verification logic... Writing verification logic... Writing loop invariants... Still writing verification logic... Writing verification logic... Still writing verification logic... Still writing verification logic...
+
+Now I need to be careful about the error path proofs—I should assert that the allocated and free frames remain unchanged when returning errors, so the invariants hold across both success and failure cases.
+
+For the extensional equality on sets, I'm checking whether Verus can automatically see that if the bitmap's internal state is unchanged, then the derived sets must be extensionally equal. Since the View is a closed spec function, Verus should be able to unfold the definition and verify the equality directly from the unchanged bitmap components. The issue is that even though `self.bitmap@.set_bits =~= old(self).bitmap@.set_bits`, the SMT solver needs to connect this equivalence through the existential quantifiers in the set definitions to prove the allocated_frames sets are equal. For any element in one set, the same witness `i` satisfies the existential in the other set since the bitmap containment is equivalent, so the sets should be extensionally equal—but Z3 might need help recognizing this through the quantifier reasoning.
+
+Let me try asserting the extensional equality directly without explicit quantifier proofs first, and if that doesn't work I'll add more detailed reasoning. Now for the loop's `Ok(true)` error path, I need to reconsider what happens when `bitmap.test(index)` returns success with a true value.
+
+Since the bitmap equivalence holds and `index` is confirmed as a set bit, but the proof requires showing that `index` isn't in the free frames, I can derive a contradiction: if it were free, there'd need to be an uncovered position mapping to the same frame address, but injectivity and the set bit status rule that out. The proof structure checks out, so I'll move forward with this approach.
+
+Now for loop 2's invariant — I'm carrying forward the postcondition from loop 1, which guarantees that all frames in the range are covered. At the start of loop 2 when the index equals the start frame number, I need to establish that this coverage property holds across the entire frame range, which comes directly from what loop 1 established.
+
+As I iterate through loop 2, each call to `test(index)` tells me whether that specific frame's bit is set. If it returns false, I extend the invariant to confirm the bit remains unset up through the current index. If it returns true, I hit the error path. The key insight is that since the bitmap itself never changes during loop 2, the set of bits it contains stays constant throughout — I'm just querying and validating what's already there. So after loop 2, I can derive that the bitmap hasn't been modified and no bits in the range are set, which gives me what I need for loop 3. At the start of loop 3, the invariant holds because loops 1 and 2 were read-only operations that didn't touch the bitmap.
+
+For the final proof, I need to show that after allocation, the state matches the spec where allocated frames are added to the allocated set and removed from the free set. This requires establishing struct equality by proving both the allocated_frames and free_frames fields match their expected values. For `self.inv()`, I need to establish both the well-formedness condition and the internal invariant. I can use `lemma_internal_inv_preserved` to carry forward the internal invariant from the old state, given that the bitmap and chunks remain consistent, then apply `lemma_inv_implies_wf` to derive well-formedness from that. The lemma expects a reference to the current state and the old inner value, so I'll need to pass those correctly. I'm verifying that the lemma call will work by checking each required condition: the old state satisfies the internal invariant from the precondition, the bitmap invariant holds from the loop, and the bitmap chunks are preserved as expected. Now I need to handle the imports for `lemma_fundamental_div_mod` and related lemmas—the proof file already has the div_mod module imported, so those should be available, and I'm checking whether `lemma_hoist_over_denominator` takes the right parameters for what I need. which is `int`. So I need to cast `ps as nat`. Since `ps >= 2 > 0`, this should be fine. Wait, `ps` in my ghost variable is `spec_page_size()` which returns `int`. But `lemma_hoist_over_denominator` takes `d: nat`. I need `ps as nat`. Since `ps >= 2`, `ps as nat` is valid.
+
+But in Verus, can I write `ps as nat` in a proof context? Yes, `as nat` converts `int` to `nat` when the value is non-negative.
+
+Actually, looking at the lemma signature: `pub broadcast proof fn lemma_hoist_over_denominator(x: int, j: int, d: nat)`. The trigger is `x / d as int + j`. So when I call it, I need to pass `d` as a `nat`.
+
+Let me invoke the lemma with `region@.start`, `num_frames as int`, and `ps as nat`. This should give me the equality that `region@.start / ps + num_frames as int` equals `(region@.start + (num_frames as int) * ps) / ps`. Since `(num_frames as int) * ps` equals `region@.size` from my earlier arithmetic, I can substitute to get `sfn + nf == (region@.start + region@.size) / ps == ef`.
+
+`, this becomes `sfn + nf == (region@.start + region@.size) / ps`. I need to establish that `nf * ps == region@.size`, which follows from the fundamental division-modulo lemma since the remainder is zero, giving me `region@.size == ps * nf`. The commutativity lemma handles converting that to the form I need. Now I'm working through how `j * d` in the lemma maps to my specific values.
+
+I'm realizing there's a type mismatch to resolve: `j` is an `int` while `d` is a `nat`, and I need to verify that Verus handles this multiplication correctly. Since `nat` is a subtype of `int`, the multiplication should implicitly cast `d` to `int`, making it `int * int`, which produces an `int`. I need to verify that `num_frames as int` works in the proof context since `num_frames` is a usize variable, and I'm also checking whether the loop invariant can access `self.internal_inv()` at the start of loop 1—since `self` hasn't been modified yet, it should still satisfy the invariant from the precondition. Since `self` hasn't been mutated, Verus should treat `self` and `old(self)` as identical, making `self.internal_inv()` equivalent to `old(self).internal_inv()` which is already established as true. I'm verifying whether Verus actually handles this equivalence correctly in practice. self` and `old(self)` as identical before any mutation. In Rust's borrow checker, `&mut self` means `self` could be mutated at any point. But in Verus, `old(self)` captures the state at function entry, and `self` at any point is the current state. Before any mutation, `self` should equal `old(self)`.
+
+Let me just trust that Verus handles this correctly and see if the verification passes.
+
+Actually, wait. There's something I missed. In Verus, `for index in start..end` loops are desugared into while loops with a mutable loop variable. The `self` could be considered "possibly modified" by the loop variable update. But `self` is a reference to the Inner struct, and the loop variable `index` is separate. So `self` is only modified by explicit mutations within the loop body.
+
+In loops 1 and 2, `self` is only used in read-only operations like `find_chunk` and `test`, so it's not actually modified. The bitmap stays the same across iterations. Now I need to write the code and verify it works. One thing I should check though—I need to make sure `lemma_hoist_over_denominator` is accessible from the imports in the proof file, since it's coming from `vstd::arithmetic::div_mod`.
+[RESULT ✓] view: 837.         // Book all frames in the range.
+838.         #[verus_spec(invariant(true))]
+839.         for index in start_frame_number..end_frame_number {
+840.             proof! { admit(); }
+841.             if let Err(error) = self.bitmap.set(index) {
+842.                 #[cfg(not(verus_keep_ghos...
+
+────────────────────────────────────────────────────────────
+Turn 132
+────────────────────────────────────────────────────────────
+Good. Now let me write the full replacement. This is a large edit, so I need to be precise:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 133
+────────────────────────────────────────────────────────────
+Now let's run the verification:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-frame 2>&1 | tail -80
+[RESULT ✓] bash: make: *** No rule to make target 'verify-frame'.  Stop.
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 134
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n 'verify-frame\|verify-kernel' Makefile
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 135
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -rn 'verify' Makefile | head -20
+[RESULT ✓] bash: 115:NO_SCCACHE_GOALS := check format format-check lint lint-check spellcheck spellcheck-fix verify help clean distclean
+305:# List of crates to verify with Verus.
+345:	$(CARGO) verus verify --locked --no-default-features
+556:	@echo "  verify          Run Verus formal verification on annotated crates...
+
+────────────────────────────────────────────────────────────
+Turn 136
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep 'VERUS_CRATES' Makefile | head -5
+[RESULT ✓] bash: VERUS_CRATES := bitmap slab raw-array sparse-bitmap kernel
+.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+	for crate in $(VERUS_CRATES); do \
+$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 137
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
