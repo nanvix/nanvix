@@ -2785,3 +2785,71 @@ Turn 88
 Turn 89
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: note: verifying module mm::phys::frame
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/frame.rs:420:20
+    |
+420 |             assert(phys_addr@ == frame_addr_of(frame_number as int));
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+note: automatica...
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+The assertion fails for `phys_addr.inv()`. Let me check what `PageAligned` provides:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] The assertion `phys_addr@ == frame_addr_of(frame_number as int)` fails. The issue is that `phys_addr` is `PageAligned<PhysicalAddress>`, not `FrameAddress`. Its view is `int` (the raw address).
+
+The wrapper spec says `ret as int == self_@ / spec_page_size()`. So `frame_number as int == phys_addr@ / spec_page_size()`.`phys_addr.inv()` means `phys_addr@ % spec_page_size() == 0`.So `phys_addr@ == (phys_addr@ / ps) * ps + phys_addr@ % ps == (phys_addr@ / ps) * ps = frame_number * ps`.I'm using `lemma_fundamental_div_mod(phys_addr@, spec_page_size())` which gives:
+
+
+`phys_addr@ == ps * (phys_addr@ / ps) + phys_addr@ % ps`. Since the remainder is zero and the quotient is `frame_number`, this simplifies to `phys_addr@ == ps * frame_number`, which is exactly what I need.
+
+Now I'm checking how the `free` proof handles this same situation—it applies the fundamental div-mod lemma and then uses commutativity to match `ps * frame_number` with `frame_number * ps`.
+
+For the `book` case, I suspect the issue is that `phys_addr.inv()` might not be automatically exposing the invariant that `phys_addr@ % spec_page_size() == 0`, even though that's what the `PageAligned` spec defines. The invariant might not be visible to the solver without explicitly revealing it.
+[RESULT ✓] view: 148. #[cfg(verus_keep_ghost)]
+149. verus! {
+150. 
+151. use crate::hal::mem::spec_page_size;
+152. 
+153. impl<T: Address + View<V = int>> View for PageAligned<T>
+154. {
+155.     type V = int;
+156. 
+157.     closed spec fn view(&self) -> int
+158.     {
+159.         self.0@
+160.     }
+161. }
+162. 
+163. ...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+Let me add more explicit assertions to help the solver:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] `PageAligned.view()` is `closed spec fn`. So `self@` is opaque outside this module. But `inv()` is `pub open spec fn`, and it uses `self@`. Since `inv()` is open, the verifier can see `self@ % spec_page_size() == 0`. But since `view()` is closed, the verifier can see the specific value of `self@` only within the `page.rs` module.Wait, but `inv()` is `pub open`, so when I write `phys_addr.inv()`, the verifier expands it to `phys_addr@ % spec_page_size() == 0`. That should be fine — it uses `self@` which is the view value. Even though `view()` is closed, the verifier knows that `phys_addr@` returns some int, and the invariant says it's divisible by spec_page_size(). 
+
+So the invariant `phys_addr@ % spec_page_size() == 0` is definitely available. The real problem might be in the wrapper function `page_aligned_pa_to_bitmap_index`, which specifies that the return value equals `self_@ / spec_page_size()` where `self_` is a `PageAligned<PhysicalAddress>`. This means `frame_number as int == phys_addr@ / spec_page_size()`, and combined with the divisibility constraint, I should be able to derive what I need.
+
+Using the fundamental division-modulo lemma, I can reconstruct `phys_addr@` as `spec_page_size() * frame_number`, which matches exactly with `frame_addr_of(frame_number as int)`.
+
+The real question is whether the SMT solver can handle the commutativity of multiplication here, or if there's an issue with how `phys_addr.inv()` is being used in the verification context—it's specified in the requires clause, but I need to check whether Verus is actually making that fact available when verifying the function body. Looking at the error message more carefully, the trigger note points to line 39 in `internal_inv`, which suggests the SMT solver is trying to apply that quantifier but the trigger pattern isn't matching what I need. I should try adding explicit intermediate assertions to help guide the solver toward the right facts.
+
+I'm building up a proof that `phys_addr` equals `frame_number * page_size` by first establishing that the page size is positive and the address is page-aligned, then using division properties to show the frame number calculation, and finally applying commutativity to get the multiplication in the right order.
+
+Now I'm realizing the issue might be in how `FrameAddress` and `PageAligned<PhysicalAddress>` define their invariants differently—they both require page alignment, but their `view` implementations or how `spec_page_size()` resolves could be causing the mismatch I'm seeing compared to the working `free` proof.
+
+Let me trace through the requires clause more carefully: `old(self).inv()` should expand to include `spec_page_size() > 0` as a conjunct, so the solver should have that constraint available, but something about how it's being applied in this context isn't working the way I expected.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
