@@ -1735,3 +1735,15 @@ I think I need to add the page_size positivity constraint directly to internal_i
 Turn 56
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: - frame.rs:452 alloc: external_body
+    - frame.rs:484 book: external_body
+    - frame.rs:498 alloc_range: external_body
+  Global: assume=0 external_body=24 admit=7 trusted=0 cfg_gate=7
+  Detail: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/cheating-detail.txt
+
+...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
