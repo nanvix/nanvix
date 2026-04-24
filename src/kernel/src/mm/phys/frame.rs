@@ -73,6 +73,8 @@ fn frame_addr_to_bitmap_index(self_: FrameAddress) -> usize {
 // VERUS REWRITE: wraps FrameNumber::from_raw_value + FrameAddress::from_frame_number
 #[verus_verify(external_body)]
 #[verus_spec(ret =>
+    requires
+        frame_addr_of(index as int) <= usize::MAX as int,
     ensures
         ret.is_ok(),
         ret matches Ok(fa) ==> {
