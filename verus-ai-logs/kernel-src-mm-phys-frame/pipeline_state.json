@@ -2,11 +2,12 @@
   "module_name": "frame",
   "log_name": "kernel-src-mm-phys-frame",
   "source_path": "src/kernel/src/mm/phys/frame.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
+  "current_phase": "proving",
+  "current_phase_idx": 3,
   "completed_phases": [
     "caller-analysis",
-    "view-design"
+    "view-design",
+    "specification"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -30,6 +31,17 @@
       "review_file": null,
       "duration_s": 343.0,
       "review_rounds": 0
+    },
+    "specification": {
+      "phase": "specification",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-RESOLVED",
+      "review_file": null,
+      "duration_s": 3701.4,
+      "review_rounds": 2
     }
   },
   "prover_session_id": "9e55040a-2829-4b5e-a25d-f93a26b27ab1",
@@ -38,7 +50,8 @@
   "verus_branch": "verus-ai/frame",
   "phase_boundary_shas": {
     "caller-analysis": "40b57def3aa88528c80d1f8eb0a59e58cb2e1572",
-    "view-design": "0de851acf2b7f1443fc57958bf86b2706987f751"
+    "view-design": "0de851acf2b7f1443fc57958bf86b2706987f751",
+    "specification": "fedb479c44320d3756659a1b1bc10f92b7fcfb1b"
   },
   "rollback_counts": {},
   "rollback_context": ""

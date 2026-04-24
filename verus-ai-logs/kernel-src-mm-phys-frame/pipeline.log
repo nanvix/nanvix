@@ -67,3 +67,10 @@ Key verification:
 - Fixer claim confirmed: init() cannot use external_body (Verus &mut limitation)
 - Cheating counts expected for specification phase: admit=7, external_body=4 (module)
 [2026-04-24 23:22:18] [DIALOGUE] specification ended after 2 turns: RESOLVED (990s)
+[2026-04-24 23:22:18] [PHASE] specification: dialogue-RESOLVED (1h01m41s)
+[2026-04-24 23:22:18] ✅ specification: PASS (0/0)
+
+============================================================
+PHASE: proving
+Module: frame
+============================================================
