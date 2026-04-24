@@ -5238,3 +5238,10 @@ Turn 184
 Turn 185
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | grep -E "verified|er
+[RESULT ✓] bash: Unverified function list written to: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/coverage-unverified.txt
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 186
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | grep -E "^\d+ verifi
