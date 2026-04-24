@@ -1,0 +1,113 @@
+Timestamp: 2026-04-24_20-51-19
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::kpool
+Exit code: 101
+1 verified
+4 errors
+
+Cheating patterns:
+  assume=0
+  external_body=9
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+warning: use of deprecated method `vstd::prelude::ResultAdditionalSpecFns::is_Ok`: is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html
+   --> src/kernel/src/hal/mem/types/address/phys.rs:264:16
+    |
+264 |         result.is_Ok(),
+    |                ^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `vstd::prelude::ResultAdditionalSpecFns::is_Ok`: is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html
+  --> src/kernel/src/mm/phys/kpool.rs:83:16
+   |
+83 |         result.is_Ok(),
+   |                ^^^^^
+
+note: verifying module mm::phys::kpool
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/kpool.rs:190:5
+    |
+190 |     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/kpool.rs:213:20
+    |
+213 |             assert((index as int) * spec_page_size() < self.bitmap@.num_bits * spec_page_size());
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/kpool.rs:223:20
+    |
+223 |             assert(((index as int) * spec_page_size()) % spec_page_size() == 0);
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+note: while loop: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/kpool.rs:309:9
+    |
+309 | /         for i in 0..count {
+310 | |             let addr: usize = base_addr + i * mem::PAGE_SIZE;
+311 | |             let frame: FrameAddress = frame_from_raw(addr)?;
+312 | |             addrs.push(frame);
+313 | |         }
+    | |_________^
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/kpool.rs:291:5
+    |
+291 |     fn alloc_range(&mut self, count: usize, addrs: &mut Vec<FrameAddress>) -> Result<(), Error> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/kpool.rs:258:13
+    |
+258 | /             match result {
+259 | |                 Ok(()) => {
+260 | |                     &&& old(addrs)@.len() == 0
+261 | |                     &&& count > 0
+...   |
+288 | |                 },
+289 | |             },
+    | |_____________^ failed this postcondition
+...
+304 |                   return Err(error);
+    |                   ----------------- at this exit
+
+error: possible arithmetic underflow/overflow
+   --> src/kernel/src/mm/phys/kpool.rs:308:57
+    |
+308 |         let base_addr: usize = pa_into_raw(self.base) + index * mem::PAGE_SIZE;
+    |                                                         ^^^^^^^^^^^^^^^^^^^^^^
+
+error: possible arithmetic underflow/overflow
+   --> src/kernel/src/mm/phys/kpool.rs:310:31
+    |
+310 |             let addr: usize = base_addr + i * mem::PAGE_SIZE;
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: possible arithmetic underflow/overflow
+   --> src/kernel/src/mm/phys/kpool.rs:310:43
+    |
+310 |             let addr: usize = base_addr + i * mem::PAGE_SIZE;
+    |                                           ^^^^^^^^^^^^^^^^^^
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/kpool.rs:379:28
+    |
+379 |                     assert(old(self)@.used_page_indices.contains(page_index));
+    |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 1 verified, 4 errors (partial verification with `--verify-*`)
+warning: `kernel` (bin "kernel") generated 2 warnings
+error: could not compile `kernel` (bin "kernel") due to 7 previous errors; 2 warnings emitted
