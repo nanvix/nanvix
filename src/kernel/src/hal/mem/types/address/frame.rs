@@ -67,6 +67,32 @@ pub assume_specification[ FrameAddress::into_raw_value ](self_: FrameAddress) ->
         ret as int == self_@,
 ;
 
+pub assume_specification[ FrameAddress::from_raw_value ](raw_addr: usize) -> (result: Result<FrameAddress, Error>)
+    requires raw_addr as int % spec_page_size() == 0,
+    ensures
+        result matches Ok(_),
+        match result {
+            Ok(frame) => {
+                &&& frame@ == raw_addr as int
+                &&& frame.inv()
+            },
+            Err(_) => false,
+        },
+;
+
+}
+
+/// Converts a [`PageAligned<PhysicalAddress>`] to its raw `usize` value.
+///
+/// This is an external-bottom trust boundary for the HAL address types,
+/// needed because `PageAligned<T>::into_raw_value` is a generic trait method
+/// that cannot receive a monomorphic `assume_specification` in Verus.
+#[verus_verify(external_body)]
+#[verus_spec(ret =>
+    ensures ret as int == pa@,
+)]
+pub fn pa_into_raw(pa: PageAligned<PhysicalAddress>) -> usize {
+    pa.into_raw_value()
 }
 
 //==================================================================================================

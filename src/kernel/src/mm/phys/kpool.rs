@@ -18,10 +18,10 @@ use crate::{
     collections::Bitmap,
     hal::{
         mem::{
-            Address,
             FrameAddress,
             PageAligned,
             PhysicalAddress,
+            pa_into_raw,
         },
         platform::is_valid_physical_region,
     },
@@ -68,35 +68,6 @@ struct Inner {
     base: PageAligned<PhysicalAddress>,
     /// Bitmap of free frames.
     bitmap: Bitmap,
-}
-
-/// Wrapper: converts a [`PageAligned<PhysicalAddress>`] to its raw `usize` value.
-#[verus_verify(external_body)]
-#[verus_spec(ret =>
-    ensures ret as int == pa@,
-)]
-fn pa_into_raw(pa: PageAligned<PhysicalAddress>) -> usize {
-    pa.into_raw_value()
-}
-
-/// Wrapper: constructs a [`FrameAddress`] from a raw address.
-#[verus_verify(external_body)]
-#[verus_spec(result =>
-    requires raw_addr as int % spec_page_size() == 0,
-    ensures
-        result.is_Ok(),
-        match result {
-            Ok(frame) => {
-                &&& frame@ == raw_addr as int
-                &&& frame.inv()
-            },
-            Err(_) => false,
-        },
-)]
-fn frame_from_raw(raw_addr: usize) -> Result<FrameAddress, Error> {
-    Ok(FrameAddress::new(PageAligned::from_address(
-        PhysicalAddress::from_raw_value(raw_addr)?,
-    )?))
 }
 
 #[verus_verify]
@@ -232,11 +203,10 @@ impl Inner {
             // Prove base@ + index * PAGE_SIZE doesn't overflow
             assert(self.base@ + (index as int) * spec_page_size() <= usize::MAX as int);
 
-            // Prove page-alignment for frame_from_raw precondition
+            // Prove page-alignment for FrameAddress::from_raw_value precondition
             assert(self.base@ % spec_page_size() == 0);
         }
-        let addr: usize = pa_into_raw(self.base) + index * mem::PAGE_SIZE;
-        proof! {
+        let addr: usize = pa_into_raw(self.base) + index * mem::PAGE_SIZE;        proof! {
             assert(addr as int == self.base@ + (index as int) * spec_page_size());
             // Prove page alignment: (base@ + index * page_size) % page_size == 0
             vstd::arithmetic::div_mod::lemma_mod_multiples_vanish(
@@ -246,7 +216,7 @@ impl Inner {
             );
             assert(addr as int % spec_page_size() == 0);
         }
-        let frame = frame_from_raw(addr)?;
+        let frame = FrameAddress::from_raw_value(addr)?;
         proof! {
             // frame@ == addr == base@ + index * page_size
             assert(frame@ == addr as int);
@@ -287,9 +257,6 @@ impl Inner {
     #[verus_spec(result =>
         requires
             old(self).inv(),
-            count > 0,
-            count as int <= old(self)@.num_pages,
-            old(addrs)@.len() == 0,
         ensures
             self.inv(),
             match result {
@@ -319,7 +286,7 @@ impl Inner {
                     }
                 },
                 Err(_) => {
-                    &&& count == 0 || forall|i: int| !old(self)@.range_free(i, count as int)
+                    &&& old(addrs)@.len() > 0 || count == 0 || forall|i: int| !old(self)@.range_free(i, count as int)
                     &&& self@ == old(self)@
                     &&& addrs@ == old(addrs)@
                 },
@@ -333,6 +300,31 @@ impl Inner {
             let reason: &str = "addrs vector is not empty";
             #[cfg(not(verus_keep_ghost))]
             error!("{reason}");
+            proof! {
+                assert(old(addrs)@.len() > 0);
+            }
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        // VERUS REWRITE: guard needed because bitmap.alloc_range requires size > 0
+        if count == 0 {
+            let reason: &str = "count must be positive";
+            #[cfg(not(verus_keep_ghost))]
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        // VERUS REWRITE: guard needed because bitmap.alloc_range requires size <= num_bits
+        let num_pages: usize = self.bitmap.number_of_bits();
+        if count > num_pages {
+            let reason: &str = "count exceeds pool capacity";
+            #[cfg(not(verus_keep_ghost))]
+            error!("{reason}");
+            proof! {
+                // count > num_pages, so range_free(start, count) is vacuously false:
+                // range_free requires 0 <= start <= num_pages - count, impossible when count > num_pages
+                assert forall|start: int| !old(self)@.range_free(start, count as int) by {};
+            }
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
@@ -352,13 +344,8 @@ impl Inner {
                             // range_free means forall pages in range are not used
                             assert(forall|j: int| start <= j < start + count as int
                                 ==> !old(self)@.used_page_indices.contains(j));
-                            // used_page_indices == bitmap.set_bits (from View)
-                            // is_bit_set(j) == set_bits.contains(j) (from BitmapView)
-                            // So !used_page_indices.contains(j) == !is_bit_set(j)
                             assert forall|j: int| start <= j < start + count as int
-                                implies !old(self).bitmap@.is_bit_set(j) by {
-                                // is_bit_set(j) == set_bits.contains(j) == used_page_indices.contains(j)
-                            };
+                                implies !old(self).bitmap@.is_bit_set(j) by {};
                             assert(old(self).bitmap@.all_bits_unset_in_range(start, start + count as int));
                             assert(0 <= start);
                             assert(start + count as int <= old(self).bitmap@.num_bits);
@@ -474,7 +461,7 @@ impl Inner {
                 assert(b % m == 0int);
                 assert(addr as int % m == 0int);
             }
-            let frame: FrameAddress = frame_from_raw(addr)?;
+            let frame: FrameAddress = FrameAddress::from_raw_value(addr)?;
             addrs.push(frame);
         }
 
@@ -579,7 +566,6 @@ impl Inner {
         requires
             old(self).inv(),
             addr.inv(),
-            addr@ >= old(self)@.start,
         ensures
             self.inv(),
             ({
@@ -606,12 +592,39 @@ impl Inner {
     fn free(&mut self, addr: FrameAddress) -> Result<(), Error> {
         proof! {
             self.lemma_internal_inv();
-            // Prove subtraction doesn't underflow
-            assert(addr@ >= old(self)@.start);
-            assert(self.base@ == old(self)@.start);
         }
+        // VERUS REWRITE: guard needed to prevent usize underflow in subtraction
+        if addr.into_raw_value() < pa_into_raw(self.base) {
+            let reason: &str = "frame address below pool base";
+            #[cfg(not(verus_keep_ghost))]
+            error!("{reason}");
+            proof! {
+                // addr@ < start, so page_index < 0, hence !input_valid
+                let page_index = (addr@ - old(self)@.start) / spec_page_size();
+                let a: int = addr@ - old(self)@.start;
+                let d: int = spec_page_size();
+                assert(a < 0);
+                assert(d > 0);
+                vstd::arithmetic::div_mod::lemma_fundamental_div_mod(a, d);
+                let q: int = a / d;
+                let r: int = a % d;
+                assert(a == d * q + r);
+                assert(0 <= r);
+                assert(d * q == a - r);
+                assert(d * q < 0);
+                if q >= 0 {
+                    vstd::arithmetic::mul::lemma_mul_inequality(0, q, d);
+                    assert(false);
+                }
+                assert(page_index < 0);
+            }
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+        // Now addr@ >= self.base@ == old(self)@.start
         let index: usize = (addr.into_raw_value() - pa_into_raw(self.base)) / mem::PAGE_SIZE;
         proof! {
+            assert(addr@ >= old(self)@.start);
+            assert(self.base@ == old(self)@.start);
             // Relate exec index to spec page_index
             assert(index as int == (addr@ - old(self)@.start) / spec_page_size());
         }
@@ -624,17 +637,13 @@ impl Inner {
                     assert(0 <= page_index < old(self)@.num_pages);
                     // Prove old(self)@.used_page_indices.contains(page_index):
                     // From clear's spec, usage decreased by 1 and set_bits = old.remove(index).
-                    // If index wasn't in old set_bits, remove would be a no-op, 
+                    // If index wasn't in old set_bits, remove would be a no-op,
                     // and usage wouldn't decrease — contradiction.
                     assert(self.bitmap@.usage() == old(self).bitmap@.usage() - 1);
                     assert(self.bitmap@.set_bits =~= old(self).bitmap@.set_bits.remove(index as int));
                     old(self).bitmap@.lemma_set_bits_finite();
                     if !old(self).bitmap@.set_bits.contains(index as int) {
                         assert(old(self).bitmap@.set_bits.remove(index as int) =~= old(self).bitmap@.set_bits);
-                        // self.bitmap@.set_bits == old.bitmap@.set_bits (from remove no-op)
-                        // so self.bitmap@.usage() == old.bitmap@.usage()
-                        // but spec says self.bitmap@.usage() == old.bitmap@.usage() - 1
-                        // contradiction since set_bits is finite and len >= 0
                     }
                     assert(old(self)@.used_page_indices.contains(page_index));
                 }
