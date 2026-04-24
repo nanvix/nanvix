@@ -5201,3 +5201,22 @@ Turn 181
 ────────────────────────────────────────────────────────────
 Now run verification:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: verification results:: 9 verified, 0 errors (partial verification with `--verify-*`)
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 182
+────────────────────────────────────────────────────────────
+9 verified, 0 errors! Let me check for remaining admits and assume:
+[TOOL] grep: admit\(\)|assume\(
+
+[THINKING] 9 verified, 0 errors! The alloc_range Err-path postconditions now pass. The issue was exactly what I diagnosed: inside loop bodies, facts about exec→spec variable connections (like `start_frame_number == region@.start / spec_page_size()`) were lost because Verus only assumes the loop invariant at the start of each iteration.
+
+Now let me check if there are any remaining admits:
+[RESULT ✓] grep: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 183
+────────────────────────────────────────────────────────────
+Zero admits, zero assumes. Now let me run the full kernel verification for regression check:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -5
