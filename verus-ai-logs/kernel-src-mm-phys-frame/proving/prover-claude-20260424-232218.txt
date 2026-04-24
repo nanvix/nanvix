@@ -2755,3 +2755,21 @@ Now fix the Err branch too:
 Turn 86
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: - frame.rs:466 alloc_range: admit
+    - frame.rs:607 alloc: external_body
+    - frame.rs:639 book: external_body
+    - frame.rs:653 alloc_range: external_body
+  Global: assume=0 external_body=24 admit=6 trusted=0 cfg_gate=7
+  Detail: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvi...
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+`free` is verified! 9 verified, 0 errors. Down from 7 admits to 6 (free's admit removed). Now let me prove `book` using the same pattern:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
