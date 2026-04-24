@@ -1228,3 +1228,309 @@ For frame.spec.rs, I need `UpoolView` explicitly since I'm adding `impl UpoolVie
 Turn 41
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && MODULE=kernel::mm::phys::frame make verify-ker
+[RESULT ✓] bash: - new
+    - write
+    - new
+    - read
+    - write
+    - new
+    - read
+    - write
+    - new
+    - read
+    - new
+    - read
+    - new
+    - read
+    - write
+    - new
+    - write
+    - init
+    - disable_interrupts
+    - wait
+    - set_baud_rate
+
+=== Summary ===
+  verification: cached (no recompil...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -E 'error\[|^error:' verus-ai-logs/verus-
+[RESULT ✓] bash: error: complex arguments to &mut parameters are currently unsupported
+error: complex arguments to &mut parameters are currently unsupported
+error: complex arguments to &mut parameters are currently unsupported
+error: complex arguments to &mut parameters are currently unsupported
+error: The verifier ...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -B5 'complex arguments' verus-ai-logs/ver
+[RESULT ✓] bash: 279 | |          }
+    | |__________^ unreachable expression
+    |
+    = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+error: complex arguments to &mut parameters are currently unsupported
+--
+ 96 |                   error!("{error:?}");
+    |                   --------...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+The `error!` logging macros use `&mut` formatting arguments that Verus can't handle. Per the constraints, I can cfg-gate logging macros. Let me find and gate all of them in verified functions:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n 'error!\|info!\|warn!\|trace!\|debug!'
+
+[THINKING] The errors are about `error!` macros using `&mut` parameters. The `error!` macro from the logging crate uses format arguments that involve `&mut` references. These need to be cfg-gated.
+
+Looking at the verus-constraints skill:
+> Allowed additions: `#[cfg(not(verus_keep_ghost))]` on non-semantic items: `derive(...)`, `debug_assert!`, logging macros (`info!`, `error!`).
+
+So I can cfg-gate the `error!` and `info!` macros. Let me find all the logging macros in the functions that have Verus annotations.
+
+
+Now I'm pinpointing the exact locations where these errors occur. The `error!` macros inside the `Inner` methods that are marked with `#[verus_spec]` are the culprits—they're using debug formatting on values that Verus can't handle. I need to wrap each of these logging calls with the cfg-gate to exclude them from Verus verification.
+[RESULT ✓] bash: 96:                error!("{error:?}");
+104:                error!("{reason:?}");
+113:                error!("{error:?}");
+154:                error!("{error:?} (frame={frame:?})");
+195:                error!("{error:?} (phys_addr={phys_addr:?})");
+257:                error!("{} (frame={:#010x}, reg...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 92.     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+93.         let frame_number: usize = match self.bitmap.alloc() {
+94.             Ok(index) => index,
+95.             Err(error) => {
+96.                 error!("{error:?}");
+97.                 return Err(error);
+98.             },
+99.   ...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+I need to cfg-gate every `error!` and `info!` macro in the functions that Verus verifies. Let me do all the edits:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+Wait, I accidentally truncated. Let me check the state:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 92.     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+93.         let frame_number: usize = match self.bitmap.alloc() {
+94.             Ok(index) => index,
+95.             Err(error) => {
+96.                 #[cfg(not(verus_keep_ghost))]
+97.                 error!("{error:?}");
+98.           ...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+I see — my edit was bad, it removed the closing `};` and the `let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {` line. Let me fix this properly. Let me view the whole function more carefully and do a clean edit:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+Now cfg-gate the error! macros in `free()`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 145.                 },
+146.                 Err(_) => {
+147.                     &&& self@ == old(self)@
+148.                     &&& !old(self)@.allocated_frames.contains(frame@)
+149.                 }
+150.             },
+151.     )]
+152.     fn free(&mut self, frame: FrameAddress) -> Result<(), E...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+Hmm, I've accidentally truncated again. Let me view and fix:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 152.     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+153.         let frame_number: usize = frame.into_frame_number().into_raw_value();
+154.         match self.bitmap.clear(frame_number) {
+155.             Ok(()) => Ok(()),
+156.             Err(error) => {
+157.                 #[c...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+The edit damaged the file. I lost the `}`, `}`, and the doc comment. Let me fix this properly:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+Now cfg-gate the error! in `book()`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 190.                     &&& !old(self)@.free_frames.contains(phys_addr@)
+191.                 }
+192.             },
+193.     )]
+194.     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+195.         let frame_number: usize = phys_addr.into_frame_number().into_raw_v...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+I keep losing closing braces. Let me check:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 194.     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+195.         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+196.         match self.bitmap.set(frame_number) {
+197.             Ok(()) => Ok(()),
+198.             Err(error) => {
+19...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+Same issue. I keep accidentally including trailing context in old_str. Let me fix this more carefully by viewing the whole file, then doing a single comprehensive fix:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 194.     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+195.         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+196.         match self.bitmap.set(frame_number) {
+197.             Ok(()) => Ok(()),
+198.             Err(error) => {
+19...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+I see the problem — the `book()` function body is missing closing braces. Let me do a precise fix:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+Now cfg-gate all error! macros in alloc_range:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 250.         let end_frame_number: usize = start_frame_number + num_frames;
+251. 
+252.         // When nightly-performance-optimizations is off, verify that every frame index in the
+253.         // range is covered by the sparse bitmap. SparseBitmap::test() returns Ok(false) for
+254.         // unco...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+The first error! in alloc_range (line 262) is inside a `#[cfg(not(feature = "nightly-performance-optimizations"))]` block, which is already conditional. But Verus also has `cfg(not(verus_keep_ghost))` as a separate concern. The whole `#[cfg(not(feature = ...))]` for-loop block won't be compiled in perf-optimized builds, but under Verus it might. Let me cfg-gate the error! macros inside the loop bodies:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+Now cfg-gate the info! macro in `init()`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 340. /// in this module.
+341. #[verus_spec(result =>
+342.     ensures
+343.         result is Ok,
+344. )]
+345. pub(super) unsafe fn init(bitmap: SparseBitmap) -> Result<(), Error> {
+346.     if unlikely(INSTANCE_INIT.load(ORDER)) {
+347.         return Err(Error::new(ErrorCode::InvalidArgument, "frame...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+Now let me verify the full file is correct:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`SparseBitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller (upool, kpool, an...
+[RESULT ✓] view: 220.         requires
+221.             old(self).inv(),
+222.             region.inv(),
+223.         ensures
+224.             self.inv(),
+225.             ({
+226.                 let start_frame_number = region@.start / spec_page_size();
+227.                 let end_frame_number = (region@.start + re...
+[RESULT ✓] view: 310. //==================================================================================================
+311. // Singleton
+312. //==================================================================================================
+313. 
+314. /// Module-level singleton storage.
+315. static mut INSTANC...
+[RESULT ✓] view: 120.     }
+121. 
+122.     ///
+123.     /// # Description
+124.     ///
+125.     /// Frees a frame that was previously allocated.
+126.     ///
+127.     /// # Parameters
+128.     ///
+129.     /// - `frame`: Address of the frame to free.
+130.     ///
+131.     /// # Returns
+132.     ///
+133.     /// Upon...
+[RESULT ✓] view: 50. include!("frame.proof.rs");
+51. 
+52. //==================================================================================================
+53. // Inner
+54. //==================================================================================================
+55. 
+56. /// Private state of the frame ...
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+The file looks correct. Now let me run verification:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && MODULE=kernel::mm::phys::frame make verify-ker

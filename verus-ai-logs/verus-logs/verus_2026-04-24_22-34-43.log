@@ -1,0 +1,70 @@
+Timestamp: 2026-04-24_22-34-43
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: kernel::mm::phys::frame
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=2
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+warning: unreachable expression
+   --> src/kernel/src/mm/phys/frame.rs:269:9
+    |
+269 | /          for index in start_frame_number..end_frame_number {
+270 | |/             match self.bitmap.test(index) {
+271 | ||                 Ok(false) => continue,
+272 | ||                 Ok(true) => {
+273 | ||                     let conflicting_addr: usize = index * mem::FRAME_SIZE;
+...   ||
+284 | ||                 Err(err) => return Err(err),
+285 | ||             }
+    | ||_____________- any code following this `match` expression is unreachable, as all arms diverge
+286 | |          }
+    | |__________^ unreachable expression
+    |
+    = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> src/kernel/src/mm/phys/frame.rs:359:5
+    |
+359 |     unsafe { INSTANCE.write(Inner { bitmap }) };
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> src/kernel/src/mm/phys/frame.rs:373:5
+    |
+373 |     instance().alloc()
+    |     ^^^^^^^^^^
+
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> src/kernel/src/mm/phys/frame.rs:386:5
+    |
+386 |     instance().free(frame)
+    |     ^^^^^^^^^^
+
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> src/kernel/src/mm/phys/frame.rs:401:5
+    |
+401 |     instance().book(phys_addr)
+    |     ^^^^^^^^^^
+
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> src/kernel/src/mm/phys/frame.rs:415:5
+    |
+415 |     instance().alloc_range(region)
+    |     ^^^^^^^^^^
+
+warning: `kernel` (bin "kernel") generated 1 warning
+error: could not compile `kernel` (bin "kernel") due to 5 previous errors; 1 warning emitted
