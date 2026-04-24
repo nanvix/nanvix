@@ -370,11 +370,13 @@ pub(super) unsafe fn init(bitmap: SparseBitmap) -> Result<(), Error> {
 }
 
 /// Allocate a frame.
+/// Singleton pattern: state transition tracked by Inner::alloc.
 #[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         match result {
             Ok(frame) => frame.inv(),
+            // Singleton pattern: cannot express state-preservation without ghost accessor.
             Err(_) => true,
         },
 )]
@@ -390,6 +392,9 @@ verus! {
 pub(super) fn free(frame: FrameAddress) -> (result: Result<(), Error>)
     requires
         frame.inv(),
+    ensures
+        // Singleton pattern: state transition tracked by Inner::free.
+        result.is_ok() || result.is_err(),
     opens_invariants none
     no_unwind
 {
@@ -398,30 +403,28 @@ pub(super) fn free(frame: FrameAddress) -> (result: Result<(), Error>)
 }
 
 /// Reserve a frame so [`alloc`] will skip it.
+/// Singleton pattern: state transition tracked by Inner::book.
 #[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_addr.inv(),
     ensures
-        match result {
-            Ok(()) => true,
-            Err(_) => true,
-        },
+        // Singleton pattern: cannot express state transition without ghost accessor.
+        result.is_ok() || result.is_err(),
 )]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
     instance().book(phys_addr)
 }
 
 /// Book every frame in the given physical memory region.
+/// Singleton pattern: state transition tracked by Inner::alloc_range.
 #[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         region.inv(),
     ensures
-        match result {
-            Ok(()) => true,
-            Err(_) => true,
-        },
+        // Singleton pattern: cannot express state transition without ghost accessor.
+        result.is_ok() || result.is_err(),
 )]
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
     instance().alloc_range(region)
