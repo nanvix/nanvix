@@ -330,3 +330,830 @@ Turn 9
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
 
 [THINKING] So the verify target is `make verify-kernel` and I can use `MODULE=frame` to specify the module. Let me check how the verify script works:
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.26s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::phys::frame:
+    ⚠️  external_body: 9
+    ⚠️  cfg-gated exec code: 4
+  Affected functions:
+    - frame.rs:68 frame_addr_to_b...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Let me check the original code from the base branch for AST comparison and look at the cheating detail file.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/kpool:src/kernel/src/mm/phys
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cat src/kernel/src/cheating-detail.txt 2>/dev/
+
+[THINKING] The cheating detection tool reports for the `mm::phys::frame` module specifically:
+- external_body: 9 (6 conversion wrappers + 3 singleton wrappers)
+- cfg-gated exec code: 4
+
+Wait, the global counts include all modules (24 external_body, 11 cfg_gate). But the module-specific check shows:
+- 9 external_body in frame module
+- 4 cfg-gated exec code
+
+Wait, but I see 11 external_body listed under "Affected functions" but only for the frame module. Let me re-read:
+
+The "Module mm::phys::frame" section shows:
+
+
+- external_body: 9
+- cfg-gated exec code: 4
+
+And it lists 11 affected functions. There's a discrepancy here—the tool counts 9 external_body instances but lists 11 functions, so some functions must have multiple violations or the counting methodology differs from the function listing.
+
+Looking at the specific functions flagged, I'm seeing frame_addr_to_bitmap_index, bitmap_index_to_frame_addr, page_aligned_pa_to_bitmap_index, region_start_frame_number, region_size_raw, region_start_raw, and then Inner::alloc and Inner::free marked as external_body, but when I check the actual line numbers, those Inner methods don't actually have the external_body attribute. Let me trace through the grep results more carefully to understand where the actual violations are occurring. I'm noticing some discrepancies in the tool's line number reporting—lines 172 and 372 don't actually contain external_body markers, so there might be an offset issue with how the tool is counting. Let me cross-reference the actual locations more carefully to get an accurate count. I'm cataloging the external_body issues across both files. In frame.rs, I've found 10 instances—mostly stdlib wrappers for bitmap and region operations, plus four singleton wrapper functions for allocation and deallocation. Then in frame.spec.rs, there are two more: the ExFrameNumber external type specification and an external constant specification for FRAME_SIZE.
+
+Now I'm looking at the init function specification and then scanning through the cfg-gated exec code to identify which logging macros and diagnostic computations are actually allowed versus which ones violate the rules.
+
+The key insight is that diagnostic computations supporting error messages are fine when they're part of the error reporting chain—the `let` statements computing values used immediately in cfg-gated `error!` macros are all legitimate. I can see logging macros scattered throughout (lines 241, 539, 746, 894, 961, 1003, 1166) are all allowed, and the intermediate calculations like `uncovered_addr`, `conflicting_addr`, `region_start`, and `region_end` are all in service of those error messages.
+
+Now I need to classify the external-bottom trust boundaries, starting with `frame_addr_to_bitmap_index` which wraps FrameNumber. The remaining external specifications cover the singleton wrapper functions that delegate to verified inner methods through a static accessor, since Verus can't reason about the mutable state directly. I'm also noting that cfg-gated exec code appears in logging macros and value computations that don't affect verification.
+
+Now I need to think through which of these are genuine trust boundaries versus implementation details—the singleton pattern with unsafe static mut access is fundamentally something Verus can't verify, but the inner methods themselves are fully proven, so the external_body annotations are really just bridging that gap. Per verus-constraints: "On current module's functions: forbidden — use admit() instead." But wait, these public functions delegate to the fully verified Inner methods. The external_body is needed because instance() is not verified (it uses unsafe MaybeUninit::assume_init_mut()). So the trust here is minimal - only that instance() returns the correct Inner reference.
+
+This is more of a proof gap than an external-bottom trust boundary. The singleton access pattern (static mut + MaybeUninit) is an internal design choice, not an external FFI boundary. However, Verus fundamentally cannot reason about static mutable state currently.
+
+The real issue is that these singleton wrappers call verified inner methods, but the gap lies in the singleton accessor itself—the static mut + MaybeUninit pattern that Verus can't currently handle. Since this is a Verus limitation rather than something I can eliminate, these remain as proof gaps. For the conversion wrappers though, they're different: they chain method calls on external types using generic trait dispatch, which Verus can't express assume_specification for. Those are thin stdlib/crate wrappers and should be classified as external-bottom trust boundaries.
+
+Now I need to classify each external_body and assume_specification, verify the cfg-gated exec code is allowed, and check the original code for AST consistency.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//! Frame allocator — module-level singleton.
+//!
+//! The frame allocator is backed by a [`SparseBitmap`] and exposed as free functions over a
+//! singleton so every in-kernel caller (upool, kpool, anything else that need...
+[RESULT ✓] bash: - hal/mem/types/address/frame.rs:94 pa_into_raw: external_body
+    - hal/mem/types/region.rs:348 start: external_body
+    - hal/mem/types/region.rs:354 size: external_body
+    - mm/phys/frame.rs:68 frame_addr_to_bitmap_index: external_body
+    - mm/phys/frame.rs:83 bitmap_index_to_frame_addr: extern...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Let me invoke the AST consistency skill and get the full original base branch code for comparison.
+[TOOL] skill: ast-consistency
+
+[THINKING] Wait, the cheating-detail.txt lists `frame.rs:172 alloc: external_body` and `frame.rs:372 free: external_body`. But looking at the current frame.rs, lines 172 and 372 are the Inner::alloc and Inner::free which do NOT have external_body. Let me check the line number mapping in the tool more carefully.
+
+Actually, I see the problem. The cheating detail lists `frame.rs:172 alloc` and `frame.rs:372 free` as having external_body. But looking at the actual code:
+- Line 172 is `fn alloc(&mut self) -> Result<FrameAddress, Error> {`
+
+
+- Line 372 is `fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {`
+
+These functions do NOT have external_body. But wait, looking at the original code from the base branch, Inner::alloc had `#[verus_verify(external_body)]` at line 82 in the original. This was removed in the current version because the function body is now fully verified. Let me look at the file more carefully to understand what the cheating-detail.txt is actually referring to.
+
+The cheating tool reports 9 external_body functions in the frame module, but when I count the affected functions listed—6 conversion wrappers plus alloc, free, and a few others—I'm getting 11 entries. That discrepancy suggests the tool might be counting differently, perhaps through tree-sitter AST analysis. Looking at the broader context, the global count shows 24 external_body across all modules, and the frame module's 9 is just a subset of that larger total.
+
+The mismatch could mean some functions like Inner::alloc and Inner::free are being incorrectly flagged, or the tool is reporting line numbers differently than what actually has external_body. Either way, I should rely on my manual grep results to verify what's actually there, then move forward with the AST consistency check.
+[RESULT ✓] skill: Skill "ast-consistency" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running AST consistency check
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 scripts/ast_consistency.py --base-ref 
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/kpool:src/kernel/src/mm/phys
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 398
+<exited with exit code 0>
+[RESULT ✓] bash: python3: can't open file '/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/scripts/ast_consistency.py': [Errno 2] No such file or directory
+<exited with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp -name 'ast_consistency.py' -type f 2>/dev/null | head -5
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/backup/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/verus-ai-sparse-bitmap-property-analysis-0416/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/verus-ai-sparse-bitmap-big-change-0416/scripts/ast_consis...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai/scri
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+Inner::alloc                             MISMATCH                             
+Inner::alloc_range                       MISMATCH...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai/scri
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai/scri
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai/scri
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai/scri
+
+[THINKING] OK, so the AST consistency check shows:
+- 4 MISMATCHes: Inner::alloc, Inner::alloc_range, Inner::book, Inner::free
+- 6 MISSING_IN_VERUS: alloc, alloc_range, book, free, init, instance (these were originally free functions, now they're in the verus version differently)
+- 8 EXTRA_IN_VERUS: Inner::init, Inner::instance, and 6 conversion wrappers (these were added)
+
+Let me look at the diffs for the mismatched functions.
+[RESULT ✓] bash: ## Inner::alloc (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,26 +1,3 @@
+-    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+-        let frame_number: usize = match self.bitmap.alloc() {
+-            Ok(index) => index,
+-            Err(error) => {
+-                error!("{error:?}");
+- ...
+[RESULT ✓] bash: ## Inner::free (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,8 +1,170 @@
+     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+-        let frame_number: usize = frame.into_frame_number().into_raw_value();
++        // VERUS DEVIATION: original was `frame.into_frame_number().into_ra...
+[RESULT ✓] bash: ## Inner::book (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,8 +1,173 @@
+     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+-        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
++        let frame_number: usize = page_aligned_pa_t...
+[RESULT ✓] bash: ## Inner::alloc_range (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -2,8 +2,49 @@
+         &mut self,
+         region: &TruncatedMemoryRegion<PhysicalAddress>,
+     ) -> Result<(), Error> {
+-        let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+-        let en...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Now I have a comprehensive understanding. Let me create the plan and output files. Let me first check the original code for `alloc_range` to understand the `..=` vs `..` deviation better.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/kpool:src/kernel/src/mm/phys
+
+[THINKING] Now I have a clear picture. Let me understand the AST mismatches:
+
+1. **Inner::alloc**: The original had a 3-step conversion chain (bitmap.alloc → FrameNumber::from_raw_value → FrameAddress::from_frame_number). The verus version replaces this with `bitmap_index_to_frame_addr(index)` wrapper. The tool confusingly shows the verus version as the public `alloc()` singleton wrapper rather than the Inner::alloc replacement. Let me check this more carefully.
+
+Actually wait, the diff shows:
+```
+-    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+
+
+-        let frame_number: usize = match self.bitmap.alloc() {
+-            ...
+-    }
++pub(super) fn alloc() -> Result<FrameAddress, Error> {
++    instance().alloc()
++}
+```
+
+This is a tool misidentification—it's matching Inner::alloc (original) to the public alloc() function (verus). The original Inner::alloc actually maps to the current Inner::alloc with different exec code due to wrapper calls, while the public alloc() is new and wasn't a separate entity in the original.
+
+In the original code, the free functions alloc/free/book/alloc_range delegated to instance().alloc() while Inner methods had external_body. Now in verus, Inner methods are fully verified with bodies, and the public free functions have external_body instead. The AST tool is matching by name alone, so it's conflating Inner::alloc (original, with a 26-line body) with the current Inner::alloc (which uses wrapper calls), while treating the public alloc() function as a match when it's actually a new addition.
+
+Looking at the specific mismatches: the original Inner methods used direct conversion chains and method calls, while the verus versions wrap these operations in dedicated functions like bitmap_index_to_frame_addr, frame_addr_to_bitmap_index, and page_aligned_pa_to_bitmap_index. There are also subtle differences in range syntax and how the conversions are chained together. Looking at the exec changes for Inner::free and Inner::book, I see the same pattern—method chains are being replaced with wrapper function calls because Verus can't handle generic Deref in assume_specification contexts. Now I need to manually compare the original alloc implementation to see what's actually changing there. I'm looking at how the allocation function simplifies in the Verus version—instead of chaining three separate conversions together, it now calls a single helper function that handles the bitmap index to frame address conversion directly, which is cleaner and reduces the intermediate steps.
+
+For the range allocation, I'm seeing several refactorings: helper functions extract the frame number calculations from the region, the loop bounds change from inclusive to exclusive range, and error reporting gets conditionally compiled based on the build configuration.
+
+These changes all stem from Verus limitations—it can't handle method chains on external types, lacks support for inclusive range iteration, and needs to avoid potential overflow in certain contexts. They're all documented as necessary deviations for the Verus rewrite.
+
+Now I'm organizing the trust boundaries and external types to build out the final structure. FrameNumber is from arch crate, and there are several external constants and functions that Verus can't directly compile, like MaybeUninit::write(). I'm seeing a pattern of wrapper functions that handle conversions between frame addresses and bitmap indices, along with methods that extract region properties from external types. Then there are the singleton pattern functions—alloc(), free(), and book()—which all rely on static mut and MaybeUninit, creating proof gaps I need to address.
+
+Actually, I'm reconsidering how to classify these singleton wrappers. The Verus constraints say forbidden functions should use admit() instead, but these pub functions are in the current module and use external_body because Verus fundamentally can't handle the static mutable singleton pattern with unsafe code. The inner methods are fully verified, and external_body is just trusting that instance() returns the correct Inner reference. This is a genuine Verus limitation around static mutable state, not an FFI or hardware issue—the code is verifiable in principle, but Verus's type system doesn't support it.
+
+But looking deeper, instance() actually depends on std library functions like AtomicBool::load and MaybeUninit::assume_init_mut, which Verus can't verify. So these are external-bottom trust boundaries wrapping std primitives. The tricky part is that the trust extends beyond just those individual std calls—it's really about the entire singleton safety invariant (initialization happens once, single-threaded access, etc.).
+
+So I should classify the conversion wrappers as STDLIB_WRAPPER since they're just chaining external type methods, while the singleton accessors are proof gaps because the inner logic is verified but the singleton pattern itself can't be proven. For the singleton functions, I can't really eliminate the unsafe blocks and std calls that Verus doesn't understand, so those have to stay as gaps. The conversion wrappers are wrapping method chains on FrameNumber and FrameAddress, which is a different kind of boundary.
+
+Looking at what I'm actually cheating on—10 external_body calls in frame.rs, 1 in frame.spec.rs, 2 assume_specification calls, and some cfg-gated logging code—none of these are really eliminable. The conversion wrappers can't go away because Verus fundamentally can't handle generic trait dispatch like Deref<Target = T>, so these are hitting the external-bottom boundary for the arch/hal types.
+
+The singleton wrappers are stuck too since Verus doesn't support static mutable state, and ExFrameNumber is an external type from the arch crate that I have to trust. The assume_specification calls for FRAME_SIZE and init are necessary because they involve external constants and MaybeUninit::write respectively. The cfg-gated code is all legitimate—just logging macros and diagnostic computations.
+
+So I'm classifying everything as either trust boundaries or unavoidable proof gaps: ExFrameNumber and FRAME_SIZE are external types/constants from the arch crate, and the rest are genuine limitations of what Verus can express.
+
+Now I'm finishing the classification—the remaining functions like bitmap_index_to_frame_addr, page_aligned_pa_to_bitmap_index, and the region methods are all wrapper conversions over arch types, while alloc() and free() represent the singleton pattern that can't be eliminated.
+
+Actually, I'm reconsidering whether init() should be classified differently. It uses MaybeUninit::write from std, which Verus can't compile, so the assume_specification acts as a trust boundary on the init function itself—similar to how the stdlib wrappers work. The key insight is that the trust boundary sits on the function using the std construct, not on some arbitrary proof gap.
+
+Now looking at the other public functions like alloc, free, book, and alloc_range—they all call instance(), which in turn uses MaybeUninit::assume_init_mut() and AtomicBool::load, both std functions without vstd specs. So these are also trust boundaries wrapping std functionality.
+
+Let me now examine the AST consistency issues and the VERUS REWRITE deviations to see what's been pre-approved.
+
+For the mismatches, Inner::alloc replaces a three-step conversion chain with a wrapper call to bitmap_index_to_frame_addr(). This is close to the pre-approved pattern but leans more toward the stdlib wrapper approach from the escalation ladder. The original does FrameNumber::from_raw_value(idx).ok_or_else(...) plus FrameAddress::from_frame_number(fn), while Verus just calls the wrapper function—a necessary change since generic Deref can't have assume_specification and the whole chain needs wrapping.
+
+Inner::free follows the same pattern, converting frame.into_frame_number().into_raw_value() into frame_addr_to_bitmap_index(frame), and Inner::book does something similar with phys_addr conversions.
+
+Inner::alloc_range has several adjustments: method calls become wrapper calls, RangeInclusive gets replaced with a regular range since ForLoopGhostIteratorNew isn't available, continue statements become empty bodies, and some diagnostic computations are cfg-gated. These are all documented Verus limitations. Looking at the MISSING_IN_VERUS list, the six public functions (alloc, alloc_range, book, free, init, instance) are still present in the file but the AST tool is reporting them as missing.
+
+The issue is likely that init and instance lack the #[verus_verify] annotation so they're outside Verus's scope, and the public functions have external_body which might cause the tool to skip analyzing their bodies. This could be a tool artifact rather than an actual problem since the functions do exist in both versions. The EXTRA_IN_VERUS list shows Inner::init, Inner::instance, plus six conversion wrappers that exist only in the Verus version.
+
+Wait, I'm seeing a discrepancy—Inner::init and Inner::instance are being flagged as extra in Verus, but in the current code init and instance are free functions, not impl methods. This might be a parsing issue with the tool. Regardless, the real EXTRA_IN_VERUS items are the six conversion wrapper functions, which are justified as trust boundary wrappers. I have enough context now to generate the output and documentation.
+
+Actually, let me reconsider the task requirements. The goal is to eliminate all cheating items, but looking at what's actually there—the conversion wrappers are necessary trust boundaries for the arch/hal type methods, the singleton wrappers can't be eliminated without Verus support for static mut, and the external types can't be touched. The assume_specifications on FRAME_SIZE and init are also unavoidable given the external constants and MaybeUninit usage. So my report will show these are all legitimate trust boundaries or proof gaps with nothing actually eliminable.
+
+Let me verify whether init is truly a trust boundary or if it's a proof gap I should examine more closely. The assume_specification is necessary because the init function relies on unsafe operations and standard library functions that Verus can't verify—static mut access, MaybeUninit::write, and AtomicBool::store all lack vstd specifications. Now I need to verify that the VERUS REWRITE/DEVIATION comments are consistently marked throughout the code for all AST mismatches. Now I'm tallying up the specific instances of cheating across all three files. There are 11 external_body uses total—10 in frame.rs covering various address and allocation functions, plus 1 in frame.spec.rs for ExFrameNumber. I also see 2 assume_specification calls for FRAME_SIZE and init, along with 7 logging macro instances that are allowed and some diagnostic computations supporting them.
+
+Looking at those diagnostic computations more closely, they're let bindings that compute potentially overflowing values like `index * mem::FRAME_SIZE` and address calculations, but they're only used by the immediately-following cfg-gated error! macros. The cfg-gating prevents overflow panics in Verus mode since these values are exclusively consumed by the logging statements, though technically the bindings themselves aren't logging macros—they're just supporting computations for them. could overflow usize.
+
+I think the correct classification is: these are part of the error-reporting chain and are necessary because the computation itself would fail in Verus mode. They're borderline - not strictly "logging macros" but directly supporting them. The alternative would be to compute inline inside the error! macro, which doesn't work because the macro itself is cfg-gated.
+
+For counting purposes, the cheating detection tool said 4 cfg-gated exec code items for the frame module. Let me count what the tool likely counts differently from my manual count.
+
+OK, I think the tool counts contiguous cfg-gated blocks, not individual lines. Let me just go with the tool's count of 4 for cfg-gated exec code (for the diagnostic computation blocks, not the logging macros which are allowed).
+
+Actually, I should focus on what matters. These 4 let-bindings are the ones the tool flags - they compute frame addresses and region bounds exclusively for use in error messages. They're cfg-gated because the arithmetic operations can overflow in ways that Verus would reject, and they also call external wrapper functions that aren't available in verified code.
+
+Now I need to generate the output files documenting this analysis.
+[RESULT ✓] bash: },
+    )]
+    fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+        match self.bitmap.set(frame_number) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                e...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/kpool:src/kernel/src/mm/phys
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/kpool:src/kernel/src/mm/phys
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/kpool:src/kernel/src/mm/phys
+
+[THINKING] OK, now I have the full picture. Let me note that in the original base branch, `book` and `alloc_range` pub functions did NOT have `external_body` annotations. In the verus version, they got `external_body`. Also, `pub free()` in the original had `external_body`. 
+
+Looking more closely at the original vs current for the public free functions:
+
+Original:
+- `pub alloc()` - has `external_body` ✓ (same as current)
+- `pub free()` - has `external_body` ✓ (same as current, except now also has requires/ensures)
+
+
+- `pub book()` - plain functions with no annotations (current version added `external_body` + spec)
+- `pub alloc_range()` - plain functions with no annotations (current version added `external_body` + spec)
+
+So there's been a trade-off: the Inner methods that originally had `external_body` (admit-style) are now actually verified, while the public singleton functions got `external_body` annotations added to them.
+
+This is actually a win—the Inner methods' bodies are now verified instead of trusted, and the `external_body` on the pub functions is a smaller trust assumption (just the singleton accessor pattern) compared to the original Inner methods' `external_body` (which trusted the entire computation).
+
+So the shift is: 4 `external_body` annotations removed from Inner methods, 2 added to pub functions (book and alloc_range). Net reduction of 2 on the verification side.
+
+Let me recount the original state more carefully by checking the base branch code...
+
+Looking at the actual signatures, I see `pub alloc()` has the external_body marker with a spec, `pub free()` has external_body, but `pub book()` and `pub alloc_range()` don't have either external_body or specs in the original.
+
+For the inner methods, `Inner::alloc` definitely had external_body with a full spec, and I need to verify what the other inner methods had — particularly checking if `Inner::alloc_range` also had external_body in the original.
+[RESULT ✓] bash: 75:    #[verus_verify(external_body)]
+136:    #[verus_verify(external_body)]
+181:    #[verus_verify(external_body)]
+226:    #[verus_verify(external_body)]
+365:#[verus_verify(external_body)]
+381:#[verifier::external_body]
+<exited with exit code 0>
+[RESULT ✓] bash: 0
+<exited with exit code 1>
+[RESULT ✓] bash: 
+<exited with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/kpool:src/kernel/src/mm/phys
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git show verus-ai/kpool:src/kernel/src/mm/phys
+
+[THINKING] OK so in the original (base branch):
+**frame.rs:**
+- Line 75: `#[verus_verify(external_body)]` → Inner::alloc
+- Line 136: `#[verus_verify(external_body)]` → Inner::free
+- Line 181: `#[verus_verify(external_body)]` → Inner::book  
+- Line 226: `#[verus_verify(external_body)]` → Inner::alloc_range
+- Line 365: `#[verus_verify(external_body)]` → pub alloc()
+- Line 381: `#[verifier::external_body]` → pub free()
+
+
+That's 6 total external_body annotations. Now checking frame.spec.rs in the base branch to see if there are any unverified items there.
+[RESULT ✓] bash: verus! {
+
+impl Inner {
+    pub open spec fn inv(&self) -> bool
+    {
+        &&& self@.wf()
+        &&& self.internal_inv()
+    }
+}
+
+}
+(END)
+<command with shellId: 22 is still running after 30 seconds. The command is still running. Check the output above - if it looks like the command is waiting for...
+[RESULT ✓] bash: verus! {
+
+use super::UpoolView;
+use crate::hal::mem::spec_page_size;
+
+impl View for Inner {
+    type V = UpoolView;
+
+    uninterp spec fn view(&self) -> UpoolView;
+}
+
+impl Inner {
+    pub closed spec fn internal_inv(&self) -> bool
+    {
+        true
+    }
+}
+
+}
+(END)
+<command with shellId: 23 is stil...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] stop_bash: {'shellId': '22'}
+[TOOL] stop_bash: {'shellId': '23'}
+[RESULT ✓] stop_bash: <command with id: 22 stopped>
+[RESULT ✓] stop_bash: <command with id: 23 stopped>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Now I have the full picture. Let me create the output directory and write the reports. I'll consult the rubber-duck agent for my classification plan first.
+[TOOL] report_intent: Classifying cheating items
+[TOOL] task: {'name': 'rubber-duck-cheating', 'prompt': "I'm performing cheating elimination 
+
+[THINKING] Now I have the full picture of the original state:
+
+**Original (base branch) frame.rs:**
+- external_body: 6 (Inner::alloc, Inner::free, Inner::book, Inner::alloc_range, pub alloc, pub free)
+- assume: 0
+- admit: 0
+- cfg-gated exec: 0
+- assume_specification: 0
+
+**Original frame.spec.rs:**
+- No external_body, no assume_specification (just inv() spec)
+
+**Original frame.proof.rs:**
+- `uninterp spec fn view(&self) -> UpoolView;` (banned per verus-constraints)
+
+
+- `internal_inv()` returning `true` (trivial, placeholder)
+- No assume/admit/external_body/assume_specification
+
+Comparing to the current verus version, I'm seeing significant growth: frame.rs now has 10 external_body declarations (the original 6 plus 4 new singleton wrappers) and 11 cfg-gated exec instances scattered throughout, while frame.spec.rs picked up 1 external_body and 2 assume_specification declarations that weren't there before.
+
+Looking at frame.proof.rs, there's nothing marked as cheating, which is good. The net effect across all these changes is that external_body grew from 6 to 11, assume_specification went from 0 to 2, and cfg-gated exec jumped from 0 to 11 with logging and diagnostics. The uninterp count dropped to zero, and admit/assume stayed at zero. What's interesting is that the Inner methods lost their external_body annotations entirely—they're now fully verified instead of being treated as unverified black boxes.
+
+The real win here is that those 4 external_body items on Inner methods are gone, replaced with actual verification. The new external_body items are mostly thin wrapper functions and type specifications that isolate specific Verus limitations. For the cheating elimination task, I need to count what's currently there and see if any can actually be removed. Since all of these represent genuine trust boundaries or proof gaps, none can be eliminated—the report just reflects the current state.
+
+Now I'm wondering if those proof gaps in the pub functions can be resolved. These functions call `instance()` which...
+
+The issue is that `instance()` relies on loading an AtomicBool and calling unsafe `MaybeUninit::assume_init_mut()`, both standard library functions. To verify these, I'd need vstd specs for those operations plus Verus support for static mut and unsafe blocks—none of which are available right now. So these are genuine proof gaps.
+
+But wait, there's a constraint issue here: external_body is forbidden on the current module's functions, and admit is also banned. So these singleton wrappers can't be verified due to Verus limitations, can't use admit, and can't use external_body. That leaves me in a bind about what these should actually be.
+
+Re-reading the constraint more carefully, I think the resolution is that these ARE trust boundaries because they wrap std functions that Verus fundamentally can't handle—not just proof gaps, but limitations of the language itself with unsafe code and static mut.
+
+Looking at the available classifications in trust.md, I need to map the singleton pattern functions (which combine static mut access, unsafe blocks, and unspecced std functions like MaybeUninit and AtomicBool) to either STDLIB_WRAPPER, EXTERNAL_TYPE, or HARDWARE_BOUNDARY. The singleton accessors seem closest to STDLIB_WRAPPER since they're wrapping std library functionality that lacks vstd specifications. Looking more carefully at the singleton wrapper functions, they're calling `instance()` which is the untrusted function using std/unsafe, so the trust boundary is really on that pattern rather than the wrapper itself. For the `init` function though, I'm realizing there's a constraint violation—using `assume_specification` on a function in the current module goes against the rule that it's only allowed for external functions, but the spec file is doing exactly that with `init`. I need to reconsider whether this classification is actually valid given those constraints. That seems like a misuse - assume_specification should be for external functions. But the comment explains: "function body uses MaybeUninit::write() which Verus cannot compile even with external_body." So even external_body doesn't work for init. The assume_specification is the only way to give it any spec at all.
+
+This is a genuine Verus limitation. The function body uses constructs Verus literally cannot parse. So assume_specification is used as a last resort.
+
+I'll record this as a proof gap and finalize my plan. For the trust boundaries, I'm marking ExFrameNumber as an external type, then FRAME_SIZE and several bitmap/address conversion functions as stdlib wrappers. For proof gaps, I'm documenting that init uses MaybeUninit::write and static mut, plus the singleton pattern functions like alloc, free, and book that rely on external_body. oc_range() external_body → singleton pattern. The constraint says "admit/assume must be eliminated" and all are already at 0, so that's fine. External boundaries need strict justification in trust.md, and proof gaps must be eliminated or recorded in verification_todo.md.
+
+The singleton wrappers use std functions without vstd specs, unsafe blocks, and static mut—these are fundamental Verus limitations, not proof gaps. A proof gap is when code *can* be verified but hasn't been yet; these constructs *cannot* be verified with current Verus. So they belong in trust.md as STDLIB_WRAPPER, justified by their dependence on std functions, with the inner methods fully verified to minimize the trust surface.
+
+Re-reading the constraints, external_body on the current module's functions is forbidden—I need to use admit() instead.
+
+Actually, that creates a contradiction: admit is also banned for final code. The resolution is that if a function can't be verified, it's either an external-bottom trust boundary (external_body + trust.md entry) or a proof gap (verification_todo.md). Since the singleton functions depend on std functions without vstd specs, I'll classify them as trust boundaries.
+
+Now I need to finalize the files and count the actual numbers for the report—the "before" state should reflect what the module currently has.
+
+Looking at the current state: there are 11 external_body items (10 in frame.rs, 1 in frame.spec.rs), 2 assume_specification items in frame.spec.rs, and 11 cfg-gated exec items that are all allowed. After analysis, none of these can be eliminated—they're either trust boundaries (8 items), proof gaps (5 items), or allowed cfg-gated exec (11 items), so the before/after counts remain unchanged.
+
+Now I'm examining a specific cfg-gated exec block around lines 891-895 to see if any of these items actually need attention. The code is computing an uncovered address and logging an error message, with the address variable itself being cfg-gated because it's only used within the cfg-gated error logging call.
+
+But I notice the `reason` string at line 893 isn't actually cfg-gated—it's used in both the diagnostic error! macro and in the actual error return statement, so it's shared between the two paths rather than being a cfg-gated exec item. The same pattern appears again around lines 960-966 where `reason` is defined once and used in both a cfg-gated error log and an unconditional error return.
+
+Now I'm reconciling the tool's counts with my manual review across all three files. The tool reports 9 external_body items for the frame module and 4 cfg-gated exec items, but I should verify this against my own detailed count of the functions in frame.rs to make sure we're aligned. Looking at the cfg-gated exec instances across those line numbers, the tool is counting 4 because it only flags non-logging diagnostic computations—the logging macros are considered acceptable. So I'm settling on external_body: 11 total, assume_specification: 2, and cfg-gated exec: 4, all of which I can justify in the report.
+
+Now I need to generate the output files and make sure the current code still passes verification.
+[RESULT ✓] report_intent: Intent logged
+[TOOL] skill: review-methodology
+[RESULT ✓] skill: Skill "review-methodology" loaded successfully. Follow the instructions in the skill context.
+[TOOL] report_intent: Reviewing classification
+[TOOL] rg: external_body|assume_specification|external_type_specification|cfg\(|error!|info!|MaybeUninit|AtomicBool|static mut
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`SparseBitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller (upool, kpool, an...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::UpoolView;
+4. use crate::hal::mem::spec_page_size;
+5. 
+6. // ---------------------------------------------------------------------------
+7. // External type specifications (arch crate)
+8. // ---------------------------------------------------------------------------
+9. ...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use vstd::arithmetic::div_mod::*;
+4. 
+5. /// Helper: convert a bitmap index to a frame (physical) address.
+6. pub open spec fn frame_addr_of(i: int) -> int {
+7.     i * spec_page_size()
+8. }
+9. 
+10. impl View for Inner {
+11.     type V = UpoolView;
+12. 
+13.     closed spec fn view...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs:10:#[verifier::external_type_specification]
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs:11:#[verifier::external_body]
+/home/ruize/veru...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 258.         // generic signatures. This wrapper encapsulates the same conversion with a spec.
+259.         let result = bitmap_index_to_frame_addr(index);
+260.         proof! {
+261.             let idx = index as int;
+262.             let ps = spec_page_size();
+263.             // bitmap_index_to_f...
+[RESULT ✓] view: 1128. const ORDER: Ordering = Ordering::Relaxed;
+1129. 
+1130. //==================================================================================================
+1131. // Singleton
+1132. //==================================================================================================
+1133. 
+1134...
+[RESULT ✓] view: 820.             assert((num_frames as int) * ps == region@.size);
+821.             assert((num_frames as int) <= region@.size);
+822.             // sfn + nf <= start + size <= usize::MAX
+823.             assert((start_frame_number as int) + (num_frames as int) <= usize::MAX as int);
+824.         }
+...
+[TOOL] rg: trust\.md|verification_todo\.md|EXTERNAL_TYPE|STDLIB_WRAPPER|proof gap|proof_gap|trust boundary
+[TOOL] rg: pub\(super\) unsafe fn init|pub\(super\) fn alloc\(|pub\(super\) fn free\(|pub\(super\) fn book\(|pub\(super\) fn alloc_range\(
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/proving/dialogue/turn_001_driver.md:45:#### Conversion wrappers (6) — external-bottom trust boundary
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src...
+[RESULT ✓] rg: Output too large to read at once (954.2 KB). Saved to: /tmp/copilot-tool-output-1777051206656-fa4rtf.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (firs...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/trust.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/verification_todo.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/doc/verus-for-kernel-maintainers.md
+[RESULT ✓] view: 1. # Trust Boundaries: kpool
+2. 
+3. This file records genuine external-bottom trust boundaries used by the kpool module.
+4. These are calls to code outside the verification scope whose implementation cannot be
+5. verified (hardware, FFI, std library internals).
+6. 
+7. ## Dependency Trust Boundaries
+...
+[RESULT ✓] view: 1. # Verification TODOs: kpool
+2. 
+3. No proof gaps remain. All four `Inner` methods (`new`, `alloc`, `alloc_range`, `free`)
+4. are fully body-verified with zero `admit`, `assume`, `external_body`, or
+5. `assume_specification` in the kpool source, spec, and proof files.
+6. 
+[RESULT ✓] view: 620. `verus_keep_ghost` cfg gate ensures they are not even compiled in a normal build.
+621. 
+622. ### 3. Confusing `requires` with `assert!`
+623. 
+624. `requires` is a **static** contract checked by the verifier at compile time. Rust's
+625. `assert!()` is a **runtime** check. Verus's `assert()` (no ...
+[TOOL] glob: **/kernel-src-mm-phys-frame/{trust.md,verification_todo.md,fix_report.md}
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/proving/dialogue/turn_001_driver.md
+[RESULT ✓] view: 40. Manual code review identified **10 external_body functions** (the cheating script reports
+41. Inner::alloc at line 172 and Inner::free at line 372 as external_body, but this is a
+42. **false positive** — those functions do NOT carry `#[verus_verify(external_body)]`; the
+43. script likely matches...
+[RESULT ✓] glob: No files matched the pattern.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] rg: VERUS REWRITE|VERUS DEVIATION
+[RESULT ✓] view: 1000.             }
+1001.             if let Err(error) = self.bitmap.set(index) {
+1002.                 proof! { assert(false); }
+1003.                 #[cfg(not(verus_keep_ghost))]
+1004.                 error!("{error:?} (region={region:?})");
+1005.                 return Err(error);
+1006.        ...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs:62:// VERUS REWRITE: wraps frame.into_frame_number().into_raw_value()
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs:73:// VERUS REWRITE: wraps Fra...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 784.                         &&& self@ == old(self)@
+785.                         &&& !frames.subset_of(old(self)@.free_frames)
+786.                     },
+787.                 }
+788.             }),
+789.     )]
+790.     fn alloc_range(
+791.         &mut self,
+792.         region: &TruncatedMemoryRe...
+[TOOL] rg: frame::alloc\(|::alloc_range\(|frame::free\(|frame::book\(
+[TOOL] rg: mm::phys::frame::alloc\(|mm::phys::frame::free\(|mm::phys::frame::book\(|mm::phys::frame::alloc_range\(
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs:108:        if let Err(_e) = frame::free(self.addr) {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs:166:        let addr: FrameAddress = frame::al...
+[RESULT ✓] rg: No matches found.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod.rs
+[RESULT ✓] view: 140.     /// # Returns
+141.     ///
+142.     /// A user frame pool.
+143.     ///
+144.     #[verus_spec]
+145.     pub(super) fn new() -> Self {
+146.         Self { _private: () }
+147.     }
+148. 
+149.     ///
+150.     /// # Description
+151.     ///
+152.     /// Allocates a single user frame from the ...
+[RESULT ✓] view: 90.     pub fn leak(self) -> FrameAddress {
+91.         let this: ManuallyDrop<Self> = ManuallyDrop::new(self);
+92.         this.addr
+93.     }
+94. }
+95. 
+96. // NOTE: Drop must use verus!{} syntax because Verus requires
+97. // `opens_invariants none no_unwind` on Drop impls, which the
+98. // attrib...
+[RESULT ✓] view: 60. //==================================================================================================
+61. 
+62. fn book_physical_memory_regions(
+63.     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
+64. ) -> Result<(), Error> {
+65.     info!("booking physical memory ...
+[TOOL] rg: Classification\*\*:|— STDLIB_WRAPPER|— EXTERNAL_TYPE|— EXTERNAL_CONST|— DEPENDENCY|— HAL
+[TOOL] rg: STDLIB_WRAPPER|EXTERNAL_TYPE
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/trust.md:12:### `pa_into_raw` — STDLIB_WRAPPER
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/trust.md:21:- **Classification**: STDLI...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/cheating-elimination/fix_report.md:29:- **`pa_into_raw`** (`hal/mem/types/address/frame.rs:94`): `external_body` STDLIB_WRAPPER. A single-line wrapper for `PageAligned<PhysicalAddress>::into_ra...
+[TOOL] skill: ast-consistency
+[RESULT ✓] skill: Skill "ast-consistency" loaded successfully. Follow the instructions in the skill context.
+[TOOL] report_intent: Checking policy
+[TOOL] rg: own function|current module|external_body.*own|assume_specification\[ init \]|assume_specification.*own|trust boundary.*own|proof gap
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 scripts/ast_consistency.py src/kernel/
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] rg: Output too large to read at once (59.0 KB). Saved to: /tmp/copilot-tool-output-1777051268284-ncd290.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+[RESULT ✓] bash: python3: can't open file '/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/scripts/ast_consistency.py': [Errno 2] No such file or directory
+<exited with exit code 2>
+[TOOL] glob: **/ast_consistency.py
+[TOOL] rg: proof gaps remain|current module.*function|own function|trust boundary.*Verus-limitation|technically on this module's own function
+[TOOL] rg: external_body.*current module|own functions|assume_specification.*current module|trust boundary
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/doc/verus-for-kernel-maintainers.md:638:pattern for FFI, allocators, and I/O — the trust boundary is explicit and intentional.
+[RESULT ✓] rg: Output too large to read at once (28.0 KB). Saved to: /tmp/copilot-tool-output-1777051273327-sackcl.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+[RESULT ✓] glob: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/scripts/ast_consistency.py
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai-phy-
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+Inner::alloc                             MISMATCH                             
+Inner::alloc_range                       MISMATCH...
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai-phy-
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai-phy-
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai-phy-
+[RESULT ✓] bash: ## Inner::alloc_range (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,51 +1,3 @@
+-    fn alloc_range(
+-        &mut self,
+-        region: &TruncatedMemoryRegion<PhysicalAddress>,
+-    ) -> Result<(), Error> {
+-        let start_frame_number: usize = region.start().into_frame_number().into_raw_val...
+[RESULT ✓] bash: ## Inner::alloc (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,26 +1,3 @@
+-    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+-        let frame_number: usize = match self.bitmap.alloc() {
+-            Ok(index) => index,
+-            Err(error) => {
+-                error!("{error:?}");
+- ...
+[RESULT ✓] bash: ## Inner::free (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,8 +1,170 @@
+     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+-        let frame_number: usize = frame.into_frame_number().into_raw_value();
++        // VERUS DEVIATION: original was `frame.into_frame_number().into_ra...
+[TOOL] rg: struct FrameNumber|type FrameNumber|from_raw_value\(|into_raw_value\(
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] rg: Output too large to read at once (92.9 KB). Saved to: /tmp/copilot-tool-output-1777051313710-ekhr2p.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+[TOOL] rg: pub struct FrameNumber|struct FrameNumber|enum FrameNumber
+[TOOL] rg: fn from_raw_value\(raw_value: usize\)|fn from_raw_value\(.*usize
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/paging/frame/number.rs:21:pub struct FrameNumber(usize);
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs:123:    pub fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs:1...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 130. 
+131. impl Address for PhysicalAddress {
+132.     ///
+133.     /// # Description
+134.     ///
+135.     /// Instantiates a new [`PhysicalAddress`] from a raw value.
+136.     ///
+137.     /// # Parameters
+138.     ///
+139.     /// - `raw_addr`: The raw value.
+140.     ///
+141.     /// # Returns
+1...
+[TOOL] rg: pub const MAX_ADDRESS
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/mod.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/constants.rs:89:pub const MAX_ADDRESS: usize = usize::MAX;
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/cpu/cpuid.rs:36:    pub const MAX_ADDRESSABLE_IDS_SHIFT: ...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/constants.rs
+[TOOL] rg: MAX_ADDRESS / mem::FRAME_SIZE - 1|MAX_ADDRESS.*inclusive|maximum address
+[RESULT ✓] view: 70. ///
+71. /// # Description
+72. ///
+73. /// Number of entries in a page table.
+74. ///
+75. pub const PAGE_TABLE_LENGTH: usize = PGTAB_SIZE / PAGE_SIZE;
+76. 
+77. ///
+78. /// # Description
+79. ///
+80. /// Mask for page table offset.
+81. ///
+82. pub const PGTAB_MASK: usize = !(PGTAB_SIZE - 1);
+83. 
+8...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/arch/src/x86/mem/paging/frame/number.rs:29:    pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+[TOOL] rg: from_number\(frame_number: FrameNumber\)|from_number\(.*FrameNumber
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs:95:    pub fn from_number(frame: FrameNumber) -> Self {
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] view: 88.     ///
+89.     /// - `frame`: The frame number.
+90.     ///
+91.     /// # Returns
+92.     ///
+93.     /// A [`PhysicalAddress`] associated with the given `frame_number`.
+94.     ///
+95.     pub fn from_number(frame: FrameNumber) -> Self {
+96.         let addr: usize = frame.into_raw_value() * m...
+## Blocking Issues
+
+1. **`bitmap_index_to_frame_addr` spec appears too strong**
+   - **Where:** `frame.rs:74-87`, `arch/.../frame/number.rs:27-53`
+   - **Impact:** Its spec says `ret.is_ok()` unconditionally, but the body calls `FrameNumber::from_raw_value(index)`, which can return `None`. That means the trust contract may be stronger than the implementation.
+   - **Severity:** Blocking
+   - **Fix:** Either:
+     - add a precondition/bound proving `index <= FrameNumber::MAX`, or
+     - weaken the spec to match the actual `Result` behavior.
+
+2. **`init` is under-classified**
+   - **Where:** `frame.spec.rs:38-42`, `frame.rs:1161-1177`
+   - **Impact:** `assume_specification[init]` is vacuous (`result.is_ok() || result.is_err()`), so it records no meaningful property about singleton initialization. Calling this merely a trust boundary hides a real verification gap in module-owned code.
+   - **Severity:** Blocking
+   - **Fix:** Put `init` in `verification_todo.md` (or a distinct “module-owned Verus limitation” section), and explicitly record the missing guarantees: one-time init, initialized singleton after `Ok`, and state correspondence to `bitmap`.
+
+3. **AST consistency is not yet “properly handled”**
+   - **Where:** `ast_consistency.py` result on `frame.rs`
+   - **Impact:** The checker currently reports `Consistent: NO` with mismatches for `Inner::{alloc,free,book,alloc_range}` plus missing/extra top-level functions. So Q4’s current answer is **no**.
+   - **Severity:** Blocking
+   - **Fix:** Run AST diff against the intended base ref and document each mismatch. `..=` → `..` is **not** a pre-approved deviation, so it needs explicit evidence/minimization, not just a comment.
+
+## Non-Blocking Issues
+
+1. **Singleton wrappers are misclassified as `STDLIB_WRAPPER`**
+   - **Where:** `frame.rs:1182-1237`, `frame.rs:1141-1148`
+   - **Impact:** The trust point is not a std wrapper; it is the module’s unsafe singleton/global-state boundary (`instance()`/`init`). Grouping them with external conversion wrappers muddies the audit trail.
+   - **Severity:** Non-Blocking
+   - **Fix:** Classify them separately as something like `SINGLETON_BOUNDARY` / `VERUS_LIMITATION`, or make `instance`/`init` the root boundary and list the 4 pub functions as dependents.
+
+2. **`FRAME_SIZE` is not really a `STDLIB_WRAPPER`**
+   - **Where:** `frame.spec.rs:18-23`
+   - **Impact:** It is an arch constant assumption, not a stdlib wrapper. Minor, but weakens classification precision.
+   - **Severity:** Non-Blocking
+   - **Fix:** Reclassify as `ARCH_CONST` / `EXTERNAL_CONST`.
+
+## Suggestions
+
+1. **Q1 answer**
+   - I would **not** classify the singleton pub wrappers as ordinary trust-boundary wrappers equivalent to the conversion helpers.
+   - Best framing: they are **module-owned singleton-boundary items**. If your process forbids own-function `external_body` in `trust.md`, then they belong in `verification_todo.md`; otherwise keep them in trust, but in a separate category.
+
+2. **Q2 answer**
+   - `init` should be treated as a **proof gap / module-owned limitation**, not as a normal external trust boundary, because it is your function and its current assumed spec is vacuous.
+
+3. **Q3 answer**
+   - The 4 cfg-gated diagnostic computations look acceptable **as described**: they are logging-only, immediately adjacent to the log call, and do not affect control/data flow.
+
+Overall: the main gaps are **(a)** one overly-strong trusted spec, **(b)** under-reporting `init` as harmless, and **(c)** AST consistency not yet actually passing.
+[RESULT ✓] task: ## Blocking Issues
+
+1. **`bitmap_index_to_frame_addr` spec appears too strong**
+   - **Where:** `frame.rs:74-87`, `arch/.../frame/number.rs:27-53`
+   - **Impact:** Its spec says `ret.is_ok()` unconditionally, but the body calls `FrameNumber::from_raw_value(index)`, which can return `None`. That mean...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Good feedback. Let me address the blocking issues: (1) add a precondition to `bitmap_index_to_frame_addr`, (2) reclassify `init` as a proof gap, (3) classify singleton wrappers properly, and (4) document AST mismatches with evidence.
+[TOOL] report_intent: Fixing spec and documentation
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Great feedback from the rubber-duck. Let me address each point:
+
+1. **`bitmap_index_to_frame_addr` spec might be too strong** — The spec says `ret.is_ok()` unconditionally. But the function calls `FrameNumber::from_raw_value(index)` which can return None. However, this function is only called from `Inner::alloc()` after a successful `bitmap.alloc()`, which returns a valid bitmap index. The spec's postcondition `ret.is_ok()` is trusted (external_body), so we need the caller to ensure the index is valid. Looking at the spec:
+   
+   The function converts a bitmap index to a frame address, ensuring the result is valid and satisfies the frame address invariant, with the address computed as index times the page size.
+
+Now I'm realizing the spec is too strong—it unconditionally ensures success, but the index might be invalid. The calling code guarantees a valid index from bitmap.alloc(), but the spec should either add a precondition or weaken the postcondition to account for potential errors. Since this is an external_body trust boundary, the spec is assumed to match the implementation, so leaving it as-is implicitly trusts that the implementation always succeeds for any input.
+
+I should add a precondition to make the spec more precise—requiring that the index is valid and the resulting frame address fits within the address space. Looking at the actual call site, the proof block establishes these invariants before calling the function, so the precondition would accurately reflect what the caller guarantees.
+
+The init function's vacuous spec should be treated as a proof gap rather than a trust boundary since it's module-owned code that needs strengthening. I also need to document the AST consistency mismatches with minimal reproducers, and classify the singleton wrappers separately instead of grouping them as STDLIB_WRAPPER.
+
+Now I'm working through the fixes: tightening the precondition on `bitmap_index_to_frame_addr`, recording init as a proof gap, reclassifying FRAME_SIZE as EXTERNAL_CONST, and documenting the range syntax mismatch with evidence that RangeInclusive<usize> isn't supported. The key question is whether adding that precondition actually improves the spec or if I should approach this differently.
+
+Adding a precondition...
+
+Since `index` is `usize`, it's already non-negative, so I don't need to require that. The real constraint is that `frame_addr_of(index as int)` must fit within `usize::MAX`, which is what I'm adding. Looking at the caller in `Inner::alloc`, it already proves this precondition before calling the function, so we're good.
+
+Now I'm thinking about the loop range difference between the original code and the Verus version. The original used `start_frame_number..=end_frame_number` where `end_frame_number = start + size/FRAME_SIZE - 1`, but the Verus version switched to `start_frame_number..end_frame_number` where `end_frame_number = start + size/FRAME_SIZE`. These are mathematically equivalent—just different ways of expressing the same range.
+
+The reason for the change is that Verus doesn't support `RangeInclusive` in for loops the way it supports `Range`, so I need to document why this AST transformation is valid and create a minimal example demonstrating the limitation.
+
+Now I'm going to add the precondition to `bitmap_index_to_frame_addr` and verify the changes work correctly.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Now let me verify this still passes:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
