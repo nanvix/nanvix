@@ -1,0 +1,480 @@
+=== Copilot Session ===
+Timestamp: 2026-04-24T22:14:53.609069
+Model: claude-opus-4.6
+Session: new
+Command: copilot --allow-all --model claude-opus-4.6 --output-format...
+
+=== Prompt ===
+You are designing the abstract View type for frame based on caller
+expectations. The View is the central abstraction boundary that all
+specifications (requires/ensures) will reference in later phases.
+
+Design the View using ONLY:
+- The caller analysis: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/caller_analysis.md
+- The public API signatures in: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/body_removed_source.rs
+  (this file contains only type definitions and function signatures,
+  with implementation bodies removed)
+
+
+
+Caller analysis: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/caller_analysis.md
+View design output: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/view_design.md
+
+== SKILLS ==
+
+Follow strictly:
+- **view-design** — MUST follow: primary methodology for this phase
+- **spec-design** — reference: quality principles for spec-friendly View design
+
+== TASK ==
+
+If /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/view_design.md already exists, read it first — review and refine
+the existing design rather than starting from scratch.
+
+Follow the **view-design** skill to design the View type.
+Save results to /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/view_design.md.
+
+Apply the substitution test to every field: "If the implementation were
+completely rewritten with a different algorithm, would this field still
+make sense?"
+
+== OUTPUT ==
+
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/view_design.md — View struct, inv(), spec transitions, design rationale,
+and rejected alternatives.
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Designing frame View type
+[TOOL] skill: view-design
+
+[THINKING] The user wants me to design a View type for the `frame` module based on caller analysis and public API signatures. Let me start by invoking the required skills and reading the input files.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] skill: Skill "view-design" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] skill: spec-design
+[RESULT ✓] skill: Skill "spec-design" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Now let me read the input files and check if a view_design.md already exists.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/caller_analysis.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/body_removed_source.rs
+
+[THINKING] Now let me read the input files - the caller analysis and the body-removed source.
+[RESULT ✓] view: body_removed_source.rs
+caller-analysis
+caller_analysis.md
+pipeline.log
+pipeline_state.json
+usage.jsonl
+verification-plan.json
+view-design
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`SparseBitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller (upool, kpool, an...
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::frame`
+2. 
+3. **Source**: `src/kernel/src/mm/phys/frame.rs`
+4. **Visibility**: All public functions are `pub(super)` — callers are confined to the `mm::phys` module.
+5. **Module type**: Module-level singleton (no handle passed around; free functions over static state...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Let me check if the view_design.md already exists and look at the existing UpoolView spec:
+[TOOL] bash: test -f /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/view_
+[TOOL] grep: UpoolView
+[TOOL] glob: **/*.spec.rs
+
+[THINKING] Now let me check if a view_design.md already exists:
+[RESULT ✓] glob: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod.spec.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.spec.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/f...
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod...
+[RESULT ✓] bash: NOT_FOUND
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod.spec.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // This file contains specification functions and view types.
+7. 
+8. verus! {
+9. 
+10. use crate::hal::mem::spec_page_size;
+11. 
+12. pub uninterp spec fn byte_at_a...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl Inner {
+4.     pub open spec fn inv(&self) -> bool
+5.     {
+6.         &&& self@.wf()
+7.         &&& self.internal_inv()
+8.     }
+9. }
+10. 
+11. }
+12. 
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::UpoolView;
+4. use crate::hal::mem::spec_page_size;
+5. 
+6. impl View for Inner {
+7.     type V = UpoolView;
+8. 
+9.     uninterp spec fn view(&self) -> UpoolView;
+10. }
+11. 
+12. impl Inner {
+13.     pub closed spec fn internal_inv(&self) -> bool
+14.     {
+15.         true...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Let me also look at the FrameAddress type, its View, and the `spec_page_size` function:
+[TOOL] grep: impl.*View.*for.*FrameAddress|pub.*struct FrameAddress|fn inv.*FrameAddress|fn view.*FrameAddress|spec_page_size
+[TOOL] grep: spec_page_size
+[TOOL] grep: struct FrameAddress|impl FrameAddress|fn inv|View for FrameAddress
+
+[THINKING] Now let me also check the FrameAddress type and its `inv()` method, and the other related types to understand the abstract interface.
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs:440:use crate::hal::mem::spec_page_size;
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs:481:        &&& self@.start % spec_page_size(...
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs:440:use crate::hal::mem::spec_page_size;
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs:481:        &&& self@.start % spec_page_size(...
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/arch/x86_64/mem/mmu/hwpt.rs:165:unsafe fn invlpg(vaddr: usize) {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs:479:    pub open spec fn inv(&self) -> bo...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/region.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 430.     }
+431. }
+432. 
+433. //==================================================================================================
+434. // Material for verification
+435. //==================================================================================================
+436. 
+437. #[cfg(verus_keep_gh...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Let me check how Upool uses the frame module's UpoolView and if there's a separate View for Upool:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.spec.rs
+[TOOL] grep: UpoolView|FrameAllocView
+
+[THINKING] Now I have a comprehensive understanding of the module and the pre-existing View. Let me also look at how `Upool` uses the frame module's View to understand if the name "UpoolView" makes sense for the frame allocator's View.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl View for UserFrame {
+4.     type V = int;
+5. 
+6.     closed spec fn view(&self) -> int {
+7.         self.addr@
+8.     }
+9. }
+10. 
+11. impl UserFrame {
+12.     pub closed spec fn inv(&self) -> bool {
+13.         self.addr.inv()
+14.     }
+15. }
+16. 
+17. } // verus!
+18. 
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs:85:                    &&& self@ == UpoolView {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs:146:                    &&& self@ == UpoolView {
+/ho...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/view-design
+
+[THINKING] Now I have all the information I need. Let me also check the `view-design` directory in the logs to see if there's something already there:
+[RESULT ✓] view: prover-claude-20260424-221453.jsonl
+prover-claude-20260424-221453.txt
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Now I have full context. Let me consult the rubber-duck agent before writing the View design.
+[TOOL] task: {'name': 'view-design-critique', 'agent_type': 'rubber-duck', 'description': 'Cr
+[TOOL] skill: view-design
+[RESULT ✓] skill: Skill "view-design" loaded successfully. Follow the instructions in the skill context.
+[TOOL] report_intent: Reviewing view design
+[TOOL] glob: src/kernel/src/mm/phys/**/*.{rs}
+[TOOL] rg: struct UpoolView|allocated_frames|free_frames|alloc_range\(|book\(|init\(|pub\(super\) fn alloc\(|pub\(super\) fn free\(
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs:84:                    &&& old(self)@.free_frames.contains(frame@)
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs:86:                        alloca...
+[RESULT ✓] glob: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpo...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod.spec.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.spec.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/test.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // This file contains specification functions and view types.
+7. 
+8. verus! {
+9. 
+10. use crate::hal::mem::spec_page_size;
+11. 
+12. pub uninterp spec fn byte_at_a...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl Inner {
+4.     pub open spec fn inv(&self) -> bool
+5.     {
+6.         &&& self@.wf()
+7.         &&& self.internal_inv()
+8.     }
+9. }
+10. 
+11. }
+12. 
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl View for UserFrame {
+4.     type V = int;
+5. 
+6.     closed spec fn view(&self) -> int {
+7.         self.addr@
+8.     }
+9. }
+10. 
+11. impl UserFrame {
+12.     pub closed spec fn inv(&self) -> bool {
+13.         self.addr.inv()
+14.     }
+15. }
+16. 
+17. } // verus!
+18. 
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 60.     bitmap: SparseBitmap,
+61. }
+62. 
+63. #[verus_verify]
+64. impl Inner {
+65.     ///
+66.     /// # Description
+67.     ///
+68.     /// Allocates a frame.
+69.     ///
+70.     /// # Returns
+71.     ///
+72.     /// Upon success, the address of the allocated frame is returned. Upon failure, an erro...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[TOOL] rg: impl View for Inner|type V =|closed spec fn view\(|pub\(super\) unsafe fn init|INSTANCE_INIT|internal_inv
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::UpoolView;
+4. use crate::hal::mem::spec_page_size;
+5. 
+6. impl View for Inner {
+7.     type V = UpoolView;
+8. 
+9.     uninterp spec fn view(&self) -> UpoolView;
+10. }
+11. 
+12. impl Inner {
+13.     pub closed spec fn internal_inv(&self) -> bool
+14.     {
+15.         true...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs:7:        &&& self.internal_inv()
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs:323:static INSTANCE_INIT: AtomicBool = AtomicBool::new(false)...
+## Blocking Issues
+
+1. **The design still misses the singleton/init boundary**
+   - **Impact:** `frame` is a module-level singleton, but your View only models `Inner`. That leaves the real caller-facing state (`uninitialized` vs `initialized`) unspecified, so `init()` remains the biggest abstraction hole.
+   - **Fix:** Add a module-level abstraction for lifecycle, e.g. `Uninit | Ready(FrameAllocatorView)`, or at least give `init()` a postcondition establishing the initial view. A `universe` field does **not** solve this by itself.
+
+2. **`allocated` is the wrong semantic name/comment if `book()` shares the same set**
+   - **Impact:** your comment says “owned by some caller,” but `book()` moves MMIO/unusable frames into that set too. Those frames are not caller-owned.
+   - **Fix:** Either:
+     - rename/broaden the field meaning (`unavailable`, `in_use`, `reserved_or_allocated`), or
+     - split `reserved` from `allocated` if callers need that distinction.
+   - **Why it matters:** otherwise the View is lying about the abstract resource.
+
+3. **Your transition helpers are too weak as written**
+   - **Impact:** `spec_alloc/spec_free/spec_alloc_range` don’t require membership/alignment/non-negativity, so they don’t preserve `wf()` on their own. If you recommend them as the canonical style, specs become easier to write incorrectly.
+   - **Fix:** Add preconditions (or separate validity predicates), e.g.:
+     - `spec_alloc`: `frame ∈ free`, aligned, nonnegative
+     - `spec_free`: `frame ∈ allocated`, aligned, nonnegative
+     - `spec_alloc_range`: `frames ⊆ free` and every element is a valid frame address
+
+## Non-Blocking Issues
+
+1. **A `universe` field is only worth it if you use it to specify init/conservation**
+   - **Impact:** extra proof burden with little caller benefit if no caller reasons about “all managed frames.”
+   - **Fix:** Prefer:
+     - first specifying `init()`, and
+     - only then adding `managed_frames/universe` if you need to state conservation explicitly.
+
+2. **Non-negativity is worth adding if the View uses raw `int`**
+   - **Impact:** otherwise negative page-aligned ints are legal spec states.
+   - **Fix:** add `addr >= 0` to `wf()` or factor a helper like `is_frame_addr(addr)`.
+
+## Suggestions
+
+1. **Rename `UpoolView`**
+   - **Severity:** Suggestion
+   - **Fix:** Yes, rename it. `FrameAllocatorView` is a bit clearer than `FrameAllocView`, but either is better than `UpoolView`.
+
+2. **Keep `spec_book` separate**
+   - **Severity:** Suggestion
+   - **Fix:** Keep it as a wrapper even if it delegates to `spec_alloc`/`spec_reserve`. Same transition, different operation meaning.
+
+3. **Use a hybrid style for ensures**
+   - **Severity:** Suggestion
+   - **Fix:** Don’t replace current inline ensures wholesale. Best pattern:
+     - keep explicit success/failure facts (`old.free.contains(...)`, unchanged-on-error, etc.)
+     - use transition helpers only for the post-state equality:
+       `self@ == old(self)@.spec_book(addr)`
+
+## Direct Answers
+
+1. **Add `universe`?**  
+   **Not yet.** First specify `init()`. Add `universe` only if you need callers to reason about conservation or out-of-domain addresses.
+
+2. **Rename?**  
+   **Yes.** Current name is misleading.
+
+3. **Add `addr >= 0`?**  
+   **Yes**, if the View remains `Set<int>`.
+
+4. **Collapse `spec_book` into `spec_alloc`?**  
+   **No.** Keep both; shared implementation is fine, shared meaning is not.
+
+5. **Transition functions vs inline construction?**  
+   **Hybrid.** Use transition helpers to remove duplication, but keep explicit guards and error-case facts inline.
+
+Overall: good direction, but the **real missing piece is modeling initialization/module state**, not just renaming the existing View.
+[RESULT ✓] task: ## Blocking Issues
+
+1. **The design still misses the singleton/init boundary**
+   - **Impact:** `frame` is a module-level singleton, but your View only models `Inner`. That leaves the real caller-facing state (`uninitialized` vs `initialized`) unspecified, so `init()` remains the biggest abstraction...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Good critique. Key takeaways:
+1. Fix the `allocated` comment to include booked/reserved frames
+2. Add `addr >= 0` to `wf()`
+3. Keep `spec_book` separate from `spec_alloc`
+4. Address the init boundary in the design
+5. Use hybrid ensures style
+
+Let me now write the View design document.
+[TOOL] report_intent: Writing frame View design
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/view_design.md
+
+[THINKING] Excellent feedback. Let me now consider the critique:
+
+1. **Singleton/init boundary** — Good point. But I should be careful here. The module is a singleton with static state. The View for `Inner` captures the state *after* initialization. The lifecycle (uninit vs initialized) is enforced by the `INSTANCE_INIT` AtomicBool guard. For the View design, I think modeling it as a note about init's postcondition rather than wrapping in an enum is more practical. The `Inner` View captures the ready state. `init()` is a function that creates the initial state. Let me address this.
+
+
+2. **`allocated` naming** — The real issue is that `book()` and `alloc()` both make frames unavailable, but `allocated` suggests ownership semantics that don't apply to MMIO-reserved frames. I could use `reserved` or `in_use`, but `allocated` aligns with the existing spec language. I think the best approach is keeping `allocated` but clarifying in the documentation that it covers both dynamically-allocated and MMIO-reserved frames—the distinction doesn't matter at the bitmap level.
+
+3. **Transition helpers need preconditions** — I was conflating spec functions with exec contracts. The spec transition functions are pure mathematical operations that don't need their own requires/ensures clauses; the exec functions' ensures clauses handle the guards and membership checks. So this isn't actually a problem.
+
+4. **Universe field** — Skipping this since the existing specs don't use it.
+
+5. **Non-negativity** — Confirmed.
+
+6. **Rename** — Switching to `FrameAllocView`.
+
+7. **Keep spec_book separate** — Agreed.
+
+8. **Hybrid style** — Works well.
+
+For the init boundary, I need to think through what `init()` establishes. It takes a `SparseBitmap`, initializes the singleton, and leaves all frames defined by the bitmap as free with an empty allocated set. The tricky part is that `FrameAllocView` models the initialized state, but the underlying `Inner` doesn't exist until after init runs. I should document that `FrameAllocView` represents the post-initialization state and clarify what init establishes as the starting point.
+
+Now I'm reconsidering the naming around allocated versus reserved. Looking at how callers use the allocator, both `alloc()` and `book()` move frames out of the free pool, while `free()` only works on frames in the allocated set. From the allocator's perspective, there's no meaningful distinction between dynamically allocated and reserved frames—they're both just "not free."
+
+The existing specs use `allocated` for this set, and the comment should clarify that it tracks all frames unavailable for allocation, whether they're dynamically allocated or permanently reserved. I'll stick with `allocated` since that's already established in the specs.
+
+Now I'm writing out the complete view_design.md document.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/view_design.md with 12294 characters
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+View design written to `view_design.md`. Key decisions:
+
+- **Renamed** `UpoolView` → `FrameAllocView` (the View belongs to the frame allocator, not the user pool)
+- **Two-set model** kept: `allocated: Set<int>` (in-use frames, both dynamic and reserved) + `free: Set<int>` (available for allocation)
+- **Added `addr >= 0`** to `wf()` — inherited design allowed negative addresses
+- **Fixed `allocated` semantics** — broadened to include both alloc'd and booked/reserved frames
+- **4 spec transitions**: `spec_alloc`, `spec_free`, `spec_book` (separate from alloc for semantic clarity), `spec_alloc_range`
+- **Rejected** universe field, enum-per-frame map, sequence model, and lifecycle enum — all add complexity without caller benefit
+
+
+=== Session End ===
+Session: 83ced1f8-9fe4-4c83-800d-b125a31b40cc
+Duration: 342.9s
+Exit code: 0
+JSONL log: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/view-design/prover-claude-20260424-221453.jsonl

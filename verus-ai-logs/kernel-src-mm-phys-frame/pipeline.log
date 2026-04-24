@@ -25,3 +25,6 @@ Module: frame
 PHASE: view-design
 Module: frame
 ============================================================
+[2026-04-24 22:14:53] [PROVER] Running view-design...
+[2026-04-24 22:14:53] [COPILOT] Running: copilot --model claude-opus-4.6 ...
+[2026-04-24 22:20:36]   ↳ prover done in 5m42s (exit=0)
