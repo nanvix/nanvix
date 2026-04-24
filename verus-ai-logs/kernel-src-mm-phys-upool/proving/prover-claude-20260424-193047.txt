@@ -2072,3 +2072,84 @@ Solutions:
 Turn 102
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -40
+[RESULT ✓] bash: error: cannot show this call will not unwind, in function marked 'no_unwind'
+   --> src/kernel/src/mm/phys/upool.rs:107:26
+    |
+107 |         if let Err(_e) = frame::free(self.addr) {
+    |                          ^^^^^^^^^^^^^^^^^^^^^^ call to kernel::mm::phys::frame::free might unwind
+    |
+   :...
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+Good progress! 6 verified, 1 error. Need to mark `frame::free` as `no_unwind`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Progress! 6 verified, 1 error. The error is about `no_unwind`: the `frame::free` function might unwind (since it returns `Result` which can be an error, but the actual issue is Verus can't prove it won't panic). I need to add `no_unwind` to `frame::free()`.Let me add `no_unwind` to the `frame::free` external_body spec:
+[RESULT ✓] view: 373. pub(super) fn alloc() -> Result<FrameAddress, Error> {
+374.     instance().alloc()
+375. }
+376. 
+377. /// Free a frame previously returned by [`alloc`].
+378. #[verus_verify(external_body)]
+379. #[verus_spec(result =>)]
+380. pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+381.     ...
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+
+[THINKING] I need to add `no_unwind` to the `frame::free` function. Since it's already `external_body`, I can add `no_unwind` as a clause. But the attribute syntax doesn't support `no_unwind`. Since the function is already `external_body`, I need to figure out how to express this.Actually, for `external_body` functions, the way to declare `no_unwind` is in the `verus!{}` syntax. But this function already uses attribute-based syntax with `#[verus_verify(external_body)]` and `#[verus_spec]`.
+
+Let me check if there's a way to add `no_unwind` via attributes...
+
+
+Actually, I think I need to convert this function to use the `verus!{}` syntax instead, which would let me add `no_unwind` as a clause. Looking at examples like the raw-array allocator, I can see that `opens_invariants` and similar modifiers work within `verus!{}` blocks for `assume_specification`. The question is whether I can add `no_unwind` directly to the attribute syntax or if I need to refactor this to use the macro syntax.
+
+The attribute on the function doesn't support `no_unwind` directly—only `requires`, `ensures`, `decreases`, `returns`, and `with`. Since `frame::free` already has `external_body` and a real implementation, wrapping it in a `verus!{}` block would require duplicating the function definition, which isn't ideal. Maybe instead of modifying `frame::free` itself, I should handle the Drop trait differently to avoid the unwinding issue altogether. I'm checking whether I can add the `no_unwind` specification directly through the frame spec file instead of trying to use an attribute on the function itself.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl Inner {
+4.     pub open spec fn inv(&self) -> bool
+5.     {
+6.         &&& self@.wf()
+7.         &&& self.internal_inv()
+8.     }
+9. }
+10. 
+11. }
+12. 
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+I need to use `verus!{}` syntax for `frame::free` since `no_unwind` isn't supported in attribute syntax. Let me restructure:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I can't add `no_unwind` through the spec file since the spec file is included in the source file. The function definition is already in the source with attribute annotations.
+
+Let me think about this differently. The issue is:
+1. Drop requires `no_unwind`
+2. Drop calls `frame::free`
+3. `frame::free` needs to be marked `no_unwind` for Verus to prove Drop's `no_unwind`
+4. The attribute syntax doesn't support `no_unwind`
+
+So I need to change `frame::free` to use `verus!{}` syntax. But the function has a real exec body. Let me wrap the function in a `verus!{}` block.
+
+
+Actually, I'm wondering if there's a verifier attribute like `#[verifier::no_unwind]` that could work. But looking at the kpool code, the KernelFrame Drop impl isn't even verified, so it doesn't have this constraint. For upool though, since Drop verification is required, I need to mark `frame::free` as `no_unwind`. Wrapping it in `verus!{}` would duplicate the definition, which isn't ideal.
+
+The cleanest approach would be to replace the attribute-based definition entirely with a `verus!` block that includes both `external_body` and `no_unwind` annotations. But I need to check if that conflicts with the existing definition or if I should look at how `Inner::alloc()` and `Inner::free()` handle this pattern.
+
+Actually, the real issue is that `frame::free` is being called from a `no_unwind` context (the Drop implementation), and Verus can't verify it won't panic since it's marked `external_body`. Even though the function just delegates to `bitmap.clear()` and shouldn't actually panic, I need to explicitly annotate it with `no_unwind` so Verus knows it's safe to call from Drop.
+
+I'm considering using `verus!{}` syntax with `external_body` and `no_unwind` annotations instead of attribute-based syntax, but the complication is that `frame::free` is a module-level function, not part of an impl block. I could add the spec definition in the spec file that's already included in the module, but the function is already defined in the source code, so I need to figure out how to properly annotate it without duplicating the definition.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -40
