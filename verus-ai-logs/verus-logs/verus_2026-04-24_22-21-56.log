@@ -1,0 +1,158 @@
+Timestamp: 2026-04-24_22-21-56
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: kernel::mm::phys::frame
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=2
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+error[E0277]: the trait bound `core::ops::RangeInclusive<usize>: vstd::pervasive::ForLoopGhostIteratorNew` is not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:262:9
+    |
+262 | /         for index in start_frame_number..=end_frame_number {
+263 | |             if self.bitmap.find_chunk(index).is_none() {
+264 | |                 let uncovered_addr: usize = index * mem::FRAME_SIZE;
+265 | |                 let reason: &str = "frame index not covered by any bitmap chunk";
+...   |
+269 | |         }
+    | |_________^ the trait `vstd::pervasive::ForLoopGhostIteratorNew` is not implemented for `core::ops::RangeInclusive<usize>`
+    |
+    = help: the following other types implement trait `vstd::pervasive::ForLoopGhostIteratorNew`:
+              alloc::collections::btree_map::Iter<'a, Key, Value>
+              alloc::collections::btree_map::Keys<'a, Key, Value>
+              alloc::collections::btree_map::Values<'a, Key, Value>
+              alloc::collections::btree_set::Iter<'a, Key>
+              alloc::collections::vec_deque::Iter<'a, T>
+              alloc::vec::IntoIter<T, A>
+              core::ops::Range<A>
+              core::slice::Iter<'a, T>
+              core::str::Chars<'a>
+
+error[E0277]: the trait bound `core::ops::RangeInclusive<usize>: vstd::pervasive::ForLoopGhostIteratorNew` is not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:262:22
+    |
+262 |         for index in start_frame_number..=end_frame_number {
+    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `vstd::pervasive::ForLoopGhostIteratorNew` is not implemented for `core::ops::RangeInclusive<usize>`
+    |
+    = help: the following other types implement trait `vstd::pervasive::ForLoopGhostIteratorNew`:
+              alloc::collections::btree_map::Iter<'a, Key, Value>
+              alloc::collections::btree_map::Keys<'a, Key, Value>
+              alloc::collections::btree_map::Values<'a, Key, Value>
+              alloc::collections::btree_set::Iter<'a, Key>
+              alloc::collections::vec_deque::Iter<'a, T>
+              alloc::vec::IntoIter<T, A>
+              core::ops::Range<A>
+              core::slice::Iter<'a, T>
+              core::str::Chars<'a>
+
+error[E0277]: the trait bound `core::ops::RangeInclusive<usize>: vstd::pervasive::ForLoopGhostIteratorNew` is not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:272:9
+    |
+272 | /         for index in start_frame_number..=end_frame_number {
+273 | |             match self.bitmap.test(index) {
+274 | |                 Ok(false) => continue,
+275 | |                 Ok(true) => {
+...   |
+288 | |         }
+    | |_________^ the trait `vstd::pervasive::ForLoopGhostIteratorNew` is not implemented for `core::ops::RangeInclusive<usize>`
+    |
+    = help: the following other types implement trait `vstd::pervasive::ForLoopGhostIteratorNew`:
+              alloc::collections::btree_map::Iter<'a, Key, Value>
+              alloc::collections::btree_map::Keys<'a, Key, Value>
+              alloc::collections::btree_map::Values<'a, Key, Value>
+              alloc::collections::btree_set::Iter<'a, Key>
+              alloc::collections::vec_deque::Iter<'a, T>
+              alloc::vec::IntoIter<T, A>
+              core::ops::Range<A>
+              core::slice::Iter<'a, T>
+              core::str::Chars<'a>
+
+error[E0277]: the trait bound `core::ops::RangeInclusive<usize>: vstd::pervasive::ForLoopGhostIteratorNew` is not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:272:22
+    |
+272 |         for index in start_frame_number..=end_frame_number {
+    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `vstd::pervasive::ForLoopGhostIteratorNew` is not implemented for `core::ops::RangeInclusive<usize>`
+    |
+    = help: the following other types implement trait `vstd::pervasive::ForLoopGhostIteratorNew`:
+              alloc::collections::btree_map::Iter<'a, Key, Value>
+              alloc::collections::btree_map::Keys<'a, Key, Value>
+              alloc::collections::btree_map::Values<'a, Key, Value>
+              alloc::collections::btree_set::Iter<'a, Key>
+              alloc::collections::vec_deque::Iter<'a, T>
+              alloc::vec::IntoIter<T, A>
+              core::ops::Range<A>
+              core::slice::Iter<'a, T>
+              core::str::Chars<'a>
+
+warning: unreachable expression
+   --> src/kernel/src/mm/phys/frame.rs:272:9
+    |
+272 | /          for index in start_frame_number..=end_frame_number {
+273 | |/             match self.bitmap.test(index) {
+274 | ||                 Ok(false) => continue,
+275 | ||                 Ok(true) => {
+276 | ||                     let conflicting_addr: usize = index * mem::FRAME_SIZE;
+...   ||
+286 | ||                 Err(err) => return Err(err),
+287 | ||             }
+    | ||_____________- any code following this `match` expression is unreachable, as all arms diverge
+288 | |          }
+    | |__________^ unreachable expression
+    |
+    = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+error[E0277]: the trait bound `core::ops::RangeInclusive<usize>: vstd::pervasive::ForLoopGhostIteratorNew` is not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:291:9
+    |
+291 | /         for index in start_frame_number..=end_frame_number {
+292 | |             if let Err(error) = self.bitmap.set(index) {
+293 | |                 error!("{error:?} (region={region:?})");
+294 | |                 return Err(error);
+295 | |             }
+296 | |         }
+    | |_________^ the trait `vstd::pervasive::ForLoopGhostIteratorNew` is not implemented for `core::ops::RangeInclusive<usize>`
+    |
+    = help: the following other types implement trait `vstd::pervasive::ForLoopGhostIteratorNew`:
+              alloc::collections::btree_map::Iter<'a, Key, Value>
+              alloc::collections::btree_map::Keys<'a, Key, Value>
+              alloc::collections::btree_map::Values<'a, Key, Value>
+              alloc::collections::btree_set::Iter<'a, Key>
+              alloc::collections::vec_deque::Iter<'a, T>
+              alloc::vec::IntoIter<T, A>
+              core::ops::Range<A>
+              core::slice::Iter<'a, T>
+              core::str::Chars<'a>
+
+error[E0277]: the trait bound `core::ops::RangeInclusive<usize>: vstd::pervasive::ForLoopGhostIteratorNew` is not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:291:22
+    |
+291 |         for index in start_frame_number..=end_frame_number {
+    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `vstd::pervasive::ForLoopGhostIteratorNew` is not implemented for `core::ops::RangeInclusive<usize>`
+    |
+    = help: the following other types implement trait `vstd::pervasive::ForLoopGhostIteratorNew`:
+              alloc::collections::btree_map::Iter<'a, Key, Value>
+              alloc::collections::btree_map::Keys<'a, Key, Value>
+              alloc::collections::btree_map::Values<'a, Key, Value>
+              alloc::collections::btree_set::Iter<'a, Key>
+              alloc::collections::vec_deque::Iter<'a, T>
+              alloc::vec::IntoIter<T, A>
+              core::ops::Range<A>
+              core::slice::Iter<'a, T>
+              core::str::Chars<'a>
+
+For more information about this error, try `rustc --explain E0277`.
+warning: `kernel` (bin "kernel") generated 1 warning
+error: could not compile `kernel` (bin "kernel") due to 6 previous errors; 1 warning emitted
