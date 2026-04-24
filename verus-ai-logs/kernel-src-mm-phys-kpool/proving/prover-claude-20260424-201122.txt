@@ -4790,3 +4790,173 @@ error: postcondition not satisfied
 
 Line 456 would be in `alloc_range`. But line 178 is the `alloc` postcondition. That seems wrong. Let me look at the actual log more carefully:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/kpool.rs:178:13
+    |
+178 | /             match result {
+179 | |                 Ok(frame) => {
+180 | |                     let page_index = (frame@ - old(self)@.start) / spec_page_size();
+181 | |                     &&& frame.inv()
+.....
+
+────────────────────────────────────────────────────────────
+Turn 285
+────────────────────────────────────────────────────────────
+Line 258 is in `alloc`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+
+[THINKING] Wait, line 258 says `Ok(frame)` — that's the return statement in `alloc`. So the postcondition fails for `alloc` at the `Ok(frame)` return.
+
+And then there's a note about a "while loop" at line 416, which is in `alloc_range`.
+
+Let me look at line 258:
+[RESULT ✓] view: 246.         }
+247.         let frame = frame_from_raw(addr)?;
+248.         proof! {
+249.             // frame@ == addr == base@ + index * page_size
+250.             assert(frame@ == addr as int);
+251.             // page_index = (frame@ - old(self)@.start) / page_size = index
+252.             asser...
+
+────────────────────────────────────────────────────────────
+Turn 286
+────────────────────────────────────────────────────────────
+The `alloc` postcondition still fails. The postcondition needs `page_index == index`. I need `(frame@ - start) / page_size == index`, which is `(index * page_size) / page_size == index`. I need `lemma_div_by_multiple`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 287
+────────────────────────────────────────────────────────────
+Now let me fix the alloc_range loop issues. The errors are:
+1. `base_addr + i * mem::PAGE_SIZE` overflow — the verifier can't see `i * PAGE_SIZE` won't overflow
+2. `addr == base@ + (index+i) * page_size` — need to show `base_addr + i * PAGE_SIZE == base@ + (index+i)*page_size`
+
+The issue is that `base_addr = pa_into_raw(self.base) + index * PAGE_SIZE`. The computation `base_addr + i * PAGE_SIZE` is `(base@ + index * ps) + i * ps`. I need to prove:
+- `i * PAGE_SIZE` doesn't overflow
+- `base_addr + i * PAGE_SIZE` doesn't overflow
+
+For `i * PAGE_SIZE`: `i < count <= num_bits` and `num_bits * ps <= usize::MAX + 1 - base@`. Since `base@ >= 0`, `num_bits * ps <= usize::MAX + 1`. So `i * ps < count * ps <= num_bits * ps <= usize::MAX + 1`.
+
+Actually wait, there's a more subtle issue. `lemma_mul_strict_inequality(i, count, ps)` requires `0 <= i < count` and `ps > 0`, and gives `i * ps < count * ps`. But `count * ps` itself could overflow — we only know `count <= num_bits` and `num_bits * ps <= usize::MAX + 1 - base <= usize::MAX + 1`. So `count * ps <= num_bits * ps <= usize::MAX + 1`. So `i * ps < count * ps <= usize::MAX + 1`, meaning `i * ps <= usize::MAX`.
+
+And `base_addr + i * ps = (base@ + index * ps) + i * ps`. We need `(index + i) * ps = index * ps + i * ps` (distributivity). Then `base@ + (index + i) * ps`. Since `index + i < index + count <= num_bits`, `(index + i) * ps < num_bits * ps <= usize::MAX + 1 - base@`. So `base@ + (index + i) * ps <= usize::MAX`.
+
+So `base_addr + i * ps = base@ + index * ps + i * ps = base@ + (index + i) * ps <= usize::MAX`. ✓
+
+The proof code needs to make these steps explicit. Let me update the loop body:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 416.                 addrs@.len() == i as int,
+417.                 forall|j: int| #![trigger addrs@[j]]
+418.                     0 <= j < i as int ==> {
+419.                         let frame = addrs@[j];
+420.                         &&& frame.inv()
+421.                         &&& frame@ == self.b...
+
+────────────────────────────────────────────────────────────
+Turn 288
+────────────────────────────────────────────────────────────
+The issue is that the verifier needs explicit arithmetic steps. The problem with the loop body is:
+1. `base_addr + i * mem::PAGE_SIZE` — the verifier can't prove no overflow because it doesn't know `base_addr` or `i * PAGE_SIZE` precisely. The invariant tells us `base_addr as int == self.base@ + (index as int) * spec_page_size()`, and `i < count`, but we need to show `base_addr + i * PAGE_SIZE <= usize::MAX`.
+
+Let me also add to the proof that `base_addr + i * PAGE_SIZE = base@ + (index + i) * PAGE_SIZE`. For this I need the distributivity lemma:
+[TOOL] bash: grep -n 'lemma_mul.*distribut\|lemma_mul_is_distributive' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/
+[RESULT ✓] bash: 271:pub broadcast proof fn lemma_mul_is_distributive_add(x: int, y: int, z: int)
+275:    MulINL::lemma_mul_is_distributive_add(x, y, z);
+280:pub broadcast proof fn lemma_mul_is_distributive_add_other_way(x: int, y: int, z: int)
+290:pub broadcast proof fn lemma_mul_is_distributive_sub(x: int, y: int,...
+
+────────────────────────────────────────────────────────────
+Turn 289
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/arithmetic/mul.rs
+[RESULT ✓] view: 271. pub broadcast proof fn lemma_mul_is_distributive_add(x: int, y: int, z: int)
+272.     ensures
+273.         #[trigger] (x * (y + z)) == x * y + x * z,
+274. {
+275.     MulINL::lemma_mul_is_distributive_add(x, y, z);
+276. }
+277. 
+278. /// Proof that multiplication distributes over addition, specif...
+
+────────────────────────────────────────────────────────────
+Turn 290
+────────────────────────────────────────────────────────────
+`lemma_mul_is_distributive_add_other_way(x, y, z)` proves `(y + z) * x == y * x + z * x`. So with `x = spec_page_size()`, `y = index`, `z = i`:
+`(index + i) * spec_page_size() == index * spec_page_size() + i * spec_page_size()`
+
+So `base@ + (index + i) * ps == base@ + index * ps + i * ps == base_addr + i * ps`.
+
+Let me update the loop body proof:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 291
+────────────────────────────────────────────────────────────
+Now for the `!old(self)@.used_page_indices.contains(page_index)` assertion at line 510. This is in the post-loop proof. Let me look at it:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 470.                 assert(addr as int % spec_page_size() == 0);
+471.             }
+472.             let frame: FrameAddress = frame_from_raw(addr)?;
+473.             addrs.push(frame);
+474.         }
+475. 
+476.         proof! {
+477.             // After loop: addrs@.len() == count (from invariant ...
+
+────────────────────────────────────────────────────────────
+Turn 292
+────────────────────────────────────────────────────────────
+The assertion at line 528 fails. The issue is proving that `!old(self)@.used_page_indices.contains(page_index)` where `page_index = index + which_frame`.
+
+From bitmap.alloc_range's postcondition: `old(self).bitmap@.all_bits_unset_in_range(index, index + count)`.
+
+`all_bits_unset_in_range(index, index+count)` = `forall|j| index <= j < index+count ==> !is_bit_set(j)`.
+
+`is_bit_set(j) == set_bits.contains(j)` (from BitmapView definition).
+
+`old(self)@.used_page_indices == old(self).bitmap@.set_bits` (from View).
+
+So `!old(self).bitmap@.is_bit_set(index + which_frame)` = `!old(self).bitmap@.set_bits.contains(index + which_frame)` = `!old(self)@.used_page_indices.contains(index + which_frame)`.
+
+I need to explicitly unwrap these steps:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 293
+────────────────────────────────────────────────────────────
+Now let me also check the `alloc` postcondition issue. I added `lemma_div_by_multiple` — let me also check that `self.inv()` is established properly in the Ok case. After `bitmap.alloc()`:
+- `self.bitmap.inv()` from bitmap.alloc ensures
+- `self.bitmap@.num_bits == old(self).bitmap@.num_bits` from bitmap.alloc ensures
+- `self.base` unchanged (only bitmap mutated)
+
+I need to re-establish `self.internal_inv()`. Let me add that to alloc:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 210.                 return Err(error);
+211.             },
+212.         };
+213.         proof! {
+214.             // index from bitmap.alloc: 0 <= index < num_bits
+215.             assert(0 <= index < self.bitmap@.num_bits);
+216.             assert(spec_page_size() > 0);
+217. 
+218.             // P...
+
+────────────────────────────────────────────────────────────
+Turn 294
+────────────────────────────────────────────────────────────
+I need to add `self.lemma_internal_inv_intro()` after the bitmap.alloc to re-establish `self.inv()`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 295
+────────────────────────────────────────────────────────────
+Wait, but `lemma_internal_inv_intro` requires `self.base.inv()` — this is from old(self) and base is unchanged. The bitmap was mutated but `self.base.inv()` should still hold. Let me verify that by adding an explicit assertion before calling the lemma:
+
+Actually, the verifier should be able to derive `self.base.inv()` because only `self.bitmap` was modified by `bitmap.alloc()`, not `self.base`. In Verus, after `self.bitmap.alloc()`, the verifier knows `self.base` is unchanged (since `alloc` only takes `&mut self.bitmap`... actually wait, `self.bitmap.alloc()` calls `alloc` on the bitmap field, which takes `&mut self` of the bitmap. The Verus verifier should know that only the bitmap was mutated, not base.
+
+Let me run verification:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
