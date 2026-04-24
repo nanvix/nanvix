@@ -2,12 +2,13 @@
   "module_name": "frame",
   "log_name": "kernel-src-mm-phys-frame",
   "source_path": "src/kernel/src/mm/phys/frame.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
   "completed_phases": [
     "caller-analysis",
     "view-design",
-    "specification"
+    "specification",
+    "proving"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -42,6 +43,17 @@
       "review_file": null,
       "duration_s": 3701.4,
       "review_rounds": 2
+    },
+    "proving": {
+      "phase": "proving",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-RESOLVED",
+      "review_file": null,
+      "duration_s": 6539.4,
+      "review_rounds": 1
     }
   },
   "prover_session_id": "11750403-731d-4090-b722-09b53a9e3a42",
@@ -51,7 +63,8 @@
   "phase_boundary_shas": {
     "caller-analysis": "40b57def3aa88528c80d1f8eb0a59e58cb2e1572",
     "view-design": "0de851acf2b7f1443fc57958bf86b2706987f751",
-    "specification": "fedb479c44320d3756659a1b1bc10f92b7fcfb1b"
+    "specification": "fedb479c44320d3756659a1b1bc10f92b7fcfb1b",
+    "proving": "6eac67d54cfef7be9cbf8c229f1686e634cd3e07"
   },
   "rollback_counts": {},
   "rollback_context": ""

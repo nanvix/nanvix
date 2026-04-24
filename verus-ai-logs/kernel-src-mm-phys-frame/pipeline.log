@@ -104,3 +104,12 @@ Core logic (Inner::alloc, Inner::free, Inner::book, Inner::alloc_range) fully ve
 without external_body or admit. External_body used only at trust boundaries (arch crate
 conversions and unsafe singleton access pattern).
 [2026-04-25 01:11:17] [DIALOGUE] proving ended after 1 turns: RESOLVED (482s)
+[2026-04-25 01:11:17] [PHASE] proving: dialogue-RESOLVED (1h48m59s)
+[2026-04-25 01:11:17] [SPEC DRIFT] Comparing specification (fedb479c) → proving (6eac67d5)
+[2026-04-25 01:11:17] [SPEC DRIFT] No changes detected
+[2026-04-25 01:11:17] ✅ proving: PASS (0/0)
+
+============================================================
+PHASE: cheating-elimination
+Module: frame
+============================================================
