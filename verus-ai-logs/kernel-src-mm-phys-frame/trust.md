@@ -112,3 +112,73 @@ verification scope whose implementation cannot be verified by Verus.
   Same limitation as #3.
 - **Spec:** `requires region.inv()`, `ensures ret as int == region@.start`
 - **Reproducer:** Same as #3.
+
+---
+
+## 9. `assume_specification[init]`
+
+- **File:** `frame.spec.rs:38-42`
+- **Trust item:** `assume_specification` on `init`
+- **Classification:** `SINGLETON_INIT`
+- **Justification:** `init()` uses `MaybeUninit::write()` which Verus cannot
+  compile even with `external_body`. The function is not annotated with
+  `#[verus_verify]`, so it falls outside the verification scope entirely.
+  The spec is tautological (`result.is_ok() || result.is_err()`) — it
+  cannot express singleton initialization guarantees because Verus has no
+  support for `static mut`, `unsafe`, or `MaybeUninit::write()`.
+- **Reproducer:** Verus fails at compilation stage when encountering
+  `MaybeUninit::write()` in function bodies, even with `external_body`.
+
+---
+
+## 10. `pub(super) fn alloc()` — singleton wrapper
+
+- **File:** `frame.rs:1184-1195`
+- **Trust item:** `#[verus_verify(external_body)]`
+- **Classification:** `SINGLETON_WRAPPER`
+- **Justification:** Delegates to `instance().alloc()` where `instance()` uses
+  `unsafe { INSTANCE.assume_init_mut() }` and `AtomicBool::load()`. Verus
+  cannot reason about the `MaybeUninit` singleton pattern. The inner method
+  `Inner::alloc` IS fully body-verified with a rich state-transition spec.
+- **Spec:** `ensures match result { Ok(frame) => frame.inv(), Err(_) => true }`
+  (weaker than Inner::alloc's spec due to singleton boundary)
+- **Reproducer:** Verus does not support `static mut` or
+  `MaybeUninit::assume_init_mut()`.
+
+---
+
+## 11. `pub(super) fn free()` — singleton wrapper
+
+- **File:** `frame.rs:1199-1213`
+- **Trust item:** `#[verifier::external_body]`
+- **Classification:** `SINGLETON_WRAPPER`
+- **Justification:** Same as #10. Delegates to `instance().free(frame)`.
+  Inner method `Inner::free` is fully body-verified. Uses `verus!` syntax
+  (not attribute style) because `no_unwind` is required by `Drop::drop`
+  and attribute syntax doesn't support `no_unwind`.
+- **Spec:** `requires frame.inv()`, `ensures result.is_ok() || result.is_err()`
+- **Reproducer:** Same as #10.
+
+---
+
+## 12. `pub(super) fn book()` — singleton wrapper
+
+- **File:** `frame.rs:1217-1227`
+- **Trust item:** `#[verus_verify(external_body)]`
+- **Classification:** `SINGLETON_WRAPPER`
+- **Justification:** Same as #10. Delegates to `instance().book(phys_addr)`.
+  Inner method `Inner::book` is fully body-verified.
+- **Spec:** `requires phys_addr.inv()`, `ensures result.is_ok() || result.is_err()`
+- **Reproducer:** Same as #10.
+
+---
+
+## 13. `pub(super) fn alloc_range()` — singleton wrapper
+
+- **File:** `frame.rs:1231-1241`
+- **Trust item:** `#[verus_verify(external_body)]`
+- **Classification:** `SINGLETON_WRAPPER`
+- **Justification:** Same as #10. Delegates to `instance().alloc_range(region)`.
+  Inner method `Inner::alloc_range` is fully body-verified.
+- **Spec:** `requires region.inv()`, `ensures result.is_ok() || result.is_err()`
+- **Reproducer:** Same as #10.
