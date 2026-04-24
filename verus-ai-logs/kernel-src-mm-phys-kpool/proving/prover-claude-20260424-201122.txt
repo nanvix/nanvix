@@ -4698,3 +4698,22 @@ Turn 280
 ────────────────────────────────────────────────────────────
 Good, down to 3 errors (same count but different errors now). The Err case seems to have been fixed. Let me see the full errors:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: note: verifying module mm::phys::kpool
+
+error: postcondition not satisfied
+--
+    | |_________^
+
+error: possible arithmetic underflow/overflow
+--
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: assertion failed
+--
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...
+
+────────────────────────────────────────────────────────────
+Turn 281
+────────────────────────────────────────────────────────────
+Let me get more context:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
