@@ -1,0 +1,61 @@
+Timestamp: 2026-04-24_23-14-36
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::frame
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=18
+  admit=7
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+error[E0061]: this function takes 5 arguments but 1 argument was supplied
+   --> src/kernel/src/mm/phys/frame.spec.rs:52:27
+    |
+ 52 |   pub assume_specification[ super::init ](bitmap: SparseBitmap) -> (result: Result<(), Error>)
+    |  ___________________________^^^^^^^^^^^-
+ 53 | |     ensures
+ 54 | |         // Singleton pattern: state not expressible without ghost accessor.
+ 55 | |         result.is_ok() || result.is_err(),
+ 56 | | ;
+    | | -
+    | | |
+    | |_three arguments of type `hal::mem::types::address::aligned::page::PageAligned<hal::mem::types::address::phys::PhysicalAddress>`, `alloc::collections::LinkedList<hal::mem::types::region::TruncatedMemoryRegion<hal::mem::types::address::phys::PhysicalAddress>>`, and `&alloc::collections::LinkedList<hal::mem::types::region::TruncatedMemoryRegion<sys::mm::VirtualAddress>>` are missing
+    |   argument #5 of type `bitmap::Bitmap` is missing
+    |
+note: function defined here
+   --> src/kernel/src/mm/phys/mod.rs:128:8
+    |
+128 | pub fn init(
+    |        ^^^^
+129 |     kpool_base: PageAligned<PhysicalAddress>,
+    |     ----------------------------------------
+130 |     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
+    |     ---------------------------------------------------------------------------
+131 |     mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+    |     ----------------------------------------------------------------
+132 |     physical_memory_layout: SparseBitmap,
+133 |     kpool_bitmap: Bitmap,
+    |     --------------------
+help: provide the arguments
+    |
+ 52 - pub assume_specification[ super::init ](bitmap: SparseBitmap) -> (result: Result<(), Error>)
+ 53 -     ensures
+ 54 -         // Singleton pattern: state not expressible without ghost accessor.
+ 55 -         result.is_ok() || result.is_err(),
+ 56 - ;
+ 52 + pub assume_specification[ super::init(/* hal::mem::types::address::aligned::page::PageAligned<hal::mem::types::address::phys::PhysicalAddress> */, /* alloc::collections::LinkedList<hal::mem::types::region::TruncatedMemoryRegion<hal::mem::types::address::phys::PhysicalAddress>> */, /* &alloc::collections::LinkedList<hal::mem::types::region::TruncatedMemoryRegion<sys::mm::VirtualAddress>> */, bitmap, /* bitmap::Bitmap */)
+    |
+
+For more information about this error, try `rustc --explain E0061`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

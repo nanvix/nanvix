@@ -244,3 +244,107 @@ Turn 17
 ────────────────────────────────────────────────────────────
 Now run verification:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && MODULE=mm::phys::frame make verify-kernel 2>&1
+[RESULT ✓] bash: - frame.rs:359 init: external_body
+    - frame.rs:389 alloc: external_body
+    - frame.rs:421 book: external_body
+    - frame.rs:435 alloc_range: external_body
+  Global: assume=0 external_body=19 admit=7 trusted=0 cfg_gate=7
+  Detail: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanv...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Verification failed. Let me check the error:
+[TOOL] bash: grep -B3 -A5 'error:' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/verus-logs/verus
+[RESULT ✓] bash: note: verifying root module
+
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> src/kernel/src/mm/phys/frame.rs:373:5
+    |
+373 ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+The `external_body` on `init()` doesn't prevent Verus from parsing the body — it still fails on `INSTANCE.write()`. This is the same `MaybeUninit::write()` issue from before. The reason we had no annotations on `init()` previously was exactly this. Let me check how `init()` currently looks:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 349. /// # Safety
+350. ///
+351. /// Must be called exactly once during boot, before any other function
+352. /// in this module.
+353. /// Singleton: state not expressible without ghost accessor.
+354. #[verus_verify(external_body)]
+355. #[verus_spec(result =>
+356.     ensures
+357.         result.is_ok...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+The `external_body` doesn't suppress compilation of `&mut` types in the body. I need to use `#[verus_verify(external)]` instead, which tells Verus to completely skip the function. Let me check if that's available:
+[TOOL] bash: grep -rn 'verus_verify(external)' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/ | 
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn 'verifier::external\b' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/ | he
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn 'external_fn_specification' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/ | head -5
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+The approach is: we can't use `#[verus_verify(external_body)]` directly on `init()` because Verus still compiles the body and `MaybeUninit::write` uses `&mut`. The workaround is to use `verus!{}` syntax with `assume_specification` to provide the spec separately, and mark the function itself as completely external. Let me try a different approach — use `#[verus_verify(external)]` which should completely exclude the function:
+[TOOL] bash: grep -rn 'verus_verify' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/ | gr
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs:354:#[verus_verify(external_body)]
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs:380:#[verus_verify(external_body)]
+/home/ruize/verus-ai-exp/verus...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Let me check what the verus-constraints skill says about `assume_specification` for same-crate functions:
+[TOOL] grep: assume_specification
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md:3:description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+The approach for init() needs to be: make it completely invisible to Verus (no annotations at all), then provide the spec separately via `assume_specification`. Let me try this:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Now add the `assume_specification` for `init()` in frame.spec.rs:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+[RESULT ✓] view: 38. ;
+39. 
+40. pub assume_specification[ PhysicalAddress::into_frame_number ](self_: PhysicalAddress) -> (result: FrameNumber)
+41. ;
+42. 
+43. // Generic trait methods (deref, start, size, into_raw_value) are annotated
+44. // directly on their impl methods with #[verus_verify(external_body)] in
+45. /...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && MODULE=mm::phys::frame make verify-kernel 2>&1
