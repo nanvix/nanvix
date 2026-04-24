@@ -576,6 +576,8 @@ impl Inner {
             },
     )]
     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+        // VERUS DEVIATION: original was `phys_addr.into_frame_number().into_raw_value()`.
+        // Same limitation as Inner::free — generic Deref chain cannot be specified.
         let frame_number: usize = page_aligned_pa_to_bitmap_index(phys_addr);
         proof! {
             let ps = spec_page_size();

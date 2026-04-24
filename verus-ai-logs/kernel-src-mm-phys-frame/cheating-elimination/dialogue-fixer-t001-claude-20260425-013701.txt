@@ -178,3 +178,34 @@ Turn 9
 ────────────────────────────────────────────────────────────
 Now run verification:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: - frame.rs:98 page_aligned_pa_to_bitmap_index: external_body
+    - frame.rs:109 region_start_frame_number: external_body
+    - frame.rs:119 region_size_raw: external_body
+    - frame.rs:130 region_start_raw: external_body
+    - frame.rs:174 alloc: external_body
+    - frame.rs:374 free: external_body...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+9 verified, 0 errors. Now write the response file:
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/cheating-elimination/dialogue/turn_001_fixer.md
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/cheating-elimination/dialogue/turn_001_fixer.md with 1892 characters
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+All three fixes applied:
+
+1. **trust.md**: Added 5 missing entries (assume_specification[init] + 4 singleton wrappers) with proper SINGLETON_INIT/SINGLETON_WRAPPER classifications
+2. **frame.rs**: Added VERUS DEVIATION comment to `Inner::book` at line 580
+3. **verification_todo.md**: Updated to reflect items moved to trust.md
+
+Verification passes: 9 verified, 0 errors.
+
+
+=== Session End ===
+Session: ed0de2b6-ac10-435b-a9be-b458b8eff1c6
+Duration: 129.1s
+Exit code: 0
+JSONL log: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/cheating-elimination/dialogue-fixer-t001-claude-20260425-013701.jsonl
