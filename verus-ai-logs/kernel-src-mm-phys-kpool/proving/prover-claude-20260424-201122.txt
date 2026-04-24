@@ -3785,3 +3785,337 @@ Turn 211
 ────────────────────────────────────────────────────────────
 Now let me run verification again:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: --> src/kernel/src/mm/phys/kpool.rs:83:16
+   |
+83 |         result.is_Ok(),
+   |                ^^^^^
+
+error: disallowed: field expression for a non-visible datatype
+  --> src/kernel/src/mm/phys/kpool.proof.rs:21:13
+   |
+21 |           &&& self.base.inv()
+--
+   | |_- this datatype is only visible to...
+
+────────────────────────────────────────────────────────────
+Turn 212
+────────────────────────────────────────────────────────────
+The `open` spec for `internal_inv` can't access `self.base` because it's a non-visible datatype field. Since `Internal_inv` is `pub open`, it needs to be expressible outside the module, but `Inner` is a private struct. Let me keep it `closed` and add a lemma:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 213
+────────────────────────────────────────────────────────────
+Now I need a way for the proofs to access the internal_inv properties. Let me add a proof lemma:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::KpoolView;
+4. 
+5. impl View for Inner {
+6.     type V = KpoolView;
+7. 
+8.     closed spec fn view(&self) -> KpoolView
+9.     {
+10.         KpoolView{
+11.             start: self.base@,
+12.             num_pages: self.bitmap@.num_bits as int,
+13.             used_page_in...
+
+────────────────────────────────────────────────────────────
+Turn 214
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 215
+────────────────────────────────────────────────────────────
+Now I need to call `self.lemma_internal_inv()` at the beginning of each function to get the internal_inv properties. But wait — in `alloc`, after `bitmap.alloc()`, the old internal_inv holds (for old(self)), and we need to reason about the new state. Let me think about this...
+
+The proofs need:
+- For `alloc`: `old(self).lemma_internal_inv()` to get `spec_page_size() > 0`, `old(self).base@ >= 0`, etc.
+- After bitmap mutation: `self.bitmap.inv()` (from bitmap.alloc ensures), and `base` unchanged, so properties transfer.
+
+Let me update the functions to call the lemma:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 121.     fn new(base: PageAligned<PhysicalAddress>, bitmap: Bitmap) -> Result<Inner, Error> {
+122.         // Check if bitmap spans across physically-addressable memory.
+123.         let bitmap_capacity: usize = bitmap.number_of_bits();
+124.         let kpool_size: usize = match bitmap_capacity.chec...
+
+────────────────────────────────────────────────────────────
+Turn 216
+────────────────────────────────────────────────────────────
+For `new`, we don't have self yet. The internal_inv properties need to be established for the newly created Inner. Let me update the `new` proof:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 142.         proof! {
+143.             // kpool_size == bitmap_capacity * PAGE_SIZE == bitmap@.num_bits * spec_page_size()
+144.             // is_valid_physical_region returned true, so base@ + kpool_size <= usize::MAX + 1
+145.             assert(spec_page_size() > 0);
+146.             assert(bitmap...
+
+────────────────────────────────────────────────────────────
+Turn 217
+────────────────────────────────────────────────────────────
+Now I need to call `self.lemma_internal_inv()` at the start of each function. Let me update the alloc function:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+
+[THINKING] For `new`, the assertion `assert(spec_page_size() > 0)` might fail because we haven't established it yet. We know `bitmap.inv()` and `bitmap.number_of_bits() > 0` and `result > 0` from number_of_bits spec. But `spec_page_size() > 0` comes from the `PAGE_SIZE` assume_specification which says `result == spec_page_size()` and `result > 0`.Wait, the `PAGE_SIZE` assume_specification says `result > 0`, where `result == spec_page_size()`. So `spec_page_size() > 0` should be provable from the PAGE_SIZE spec.But PAGE_SIZE is a constant. 
+
+The assume_specification for `PAGE_SIZE` establishes that when the constant is used, Verus automatically knows both that `PAGE_SIZE == spec_page_size()` and `PAGE_SIZE > 0`, so those facts should be available at the point where `mem::PAGE_SIZE` is referenced in the multiplication.
+
+I'm wondering if the issue is actually different though — I should check whether the `assert(spec_page_size() > 0)` has even been tested yet, since the previous run only showed visibility errors rather than verification failures. Let me re-run to see what the actual verification errors are, and then figure out which functions in the `alloc` body need to invoke `lemma_internal_inv`.
+
+For the `alloc` function specifically, I know `old(self).inv()` holds from the requires clause, which expands to `self@.wf() && self.internal_inv()`, so I can extract `old(self).internal_inv()` and call `old(self).lemma_internal_inv()` to get the properties I need. The question is whether I can actually call a proof function on `old(self)` inside a `proof!{}` block in Verus — it should work since `old(self)` is available in spec expressions within the function body.
+
+Now I'm realizing that after `self.bitmap.alloc()` runs, the bitmap changes but the base stays the same, so I need to carefully track which invariant properties still hold: `spec_page_size() > 0` comes from the old invariant as a global fact, `self.base@` is unchanged so it's the same as before, and I need to verify the upper bound constraint still holds after the bitmap modification.
+
+Looking at the bitmap.alloc specification, it guarantees that `num_bits` stays the same in the Ok case, and in the Err case the entire bitmap is unchanged anyway, so all the internal invariant properties are preserved after the operation completes.
+
+Now I need to extract those assertions about `spec_page_size() > 0` from the old state's internal invariant and use them in the alloc function. Let me try calling the lemma directly inside a proof block to see if that works.
+[RESULT ✓] view: 190.     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+191.         let index: usize = match self.bitmap.alloc() {
+192.             Ok(index) => index,
+193.             Err(error) => {
+194.                 #[cfg(not(verus_keep_ghost))]
+195.                 error!("{error:?}");
+196.           ...
+
+────────────────────────────────────────────────────────────
+Turn 218
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 215.             );
+216.             // Now we know: index * spec_page_size() < num_bits * spec_page_size()
+217.             assert(self.base@ + self.bitmap@.num_bits * spec_page_size() <= usize::MAX as int + 1);
+218.             assert(self.base@ >= 0);
+219.             // So index * page_size < nu...
+
+────────────────────────────────────────────────────────────
+Turn 219
+────────────────────────────────────────────────────────────
+I need to add `self.lemma_internal_inv()` calls. But since `alloc` takes `&mut self` and modifies the bitmap, I should do it before the modification:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 220
+────────────────────────────────────────────────────────────
+Wait, but `self.lemma_internal_inv()` needs `self.internal_inv()` as a precondition. In the `requires` for `alloc`, we have `self.inv()`, which means `self@.wf() && self.internal_inv()`. So `self.internal_inv()` holds. But `proof! { self.lemma_internal_inv(); }` will call it on the current `self`, not `old(self)`. At the start of the function, `self == old(self)`, so it's fine.
+
+But actually... does `proof!{}` have access to `self` as a reference? Let me check the Verus syntax more carefully. In attribute syntax, `proof!{}` blocks are inserted inline. The `self` is `&mut self`. Calling a proof fn `lemma_internal_inv(&self)` with `&mut self` should work via auto-deref.
+
+Let me now also update `alloc_range` and `free`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 299.                         );
+300.                         self@ == KpoolView {
+301.                             used_page_indices: old(self)@.used_page_indices.union(new_page_indices),
+302.                             ..old(self)@
+303.                         }
+304.                     }
+305.    ...
+
+────────────────────────────────────────────────────────────
+Turn 221
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 340.                             // used_page_indices = set_bits, is_bit_set = set_bits.contains
+341.                             assert(forall|j: int| start <= j < start + count as int
+342.                                 ==> !old(self).bitmap@.is_bit_set(j));
+343.                             // Th...
+
+────────────────────────────────────────────────────────────
+Turn 222
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 420.         Ok(())
+421.     }
+422. 
+423.     ///
+424.     /// # Description
+425.     ///
+426.     /// Frees a previously allocated frame in the kernel pool.
+427.     ///
+428.     /// # Parameters
+429.     ///
+430.     /// - `addr`: Address of the frame to free.
+431.     ///
+432.     /// # Return Va...
+
+────────────────────────────────────────────────────────────
+Turn 223
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 490.                     old(self).bitmap@.lemma_set_bits_finite();
+491.                     if !old(self).bitmap@.set_bits.contains(index as int) {
+492.                         assert(old(self).bitmap@.set_bits.remove(index as int) =~= old(self).bitmap@.set_bits);
+493.                         // se...
+
+────────────────────────────────────────────────────────────
+Turn 224
+────────────────────────────────────────────────────────────
+Now I need to add `self.lemma_internal_inv()` at the start of `alloc_range` and `free`. Let me do that:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 225
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 226
+────────────────────────────────────────────────────────────
+Now let me also look at `new` — it doesn't have `self`, so it doesn't need lemma_internal_inv. But the postconditions ensure `result.inv()` which includes `internal_inv`. Let me check what proof assertions it has:
+
+The `new` proof block at line 142 already has assertions about spec_page_size() > 0, etc. But with `internal_inv` now `closed`, the verifier needs to know the return value satisfies internal_inv. Since `internal_inv` is `closed`, the verifier should still be able to unfold it inside the module where it's defined. Wait — no, `closed` means it's opaque even to the defining module at verification time. Let me reconsider...
+
+Actually, in Verus, `closed spec fn` means the body is hidden during verification — it's opaque even to the module defining it. Only `open` spec fns reveal their body. But we already showed `open` didn't work because it exposed private fields.
+
+The solution: use `pub(crate) open spec fn` instead of `pub open spec fn`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.spec.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl Inner {
+4.     pub open spec fn inv(&self) -> bool
+5.     {
+6.         &&& self@.wf()
+7.         &&& self.internal_inv()
+8.     }
+9. }
+10. 
+11. }
+12. 
+
+────────────────────────────────────────────────────────────
+Turn 227
+────────────────────────────────────────────────────────────
+[TOOL] grep: struct Inner
+
+[THINKING] The `inv()` calls `self.internal_inv()`. If `internal_inv` is `closed`, then `inv()` can still call it (since it's in the same module), but the verification won't know what `internal_inv` means. So when we try to prove that the return value of `new` satisfies `internal_inv`, we can't because the body is hidden.
+
+Options:
+1. Make `internal_inv` `pub(crate) open spec fn` — this reveals the body within the crate, which should allow the kpool module to see it.
+2. Keep `closed` and add the `lemma_internal_inv` for reading it, plus add a `lemma_internal_inv_intro` for establishing it.
+
+
+3. Actually, wait — the real issue is that `pub open spec fn` is visible everywhere, but `self.base` is a private field of `Inner`. So the spec function body references private fields, which isn't allowed for `pub open`. Using `pub(crate) open` restricts visibility to the crate, which might work, but I need to think through whether that actually solves the problem.
+
+Let me check if `Inner` itself is visible within the crate.
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs:62:struct Inner {
+
+────────────────────────────────────────────────────────────
+Turn 228
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 60. /// Private state of the kernel pool singleton.
+61. #[verus_verify(external_derive)]
+62. struct Inner {
+63.     /// Base address of the kernel pool.
+64.     base: PageAligned<PhysicalAddress>,
+65.     /// Bitmap of free frames.
+66.     bitmap: Bitmap,
+67. }
+68. 
+69. /// Wrapper: converts a [`Pag...
+
+────────────────────────────────────────────────────────────
+Turn 229
+────────────────────────────────────────────────────────────
+`Inner` is private to the module. So `pub open` exposes `self.base.inv()` where `base` is private — not allowed. `pub(crate) open` would also expose it since `Inner` isn't even `pub(crate)`.
+
+The cleanest approach: keep `internal_inv` as `closed` and add a constructor lemma `lemma_internal_inv_establish` that can prove it:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 230
+────────────────────────────────────────────────────────────
+Now update `new` to call `lemma_internal_inv_intro` on the constructed Inner:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 138.         }
+139.         #[cfg(not(verus_keep_ghost))]
+140.         info!("kernel pool: {} frames, {} KB", bitmap_capacity, kpool_size / 1024,);
+141. 
+142.         proof! {
+143.             // kpool_size == bitmap_capacity * PAGE_SIZE == bitmap@.num_bits * spec_page_size()
+144.             // is_...
+
+────────────────────────────────────────────────────────────
+Turn 231
+────────────────────────────────────────────────────────────
+I need to call `lemma_internal_inv_intro` on the return value. But the return value is created inline. Let me refactor to bind it and call the lemma:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 232
+────────────────────────────────────────────────────────────
+Wait, the `proof!{}` block can't introduce exec bindings (`inner`). The `inner` binding is an exec-level binding, and the `proof!{}` block is for proof-level code. Let me restructure:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 233
+────────────────────────────────────────────────────────────
+Now I need to verify that `inner` (exec binding) is accessible within `proof!{}`. In Verus attribute syntax, exec bindings are visible inside `proof!{}` blocks (as ghost copies). Let me also check that `bitmap@.num_bits < u32::MAX` — this needs to be established for `lemma_internal_inv_intro`. Let me check the bitmap's `number_of_bits` spec:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/src/lib.rs
+[RESULT ✓] view: 204.     #[verus_spec(result =>
+205.         requires
+206.             self.inv(),
+207.         ensures
+208.             result as int == self@.num_bits,
+209.             result > 0,
+210.             result < u32::MAX as usize,
+211.     )]
+212.     pub fn number_of_bits(&self) -> usize {
+213.       ...
+
+────────────────────────────────────────────────────────────
+Turn 234
+────────────────────────────────────────────────────────────
+Good — `result < u32::MAX as usize`, which means `bitmap@.num_bits < u32::MAX`. But this is established at the point `number_of_bits()` is called, before `bitmap` is moved into `Inner`. After the move, the bitmap in `inner` has the same view. So `inner.bitmap@.num_bits < u32::MAX` should hold.
+
+But wait — `number_of_bits()` is called at line 123, and `bitmap` is the parameter. After that, `bitmap.inv()` is still valid since `number_of_bits` takes `&self`. So at the time of constructing `inner`, `bitmap.inv()` still holds. 
+
+Let me check what `number_of_bits()` returns — its ensures say `result > 0 && result < u32::MAX as usize && result as int == self@.num_bits`. So after calling it, the verifier knows `bitmap@.num_bits > 0` and `bitmap@.num_bits < u32::MAX`. But does it remember this after other code executes? In Verus, these facts should persist in the verification context.
+
+Actually, the issue is more subtle. After `bitmap.number_of_bits()` returns, we have `bitmap@.num_bits > 0` and `bitmap@.num_bits < u32::MAX as int`. But then `bitmap` is consumed by `Inner { base, bitmap }`, so the bitmap view in `inner` is the same as the `bitmap` argument's view. Verus should track this.
+
+Let me now also think about what `alloc_range` needs from bitmap.alloc_range:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/src/lib.rs
+[RESULT ✓] view: 273.     #[verus_spec(result =>
+274.         requires
+275.             old(self).inv(),
+276.             size > 0,
+277.             size <= old(self)@.num_bits,
+278.         ensures
+279.             self.inv(),
+280.             match result {
+281.                 Ok(start) => {
+282.                 ...
+
+────────────────────────────────────────────────────────────
+Turn 235
+────────────────────────────────────────────────────────────
+Good. Now let me also check what the `alloc_range` in kpool requires from `count`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 269.     ///
+270.     /// Upon success, `Ok(())` is returned and `addrs` is filled with `count`
+271.     /// contiguous entries. Upon failure, an error is returned instead.
+272.     ///
+273.     #[verus_spec(result =>
+274.         requires
+275.             old(self).inv(),
+276.             count > 0...
+
+────────────────────────────────────────────────────────────
+Turn 236
+────────────────────────────────────────────────────────────
+Now let me run verification to check the current state:
+[TOOL] report_intent: Debugging kpool verification
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] report_intent: Intent logged
