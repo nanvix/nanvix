@@ -1339,3 +1339,19 @@ The spec file already imports `spec_page_size`. Let me fix the proof file:
 Turn 30
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  Module mm::phys::frame:
+    ⚠️  external_body: 3
+    ⚠️  admit: 7
+  Affected functions:
+    - frame.rs:92 alloc: admit
+    - frame.rs:153 free: admit
+    - frame.rs:196 book: admit
+    - frame.rs:245 alloc_range: admit
+    - frame.rs:383 alloc: external_body
+    - fr...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
