@@ -443,3 +443,30 @@ Turn 24
 ────────────────────────────────────────────────────────────
 Now run full crate verification to confirm no regressions:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | grep -E '(Summary|ve
+[RESULT ✓] bash: cheating: assume=0 external_body=11 admit=0 trusted=0 no_decreases=0 cfg_gate=6
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=11 admit=0 trusted=0 no_decreases=0 cfg_gate=6
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Full crate verification passes with 0 errors. The cheating counts (external_body=11, cfg_gate=6) are all in **other modules** (frame.rs, kpool.rs), not in upool.
+
+## Summary
+
+**upool is clean — PASS.** The module had **zero cheating items** to begin with:
+- No `admit()`, `assume()`, `external_body`, or `assume_specification`
+- The single `cfg(not(verus_keep_ghost))` gates a logging macro (`error!`), which is explicitly allowed
+- AST consistency has 1 mismatch on `UserFrame::drop` — all three differences (Verus-required Drop annotations, `e`→`_e` rename, cfg-gated `error!`) are justified
+- Full crate verification: 0 errors, no regressions
+
+Reports written to `verus-ai-logs/kernel-src-mm-phys-upool/cheating-elimination/fix_report.md`, `trust.md`, and `verification_todo.md`.
+
+
+=== Session End ===
+Session: 02658a0b-1749-4c02-bf7c-270f763a2762
+Duration: 199.2s
+Exit code: 0
+JSONL log: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-upool/cheating-elimination/prover-claude-20260424-200316.jsonl
