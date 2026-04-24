@@ -4208,3 +4208,87 @@ Turn 142
 ────────────────────────────────────────────────────────────
 Now let me run the verification again:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: Module    : mm::phys::frame
+  Source dir : /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src
+  Channel   : <default>
+  Extra args: --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem --target /home/ruize/veru...
+
+────────────────────────────────────────────────────────────
+Turn 143
+────────────────────────────────────────────────────────────
+The invariant commas are being parsed as tuple syntax. In attribute mode, I need `&&` instead of commas. Let me check the verus-syntax reference:
+[TOOL] bash: grep -n 'invariant' /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/SKILL.md | head -20
+
+[THINKING] The invariants are being parsed as tuples, not as conjunctions. In Verus attribute mode, the invariant should use `&&` to conjoin conditions, not commas. Let me check how the existing verified loops (in free/book/alloc) have invariants... Actually, the earlier methods (free, book, alloc) don't have loops. Let me check the Verus syntax for loop invariants in attribute mode.
+
+Looking at the error: `expected bool, found (bool, bool, bool, bool, bool)` — this means comma-separated expressions are being parsed as a tuple, not as multiple invariant clauses.
+
+In Verus attribute-based syntax, invariants should use `&&` instead of commas:
+
+
+I'm setting up the loop invariant with proper conjunction syntax, combining the bitmap invariant, the frame number bounds, and the coverage condition for all processed indices.
+[RESULT ✓] bash: 3:description: "Verus attribute-based syntax reference for exec functions. Covers #[verus_spec], #[verus_verify], proof!{}, proof_decl!{}, loop invariants. See GUIDE.md for advanced patterns, syntax_attr.rs for the official example."
+21:| Loop invariants | `#[verus_spec(invariant ...)]` on loop |
+86...
+
+────────────────────────────────────────────────────────────
+Turn 144
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/SKILL.md
+[RESULT ✓] view: 80. ```
+81. 
+82. ## Loop Invariants
+83. 
+84. ```rust
+85. #[verus_spec(
+86.     invariant
+87.         v@ =~= Seq::new(i as nat, |k| k as u32),
+88. )]
+89. for i in 0..n {
+90.     v.push(i);
+91. }
+92. ```
+93. 
+94. ```rust
+95. #[verus_spec(
+96.     invariant i <= 10,
+97. )]
+98. while i < 10 {
+99.     i ...
+
+────────────────────────────────────────────────────────────
+Turn 145
+────────────────────────────────────────────────────────────
+The invariant syntax uses `invariant expr` without parentheses, and `&&` for conjunction. Let me fix all three loop invariants:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] So the attribute-mode syntax uses `invariant expr,` — a single expression per `invariant` keyword, followed by commas. Multiple invariants can be listed by using multiple `invariant` keywords. Or I can use `&&` to combine them into a single expression.
+
+Looking at the error: `invariant(...)` is wrong. The syntax is `invariant expr,` — no parentheses.
+
+So I need to change from:
+```rust
+#[verus_spec(invariant(
+    self.bitmap.inv(),
+    ...
+))]
+```
+
+To:
+```rust
+#[verus_spec(
+
+
+```
+
+Fixing the loop invariants...
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 146
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
