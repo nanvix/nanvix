@@ -4687,3 +4687,14 @@ Turn 279
 ────────────────────────────────────────────────────────────
 Now let me run verification again:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: error: assertion failed
+   --> src/kernel/src/mm/phys/kpool.rs:446:24
+    |
+446 |                 assert(addr as int == self.base@ + ((index as int) + (i as int)) * spec_page_size());
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion ...
+
+────────────────────────────────────────────────────────────
+Turn 280
+────────────────────────────────────────────────────────────
+Good, down to 3 errors (same count but different errors now). The Err case seems to have been fixed. Let me see the full errors:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
