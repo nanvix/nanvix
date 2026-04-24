@@ -5245,3 +5245,10 @@ Turn 185
 Turn 186
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | grep -E "^\d+ verifi
+[RESULT ✓] bash: 
+<exited with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 187
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | grep -i "verif"
