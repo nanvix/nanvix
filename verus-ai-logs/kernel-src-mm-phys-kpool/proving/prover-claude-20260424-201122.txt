@@ -2711,3 +2711,208 @@ Since `into_raw_value` on `PageAligned<T>` where `T: Address` returns a `usize`,
 Turn 127
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: but the proxy function's trait bounds are:
+              - T: core::marker::Sized
+              - T: sys::mm::Address
+              - T: vstd::string::View
+              - <T as vstd::string::View>::V == vstd::prelude::int
+            the external function's trait bounds are:
+              - T: core...
+
+────────────────────────────────────────────────────────────
+Turn 128
+────────────────────────────────────────────────────────────
+The generic bounds don't match. Let me take a different approach — create thin wrapper functions in kpool.rs that are `external_body`, avoiding the need to spec generic trait functions:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] Two issues:
+1. `PageAligned::from_address` requires `T: Address` but my assume_specification adds `T: Address + View<V = int>`. I need to match the exact bounds.
+2. `into_raw_value` is generic for all `T`, so I can't specify it for just `PhysicalAddress`.
+
+For `from_address`: I need to use `T: Address` only, but then I can't use `addr@` in the spec (since T doesn't implement View). I need a different approach.
+
+For `into_raw_value`: same issue - it's `for<T: Address>`, so I'd need to match that exact signature.
+ 
+Looking at the error more carefully, the proxy function is adding extra trait bounds like `View` and `<T as View>::V == int` that the external function doesn't have. I could try using `#[verus_verify(external_body)]` on individual functions within the impl blocks instead of on the whole impl, which might give me more control over which bounds get added.
+
+But the core issue is that `from_address` is defined with just `T: Address`, while `View` is only implemented for `PageAligned<T>` when `T: Address + View<V = int>`. This means I can't write a spec for `from_address` that uses view-related predicates without violating the trait bounds of the original function.
+
+Rather than trying to spec these functions at their definition site, I should probably write trusted helper functions or lemmas in the kpool module that can work with the constraints I actually have.
+
+Looking at what `alloc` needs: I need to establish that each step in the chain preserves the address value—that `into_raw_value()` gives me the base address, `from_raw_value()` reconstructs it correctly, `from_address()` preserves it, and finally `FrameAddress::new()` preserves it. Instead of adding `assume_specification` to these generic functions, maybe I should mark them with `#[verus_verify]` to let Verus handle the verification directly.
+
+The issue is that `from_address` can't use `@` notation without `T` implementing `View`, so I'd need to change the trait bounds. Let me try a different approach: create wrapper functions in kpool.rs that call these generic functions and mark those wrappers as `external_body`. That way I avoid modifying the generic impl blocks entirely and can specify the behavior at the call site.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 129
+────────────────────────────────────────────────────────────
+Now let me check: `from_address` has `T: Address` as its bound. Let me match it exactly:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 130
+────────────────────────────────────────────────────────────
+Actually, let me take the approach of creating thin wrappers directly in kpool.rs. I'll remove the generic assume_specifications from page.rs and handle everything locally:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] Wait, if I can't express the postcondition in the assume_specification for from_address because View isn't available on T, that's useless. Let me think about this differently.
+
+Actually, let me just create wrapper functions in the kpool.rs file itself. These wrappers will be thin and marked external_body.
+
+Let me create:
+1. `pa_into_raw(self: PageAligned<PhysicalAddress>) -> usize` — wrapper for `self.into_raw_value()`
+2. `pa_from_raw(addr: usize) -> Result<FrameAddress, Error>` — wrapper for the entire chain `FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(addr)?)?)` 
+
+
+3. `frame_from_raw_addr(addr: usize) -> Result<FrameAddress, Error>` — a single wrapper for the full conversion chain that appears repeatedly in alloc, alloc_range, and the free operations.
+
+For the `into_raw_value` conversions, I can leverage the existing `FrameAddress::into_raw_value` method which already handles the specification assumption. But for `self.base.into_raw_value()` where `self.base` is `PageAligned<PhysicalAddress>`, I'll need a separate wrapper. I'll place these helper functions at the module level in kpool.rs, outside the verified impl block, so they're accessible throughout the file.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 131
+────────────────────────────────────────────────────────────
+Now let me add wrapper functions to kpool.rs. Let me view the current state of kpool.rs around the Inner impl block:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 55. 
+56. //==================================================================================================
+57. // Inner
+58. //==================================================================================================
+59. 
+60. /// Private state of the kernel pool singleton.
+61. #[verus_ver...
+
+────────────────────────────────────────────────────────────
+Turn 132
+────────────────────────────────────────────────────────────
+I'll add the wrapper functions before the `#[verus_verify] impl Inner` block:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 133
+────────────────────────────────────────────────────────────
+Now I need to modify the exec code in `alloc`, `alloc_range`, and `free` to use these wrappers. Let me check the relevant function bodies:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 169.                     }
+170.                 },
+171.                 Err(_) => {
+172.                     &&& forall|i: int| 0 <= i < old(self)@.num_pages ==> old(self)@.used_page_indices.contains(i)
+173.                     &&& self@ == old(self)@
+174.                 },
+175.             },
+176....
+
+────────────────────────────────────────────────────────────
+Turn 134
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 135
+────────────────────────────────────────────────────────────
+Wait, I removed the closing brace. Let me check:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 185.         };
+186.         let addr: usize = pa_into_raw(self.base) + index * mem::PAGE_SIZE;
+187.         Ok(frame_from_raw(addr)?)
+188. 
+189.     ///
+190.     /// # Description
+191.     ///
+192.     /// Allocates a contiguous range of frame addresses from the kernel pool.
+193.     ///
+194.     /...
+
+────────────────────────────────────────────────────────────
+Turn 136
+────────────────────────────────────────────────────────────
+I'm missing the closing brace. Let me fix:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 137
+────────────────────────────────────────────────────────────
+Now fix alloc_range:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 260.                 return Err(error);
+261.             },
+262.         };
+263. 
+264.         let base_addr: usize = self.base.into_raw_value() + index * mem::PAGE_SIZE;
+265.         for i in 0..count {
+266.             let addr: usize = base_addr + i * mem::PAGE_SIZE;
+267.             let frame: F...
+
+────────────────────────────────────────────────────────────
+Turn 138
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 139
+────────────────────────────────────────────────────────────
+Now fix free:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 315.     fn free(&mut self, addr: FrameAddress) -> Result<(), Error> {
+316.         let index: usize = (addr.into_raw_value() - self.base.into_raw_value()) / mem::PAGE_SIZE;
+317.         match self.bitmap.clear(index) {
+318.             Ok(()) => Ok(()),
+319.             Err(error) => {
+320.        ...
+
+────────────────────────────────────────────────────────────
+Turn 140
+────────────────────────────────────────────────────────────
+For `free`, I need `addr.into_raw_value()` and `self.base.into_raw_value()`. `addr` is `FrameAddress` which already has `into_raw_value` with assume_spec, and `self.base` is `PageAligned<PhysicalAddress>`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 141
+────────────────────────────────────────────────────────────
+Also fix `new` which uses `base.into_raw_value()`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 118.                 &&& kpool@.used_page_indices == Set::<int>::new(|i: int| bitmap@.is_bit_set(i))
+119.             },
+120.     )]
+121.     fn new(base: PageAligned<PhysicalAddress>, bitmap: Bitmap) -> Result<Inner, Error> {
+122.         // Check if bitmap spans across physically-addressable memor...
+
+────────────────────────────────────────────────────────────
+Turn 142
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 143
+────────────────────────────────────────────────────────────
+Now let me also remove the unused assume_specification from phys.rs since we're using frame_from_raw wrapper instead:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] view: 258.         self.0@
+259.     }
+260. }
+261. 
+262. pub assume_specification[ <PhysicalAddress as Address>::from_raw_value ](value: usize) -> (result: Result<PhysicalAddress, Error>)
+263.     ensures
+264.         result.is_Ok(),
+265.         match result {
+266.             Ok(addr) => addr@ == value a...
+
+────────────────────────────────────────────────────────────
+Turn 144
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+
+[THINKING] Actually, I should keep the PhysicalAddress::from_raw_value assume_specification because the frame_from_raw wrapper internally calls it, and when verifying frame_from_raw it would need to know the spec of PhysicalAddress::from_raw_value. But frame_from_raw is marked external_body, so it won't be verified internally. The frame_from_raw wrapper is trusted.
+
+Wait, but the assume_specification on PhysicalAddress::from_raw_value might cause issues because the trait bound might not match. Let me check:```error: assume_specification trait bound mismatch```Wait, the original error was for PageAligned, not PhysicalAddress. Let me keep PhysicalAddress::from_raw_value and see if it compiles.
+
+
+PhysicalAddress implements Address directly rather than generically, so the trait bound should align properly. I'll keep it for now and remove it later if needed, then try building.
