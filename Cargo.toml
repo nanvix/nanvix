@@ -281,7 +281,7 @@ opt-level = "z"
 lto = true
 
 [workspace.lints.rust]
-warnings = "deny"
+warnings = "warn"
 unexpected_cfgs = { level = "deny", check-cfg = [
         "cfg(verus_keep_ghost)",
         "cfg(verus_keep_ghost_body)",

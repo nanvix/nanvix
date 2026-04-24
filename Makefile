@@ -604,6 +604,10 @@ verify: ensure-verus
 		echo "[OK] All crates verified clean."; \
 	fi
 
+# Quick compilation check (dual compilation for Verus-annotated code).
+.PHONY: build
+build: check-kernel
+
 # Ensures the correct Verus version is installed before verification.
 # Auto-downloads the pinned release via scripts/setup/verus.sh when the
 # binary is missing or outdated.
