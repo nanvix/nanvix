@@ -1431,3 +1431,245 @@ Writing helper function...
 Turn 51
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: Module mm::phys::kpool:
+    ⚠️  cfg-gated exec code: 1
+  Global: assume=0 external_body=7 admit=0 trusted=0 cfg_gate=7
+  Detail: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/cheating-detail.txt
+
+=== Function Coverage ===
+  4/17 exec functions have contracts.
+  U...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -A3 'error' verus-ai-logs/verus-logs/veru
+[RESULT ✓] bash: error: assume_specification trait bound mismatch
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:224:1
+    |
+224 | pub assume_specification<T: Address + View<V = int>> [ <PageAligned<T> as Address>::into_raw_value ](self_: PageAligned<T>) -> (ret: usize)
+--
+error: could not compile `kern...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+The generic form with extra bounds fails. Let me check the module hierarchy and create a helper in the HAL:
+[TOOL] bash: grep -n 'pub.*use\|pub.*mod\|pub.*fn.*pa_into_raw\|FrameAddress' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-sy
+
+[THINKING] The generic assume_specification with extra bounds fails with "trait bound mismatch". The original function has `T: Address` only, but I'm trying to add `View<V = int>`. Let me try without the View bound:```rust
+pub assume_specification<T: Address> [ <PageAligned<T> as Address>::into_raw_value ](self_: PageAligned<T>) -> (ret: usize);
+```
+
+Without the View bound, I can't use `self_@` in the ensures. So the ensures would be empty (or use a different property).
+
+But without `ensures ret as int == self_@`, the spec is useless — I need this property to prove correctness in kpool.rs.Alternative: use a helper function in the HAL module. Since the reviewer said option 2 is acceptable ("Move pa_into_raw to a shared HAL shim file"), let me do that.
+
+
+I'll create a helper function in frame.rs that wraps the conversion with the spec I need, marking it as external to avoid verification issues with the struct's existing derive attributes.
+
+Now I'm checking whether the function will be accessible from kpool.rs by tracing the module imports and export paths.
+
+Let me try a different approach instead — I'll add an assume_specification directly with the same trait bound as the original, using a simpler ensures clause that avoids needing the View trait.
+[RESULT ✓] bash: 21:pub use ::sys::mm::{
+25:pub use aligned::*;
+26:pub use frame::*;
+27:pub use page::*;
+28:pub use pd::*;
+29:pub use phys::*;
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+Good — `pub use frame::*` re-exports everything from frame.rs. So I can add `pa_into_raw` to frame.rs and it'll be importable. Let me revert the page.rs change and add the helper to frame.rs:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] `pub use frame::*;` means everything public in frame.rs is re-exported. So if I add a `pub fn pa_into_raw(...)` in frame.rs, it will be accessible via `crate::hal::mem::types::address::pa_into_raw` and through the re-export chain.
+
+Let me check the full re-export path to `crate::hal::mem`:
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+Now add `pa_into_raw` as a public helper in frame.rs (external-bottom trust boundary of the HAL module):
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 70. pub assume_specification[ FrameAddress::from_raw_value ](raw_addr: usize) -> (result: Result<FrameAddress, Error>)
+71.     requires raw_addr as int % spec_page_size() == 0,
+72.     ensures
+73.         result matches Ok(_),
+74.         match result {
+75.             Ok(frame) => {
+76.            ...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+Now update kpool.rs to import `pa_into_raw` from the HAL:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 17. use crate::{
+18.     collections::Bitmap,
+19.     hal::{
+20.         mem::{
+21.             Address,
+22.             FrameAddress,
+23.             PageAligned,
+24.             PhysicalAddress,
+25.         },
+26.         platform::is_valid_physical_region,
+27.     },
+28. };
+29. #[cfg(verus_keep_g...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+Now I need to restore `pa_into_raw(...)` calls in kpool.rs since I'm keeping the function (just moved to HAL). Let me check what calls I changed:
+[TOOL] bash: grep -n 'base\.into_raw_value\(\)\|pa_into_raw' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/
+[RESULT ✓] bash: 25:            pa_into_raw,
+109:        if !is_valid_physical_region(base.into_raw_value(), kpool_size) {
+210:        let addr: usize = self.base.into_raw_value() + index * mem::PAGE_SIZE;
+385:        let base_addr: usize = self.base.into_raw_value() + index * mem::PAGE_SIZE;
+599:        if addr.int...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+I need to change `base.into_raw_value()` and `self.base.into_raw_value()` back to `pa_into_raw(...)` in the verified functions. For `addr.into_raw_value()`, that uses `FrameAddress::into_raw_value` which already has an assume_specification, so it's fine. Let me fix the `PageAligned<PhysicalAddress>` calls:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 208.             assert(self.base@ % spec_page_size() == 0);
+209.         }
+210.         let addr: usize = self.base.into_raw_value() + index * mem::PAGE_SIZE;
+211.         proof! {
+212.             assert(addr as int == self.base@ + (index as int) * spec_page_size());
+213.             // Prove page...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+Now for `free`, the `self.base.into_raw_value()` calls — these are `PageAligned<PhysicalAddress>`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 595.             self.lemma_internal_inv();
+596.         }
+597.         // VERUS REWRITE: guard needed to prevent usize underflow in subtraction
+598.         if addr.into_raw_value() < self.base.into_raw_value() {
+599.             let reason: &str = "frame address below pool base";
+600.             ...
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+I need to change `self.base.into_raw_value()` to `pa_into_raw(self.base)` in the free function:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+Now let me verify the `Address` import is still needed (it's used indirectly) and check the module re-export path for `pa_into_raw`:
+[TOOL] bash: grep -n 'pub use\|pub mod' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/ty
+[RESULT ✓] bash: 21:pub use ::sys::mm::{
+25:pub use aligned::*;
+26:pub use frame::*;
+27:pub use page::*;
+28:pub use pd::*;
+29:pub use phys::*;
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n 'pub use\|pub mod' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/ty
+[RESULT ✓] bash: 8:pub mod access;
+9:pub mod address;
+10:pub mod region;
+14:pub use self::types::{
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n 'pub use' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/mod.rs | he
+[RESULT ✓] bash: 14:pub use self::types::{
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/mod.rs
+[RESULT ✓] view: 14. pub use self::types::{
+15.     access::*,
+16.     address::*,
+17.     region::*,
+18. };
+19. 
+20. //==================================================================================================
+21. // Standalone Functions
+22. //================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+Now let me run verification:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+
+[THINKING] Good, `pub use self::types::address::*` means everything public from the address module is re-exported. And address module has `pub use frame::*`. So `pa_into_raw` from frame.rs will be available as `crate::hal::mem::pa_into_raw`.
+
+So kpool.rs importing `crate::hal::mem::pa_into_raw` should work. Let me verify my import is correct. Currently I have:
+
+```rust
+use crate::{
+    collections::Bitmap,
+    hal::{
+        mem::{
+            Address,
+            FrameAddress,
+            PageAligned,
+            PhysicalAddress,
+            pa_into_raw,
+        },
+        platform::is_valid_physical_region,
+    },
+};
+```
+
+This should work. Now I'm wondering if the `Address` trait import is actually necessary — `FrameAddress` has its own `into_raw_value` method, so I might not need it unless `PageAligned::from_address` or other methods depend on the trait being in scope.
+
+Looking back at the original code, `Address` was imported, and it's probably used elsewhere in the file like with `KernelFrame`, so I'll keep it to be safe. Let me run verification and see if this passes.
