@@ -205,3 +205,93 @@ Turn 1
 343. //==================================================================================================
 344. // Public Free Functions
 345. //=================================================================================================...
+[RESULT ✓] bash: note: verifying root module
+
+note: verifying module mm::phys::frame
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.24s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::phys::frame:
+    ⚠️  external_body: 3
+    ⚠️  admit...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/view_design.md
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai-phy-
+[RESULT ✓] view: 35. | Two-set model (allocated vs free) | ✅ Correct abstraction | Keep |
+36. | `Set<int>` for frame addresses | ✅ Appropriate (addresses are inherently `int` in spec world) | Keep |
+37. | Disjointness constraint | ✅ Essential invariant | Keep |
+38. | Page-alignment constraint | ✅ Correct | Keep |
+39...
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/kernel/src/mm/phys/frame.rs`
+- **Verus file:** `src/kernel/src/mm/phys/frame.spec.rs`
+- **Verus dir:** `/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|-...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Now let me check the view_design.md update and look for any remaining issues:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/view_design.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Let me now carefully walk through each checklist item with the actual code. Let me see the full view_design.md implementation note area.
+[RESULT ✓] view: 44. 
+45. ### Implementation Note (added during spec phase)
+46. 
+47. The rename of `UpoolView` → `FrameAllocView` and field renames
+48. (`allocated_frames` → `allocated`, `free_frames` → `free`) were **not
+49. applied** because `UpoolView` is defined in `mod.spec.rs` and shared with
+50. the `upool` a...
+[RESULT ✓] view: 200.             Ok(()) => Ok(()),
+201.             Err(error) => {
+202.                 #[cfg(not(verus_keep_ghost))]
+203.                 error!("{error:?} (phys_addr={phys_addr:?})");
+204.                 Err(error)
+205.             },
+206.         }
+207.     }
+208. 
+209.     ///
+210.     /// # D...
+[RESULT ✓] view: 100.             },
+101.         };
+102.         let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
+103.             Some(frame_number) => frame_number,
+104.             None => {
+105.                 let reason: &str = "frame number is out of bounds";
+106.            ...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Now I have all the evidence. Let me verify the remaining items systematically:
+[TOOL] grep: assume_specification
+[TOOL] grep: admit|assume\b|trusted
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs:18:pub assume_specification[ ::arch::mem::FRAME_SIZE ] -> (result: usize)
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs:24:pub assume_sp...
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs:93:        proof! { admit(); }
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs:154:        proof! { admit(); }
+/home/ruize/verus-ai-exp/verus-ai-phy...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Now let me check the `init` assume_specification more carefully — it targets `init` as a bare name, not a fully qualified path. Let me verify whether this actually works:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && MODULE=mm::phys::frame make verify-kernel 2>&1
