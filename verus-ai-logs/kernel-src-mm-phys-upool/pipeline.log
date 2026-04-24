@@ -18,3 +18,6 @@ Phases: proving → cheating-elimination
 PHASE: proving
 Module: upool
 ============================================================
+[2026-04-24 19:30:47] [STRIP-EXT] no external_body attributes on /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/upool.rs
+[2026-04-24 19:30:47] [PROVER] Running proving...
+[2026-04-24 19:30:47] [COPILOT] Running: copilot --model claude-opus-4.6 ...

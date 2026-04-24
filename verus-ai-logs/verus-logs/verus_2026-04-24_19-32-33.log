@@ -1,0 +1,203 @@
+Timestamp: 2026-04-24_19-32-33
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::upool
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=9
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+   Compiling compiler_builtins v0.1.160 (/home/ruize/.rustup/toolchains/1.94.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling core v0.0.0 (/home/ruize/.rustup/toolchains/1.94.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.24
+   Compiling build-utils v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/build-utils)
+   Compiling autocfg v1.5.0
+   Compiling verus_prettyplease v0.0.0-2026-04-12-0118
+   Compiling hashbrown v0.12.3
+   Compiling vstd v0.0.0-2026-04-12-0118
+   Compiling config v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/config)
+   Compiling kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+   Compiling indexmap v1.9.3
+   Compiling verus_syn v0.0.0-2026-04-05-0114
+   Compiling syn v2.0.117
+   Compiling synstructure v0.13.2
+   Compiling verus_state_machines_macros v0.0.0-2026-04-05-0114
+   Compiling verus_builtin_macros v0.0.0-2026-04-12-0118
+   Compiling alloc v0.0.0 (/home/ruize/.rustup/toolchains/1.94.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+    Checking mmio-tag v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/mmio-tag)
+    Checking cfg-if v1.0.4
+    Checking verus_builtin v0.0.0-2026-04-12-0118
+    Checking static_assert v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/static_assert)
+    Checking type-safe v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/type-safe)
+    Checking no_fail v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/no_fail)
+    Checking sorted-vec v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sorted-vec)
+    Checking bump-allocator v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bump_allocator)
+    Checking sysapi v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sysapi)
+error: could not find module mm::phys::upool specified by --verify-module or --verify-only-module
+       available modules are:
+       - arithmetic::div_mod
+       - arithmetic::internals::div_internals
+       - arithmetic::internals::div_internals_nonlinear
+       - arithmetic::internals::general_internals
+       - arithmetic::internals::mod_internals
+       - arithmetic::internals::mod_internals_nonlinear
+       - arithmetic::internals::mul_internals
+       - arithmetic::internals::mul_internals_nonlinear
+       - arithmetic::logarithm
+       - arithmetic::mul
+       - arithmetic::overflow
+       - arithmetic::power
+       - arithmetic::power2
+       - array
+       - atomic
+       - atomic_ghost
+       - bits
+       - bytes
+       - cell
+       - cell::invcell
+       - cell::pcell
+       - cell::pcell_maybe_uninit
+       - compute
+       - endian
+       - float
+       - function
+       - invariant
+       - laws_cmp
+       - laws_cmp::i128_laws
+       - laws_cmp::i16_laws
+       - laws_cmp::i32_laws
+       - laws_cmp::i64_laws
+       - laws_cmp::i8_laws
+       - laws_cmp::isize_laws
+       - laws_cmp::u128_laws
+       - laws_cmp::u16_laws
+       - laws_cmp::u32_laws
+       - laws_cmp::u64_laws
+       - laws_cmp::u8_laws
+       - laws_cmp::usize_laws
+       - laws_eq
+       - laws_eq::bool_laws
+       - laws_eq::i128_laws
+       - laws_eq::i16_laws
+       - laws_eq::i32_laws
+       - laws_eq::i64_laws
+       - laws_eq::i8_laws
+       - laws_eq::isize_laws
+       - laws_eq::u128_laws
+       - laws_eq::u16_laws
+       - laws_eq::u32_laws
+       - laws_eq::u64_laws
+       - laws_eq::u8_laws
+       - laws_eq::usize_laws
+       - layout
+       - logatom
+       - map
+       - map_lib
+       - math
+       - modes
+       - multiset
+       - multiset_lib
+       - pcm
+       - pcm_lib
+       - pervasive
+       - predicate
+       - proph
+       - raw_ptr
+       - raw_ptr::ptr_const_specs
+       - raw_ptr::ptr_mut_specs
+       - relations
+       - rwlock
+       - rwlock::RwLockToks
+       - rwlock::RwLockToks::show
+       - rwlock::RwLockToks::take_step
+       - seq
+       - seq_lib
+       - set
+       - set::fold
+       - set_lib
+       - shared
+       - shared::Dupe
+       - shared::Dupe::show
+       - shared::Dupe::take_step
+       - simple_pptr
+       - slice
+       - state_machine_internal
+       - std_specs::alloc
+       - std_specs::atomic
+       - std_specs::atomic::atomic_specs_bool
+       - std_specs::atomic::atomic_specs_i16
+       - std_specs::atomic::atomic_specs_i32
+       - std_specs::atomic::atomic_specs_i8
+       - std_specs::atomic::atomic_specs_isize
+       - std_specs::atomic::atomic_specs_u16
+       - std_specs::atomic::atomic_specs_u32
+       - std_specs::atomic::atomic_specs_u8
+       - std_specs::atomic::atomic_specs_usize
+       - std_specs::bits
+       - std_specs::borrow
+       - std_specs::btree
+       - std_specs::clone
+       - std_specs::cmp
+       - std_specs::control_flow
+       - std_specs::convert
+       - std_specs::core
+       - std_specs::default
+       - std_specs::manually_drop
+       - std_specs::maybe_uninit
+       - std_specs::num
+       - std_specs::num::i128_specs_tmp
+       - std_specs::num::i16_specs_tmp
+       - std_specs::num::i32_specs_tmp
+       - std_specs::num::i64_specs_tmp
+       - std_specs::num::i8_specs_tmp
+       - std_specs::num::isize_specs_tmp
+       - std_specs::num::u128_specs_tmp
+       - std_specs::num::u16_specs_tmp
+       - std_specs::num::u32_specs_tmp
+       - std_specs::num::u64_specs_tmp
+       - std_specs::num::u8_specs_tmp
+       - std_specs::num::usize_specs_tmp
+       - std_specs::ops
+       - std_specs::option
+       - std_specs::range
+       - std_specs::result
+       - std_specs::slice
+       - std_specs::smart_ptrs
+       - std_specs::vec
+       - std_specs::vecdeque
+       - storage_protocol
+       - string
+       - tokens
+       - tokens::frac
+       - tokens::map
+       - tokens::seq
+       - tokens::set
+       - utf8
+       - view
+       - wrapping
+       - wrapping::i128_specs
+       - wrapping::i16_specs
+       - wrapping::i32_specs
+       - wrapping::i64_specs
+       - wrapping::i8_specs
+       - wrapping::isize_specs
+       - wrapping::u128_specs
+       - wrapping::u16_specs
+       - wrapping::u32_specs
+       - wrapping::u64_specs
+       - wrapping::u8_specs
+       - wrapping::usize_specs
+       or use --verify-root
+
+error: could not compile `vstd` (lib) due to 1 previous error
