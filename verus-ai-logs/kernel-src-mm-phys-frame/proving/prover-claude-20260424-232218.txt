@@ -5696,3 +5696,11 @@ Turn 215
 ────────────────────────────────────────────────────────────
 Now let me do a final verification to ensure everything still passes after the comment additions:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: verification results:: 9 verified, 0 errors (partial verification with `--verify-*`)
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 216
+────────────────────────────────────────────────────────────
+Let me also confirm no admits/assumes remain and check the cheating summary:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
