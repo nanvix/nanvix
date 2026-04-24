@@ -4960,3 +4960,87 @@ Actually, the verifier should be able to derive `self.base.inv()` because only `
 
 Let me run verification:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: |
+87 |         result.is_Ok(),
+   |                ^^^^^
+
+note: verifying module mm::phys::kpool
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/kpool.rs:472:24
+    |
+472 |                 assert(addr as int % spec_page_size() == 0);
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...
+
+────────────────────────────────────────────────────────────
+Turn 296
+────────────────────────────────────────────────────────────
+Excellent! Down to 1 error — 6 verified! The only failure is at line 472 in the alloc_range loop: `addr as int % spec_page_size() == 0`. Let me check:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 462.                     == self.base@ + ((index as int) + (i as int)) * spec_page_size());
+463.             }
+464.             let addr: usize = base_addr + i * mem::PAGE_SIZE;
+465.             proof! {
+466.                 assert(addr as int == self.base@ + ((index as int) + (i as int)) * spec_pag...
+
+────────────────────────────────────────────────────────────
+Turn 297
+────────────────────────────────────────────────────────────
+The `lemma_mod_multiples_vanish(a, b, m)` proves `(m * a + b) % m == b % m`. With `a = index + i`, `b = self.base@`, `m = spec_page_size()`:
+- `(spec_page_size() * (index + i) + self.base@) % spec_page_size() == self.base@ % spec_page_size()`
+
+But `addr = self.base@ + (index + i) * spec_page_size()`. Note that `self.base@ + (index + i) * spec_page_size()` is NOT the same as `spec_page_size() * (index + i) + self.base@` according to the Verus expression. Verus needs commutativity: `a + b == b + a` and `a * b == b * a`.
+
+The lemma proves `(m * a + b) % m == b % m`. We have `addr = b + a * m = self.base@ + (index+i) * spec_page_size()`. By commutativity of `+`, `b + a * m = a * m + b`. By commutativity of `*`, `a * m = m * a`. So `addr = m * a + b`, and the lemma applies.
+
+But Z3 might not automatically apply commutativity. I need to help it. Let me add an assertion:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 298
+────────────────────────────────────────────────────────────
+Wait, but the invariant includes `self.base@ % spec_page_size() == 0` which is `b % m == 0`. And `self.base.inv()` is in the invariant. But does `self.base.inv()` imply `self.base@ % spec_page_size() == 0`?
+
+Let me check what `base.inv()` means:
+[TOOL] bash: grep -n 'spec fn inv' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/a
+[RESULT ✓] bash: 218:    pub open spec fn inv(&self) -> bool
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 299
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] view: 218.     pub open spec fn inv(&self) -> bool
+219.     {
+220.         self@ % spec_page_size() == 0
+221.     }
+222. }
+223. 
+224. }
+225. 
+
+────────────────────────────────────────────────────────────
+Turn 300
+────────────────────────────────────────────────────────────
+Good — `base.inv()` ≡ `base@ % spec_page_size() == 0`. And the invariant has `self.base.inv()`. So the proof should know `self.base@ % spec_page_size() == 0`.
+
+But the issue might be that inside the loop body, the invariant gives `self.base.inv()`, but the verifier might not automatically unfold `inv()` to get `self.base@ % spec_page_size() == 0`. Since `inv` is `pub open`, it should be unfolded automatically.
+
+Actually, I also added `self.base@ % spec_page_size() == 0` directly as a loop invariant. So `b % m == 0` should be known.
+
+The issue might be that the verifier can't connect `addr as int` with `m * a + b`. Let me verify:
+- `addr as int == self.base@ + ((index + i) * spec_page_size())`
+- `= b + a * m`
+- The lemma gives `(m * a + b) % m == b % m`
+- We need `(b + a * m) % m == b % m`
+- Which requires `b + a * m == m * a + b` (commutativity of +, commutativity of *)
+
+Z3 should handle integer commutativity. Let me try a different approach — assert the equality explicitly:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 301
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
