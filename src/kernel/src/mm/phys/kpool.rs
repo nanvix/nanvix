@@ -77,7 +77,6 @@ impl Inner {
     ///
     /// Upon success, the kernel pool.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             base.inv(),
@@ -121,7 +120,6 @@ impl Inner {
     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -172,7 +170,6 @@ impl Inner {
     /// Upon success, `Ok(())` is returned and `addrs` is filled with `count`
     /// contiguous entries. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -251,7 +248,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
