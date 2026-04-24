@@ -38,12 +38,15 @@ use crate::{
             Guest,
             GuestState,
         },
-        microvm::whp::vcpu::{
-            VirtualProcessor,
-            VirtualProcessorExitContext,
-            VirtualProcessorExitReasonRef,
+        microvm::{
+            ramfs,
+            ramfs::RamFs,
+            whp::vcpu::{
+                VirtualProcessor,
+                VirtualProcessorExitContext,
+                VirtualProcessorExitReasonRef,
+            },
         },
-        ramfs::RamFs,
     },
 };
 use ::anyhow::Result;
@@ -459,29 +462,41 @@ impl Vmm {
             #[cfg(feature = "profile-time")]
             let ramfs_load_start: Instant = Instant::now();
 
-            let ramfs_region: Option<(usize, usize)> =
-                if let Some(ramfs_filename) = args.ramfs_filename.as_deref() {
-                    let initrd_end: usize = match guest.initrd_region() {
-                        Some((base, size)) => match base.checked_add(size) {
-                            Some(end) => end,
-                            None => {
-                                let reason: String = "initrd region overflowed while computing \
-                                                      ramfs placement"
-                                    .to_string();
-                                error!("new(): {reason}");
-                                anyhow::bail!(reason)
-                            },
+            let ramfs_region: Option<(usize, usize)> = {
+                let initrd_end: usize = match guest.initrd_region() {
+                    Some((base, size)) => match base.checked_add(size) {
+                        Some(end) => end,
+                        None => {
+                            let reason: String = "initrd region overflowed while computing ramfs \
+                                                  placement"
+                                .to_string();
+                            error!("new(): {reason}");
+                            anyhow::bail!(reason)
                         },
-                        None => ::config::microvm::DEFAULT_INITRD_BASE,
-                    };
-
-                    let ramfs: RamFs = RamFs::open(Path::new(ramfs_filename))?;
-                    let (ramfs_base, ramfs_size) =
-                        ramfs.load_into_virtual_memory(&mut vmem, initrd_end)?;
-                    Some((ramfs_base, ramfs_size))
-                } else {
-                    None
+                    },
+                    None => ::config::microvm::DEFAULT_INITRD_BASE,
                 };
+
+                let loaded: ramfs::LoadedRamFs = ramfs::load_ramfs(
+                    &mut vmem,
+                    initrd_end,
+                    args.mount_directory.as_deref(),
+                    args.ramfs_filename.as_deref(),
+                )?;
+
+                match loaded {
+                    ramfs::LoadedRamFs::Multi {
+                        backing_files,
+                        base,
+                        size,
+                    } => {
+                        vmem.attach_backing_files(backing_files);
+                        Some((base, size))
+                    },
+                    ramfs::LoadedRamFs::Single { base, size, .. } => Some((base, size)),
+                    ramfs::LoadedRamFs::None => None,
+                }
+            };
 
             RamFs::write_registers(&mut vmem, ramfs_region)?;
 
