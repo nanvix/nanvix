@@ -42,6 +42,16 @@ With `wf()` requiring page-alignment of all addresses and disjointness.
 | Missing init postcondition | ❌ No spec captures what `init()` establishes | Address in spec transitions |
 | `wf()` is on the View type | ✅ Correct placement | Keep |
 
+### Implementation Note (added during spec phase)
+
+The rename of `UpoolView` → `FrameAllocView` and field renames
+(`allocated_frames` → `allocated`, `free_frames` → `free`) were **not
+applied** because `UpoolView` is defined in `mod.spec.rs` and shared with
+the `upool` and `kpool` modules. Renaming would be a cross-cutting change
+affecting other already-verified modules. The existing names are kept for
+backward compatibility. The `addr >= 0` constraint was added to
+`UpoolView::wf()` as recommended.
+
 ## View Struct
 
 ```rust

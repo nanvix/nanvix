@@ -91,9 +91,6 @@ impl Inner {
     {
         &&& self@.wf()
         &&& self.internal_inv()
-        // All tracked addresses are non-negative (physical addresses).
-        &&& forall|addr: int| self@.allocated_frames.contains(addr) ==> addr >= 0
-        &&& forall|addr: int| self@.free_frames.contains(addr) ==> addr >= 0
     }
 }
 

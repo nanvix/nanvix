@@ -60,6 +60,9 @@ impl UpoolView
         &&& forall|addr: int| self.allocated_frames.contains(addr) ==> addr % spec_page_size() == 0
         &&& forall|addr: int| self.free_frames.contains(addr) ==> addr % spec_page_size() == 0
         &&& self.allocated_frames.disjoint(self.free_frames)
+        // All tracked addresses are non-negative (physical addresses).
+        &&& forall|addr: int| self.allocated_frames.contains(addr) ==> addr >= 0
+        &&& forall|addr: int| self.free_frames.contains(addr) ==> addr >= 0
     }
 }
 
