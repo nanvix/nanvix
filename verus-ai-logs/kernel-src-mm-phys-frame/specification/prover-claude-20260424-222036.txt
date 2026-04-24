@@ -1772,3 +1772,74 @@ If I remove the `#[verus_verify(external_body)]` and `#[verus_spec]` attributes 
 Turn 79
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && MODULE=kernel::mm::phys::frame make verify-ker
+[RESULT ✓] bash: - new
+    - read
+    - new
+    - read
+    - write
+    - new
+    - write
+    - init
+    - disable_interrupts
+    - wait
+    - set_baud_rate
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 101)
+  cheating: assume=0 external_body=6 admit=0 trusted=0 no_decreases=0 cfg_gate=7
+  cover...
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -E 'error\[|^error:' verus-ai-logs/verus-
+[RESULT ✓] bash: error: could not find module kernel::mm::phys::frame specified by --verify-module or --verify-only-module
+error: could not compile `kernel` (bin "kernel") due to 1 previous error; 1 warning emitted
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+The module can't be found. Let me check the module declaration:
+[TOOL] bash: grep -n 'mod frame' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/mod.rs
+
+[THINKING] Interesting — Verus can't find the module `kernel::mm::phys::frame` because the module was specified as `--verify-module`. Since all functions in `frame.rs` are now either `external_body` or unannotated, Verus doesn't see any verifiable content in that module, so it reports "could not find module."
+
+This is actually progress — no compilation errors! The issue is just that Verus doesn't recognize the module. This might be because there are no non-external_body verified functions.Wait, actually the Inner methods have `#[verus_spec]` but NOT `external_body`. So there ARE verifiable functions. The issue might be something else. 
+
+Let me trace through how the module hierarchy is set up — `frame.rs` should be included via `mod frame;` in the parent `mod.rs`, so Verus should be able to locate it as a submodule of `kernel::mm::phys`.
+[RESULT ✓] bash: 8:pub(crate) mod frame;
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n 'verify-module\|verify_module\|verify.
+[RESULT ✓] bash: 39:error: could not find module kernel::mm::phys::frame specified by --verify-module or --verify-only-module
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && head -5 verus-ai-logs/verus-logs/verus_2026-04
+[RESULT ✓] bash: Timestamp: 2026-04-24_22-38-05
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: kernel::mm::phys::frame
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+Let me try running without the MODULE filter to see the full picture:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel 2>&1 | tail -30
+
+[THINKING] The module path is `kernel::mm::phys::frame`. But Verus expects the crate root to be `kernel`. Let me check what the actual Rust module path would be. The kernel binary is at `src/kernel/src/main.rs` or `src/kernel/src/lib.rs`.
+
+Actually, the issue might be that `frame` is a private module. Let me check: `pub(crate) mod frame;` — it's `pub(crate)`, so Verus should see it.
+
+Let me check what other verify-module paths look like that work. Let me look at the log from the first successful-compilation run (before my changes):
+
+
+Actually, I realize all my runs have failed with various compilation errors. The first one had RangeInclusive errors, so I never actually got to test the module path. Let me try removing the MODULE filter entirely to see if the whole verification passes.
