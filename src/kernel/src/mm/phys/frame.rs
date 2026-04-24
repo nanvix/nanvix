@@ -41,17 +41,26 @@ use ::sys::{
     },
     mm::Address,
 };
+use ::vstd::prelude::*;
+
+#[cfg(verus_keep_ghost)]
+include!("frame.spec.rs");
+
+#[cfg(verus_keep_ghost)]
+include!("frame.proof.rs");
 
 //==================================================================================================
 // Inner
 //==================================================================================================
 
 /// Private state of the frame allocator singleton.
+#[verus_verify]
 struct Inner {
     /// A sparse bitmap that keeps track of free/used frames.
     bitmap: SparseBitmap,
 }
 
+#[verus_verify]
 impl Inner {
     ///
     /// # Description
@@ -63,6 +72,27 @@ impl Inner {
     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+        ensures
+            self.inv(),
+            match result {
+                Ok(frame) => {
+                    &&& frame.inv()
+                    &&& old(self)@.free_frames.contains(frame@)
+                    &&& self@ == UpoolView {
+                        allocated_frames: old(self)@.allocated_frames.insert(frame@),
+                        free_frames: old(self)@.free_frames.remove(frame@),
+                    }
+                },
+                Err(_) => {
+                    &&& self@ == old(self)@
+                    &&& old(self)@.free_frames.is_empty()
+                }
+            },
+    )]
     fn alloc(&mut self) -> Result<FrameAddress, Error> {
         let frame_number: usize = match self.bitmap.alloc() {
             Ok(index) => index,
@@ -103,6 +133,27 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+            frame.inv(),
+        ensures
+            self.inv(),
+            match result {
+                Ok(()) => {
+                    &&& old(self)@.allocated_frames.contains(frame@)
+                    &&& self@ == UpoolView {
+                        allocated_frames: old(self)@.allocated_frames.remove(frame@),
+                        free_frames: old(self)@.free_frames.insert(frame@),
+                    }
+                },
+                Err(_) => {
+                    &&& self@ == old(self)@
+                    &&& !old(self)@.allocated_frames.contains(frame@)
+                }
+            },
+    )]
     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
         let frame_number: usize = frame.into_frame_number().into_raw_value();
         match self.bitmap.clear(frame_number) {
@@ -127,6 +178,27 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+            phys_addr.inv(),
+        ensures
+            self.inv(),
+            match result {
+                Ok(()) => {
+                    &&& old(self)@.free_frames.contains(phys_addr@)
+                    &&& self@ == UpoolView {
+                        allocated_frames: old(self)@.allocated_frames.insert(phys_addr@),
+                        free_frames: old(self)@.free_frames.remove(phys_addr@),
+                    }
+                },
+                Err(_) => {
+                    &&& self@ == old(self)@
+                    &&& !old(self)@.free_frames.contains(phys_addr@)
+                }
+            },
+    )]
     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
         match self.bitmap.set(frame_number) {
@@ -151,6 +223,33 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+            region.inv(),
+        ensures
+            self.inv(),
+            ({
+                let start_frame_number = region@.start / spec_page_size();
+                let end_frame_number = (region@.start + region@.size) / spec_page_size();
+                let frame_numbers = vstd::set_lib::set_int_range(start_frame_number, end_frame_number);
+                let frames = frame_numbers.map(|i: int| i * spec_page_size());
+                match result {
+                    Ok(()) => {
+                        &&& frames.subset_of(old(self)@.free_frames)
+                        &&& self@ == UpoolView {
+                            allocated_frames: old(self)@.allocated_frames.union(frames),
+                            free_frames: old(self)@.free_frames.difference(frames),
+                        }
+                    },
+                    Err(_) => {
+                        &&& self@ == old(self)@
+                        &&& !frames.subset_of(old(self)@.free_frames)
+                    },
+                }
+            }),
+    )]
     fn alloc_range(
         &mut self,
         region: &TruncatedMemoryRegion<PhysicalAddress>,

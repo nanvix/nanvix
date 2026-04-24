@@ -16,6 +16,7 @@ use crate::{
         Alignment,
     },
 };
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Structures
@@ -26,6 +27,7 @@ use crate::{
 ///
 /// A type that represents a virtual address.
 ///
+#[verus_verify(external_derive)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VirtualAddress(usize);
 
@@ -289,3 +291,20 @@ impl From<VirtualAddress> for usize {
         value.0
     }
 }
+
+//==================================================================================================
+// Material for verification
+//==================================================================================================
+
+verus! {
+
+impl View for VirtualAddress {
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.0 as int
+    }
+}
+
+} // end verus!

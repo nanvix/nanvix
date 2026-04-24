@@ -21,11 +21,13 @@ use crate::{
     error::Error,
     mm::Alignment,
 };
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Traits
 //==================================================================================================
 
+#[verus_verify]
 pub trait Address
 where
     Self: core::fmt::Debug + Clone + PartialEq + Eq + PartialOrd + Ord,

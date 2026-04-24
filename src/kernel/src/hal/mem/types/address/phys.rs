@@ -21,6 +21,7 @@ use ::sys::{
     },
     mm::Alignment,
 };
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Structures
@@ -31,6 +32,7 @@ use ::sys::{
 ///
 /// A type that represents a physical address.
 ///
+#[verus_verify(external_derive)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PhysicalAddress(VirtualAddress);
 
@@ -239,3 +241,22 @@ impl core::fmt::Debug for PhysicalAddress {
         write!(f, "{:?}", self.0)
     }
 }
+
+//==================================================================================================
+// Material for verification
+//==================================================================================================
+
+#[cfg(verus_keep_ghost)]
+verus! {
+
+impl View for PhysicalAddress
+{
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.0@
+    }
+}
+
+} // end verus!

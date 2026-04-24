@@ -16,10 +16,12 @@
 #![feature(linked_list_remove)] // vmem uses this.
 #![feature(linked_list_retain)] // vmem uses this.
 #![feature(never_type)] // exit() uses this.
-#![feature(stmt_expr_attributes)] // stdio uses this.
+#![cfg_attr(not(verus_keep_ghost), feature(stmt_expr_attributes))] // stdio uses this.
 #![feature(likely_unlikely)] // performance hints.
 #![feature(cold_path)] // performance hints.
 #![feature(const_type_name)] // logging uses this for function name detection.
+#![feature(sized_hierarchy)] // Verus uses this for MetaSized
+#![feature(proc_macro_hygiene)] // Verus uses this for verus_spec
 #![no_std]
 #![no_main]
 #![allow(clippy::result_large_err)] // FIXME: introduced by thread manager.

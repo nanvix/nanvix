@@ -45,11 +45,20 @@ use ::sys::error::{
     ErrorCode,
 };
 
+use ::vstd::prelude::*;
+
+#[cfg(verus_keep_ghost)]
+include!("kpool.spec.rs");
+
+#[cfg(verus_keep_ghost)]
+include!("kpool.proof.rs");
+
 //==================================================================================================
 // Inner
 //==================================================================================================
 
 /// Private state of the kernel pool singleton.
+#[verus_verify(external_derive)]
 struct Inner {
     /// Base address of the kernel pool.
     base: PageAligned<PhysicalAddress>,
@@ -57,6 +66,7 @@ struct Inner {
     bitmap: Bitmap,
 }
 
+#[verus_verify]
 impl Inner {
     ///
     /// # Description
@@ -67,6 +77,19 @@ impl Inner {
     ///
     /// Upon success, the kernel pool.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            base.inv(),
+            bitmap.inv(),
+        ensures
+            result matches Ok(kpool) ==> {
+                &&& kpool.inv()
+                &&& kpool@.start == base@
+                &&& kpool@.num_pages == bitmap@.num_bits
+                &&& kpool@.used_page_indices == Set::<int>::new(|i: int| bitmap@.is_bit_set(i))
+            },
+    )]
     fn new(base: PageAligned<PhysicalAddress>, bitmap: Bitmap) -> Result<Inner, Error> {
         // Check if bitmap spans across physically-addressable memory.
         let bitmap_capacity: usize = bitmap.number_of_bits();
@@ -98,6 +121,29 @@ impl Inner {
     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+        ensures
+            self.inv(),
+            match result {
+                Ok(frame) => {
+                    let page_index = (frame@ - old(self)@.start) / spec_page_size();
+                    &&& frame.inv()
+                    &&& 0 <= page_index < old(self)@.num_pages
+                    &&& !old(self)@.used_page_indices.contains(page_index)
+                    &&& self@ == KpoolView {
+                        used_page_indices: old(self)@.used_page_indices.insert(page_index),
+                        ..old(self)@
+                    }
+                },
+                Err(_) => {
+                    &&& forall|i: int| 0 <= i < old(self)@.num_pages ==> old(self)@.used_page_indices.contains(i)
+                    &&& self@ == old(self)@
+                },
+            },
+    )]
     fn alloc(&mut self) -> Result<FrameAddress, Error> {
         let index: usize = match self.bitmap.alloc() {
             Ok(index) => index,
@@ -126,6 +172,45 @@ impl Inner {
     /// Upon success, `Ok(())` is returned and `addrs` is filled with `count`
     /// contiguous entries. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+        ensures
+            self.inv(),
+            match result {
+                Ok(()) => {
+                    &&& old(addrs)@.len() == 0
+                    &&& count > 0
+                    &&& addrs@.len() == count
+                    &&& forall|which_frame: int| #![trigger addrs@[which_frame]]
+                        0 <= which_frame < count ==> {
+                            let frame = addrs@[which_frame];
+                            let addr = frame@;
+                            let page_index = (addr - old(self)@.start) / spec_page_size();
+                            &&& frame.inv()
+                            &&& 0 <= page_index < old(self)@.num_pages
+                            &&& addr == addrs@[0]@ + which_frame * spec_page_size()
+                            &&& !old(self)@.used_page_indices.contains(page_index)
+                        }
+                    &&& {
+                        let first_page_index = (addrs@[0]@ - old(self)@.start) / spec_page_size();
+                        let new_page_indices = Set::<int>::new(
+                            |i: int| first_page_index <= i < first_page_index + count
+                        );
+                        self@ == KpoolView {
+                            used_page_indices: old(self)@.used_page_indices.union(new_page_indices),
+                            ..old(self)@
+                        }
+                    }
+                },
+                Err(_) => {
+                    &&& count == 0 || forall|i: int| !old(self)@.range_free(i, count as int)
+                    &&& self@ == old(self)@
+                    &&& addrs@ == old(addrs)@
+                },
+            },
+    )]
     fn alloc_range(&mut self, count: usize, addrs: &mut Vec<FrameAddress>) -> Result<(), Error> {
         if !addrs.is_empty() {
             let reason: &str = "addrs vector is not empty";
@@ -166,6 +251,34 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+            addr.inv(),
+        ensures
+            self.inv(),
+            ({
+                let page_index = (addr@ - old(self)@.start) / spec_page_size();
+                let input_valid = {
+                    &&& 0 <= page_index < old(self)@.num_pages
+                    &&& old(self)@.used_page_indices.contains(page_index)
+                };
+                match result {
+                    Ok(()) => {
+                        &&& input_valid
+                        &&& self@ == KpoolView {
+                              used_page_indices: old(self)@.used_page_indices.remove(page_index),
+                              ..old(self)@
+                        }
+                    },
+                    Err(_) => {
+                        &&& !input_valid
+                        &&& self@ == old(self)@
+                    },
+                }
+            }),
+    )]
     fn free(&mut self, addr: FrameAddress) -> Result<(), Error> {
         let index: usize = (addr.into_raw_value() - self.base.into_raw_value()) / mem::PAGE_SIZE;
         match self.bitmap.clear(index) {
@@ -312,10 +425,28 @@ fn free(addr: FrameAddress) -> Result<(), Error> {
 //==================================================================================================
 
 /// A type that represents a kernel frame.
+#[verus_verify(external_derive)]
 #[derive(Debug)]
 pub struct KernelFrame {
     /// Frame address.
     base: FrameAddress,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+
+use crate::hal::mem::spec_page_size;
+
+impl View for KernelFrame
+{
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.base@
+    }
+}
+
 }
 
 impl KernelFrame {

@@ -35,6 +35,12 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+#[cfg(verus_keep_ghost)]
+use ::vstd::prelude::*;
+
+// Include specifications.
+#[cfg(verus_keep_ghost)]
+include!("mod.spec.rs");
 
 //==================================================================================================
 // Exports

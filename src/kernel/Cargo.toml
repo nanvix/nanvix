@@ -10,6 +10,9 @@ authors.workspace = true
 description = "Nanvix Kernel"
 homepage.workspace = true
 
+[package.metadata.verus]
+verify = true
+
 [[bin]]
 name = "kernel"
 path = "src/kmain.rs"
@@ -35,6 +38,7 @@ hyperlight-guest = { workspace = true, optional = true }
 multibin = { workspace = true, optional = true }
 paste = { workspace = true, optional = true }
 static_assert = { workspace = true }
+vstd = { workspace = true }
 
 [build-dependencies]
 build-utils = { workspace = true }

@@ -1787,6 +1787,7 @@ dependencies = [
  "static_assert",
  "sys",
  "type-safe",
+ "vstd",
 ]
 
 [[package]]
@@ -3544,7 +3545,9 @@ version = "0.12.469"
 dependencies = [
  "bitmap",
  "error",
+ "raw-array",
  "sys",
+ "vstd",
 ]
 
 [[package]]
@@ -3689,6 +3692,7 @@ dependencies = [
  "error",
  "rustc-std-workspace-core",
  "static_assert",
+ "vstd",
 ]
 
 [[package]]

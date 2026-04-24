@@ -311,7 +311,7 @@ endif
 export VERUS_EXECUTABLE_DIR ?=
 
 # List of crates to verify with Verus.
-VERUS_CRATES := bitmap slab
+VERUS_CRATES := bitmap slab raw-array sparse-bitmap
 
 # Platform-specific Verus binary name.
 ifeq ($(IS_WINDOWS),yes)
@@ -581,7 +581,7 @@ help:
 
 # Verifies all Verus-annotated crates.
 .PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
-verify: $(addprefix verify-,$(VERUS_CRATES))
+verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
 
 # Ensures the correct Verus version is installed before verification.
 # When VERUS_EXECUTABLE_DIR is unset, verification is skipped.
@@ -615,6 +615,9 @@ ifeq ($(VERUS_EXECUTABLE_DIR),)
 else
 	$(VERUS_VERIFY_CMD) -p $* $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 endif
+
+verify-kernel: ensure-verus
+	$(VERUS_VERIFY_CMD) -p kernel --features "microvm trace" $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 
 # Fixes code linting issues.
 ifeq ($(IS_WINDOWS),yes)
