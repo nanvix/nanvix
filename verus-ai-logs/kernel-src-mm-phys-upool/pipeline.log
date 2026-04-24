@@ -30,3 +30,10 @@ Module: upool
 [2026-04-24 20:03:16]   ↳ dialogue-reviewer-t1 done in 7m21s (exit=0)
 [2026-04-24 20:03:16] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-04-24 20:03:16] [DIALOGUE] proving ended after 1 turns: RESOLVED (441s)
+[2026-04-24 20:03:16] [PHASE] proving: dialogue-RESOLVED (32m29s)
+[2026-04-24 20:03:16] ✅ proving: PASS (0/0)
+
+============================================================
+PHASE: cheating-elimination
+Module: upool
+============================================================

@@ -2,15 +2,31 @@
   "module_name": "upool",
   "log_name": "kernel-src-mm-phys-upool",
   "source_path": "src/kernel/src/mm/phys/upool.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
-  "completed_phases": [],
-  "phase_results": {},
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
+  "phase_results": {
+    "proving": {
+      "phase": "proving",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-RESOLVED",
+      "review_file": null,
+      "duration_s": 1949.0,
+      "review_rounds": 1
+    }
+  },
   "prover_session_id": "317023c8-e49e-4641-bcf4-fd2041a5fba0",
   "completed": false,
   "base_branch": "exp",
   "verus_branch": "verus-ai/upool",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "proving": "1d1a34a6ebc9da0d30fa1ccec96fd4dc6f57d639"
+  },
   "rollback_counts": {},
   "rollback_context": ""
 }
