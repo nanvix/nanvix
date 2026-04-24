@@ -2876,3 +2876,59 @@ Turn 94
 ────────────────────────────────────────────────────────────
 Cached result. Let me force a rebuild:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && touch src/kernel/src/mm/phys/frame.rs && make 
+[RESULT ✓] bash: Detail: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/cheating-detail.txt
+
+=== Function Coverage ===
+  13/15 exec functions have contracts.
+  Unverified functions:
+    - instance
+    - init
+
+=== Summary ===
+  verification: 9 verified, 0 errors (exit 0)
+  cheating...
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+`book` verified! 9 verified, 0 errors, 5 admits remaining. Now let me prove `alloc`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 155.     #[verus_spec(result =>
+156.         requires
+157.             old(self).inv(),
+158.         ensures
+159.             self.inv(),
+160.             match result {
+161.                 Ok(frame) => {
+162.                     &&& frame.inv()
+163.                     &&& old(self)@.free_frames.c...
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+Now prove `alloc`. The proof is similar to `book` but with `bitmap.alloc()` instead of direct set/clear:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] For `alloc`:
+- Path 1: bitmap.alloc() Err → return Err
+  - Need: self@ == old(self)@, old(self)@.free_frames.is_empty()
+  - bitmap unchanged (from alloc Err: self@ =~= old@), and bitmap.is_full() implies free_frames is empty- Path 2: bitmap.alloc() Ok(index) → bitmap_index_to_frame_addr(index)
+  - bitmap has been modified: set_bits.insert(index)  - bitmap_index_to_frame_addr(index) returns Ok(frame)  - frame@ == index * ps == frame_addr_of(index)
+  - For the success case, I need to verify that the returned frame satisfies the invariant, was in the free list, and that the spec state matches what spec_alloc would produce—which is just inserting the frame into allocated and removing it from free.
+- The postconditions show that bitmap.alloc() either succeeds with a valid index and modified bitmap, or fails with the bitmap unchanged and an out-of-memory error.
+- After alloc returns an index, I call bitmap_index_to_frame_addr on it, which doesn't need self—it just converts the index to a frame address using the formula index * page_size, and I need to prove this multiplication doesn't overflow by checking the internal invariant that was already satisfied.
+- Since alloc doesn't change the chunks field, the is_covered property for the returned index remains true in the new state, and the frame address calculation stays within bounds.
+
+Now checking the postconditions when bitmap_index_to_frame_addr succeeds: the frame value matches the expected calculation, its invariant holds, and I can verify that the frame was indeed free in the old state and is now properly allocated. The state transition follows the same pattern as the reference implementation. For the error case where alloc fails, the bitmap remains unchanged so the overall state is unchanged, which means I need to confirm the free frames were already empty.
+
+The key insight is that bitmap.is_full() directly implies free_frames.is_empty() since there are no uncovered or unset indices left to form free frame addresses. I'll write out this proof now. One thing to watch: the alloc function has two success paths depending on whether bitmap_index_to_frame_addr returns Ok or if we hit the second exit point, so I need to handle both carefully.
+
+Actually, looking back at the wrapper spec for bitmap_index_to_frame_addr, it guarantees the result is always Ok given the precondition holds, which means the second path shouldn't occur. Let me double-check the actual function signature and its ensures clause to confirm there's no Err case I'm missing.
+
+The spec claims it always succeeds for any index, which seems too permissive—I should add a requires clause to bound the index within representable range to be safe. But since this is external_body code I'm trusting, I'll proceed with the alloc proof for now and circle back to tighten the precondition afterward.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
