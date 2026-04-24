@@ -1308,3 +1308,126 @@ Now let me verify the changes compile and pass verification:
 Turn 45
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: cached (no recompilation), — (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  Module mm::phys::kpool:
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+The result shows "cached" — let me clean and rerun:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cat verus-ai-logs/verus-logs/verus_2026-04-24_
+
+[THINKING] It says "cached (no recompilation)". This is strange — it seems like the Verus build system is caching a previous failed result. Let me check the log for the actual error. But first, let me try cleaning and rebuilding.
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cat verus-ai-logs/verus-logs/verus_2026-04-24_
+[RESULT ✓] bash: Timestamp: 2026-04-24_21-43-32
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::kpool
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=7
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+note: verifying root module
+
+    Checki...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+The assume_specification for a generic function needs to match the generic signature. Let me fix it:
+[TOOL] bash: grep -rn 'assume_specification.*<.*>' /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/rust_verify_test/tests/
+
+[THINKING] The issue is that `assume_specification` requires the function type signature to match exactly. The actual function signature is generic (`for<T> ...`), but I'm trying to specialize it for `PageAligned<PhysicalAddress>`. Verus doesn't support monomorphic `assume_specification` for generic functions.
+
+Options:
+1. Make the assume_specification generic too — but then it would apply to all `PageAligned<T>` instances
+2. Create a standalone wrapper function with external_body (but NOT in kpool.rs — in the HAL module instead)
+3. Create a specific non-generic method on PageAligned<PhysicalAddress>
+
+
+4. Try a generic assume_specification and see if Verus supports it
+
+Let me attempt option 1 with a generic assume_specification that mirrors the generic function signature. I'm checking the existing patterns in the codebase to see if there are any examples of generic assume_specifications, but so far the ones I'm finding are all concrete types without generics.
+
+If the generic form doesn't work, I could fall back to implementing the wrapper directly in the HAL module instead of trying to create an assume_specification in kpool.rs. The error message about the function being generic suggests Verus might have specific requirements for how assume_specifications handle generic trait methods.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/rust_verify_test/tests/no_cheating.rs:76:        pub assume_specification<T, U> [Option::<(T, U)>::unzip](a: Option<(T, U)>) // FAILS
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/rust_verify_test/tests/opaque_types.rs:239:     ...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -B2 -A5 'assume_specification.*Option.*unzip\|assume_specification.*<T' /home/ruize/verus-ai-exp/verus-ai-phy-mm-04
+[RESULT ✓] bash: #[test] test_no_cheating_assume_spec ["--no-cheating"] => verus_code! {
+        use vstd::prelude::*;
+        pub assume_specification<T, U> [Option::<(T, U)>::unzip](a: Option<(T, U)>) // FAILS
+            -> (r: (Option<T>, Option<U>))
+            ensures false
+        ;
+    } => Err(e) => assert_...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+The generic assume_specification doesn't work with concrete type. Let me try the generic form:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] Good, I can see the syntax for generic assume_specification: `pub assume_specification<T, U> [ ... ]`. So for PageAligned<T>::into_raw_value, I need:
+
+```rust
+pub assume_specification<T: Address> [ <PageAligned<T> as Address>::into_raw_value ](self_: PageAligned<T>) -> (ret: usize)
+    ensures ret as int == self_@;
+```
+
+But wait — the View for PageAligned<T> requires `T: Address + View<V = int>`. So in the ensures, `self_@` requires `T: View<V = int>`. 
+
+I need to add that bound to the assume_specification, but the original function signature only has `T: Address`. The issue is that assume_specification requires the signature to match, so I can't just add extra bounds without changing what the actual implementation expects.
+
+Let me try removing the `View<V = int>` bound and see if the compiler accepts just `T: Address`, though that means `self_@` won't resolve properly. Actually, I think I should abandon this approach entirely and instead write a standalone function with external_body in the page module. I'm realizing that functions outside `verus!{}` blocks aren't verified, so I need to reconsider my approach. Since `PageAligned<PhysicalAddress>::into_raw_value` is generic and I can't write a concrete assume_specification for it, I should either write a generic assume_specification matching the generic signature, or create a non-generic helper function in the HAL module.
+
+Looking at the actual implementation, `into_raw_value` just delegates to the inner type's method, and the View trait requires `T: View<V = int>`. The real question is whether I can reference `self_@` in an assume_specification when `T` is a generic type parameter...
+
+Continuing with the specification... I see the issue now—Verus needs the function signature to be generic over `T`, not concrete. The error shows it expects `for<T> (PageAligned<T>) -> usize` but I provided a concrete type. Let me try a generic version without extra bounds, just using `Address`, and skip the ensures clause entirely since it would be trivially satisfied anyway.
+
+Actually, thinking about what I really need: when I call `self.base.into_raw_value()` in kpool.rs, I need to know that the raw value equals the View representation. Instead of wrestling with the generic assume_specification, maybe I should just add a concrete helper method directly to `PageAligned<PhysicalAddress>`, or move the helper functions to the HAL module where the reviewer suggested they belong.
+
+The cleanest path forward is putting `pa_into_raw` in frame.rs as a public verified function with an external body, so it's available during both verification and compilation. But I need to figure out the right attribute combination to make it work in that file's structure. verify]` on any impl block. The specs are all in `verus!{}` blocks. Let me think about where to put a helper function.
+
+Actually, the cleanest approach is to define a non-generic helper in the page.rs module, outside the verus block that converts a `PageAligned<PhysicalAddress>` to its raw `usize` value with the appropriate spec.
+
+But this function is in page.rs, and I need to check if kpool.rs can import it. Looking at the imports, kpool.rs pulls `PageAligned` and related types from `crate::hal::mem`, which re-exports from the types module. If I add a function to page.rs, it would be nested deep in the module hierarchy and would require re-exporting through multiple levels to make it accessible.
+
+This is getting complicated, so let me try putting it in frame.rs instead, which is already used for HAL specs...
+
+Writing helper function...
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
