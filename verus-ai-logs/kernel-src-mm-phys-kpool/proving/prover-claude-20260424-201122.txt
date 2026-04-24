@@ -5187,3 +5187,15 @@ No bugs.md or spec_bugs.md needed since no code bugs or spec bugs were found. Th
 
 Let me do a final review of the complete state:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: ⚠️  external_body: 2
+    - kpool.rs:78 pa_into_raw: external_body
+    - kpool.rs:96 frame_from_raw: external_body
+  Global: assume=0 external_body=9 admit=0 trusted=0 cfg_gate=7
+  Unverified functions:
+  cheating: assume=0 external_body=9 admit=0 trusted=0 no_decreases=0 cfg_gate=7
+<exited with exit...
+
+────────────────────────────────────────────────────────────
+Turn 312
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
