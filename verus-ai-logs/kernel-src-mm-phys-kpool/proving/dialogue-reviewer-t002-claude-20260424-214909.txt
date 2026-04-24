@@ -262,3 +262,268 @@ Turn 6
 ────────────────────────────────────────────────────────────
 Good — `pub use frame::*` should re-export `pa_into_raw` from frame.rs. Now run the actual verification:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cargo clean -p kernel 2>&1 && make verify-kern
+[RESULT ✓] bash: Cleaning [=============================] 1/1: kernel, 0 files/folders cleaned                                          Removed 14 files, 19.0MiB total
+note: verifying module mm::phys::kpool
+
+verification results:: 7 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profi...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+7 verified, 0 errors. Let me check for warnings:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cat verus-ai-logs/verus-logs/verus_2026-04-24_
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && ./z build 2>&1 | tail -10
+[RESULT ✓] bash: 
+<exited with exit code 1>
+[RESULT ✓] bash: Warning: Sysroot directory '/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/sysroot-debug' not found; skipping symlink update.
+
+================================================================================
+SCCACHE Statistics
+====================================================...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Now let me check the spec drift for `alloc_range` and `free` against the original baseline:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git --no-pager show 295f4fe0b:src/kernel/src/m
+[RESULT ✓] bash: fn alloc_range(&mut self, count: usize, addrs: &mut Vec<FrameAddress>) -> Result<(), Error> {
+        if !addrs.is_empty() {
+            let reason: &str = "addrs vector is not empty";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Now let me check the original alloc_range spec more carefully:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git --no-pager show 295f4fe0b:src/kernel/src/m
+[RESULT ✓] bash: ///
+pub(super) unsafe fn init(
+    base: PageAligned<PhysicalAddress>,
+    bitmap: Bitmap,
+) -> Result<Kpool, Error> {
+    if unlikely(INSTANCE_INIT.load(ORDER)) {
+        return Err(Error::new(ErrorCode::InvalidArgument, "kernel pool already initialized"));
+    }
+
+    trace!("base={base:?}");
+
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git --no-pager show 295f4fe0b:src/kernel/src/m
+[RESULT ✓] bash: 80:    #[verus_spec(result =>
+81:        requires
+84:        ensures
+92:    fn new(base: PageAligned<PhysicalAddress>, bitmap: Bitmap) -> Result<Inner, Error> {
+123:    #[verus_spec(result =>
+124:        requires
+126:        ensures
+145:    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+173:  ...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git --no-pager show 295f4fe0b:src/kernel/src/m
+[RESULT ✓] bash: #[verus_spec(result =>
+        requires
+            old(self).inv(),
+        ensures
+            self.inv(),
+            match result {
+                Ok(()) => {
+                    &&& old(addrs)@.len() == 0
+                    &&& count > 0
+                    &&& addrs@.len() == count
+         ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && git --no-pager show 295f4fe0b:src/kernel/src/m
+[RESULT ✓] bash: #[verus_spec(result =>
+        requires
+            old(self).inv(),
+            addr.inv(),
+        ensures
+            self.inv(),
+            ({
+                let page_index = (addr@ - old(self)@.start) / spec_page_size();
+                let input_valid = {
+                    &&& 0 <= page_in...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Now I have all the evidence. Let me compare the current specs vs original:
+
+**alloc_range requires**: Original `old(self).inv()` → Current `old(self).inv()` ✓ (preconditions restored)
+
+**alloc_range Err postcondition**: Original `count == 0 || forall|i| !old(self)@.range_free(i, count as int)` → Current `old(addrs)@.len() > 0 || count == 0 || forall|i| !old(self)@.range_free(i, count as int)` — this is a **weakened postcondition** (added a disjunct), which the fixer calls a "spec bug fix".
+
+**free requires**: Original `old(self).inv(), addr.inv()` → Current `old(self).inv(), addr.inv()` ✓ (precondition restored)
+
+**free ensures**: Unchanged ✓
+
+Let me also check the VERUS REWRITE guards:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n "VERUS REWRITE" src/kernel/src/mm/phys
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && for line in 312 321 599; do echo "=== Line $li
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && ls verus-ai-logs/kernel-src-mm-phys-kpool/spec
+[RESULT ✓] bash: 309:        // VERUS REWRITE: guard needed because bitmap.alloc_range requires size > 0
+317:        // VERUS REWRITE: guard needed because bitmap.alloc_range requires size <= num_bits
+596:        // VERUS REWRITE: guard needed to prevent usize underflow in subtraction
+<exited with exit code 0>
+[RESULT ✓] bash: === Line 312 ===
+            #[cfg(not(verus_keep_ghost))]
+            error!("{reason}");
+=== Line 321 ===
+            #[cfg(not(verus_keep_ghost))]
+            error!("{reason}");
+=== Line 599 ===
+            #[cfg(not(verus_keep_ghost))]
+            error!("{reason}");
+<exited with exit code 0>
+[RESULT ✓] bash: verus-ai-logs/kernel-src-mm-phys-kpool/spec_bugs.md
+# Spec Bugs — kpool
+
+## SB-001: `alloc_range` Err postcondition too strong for non-empty addrs
+
+**Location**: `kpool.rs`, `alloc_range` spec, Err arm
+
+**Original postcondition** (commit 295f4fe0b):
+```rust
+Err(_) => {
+    &&& count == 0 || forall|i...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Now let me verify the VERUS REWRITE exec changes are semantically equivalent. The three guards in the current code:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs
+[RESULT ✓] view: 295.     fn alloc_range(&mut self, count: usize, addrs: &mut Vec<FrameAddress>) -> Result<(), Error> {
+296.         proof! {
+297.             self.lemma_internal_inv();
+298.         }
+299.         if !addrs.is_empty() {
+300.             let reason: &str = "addrs vector is not empty";
+301.           ...
+[RESULT ✓] view: 592.     fn free(&mut self, addr: FrameAddress) -> Result<(), Error> {
+593.         proof! {
+594.             self.lemma_internal_inv();
+595.         }
+596.         // VERUS REWRITE: guard needed to prevent usize underflow in subtraction
+597.         if addr.into_raw_value() < pa_into_raw(self.base)...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Now let me check if the bitmap.alloc_range spec truly has those preconditions that justify the VERUS REWRITE guards:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -A 20 "fn alloc_range" src/kernel/src/col
+[RESULT ✓] bash: grep: src/kernel/src/collections/bitmap.rs: No such file or directory
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && find . -name "*.rs" -path "*/collections/*" | 
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -rn "fn alloc_range" src/kernel/ --includ
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs:253:    fn alloc_range(
+src/kernel/src/mm/phys/frame.rs:396:pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
+src/kernel/src/mm/phys/kpool.rs:295:    fn alloc_range(&mut self, count: usize, addrs: &mut Vec<FrameAddress>)...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -rn "fn alloc_range" src/libs/ --include=
+[RESULT ✓] bash: src/libs/bitmap/src/lib.proof.rs:492:    spec fn alloc_range_first_loop_invariant(
+src/libs/bitmap/src/lib.proof.rs:538:    spec fn alloc_range_second_loop_invariant(
+src/libs/bitmap/src/lib.proof.rs:577:    spec fn alloc_range_second_loop_ensures(
+src/libs/bitmap/src/lib.proof.rs:605:    spec fn al...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -B2 -A 20 "pub fn alloc_range" src/libs/b
+[RESULT ✓] bash: },
+    )]
+    pub fn alloc_range(&mut self, size: usize) -> Result<usize, Error> {
+        // TODO: remove this runtime check once all callers are verified.
+        // Check if the size is valid.
+        if size == 0 || size > self.number_of_bits {
+            proof! {
+                if size > self...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -B 30 "pub fn alloc_range" src/libs/bitma
+[RESULT ✓] bash: 
+<exited with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n "verus_spec\|requires\|ensures" src/li
+[RESULT ✓] bash: 6:// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+90:    #[verus_spec(result =>
+91:        ensures
+154:    #[verus_spec(result =>
+155:        requires
+160:        ensures
+204:    #[verus_spec(result =>
+205:        requires
+207:        ensures
+226:    #[verus_spe...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/src/lib.rs
+[RESULT ✓] view: 273.     #[verus_spec(result =>
+274.         requires
+275.             old(self).inv(),
+276.             size > 0,
+277.             size <= old(self)@.num_bits,
+278.         ensures
+279.             self.inv(),
+280.             match result {
+281.                 Ok(start) => {
+282.                 ...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Good — bitmap's `alloc_range` does require `size > 0` and `size <= old(self)@.num_bits` as preconditions. The VERUS REWRITE guards are justified.
+
+Now let me also check the `bitmap.clear` spec to see what happens in the `free` error path:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -B 25 "pub fn clear" src/libs/bitmap/src/
+[RESULT ✓] bash: #[verus_spec(result =>
+        requires
+            old(self).inv(),
+        ensures
+            self.inv(),
+            match result {
+                Ok(()) => {
+                    &&& index < self@.num_bits
+                    &&& !self@.is_bit_set(index as int)
+                    &&& self@.num...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Good. Now I have all evidence for a complete review. Let me also check for warnings more carefully:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cargo clean -p kernel 2>&1 && make verify-kern
