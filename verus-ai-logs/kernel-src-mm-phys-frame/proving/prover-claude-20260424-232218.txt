@@ -4976,3 +4976,118 @@ Turn 170
 ────────────────────────────────────────────────────────────
 Good progress! 7 verified, 2 errors — the coverage bridges and overflow are fixed. Now just the postcondition at Err returns. Let me see the details:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:765:13
+    |
+765 | /             ({
+766 | |                 let start_frame_number = region@.start / spec_page_size();
+767 | |                 let end_frame_number = (region@.start + region@.size) / spec_page_size();
+768 | |  ...
+
+────────────────────────────────────────────────────────────
+Turn 171
+────────────────────────────────────────────────────────────
+Let me add diagnostic assertions right before the Err returns to identify which postcondition part fails:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The 2 remaining errors are postcondition failures at the two Err returns (line 876 from loop 1 and line 934 from loop 2). The postcondition is the big `({...})` block with `match result`. Let me think about what's failing.
+
+The postcondition says:
+```
+({
+    let start_frame_number = region@.start / spec_page_size();
+    let end_frame_number = (region@.start + region@.size) / spec_page_size();
+    let frame_numbers = set_int_range(start_frame_number, end_frame_number);
+
+
+```
+
+I'm computing the frame numbers from the region bounds, then mapping those to actual frame addresses, and the Err case requires both that the state hasn't changed and that the frames weren't available in the original free frames set. I'm asserting both conditions in my proof blocks, but maybe the state equality or the subset check isn't being established correctly.
+
+Looking at the Err proof block for the first loop, I'm setting up the frame range and asserting that both allocated and free frames remain unchanged, which should establish state equality. Now I need to verify that the frame set computation is connecting properly to the postcondition's frames variable.
+
+Verifying frame set computation... Verifying the frame number calculations match the postcondition—both `start_frame_number` and `end_frame_number` check out, and `frames` should align correctly. But the postcondition is still failing, so I need to ensure `self.internal_inv()` is maintained through the loop, not just `self@.wf()`. I'm verifying that the allocated and free frames remain unchanged by checking that the bitmap itself hasn't changed, which follows from the loop invariant that preserves `self.bitmap@`.
+
+However, since the View definition is marked `closed`, Verus might not automatically see through it to derive the extensional equality from the underlying `set_bits` comparison, even though both the proof and View are in the same module. I should try making this more explicit by directly proving the frame equality rather than just asserting it.
+
+Writing assertion proof... The postcondition error doesn't specify which part is failing, so I need to narrow it down—it could be the invariant check, the frame subset condition, or something in the match expression. Let me verify the match arms are correct and then try asserting the postcondition directly before the return to isolate which clause is causing the issue.
+
+Writing diagnostic assertions... The Ok path is now verifying—that's why we jumped from 5 to 7 verified cases. The two remaining errors are both in the Err paths, so I need to focus there. Let me try swapping `=~=` for `==` in the postcondition to see if that resolves the issue, though I'll need to figure out how to establish structural equality if extensional equality alone isn't sufficient.
+[RESULT ✓] view: 846.                 proof! {
+847.                     let ps = spec_page_size();
+848.                     let sfn = start_frame_number as int;
+849.                     let efn = end_frame_number as int;
+850.                     let frames = vstd::set_lib::set_int_range(sfn, efn).map(|i: int| i * ps...
+
+────────────────────────────────────────────────────────────
+Turn 172
+────────────────────────────────────────────────────────────
+Let me add very explicit assertions matching the postcondition's exact variable names. The issue might be variable-definition mismatch:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I see the issue. The postcondition assertions are inside a `proof!{}` block that's inside an `if` block inside the loop body. But the `return Err(...)` is AFTER the `proof!{}` block.
+
+Wait, let me re-read the structure. The proof block is:
+```
+if self.bitmap.find_chunk(index).is_none() {
+    proof! {        ...        self.lemma_inv_implies_wf();
+    }    ...    return Err(...);
+}
+```
+
+The `proof!{}` block ends, then there are cfg-gated exec statements, then the return. The facts from the proof block should persist to the return point.
+
+
+But I'm wondering if the postcondition from `self.lemma_inv_implies_wf()` actually carries through after the proof block closes. Proof functions don't have side effects in the traditional sense, but when I call a proof function with an ensures clause, Verus should add that fact to the context. So calling `self.lemma_inv_implies_wf()` which ensures `self@.wf()` should make that fact available at the return statement.
+
+Let me try restructuring this—maybe I need to call the lemma outside the proof block entirely, or perhaps move the return statement inside the proof block. Actually, that won't work because returning from inside a `proof!{}` block would just exit the proof block, not the function.
+
+I think the solution is to separate the lemma call from the proof block logic. I'll put the lemma invocation in its own proof block right before the return, keeping the assertion logic separate.
+
+Wait, I'm seeing the real issue now—the postcondition has two separate ensures clauses that both need to hold: `self.inv()` and the match block. Since `self.inv()` requires `self@.wf()`, and that's what the lemma establishes, I need to make sure the lemma call happens in a way that satisfies both conditions.
+
+But there's another subtlety I'm catching: the `start_frame_number` and `end_frame_number` in the postcondition aren't the exec variables—they're spec-level bindings computed from `region@.start` and `region@.size`, which means I need to be careful about what values I'm actually proving against. I have the equality facts from the wrapper's ensures clause, and the proof block should have established that `end_frame_number as int == (region@.start + region@.size) / spec_page_size()`. The real question is whether Verus can connect these facts across the scope boundary created by the `({...})` block, where the shadowed variables might be preventing it from recognizing that the spec and exec versions are equivalent when evaluating the postcondition.
+
+When the postcondition is evaluated at the error return point, Verus substitutes the specific error value and checks the `Err(_)` branch, which requires proving both that `self@` hasn't changed and that the frame subset condition holds. I've shown the first part with my equivalence proof, but the second part depends on whether my locally-defined `frames` variable aligns with what Verus expects in the postcondition expression.
+
+My `frames` is constructed from the start and end frame numbers I computed, while the postcondition defines `frames` independently using the region's start and size. Even though they should evaluate to the same set, Verus might not automatically recognize them as equivalent without more explicit reasoning about how the frame numbers relate to the region's boundaries. I'm realizing that since `pc_frames` and `frames` are equivalent under `=~=`, they should behave identically in the `subset_of` check, so the negation should follow directly. But I'm wondering if the real problem is that the postcondition uses `spec_page_size()` while my proof is working with a concrete value `ps` — maybe I need to align those definitions.
+
+Let me step back and try a more straightforward approach: instead of wrestling with the proof block, I'll directly assert what the postcondition requires and see if that clarifies where the mismatch is. Actually, looking at the loop error path more carefully...
+
+The loop is guarded by a cfg attribute that excludes it when the nightly performance optimizations feature is enabled. Since that feature isn't part of the verification build, the loop is definitely included during checking. So the loop body with the early return is definitely being analyzed.
+
+Now I'm thinking through the postcondition at that error return point. The postcondition requires both `self.inv()` and a boolean expression that evaluates differently depending on whether we're returning success or failure. For the error case, I need `self@ == old(self)@` and `!frames.subset_of(old(self)@.free_frames)` to both hold. I can prove the first part using the invariant preservation, but I'm working through whether the second part follows from my proof obligations.
+
+Let me try asserting the equality more directly by proving each field individually...
+
+Asserting field equality...
+
+Actually, in Verus, `=~=` for `Set<int>` should be equivalent to `==` since the former expands to a forall over containment checks, so Verus ought to derive the latter automatically. But maybe there's something specific about how UpoolView handles this that's preventing the inference. Let me test whether asserting `self@ == old(self)@` directly fails while `=~=` succeeds—that would tell me if there's a Verus limitation at play here. Or maybe the real issue isn't about the equality relation itself, but something else about the postcondition that I'm missing.
+
+Let me add some debugging assertions right before the return statement using the exact variable definitions from the postcondition to narrow down what's actually failing.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 173
+────────────────────────────────────────────────────────────
+Do the same for the loop 2 Err path:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 899.         )]
+900.         for index in start_frame_number..end_frame_number {
+901.             match self.bitmap.test(index) {
+902.                 Ok(false) => {
+903.                     // Frame is free — nothing to do.
+904.                 },
+905.                 Ok(true) => {
+906.            ...
+
+────────────────────────────────────────────────────────────
+Turn 174
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 175
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
