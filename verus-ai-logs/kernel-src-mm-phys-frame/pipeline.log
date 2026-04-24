@@ -130,3 +130,18 @@ Module: frame
 [2026-04-25 01:40:36]   ↳ dialogue-reviewer-t2 done in 1m25s (exit=0)
 [2026-04-25 01:40:36] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-04-25 01:40:36] [DIALOGUE] cheating-elimination ended after 2 turns: RESOLVED (790s)
+[2026-04-25 01:40:36] [PHASE] cheating-elimination: dialogue-RESOLVED (29m18s)
+[2026-04-25 01:40:36] [CHEATING] external_body: 12 (10 on user fns)
+[2026-04-25 01:40:36] ✅ cheating-elimination: PASS (0/0)
+
+============================================================
+PIPELINE COMPLETE: frame
+  ✅ caller-analysis           no-review                 2m35s
+  ✅ view-design               no-review                 5m43s
+  ✅ specification             dialogue-RESOLVED      1h01m41s (2 dialogue turns)
+  ✅ proving                   dialogue-RESOLVED      1h48m59s (1 dialogue turns)
+  ✅ cheating-elimination      dialogue-RESOLVED        29m18s (2 dialogue turns)
+  ──────────────────────────────────────────────────────────
+  Total: 3h28m18s
+============================================================
+[2026-04-25 01:40:36] [USAGE] Summary: 12 calls, 0 tokens, 3h28m16s total → /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/usage_summary.json

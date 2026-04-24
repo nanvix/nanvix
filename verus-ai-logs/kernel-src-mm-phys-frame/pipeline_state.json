@@ -8,7 +8,8 @@
     "caller-analysis",
     "view-design",
     "specification",
-    "proving"
+    "proving",
+    "cheating-elimination"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -54,17 +55,29 @@
       "review_file": null,
       "duration_s": 6539.4,
       "review_rounds": 1
+    },
+    "cheating-elimination": {
+      "phase": "cheating-elimination",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-RESOLVED",
+      "review_file": null,
+      "duration_s": 1758.5,
+      "review_rounds": 2
     }
   },
   "prover_session_id": "ed0de2b6-ac10-435b-a9be-b458b8eff1c6",
-  "completed": false,
+  "completed": true,
   "base_branch": "verus-ai/kpool",
   "verus_branch": "verus-ai/frame",
   "phase_boundary_shas": {
     "caller-analysis": "40b57def3aa88528c80d1f8eb0a59e58cb2e1572",
     "view-design": "0de851acf2b7f1443fc57958bf86b2706987f751",
     "specification": "fedb479c44320d3756659a1b1bc10f92b7fcfb1b",
-    "proving": "6eac67d54cfef7be9cbf8c229f1686e634cd3e07"
+    "proving": "6eac67d54cfef7be9cbf8c229f1686e634cd3e07",
+    "cheating-elimination": "364f11184777914d9fc29f5406a1e23c9ea8d79b"
   },
   "rollback_counts": {},
   "rollback_context": ""
