@@ -167,6 +167,12 @@ impl Inner {
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
     fn free(&mut self, addr: FrameAddress) -> Result<(), Error> {
+        // Guard against underflow: if addr is below the pool base, the subtraction wraps.
+        if addr.into_raw_value() < self.base.into_raw_value() {
+            let reason: &str = "frame address below pool base";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
         let index: usize = (addr.into_raw_value() - self.base.into_raw_value()) / mem::PAGE_SIZE;
         match self.bitmap.clear(index) {
             Ok(()) => Ok(()),
