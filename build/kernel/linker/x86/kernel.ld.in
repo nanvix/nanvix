@@ -4,7 +4,7 @@
  */
 
 OUTPUT_FORMAT("elf32-i386")
-ENTRY(_do_start)
+ENTRY(@ENTRY_POINT@)
 
 /*
  * Page Size (4 KB)

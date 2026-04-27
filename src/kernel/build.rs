@@ -217,13 +217,15 @@ fn main() {
         "0x0"
     };
 
+    let entry_point: &str = "_do_start";
+
     let linker_template: String =
         fs::read_to_string(&linker_template_path).expect("Failed to read linker script template");
     let linker_script: String = linker_template
         .replace("@MACHINE_RESERVED@", &machine_reserved)
         .replace("@KPOOL_BASE@", &format!("{:#x}", kpool_base))
-        .replace("@PLATFORM_BASE_ADDR@", platform_base_addr);
-
+        .replace("@PLATFORM_BASE_ADDR@", platform_base_addr)
+        .replace("@ENTRY_POINT@", entry_point);
     fs::write(&linker_output_path, linker_script).expect("Failed to write linker script");
 
     println!("cargo::rerun-if-changed={}", linker_template_path.display());
