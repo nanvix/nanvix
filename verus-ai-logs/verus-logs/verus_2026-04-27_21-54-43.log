@@ -1,0 +1,38 @@
+Timestamp: 2026-04-27_21-54-43
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::frame
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=24
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+    Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+error[E0425]: cannot find function `lemma_mul_distributes_over_add` in module `vstd::arithmetic::mul`
+   --> src/kernel/src/mm/phys/frame.rs:847:36
+    |
+847 | ...   vstd::arithmetic::mul::lemma_mul_distributes_over_add(ps, start_frame_number as int, num_frames as int);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/arithmetic/internals/mul_internals.rs:127:1
+    |
+127 | pub broadcast proof fn lemma_mul_distributes_minus(x: int, y: int, z: int)
+    | -------------------------------------------------------------------------- similarly named function `lemma_mul_distributes_minus` defined here
+    |
+help: a function with a similar name exists
+    |
+847 -             vstd::arithmetic::mul::lemma_mul_distributes_over_add(ps, start_frame_number as int, num_frames as int);
+847 +             vstd::arithmetic::mul::lemma_mul_distributes_minus(ps, start_frame_number as int, num_frames as int);
+    |
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
