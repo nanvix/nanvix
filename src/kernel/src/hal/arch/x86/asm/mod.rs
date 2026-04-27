@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+#[cfg(not(feature = "hyperlight"))]
 mod fast_memcpy;
 mod fast_memset;
 mod hooks;

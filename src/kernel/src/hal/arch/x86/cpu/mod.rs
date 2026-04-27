@@ -123,6 +123,9 @@ pub fn init(
     let (gdtr, tss): (GdtPtr, TssRef) = unsafe { Gdt::init(kstack_ptr)? };
     unsafe { idt::init() };
 
+    #[cfg(feature = "hyperlight")]
+    crate::hal::platform::hyperlight::patch_kernel_idt_with_cow_handler();
+
     let (controller, xapic_timer): (Option<InterruptController>, Option<XapicTimer>) =
         match interrupt::init(ioports, ioaddresses, madt) {
             Ok((controller, xapic_timer)) => (Some(controller), xapic_timer),

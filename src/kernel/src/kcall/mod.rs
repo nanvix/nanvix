@@ -15,7 +15,10 @@ mod kcall_success;
 // Exports
 //==================================================================================================
 
+#[cfg(not(feature = "hyperlight"))]
 pub use handler::kcall_handler as handler;
+#[cfg(feature = "hyperlight")]
+pub use handler::kcall_event_loop;
 #[cfg(feature = "microvm")]
 pub use handler::poll_ikc_messages;
 pub use kcall_error::KcallError;

@@ -12,7 +12,7 @@
 //==================================================================================================
 
 pub mod elf;
-mod phys;
+pub(crate) mod phys;
 mod virt;
 
 #[cfg(feature = "hyperlight")]

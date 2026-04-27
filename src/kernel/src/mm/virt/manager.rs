@@ -175,6 +175,7 @@ impl VirtMemoryManager {
         let root: Vmem = Vmem::new(kernel_pages, kernel_page_tables)?;
 
         // Load root root address space.
+        #[cfg(not(feature = "hyperlight"))]
         root.load()?;
 
         Ok((root, Self))

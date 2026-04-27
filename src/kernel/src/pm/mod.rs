@@ -47,6 +47,7 @@ const ORDER: Ordering = Ordering::Relaxed;
 // Exports
 //==================================================================================================
 
+#[cfg(not(feature = "hyperlight"))]
 pub use clock::ticks;
 pub use kcall::*;
 pub use process::{

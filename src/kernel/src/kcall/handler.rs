@@ -5,11 +5,10 @@
 // Imports
 //==================================================================================================
 
+#[cfg(not(feature = "hyperlight"))]
+use crate::event;
 use crate::{
-    event::{
-        self,
-        EventManager,
-    },
+    event::EventManager,
     mm::VirtMemoryManager,
     pm::ProcessManager,
 };
@@ -61,6 +60,7 @@ macro_rules! mm {
 ///
 /// Kernel call handler.
 ///
+#[cfg(not(feature = "hyperlight"))]
 pub fn kcall_handler() -> ExitStatus {
     if let Err(e) = event::init() {
         panic!("failed to initialize event manager: {:?}", e);
@@ -69,6 +69,17 @@ pub fn kcall_handler() -> ExitStatus {
     // Signal the VMM that kernel startup is complete and user-space is about to start.
     crate::hal::platform::signal_startup_complete();
 
+    kcall_event_loop()
+}
+
+///
+/// # Description
+///
+/// Kernel event loop. Polls IKC messages, harvests zombie processes,
+/// and yields the CPU when idle. Returns the exit status when the
+/// init daemon terminates.
+///
+pub fn kcall_event_loop() -> ExitStatus {
     let status: ExitStatus = loop {
         // Check if inter-kernel communication messages are available.
         let message_received: bool = poll_ikc_messages();

@@ -263,7 +263,7 @@ pub(super) unsafe fn init(bitmap: SparseBitmap) -> Result<(), Error> {
 }
 
 /// Allocate a frame.
-pub(super) fn alloc() -> Result<FrameAddress, Error> {
+pub(crate) fn alloc() -> Result<FrameAddress, Error> {
     instance().alloc()
 }
 

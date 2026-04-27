@@ -8,6 +8,8 @@
 #[cfg(all(feature = "microvm", feature = "hyperlight"))]
 compile_error!("features \"microvm\" and \"hyperlight\" are mutually exclusive");
 
+mod cow_entry;
+mod cow_handler;
 pub(crate) mod peb;
 mod start;
 mod start16;
@@ -64,7 +66,6 @@ use crate::{
 };
 use ::alloc::{
     collections::linked_list::LinkedList,
-    format,
     string::{
         String,
         ToString,
@@ -99,16 +100,9 @@ use ::core::sync::atomic::{
     Ordering,
 };
 use ::hyperlight_common::{
-    flatbuffer_wrappers::{
-        function_call::FunctionCall,
-        function_types::{
-            FunctionCallResult,
-            ReturnValue,
-        },
-        guest_error::{
-            ErrorCode as GuestErrorCode,
-            GuestError,
-        },
+    flatbuffer_wrappers::function_types::{
+        FunctionCallResult,
+        ReturnValue,
     },
     layout::{
         MAX_GPA,
@@ -132,58 +126,8 @@ use ::sys::{
     },
 };
 
-// =================================================================================================
-// _nanvix_dispatch — Entry point for guest function calls
-// =================================================================================================
-//
-// Entry point used by guest function calls.
-//
-// How Hyperlight captures and restores the entry point:
-//
-// 1. During `evolve()` (Hyperlight's `initialise`), the VM runs until a HLT.  When
-//    `hyperlight_pre_kmain()` halts via VmAction::Halt, Hyperlight reads the vCPU registers and
-//    stores:
-//      - `self.entrypoint = NextAction::Call(regs.rax)` — the address of
-//        `_nanvix_dispatch`, which the kernel placed in EAX before halting.
-//      - `self.rsp_gva = regs.rsp` — the stack pointer at halt time.
-//
-// 2. When the host calls `sandbox.call("kmain", ())`, Hyperlight serialises the function name and
-//    arguments into the PEB input buffer, then `dispatch_call_from_host()` sets RIP to the stored
-//    dispatch address and resumes the VM.
-//
-// 3. `_nanvix_dispatch` restores the boot stack, reconstructs a `&KernelArguments`
-//    pointer, and calls `nanvix_dispatch_function`. That Rust function reads the
-//    `FunctionCall` from the PEB input buffer, validates the function name, and
-//    dispatches to `kmain`.
-//
-::core::arch::global_asm!(
-    r#".section .text,"ax",@progbits"#,
-    ".code32",
-    ".extern nanvix_dispatch_function",
-    ".globl _nanvix_dispatch",
-    "_nanvix_dispatch:",
-    // When Hyperlight's `dispatch_call_from_host()` resumes the VM here, all general-purpose
-    // registers are zeroed except RSP (restored to the value saved during evolve) and RFLAGS (RES1
-    // set; ZF may be set to signal a pending TLB flush). Segment registers are not touched — they
-    // retain whatever state was left after `evolve()`.
-    //
-    // Restore the boot stack from the compile-time scratch address.  The
-    // KernelArguments (magic, info) were pushed to (BOOT_STACK_TOP - 8)
-    // during the evolve phase.
-    "    movl ${BOOT_STACK_TOP}, %esp",
-    "    movl %esp, %ebp",
-    "    subl $8, %esp",
-    // Push the KernelArguments pointer and call the high-level dispatcher.
-    "    push %esp",
-    "    call nanvix_dispatch_function",
-    "    addl $4, %esp",
-    "    addl $8, %esp",
-    // nanvix_dispatch_function should never return; halt as a safety net.
-    "2:  hlt",
-    "    jmp 2b",
-    BOOT_STACK_TOP = const ::config::memory_layout::HYPERLIGHT_BOOT_STACK_TOP,
-    options(att_syntax),
-);
+// _nanvix_dispatch is now defined in cow_entry.rs as part of the CoW
+// entry assembly. It sets up GDT/IDT/stack and calls nanvix_dispatch_handler.
 
 //==================================================================================================
 // Global Variables
@@ -582,21 +526,27 @@ pub(in crate::hal::platform) fn do_shutdown(status: usize) -> ! {
     }
 }
 
-///
-/// # Description
-///
-/// Signals the VMM that kernel startup is complete and user-space applications are about to start.
-///
-/// On Hyperlight this is a no-op because the evolve/run lifecycle already
-/// communicates boot readiness to the host.
-///
-pub fn signal_startup_complete() {}
-
-/// Identity translation — on Hyperlight, VA == PA (scaffolding).
-///
-/// Will be replaced by a page-table walk that resolves CoW-relocated pages.
+/// Translates a virtual address to a physical address by walking the
+/// current CR3 page tables. After CoW resolution, BSS pages have
+/// different physical addresses than their virtual addresses.
 pub fn virt_to_phys(vaddr: usize) -> usize {
-    vaddr
+    unsafe {
+        let cr3: u32;
+        core::arch::asm!("mov {0:e}, cr3", out(reg) cr3, options(nomem, nostack));
+        let pd_base: usize = (cr3 & 0xFFFFF000) as usize;
+        let pd_idx: usize = vaddr >> 22;
+        let pde: u32 = *((pd_base + pd_idx * 4) as *const u32);
+        if pde & 1 == 0 {
+            return vaddr;
+        }
+        let pt_base: usize = (pde & 0xFFFFF000) as usize;
+        let pt_idx: usize = (vaddr >> 12) & 0x3FF;
+        let pte: u32 = *((pt_base + pt_idx * 4) as *const u32);
+        if pte & 1 == 0 {
+            return vaddr;
+        }
+        ((pte & 0xFFFFF000) as usize) | (vaddr & 0xFFF)
+    }
 }
 
 ///
@@ -766,63 +716,137 @@ extern "C" fn hyperlight_pre_kmain() {
 ///
 /// # Description
 ///
-/// High-level guest function dispatcher called by `_nanvix_dispatch`.
+/// Initializes the GuestHandle from the PEB. Called during kmain boot
+/// so that `do_shutdown` can write FunctionCallResult to the PEB output buffer.
 ///
-/// Reads the [`FunctionCall`] that the host serialised into the PEB input
-/// buffer, validates the function name, and dispatches to the corresponding
-/// handler.  Currently the only recognised function is `"kmain"`.
-///
-/// For unrecognised functions a [`GuestError`] is written back to the PEB
-/// output buffer so the host receives a proper error instead of a raw abort.
-///
-/// # Parameters
-///
-/// - `kargs`: Kernel arguments reconstructed by the `_nanvix_dispatch` stub.
-///
-#[unsafe(no_mangle)]
-extern "C" fn nanvix_dispatch_function(kargs: &crate::kargs::KernelArguments) {
-    // SAFETY: GUEST_HANDLE is initialised once in hyperlight_pre_kmain
-    // during the evolve phase and never mutated again. This is a single-core
-    // guest, so there are no data races.
-    let handle: &GuestHandle = unsafe {
-        GUEST_HANDLE
-            .as_ref()
-            .expect("nanvix_dispatch_function(): GUEST_HANDLE not initialised")
-    };
+pub fn init_guest_handle() {
+    extern "C" {
+        static __KERNEL_END: u8;
+    }
 
-    let function_call = handle
-        .try_pop_shared_input_data_into::<FunctionCall>()
-        .expect("function call deserialization failed");
+    let kernel_end: usize = unsafe { &__KERNEL_END as *const u8 as usize };
+    let peb_base: usize = ::sys::mm::align_up(kernel_end, PAGE_ALIGNMENT)
+        .expect("init_guest_handle(): PEB align_up overflow");
+    let peb_ptr: *mut HyperlightPEB = peb_base as *mut HyperlightPEB;
 
-    match function_call.function_name.as_str() {
-        "kmain" => {
-            drop(function_call);
-            crate::kmain(kargs);
-        },
-        other => {
-            let msg = format!("unknown guest function: {other}");
-            drop(function_call);
-            let guest_error = GuestError::new(GuestErrorCode::GuestError, msg);
-            let fcr = FunctionCallResult::new(Err(guest_error));
-            let mut builder = ::flatbuffers::FlatBufferBuilder::new();
-            let data = fcr.encode(&mut builder);
-            handle
-                .push_shared_output_data(data)
-                .expect("failed to serialize function call error result");
-        },
+    let gva_gpa_delta: u64 = (MAX_GVA - MAX_GPA) as u64;
+    if gva_gpa_delta != 0 {
+        unsafe {
+            (*peb_ptr).input_stack.ptr -= gva_gpa_delta;
+            (*peb_ptr).output_stack.ptr -= gva_gpa_delta;
+        }
+    }
+
+    unsafe {
+        GUEST_HANDLE = Some(GuestHandle::init(peb_ptr));
     }
 }
 
 ///
 /// # Description
 ///
-/// Returns the TSC base frequency in MHz. On hyperlight the VMM does not
-/// provide this value, so `0` is returned (callers should use a fallback
-/// calibration path).
+/// Patches the kernel IDT entry #14 with the CoW page fault handler.
 ///
-#[allow(dead_code)]
-pub fn tsc_base_frequency_mhz() -> u32 {
-    0
+/// Must be called after `Hal::init()` (which installs the kernel IDT) but
+/// before any writes that could touch a PTE_COW page.
+///
+pub fn patch_kernel_idt_with_cow_handler() {
+    extern "C" {
+        fn _cow_pf_handler_rust();
+    }
+
+    unsafe {
+        let handler_addr: u32 = _cow_pf_handler_rust as *const () as u32;
+
+        // The IDT is already in writable scratch memory (placed there by
+        // set_backing_storage), so patch entry #14 in place — no copy or
+        // LIDT needed.
+        core::arch::asm!(
+            "sub esp, 8",
+            "sidt [esp]",
+            "mov {base:e}, [esp+2]",
+            "add esp, 8",
+
+            "mov eax, {handler:e}",
+            "mov [{base:e} + 112], ax",
+            "mov word ptr [{base:e} + 114], 0x08",
+            "mov byte ptr [{base:e} + 116], 0",
+            "mov byte ptr [{base:e} + 117], 0x8E",
+            "shr eax, 16",
+            "mov [{base:e} + 118], ax",
+
+            handler = in(reg) handler_addr,
+            base = out(reg) _,
+            out("eax") _,
+        );
+    }
+}
+
+///
+/// # Description
+///
+/// Dispatch handler called by `_nanvix_dispatch` (cow_entry.rs) after
+/// snapshot restore. Re-patches the kernel IDT with the CoW handler,
+/// re-programs PIC, enables interrupts, runs the kernel event loop,
+/// and halts when done.
+///
+#[unsafe(no_mangle)]
+extern "C" fn nanvix_dispatch_handler() {
+    patch_kernel_idt_with_cow_handler();
+
+    // Re-program PIC (KVM in-kernel irqchip state may be stale after snapshot).
+    unsafe {
+        use ::arch::cpu::pic;
+
+        // Master PIC: ICW1 (IC4 needed), ICW2 (vector offset), ICW3 (slave on IRQ2), ICW4 (8086 mode).
+        ::arch::io::out8(pic::PIC_CTRL_MASTER as u16, pic::icw1::Ic4::Needed as u8);
+        ::arch::io::wait();
+        ::arch::io::out8(pic::PIC_DATA_MASTER as u16, crate::hal::arch::x86::cpu::idt::INT_OFF);
+        ::arch::io::wait();
+        ::arch::io::out8(pic::PIC_DATA_MASTER as u16, 0x04);
+        ::arch::io::wait();
+        ::arch::io::out8(pic::PIC_DATA_MASTER as u16, pic::icw4::MicroprocessorMode::Mode8086 as u8);
+        ::arch::io::wait();
+        ::arch::io::out8(pic::PIC_DATA_MASTER as u16, 0xFF);
+
+        // Slave PIC: ICW1, ICW2 (vector offset + 8), ICW3 (cascade identity), ICW4 (8086 mode).
+        ::arch::io::out8(pic::PIC_CTRL_SLAVE as u16, pic::icw1::Ic4::Needed as u8);
+        ::arch::io::wait();
+        ::arch::io::out8(pic::PIC_DATA_SLAVE as u16, crate::hal::arch::x86::cpu::idt::INT_OFF + pic::PIC_NUM_IRQS);
+        ::arch::io::wait();
+        ::arch::io::out8(pic::PIC_DATA_SLAVE as u16, 0x02);
+        ::arch::io::wait();
+        ::arch::io::out8(pic::PIC_DATA_SLAVE as u16, pic::icw4::MicroprocessorMode::Mode8086 as u8);
+        ::arch::io::wait();
+        ::arch::io::out8(pic::PIC_DATA_SLAVE as u16, 0xFF);
+    }
+
+    if let Err(e) = crate::event::init() {
+        panic!("failed to initialize event manager: {:?}", e);
+    }
+
+    // Arm PV timer.
+    unsafe {
+        ::arch::io::out32(::config::hyperlight::PV_TIMER_PORT, ::config::hyperlight::TIMER_PERIOD_US);
+    }
+
+    unsafe { ::arch::cpu::sti() };
+
+    if let Some(intman) = unsafe { crate::hal::Hal::get_mut() }.intman() {
+        if let Err(e) = intman.unmask(crate::hal::arch::InterruptNumber::Timer) {
+            panic!("failed to unmask timer interrupt: {:?}", e);
+        }
+    }
+
+    let servers = crate::SERVERS_SPAWNED.load(core::sync::atomic::Ordering::Acquire);
+    let status = if servers > 0 {
+        crate::kcall::kcall_event_loop()
+    } else {
+        ::sys::ExitStatus::ok()
+    };
+
+    unsafe { crate::klog::flush() };
+    do_shutdown(status.into());
 }
 
 ///
@@ -1268,8 +1292,8 @@ pub fn init(
     }
 
     // scratch_end is the exclusive end of the full scratch range, including the last page
-    // reserved for Hyperlight bookkeeping metadata.  When MAX_GPA == usize::MAX (i686-guest),
-    // the addition wraps to 0 — this is expected and handled by region_contains / max_physical_address.
+    // reserved for Hyperlight bookkeeping metadata.  With i686-guest the scratch region
+    // extends to MAX_GPA (0xFFFF_FFFF) so the exclusive end wraps to 0 on 32-bit.
     let scratch_end_address: usize = scratch_base_address.wrapping_add(scratch_size);
 
     // Record scratch region bounds for is_valid_physical_address.
@@ -1314,15 +1338,12 @@ pub fn init(
         mmio_regions.push_back(scratch_output);
     }
 
-    // Reserve pages at the start of the free scratch area for the frame allocator bitmap,
-    // kpool bitmap, and GDT backing stores.  This memory is in scratch (never snapshot/CoW)
-    // and is registered as a reserved memory region so the frame allocator never hands it out.
-    let scratch_reserved_base: usize =
-        scratch_base_address + INPUT_DATA_BUFFER_SIZE + OUTPUT_DATA_BUFFER_SIZE;
+    // Place scratch-reserved structures in PD entry 1023 (top 4MB) where the
+    // Hyperlight host is known to map guest page table entries. The region sits
+    // immediately below the scratch I/O page.
+    let scratch_io_page: usize = scratch_end_address.wrapping_sub(2 * mem::PAGE_SIZE);
+    let scratch_reserved_base: usize = scratch_io_page.wrapping_sub(SCRATCH_RESERVED_SIZE);
     {
-        // No need to zero the storage pages: the scratch region is guaranteed to be
-        // zeroed out by Hyperlight before the guest starts.
-
         let scratch_reserved_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
             "scratch reserved structures",
             VirtualAddress::from_raw_value(scratch_reserved_base),
@@ -1335,7 +1356,7 @@ pub fn init(
             "scratch reserved: [{:#010x}, {:#010x}) (frame_alloc={} B, kpool={} B, gdt={} B, \
              heap_storage={} B, size={:#x})",
             scratch_reserved_base,
-            scratch_reserved_base + SCRATCH_RESERVED_SIZE,
+            scratch_reserved_base.wrapping_add(SCRATCH_RESERVED_SIZE),
             FRAME_ALLOC_BITMAP_SIZE,
             KPOOL_BITMAP_SIZE,
             GDT_SIZE,
@@ -1359,7 +1380,6 @@ pub fn init(
         memory_regions.push_back(boot_stack_region);
     }
     {
-        let scratch_io_page: usize = scratch_end_address - 2 * mem::PAGE_SIZE;
         let scratch_io: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
             "scratch-io",
             PageAligned::from_raw_value(scratch_io_page)?,
@@ -1370,23 +1390,55 @@ pub fn init(
         ioaddresses.register(SCRATCH_IO_MMIO_TAG, scratch_io.clone())?;
         mmio_regions.push_back(scratch_io);
     }
+    // The Hyperlight bookkeeping page (last page of 4GB) is intentionally not
+    // registered: its frame number exceeds FrameNumber::MAX and the frame
+    // allocator will never reach it.
+
+    // Book scratch pages consumed by the host's rebuilt page tables and the CoW
+    // pre-fault handler. The allocator at GVA 0xFFFF_FFF0 holds the address of the
+    // next free scratch page. Everything from the end of the I/O buffers to that
+    // address is already in use and must not be handed out by the frame allocator.
     {
-        let scratch_reserved_page: usize = scratch_end_address - mem::PAGE_SIZE;
-        let scratch_reserved: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-            "scratch reserved",
-            VirtualAddress::from_raw_value(scratch_reserved_page),
-            mem::PAGE_SIZE,
-            MemoryRegionType::Reserved,
-            AccessPermission::RDONLY,
-        )?;
-        memory_regions.push_back(scratch_reserved);
+        const ALLOCATOR_GVA: *const u32 = 0xFFFF_FFF0 as *const u32;
+        let allocator_current: usize =
+            unsafe { core::ptr::read_volatile(ALLOCATOR_GVA) } as usize;
+        let io_buffers_end: usize =
+            scratch_base_address + INPUT_DATA_BUFFER_SIZE + OUTPUT_DATA_BUFFER_SIZE;
+        if allocator_current > io_buffers_end {
+            let cow_region_size: usize = allocator_current - io_buffers_end;
+            let cow_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+                "cow consumed scratch",
+                VirtualAddress::from_raw_value(io_buffers_end),
+                cow_region_size,
+                MemoryRegionType::Reserved,
+                AccessPermission::RDWR,
+            )?;
+            info!(
+                "cow consumed scratch: [{:#010x}, {:#010x}) ({} pages)",
+                io_buffers_end,
+                allocator_current,
+                cow_region_size / mem::PAGE_SIZE,
+            );
+            memory_regions.push_back(cow_region);
+        }
     }
 
-    // Set snapshot region end from the host-provided snapshot budget.
-    // pt_overhead is always 0 with nanvix-unstable (Hyperlight skips PT generation).
-    // The variable is acknowledged here for forward-compatibility.
     let _ = pt_overhead;
-    let snapshot_end_address: usize = KERNEL_BASE_RAW + snapshot_budget_size;
+    let mut snapshot_end_address: usize = KERNEL_BASE_RAW + snapshot_budget_size;
+    for region in memory_regions.iter() {
+        let region_end: usize = region
+            .start()
+            .into_raw_value()
+            .saturating_add(region.size());
+        if region_end > snapshot_end_address && region_end <= scratch_base_address {
+            snapshot_end_address = region_end;
+        }
+    }
+    if let Some(aligned) = ::sys::mm::align_up(snapshot_end_address, PAGE_ALIGNMENT) {
+        if aligned <= scratch_base_address {
+            snapshot_end_address = aligned;
+        }
+    }
     SNAPSHOT_END.store(snapshot_end_address, Ordering::Relaxed);
     info!("snapshot region: [{:#010x}, {:#010x})", KERNEL_BASE_RAW, snapshot_end_address);
 
@@ -1546,19 +1598,26 @@ unsafe fn build_physical_memory_layout(
     storage: (*mut u8, usize),
 ) -> Result<SparseBitmap, Error> {
     // Validate that region ends are not before their starts.
+    // scratch_end_address may be 0 (wrapping) when the region extends to usize::MAX.
     if snapshot_end_address < snapshot_start_address
         || ramfs_end_address < ramfs_start_address
-        || scratch_end_address < scratch_start_address
+        || (scratch_end_address != 0 && scratch_end_address < scratch_start_address)
     {
         let reason: &str = "region end address precedes start address";
         error!("build_physical_memory_layout(): {}", reason);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
+    info!(
+        "build_physical_memory_layout: snapshot=[{:#x},{:#x}), ramfs=[{:#x},{:#x}), scratch=[{:#x},{:#x})",
+        snapshot_start_address, snapshot_end_address,
+        ramfs_start_address, ramfs_end_address,
+        scratch_start_address, scratch_end_address,
+    );
     let bits_per_byte: usize = u8::BITS as usize;
     let snapshot_size: usize = snapshot_end_address - snapshot_start_address;
     let ramfs_size: usize = ramfs_end_address - ramfs_start_address;
-    let scratch_size: usize = scratch_end_address - scratch_start_address;
+    let scratch_size: usize = scratch_end_address.wrapping_sub(scratch_start_address);
 
     let snapshot_frames: usize = snapshot_size / mem::FRAME_SIZE;
     let snapshot_padded_end: usize = snapshot_frames.div_ceil(bits_per_byte) * bits_per_byte;
@@ -1634,7 +1693,6 @@ unsafe fn build_physical_memory_layout(
             Ok(bitmap)
         };
 
-    // Low chunk: snapshot (and optionally RAMFS when merged).
     let snapshot_start_frame: usize = snapshot_start_address / mem::FRAME_SIZE;
     let low_bitmap: Bitmap = make_chunk(low_bytes, low_end_frame, low_phantom)?;
     let mut chunks: vec::Vec<(usize, Bitmap)> = vec![(snapshot_start_frame, low_bitmap)];
@@ -1647,7 +1705,8 @@ unsafe fn build_physical_memory_layout(
 
     // Scratch chunk: frames [scratch_start / FRAME_SIZE, ...).
     if scratch_frames > 0 {
-        let scratch_bitmap: Bitmap = make_chunk(scratch_bytes, scratch_frames, scratch_phantom)?;
+        let scratch_bitmap: Bitmap =
+            make_chunk(scratch_bytes, scratch_frames, scratch_phantom)?;
         chunks.push((scratch_start_address / mem::FRAME_SIZE, scratch_bitmap));
     }
 

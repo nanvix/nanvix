@@ -5,6 +5,7 @@
 // x86 Bootstrap and Application-Processor Entry Points (Hyperlight)
 //==================================================================================================
 
+use ::arch::mem::PAGE_SIZE;
 use ::core::arch::global_asm;
 use ::hyperlight_common::outb::VmAction;
 
@@ -136,11 +137,21 @@ global_asm!(
 global_asm!(
     ".section .bss",
 
+    // Kernel stack guard page + usable stack (used by CoW dispatch).
+    ".align {PAGE_SIZE}",
+    ".globl kstack_guard",
+    "kstack_guard:",
+    ".space {KSTACK_SIZE}",
+    ".globl kstack",
+    "kstack:",
+
     // Kernel Red Zone.
     ".globl kredzone",
     "kredzone:",
     ".space {KREDZONE_SIZE}",
 
+    PAGE_SIZE = const PAGE_SIZE,
+    KSTACK_SIZE = const ::config::kernel::KSTACK_SIZE,
     KREDZONE_SIZE = const ::config::kernel::KREDZONE_SIZE,
     options(att_syntax),
 );

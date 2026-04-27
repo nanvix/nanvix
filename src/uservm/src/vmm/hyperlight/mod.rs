@@ -78,6 +78,13 @@ pub const KILL_SIGNAL: c_int = libc::SIGKILL;
 /// See issue #1010 for more context on this workaround.
 pub const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_millis(100);
 
+/// Base address of the Hyperlight sandbox's memory region.
+///
+/// Hyperlight maps the guest snapshot at this GPA. Without the `nanvix-unstable` feature the
+/// upstream layout uses `0x1000`; with `nanvix-unstable` it is `0x0`. This constant must
+/// match `SandboxMemoryLayout::BASE_ADDRESS` in hyperlight-host (which is `pub(crate)`).
+const HYPERLIGHT_BASE_ADDRESS: u64 = 0x1000;
+
 /// Label used for the RAMFS file mapping in the PEB.
 const RAMFS_LABEL: &str = "ramfs";
 
@@ -320,13 +327,13 @@ impl Vmm {
 
         // Map RAMFS file into sandbox memory if provided.
         // The file is mapped copy-on-write at the first GPA after the sandbox's
-        // shared memory slot. With nanvix-unstable, BASE_ADDRESS is 0x0 so the
-        // shared memory occupies GPA [0, shared_mem_size).
+        // shared memory slot. The shared memory occupies GPA
+        // [HYPERLIGHT_BASE_ADDRESS, HYPERLIGHT_BASE_ADDRESS + shared_mem_size).
         let mut layout_ramfs_base: u32 = 0;
         let mut layout_ramfs_size: u32 = 0;
         if let Some(ramfs_filename) = &args.ramfs_filename {
             let ramfs_path: &Path = Path::new(ramfs_filename);
-            let ramfs_gpa: u64 = sandbox.shared_mem_size() as u64;
+            let ramfs_gpa: u64 = HYPERLIGHT_BASE_ADDRESS + sandbox.shared_mem_size() as u64;
             let mapped_size: u64 = sandbox
                 .map_file_cow(ramfs_path, ramfs_gpa, Some(RAMFS_LABEL))
                 .map_err(|e| {

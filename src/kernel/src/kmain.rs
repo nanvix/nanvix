@@ -194,6 +194,11 @@ static PERF_IKC_MESSAGES_SENT: AtomicUsize = AtomicUsize::new(0);
 /// Number of IKC messages received.
 static PERF_IKC_MESSAGES_RECEIVED: AtomicUsize = AtomicUsize::new(0);
 
+/// Number of user-space servers spawned during boot.
+/// Read by the Hyperlight call-phase dispatch handler to decide whether
+/// to enter the event loop or shut down immediately.
+pub static SERVERS_SPAWNED: AtomicUsize = AtomicUsize::new(0);
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -280,6 +285,10 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
             panic!("failed to initialize kernel heap: {:?}", e);
         }
     }
+    // Initialize the GuestHandle for PEB I/O (needed for do_shutdown,
+    // vmbus, etc.).
+    #[cfg(feature = "hyperlight")]
+    crate::hal::platform::hyperlight::init_guest_handle();
 
     #[cfg(feature = "test")]
     test();
@@ -318,6 +327,27 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     };
 
     // Add kernel image to list of memory regions.
+    // On Hyperlight the kernel binary is loaded at GPA 0x1000 (the VMM
+    // reserves the first page). The linker script places .zero padding,
+    // .trampoline, and bootstrap code before __TEXT_START. Book the
+    // pre-text range so the frame allocator never hands out those frames.
+    #[cfg(feature = "hyperlight")]
+    {
+        let text_start: usize = kimage.text().start().into_raw_value();
+        if text_start > 0 {
+            match MemoryRegion::new(
+                "pre-text",
+                VirtualAddress::new(0),
+                text_start,
+                MemoryRegionType::Reserved,
+                AccessPermission::RDONLY,
+            ) {
+                Ok(pre_text) => memory_regions.push_back(pre_text),
+                Err(e) => panic!("failed to reserve pre-text region: {:?}", e),
+            }
+        }
+
+    }
     memory_regions.push_back(kimage.text());
     memory_regions.push_back(kimage.rodata());
     if let Some(data) = kimage.data() {
@@ -452,8 +482,14 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     info!("number of cores online: {}", cores_online);
 
     // SAFETY: the memory manager is initialized and access is synchronized.
-    let status: ExitStatus =
-        if spawn_servers(unsafe { VirtMemoryManager::get_mut() }, &kernel_modules) > 0 {
+    let _servers_spawned: usize =
+        spawn_servers(unsafe { VirtMemoryManager::get_mut() }, &kernel_modules);
+
+    SERVERS_SPAWNED.store(_servers_spawned, Ordering::Release);
+
+    #[cfg(not(feature = "hyperlight"))]
+    {
+        let status: ExitStatus = if _servers_spawned > 0 {
             // Enable timer interrupts, if they are supported.
             // SAFETY: the hardware abstraction layer is initialized and access is synchronized.
             if let Some(intman) = unsafe { Hal::get_mut() }.intman() {
@@ -467,45 +503,49 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
             ExitStatus::ok()
         };
 
-    #[cfg(feature = "smp")]
-    startup::wait().expect("failed to synchronize application cores");
+        #[cfg(feature = "smp")]
+        startup::wait().expect("failed to synchronize application cores");
 
-    // Dump system statistics.
-    info!("System Statistics:");
-    info!("- No. Times Kernel Was Idle: {:?}", PERF_SCHED_KERNEL_IDLE.load(Ordering::Relaxed));
-    info!(
-        "- No. Soft Context Switches: {:?}",
-        PERF_SCHED_SOFT_CONTEXT_SWITCHES.load(Ordering::Relaxed)
-    );
-    info!(
-        "- No. Hard Context Switches: {:?}",
-        PERF_SCHED_HARD_CONTEXT_SWITCHES.load(Ordering::Relaxed)
-    );
-    info!(
-        "- No. Exit Context Switches: {:?}",
-        PERF_SCHED_EXIT_CONTEXT_SWITCHES.load(Ordering::Relaxed)
-    );
-    info!(
-        "- No. Exit Thread Context Switches: {:?}",
-        PERF_SCHED_EXIT_THREAD_CONTEXT_SWITCHES.load(Ordering::Relaxed)
-    );
-    info!(
-        "- No. Sleep Context Switches: {:?}",
-        PERF_SCHED_SLEEP_CONTEXT_SWITCHES.load(Ordering::Relaxed)
-    );
-    info!(
-        "- No. Giveup Context Switches: {:?}",
-        PERF_SCHED_GIVEUP_CONTEXT_SWITCHES.load(Ordering::Relaxed)
-    );
-    info!("- No. Wakeup Calls: {:?}", PERF_SCHED_WAKEUP.load(Ordering::Relaxed));
-    info!("- Ticks: {:?}", pm::ticks());
-    info!("- No. Times VMBus Read Was Called: {:?}", PERF_VMBUS_READ.load(Ordering::Relaxed));
-    info!("- No. Times VMBus Write Was Called: {:?}", PERF_VMBUS_WRITE.load(Ordering::Relaxed));
-    info!("- No. IKC Messages Sent: {:?}", PERF_IKC_MESSAGES_SENT.load(Ordering::Relaxed));
-    info!("- No. IKC Messages Received: {:?}", PERF_IKC_MESSAGES_RECEIVED.load(Ordering::Relaxed));
+        // Dump system statistics.
+        info!("System Statistics:");
+        info!("- No. Times Kernel Was Idle: {:?}", PERF_SCHED_KERNEL_IDLE.load(Ordering::Relaxed));
+        info!(
+            "- No. Soft Context Switches: {:?}",
+            PERF_SCHED_SOFT_CONTEXT_SWITCHES.load(Ordering::Relaxed)
+        );
+        info!(
+            "- No. Hard Context Switches: {:?}",
+            PERF_SCHED_HARD_CONTEXT_SWITCHES.load(Ordering::Relaxed)
+        );
+        info!(
+            "- No. Exit Context Switches: {:?}",
+            PERF_SCHED_EXIT_CONTEXT_SWITCHES.load(Ordering::Relaxed)
+        );
+        info!(
+            "- No. Exit Thread Context Switches: {:?}",
+            PERF_SCHED_EXIT_THREAD_CONTEXT_SWITCHES.load(Ordering::Relaxed)
+        );
+        info!(
+            "- No. Sleep Context Switches: {:?}",
+            PERF_SCHED_SLEEP_CONTEXT_SWITCHES.load(Ordering::Relaxed)
+        );
+        info!(
+            "- No. Giveup Context Switches: {:?}",
+            PERF_SCHED_GIVEUP_CONTEXT_SWITCHES.load(Ordering::Relaxed)
+        );
+        info!("- No. Wakeup Calls: {:?}", PERF_SCHED_WAKEUP.load(Ordering::Relaxed));
+        info!("- Ticks: {:?}", pm::ticks());
+        info!("- No. Times VMBus Read Was Called: {:?}", PERF_VMBUS_READ.load(Ordering::Relaxed));
+        info!("- No. Times VMBus Write Was Called: {:?}", PERF_VMBUS_WRITE.load(Ordering::Relaxed));
+        info!("- No. IKC Messages Sent: {:?}", PERF_IKC_MESSAGES_SENT.load(Ordering::Relaxed));
+        info!(
+            "- No. IKC Messages Received: {:?}",
+            PERF_IKC_MESSAGES_RECEIVED.load(Ordering::Relaxed)
+        );
 
-    trace!("the system will shutdown now!");
-    kernel_magic_string(status);
+        trace!("the system will shutdown now!");
+        kernel_magic_string(status);
+    }
 }
 
 #[unsafe(no_mangle)]
