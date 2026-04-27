@@ -21,17 +21,17 @@
 
 use super::page_table_allocator::PAGE_TABLE_ALLOCATOR;
 use crate::hal::{
-    arch::x86::{
-        fast_memcpy,
-        fast_memset,
-    },
+    arch::x86::fast_memset,
     mem::{
         Address,
         PageAligned,
-        PageDirectoryAddress,
         PhysicalAddress,
     },
 };
+#[cfg(not(feature = "hyperlight"))]
+use crate::hal::arch::x86::fast_memcpy;
+#[cfg(not(feature = "hyperlight"))]
+use crate::hal::mem::PageDirectoryAddress;
 use ::arch::{
     cpu::cr3::Cr3Register,
     mem::{
@@ -100,6 +100,7 @@ static KERNEL_CR3: AtomicU32 = AtomicU32::new(0);
 /// # Notes
 ///
 /// On x86, `kernel_cr3` equals `kernel_pd_paddr` (the page directory is the CR3 root).
+#[cfg(not(feature = "hyperlight"))]
 pub(crate) fn init(kernel_pd_paddr: PageDirectoryAddress, kernel_cr3: Cr3Register) {
     KERNEL_PD_PADDR.store(kernel_pd_paddr.into_raw_value(), Ordering::Release);
     KERNEL_CR3.store(kernel_cr3.into_u32(), Ordering::Release);
@@ -159,6 +160,15 @@ pub(crate) fn memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(), Er
         ));
     }
 
+    // On Hyperlight, the host page tables already identity-map guest memory and
+    // CR3 cannot be switched to the kernel PD. Use copy_nonoverlapping directly.
+    #[cfg(feature = "hyperlight")]
+    {
+        unsafe { core::ptr::copy_nonoverlapping(src, dst, size) };
+        Ok(())
+    }
+
+    #[cfg(not(feature = "hyperlight"))]
     with_kernel_address_space(|| {
         let src_addr: PhysicalAddress = PhysicalAddress::from_raw_value(src as usize)?;
         let (src_start, src_size) = page_aligned_cover(src_addr, size)?;

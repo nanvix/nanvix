@@ -20,7 +20,6 @@ use crate::{
             FrameAddress,
             PageAddress,
             PageAligned,
-            PageDirectoryAddress,
             PageTableAddress,
             PageTableAligned,
             PhysicalAddress,
@@ -41,23 +40,24 @@ use ::alloc::{
     collections::LinkedList,
     rc::Rc,
 };
-use ::arch::{
-    cpu::cr3::{
-        Cr3Register,
-        PageDirectoryBaseAddress as Cr3PageDirectoryBaseAddress,
-        PageLevelCacheDisableFlag,
-        PageLevelWriteThroughFlag,
+#[cfg(not(feature = "hyperlight"))]
+use ::arch::cpu::cr3::{
+    Cr3Register,
+    PageDirectoryBaseAddress as Cr3PageDirectoryBaseAddress,
+    PageLevelCacheDisableFlag,
+    PageLevelWriteThroughFlag,
+};
+#[cfg(not(feature = "hyperlight"))]
+use crate::hal::mem::PageDirectoryAddress;
+use ::arch::mem::{
+    self,
+    paging::{
+        PageDirectoryEntry,
+        PteWord,
     },
-    mem::{
-        self,
-        paging::{
-            PageDirectoryEntry,
-            PteWord,
-        },
-        PAGE_ALIGNMENT,
-        PAGE_TABLE_LENGTH,
-        PGTAB_ALIGNMENT,
-    },
+    PAGE_ALIGNMENT,
+    PAGE_TABLE_LENGTH,
+    PGTAB_ALIGNMENT,
 };
 use ::core::cell::RefCell;
 use ::sys::{
@@ -128,21 +128,39 @@ impl Vmem {
             kpage_tables.push_back(Rc::new(RefCell::new((vaddr, page_table))));
         }
 
-        // Register kernel PD for lazy identity mapping. On x86, the PD is also the CR3 root.
-        let pd_paddr_raw: usize = pgdir.physical_address()?.into_raw_value();
-        let pd_paddr: PageDirectoryAddress = PageDirectoryAddress::from_raw_value(pd_paddr_raw)?;
-        let kernel_cr3: Cr3Register = Cr3Register {
-            page_level_write_through: PageLevelWriteThroughFlag::Disabled,
-            page_level_cache_disable: PageLevelCacheDisableFlag::Enabled,
-            paging_structure_base_address: Cr3PageDirectoryBaseAddress::new(pd_paddr_raw as u32)
+        // On Hyperlight, copy host-provided PD entries (scratch region mappings)
+        // into the kernel PD so they survive.
+        #[cfg(feature = "hyperlight")]
+        unsafe {
+            let cr3: u32;
+            core::arch::asm!("mov {0:e}, cr3", out(reg) cr3, options(nomem, nostack));
+            let old_pd: *const PteWord = (cr3 & 0xFFFFF000) as *const PteWord;
+            pgdir.inherit_from(old_pd);
+        }
+
+        // On Hyperlight, the host page tables already identity-map guest memory.
+        // The kernel PD cannot be loaded into CR3 (KVM internal error), so skip
+        // lazy identity-map init.
+        #[cfg(not(feature = "hyperlight"))]
+        {
+            let pd_paddr_raw: usize = pgdir.physical_address()?.into_raw_value();
+            let pd_paddr: PageDirectoryAddress =
+                PageDirectoryAddress::from_raw_value(pd_paddr_raw)?;
+            let kernel_cr3: Cr3Register = Cr3Register {
+                page_level_write_through: PageLevelWriteThroughFlag::Disabled,
+                page_level_cache_disable: PageLevelCacheDisableFlag::Enabled,
+                paging_structure_base_address: Cr3PageDirectoryBaseAddress::new(
+                    pd_paddr_raw as u32,
+                )
                 .ok_or_else(|| {
                     Error::new(
                         ErrorCode::BadAddress,
                         "kernel page directory address is not 4 KB aligned",
                     )
                 })?,
-        };
-        super::identity_map::init(pd_paddr, kernel_cr3);
+            };
+            super::identity_map::init(pd_paddr, kernel_cr3);
+        }
 
         // Store root pages.
         let mut kpages: LinkedList<Rc<RefCell<KernelPage>>> = LinkedList::new();
@@ -174,6 +192,11 @@ impl Vmem {
             // FIXME: do not be so open about permissions.
             pgdir.map(entry.borrow().0, page_table_address, false, AccessPermission::RDWR)?;
             kernel_page_tables.push_back(entry.clone());
+        }
+
+        #[cfg(feature = "hyperlight")]
+        unsafe {
+            pgdir.inherit_from(from.pgdir.entries_ptr());
         }
 
         // Store root pages.
@@ -261,9 +284,14 @@ impl Vmem {
             if entry.borrow().0.into_raw_value() == pt_vaddr.into_raw_value() {
                 // Map the page to the target virtual address space.
                 // FIXME: do not be so open about permissions and caching.
+                let frame_addr: FrameAddress = {
+                    let gva: usize = kpage.frame_address().into_raw_value();
+                    let gpa: usize = crate::hal::platform::virt_to_phys(gva);
+                    FrameAddress::from_raw_value(gpa)?
+                };
                 entry.borrow_mut().1.map(
                     PageAddress::new(vaddr),
-                    kpage.frame_address(),
+                    frame_addr,
                     true,
                     true,
                     false,
@@ -338,7 +366,12 @@ impl Vmem {
         };
 
         // Map the page to the target virtual address space.
-        page_table.map(PageAddress::new(vaddr), uframe.address(), false, false, true, access)?;
+        let frame_addr: FrameAddress = {
+            let gva: usize = uframe.address().into_raw_value();
+            let gpa: usize = crate::hal::platform::virt_to_phys(gva);
+            FrameAddress::from_raw_value(gpa)?
+        };
+        page_table.map(PageAddress::new(vaddr), frame_addr, false, false, true, access)?;
 
         //=============================================================
         // NOTE: if we fail beyond this point we should unmap the page.
@@ -724,12 +757,11 @@ impl Vmem {
                 let src_frame: FrameAddress = self.find_user_frame(vaddr)?;
 
                 if !dry_run {
-                    // Copy memory from user space to kernel space.
-                    super::identity_map::memcpy(
-                        dst.into_raw_value() as *mut u8,
-                        (src_frame.into_raw_value() + offset) as *const u8,
-                        copy_size,
-                    )?;
+                    let copy_src: *const u8 =
+                        (src_frame.into_raw_value() + offset) as *const u8;
+                    let copy_dst: *mut u8 = dst.into_raw_value() as *mut u8;
+
+                    super::identity_map::memcpy(copy_dst, copy_src, copy_size)?;
                 }
 
                 size -= copy_size;
@@ -890,9 +922,8 @@ impl Vmem {
                 // Copy memory from kernel space to user space.
                 let dst: *mut u8 = (dst_frame.into_raw_value() + offset) as *mut u8;
                 let src: *const u8 = src.into_raw_value() as *const u8;
-                let copy_result: Result<(), Error> =
-                    super::identity_map::memcpy(dst, src, copy_size);
-                if let Err(error) = copy_result {
+
+                if let Err(error) = super::identity_map::memcpy(dst, src, copy_size) {
                     let reason: &str = "failed to perform physical memory copy";
                     panic!(
                         "copy_to_user_unaligned_unchecked(): {reason} (error={error:?}, \

@@ -9,10 +9,9 @@ pub mod asm;
 pub mod cpu;
 pub mod mem;
 
-pub(crate) use asm::{
-    fast_memcpy,
-    fast_memset,
-};
+#[cfg(not(feature = "hyperlight"))]
+pub(crate) use asm::fast_memcpy;
+pub(crate) use asm::fast_memset;
 
 //==================================================================================================
 // Imports

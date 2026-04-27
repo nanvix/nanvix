@@ -183,9 +183,49 @@ impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
         self.entries[pde_idx] = pde.into_raw_value();
     }
 
+    #[cfg(feature = "hyperlight")]
+    pub fn entries_ptr(&self) -> *const PteWord {
+        self.entries.as_ptr()
+    }
+
+    /// Copies populated entries from an existing page directory into this one.
+    /// For entries that only the old PD has, the PDE is copied directly.
+    /// For entries where both PDs have page tables, the old PTE entries are
+    /// merged into the new PT (missing entries only) so the new PD retains
+    /// all host-provided mappings alongside the kernel's own.
+    ///
+    /// # Safety
+    ///
+    /// `old_pd` must point to a valid, identity-mapped page directory with at
+    /// least `PAGE_TABLE_LENGTH` entries. All page table pointers in the old PD
+    /// must be identity-mapped.
+    #[cfg(feature = "hyperlight")]
+    pub unsafe fn inherit_from(&mut self, old_pd: *const PteWord) {
+        use ::arch::mem::PAGE_TABLE_LENGTH;
+        for i in 0..self.entries.len() {
+            let old_entry: PteWord = *old_pd.add(i);
+            if old_entry == 0 {
+                continue;
+            }
+            if self.entries[i] == 0 {
+                self.entries[i] = old_entry;
+            } else {
+                let old_pt: *const PteWord = (old_entry & 0xFFFFF000) as *const PteWord;
+                let new_pt: *mut PteWord = (self.entries[i] & 0xFFFFF000) as *mut PteWord;
+                for j in 0..PAGE_TABLE_LENGTH {
+                    if *new_pt.add(j) == 0 {
+                        let old_pte: PteWord = *old_pt.add(j);
+                        if old_pte != 0 {
+                            *new_pt.add(j) = old_pte;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     pub fn physical_address(&self) -> Result<FrameAddress, Error> {
-        Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(
-            self.entries.as_ptr() as usize,
-        )?)?))
+        let pa: usize = crate::hal::platform::virt_to_phys(self.entries.as_ptr() as usize);
+        Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(pa)?)?))
     }
 }

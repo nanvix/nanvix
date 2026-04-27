@@ -9,7 +9,6 @@ mod fast_memcpy;
 mod fast_memset;
 mod hooks;
 
-pub(crate) use self::{
-    fast_memcpy::fast_memcpy,
-    fast_memset::fast_memset,
-};
+#[cfg(not(feature = "hyperlight"))]
+pub(crate) use self::fast_memcpy::fast_memcpy;
+pub(crate) use self::fast_memset::fast_memset;

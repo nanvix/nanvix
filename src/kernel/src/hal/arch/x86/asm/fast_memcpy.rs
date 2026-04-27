@@ -23,6 +23,7 @@
 ///
 /// If `size == 0`, this function is a no-op.
 ///
+#[cfg(not(feature = "hyperlight"))]
 #[inline(always)]
 pub(crate) unsafe fn fast_memcpy(dst: *mut u8, src: *const u8, size: usize) {
     // NOTE: `esi`/`edi` are saved via push/pop rather than declared as Rust-level clobbers
