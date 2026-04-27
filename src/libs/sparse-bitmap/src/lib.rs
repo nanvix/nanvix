@@ -38,7 +38,6 @@ use ::sys::error::{
 };
 use ::vstd::prelude::*;
 
-use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 include!("lib.spec.rs");
 #[cfg(verus_keep_ghost)]
@@ -699,7 +698,7 @@ impl SparseBitmap {
         count: usize,
         trailing_free: usize,
         entry_cap: usize,
-        last_chunk: usize,
+        _last_chunk: usize,
         Ghost(phase1b_free_prefixes): Ghost<Seq<int>>,
         Ghost(old_chunks_seq): Ghost<Seq<Chunk>>,
     ) -> (global_start: usize)
@@ -840,7 +839,7 @@ impl SparseBitmap {
         // ── Phase 2b: commit — set bits in subsequent chunks ──
         let mut cur: usize = entry;
         let mut remaining: usize = if count > trailing_free {
-            (count - trailing_free)
+            count - trailing_free
         } else {
             0
         };
@@ -1178,9 +1177,6 @@ impl SparseBitmap {
                 Ok(is_set) => {
                     if is_set {
                         // Found a set bit — stop counting
-                        // Undo the trailing_free increment we'd do below
-                        bit_idx = bit_idx + 1;
-                        // Restore bit_idx to the position after this set bit
                         break;
                     }
                     trailing_free = trailing_free + 1;
@@ -1206,7 +1202,7 @@ impl SparseBitmap {
 
         // ── Phase 1b: check walk — verify subsequent touching chunks have free heads ──
         let mut need: usize = if count > trailing_free {
-            (count - trailing_free)
+            count - trailing_free
         } else {
             0
         };
@@ -1404,8 +1400,8 @@ impl SparseBitmap {
         }
 
         // ── Phase 2: commit — set bits in entry chunk ──
-        let take_from_entry: usize = if count < trailing_free { count } else { trailing_free };
-        let start_bit_in_entry: usize = entry_cap - trailing_free;
+        let _take_from_entry: usize = if count < trailing_free { count } else { trailing_free };
+        let _start_bit_in_entry: usize = entry_cap - trailing_free;
 
         // ── Prove has_contiguous_free_range (Item 1) BEFORE mutations ──
         // At this point self@ =~= old(self)@ (no mutations yet).

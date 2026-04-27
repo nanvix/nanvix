@@ -829,14 +829,41 @@ impl Inner {
 
         let end_frame_number: usize = start_frame_number + num_frames;
 
-        // Prove: efn == (region@.start + region@.size) / ps.
+        // Prove: efn == (region@.start + region@.size) / ps,
+        // and efn * ps == region@.start + region@.size <= usize::MAX.
+        // This establishes that index * FRAME_SIZE does not overflow for any
+        // index <= end_frame_number (used by both loops below).
         proof! {
             let ps = spec_page_size();
+            lemma_fundamental_div_mod(region@.start, ps);
             lemma_fundamental_div_mod(region@.size, ps);
             vstd::arithmetic::mul::lemma_mul_is_commutative(ps, num_frames as int);
             assert((num_frames as int) * ps == region@.size);
             lemma_hoist_over_denominator(region@.start, num_frames as int, ps as nat);
             assert(end_frame_number as int == (region@.start + region@.size) / ps);
+            // efn * ps == start + size:
+            // start = sfn * ps, size = nf * ps, efn = sfn + nf
+            // so efn * ps = (sfn + nf) * ps = sfn * ps + nf * ps = start + size
+            vstd::arithmetic::mul::lemma_mul_is_commutative(ps, start_frame_number as int);
+            assert((start_frame_number as int) * ps == region@.start);
+            // Prove (sfn + nf) * ps == sfn * ps + nf * ps by rewriting
+            lemma_fundamental_div_mod(region@.start + region@.size, ps);
+            // start = sfn * ps, size = nf * ps, so start + size = (sfn + nf) * ps
+            // which is a multiple of ps.
+            assert(region@.start == (start_frame_number as int) * ps);
+            assert(region@.size == (num_frames as int) * ps);
+            // (sfn + nf) * ps == sfn * ps + nf * ps follows from integer arithmetic
+            assert(region@.start + region@.size == ((start_frame_number as int) + (num_frames as int)) * (ps as int)) by (nonlinear_arith)
+                requires
+                    region@.start == (start_frame_number as int) * ps,
+                    region@.size == (num_frames as int) * ps,
+            {}
+            assert(((start_frame_number as int) + (num_frames as int)) * (ps as int) == (end_frame_number as int) * (ps as int)) by (nonlinear_arith)
+                requires
+                    end_frame_number as int == start_frame_number as int + num_frames as int,
+            {}
+            assert((end_frame_number as int) * ps == region@.start + region@.size);
+            assert((end_frame_number as int) * ps <= usize::MAX as int);
         }
 
         // When nightly-performance-optimizations is off, verify that every frame index in the
@@ -853,6 +880,7 @@ impl Inner {
                 && start_frame_number <= index && index <= end_frame_number
                 && start_frame_number as int == region@.start / spec_page_size()
                 && end_frame_number as int == (region@.start + region@.size) / spec_page_size()
+                && (end_frame_number as int) * spec_page_size() <= usize::MAX as int
                 && forall|j: int| start_frame_number as int <= j < index as int ==> self.bitmap@.is_covered(j),
         )]
         for index in start_frame_number..end_frame_number {
@@ -891,8 +919,11 @@ impl Inner {
                     assert(!pc_frames.subset_of(old(self)@.free_frames));
                     self.lemma_inv_implies_wf();
                 }
-                // BUG FIX: cfg-gate error-reporting multiply to avoid usize overflow
-                #[cfg(not(verus_keep_ghost))]
+                // index < end_frame_number, so index * ps < efn * ps <= usize::MAX
+                proof! {
+                    let ps = spec_page_size();
+                    vstd::arithmetic::mul::lemma_mul_strict_inequality(index as int, end_frame_number as int, ps);
+                }
                 let uncovered_addr: usize = index * mem::FRAME_SIZE;
                 let reason: &str = "frame index not covered by any bitmap chunk";
                 #[cfg(not(verus_keep_ghost))]
@@ -910,6 +941,7 @@ impl Inner {
                 && start_frame_number <= index && index <= end_frame_number
                 && start_frame_number as int == region@.start / spec_page_size()
                 && end_frame_number as int == (region@.start + region@.size) / spec_page_size()
+                && (end_frame_number as int) * spec_page_size() <= usize::MAX as int
                 && (forall|j: int| start_frame_number as int <= j < end_frame_number as int ==> self.bitmap@.is_covered(j))
                 && (forall|j: int| start_frame_number as int <= j < index as int ==> !self.bitmap@.set_bits.contains(j)),
         )]
@@ -953,8 +985,11 @@ impl Inner {
                         assert(!pc_frames.subset_of(old(self)@.free_frames));
                         self.lemma_inv_implies_wf();
                     }
-                    // BUG FIX: cfg-gate error-reporting computations to avoid usize overflow
-                    #[cfg(not(verus_keep_ghost))]
+                    // index < end_frame_number, so index * ps < efn * ps <= usize::MAX
+                    proof! {
+                        let ps = spec_page_size();
+                        vstd::arithmetic::mul::lemma_mul_strict_inequality(index as int, end_frame_number as int, ps);
+                    }
                     let conflicting_addr: usize = index * mem::FRAME_SIZE;
                     // VERUS REWRITE: region.start().into_raw_value() → wrapper
                     #[cfg(not(verus_keep_ghost))]
