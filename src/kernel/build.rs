@@ -217,7 +217,11 @@ fn main() {
         "0x0"
     };
 
-    let entry_point: &str = "_do_start";
+    let entry_point: &str = if cfg!(feature = "hyperlight") {
+        "_hyperlight_entry"
+    } else {
+        "_do_start"
+    };
 
     let linker_template: String =
         fs::read_to_string(&linker_template_path).expect("Failed to read linker script template");
