@@ -2,36 +2,15 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// x86 Bootstrap and Application-Processor Entry Points
+// x86 Bootstrap and Application-Processor Entry Points (Hyperlight)
 //==================================================================================================
 
-use super::constants;
-use crate::hal::arch::x86::cpu::ContextInformation;
+use crate::hal::arch::x86::{
+    asm::constants,
+    cpu::ContextInformation,
+};
 use ::arch::mem::PAGE_SIZE;
 use ::core::arch::global_asm;
-
-/// Whether to clear the BSS section during bootstrap (0 = skip, 1 = clear).
-///
-/// On microvm backends (KVM and WHP) the host has already zeroed guest memory before the
-/// vCPU starts: `mmap(MAP_ANONYMOUS)` on Linux and `VirtualAlloc(MEM_COMMIT)` on Windows
-/// both return zero-filled pages, and the ELF loader explicitly zeroes every BSS region
-/// via `write_bytes()`. Skipping the guest-side `rep stosb` avoids touching every BSS
-/// page from inside the VM, which would otherwise trigger expensive page/EPT-violation
-/// faults for pages the kernel never actually reads during boot. In all other
-/// configurations we must zero .bss here to ensure deterministic initialization of
-/// static data.
-const CLEAR_BSS: u32 = if cfg!(feature = "microvm") { 0 } else { 1 };
-
-/// Whether to run the Hyperlight evolve phase before calling `kmain`.
-///
-/// On Hyperlight, the bootstrap code must halt the VM during `evolve()` before entering `kmain()`.
-/// The host then calls `sandbox.call("kmain", ())` which re-enters the guest at `_nanvix_dispatch`,
-/// restores the boot stack, and calls `kmain()` for real.
-///
-/// Evaluates to 0 on all other platforms; the assembler `.if` directive eliminates the
-/// `call hyperlight_pre_kmain` instruction entirely at compile time.
-///
-const HYPERLIGHT_EVOLVE: u32 = if cfg!(feature = "hyperlight") { 1 } else { 0 };
 
 //==================================================================================================
 // Bootstrap Section — BSP Entry Point
@@ -56,17 +35,15 @@ global_asm!(
 
     // EAX and EBX registers store boot information.
 
-    // Fill BSS section with zeros.
+    // Save boot info (EAX) before it is clobbered by the BSS clear and stack-guard fill below.
     "    movl %eax, %edx",
 
-    // Fill BSS section with zeros (skipped on microvm backends; see CLEAR_BSS).
-    ".if {CLEAR_BSS}",
+    // Fill BSS section with zeros.
     "    movl $__BSS_START, %edi",
     "    movl $__BSS_END, %ecx",
     "    subl %edi, %ecx",
     "    xorl %eax, %eax",
     "    rep stosb",
-    ".endif",
 
     // Fill the boot stack guard page with a watermark pattern.
     "    movl $kstack_guard, %edi",
@@ -97,12 +74,10 @@ global_asm!(
 
     // Call kernel main function.
     //
-    // On Hyperlight, the evolve phase must halt the VM before kmain runs. `hyperlight_pre_kmain()`
-    // registers the dispatch entry point and halts; it never returns. The host then calls
-    // sandbox.call("kmain", ()) which enters `_nanvix_dispatch` → `kmain``.
-    ".if {HYPERLIGHT_EVOLVE}",
+    // The evolve phase must halt the VM before kmain runs. `hyperlight_pre_kmain()` registers
+    // the dispatch entry point and halts; it never returns. The host then calls
+    // sandbox.call("kmain", ()) which enters `_nanvix_dispatch` → `kmain`.
     "    call hyperlight_pre_kmain",
-    ".endif",
     "    push %esp",
     "    call kmain",
     "    addl $4, %esp",
@@ -114,8 +89,6 @@ global_asm!(
     "1:  hlt",
     "    jmp 1b",
 
-    CLEAR_BSS = const CLEAR_BSS,
-    HYPERLIGHT_EVOLVE = const HYPERLIGHT_EVOLVE,
     PAGE_SIZE = const PAGE_SIZE,
     CONTEXT_HW_SIZE = const ContextInformation::CONTEXT_HW_SIZE,
     KSTACK_GUARD_PATTERN = const constants::KSTACK_GUARD_PATTERN,

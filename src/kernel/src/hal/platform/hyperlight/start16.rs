@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// x86 16-bit Trampoline Code
+// x86 16-bit Trampoline Code (Hyperlight)
 //==================================================================================================
 //
 // This module contains 16-bit real-mode code placed in the `.trampoline` section at physical

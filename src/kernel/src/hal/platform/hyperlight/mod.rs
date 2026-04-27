@@ -5,7 +5,12 @@
 // Modules
 //==================================================================================================
 
+#[cfg(all(feature = "microvm", feature = "hyperlight"))]
+compile_error!("features \"microvm\" and \"hyperlight\" are mutually exclusive");
+
 pub(crate) mod peb;
+mod start;
+mod start16;
 // `#[macro_use]` is required so that the `scratch_layout!` macro defined
 // in this submodule is visible in the parent module without a path prefix.
 #[macro_use]
