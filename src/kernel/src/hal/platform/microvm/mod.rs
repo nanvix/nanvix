@@ -379,6 +379,11 @@ pub fn signal_startup_complete() {
     }
 }
 
+/// Identity translation — on microvm, VA == PA.
+pub fn virt_to_phys(vaddr: usize) -> usize {
+    vaddr
+}
+
 ///
 /// # Description
 ///

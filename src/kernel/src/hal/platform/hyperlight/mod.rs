@@ -592,6 +592,13 @@ pub(in crate::hal::platform) fn do_shutdown(status: usize) -> ! {
 ///
 pub fn signal_startup_complete() {}
 
+/// Identity translation — on Hyperlight, VA == PA (scaffolding).
+///
+/// Will be replaced by a page-table walk that resolves CoW-relocated pages.
+pub fn virt_to_phys(vaddr: usize) -> usize {
+    vaddr
+}
+
 ///
 /// # Description
 ///

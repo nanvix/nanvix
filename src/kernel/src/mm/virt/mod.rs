@@ -287,22 +287,19 @@ pub fn init(
                     ReadWriteFlag::ReadOnly
                 };
 
+                let flags: PageTableEntryFlags = PageTableEntryFlags::new(
+                    PresentFlag::Present,
+                    rw_flag,
+                    UserSupervisorFlag::Supervisor,
+                    PageWriteThroughFlag::NotWriteThrough,
+                    PageCacheDisableFlag::CacheEnabled,
+                    AccessedFlag::NotAccessed,
+                    DirtyFlag::NotDirty,
+                );
                 let fill_count: usize = page_table
-                    .fill(
-                        start_index,
-                        count,
-                        FrameAddress::from_raw_value(raw_vaddr)?,
-                        PageTableEntryFlags::new(
-                            PresentFlag::Present,
-                            rw_flag,
-                            UserSupervisorFlag::Supervisor,
-                            PageWriteThroughFlag::NotWriteThrough,
-                            PageCacheDisableFlag::CacheEnabled,
-                            AccessedFlag::NotAccessed,
-                            DirtyFlag::NotDirty,
-                        ),
-                        false,
-                    )
+                    .fill(start_index, count, flags, false, pgtab_base, |va| {
+                        crate::hal::platform::virt_to_phys(va)
+                    })
                     .map_err(|(_count, e)| e)?;
                 debug_assert!(fill_count == count, "fill_count ({fill_count}) != count ({count})");
 
