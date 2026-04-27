@@ -156,4 +156,39 @@ impl KernelImage {
     pub fn kpool(&self) -> MemoryRegion<VirtualAddress> {
         self.kpool.clone()
     }
+
+    /// Returns a region covering any gap between the page-aligned end of the
+    /// last named section before `.bss` and the start of `.bss`. This gap
+    /// contains orphan ELF sections (`.eh_frame`, `.got`, etc.) that the
+    /// linker places between explicitly named sections.
+    pub fn pre_bss_gap(&self) -> Option<MemoryRegion<VirtualAddress>> {
+        let bss_start: usize = self.bss.start().into_raw_value();
+        let raw_end: usize = if let Some(ref data) = self.data {
+            let rodata_end: usize = self.rodata.start().into_raw_value() + self.rodata.size();
+            let data_end: usize = data.start().into_raw_value() + data.size();
+            rodata_end.max(data_end)
+        } else {
+            self.rodata.start().into_raw_value() + self.rodata.size()
+        };
+        let gap_start: usize =
+            ::sys::mm::align_up(raw_end, ::arch::mem::PAGE_ALIGNMENT)?;
+
+        if gap_start < bss_start {
+            let gap_size: usize = bss_start - gap_start;
+            info!(
+                "  gap: start={:#010x}, end={:#010x}, size={:#010x}",
+                gap_start, bss_start, gap_size
+            );
+            MemoryRegion::new(
+                "kernel pre-bss gap",
+                VirtualAddress::from_raw_value(gap_start),
+                gap_size,
+                MemoryRegionType::Reserved,
+                AccessPermission::RDONLY,
+            )
+            .ok()
+        } else {
+            None
+        }
+    }
 }

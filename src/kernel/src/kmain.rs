@@ -323,6 +323,9 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     if let Some(data) = kimage.data() {
         memory_regions.push_back(data);
     }
+    if let Some(gap) = kimage.pre_bss_gap() {
+        memory_regions.push_back(gap);
+    }
     memory_regions.push_back(kimage.bss());
     memory_regions.push_back(kimage.kpool());
 
