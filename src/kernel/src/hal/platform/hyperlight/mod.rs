@@ -1172,6 +1172,18 @@ pub fn init(
             },
         };
 
+        // Check that the RAMFS identity-mapped region does not overlap the user mmap region.
+        if ramfs_end > memory_layout::USER_MMAP_BASE_RAW {
+            let reason: &str = "RAMFS region overlaps user mmap region";
+            error!(
+                "init(): {} (ramfs_end={:#010x}, mmap_base={:#010x})",
+                reason,
+                ramfs_end,
+                memory_layout::USER_MMAP_BASE_RAW
+            );
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
         RAMFS_BASE.store(ramfs_base, Ordering::Relaxed);
         RAMFS_END.store(ramfs_end, Ordering::Relaxed);
         info!("ramfs region: [{:#010x}, {:#010x})", ramfs_base, ramfs_end);

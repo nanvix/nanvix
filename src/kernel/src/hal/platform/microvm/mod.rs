@@ -488,7 +488,34 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
 
     // Register initrd as a kernel module.
     if initrd_size != 0 {
-        let total_bytes: usize = initrd_size * mem::PAGE_SIZE;
+        let total_bytes: usize = match initrd_size.checked_mul(mem::PAGE_SIZE) {
+            Some(total_bytes) => total_bytes,
+            None => {
+                let reason: &str = "initrd size overflow";
+                error!("parse_bootinfo(): {}", reason);
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            },
+        };
+
+        // Check that the initrd region does not overlap the user mmap region.
+        let initrd_end: usize = match initrd_base.checked_add(total_bytes) {
+            Some(end) => end,
+            None => {
+                let reason: &str = "initrd bounds overflow";
+                error!("parse_bootinfo(): {}", reason);
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            },
+        };
+        if initrd_end > ::config::memory_layout::USER_MMAP_BASE_RAW {
+            let reason: &str = "initrd region overlaps user mmap region";
+            error!(
+                "parse_bootinfo(): {} (initrd_end={:#010x}, mmap_base={:#010x})",
+                reason,
+                initrd_end,
+                ::config::memory_layout::USER_MMAP_BASE_RAW
+            );
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
         let image_data: &[u8] =
             unsafe { core::slice::from_raw_parts(initrd_base as *const u8, total_bytes) };
 
