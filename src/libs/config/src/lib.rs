@@ -240,7 +240,14 @@ pub mod memory_layout {
     /// Maximum capacity of the user heap in bytes. The heap is backed by the unified mmap region
     /// and grows lazily on demand.
     ///
+    /// NOTE: This must be strictly less than the VM's physical memory (`MEMORY_SIZE`) to leave
+    /// room for the kernel, page tables, user stacks, and program text.
+    ///
     pub const USER_HEAP_CAPACITY: usize = 32 * crate::constants::MEGABYTE;
+
+    /// RAMFS images larger than this threshold are mounted in-place as read-only
+    /// to avoid OOM when copying to the heap on Hyperlight.
+    pub const RAMFS_READONLY_THRESHOLD: usize = 8 * crate::constants::MEGABYTE;
 }
 
 //==================================================================================================

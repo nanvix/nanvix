@@ -413,25 +413,32 @@ fn vfs_init_ramfs() {
         };
         let total_size: usize = info.size();
 
-        // On hyperlight, the MMIO region is mapped read-only + execute by map_file_cow.
-        // The VFS needs read-write access, so copy the FAT image into a heap buffer.
+        // On Hyperlight, the MMIO region is mapped read-only (CoW) by the VMM.  For large images,
+        // mount in-place as a read-only filesystem to avoid copying the entire RAMFS into the heap
+        // (which would cause OOM).  For small images, copy to the heap so the filesystem remains
+        // writable.
         // FIXME (#1760): this doubles memory footprint; need writable file mappings from hyperlight.
         #[cfg(feature = "hyperlight")]
-        let (mount_ptr, free_mmio_early) = {
-            let base_ptr: *const u8 = info.base().into_raw_value() as *const u8;
-            let mut buf: alloc::vec::Vec<u8> = alloc::vec![0u8; total_size];
-            unsafe { core::ptr::copy_nonoverlapping(base_ptr, buf.as_mut_ptr(), total_size) };
-            let rw_ptr: *mut u8 = buf.as_mut_ptr();
-            core::mem::forget(buf);
-            let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
-            (rw_ptr, true)
+        let (mount_ptr, mount_readonly, free_mmio_early) = {
+            if total_size >= ::config::memory_layout::RAMFS_READONLY_THRESHOLD {
+                let base_ptr: *mut u8 = info.base().into_raw_value() as *mut u8;
+                (base_ptr, true, false)
+            } else {
+                let base_ptr: *const u8 = info.base().into_raw_value() as *const u8;
+                let mut buf: alloc::vec::Vec<u8> = alloc::vec![0u8; total_size];
+                unsafe { core::ptr::copy_nonoverlapping(base_ptr, buf.as_mut_ptr(), total_size) };
+                let rw_ptr: *mut u8 = buf.as_mut_ptr();
+                core::mem::forget(buf);
+                let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+                (rw_ptr, false, true)
+            }
         };
 
         // On other platforms the MMIO region is writable — mount directly.
         #[cfg(not(feature = "hyperlight"))]
-        let (mount_ptr, free_mmio_early) = {
+        let (mount_ptr, mount_readonly, free_mmio_early) = {
             let base_ptr: *mut u8 = info.base().into_raw_value() as *mut u8;
-            (base_ptr, false)
+            (base_ptr, false, false)
         };
 
         // Check if the MMIO region contains a multi-image container.
@@ -487,8 +494,10 @@ fn vfs_init_ramfs() {
             {
                 let sub_ptr: *mut u8 = unsafe { mount_ptr.add(rootfs.offset as usize) };
                 let sub_size: usize = rootfs.size as usize;
-                if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, sub_ptr, sub_size, false) }
-                    .is_err()
+                if unsafe {
+                    ::vfs::mount_image(RAMFS_MOUNT_PATH, sub_ptr, sub_size, mount_readonly)
+                }
+                .is_err()
                 {
                     ::syslog::warn!("vfs_init_ramfs(): failed to mount ROOTFS at /");
                 }
@@ -500,15 +509,18 @@ fn vfs_init_ramfs() {
             {
                 let sub_ptr: *mut u8 = unsafe { mount_ptr.add(mountfs.offset as usize) };
                 let sub_size: usize = mountfs.size as usize;
-                if unsafe { ::vfs::mount_image(MOUNT_DIR_PATH, sub_ptr, sub_size, false) }.is_err()
+                if unsafe { ::vfs::mount_image(MOUNT_DIR_PATH, sub_ptr, sub_size, mount_readonly) }
+                    .is_err()
                 {
                     ::syslog::warn!("vfs_init_ramfs(): failed to mount MOUNTFS at /mnt");
                 }
             }
         } else {
             // Legacy single-image path.
-            if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, mount_ptr, total_size, false) }
-                .is_err()
+            if unsafe {
+                ::vfs::mount_image(RAMFS_MOUNT_PATH, mount_ptr, total_size, mount_readonly)
+            }
+            .is_err()
             {
                 ::syslog::warn!("vfs_init_ramfs(): failed to mount RAMFS image");
                 if !free_mmio_early {
