@@ -141,6 +141,20 @@ impl Guest {
             return Err(anyhow::anyhow!(reason));
         }
 
+        // Check if initrd would overlap with user mmap region.
+        let initrd_end: usize = ::config::microvm::DEFAULT_INITRD_BASE
+            .checked_add(initrd.size())
+            .ok_or_else(|| {
+                let reason: String = "initrd bounds overflow".to_string();
+                error!("load_initrd(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+        if initrd_end > ::config::memory_layout::USER_MMAP_BASE_RAW {
+            let reason: String = "initrd overlaps with user mmap region".to_string();
+            error!("load_initrd(): {reason}");
+            return Err(anyhow::anyhow!(reason));
+        }
+
         // Check if initrd fits into virtual memory.
         let (ptr, size) = (vmem.get_raw_ptr(), vmem.get_size());
         if (::config::microvm::DEFAULT_INITRD_BASE + initrd.size()) > size {
