@@ -210,11 +210,20 @@ fn main() {
         "0x0".to_string()
     };
 
+    let platform_base_addr: &str = if cfg!(feature = "hyperlight") {
+        // TODO (#2204): Change platform base address for Hyperlight when we update Hperlight crate.
+        "0x0"
+    } else {
+        "0x0"
+    };
+
     let linker_template: String =
         fs::read_to_string(&linker_template_path).expect("Failed to read linker script template");
     let linker_script: String = linker_template
         .replace("@MACHINE_RESERVED@", &machine_reserved)
-        .replace("@KPOOL_BASE@", &format!("{:#x}", kpool_base));
+        .replace("@KPOOL_BASE@", &format!("{:#x}", kpool_base))
+        .replace("@PLATFORM_BASE_ADDR@", platform_base_addr);
+
     fs::write(&linker_output_path, linker_script).expect("Failed to write linker script");
 
     println!("cargo::rerun-if-changed={}", linker_template_path.display());
