@@ -1109,7 +1109,30 @@ pub fn init(
     register_pic_ioports(ioports)?;
 
     extern "C" {
+        static __KERNEL_START: u8;
         static __KERNEL_END: u8;
+    }
+
+    // Register the gap between physical address 0 and __KERNEL_START as reserved so the
+    // frame allocator never hands out frames below the kernel text section.
+    // On Hyperlight, KERNEL_BASE_RAW is 0 and __KERNEL_START is at BOOT_ADDR
+    // (0x100000 + PLATFORM_BASE_ADDR), leaving a gap that includes the trampoline
+    // and zero-padding sections from the linker script.
+    {
+        let kernel_start_addr: usize = core::ptr::addr_of!(__KERNEL_START) as usize;
+        if let Some(gap_size) = kernel_start_addr.checked_sub(KERNEL_BASE_RAW) {
+            if gap_size > 0 {
+                let pre_kernel_gap: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+                    "pre-kernel gap",
+                    VirtualAddress::from_raw_value(KERNEL_BASE_RAW),
+                    gap_size,
+                    MemoryRegionType::Reserved,
+                    AccessPermission::RDONLY,
+                )?;
+                memory_regions.push_back(pre_kernel_gap);
+                info!("pre-kernel gap: [{:#010x}, {:#010x})", KERNEL_BASE_RAW, kernel_start_addr);
+            }
+        }
     }
 
     // Query the host for the authoritative physical memory layout.
