@@ -787,6 +787,11 @@ pub fn init(
 
     register_pic_ioports(ioports)?;
 
+    // NOTE: on microvm, PLATFORM_BASE_ADDR is 0x0 and the kernel loads at 0x100000. The gap
+    // between physical address 0 and __KERNEL_START is already covered by the single contiguous
+    // physical memory region starting at GPA 0, so no explicit pre-kernel gap registration is
+    // needed here.
+
     // Register MicroVM control registers.
     let scratch_region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
         "microvm-ctrl-registers",
