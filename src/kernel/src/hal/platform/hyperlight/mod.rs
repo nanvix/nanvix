@@ -893,6 +893,10 @@ pub fn is_valid_physical_region(start: usize, size: usize) -> bool {
 /// Checks whether the half-open interval `[start, end)` is entirely contained within the region
 /// `[region_base, region_end)`. Absent regions (base == end == 0) never contain any interval.
 ///
+/// All arithmetic uses wrapping subtraction so that regions and intervals whose exclusive end
+/// overflows past `usize::MAX` (i.e., wraps to 0) are handled correctly. This is relevant on
+/// 32-bit targets where the scratch region may abut the 4 GiB ceiling.
+///
 /// # Parameters
 ///
 /// - `region_base`: Inclusive start address of the region.
@@ -906,7 +910,17 @@ pub fn is_valid_physical_region(start: usize, size: usize) -> bool {
 ///
 #[inline(always)]
 fn region_contains(region_base: usize, region_end: usize, start: usize, end: usize) -> bool {
-    region_base != region_end && start >= region_base && end <= region_end
+    // Empty region.
+    if region_base == region_end {
+        return false;
+    }
+    // Normalize addresses relative to region_base using wrapping subtraction.
+    let region_size: usize = region_end.wrapping_sub(region_base);
+    let rel_start: usize = start.wrapping_sub(region_base);
+    let rel_end: usize = end.wrapping_sub(region_base);
+    // The interval is contained when both endpoints fall within [0, region_size] and the
+    // interval itself does not wrap around (rel_start <= rel_end).
+    rel_start < region_size && rel_end <= region_size && rel_start <= rel_end
 }
 
 ///
@@ -928,13 +942,15 @@ fn region_contains(region_base: usize, region_end: usize, start: usize, end: usi
 ///
 #[inline(always)]
 pub fn max_physical_address() -> usize {
-    let scratch_end: usize = SCRATCH_END.load(Ordering::Relaxed);
-    if scratch_end != 0 {
+    let scratch_base: usize = SCRATCH_BASE.load(Ordering::Relaxed);
+    if scratch_base != 0 {
         // Post-init: the highest valid address is SCRATCH_END - 1.
-        scratch_end - 1
+        // Use wrapping_sub because SCRATCH_END may be 0 when the scratch region
+        // reaches the top of the 32-bit address space (base + size wraps).
+        SCRATCH_END.load(Ordering::Relaxed).wrapping_sub(1)
     } else {
         // Pre-init: only the snapshot region is known.
-        SNAPSHOT_END.load(Ordering::Relaxed) - 1
+        SNAPSHOT_END.load(Ordering::Relaxed).saturating_sub(1)
     }
 }
 
@@ -1250,15 +1266,10 @@ pub fn init(
     }
 
     // scratch_end is the exclusive end of the full scratch range, including the last page
-    // reserved for Hyperlight bookkeeping metadata.
-    let scratch_end_address: usize =
-        scratch_base_address
-            .checked_add(scratch_size)
-            .ok_or_else(|| {
-                let reason: &str = "scratch region end address overflow";
-                error!("init(): {}", reason);
-                Error::new(ErrorCode::InvalidArgument, reason)
-            })?;
+    // reserved for Hyperlight bookkeeping metadata.  When MAX_GPA == usize::MAX
+    // (i686-guest stable), the addition wraps to 0 — this is expected and handled
+    // correctly by region_contains() and max_physical_address().
+    let scratch_end_address: usize = scratch_base_address.wrapping_add(scratch_size);
 
     // Record scratch region bounds for is_valid_physical_address.
     SCRATCH_BASE.store(scratch_base_address, Ordering::Relaxed);
