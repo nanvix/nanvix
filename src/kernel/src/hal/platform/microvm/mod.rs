@@ -149,6 +149,19 @@ static mut HEAP_STORAGE: HeapStorage = HeapStorage {
     memory: [0; crate::mm::kheap::MIN_HEAP_SIZE],
 };
 
+/// Klog buffer backing storage, allocated in BSS.
+/// Only present in single-core builds where the klog buffer is active.
+#[cfg(not(feature = "smp"))]
+#[repr(align(8))]
+struct KlogBufferStorage {
+    memory: [u8; crate::klog::KLOG_BUFFER_STORAGE_SIZE],
+}
+
+#[cfg(not(feature = "smp"))]
+static mut KLOG_BUFFER_STORAGE: KlogBufferStorage = KlogBufferStorage {
+    memory: [0; crate::klog::KLOG_BUFFER_STORAGE_SIZE],
+};
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -169,6 +182,22 @@ pub unsafe fn setup_heap_backing_storage() -> Result<(), ::sys::error::Error> {
         HEAP_STORAGE.memory.as_mut_ptr(),
         HEAP_STORAGE.memory.len(),
     )
+}
+
+///
+/// # Description
+///
+/// Points the kernel log buffer at the BSS-resident `KLOG_BUFFER_STORAGE` buffer.
+///
+/// Must be called before the first logging macro invocation.
+///
+/// # Safety
+///
+/// This function accesses the `KLOG_BUFFER_STORAGE` static mutable.
+///
+#[cfg(not(feature = "smp"))]
+pub unsafe fn setup_klog_backing_storage() -> Result<(), ::sys::error::Error> {
+    crate::klog::set_backing_storage(KLOG_BUFFER_STORAGE.memory.as_mut_ptr())
 }
 
 ///
