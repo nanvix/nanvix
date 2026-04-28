@@ -12,14 +12,21 @@ ENTRY(_do_start)
 PAGE_SIZE = 0x1000;
 
 /*
+ * Platform base address.
+ *
+ * Physical address at which the VMM loads the guest binary.
+ */
+PLATFORM_BASE_ADDR = @PLATFORM_BASE_ADDR@;
+
+/*
  * Boot Address
  */
-BOOT_ADDR = 0x00100000;
+BOOT_ADDR = 0x00100000 + PLATFORM_BASE_ADDR;
 
 /*
  * Trampoline Address
  */
-TRAMPOLINE_ADDR = 0x00008000;
+TRAMPOLINE_ADDR = 0x00008000 + PLATFORM_BASE_ADDR;
 
 /*
  * Kernel Pool Base Address
@@ -37,11 +44,16 @@ KPOOL_BASE = @KPOOL_BASE@;
  */
 MACHINE_RESERVED = @MACHINE_RESERVED@;
 
+ASSERT(TRAMPOLINE_ADDR >= PLATFORM_BASE_ADDR, "PLATFORM_BASE_ADDR exceeds TRAMPOLINE_ADDR")
+
 SECTIONS
 {
-	/* Pad with zeroes. */
+	/* Start at the platform/VMM-defined load base. */
+	. = PLATFORM_BASE_ADDR;
+
+	/* Pad with zeroes up to the trampoline. */
 	.zero : {
-		. = . + TRAMPOLINE_ADDR;
+		. = . + (TRAMPOLINE_ADDR - PLATFORM_BASE_ADDR);
 	} = 0
 
     /* Trampoline section. */
