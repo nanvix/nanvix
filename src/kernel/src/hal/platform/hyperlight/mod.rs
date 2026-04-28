@@ -270,6 +270,9 @@ scratch_layout! {
     /// Kernel heap backing storage (relocated from BSS to avoid dirtying CoW snapshot pages).
     HEAP_STORAGE       : size = crate::mm::kheap::MIN_HEAP_SIZE,
                          align = PAGE_ALIGNMENT;
+    /// Kernel log buffer backing storage (relocated from BSS to avoid dirtying CoW snapshot pages).
+    KLOG_BUFFER        : size = crate::klog::KLOG_BUFFER_STORAGE_SIZE,
+                         align = crate::klog::KLOG_BUFFER_ALIGNMENT;
 }
 
 //==================================================================================================
@@ -711,6 +714,21 @@ extern "C" fn hyperlight_pre_kmain() {
     let scratch_base: usize = unsafe { (*peb_ptr).input_stack.ptr } as usize;
     let scratch_reserved_base: usize =
         scratch_base + INPUT_DATA_BUFFER_SIZE + OUTPUT_DATA_BUFFER_SIZE;
+
+    // Point the kernel log buffer at scratch-resident backing storage so that log
+    // writes do not dirty CoW snapshot pages.
+    //
+    // Safety: klog_buffer_ptr returns a pointer within the scratch-reserved region
+    // that was identity-mapped and zeroed by Hyperlight before the guest started.
+    // The scratch region is never freed, so the storage outlives all logging usage.
+    // This is the only call to klog::set_backing_storage() in the Hyperlight init path.
+    let klog_backing_ptr: *mut u8 = unsafe { klog_buffer_ptr(scratch_reserved_base) };
+    if let Err(_e) = unsafe { crate::klog::set_backing_storage(klog_backing_ptr) } {
+        unsafe {
+            core::arch::asm!("cli", "2: hlt", "jmp 2b", options(noreturn));
+        }
+    }
+
     let heap_backing_ptr: *mut u8 = (scratch_reserved_base + HEAP_STORAGE_OFFSET) as *mut u8;
 
     // Point the kernel heap at scratch-resident backing storage so that heap
