@@ -256,6 +256,16 @@ fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &LinkedList<KernelModule>) -
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kmain(kargs: &KernelArguments) {
+    // Install klog buffer backing storage before the first logging call.
+    // On Hyperlight this is done during the evolve phase (hyperlight_pre_kmain).
+    // Under SMP there is no klog buffer.
+    #[cfg(all(not(feature = "hyperlight"), not(feature = "smp")))]
+    {
+        if let Err(e) = unsafe { crate::hal::platform::setup_klog_backing_storage() } {
+            panic!("failed to set up klog backing storage: {:?}", e);
+        }
+    }
+
     info!("initializing the kernel...");
 
     // Initialize the kernel heap.
