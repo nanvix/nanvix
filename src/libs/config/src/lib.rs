@@ -101,6 +101,19 @@ pub mod memory_layout {
             ///
             pub const HYPERLIGHT_GPA_CEILING: usize = 0xFEE0_0000;
 
+            ///
+            /// # Description
+            ///
+            /// Boot stack top address for the Hyperlight kernel.
+            ///
+            /// Placed just below the scratch I/O and bookkeeping pages at the top of the scratch
+            /// region.  The scratch region always ends at [`HYPERLIGHT_GPA_CEILING`], so this
+            /// address is computable at build time.  The stack grows downward from this address;
+            /// the first [`KSTACK_SIZE`](crate::kernel::KSTACK_SIZE) bytes below it are the
+            /// combined guard page and usable stack.
+            pub const HYPERLIGHT_BOOT_STACK_TOP: usize =
+                HYPERLIGHT_GPA_CEILING - 2 * crate::hyperlight::PAGE_SIZE;
+
             /// Alignment for the exclusive upper bound of the user virtual address space.
             pub const USER_END_ALIGNMENT: usize = 4 * 1024 * 1024;
 
