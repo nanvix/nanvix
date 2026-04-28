@@ -159,7 +159,6 @@ use ::sys::{
 ::core::arch::global_asm!(
     r#".section .text,"ax",@progbits"#,
     ".code32",
-    ".extern kstack",
     ".extern nanvix_dispatch_function",
     ".globl _nanvix_dispatch",
     "_nanvix_dispatch:",
@@ -168,12 +167,10 @@ use ::sys::{
     // set; ZF may be set to signal a pending TLB flush). Segment registers are not touched — they
     // retain whatever state was left after `evolve()`.
     //
-    // Restore the boot stack. The KernelArguments (magic, info) are still
-    // at kstack-8 from _do_start2's pushes during the evolve phase.
-    //
-    // NOTE: after snapshot/restore support is added, kstack will be CoW-ed
-    // and this simple restore may need updating.
-    "    movl $kstack, %esp",
+    // Restore the boot stack from the compile-time scratch address.  The
+    // KernelArguments (magic, info) were pushed to (BOOT_STACK_TOP - 8)
+    // during the evolve phase.
+    "    movl ${BOOT_STACK_TOP}, %esp",
     "    movl %esp, %ebp",
     "    subl $8, %esp",
     // Push the KernelArguments pointer and call the high-level dispatcher.
@@ -184,6 +181,7 @@ use ::sys::{
     // nanvix_dispatch_function should never return; halt as a safety net.
     "2:  hlt",
     "    jmp 2b",
+    BOOT_STACK_TOP = const ::config::memory_layout::HYPERLIGHT_BOOT_STACK_TOP,
     options(att_syntax),
 );
 
@@ -594,36 +592,50 @@ pub fn signal_startup_complete() {}
 ///
 /// # Description
 ///
-/// Hyperlight evolve-phase entry point, called from `_do_start2` before `kmain`.
+/// Returns the boot kernel stack top pointer.
 ///
-/// Performs one-time initialization that subsequent `sandbox.call()` invocations depend on:
+/// On Hyperlight the boot stack lives in the scratch region at a compile-time
+/// constant address derived from [`HYPERLIGHT_GPA_CEILING`].
+pub fn get_kstack_top() -> *const u8 {
+    ::config::memory_layout::HYPERLIGHT_BOOT_STACK_TOP as *const u8
+}
+
 ///
-/// 1. Initializes the kernel heap (needed for FunctionCall deserialisation).
-/// 2. Computes the PEB base address and stores a [`GuestHandle`] in [`GUEST_HANDLE`] for reuse
-///    by [`nanvix_dispatch_function`].
-/// 3. Halts the VM by writing the `_nanvix_dispatch` address to EAX and issuing `VmAction::Halt`
-///    causing `evolve()` to return on the host with a `MultiUseSandbox`.
+/// # Description
 ///
-/// Hyperlight captures `regs.rax` as the dispatch entry point when the halt completes — this is how
-/// the host knows where to jump on the next `call()`.  See the comment block above
-/// `_nanvix_dispatch` for the full protocol.
+/// Returns the base address of the boot kernel stack guard page.
 ///
-/// This function never returns — the VM is halted by the `out` instruction and Hyperlight regains
-/// control. The `options(noreturn)` ensures the compiler does not emit a stack epilogue that would
-/// never execute.
+/// On Hyperlight the guard page is the bottom page of the `KSTACK_SIZE` area
+/// below [`HYPERLIGHT_BOOT_STACK_TOP`](::config::memory_layout::HYPERLIGHT_BOOT_STACK_TOP).
+#[cfg(debug_assertions)]
+pub fn get_kstack_guard_base() -> usize {
+    ::config::memory_layout::HYPERLIGHT_BOOT_STACK_TOP - ::config::kernel::KSTACK_SIZE
+}
+
+///
+/// # Description
+///
+/// Early boot helper called from `_do_start2` (assembly) while already
+/// running on the scratch-backed boot stack at
+/// [`HYPERLIGHT_BOOT_STACK_TOP`](::config::memory_layout::HYPERLIGHT_BOOT_STACK_TOP).
+///
+/// This function:
+///
+/// 1. Patches the PEB scratch pointers from GVA to GPA.
+/// 2. Fills the scratch guard page with the watermark pattern.
+/// 3. Writes [`EXCP_STACK_GUARD`] so that the exception handler can detect
+///    stack overflows.
 ///
 #[unsafe(no_mangle)]
-extern "C" fn hyperlight_pre_kmain() -> ! {
+extern "C" fn init_scratch_kstack() {
     extern "C" {
-        fn _nanvix_dispatch();
         static __KERNEL_END: u8;
     }
 
-    // Compute the PEB base address first — needed to derive the scratch region
-    // for the heap backing storage before the heap is initialised.
+    // Compute the PEB base address.
     let kernel_end: usize = unsafe { &__KERNEL_END as *const u8 as usize };
     let peb_base: usize = ::sys::mm::align_up(kernel_end, PAGE_ALIGNMENT)
-        .expect("hyperlight_pre_kmain(): PEB align_up overflow");
+        .expect("init_scratch_kstack(): PEB align_up overflow");
     let peb_ptr: *mut HyperlightPEB = peb_base as *mut HyperlightPEB;
 
     // Patch PEB scratch pointers from GVA to GPA.
@@ -642,9 +654,60 @@ extern "C" fn hyperlight_pre_kmain() -> ! {
         }
     }
 
-    // Derive the scratch-reserved base from the PEB input buffer pointer.
-    // After the GVA→GPA patch, input_stack.ptr equals the scratch base address.
-    // The scratch-reserved region starts after the input and output data buffers.
+    // The boot stack guard page is at the bottom of the KSTACK_SIZE area
+    // below HYPERLIGHT_BOOT_STACK_TOP.
+    let guard_base: usize =
+        memory_layout::HYPERLIGHT_BOOT_STACK_TOP - ::config::kernel::KSTACK_SIZE;
+
+    // Fill the scratch guard page with the watermark pattern.
+    // Safety: `guard_base` points to a valid page-sized memory region reserved for the boot stack
+    // guard page. Writing the watermark pattern to this page is safe because it does not overlap
+    // with any other live memory and is intended to be used as a stack overflow detection guard.
+    unsafe {
+        let guard_ptr: *mut u32 = guard_base as *mut u32;
+        let count: usize = mem::PAGE_SIZE / core::mem::size_of::<u32>();
+        for i in 0..count {
+            core::ptr::write_volatile(guard_ptr.add(i), ::config::kernel::KSTACK_GUARD_PATTERN);
+        }
+    }
+
+    // Set EXCP_STACK_GUARD for the scratch-backed guard page.
+    crate::mm::kstack::EXCP_STACK_GUARD.store(
+        (guard_base + x86::cpu::ContextInformation::CONTEXT_HW_SIZE as usize) as u32,
+        Ordering::Release,
+    );
+}
+
+///
+/// # Description
+///
+/// Hyperlight evolve-phase entry point, called from `_do_start2` after the boot stack has been
+/// switched to scratch memory.
+///
+/// Performs one-time initialization that subsequent `sandbox.call()` invocations depend on:
+///
+/// 1. Initializes the kernel heap (needed for FunctionCall deserialisation).
+/// 2. Computes the PEB base address and stores a [`GuestHandle`] in [`GUEST_HANDLE`] for reuse
+///    by [`nanvix_dispatch_function`].
+///
+/// On return, the caller (`_do_start2` in `start.rs`) halts the VM so that `evolve()` returns
+/// on the host.
+///
+#[unsafe(no_mangle)]
+extern "C" fn hyperlight_pre_kmain() {
+    extern "C" {
+        static __KERNEL_END: u8;
+    }
+
+    // Compute the PEB base address — needed to derive the scratch region for the heap backing
+    // storage and to initialize the GuestHandle. The GVA→GPA patch was already applied by
+    // init_scratch_kstack().
+    let kernel_end: usize = unsafe { &__KERNEL_END as *const u8 as usize };
+    let peb_base: usize = ::sys::mm::align_up(kernel_end, PAGE_ALIGNMENT)
+        .expect("hyperlight_pre_kmain(): PEB align_up overflow");
+    let peb_ptr: *mut HyperlightPEB = peb_base as *mut HyperlightPEB;
+
+    // Derive the scratch-reserved base from the (already patched) PEB input buffer pointer.
     let scratch_base: usize = unsafe { (*peb_ptr).input_stack.ptr } as usize;
     let scratch_reserved_base: usize =
         scratch_base + INPUT_DATA_BUFFER_SIZE + OUTPUT_DATA_BUFFER_SIZE;
@@ -672,29 +735,6 @@ extern "C" fn hyperlight_pre_kmain() -> ! {
     // Store a GuestHandle for reuse by nanvix_dispatch_function.
     unsafe {
         GUEST_HANDLE = Some(GuestHandle::init(peb_ptr));
-    }
-
-    let dispatch_addr: u32 = _nanvix_dispatch as *const () as u32;
-    // SAFETY: Port I/O write targets Hyperlight's VmAction::Halt port with the dispatch address in
-    // EAX. This halts the VM and causes evolve() to return.  ESP must be 16-byte aligned at the
-    // halt point because Hyperlight validates alignment when reading registers after initialise
-    // completes.
-    //
-    // The halt+hlt sequence is entirely in assembly so no Rust stack epilogue is skipped.
-    // options(noreturn) tells the compiler this block diverges.
-    unsafe {
-        core::arch::asm!(
-            "and esp, 0xFFFFFFF0",
-            "mov eax, {0:e}",
-            "mov dx, {HALT_PORT}",
-            "out dx, al",
-            "cli",
-            "2: hlt",
-            "jmp 2b",
-            in(reg) dispatch_addr,
-            HALT_PORT = const VmAction::Halt as u16,
-            options(noreturn),
-        );
     }
 }
 
@@ -1142,11 +1182,12 @@ pub fn init(
     // page that Hyperlight reserves for bookkeeping.  That page is included in the bitmap
     // but marked as reserved (used) so the frame allocator never hands it out.
     // Validate that scratch_size is non-zero and large enough to contain the required scratch
-    // regions (input buffer + output buffer + allocator storage pages + one I/O page +
-    // one reserved last page).
+    // regions (input buffer + output buffer + allocator storage pages + boot stack + one I/O
+    // page + one reserved last page).
     let min_scratch_size: usize = INPUT_DATA_BUFFER_SIZE
         + OUTPUT_DATA_BUFFER_SIZE
         + SCRATCH_RESERVED_SIZE
+        + ::config::kernel::KSTACK_SIZE
         + 2 * mem::PAGE_SIZE;
     if scratch_size == 0 || scratch_size < min_scratch_size {
         let reason: &str = "scratch_size is too small for required scratch regions";
@@ -1259,6 +1300,21 @@ pub fn init(
             HEAP_STORAGE_SIZE,
             SCRATCH_RESERVED_SIZE,
         );
+    }
+    // Reserve the boot stack area at the top of the scratch region, just below
+    // the I/O and bookkeeping pages.  The address is a compile-time constant
+    // derived from HYPERLIGHT_GPA_CEILING.
+    {
+        let boot_stack_guard_base: usize =
+            memory_layout::HYPERLIGHT_BOOT_STACK_TOP - ::config::kernel::KSTACK_SIZE;
+        let boot_stack_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+            "boot stack",
+            VirtualAddress::from_raw_value(boot_stack_guard_base),
+            ::config::kernel::KSTACK_SIZE,
+            MemoryRegionType::Reserved,
+            AccessPermission::RDWR,
+        )?;
+        memory_regions.push_back(boot_stack_region);
     }
     {
         let scratch_io_page: usize = scratch_end_address - 2 * mem::PAGE_SIZE;

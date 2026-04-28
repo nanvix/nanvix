@@ -353,6 +353,45 @@ pub fn signal_startup_complete() {
 ///
 /// # Description
 ///
+/// Returns the boot kernel stack top pointer.
+///
+/// # Returns
+///
+/// A pointer to the top of the boot kernel stack.
+///
+pub fn get_kstack_top() -> *const u8 {
+    unsafe extern "C" {
+        static kstack: u8;
+    }
+    // Safety: The `kstack` symbol is defined in `start.rs` as a BSS-resident symbol representing
+    // the top of the boot kernel stack. Taking its address is safe as it points to a valid memory
+    // location reserved for the boot stack.
+    unsafe { &kstack as *const u8 }
+}
+
+///
+/// # Description
+///
+/// Returns the base address of the boot kernel stack guard page.
+///
+/// # Returns
+///
+/// The base address of the boot kernel stack guard page.
+///
+#[cfg(debug_assertions)]
+pub fn get_kstack_guard_base() -> usize {
+    unsafe extern "C" {
+        static kstack_guard: u8;
+    }
+    // Safety: The `kstack_guard` symbol is defined in `start.rs` as a BSS-resident symbol
+    // representing the base of the boot kernel stack guard page. Taking its address is safe as it
+    // points to a valid memory location reserved for the guard page.
+    unsafe { &kstack_guard as *const u8 as usize }
+}
+
+///
+/// # Description
+///
 /// Checks whether the given virtual address corresponds to a valid physical address on the Microvm
 /// platform.
 ///
