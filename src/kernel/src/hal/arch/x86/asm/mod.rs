@@ -5,7 +5,6 @@
 // Modules
 //==================================================================================================
 
-pub(crate) mod constants;
 mod fast_memcpy;
 mod fast_memset;
 mod hooks;

@@ -5,10 +5,7 @@
 // x86 Bootstrap and Application-Processor Entry Points (microvm)
 //==================================================================================================
 
-use crate::hal::arch::x86::{
-    asm::constants,
-    cpu::ContextInformation,
-};
+use crate::hal::arch::x86::cpu::ContextInformation;
 use ::arch::mem::PAGE_SIZE;
 use ::core::arch::global_asm;
 
@@ -84,7 +81,7 @@ global_asm!(
 
     PAGE_SIZE = const PAGE_SIZE,
     CONTEXT_HW_SIZE = const ContextInformation::CONTEXT_HW_SIZE,
-    KSTACK_GUARD_PATTERN = const constants::KSTACK_GUARD_PATTERN,
+    KSTACK_GUARD_PATTERN = const ::config::kernel::KSTACK_GUARD_PATTERN,
     options(att_syntax),
 );
 
@@ -148,7 +145,7 @@ global_asm!(
     ".space {KREDZONE_SIZE}",
 
     PAGE_SIZE = const PAGE_SIZE,
-    KSTACK_SIZE = const constants::KSTACK_SIZE,
-    KREDZONE_SIZE = const constants::KREDZONE_SIZE,
+    KSTACK_SIZE = const ::config::kernel::KSTACK_SIZE,
+    KREDZONE_SIZE = const ::config::kernel::KREDZONE_SIZE,
     options(att_syntax),
 );

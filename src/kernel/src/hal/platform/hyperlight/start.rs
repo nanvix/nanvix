@@ -5,12 +5,8 @@
 // x86 Bootstrap and Application-Processor Entry Points (Hyperlight)
 //==================================================================================================
 
-use crate::hal::arch::x86::{
-    asm::constants,
-    cpu::ContextInformation,
-};
-use ::arch::mem::PAGE_SIZE;
 use ::core::arch::global_asm;
+use ::hyperlight_common::outb::VmAction;
 
 //==================================================================================================
 // Bootstrap Section — BSP Entry Point
@@ -35,7 +31,7 @@ global_asm!(
 
     // EAX and EBX registers store boot information.
 
-    // Save boot info (EAX) before it is clobbered by the BSS clear and stack-guard fill below.
+    // Save boot info (EAX) before it is clobbered by the BSS clear below.
     "    movl %eax, %edx",
 
     // Fill BSS section with zeros.
@@ -45,24 +41,23 @@ global_asm!(
     "    xorl %eax, %eax",
     "    rep stosb",
 
-    // Fill the boot stack guard page with a watermark pattern.
-    "    movl $kstack_guard, %edi",
-    "    movl $({PAGE_SIZE} / 4), %ecx",
-    "    movl ${KSTACK_GUARD_PATTERN}, %eax",
-    "    rep stosl",
-
     "    movl %edx, %eax",
 
-    // Reset stack.
-    "    movl $kstack, %esp",
+    // Set ESP directly to the scratch-backed boot stack.  BOOT_STACK_TOP is a
+    // compile-time constant (top of the scratch region minus the two reserved
+    // pages), so no BSS-based temporary stack is needed.
+    "    movl ${BOOT_STACK_TOP}, %esp",
     "    movl %esp, %ebp",
 
-    // Initialize the dynamic stack overflow guard for the boot stack.
-    "    movl $(kstack_guard + {CONTEXT_HW_SIZE}), EXCP_STACK_GUARD",
-
-    // Save boot information on the stack.
+    // Save boot information on the scratch stack.  These values persist
+    // through init_scratch_kstack() and hyperlight_pre_kmain() and are
+    // later read by _nanvix_dispatch as KernelArguments.
     "    push %ebx",
     "    push %eax",
+
+    // Patch PEB GVA→GPA, fill the scratch guard page with the watermark
+    // pattern, and set EXCP_STACK_GUARD.
+    "    call init_scratch_kstack",
 
     // Clear all general purpose registers for deterministic startup.
     "    xorl %eax, %eax",
@@ -72,26 +67,26 @@ global_asm!(
     "    xorl %esi, %esi",
     "    xorl %edi, %edi",
 
-    // Call kernel main function.
+    // Evolve phase: initialise heap and GuestHandle, then halt.
     //
-    // The evolve phase must halt the VM before kmain runs. `hyperlight_pre_kmain()` registers
-    // the dispatch entry point and halts; it never returns. The host then calls
-    // sandbox.call("kmain", ()) which enters `_nanvix_dispatch` → `kmain`.
+    // `hyperlight_pre_kmain()` initialises the kernel heap (backed by scratch memory) and the
+    // GuestHandle.  On return the assembly switches ESP to the scratch-backed stack, loads the
+    // `_nanvix_dispatch` entry point into EAX, and halts the VM so that `evolve()` returns on
+    // the host.  The host then calls `sandbox.call("kmain", ())` which enters
+    // `_nanvix_dispatch` → `kmain`.
     "    call hyperlight_pre_kmain",
-    "    push %esp",
-    "    call kmain",
-    "    addl $4, %esp",
-
-    // Cleanup boot information.
-    "    addl $8, %esp",
-
-    // Halt execution.
+    ".extern _nanvix_dispatch",
+    "    movl ${BOOT_STACK_TOP}, %esp",
+    "    andl $0xFFFFFFF0, %esp",
+    "    movl $_nanvix_dispatch, %eax",
+    "    mov ${HALT_PORT}, %dx",
+    "    outb %al, %dx",
+    "    cli",
     "1:  hlt",
     "    jmp 1b",
 
-    PAGE_SIZE = const PAGE_SIZE,
-    CONTEXT_HW_SIZE = const ContextInformation::CONTEXT_HW_SIZE,
-    KSTACK_GUARD_PATTERN = const constants::KSTACK_GUARD_PATTERN,
+    BOOT_STACK_TOP = const ::config::memory_layout::HYPERLIGHT_BOOT_STACK_TOP,
+    HALT_PORT = const VmAction::Halt as u16,
     options(att_syntax),
 );
 
@@ -141,21 +136,11 @@ global_asm!(
 global_asm!(
     ".section .bss",
 
-    // Boot stack guard page + usable stack.
-    ".align {PAGE_SIZE}",
-    ".globl kstack_guard",
-    "kstack_guard:",
-    ".space {KSTACK_SIZE}",
-    ".globl kstack",
-    "kstack:",
-
     // Kernel Red Zone.
     ".globl kredzone",
     "kredzone:",
     ".space {KREDZONE_SIZE}",
 
-    PAGE_SIZE = const PAGE_SIZE,
-    KSTACK_SIZE = const constants::KSTACK_SIZE,
-    KREDZONE_SIZE = const constants::KREDZONE_SIZE,
+    KREDZONE_SIZE = const ::config::kernel::KREDZONE_SIZE,
     options(att_syntax),
 );

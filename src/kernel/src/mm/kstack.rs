@@ -276,10 +276,7 @@ fn check_guard_page(guard_base: usize) -> Result<(), Error> {
 pub fn check_boot_stack_guard() -> Result<(), Error> {
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {
-            unsafe extern "C" {
-                static kstack_guard: u8;
-            }
-            let guard_base: usize = unsafe { &kstack_guard as *const u8 as usize };
+            let guard_base: usize = crate::hal::platform::get_kstack_guard_base();
             check_guard_page(guard_base)
         } else {
             Ok(())
