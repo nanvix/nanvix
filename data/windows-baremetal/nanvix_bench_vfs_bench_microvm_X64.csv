@@ -2326,7 +2326,6 @@ a030a64dc69f62c6426acc0119722b769d05c3df,Read-only mount,stat,100,351,456,626
 a030a64dc69f62c6426acc0119722b769d05c3df,Read-only mount,open+close,100,319,426,634
 a030a64dc69f62c6426acc0119722b769d05c3df,Read-only mount,readdir,100,376,609,705
 a030a64dc69f62c6426acc0119722b769d05c3df,Read-only mount,seq_read,100,50,182,11710
-<<<<<<< Updated upstream
 b6bc50af93b842cfa291263a5e9fa78e92d62e46,VM setup,ramfs_load,10,2732,2742,2742
 b6bc50af93b842cfa291263a5e9fa78e92d62e46,Writable mount,protocol,100,415,446,492
 b6bc50af93b842cfa291263a5e9fa78e92d62e46,Writable mount,stat,100,236,344,493
@@ -2344,25 +2343,6 @@ b6bc50af93b842cfa291263a5e9fa78e92d62e46,Read-only mount,stat,100,232,327,13643
 b6bc50af93b842cfa291263a5e9fa78e92d62e46,Read-only mount,open+close,100,237,322,491
 b6bc50af93b842cfa291263a5e9fa78e92d62e46,Read-only mount,readdir,100,241,345,404
 b6bc50af93b842cfa291263a5e9fa78e92d62e46,Read-only mount,seq_read,100,25,141,5944
-=======
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,VM setup,ramfs_load,10,2738,2747,2747
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,Writable mount,protocol,100,391,413,432
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,Writable mount,stat,100,257,339,432
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,Writable mount,open+close,100,243,329,468
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,Writable mount,readdir,100,244,340,467
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,Writable mount,create_scratch,100,92,126,199
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,Writable mount,seq_read,100,32,116,6022
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,Writable mount,create+close+unlink,100,9,47,63
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,Writable mount,mkdir+rmdir,100,6,39,60
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,Writable mount,create+close+rename,100,9,42,86
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,Writable mount,write+flush,100,76,127,177
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,VM setup,ramfs_load,5,2732,2738,2738
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,Read-only mount,protocol,100,421,454,481
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,Read-only mount,stat,100,249,340,490
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,Read-only mount,open+close,100,257,330,498
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,Read-only mount,readdir,100,239,342,379
-b6bc50af93b842cfa291263a5e9fa78e92d62e46,Read-only mount,seq_read,100,27,104,6312
->>>>>>> Stashed changes
 83f29acbb0e445b3dea98d897d3e6e0b26c51c64,VM setup,ramfs_load,10,2734,2746,2746
 83f29acbb0e445b3dea98d897d3e6e0b26c51c64,Writable mount,protocol,100,366,390,421
 83f29acbb0e445b3dea98d897d3e6e0b26c51c64,Writable mount,stat,100,256,349,504
