@@ -31,10 +31,7 @@ use crate::{
 use ::alloc::collections::LinkedList;
 use ::arch::mem;
 use ::sparse_bitmap::SparseBitmap;
-use ::sys::error::{
-    Error,
-    ErrorCode,
-};
+use ::sys::error::Error;
 
 //==================================================================================================
 // Exports
@@ -83,17 +80,11 @@ fn book_mmio_regions(
                 PhysicalAddress::from_mmio_address(mmio_addr)?
             })?;
 
-            // Attempt to book underlying frame.
-            match frame::book(phys_addr) {
-                // Frame successfully booked.
-                Ok(()) => {},
-                // Frame lies outside addressable physical memory.
-                Err(e) if e.code == ErrorCode::InvalidArgument => {},
-                // Something went wrong.
-                Err(e) => {
-                    warn!("failed to book frame for mmio region {:?} ({:?})", region, e);
-                    return Err(e);
-                },
+            // Only book frames that the frame allocator actually tracks.
+            // MMIO regions above RAM (e.g. the LAPIC at 0xFEE0_0000) are not
+            // covered by the sparse bitmap and must be skipped.
+            if frame::is_covered(phys_addr) {
+                frame::book(phys_addr)?;
             }
             start += mem::FRAME_SIZE;
         }
