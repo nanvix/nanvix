@@ -421,6 +421,35 @@ pub fn get_kstack_guard_base() -> usize {
 ///
 /// # Description
 ///
+/// Translates a guest virtual address to a guest physical address.
+///
+/// # Returns
+///
+/// The guest physical address corresponding to the given guest virtual address.
+///
+///
+#[inline(always)]
+pub fn gva_to_gpa(gva: usize) -> usize {
+    gva
+}
+
+///
+/// # Description
+///
+/// Translates a virtual address to a physical address.
+///
+/// # Returns
+///
+/// The physical address corresponding to the given virtual address.
+///
+#[inline(always)]
+pub fn virt_to_phys(vaddr: usize) -> usize {
+    vaddr
+}
+
+///
+/// # Description
+///
 /// Checks whether the given virtual address corresponds to a valid physical address on the Microvm
 /// platform.
 ///

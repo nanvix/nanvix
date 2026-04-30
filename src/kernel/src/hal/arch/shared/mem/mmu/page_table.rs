@@ -427,8 +427,8 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
     }
 
     pub fn physical_address(&self) -> Result<FrameAddress, Error> {
-        Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(
-            self.entries.as_ptr() as usize,
-        )?)?))
+        let vaddr: usize = self.entries.as_ptr() as usize;
+        let paddr: usize = crate::hal::platform::virt_to_phys(vaddr);
+        Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(paddr)?)?))
     }
 }
