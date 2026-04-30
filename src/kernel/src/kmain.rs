@@ -357,6 +357,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         };
 
     // Check boot stack guard watermark for corruption.
+    #[cfg(feature = "exception-stack-guard")]
     if let Err(err) = mm::kstack::check_boot_stack_guard() {
         panic!("boot stack overflow detected: {:?}", err);
     }

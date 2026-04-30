@@ -57,7 +57,11 @@ global_asm!(
     ".extern do_exception",
     ".extern do_kcall",
     ".extern do_interrupt",
+    // EXCP_STACK_GUARD is only needed when the microvm guard-check code is compiled in; when
+    // `{MICROVM}=0`, this `.extern` is compiled out together with the guard-check block.
+    ".if {MICROVM}",
     ".extern EXCP_STACK_GUARD",
+    ".endif",
 
     // -----------------------------------------------------------------
     // Exported Symbols

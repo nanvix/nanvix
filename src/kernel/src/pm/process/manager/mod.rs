@@ -1447,16 +1447,19 @@ impl ProcessManager {
     /// Called after setting `self.running` in every scheduling path.
     ///
     fn update_active_stack_guard(&self) {
-        if let Some(ref running) = self.running {
-            if let Some(threshold) = running.guard_threshold() {
-                crate::mm::kstack::set_active_guard(threshold);
-                return;
+        #[cfg(feature = "exception-stack-guard")]
+        {
+            if let Some(ref running) = self.running {
+                if let Some(threshold) = running.guard_threshold() {
+                    crate::mm::kstack::set_active_guard(threshold);
+                    return;
+                }
             }
-        }
 
-        // When there is no running process or no guard threshold, clear the guard so that
-        // a stale threshold from a previous stack does not trigger a false overflow.
-        crate::mm::kstack::set_active_guard(0);
+            // When there is no running process or no guard threshold, clear the guard so that
+            // a stale threshold from a previous stack does not trigger a false overflow.
+            crate::mm::kstack::set_active_guard(0);
+        }
     }
 
     ///
