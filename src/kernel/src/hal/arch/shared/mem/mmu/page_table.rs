@@ -61,6 +61,28 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
         page_table
     }
 
+    ///
+    /// # Description
+    ///
+    /// Creates a page table wrapper around existing (already-populated) storage.
+    ///
+    /// Unlike [`new`](Self::new), this does not zero the entries.
+    ///
+    /// # Returns
+    ///
+    /// A new [`PageTable`] instance that wraps the provided storage.
+    ///
+    #[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
+    pub fn from_existing(entries: T) -> Self {
+        let mut nmapped: usize = 0;
+        for pte in entries.iter() {
+            if PresentFlag::is_set(*pte) {
+                nmapped += 1;
+            }
+        }
+        Self { nmapped, entries }
+    }
+
     /// Returns the number of pages mapped in the page table.
     pub fn nmapped(&self) -> usize {
         self.nmapped
@@ -310,6 +332,7 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
         Ok(())
     }
 
+    #[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
     ///
     /// # Description
     ///
