@@ -17,6 +17,38 @@ mod start16;
 mod scratch_layout;
 
 //==================================================================================================
+// Platform Virtual-Address-Space Bootstrap
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Translates a virtual address to a physical address.
+///
+/// # Returns
+///
+/// The physical address corresponding to the given virtual address.
+///
+#[inline(always)]
+pub fn virt_to_phys(vaddr: usize) -> usize {
+    vaddr
+}
+
+///
+/// # Description
+///
+/// Translates a guest virtual address to a guest physical address.
+///
+/// # Returns
+///
+/// The guest physical address corresponding to the given guest virtual address.
+///
+#[inline(always)]
+pub fn gva_to_gpa(gva: usize) -> usize {
+    gva
+}
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 

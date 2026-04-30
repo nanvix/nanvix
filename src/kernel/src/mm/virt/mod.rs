@@ -87,6 +87,9 @@ pub enum PageTableStorage {
     Bss(&'static mut [PteWord; PAGE_TABLE_LENGTH]),
     /// Runtime storage backed by a kernel page from the page pool.
     KernelPage(KernelPage),
+    /// Host-built page table inherited from a pre-existing address space.
+    #[allow(dead_code)]
+    Inherited(*mut PteWord),
 }
 
 impl Deref for PageTableStorage {
@@ -99,6 +102,7 @@ impl Deref for PageTableStorage {
                 let base: *const PteWord = page.base().into_raw_value() as *const PteWord;
                 unsafe { core::slice::from_raw_parts(base, PAGE_TABLE_LENGTH) }
             },
+            Self::Inherited(ptr) => unsafe { core::slice::from_raw_parts(*ptr, PAGE_TABLE_LENGTH) },
         }
     }
 }
@@ -110,6 +114,9 @@ impl DerefMut for PageTableStorage {
             Self::KernelPage(page) => {
                 let base: *mut PteWord = page.base().into_raw_value() as *mut PteWord;
                 unsafe { core::slice::from_raw_parts_mut(base, PAGE_TABLE_LENGTH) }
+            },
+            Self::Inherited(ptr) => unsafe {
+                core::slice::from_raw_parts_mut(*ptr, PAGE_TABLE_LENGTH)
             },
         }
     }
