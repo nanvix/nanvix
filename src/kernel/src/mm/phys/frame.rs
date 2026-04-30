@@ -141,6 +141,20 @@ impl Inner {
     ///
     /// # Description
     ///
+    /// Checks whether the frame allocator tracks the frame at the given physical address.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the frame allocator tracks the frame at `phys_addr`, `false` otherwise.
+    ///
+    fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
+        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+        self.bitmap.find_chunk(frame_number).is_some()
+    }
+
+    ///
+    /// # Description
+    ///
     /// Allocates all frames in the given region.
     ///
     /// # Parameters
@@ -270,6 +284,19 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
 /// Free a frame previously returned by [`alloc`].
 pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
     instance().free(frame)
+}
+
+///
+/// # Description
+///
+/// Checks whether the frame allocator tracks the frame at the given physical address.
+///
+/// # Returns
+///
+/// Returns `true` when the frame allocator tracks the frame at `phys_addr`.
+///
+pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
+    instance().is_covered(phys_addr)
 }
 
 /// Reserve a frame so [`alloc`] will skip it.
