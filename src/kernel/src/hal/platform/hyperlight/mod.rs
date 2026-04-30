@@ -606,28 +606,11 @@ pub fn get_kstack_top() -> *const u8 {
 ///
 /// # Description
 ///
-/// Returns the base address of the boot kernel stack guard page.
-///
-/// On Hyperlight the guard page is the bottom page of the `KSTACK_SIZE` area
-/// below [`HYPERLIGHT_BOOT_STACK_TOP`](::config::memory_layout::HYPERLIGHT_BOOT_STACK_TOP).
-#[cfg(debug_assertions)]
-pub fn get_kstack_guard_base() -> usize {
-    ::config::memory_layout::HYPERLIGHT_BOOT_STACK_TOP - ::config::kernel::KSTACK_SIZE
-}
-
-///
-/// # Description
-///
 /// Early boot helper called from `_do_start2` (assembly) while already
 /// running on the scratch-backed boot stack at
 /// [`HYPERLIGHT_BOOT_STACK_TOP`](::config::memory_layout::HYPERLIGHT_BOOT_STACK_TOP).
 ///
-/// This function:
-///
-/// 1. Patches the PEB scratch pointers from GVA to GPA.
-/// 2. Fills the scratch guard page with the watermark pattern.
-/// 3. Writes [`EXCP_STACK_GUARD`] so that the exception handler can detect
-///    stack overflows.
+/// Patches the PEB scratch pointers from GVA to GPA.
 ///
 #[unsafe(no_mangle)]
 extern "C" fn init_scratch_kstack() {
@@ -656,29 +639,6 @@ extern "C" fn init_scratch_kstack() {
             (*peb_ptr).output_stack.ptr -= gva_gpa_delta;
         }
     }
-
-    // The boot stack guard page is at the bottom of the KSTACK_SIZE area
-    // below HYPERLIGHT_BOOT_STACK_TOP.
-    let guard_base: usize =
-        memory_layout::HYPERLIGHT_BOOT_STACK_TOP - ::config::kernel::KSTACK_SIZE;
-
-    // Fill the scratch guard page with the watermark pattern.
-    // Safety: `guard_base` points to a valid page-sized memory region reserved for the boot stack
-    // guard page. Writing the watermark pattern to this page is safe because it does not overlap
-    // with any other live memory and is intended to be used as a stack overflow detection guard.
-    unsafe {
-        let guard_ptr: *mut u32 = guard_base as *mut u32;
-        let count: usize = mem::PAGE_SIZE / core::mem::size_of::<u32>();
-        for i in 0..count {
-            core::ptr::write_volatile(guard_ptr.add(i), ::config::kernel::KSTACK_GUARD_PATTERN);
-        }
-    }
-
-    // Set EXCP_STACK_GUARD for the scratch-backed guard page.
-    crate::mm::kstack::EXCP_STACK_GUARD.store(
-        (guard_base + x86::cpu::ContextInformation::CONTEXT_HW_SIZE as usize) as u32,
-        Ordering::Release,
-    );
 }
 
 ///

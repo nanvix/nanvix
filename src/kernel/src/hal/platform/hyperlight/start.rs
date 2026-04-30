@@ -55,8 +55,7 @@ global_asm!(
     "    push %ebx",
     "    push %eax",
 
-    // Patch PEB GVA→GPA, fill the scratch guard page with the watermark
-    // pattern, and set EXCP_STACK_GUARD.
+    // Patch PEB GVA→GPA pointers.
     "    call init_scratch_kstack",
 
     // Clear all general purpose registers for deterministic startup.
