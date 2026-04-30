@@ -340,6 +340,7 @@ impl RunningProcess {
     ///
     /// The guard threshold value, or `None` if the running thread has no kernel stack.
     ///
+    #[cfg(feature = "exception-stack-guard")]
     #[inline]
     pub fn guard_threshold(&self) -> Option<u32> {
         self.running.guard_threshold()

@@ -64,6 +64,7 @@ microvm = [
     "dep:config",
     "dep:multibin",
     "config/microvm",
+    "exception-stack-guard",
 ]
 # Platform Features
 
@@ -73,6 +74,9 @@ pit = []
 putb = []
 puts = []
 stdio = []
+
+# Enables the dynamic exception stack guard.
+exception-stack-guard = []
 
 # Enables latest performance optimizations.
 nightly-performance-optimizations = []
