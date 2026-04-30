@@ -9,54 +9,52 @@ use ::core::arch::global_asm;
 use ::hyperlight_common::outb::VmAction;
 
 //==================================================================================================
-// Bootstrap Section — BSP Entry Point
+// Trampoline Section — BSP Entry Point
 //==================================================================================================
-
-// _do_start2 (entered from 16-bit trampoline, already in protected mode).
+//
+// _do_start: the VMM starts execution here (placed at PLATFORM_BASE_ADDR by the linker script).
+// Already in 32-bit protected mode with paging enabled.
 global_asm!(
-    r#".section .bootstrap,"ax",@progbits"#,
+    r#".section .trampoline,"ax",@progbits"#,
 
     ".align 4",
-    ".globl _do_start2",
-    "_do_start2:",
-    "    mov $0x10, %dx",
-    "    mov %dx, %ds",
-    "    mov %dx, %es",
-    "    mov %dx, %fs",
-    "    mov %dx, %gs",
-    "    mov %dx, %ss",
+    ".globl _do_start",
+    "_do_start:",
+
+    // With Hyperlight stable (i686-guest), the host starts the vCPU in 32-bit
+    // protected mode with paging enabled and CR3 pointing to a host-built page
+    // directory.  Snapshot pages are mapped read-only (CoW via the KVM memory
+    // slot) and the scratch region is mapped read-write. Hyperlight may use
+    // distinct GPA and GVA ranges elsewhere, with explicit GPA↔GVA
+    // translation; this bootstrap path relies only on the host-installed
+    // mappings already making the scratch-backed boot stack accessible.
+    //
+    // The host-built page tables are kept active:
+    //  - Do NOT disable paging.
+    //  - Do NOT build a PSE identity map.
+    //  - Do NOT reload segment registers (snapshot pages are read-only until
+    //    eager_prefault_cow_pages() resolves them in hyperlight_pre_kmain()).
+    //
+    // The cached segment descriptors set by the VMM are valid.
 
     // System V i386 ABI requires DF=0; set it once for all subsequent code.
     "    cld",
 
-    // EAX and EBX registers store boot information.
-
-    // Save boot info (EAX) before it is clobbered by the BSS clear below.
-    "    movl %eax, %edx",
-
-    // Fill BSS section with zeros.
-    "    movl $__BSS_START, %edi",
-    "    movl $__BSS_END, %ecx",
-    "    subl %edi, %ecx",
-    "    xorl %eax, %eax",
-    "    rep stosb",
-
-    "    movl %edx, %eax",
 
     // Set ESP directly to the scratch-backed boot stack.  BOOT_STACK_TOP is a
     // compile-time constant (top of the scratch region minus the two reserved
-    // pages), so no BSS-based temporary stack is needed.
+    // pages).
     "    movl ${BOOT_STACK_TOP}, %esp",
     "    movl %esp, %ebp",
 
-    // Save boot information on the scratch stack.  These values persist
-    // through init_scratch_kstack() and hyperlight_pre_kmain() and are
-    // later read by _nanvix_dispatch as KernelArguments.
+    // Save boot information (EAX=magic, EBX=info) on the scratch-backed stack.
+    // These values persist through all function calls and are later read by
+    // _nanvix_dispatch as KernelArguments.
     "    push %ebx",
     "    push %eax",
 
-    // Patch PEB GVA→GPA pointers.
-    "    call init_scratch_kstack",
+    // NOTE: BSS is zeroed by the Hyperlight VMM before the guest starts;
+    // no explicit clear is needed here.
 
     // Clear all general purpose registers for deterministic startup.
     "    xorl %eax, %eax",
@@ -90,9 +88,10 @@ global_asm!(
 );
 
 //==================================================================================================
-// Bootstrap Section — AP Entry Point
+// Bootstrap Section — AP Entry Point (SMP only)
 //==================================================================================================
 
+#[cfg(feature = "smp")]
 global_asm!(
     r#".section .bootstrap,"ax",@progbits"#,
     ".align 4",

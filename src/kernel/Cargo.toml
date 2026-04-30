@@ -55,6 +55,7 @@ hyperlight = [
     "dep:multibin",
     "dep:paste",
     "config/hyperlight",
+    "platform-root-virtual-address-space-bootstrap",
 ]
 microvm = [
     "arch/microvm",
