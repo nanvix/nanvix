@@ -14,25 +14,16 @@
 // Imports
 //==================================================================================================
 
+use super::guest_handle;
 use ::alloc::vec::Vec;
-use ::hyperlight_common::{
-    flatbuffer_wrappers::function_types::{
-        ParameterValue,
-        ReturnType,
-    },
-    mem::HyperlightPEB,
+use ::hyperlight_common::flatbuffer_wrappers::function_types::{
+    ParameterValue,
+    ReturnType,
 };
-use ::hyperlight_guest::guest_handle::handle::GuestHandle;
 use ::sys::error::{
     Error,
     ErrorCode,
 };
-
-//==================================================================================================
-// Global Variables
-//==================================================================================================
-
-pub(crate) static mut GUEST_HANDLE: GuestHandle = GuestHandle::new();
 
 //==================================================================================================
 // Process Environment Block
@@ -42,23 +33,6 @@ pub(crate) static mut GUEST_HANDLE: GuestHandle = GuestHandle::new();
 pub struct ProcessEnvironmentBlock;
 
 impl ProcessEnvironmentBlock {
-    /// Initializes the process environment block.
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because it writes to the global `GUEST_HANDLE` static mutable.
-    ///
-    pub unsafe fn init(peb_base: *mut HyperlightPEB) -> Result<(), Error> {
-        if GUEST_HANDLE.peb().is_some() {
-            let reason: &'static str = "init: peb already initialized";
-            error!("{reason}");
-            Err(Error::new(ErrorCode::ResourceBusy, reason))
-        } else {
-            GUEST_HANDLE = GuestHandle::init(peb_base);
-            Ok(())
-        }
-    }
-
     ///
     /// # Description
     ///
@@ -87,14 +61,14 @@ impl ProcessEnvironmentBlock {
     pub unsafe fn get_credits() -> Result<u64, Error> {
         // Credits are stored at a fixed offset from the top of scratch memory.
         // The host writes here via GuestCounter; we read via volatile read.
-        // Use MAX_GPA (not MAX_GVA) because the guest runs with identity mapping
-        // (GVA == GPA) and the scratch KVM slot is placed relative to MAX_GPA.
+        // Use MAX_GVA because the kernel accesses scratch via the host-built
+        // page tables, which map scratch at GVA addresses derived from MAX_GVA.
         use ::hyperlight_common::layout::{
-            MAX_GPA,
+            MAX_GVA,
             SCRATCH_TOP_GUEST_COUNTER_OFFSET,
         };
-        let credits_gpa: usize = MAX_GPA - SCRATCH_TOP_GUEST_COUNTER_OFFSET as usize + 1;
-        let credits_ptr: *const u64 = credits_gpa as *const u64;
+        let credits_gva: usize = MAX_GVA - SCRATCH_TOP_GUEST_COUNTER_OFFSET as usize + 1;
+        let credits_ptr: *const u64 = credits_gva as *const u64;
         Ok(::core::ptr::read_volatile(credits_ptr))
     }
 
@@ -102,11 +76,11 @@ impl ProcessEnvironmentBlock {
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it accesses the global `GUEST_HANDLE` static mutable.
+    /// This function is unsafe because it dereferences the PEB pointer.
     ///
     pub unsafe fn vmbus_write(data: &[u8]) -> Result<(), Error> {
         let failure_reason: &'static str = "vmbus_write: failed to write data";
-        let count: i32 = GUEST_HANDLE
+        let count: i32 = guest_handle()
             .call_host_function::<i32>(
                 "VmbusWrite",
                 Some(Vec::from(&[ParameterValue::VecBytes(Vec::from(data))])),
@@ -125,11 +99,11 @@ impl ProcessEnvironmentBlock {
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it accesses the global `GUEST_HANDLE` static mutable.
+    /// This function is unsafe because it dereferences the PEB pointer.
     ///
     pub unsafe fn vmbus_bulk_write(data: &[u8]) -> Result<(), Error> {
         let failure_reason: &'static str = "vmbus_bulk_write: failed to write data";
-        let count: i32 = GUEST_HANDLE
+        let count: i32 = guest_handle()
             .call_host_function::<i32>(
                 "VmbusBulkWrite",
                 Some(Vec::from(&[ParameterValue::VecBytes(Vec::from(data))])),
@@ -148,11 +122,11 @@ impl ProcessEnvironmentBlock {
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it accesses the global `GUEST_HANDLE` static mutable.
+    /// This function is unsafe because it dereferences the PEB pointer.
     ///
     pub unsafe fn vmbus_read() -> Result<Vec<u8>, Error> {
         let failure_reason: &'static str = "vmbus_read: failed to read data";
-        GUEST_HANDLE
+        guest_handle()
             .call_host_function::<Vec<u8>>("VmbusRead", None, ReturnType::VecBytes)
             .map_err(|_| Error::new(ErrorCode::IoErr, failure_reason))
     }
@@ -163,11 +137,11 @@ impl ProcessEnvironmentBlock {
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it accesses the global `GUEST_HANDLE` static mutable.
+    /// This function is unsafe because it dereferences the PEB pointer.
     ///
     pub unsafe fn vmbus_bulk_read() -> Result<Vec<u8>, Error> {
         let failure_reason: &'static str = "vmbus_bulk_read: failed to read data";
-        GUEST_HANDLE
+        guest_handle()
             .call_host_function::<Vec<u8>>("VmbusBulkRead", None, ReturnType::VecBytes)
             .map_err(|_| Error::new(ErrorCode::IoErr, failure_reason))
     }
@@ -180,16 +154,16 @@ impl ProcessEnvironmentBlock {
     /// Returns `(snapshot_budget_size, pt_overhead, ramfs_base, ramfs_size, scratch_size)` as
     /// reported by the VMM. All values are in bytes. RAMFS fields are zero when no RAMFS
     /// is present. `snapshot_budget_size` is the deterministic snapshot size.
-    /// `pt_overhead` is always 0 with `nanvix-unstable` because Hyperlight skips
-    /// guest page-table generation; the field is reserved for forward-compatibility.
+    /// `pt_overhead` is the additional bytes occupied by host-built guest page tables
+    /// (non-zero with `i686-guest`; zero with `nanvix-unstable`).
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it accesses the global `GUEST_HANDLE` static mutable.
+    /// This function is unsafe because it dereferences the PEB pointer.
     ///
     pub unsafe fn get_memory_layout() -> Result<(usize, usize, usize, usize, usize), Error> {
         let failure_reason: &'static str = "get_memory_layout: failed to query host";
-        let bytes: Vec<u8> = GUEST_HANDLE
+        let bytes: Vec<u8> = guest_handle()
             .call_host_function::<Vec<u8>>("GetMemoryLayout", None, ReturnType::VecBytes)
             .map_err(|_| Error::new(ErrorCode::IoErr, failure_reason))?;
 

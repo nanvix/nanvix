@@ -210,11 +210,25 @@ fn main() {
         "0x0".to_string()
     };
 
-    let platform_base_addr: &str = if cfg!(feature = "hyperlight") {
-        // TODO (#2204): Change platform base address for Hyperlight when we update Hperlight crate.
-        "0x0"
+    let platform_base_addr: String = if cfg!(feature = "hyperlight") {
+        // Read from hyperlight_constants.toml so the value stays in sync with the config crate.
+        let hyperlight_config_path: PathBuf = workspace_dir.join("build/hyperlight_constants.toml");
+        let hyperlight_config: HashMap<String, String> = load_toml(&hyperlight_config_path);
+        let val: &str = hyperlight_config
+            .get("platform_base_addr")
+            .expect("platform_base_addr not found in hyperlight_constants.toml");
+        let parsed: usize = parse_hex_or_decimal(val, "platform_base_addr");
+        format!("{parsed:#x}")
     } else {
-        "0x0"
+        "0x0".to_string()
+    };
+
+    // On Hyperlight the trampoline is at PLATFORM_BASE_ADDR (VMM enters _do_start directly).
+    // On microvm the trampoline is offset to 0x8000 for real-mode AP startup.
+    let trampoline_addr: String = if cfg!(feature = "hyperlight") {
+        platform_base_addr.clone()
+    } else {
+        format!("{:#x}", 0x8000usize)
     };
 
     let linker_template: String =
@@ -222,7 +236,8 @@ fn main() {
     let linker_script: String = linker_template
         .replace("@MACHINE_RESERVED@", &machine_reserved)
         .replace("@KPOOL_BASE@", &format!("{:#x}", kpool_base))
-        .replace("@PLATFORM_BASE_ADDR@", platform_base_addr);
+        .replace("@PLATFORM_BASE_ADDR@", &platform_base_addr)
+        .replace("@TRAMPOLINE_ADDR@", &trampoline_addr);
 
     fs::write(&linker_output_path, linker_script).expect("Failed to write linker script");
 

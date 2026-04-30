@@ -15,6 +15,8 @@ pub mod elf;
 #[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
 mod kernel_vas;
 pub(crate) mod phys;
+#[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
+mod platform_vas;
 mod virt;
 
 //==================================================================================================
@@ -26,8 +28,6 @@ use ::arch::mem::{
     PAGE_ALIGNMENT,
     PGTAB_ALIGNMENT,
 };
-#[cfg(feature = "hyperlight")]
-pub(crate) use virt::memcpy;
 pub use virt::{
     KernelPage,
     PageTableStorage,
@@ -58,6 +58,8 @@ use ::arch::mem;
 
 #[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
 pub use kernel_vas::init;
+#[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
+pub use platform_vas::init;
 
 //==================================================================================================
 // Static Assertions

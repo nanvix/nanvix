@@ -10,6 +10,9 @@
 # Size of a memory page (in bytes).
 page_size = 4096
 
+# Base address where Hyperlight loads the guest binary (GPA).
+platform_base_addr = 0x1000
+
 # Magic value that identifies the virtual machine monitor.
 default_boot_magic = 0x0c00ffee
 

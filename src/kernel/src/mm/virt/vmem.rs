@@ -119,6 +119,57 @@ impl Vmem {
             kpage_tables.push_back(Rc::new(RefCell::new((vaddr, page_table))));
         }
 
+        // On Hyperlight, inherit host-built page directory entries so that scratch-region
+        // mappings (I/O buffers, boot stack, kernel data/BSS/kpool) remain accessible.
+        // The host PD (in CR3) has the correct GVA→scratch GPA mappings after eager
+        // pre-faulting. Inheriting them into the root PD enables Vmem::clone to propagate
+        // these mappings to user-process PDs.
+        // On microvm, register the kernel PD for lazy identity mapping and set CR3.
+        #[cfg(all(
+            feature = "hyperlight",
+            feature = "platform-root-virtual-address-space-bootstrap"
+        ))]
+        {
+            use ::arch::mem::paging::PresentFlag;
+
+            let host_pd_ptr: *const PteWord = crate::hal::platform::get_root_pd_ptr();
+            unsafe {
+                pgdir.inherit_from(host_pd_ptr);
+            }
+
+            // Wrap each inherited host-built page table as a tracked kernel page table so that
+            // kctrl() can find and modify PTEs for MMIO permission changes.
+            // Walk the host PD and create an Inherited PageTableStorage for every present PDE
+            // that was not already registered by the kernel (i.e., not in kpage_tables).
+            unsafe {
+                for i in 0..PAGE_TABLE_LENGTH {
+                    let pde: PteWord = *host_pd_ptr.add(i);
+                    if !PresentFlag::is_set(pde) {
+                        continue;
+                    }
+
+                    let pt_gpa: usize = (pde & crate::hal::platform::PTE_ADDR_MASK_U32) as usize;
+                    let pt_gva: usize = crate::hal::platform::gpa_to_gva(pt_gpa);
+                    let pt_vaddr: usize = i * mem::PGTAB_SIZE;
+                    let pt_addr: PageTableAddress =
+                        PageTableAddress::new(PageTableAligned::from_raw_value(pt_vaddr)?);
+
+                    // Skip if already tracked (e.g., registered by the kernel's own init path).
+                    let already_tracked: bool = kpage_tables
+                        .iter()
+                        .any(|entry| entry.borrow().0.into_raw_value() == pt_vaddr);
+                    if already_tracked {
+                        continue;
+                    }
+
+                    let storage: PageTableStorage =
+                        PageTableStorage::Inherited(pt_gva as *mut PteWord);
+                    let page_table: PageTable<PageTableStorage> = PageTable::from_existing(storage);
+                    kpage_tables.push_back(Rc::new(RefCell::new((pt_addr, page_table))));
+                }
+            }
+        }
+
         #[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
         {
             use crate::hal::mem::PageDirectoryAddress;

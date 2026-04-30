@@ -5,6 +5,8 @@
 pub mod hyperlight {
     /// Size of a memory page (in bytes).
     pub const PAGE_SIZE: usize = {{PAGE_SIZE}};
+    /// Base address where Hyperlight loads the guest binary (GPA).
+    pub const PLATFORM_BASE_ADDR: usize = {{PLATFORM_BASE_ADDR}};
     /// Magic value that identifies the virtual machine monitor.
     pub const DEFAULT_BOOT_MAGIC: u32 = {{DEFAULT_BOOT_MAGIC}};
     /// Base address of the RAM disk.
