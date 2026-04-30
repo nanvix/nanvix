@@ -198,7 +198,7 @@ serde_json = { version = "1.0.149", default-features = false, features = [
 sha2 = "0.11.0"
 shell-words = "1.1"
 signal-hook = "0.4.4"
-slab = { path = "src/libs/slab", default-features = false }
+slab = { path = "src/libs/slab", package = "nanvix-slab", default-features = false }
 sorted-vec = { path = "src/libs/sorted-vec", default-features = false }
 sparse-bitmap = { path = "src/libs/sparse-bitmap", default-features = false }
 spin = { git = "https://github.com/nanvix/spin-rs", package = "spin", branch = "nanvix/v0.10.0", default-features = false }
