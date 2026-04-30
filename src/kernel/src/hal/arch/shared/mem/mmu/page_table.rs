@@ -61,6 +61,28 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
         page_table
     }
 
+    ///
+    /// # Description
+    ///
+    /// Creates a page table wrapper around existing (already-populated) storage.
+    ///
+    /// Unlike [`new`](Self::new), this does not zero the entries.
+    ///
+    /// # Returns
+    ///
+    /// A new [`PageTable`] instance that wraps the provided storage.
+    ///
+    #[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
+    pub fn from_existing(entries: T) -> Self {
+        let mut nmapped: usize = 0;
+        for pte in entries.iter() {
+            if PresentFlag::is_set(*pte) {
+                nmapped += 1;
+            }
+        }
+        Self { nmapped, entries }
+    }
+
     /// Returns the number of pages mapped in the page table.
     pub fn nmapped(&self) -> usize {
         self.nmapped
@@ -427,8 +449,8 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
     }
 
     pub fn physical_address(&self) -> Result<FrameAddress, Error> {
-        Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(
-            self.entries.as_ptr() as usize,
-        )?)?))
+        let vaddr: usize = self.entries.as_ptr() as usize;
+        let paddr: usize = crate::hal::platform::virt_to_phys(vaddr);
+        Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(paddr)?)?))
     }
 }

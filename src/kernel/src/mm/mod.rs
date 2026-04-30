@@ -12,11 +12,8 @@
 //==================================================================================================
 
 pub mod elf;
-mod phys;
+pub(crate) mod phys;
 mod virt;
-
-#[cfg(feature = "hyperlight")]
-pub(crate) use virt::memcpy;
 
 //==================================================================================================
 // Exports
@@ -65,7 +62,6 @@ use ::alloc::{
     vec::Vec,
 };
 use ::arch::mem;
-use ::core::panic;
 use ::sparse_bitmap::SparseBitmap;
 use ::sys::error::Error;
 
@@ -215,13 +211,41 @@ fn parse_memory_regions(
         if region.typ() == MemoryRegionType::Reserved || region.typ() == MemoryRegionType::Mmio {
             if PhysicalAddress::from_virtual_address(region.start()).is_ok() {
                 if region.typ() != MemoryRegionType::Usable {
-                    match TruncatedMemoryRegion::from_virtual_memory_region(region.clone()) {
-                        Ok(region) => physical_memory_regions.push_back(region),
-                        // TODO: make memory regions a truncated list so round logic is handled when region is created.
-                        Err(err) => panic!(
-                            "failed to create physical memory region {:?} (error={:?})",
-                            region, err
-                        ),
+                    // On Hyperlight, scratch GVAs are NOT identity-mapped (GVA ≠ GPA).
+                    // Skip physical frame booking for scratch-region addresses — they are
+                    // managed by the host and the bump allocator, not the kernel frame allocator.
+                    // On microvm this always returns false (no scratch region).
+                    let in_scratch: bool =
+                        crate::hal::platform::is_scratch_address(region.start().into_raw_value());
+
+                    if !in_scratch {
+                        match TruncatedMemoryRegion::from_virtual_memory_region(region.clone()) {
+                            Ok(region) => physical_memory_regions.push_back(region),
+                            Err(err) => panic!(
+                                "failed to create physical memory region {:?} (error={:?})",
+                                region, err
+                            ),
+                        }
+                    } else {
+                        // Scratch: translate GVA→GPA and create the physical region
+                        // with the correct physical address for frame allocator booking.
+                        let gpa: usize =
+                            crate::hal::platform::gva_to_gpa(region.start().into_raw_value());
+                        if let Ok(phys_start) = PageAligned::from_raw_value(gpa) {
+                            match TruncatedMemoryRegion::new(
+                                &region.name(),
+                                phys_start,
+                                region.size(),
+                                region.typ(),
+                                region.perm(),
+                            ) {
+                                Ok(pr) => physical_memory_regions.push_back(pr),
+                                Err(err) => warn!(
+                                    "failed to create scratch physical region {:?} (error={:?})",
+                                    region, err
+                                ),
+                            }
+                        }
                     }
                 }
                 virtual_memory_regions
@@ -269,7 +293,7 @@ pub fn init(
     let kpool_base: PageAligned<PhysicalAddress> =
         PageAligned::<PhysicalAddress>::from_raw_value(kimage.kpool().start().into_raw_value())?;
 
-    let (mut other_virtual_memory_regions, virtual_memory_regions, physical_memory_regions): (
+    let (other_virtual_memory_regions, virtual_memory_regions, physical_memory_regions): (
         VirtMemRegions,
         VirtMemRegions,
         PhysMemRegions,
@@ -286,7 +310,20 @@ pub fn init(
     #[cfg(feature = "test")]
     phys::test();
 
-    // FIXME: the initial list of kernel pages should be spit out by the initialization.
+    init_vmem(virtual_memory_regions, other_virtual_memory_regions, mmio_regions)
+}
+
+/// Microvm virtual memory initialization.
+///
+/// Builds identity-mapped page tables via [`virt::init`], creates the root address space, loads
+/// CR3, and maps any virtual memory regions that lie outside physical memory (e.g., MMIO pages
+/// above `MEMORY_SIZE`).
+#[cfg(feature = "microvm")]
+fn init_vmem(
+    virtual_memory_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+    mut other_virtual_memory_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+    mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+) -> Result<Vmem, Error> {
     let (kernel_pages, kernel_page_tables): (
         LinkedList<KernelPage>,
         LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
@@ -335,4 +372,21 @@ pub fn init(
     }
 
     Ok(vmem)
+}
+
+/// Hyperlight virtual memory initialization.
+///
+/// On Hyperlight the host-built page tables are used directly — the kernel does not create its
+/// own identity map or switch CR3. Only a root [`Vmem`] descriptor is created so the process
+/// manager can clone it for user processes.
+#[cfg(feature = "hyperlight")]
+fn init_vmem(
+    _virtual_memory_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+    _other_virtual_memory_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+    _mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+) -> Result<Vmem, Error> {
+    let kernel_pages: LinkedList<KernelPage> = LinkedList::new();
+    let kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)> =
+        LinkedList::new();
+    VirtMemoryManager::init(kernel_pages, kernel_page_tables)
 }

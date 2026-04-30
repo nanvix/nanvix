@@ -51,9 +51,22 @@ SECTIONS
 	/* Start at the platform/VMM-defined load base. */
 	. = PLATFORM_BASE_ADDR;
 
+	/*
+	 * Entry stub section.
+	 *
+	 * On Hyperlight the VMM starts execution at BASE_ADDRESS (PLATFORM_BASE_ADDR),
+	 * not at the ELF entry point.  This tiny section places a jump to _do_start
+	 * at the very first byte of the loaded image so the kernel reaches its real
+	 * entry point regardless of how the VMM resolves the initial RIP.
+	 * On microvm (PLATFORM_BASE_ADDR == 0) this section is empty and harmless.
+	 */
+	.entry : {
+		KEEP(*(.entry))
+	}
+
 	/* Pad with zeroes up to the trampoline. */
 	.zero : {
-		. = . + (TRAMPOLINE_ADDR - PLATFORM_BASE_ADDR);
+		. = ABSOLUTE(TRAMPOLINE_ADDR);
 	} = 0
 
     /* Trampoline section. */

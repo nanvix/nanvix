@@ -329,10 +329,19 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     // Add kernel modules to list of memory regions.
     for module in kernel_modules.iter() {
         let name: &str = module.cmdline();
-        let start: VirtualAddress = module.start().into_virtual_address();
+        let raw_start: usize = module.start().into_virtual_address().into_raw_value();
         let size: usize = module.size();
+        // Page-align the region: round start down and end up to page boundaries.
+        // The module payload may start at an offset within a page (e.g., after a size header).
+        let page_start: usize = raw_start & !(arch::mem::PAGE_SIZE - 1);
+        let page_end: usize =
+            (raw_start + size + arch::mem::PAGE_SIZE - 1) & !(arch::mem::PAGE_SIZE - 1);
+        let start: VirtualAddress = VirtualAddress::from_raw_value(page_start);
+        let aligned_size: usize = page_end - page_start;
         let typ: MemoryRegionType = MemoryRegionType::Reserved;
-        if let Ok(region) = MemoryRegion::new(name, start, size, typ, AccessPermission::RDONLY) {
+        if let Ok(region) =
+            MemoryRegion::new(name, start, aligned_size, typ, AccessPermission::RDONLY)
+        {
             memory_regions.push_back(region);
         }
     }

@@ -8,6 +8,8 @@
 #[cfg(all(feature = "microvm", feature = "hyperlight"))]
 compile_error!("features \"microvm\" and \"hyperlight\" are mutually exclusive");
 
+mod cow_entry;
+mod cow_handler;
 pub(crate) mod peb;
 mod start;
 mod start16;
@@ -15,6 +17,54 @@ mod start16;
 // in this submodule is visible in the parent module without a path prefix.
 #[macro_use]
 mod scratch_layout;
+
+//==================================================================================================
+// Re-exports
+//==================================================================================================
+
+/// Returns `true` if the given GVA falls within the scratch region.
+pub fn is_scratch_address(gva: usize) -> bool {
+    let base: usize = load_scratch_base();
+    let end: usize = load_scratch_end();
+    if base == 0 {
+        return false;
+    }
+    // Handles wrapping: scratch_end may be 0 when MAX_GVA == usize::MAX.
+    if end == 0 {
+        gva >= base
+    } else {
+        gva >= base && gva < end
+    }
+}
+
+/// Translates a virtual address to a physical address.
+///
+/// On i686-guest, the host maps scratch at GVA addresses (MAX_GVA - scratch_size + 1),
+/// regions. This stub returns the address unchanged; a future CoW-aware
+/// implementation would walk the page tables to resolve remapped pages.
+#[inline(always)]
+pub fn virt_to_phys(vaddr: usize) -> usize {
+    // After eager CoW pre-faulting, writable snapshot pages (kernel pool, BSS, data)
+    // are backed by scratch frames whose GPA ≠ GVA. Walk the page tables to resolve
+    // the actual GPA. This is essential for values used as CR3 (page directory physical
+    // address), where the CPU needs the true GPA, not the identity-mapped GVA.
+    //
+    // Safety: called after page tables are set up (post-boot).
+    unsafe { pte_walk_gva_to_gpa(vaddr) }.unwrap_or(vaddr)
+}
+
+/// Returns a pointer to the root (host-built) page directory entries.
+///
+/// On Hyperlight the host PD is active in CR3. Its GPA is translated to a GVA so the
+/// kernel can read the entries through the host page tables.
+pub fn get_root_pd_ptr() -> *const PteWord {
+    let cr3: u32;
+    unsafe {
+        core::arch::asm!("mov {:e}, cr3", out(reg) cr3, options(nostack, nomem));
+    }
+    let host_pd_gpa: usize = (cr3 & 0xFFFFF000) as usize;
+    gpa_to_gva(host_pd_gpa) as *const PteWord
+}
 
 //==================================================================================================
 // Imports
@@ -79,6 +129,7 @@ use ::arch::{
     mem,
     mem::{
         gdt::Gdte,
+        paging::PteWord,
         PAGE_ALIGNMENT,
         WORD_ALIGNMENT,
     },
@@ -93,10 +144,6 @@ use ::config::{
     },
     kernel::MEMORY_SIZE,
     memory_layout::KERNEL_BASE_RAW,
-};
-use ::core::sync::atomic::{
-    AtomicUsize,
-    Ordering,
 };
 use ::hyperlight_common::{
     flatbuffer_wrappers::{
@@ -195,23 +242,21 @@ use ::sys::{
 #[used]
 static KERNEL_PADDING: [u8; 2 * 1024 * 1024] = [0u8; 2 * 1024 * 1024];
 
-/// Guest handle initialised once during `hyperlight_pre_kmain` (evolve phase)
-/// and reused by `nanvix_dispatch_function` on each `sandbox.call()`.
-static mut GUEST_HANDLE: Option<GuestHandle> = None;
-
 //==================================================================================================
 // Constants
 //==================================================================================================
 
+/// Physical base address of the snapshot KVM memory slot.
+///
+/// This matches `SandboxMemoryLayout::BASE_ADDRESS` in `hyperlight-host`.  The host maps the
+/// kernel binary image starting at this GPA; there is no physical memory below it.
+const SNAPSHOT_PHYS_BASE: usize = 0x1000;
+
 /// Number of page tables needed for identity-mapping physical memory regions.
 ///
-/// On Hyperlight the physical memory is split across two disjoint VA ranges: the low region
-/// (snapshot + RAMFS) starting near GPA 0 and the scratch region at the top of the 32-bit address
-/// space. Because both ranges occupy separate page directory entries, each can independently
-/// require up to `MEMORY_SIZE / PGTAB_SIZE` page tables. We provision twice the base count to cover
-/// the worst-case split.
-///
-pub const NUM_PAGE_TABLES: usize = 2 * (MEMORY_SIZE / mem::PGTAB_SIZE);
+/// On Hyperlight the host page tables are used directly; only a small number of
+/// page table slots are needed for process creation.
+pub const NUM_PAGE_TABLES: usize = 4;
 
 //==================================================================================================
 // Structures
@@ -241,6 +286,140 @@ pub struct Platform {
 // Ensure the config crate's GPA ceiling matches the upstream MAX_GPA from hyperlight-common.
 ::static_assert::assert_eq!(memory_layout::HYPERLIGHT_GPA_CEILING == MAX_GPA + 1);
 
+//==================================================================================================
+// GPA ↔ GVA Translation
+//==================================================================================================
+
+/// Translates a guest physical address (GPA) to the corresponding guest virtual address (GVA).
+///
+/// On i686-guest, the host maps two regions:
+///   - **Snapshot** (kernel image): identity-mapped at `BASE_ADDRESS` (0x1000), so GVA == GPA.
+///   - **Scratch**: mapped at `GVA = MAX_GVA - scratch_size + 1`, but backed at
+///     `GPA = MAX_GPA - scratch_size + 1`. The difference (GVA − GPA) is constant:
+///     `MAX_GVA − MAX_GPA` (= 0x0120_0000 for the current layout).
+///
+/// Page table entries (PDEs, PTEs) store GPAs. Software that walks page tables must convert
+/// those GPAs to GVAs before dereferencing them.
+///
+/// # Parameters
+///
+/// - `gpa`: A guest physical address (e.g., from a PDE/PTE or CR3).
+///
+/// # Returns
+///
+/// The corresponding guest virtual address.
+pub fn gpa_to_gva(gpa: usize) -> usize {
+    let scratch_base_gpa: usize = MAX_GPA + 1 - scratch_size();
+    if gpa >= scratch_base_gpa {
+        gpa.wrapping_add(MAX_GVA.wrapping_sub(MAX_GPA))
+    } else {
+        gpa
+    }
+}
+
+/// Translates a guest virtual address (GVA) to the corresponding guest physical address (GPA).
+///
+/// Inverse of [`gpa_to_gva`]. Identity for low memory; subtracts the GVA−GPA delta for scratch.
+pub fn gva_to_gpa(gva: usize) -> usize {
+    let delta: usize = MAX_GVA.wrapping_sub(MAX_GPA);
+    let scratch_base_gpa: usize = MAX_GPA + 1 - scratch_size();
+    let scratch_base_gva: usize = scratch_base_gpa.wrapping_add(delta);
+    if gva >= scratch_base_gva {
+        gva.wrapping_sub(delta)
+    } else {
+        gva
+    }
+}
+
+/// Walks the current page tables (from CR3) to resolve a GVA to its actual GPA.
+///
+/// After eager pre-faulting, PTEs for CoW-resolved pages point to scratch GPAs rather
+/// than their original snapshot GPAs. This function reads the PTE to determine the
+/// actual physical frame backing the given virtual address.
+///
+/// # Returns
+///
+/// The GPA that the page table maps the given GVA to, or `None` if the page is not present.
+///
+/// # Safety
+///
+/// Must be called after page tables have been set up (i.e., after boot).
+pub unsafe fn pte_walk_gva_to_gpa(gva: usize) -> Option<usize> {
+    use ::arch::mem::paging::PresentFlag;
+
+    let cr3: u32;
+    core::arch::asm!("mov {:e}, cr3", out(reg) cr3, options(nostack, nomem));
+    let pd_gpa: usize = (cr3 & PTE_ADDR_MASK_U32) as usize;
+    let pd_base: *const u32 = gpa_to_gva(pd_gpa) as *const u32;
+
+    let pd_idx: usize = gva >> 22; // top 10 bits
+    let pt_idx: usize = (gva >> 12) & 0x3FF; // next 10 bits
+    let page_offset: usize = gva & 0xFFF;
+
+    let pde: u32 = pd_base.add(pd_idx).read_volatile();
+    if !PresentFlag::is_set(pde) {
+        return None;
+    }
+
+    let pt_gpa: usize = (pde & PTE_ADDR_MASK_U32) as usize;
+    let pt_base: *const u32 = gpa_to_gva(pt_gpa) as *const u32;
+
+    let pte: u32 = pt_base.add(pt_idx).read_volatile();
+    if !PresentFlag::is_set(pte) {
+        return None;
+    }
+
+    Some((pte & PTE_ADDR_MASK_U32) as usize + page_offset)
+}
+
+/// Returns the total scratch region size by reading the scratch metadata slot.
+///
+/// This reads the `SCRATCH_TOP_SIZE_OFFSET` u64 at the top of scratch, which the host
+/// writes during `update_scratch_bookkeeping()`.
+fn scratch_size() -> usize {
+    let ptr = ::hyperlight_guest::layout::scratch_size_gva();
+    unsafe { core::ptr::read_volatile(ptr) as usize }
+}
+
+/// Returns the page table base GPA by reading the scratch metadata slot.
+///
+/// The host stores this at `SCRATCH_TOP_SNAPSHOT_PT_GPA_BASE_OFFSET` from the
+/// top of scratch.
+pub(super) fn pt_base_gpa() -> usize {
+    let ptr = ::hyperlight_guest::layout::snapshot_pt_gpa_base_gva();
+    unsafe { core::ptr::read_volatile(ptr) as usize }
+}
+
+/// Returns the first free GPA (bump allocator pointer) from the scratch metadata slot.
+///
+/// This is `pt_base_gpa + pt_size`, so `first_free_gpa - pt_base_gpa` gives the
+/// page table size.
+pub fn first_free_scratch_gpa() -> usize {
+    let ptr = ::hyperlight_guest::layout::allocator_gva();
+    unsafe { core::ptr::read_volatile(ptr) as usize }
+}
+
+/// Offset within the early-GDT scratch page where the boot-time first-free-GPA is cached.
+/// The GDT only uses ~56 bytes of the page; this slot is near the end.
+const BOOT_FIRST_FREE_GPA_SLOT_OFFSET: usize = 4088;
+
+/// Returns the boot-time first-free-GPA value cached in the early-GDT scratch page.
+///
+/// This is set once by [`install_early_idt()`](cow_entry::install_early_idt) before any
+/// CoW bump allocation can advance the live allocator pointer.
+fn load_boot_first_free_gpa() -> usize {
+    let addr: usize =
+        ::config::memory_layout::HYPERLIGHT_EARLY_GDT_BASE + BOOT_FIRST_FREE_GPA_SLOT_OFFSET;
+    unsafe { core::ptr::read_volatile(addr as *const usize) }
+}
+
+/// Saves the boot-time first-free-GPA value to the early-GDT scratch page.
+pub(super) fn save_boot_first_free_gpa(val: usize) {
+    let addr: usize =
+        ::config::memory_layout::HYPERLIGHT_EARLY_GDT_BASE + BOOT_FIRST_FREE_GPA_SLOT_OFFSET;
+    unsafe { core::ptr::write_volatile(addr as *mut usize, val) };
+}
+
 // Scratch-reserved layout.
 //
 // These structures are allocated in the scratch region (outside the CoW snapshot) so that
@@ -250,10 +429,9 @@ pub struct Platform {
 scratch_layout! {
     page_align = PAGE_ALIGNMENT;
 
-    /// One bit per frame for the entire `MEMORY_SIZE` address range, plus three extra bytes
-    /// so that per-chunk frame counts that are not multiples of 8 can be rounded up without
-    /// overflow.
-    FRAME_ALLOC_BITMAP : size = MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize) + 3,
+    /// One bit per frame for the entire `MEMORY_SIZE` address range, plus extra bytes
+    /// to account for byte-alignment padding in each sparse bitmap chunk.
+    FRAME_ALLOC_BITMAP : size = MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize) + 8,
                          align = WORD_ALIGNMENT;
     /// Kernel page pool bitmap storage.
     KPOOL_BITMAP       : size = ::config::kernel::KPOOL_SIZE / (mem::PAGE_SIZE * u8::BITS as usize),
@@ -273,29 +451,113 @@ scratch_layout! {
     /// Kernel log buffer backing storage (relocated from BSS to avoid dirtying CoW snapshot pages).
     KLOG_BUFFER        : size = crate::klog::KLOG_BUFFER_STORAGE_SIZE,
                          align = crate::klog::KLOG_BUFFER_ALIGNMENT;
+    /// Snapshot region end address (stored in scratch to avoid CoW faults during init).
+    SNAPSHOT_END_VAR   : size = core::mem::size_of::<usize>(),
+                         align = WORD_ALIGNMENT;
+    /// RAMFS base address (stored in scratch to avoid CoW faults during init).
+    RAMFS_BASE_VAR     : size = core::mem::size_of::<usize>(),
+                         align = WORD_ALIGNMENT;
+    /// RAMFS end address (stored in scratch to avoid CoW faults during init).
+    RAMFS_END_VAR      : size = core::mem::size_of::<usize>(),
+                         align = WORD_ALIGNMENT;
+    /// Scratch region base address (stored in scratch to avoid CoW faults during init).
+    SCRATCH_BASE_VAR   : size = core::mem::size_of::<usize>(),
+                         align = WORD_ALIGNMENT;
+    /// Scratch region end address (stored in scratch to avoid CoW faults during init).
+    SCRATCH_END_VAR    : size = core::mem::size_of::<usize>(),
+                         align = WORD_ALIGNMENT;
 }
 
 //==================================================================================================
-// Global Variables
+// Scratch-Resident Memory Layout Variables
 //==================================================================================================
 
-/// Snapshot region base address (inclusive).
-static SNAPSHOT_BASE: AtomicUsize = AtomicUsize::new(KERNEL_BASE_RAW);
-/// Snapshot region end address (exclusive).
-/// Uses `KERNEL_BASE_RAW + MEMORY_SIZE` as a generous upper bound so that early-boot code
-/// (before `init()`) can construct `PhysicalAddress` values.  Tightened in `init()` once the
-/// actual region boundaries are discovered.
-static SNAPSHOT_END: AtomicUsize = AtomicUsize::new(KERNEL_BASE_RAW + MEMORY_SIZE);
+/// Reads a `usize` from scratch memory at the given pointer via volatile read.
+unsafe fn scratch_load_usize(ptr: *mut u8) -> usize {
+    core::ptr::read_volatile(ptr as *const usize)
+}
 
-/// RAMFS region base address (inclusive). Zero when no RAMFS is present.
-static RAMFS_BASE: AtomicUsize = AtomicUsize::new(0);
-/// RAMFS region end address (exclusive). Zero when no RAMFS is present.
-static RAMFS_END: AtomicUsize = AtomicUsize::new(0);
+/// Writes a `usize` to scratch memory at the given pointer via volatile write.
+unsafe fn scratch_store_usize(ptr: *mut u8, val: usize) {
+    core::ptr::write_volatile(ptr as *mut usize, val);
+}
 
-/// Scratch region base address (inclusive). Zero until `init()` discovers the actual value.
-static SCRATCH_BASE: AtomicUsize = AtomicUsize::new(0);
-/// Scratch region end address (exclusive). Zero until `init()` discovers the actual value.
-static SCRATCH_END: AtomicUsize = AtomicUsize::new(0);
+/// Returns the snapshot end address from scratch, or the default if scratch is not yet initialized.
+pub fn load_snapshot_end() -> usize {
+    let base: usize = scratch_reserved_base();
+    if base == 0 {
+        // Before scratch is initialized, use the compile-time default.
+        KERNEL_BASE_RAW + MEMORY_SIZE
+    } else {
+        let val: usize = unsafe { scratch_load_usize(snapshot_end_var_ptr(base)) };
+        if val == 0 {
+            KERNEL_BASE_RAW + MEMORY_SIZE
+        } else {
+            val
+        }
+    }
+}
+
+fn store_snapshot_end(val: usize) {
+    let base: usize = scratch_reserved_base();
+    unsafe { scratch_store_usize(snapshot_end_var_ptr(base), val) };
+}
+
+pub fn load_ramfs_base() -> usize {
+    let base: usize = scratch_reserved_base();
+    if base == 0 {
+        0
+    } else {
+        unsafe { scratch_load_usize(ramfs_base_var_ptr(base)) }
+    }
+}
+
+fn store_ramfs_base(val: usize) {
+    let base: usize = scratch_reserved_base();
+    unsafe { scratch_store_usize(ramfs_base_var_ptr(base), val) };
+}
+
+pub fn load_ramfs_end() -> usize {
+    let base: usize = scratch_reserved_base();
+    if base == 0 {
+        0
+    } else {
+        unsafe { scratch_load_usize(ramfs_end_var_ptr(base)) }
+    }
+}
+
+fn store_ramfs_end(val: usize) {
+    let base: usize = scratch_reserved_base();
+    unsafe { scratch_store_usize(ramfs_end_var_ptr(base), val) };
+}
+
+pub fn load_scratch_base() -> usize {
+    let base: usize = scratch_reserved_base();
+    if base == 0 {
+        0
+    } else {
+        unsafe { scratch_load_usize(scratch_base_var_ptr(base)) }
+    }
+}
+
+fn store_scratch_base(val: usize) {
+    let base: usize = scratch_reserved_base();
+    unsafe { scratch_store_usize(scratch_base_var_ptr(base), val) };
+}
+
+fn load_scratch_end() -> usize {
+    let base: usize = scratch_reserved_base();
+    if base == 0 {
+        0
+    } else {
+        unsafe { scratch_load_usize(scratch_end_var_ptr(base)) }
+    }
+}
+
+fn store_scratch_end(val: usize) {
+    let base: usize = scratch_reserved_base();
+    unsafe { scratch_store_usize(scratch_end_var_ptr(base), val) };
+}
 
 //==================================================================================================
 // Standalone Functions
@@ -421,9 +683,11 @@ pub unsafe fn vmbus_write(addr: *const u8) {
         if data_len > 0 {
             let payload_dst: *mut u8 =
                 unsafe { buf.as_mut_ptr().add(::sys::ipc::DataChunkHeader::SIZE) };
-            if let Err(e) = crate::mm::memcpy(payload_dst, data_gpa as *const u8, data_len) {
-                error!("vmbus_write(): memcpy failed: {:?}", e);
-            }
+            // Translate the user data GPA to a GVA the CPU can dereference.
+            // Do NOT use crate::mm::memcpy here: it assumes both pointers are GPAs and
+            // would double-translate payload_dst (a heap GVA in the scratch region).
+            let data_gva: *const u8 = gpa_to_gva(data_gpa) as *const u8;
+            unsafe { core::ptr::copy_nonoverlapping(data_gva, payload_dst, data_len) };
         }
 
         let _ = ProcessEnvironmentBlock::vmbus_bulk_write(&buf);
@@ -503,13 +767,16 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
                                     dest_gpa,
                                     offset
                                 );
-                                if let Err(e) = crate::mm::memcpy(
-                                    (dest_gpa + offset) as *mut u8,
-                                    chunk.as_ptr(),
-                                    chunk_len,
-                                ) {
-                                    error!("vmbus_read(): memcpy failed: {:?}", e);
-                                    break;
+                                // Translate the destination GPA to a GVA the CPU can
+                                // dereference. Do NOT use crate::mm::memcpy: it would
+                                // double-translate the chunk source pointer (a heap GVA).
+                                let dest_gva: *mut u8 = gpa_to_gva(dest_gpa + offset) as *mut u8;
+                                unsafe {
+                                    core::ptr::copy_nonoverlapping(
+                                        chunk.as_ptr(),
+                                        dest_gva,
+                                        chunk_len,
+                                    );
                                 }
                                 offset += chunk_len;
                             },
@@ -547,38 +814,30 @@ pub(in crate::hal::platform) fn do_shutdown(status: usize) -> ! {
 
     // Write a proper FunctionCallResult so the host reads the exit code from the PEB output buffer
     // via Hyperlight's standard guest return convention.
-    // SAFETY: GUEST_HANDLE is initialised once in hyperlight_pre_kmain during the evolve phase
-    // and never mutated again. This is a single-core guest, so there are no data races.
-    if let Some(handle) = unsafe { GUEST_HANDLE.as_ref() } {
-        let fcr = FunctionCallResult::new(Ok(ReturnValue::Int(code)));
-        let mut builder = ::flatbuffers::FlatBufferBuilder::new();
-        let data = fcr.encode(&mut builder);
-        if handle.push_shared_output_data(data).is_err() {
-            // PEB output write failed — fall back to abort so the host gets a definite error
-            // instead of reading stale data from the output buffer.
-            ::hyperlight_guest::exit::abort_with_code(&[code as u8]);
-        }
-
-        // Halt the VM cleanly via VmAction::Halt so sandbox.call() returns Ok(exit_code).
-        // SAFETY: Port I/O write targets Hyperlight's VmAction::Halt port. This halts the VM and
-        // causes sandbox.call() to return on the host. The hlt loop is a safety net in case the
-        // out instruction does not immediately stop execution.
-        unsafe {
-            core::arch::asm!(
-                "mov dx, {HALT_PORT}",
-                "out dx, al",
-                "cli",
-                "2: hlt",
-                "jmp 2b",
-                HALT_PORT = const VmAction::Halt as u16,
-                options(noreturn),
-            );
-        }
-    } else {
-        // If shutdown happens before Hyperlight guest initialization completes, halting here can
-        // make evolve appear successful and leave the host with an invalid entrypoint. Abort
-        // instead so the evolve phase fails explicitly.
+    let handle: GuestHandle = guest_handle();
+    let fcr = FunctionCallResult::new(Ok(ReturnValue::Int(code)));
+    let mut builder = ::flatbuffers::FlatBufferBuilder::new();
+    let data = fcr.encode(&mut builder);
+    if handle.push_shared_output_data(data).is_err() {
+        // PEB output write failed — fall back to abort so the host gets a definite error
+        // instead of reading stale data from the output buffer.
         ::hyperlight_guest::exit::abort_with_code(&[code as u8]);
+    }
+
+    // Halt the VM cleanly via VmAction::Halt so sandbox.call() returns Ok(exit_code).
+    // SAFETY: Port I/O write targets Hyperlight's VmAction::Halt port. This halts the VM and
+    // causes sandbox.call() to return on the host. The hlt loop is a safety net in case the
+    // out instruction does not immediately stop execution.
+    unsafe {
+        core::arch::asm!(
+            "mov dx, {HALT_PORT}",
+            "out dx, al",
+            "cli",
+            "2: hlt",
+            "jmp 2b",
+            HALT_PORT = const VmAction::Halt as u16,
+            options(noreturn),
+        );
     }
 }
 
@@ -598,7 +857,7 @@ pub fn signal_startup_complete() {}
 /// Returns the boot kernel stack top pointer.
 ///
 /// On Hyperlight the boot stack lives in the scratch region at a compile-time
-/// constant address derived from [`HYPERLIGHT_GPA_CEILING`].
+/// constant address derived from [`HYPERLIGHT_MAX_GVA`].
 pub fn get_kstack_top() -> *const u8 {
     ::config::memory_layout::HYPERLIGHT_BOOT_STACK_TOP as *const u8
 }
@@ -606,39 +865,167 @@ pub fn get_kstack_top() -> *const u8 {
 ///
 /// # Description
 ///
-/// Early boot helper called from `_do_start2` (assembly) while already
-/// running on the scratch-backed boot stack at
-/// [`HYPERLIGHT_BOOT_STACK_TOP`](::config::memory_layout::HYPERLIGHT_BOOT_STACK_TOP).
+/// Computes the scratch-reserved base address from the PEB and host page table metadata.
 ///
-/// Patches the PEB scratch pointers from GVA to GPA.
+/// The scratch-reserved region is placed after the IO buffers AND after the host-built
+/// page tables (whichever ends later). This ensures our scratch-resident data structures
+/// never overlap the host page tables.
 ///
-#[unsafe(no_mangle)]
-extern "C" fn init_scratch_kstack() {
-    extern "C" {
+/// This is safe to call at any point after the PEB has been mapped by the host (i.e., from
+/// `init_scratch_kstack` onwards). Only reads from the snapshot region; never writes.
+///
+fn scratch_reserved_base() -> usize {
+    unsafe extern "C" {
         static __KERNEL_END: u8;
     }
-
-    // Compute the PEB base address.
     let kernel_end: usize = unsafe { &__KERNEL_END as *const u8 as usize };
     let peb_base: usize = ::sys::mm::align_up(kernel_end, PAGE_ALIGNMENT)
-        .expect("init_scratch_kstack(): PEB align_up overflow");
-    let peb_ptr: *mut HyperlightPEB = peb_base as *mut HyperlightPEB;
+        .expect("scratch_reserved_base(): PEB align_up overflow");
+    let peb_ptr: *const HyperlightPEB = peb_base as *const HyperlightPEB;
+    let scratch_base: usize = unsafe { (*peb_ptr).input_stack.ptr } as usize;
+    let io_buffers_end: usize = scratch_base + INPUT_DATA_BUFFER_SIZE + OUTPUT_DATA_BUFFER_SIZE;
+    // Read the boot-time first-free GPA cached by install_early_idt().
+    // This value is saved before any CoW bump allocation can modify the live
+    // allocator pointer, so it correctly represents the boundary between the
+    // host page tables and free scratch space.
+    let boot_first_free_gpa: usize = load_boot_first_free_gpa();
+    let host_pt_end_gva: usize = if boot_first_free_gpa != 0 {
+        gpa_to_gva(boot_first_free_gpa)
+    } else {
+        // Fallback: read the (possibly stale) live value.
+        gpa_to_gva(first_free_scratch_gpa())
+    };
+    let base: usize = core::cmp::max(io_buffers_end, host_pt_end_gva);
+    // Page-align upward.
+    ::sys::mm::align_up(base, PAGE_ALIGNMENT)
+        .expect("scratch_reserved_base(): page alignment overflow")
+}
 
-    // Patch PEB scratch pointers from GVA to GPA.
-    //
-    // The host writes input_stack.ptr and output_stack.ptr using scratch_base_gva()
-    // (derived from MAX_GVA).  On the Hyperlight i686 platform the guest runs with
-    // identity mapping (GVA == GPA), but the KVM memory slot for scratch is placed at
-    // scratch_base_gpa() (derived from MAX_GPA).  When MAX_GPA < MAX_GVA the two
-    // diverge and the guest would read from unmapped physical addresses.  Subtract the
-    // delta so the PEB pointers target the actual GPA range.
-    let gva_gpa_delta: u64 = (MAX_GVA - MAX_GPA) as u64;
-    if gva_gpa_delta != 0 {
-        unsafe {
-            (*peb_ptr).input_stack.ptr -= gva_gpa_delta;
-            (*peb_ptr).output_stack.ptr -= gva_gpa_delta;
+///
+/// # Description
+///
+/// Returns a raw pointer to the PEB.
+///
+/// Computed from the `__KERNEL_END` linker symbol, page-aligned upwards.
+///
+fn peb_ptr() -> *mut HyperlightPEB {
+    unsafe extern "C" {
+        static __KERNEL_END: u8;
+    }
+    let kernel_end: usize = unsafe { &__KERNEL_END as *const u8 as usize };
+    let peb_base: usize =
+        ::sys::mm::align_up(kernel_end, PAGE_ALIGNMENT).expect("peb_ptr(): PEB align_up overflow");
+    peb_base as *mut HyperlightPEB
+}
+
+///
+/// # Description
+///
+/// Constructs a [`GuestHandle`] from the PEB pointer.
+///
+/// This is lightweight (no heap allocation) and avoids storing mutable global
+/// state that would dirty CoW snapshot pages during early boot.
+///
+fn guest_handle() -> GuestHandle {
+    GuestHandle::init(peb_ptr())
+}
+
+/// Software-defined AVL/CoW bit in x86 PTEs (bit 9).
+///
+/// The Hyperlight host sets this bit on page table entries that point to snapshot GPAs and require
+/// Copy-on-Write resolution. The guest must copy the page to a scratch frame and clear this bit.
+const PAGE_AVL_COW: u32 = 1 << 9;
+
+/// Mask for extracting the 4 KiB-aligned physical address from a PTE/PDE.
+const PTE_ADDR_MASK_U32: u32 = 0xFFFFF000;
+
+///
+/// # Description
+///
+/// Eagerly pre-faults every CoW-marked page in the host-built page tables.
+///
+/// Walks the page directory (from CR3), and for each present PDE walks the page table.
+/// For each PTE with the `PAGE_AVL_COW` bit set:
+///   1. Allocates a fresh scratch frame via the bump allocator.
+///   2. Copies 4 KiB from the snapshot-backed GVA to the new scratch frame.
+///   3. Patches the PTE in place: scratch GPA, PAGE_PRESENT | PAGE_RW, clear PAGE_AVL_COW.
+///
+/// After this function returns, every writable page is backed by scratch memory and the
+/// kernel runs fault-free.
+///
+/// # Safety
+///
+/// Must be called after `advance_bump_allocator()` and before `setup_klog()`.
+/// The page tables themselves reside in scratch (already writable), so patching PTEs
+/// does not trigger faults.
+///
+unsafe fn eager_prefault_cow_pages() {
+    use ::arch::mem::paging::{
+        PresentFlag,
+        PteWord,
+    };
+
+    // Read CR3 to find the host page directory.
+    let cr3: u32;
+    core::arch::asm!("mov {:e}, cr3", out(reg) cr3, options(nostack, nomem));
+    let pd_gpa: usize = (cr3 & PTE_ADDR_MASK_U32) as usize;
+    let pd_base: *const u32 = gpa_to_gva(pd_gpa) as *const u32;
+
+    let page_table_length: usize = 1024;
+
+    for pd_idx in 0..page_table_length {
+        let pde: u32 = pd_base.add(pd_idx).read_volatile();
+        if !PresentFlag::is_set(pde) {
+            continue;
+        }
+
+        let pt_gpa: usize = (pde & PTE_ADDR_MASK_U32) as usize;
+        let pt_base: *mut u32 = gpa_to_gva(pt_gpa) as *mut u32;
+
+        for pt_idx in 0..page_table_length {
+            let pte: u32 = pt_base.add(pt_idx).read_volatile();
+            if !PresentFlag::is_set(pte) {
+                continue;
+            }
+            // Check for the AVL/CoW software bit.
+            if pte & PAGE_AVL_COW == 0 {
+                continue;
+            }
+
+            // Allocate a scratch frame via the bump allocator.
+            let new_frame_gpa: u32 = cow_handler::bump_alloc_frame();
+            let new_frame_gva: usize = gpa_to_gva(new_frame_gpa as usize);
+
+            // The source GVA is the identity-mapped virtual address of this page.
+            let src_gva: usize = pd_idx * mem::PGTAB_SIZE + pt_idx * mem::PAGE_SIZE;
+
+            // Copy 4 KiB from the snapshot-backed GVA to the new scratch frame.
+            core::ptr::copy_nonoverlapping(
+                src_gva as *const u8,
+                new_frame_gva as *mut u8,
+                mem::PAGE_SIZE,
+            );
+
+            // Build the new PTE: scratch GPA, present + RW + accessed, clear AVL_COW.
+            // Preserve the user-mode flag if set.
+            let mut new_pte: PteWord = (new_frame_gpa & PTE_ADDR_MASK_U32)
+                | PresentFlag::Present as PteWord
+                | ::arch::mem::paging::ReadWriteFlag::ReadWrite as PteWord
+                | ::arch::mem::paging::AccessedFlag::Accessed as PteWord;
+            // Preserve USER bit from the original PTE.
+            new_pte |= pte & (::arch::mem::paging::UserSupervisorFlag::User as PteWord);
+
+            pt_base.add(pt_idx).write_volatile(new_pte);
         }
     }
+
+    // Flush TLB by reloading CR3.
+    core::arch::asm!(
+        "mov {tmp:e}, cr3",
+        "mov cr3, {tmp:e}",
+        tmp = out(reg) _,
+        options(nostack),
+    );
 }
 
 ///
@@ -650,8 +1037,6 @@ extern "C" fn init_scratch_kstack() {
 /// Performs one-time initialization that subsequent `sandbox.call()` invocations depend on:
 ///
 /// 1. Initializes the kernel heap (needed for FunctionCall deserialisation).
-/// 2. Computes the PEB base address and stores a [`GuestHandle`] in [`GUEST_HANDLE`] for reuse
-///    by [`nanvix_dispatch_function`].
 ///
 /// On return, the caller (`_do_start2` in `start.rs`) halts the VM so that `evolve()` returns
 /// on the host.
@@ -670,18 +1055,43 @@ extern "C" fn hyperlight_pre_kmain() {
         .expect("hyperlight_pre_kmain(): PEB align_up overflow");
     let peb_ptr: *mut HyperlightPEB = peb_base as *mut HyperlightPEB;
 
-    // Derive the scratch-reserved base from the (already patched) PEB input buffer pointer.
-    let scratch_base: usize = unsafe { (*peb_ptr).input_stack.ptr } as usize;
-    let scratch_reserved_base: usize =
-        scratch_base + INPUT_DATA_BUFFER_SIZE + OUTPUT_DATA_BUFFER_SIZE;
+    // Derive the scratch-reserved base from the PEB and host page table metadata.
+    // This accounts for the host page tables that are placed between the IO buffers
+    // and our reserved structures.
+    let scratch_reserved_base: usize = scratch_reserved_base();
 
-    // Point the kernel log buffer at scratch-resident backing storage so that log
-    // writes do not dirty CoW snapshot pages.
-    //
-    // Safety: klog_buffer_ptr returns a pointer within the scratch-reserved region
-    // that was identity-mapped and zeroed by Hyperlight before the guest started.
-    // The scratch region is never freed, so the storage outlives all logging usage.
-    // This is the only call to klog::set_backing_storage() in the Hyperlight init path.
+    // Advance the bump allocator pointer past our scratch-reserved region so that
+    // frame allocations never overlap our data structures. This must be done on
+    // every entry (evolve and call) because the host resets the bump pointer on
+    // snapshot restore.
+    {
+        let boot_first_free: usize = load_boot_first_free_gpa();
+        let reserved_end_gpa: usize = if boot_first_free != 0 {
+            boot_first_free + SCRATCH_RESERVED_SIZE
+        } else {
+            first_free_scratch_gpa() + SCRATCH_RESERVED_SIZE
+        };
+        let alloc_ptr = ::hyperlight_guest::layout::allocator_gva();
+        let current: usize = unsafe { core::ptr::read_volatile(alloc_ptr) as usize };
+        if current < reserved_end_gpa {
+            unsafe { core::ptr::write_volatile(alloc_ptr, reserved_end_gpa as u64) };
+        }
+    }
+
+    // Eagerly resolve all CoW pages: walk the host-built page tables and copy every
+    // CoW-marked page to a scratch frame, patching the PTE in place. After this call,
+    // every writable page in the guest address space is backed by scratch memory.
+    unsafe {
+        eager_prefault_cow_pages();
+    }
+
+    // Set a conservative snapshot_end so the CoW handler can resolve page faults
+    // after the host takes a snapshot.  The exact value is refined later in
+    // platform::init() once the host memory layout is known.  Using the scratch
+    // base (from PEB) as the upper bound is safe.
+    let peb_scratch_base: usize = unsafe { (*peb_ptr).input_stack.ptr } as usize;
+    store_snapshot_end(peb_scratch_base);
+
     let klog_backing_ptr: *mut u8 = unsafe { klog_buffer_ptr(scratch_reserved_base) };
     if let Err(_e) = unsafe { crate::klog::set_backing_storage(klog_backing_ptr) } {
         unsafe {
@@ -690,9 +1100,6 @@ extern "C" fn hyperlight_pre_kmain() {
     }
 
     let heap_backing_ptr: *mut u8 = (scratch_reserved_base + HEAP_STORAGE_OFFSET) as *mut u8;
-
-    // Point the kernel heap at scratch-resident backing storage so that heap
-    // allocations do not dirty CoW snapshot pages.
     if let Err(_e) =
         unsafe { crate::mm::kheap::set_backing_storage(heap_backing_ptr, HEAP_STORAGE_SIZE) }
     {
@@ -701,18 +1108,10 @@ extern "C" fn hyperlight_pre_kmain() {
         }
     }
 
-    // Initialises the kernel heap once so FunctionCall deserialisation can allocate on every
-    // subsequent sandbox.call().  On Hyperlight the heap is only initialised here (during evolve);
-    // kmain skips heap init via `#[cfg(not(feature = "hyperlight"))]`.
     if let Err(_e) = unsafe { crate::mm::kheap::init() } {
         unsafe {
             core::arch::asm!("cli", "2: hlt", "jmp 2b", options(noreturn));
         }
-    }
-
-    // Store a GuestHandle for reuse by nanvix_dispatch_function.
-    unsafe {
-        GUEST_HANDLE = Some(GuestHandle::init(peb_ptr));
     }
 }
 
@@ -734,14 +1133,7 @@ extern "C" fn hyperlight_pre_kmain() {
 ///
 #[unsafe(no_mangle)]
 extern "C" fn nanvix_dispatch_function(kargs: &crate::kargs::KernelArguments) {
-    // SAFETY: GUEST_HANDLE is initialised once in hyperlight_pre_kmain
-    // during the evolve phase and never mutated again. This is a single-core
-    // guest, so there are no data races.
-    let handle: &GuestHandle = unsafe {
-        GUEST_HANDLE
-            .as_ref()
-            .expect("nanvix_dispatch_function(): GUEST_HANDLE not initialised")
-    };
+    let handle: GuestHandle = guest_handle();
 
     let function_call = handle
         .try_pop_shared_input_data_into::<FunctionCall>()
@@ -795,16 +1187,24 @@ pub fn tsc_base_frequency_mhz() -> u32 {
 #[inline(always)]
 pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
     let raw: usize = addr.into_raw_value();
-    let snapshot: (usize, usize) =
-        (SNAPSHOT_BASE.load(Ordering::Relaxed), SNAPSHOT_END.load(Ordering::Relaxed));
-    let ramfs: (usize, usize) =
-        (RAMFS_BASE.load(Ordering::Relaxed), RAMFS_END.load(Ordering::Relaxed));
-    let scratch: (usize, usize) =
-        (SCRATCH_BASE.load(Ordering::Relaxed), SCRATCH_END.load(Ordering::Relaxed));
+    let snapshot: (usize, usize) = (KERNEL_BASE_RAW, load_snapshot_end());
+    let ramfs: (usize, usize) = (load_ramfs_base(), load_ramfs_end());
+    let scratch: (usize, usize) = (load_scratch_base(), load_scratch_end());
+    // The frame allocator hands out scratch GPAs, which differ from scratch GVAs.
+    // Accept both ranges so physical addresses from the frame allocator pass validation.
+    let scratch_gpa: (usize, usize) = {
+        let sz: usize = scratch_size();
+        if sz > 0 {
+            (MAX_GPA + 1 - sz, MAX_GPA + 1)
+        } else {
+            (0, 0)
+        }
+    };
     // An address is valid when the half-open interval [raw, raw+1) lies inside a region.
     region_contains(snapshot.0, snapshot.1, raw, raw + 1)
         || region_contains(ramfs.0, ramfs.1, raw, raw + 1)
         || region_contains(scratch.0, scratch.1, raw, raw + 1)
+        || region_contains(scratch_gpa.0, scratch_gpa.1, raw, raw + 1)
 }
 
 ///
@@ -835,16 +1235,22 @@ pub fn is_valid_physical_region(start: usize, size: usize) -> bool {
         None => return false,
     };
 
-    let snapshot: (usize, usize) =
-        (SNAPSHOT_BASE.load(Ordering::Relaxed), SNAPSHOT_END.load(Ordering::Relaxed));
-    let ramfs: (usize, usize) =
-        (RAMFS_BASE.load(Ordering::Relaxed), RAMFS_END.load(Ordering::Relaxed));
-    let scratch: (usize, usize) =
-        (SCRATCH_BASE.load(Ordering::Relaxed), SCRATCH_END.load(Ordering::Relaxed));
+    let snapshot: (usize, usize) = (KERNEL_BASE_RAW, load_snapshot_end());
+    let ramfs: (usize, usize) = (load_ramfs_base(), load_ramfs_end());
+    let scratch: (usize, usize) = (load_scratch_base(), load_scratch_end());
+    let scratch_gpa: (usize, usize) = {
+        let sz: usize = scratch_size();
+        if sz > 0 {
+            (MAX_GPA + 1 - sz, MAX_GPA + 1)
+        } else {
+            (0, 0)
+        }
+    };
 
     region_contains(snapshot.0, snapshot.1, start, end)
         || region_contains(ramfs.0, ramfs.1, start, end)
         || region_contains(scratch.0, scratch.1, start, end)
+        || region_contains(scratch_gpa.0, scratch_gpa.1, start, end)
 }
 
 ///
@@ -902,15 +1308,15 @@ fn region_contains(region_base: usize, region_end: usize, start: usize, end: usi
 ///
 #[inline(always)]
 pub fn max_physical_address() -> usize {
-    let scratch_base: usize = SCRATCH_BASE.load(Ordering::Relaxed);
+    let scratch_base: usize = load_scratch_base();
     if scratch_base != 0 {
         // Post-init: the highest valid address is SCRATCH_END - 1.
         // Use wrapping_sub because SCRATCH_END may be 0 when the scratch region
         // reaches the top of the 32-bit address space (base + size wraps).
-        SCRATCH_END.load(Ordering::Relaxed).wrapping_sub(1)
+        load_scratch_end().wrapping_sub(1)
     } else {
         // Pre-init: only the snapshot region is known.
-        SNAPSHOT_END.load(Ordering::Relaxed).saturating_sub(1)
+        load_snapshot_end().saturating_sub(1)
     }
 }
 
@@ -936,16 +1342,14 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
     }
 
     let kernel_end: usize = unsafe { &__KERNEL_END as *const u8 as usize };
+
     let peb_base: usize = ::sys::mm::align_up(kernel_end, PAGE_ALIGNMENT).ok_or_else(|| {
         let reason: &str = "align_up overflow";
         error!("parse_bootinfo(): {reason} (kernel_end={kernel_end:#x})");
         Error::new(ErrorCode::BadAddress, reason)
     })?;
-    let peb_ptr: *mut HyperlightPEB = peb_base as *mut HyperlightPEB;
 
-    unsafe {
-        ProcessEnvironmentBlock::init(peb_ptr)?;
-    };
+    let peb_ptr: *mut HyperlightPEB = peb_base as *mut HyperlightPEB;
 
     let mut kernel_modules: LinkedList<KernelModule> = LinkedList::new();
 
@@ -1033,9 +1437,17 @@ fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
 
     // Configure the PV timer: writing the period (in microseconds) to the
     // PvTimerConfig port tells the hypervisor to inject periodic timer interrupts at that rate.
-    ioports.register_read_write(::config::hyperlight::PV_TIMER_PORT)?;
-    let mut pv_timer_port = ioports.allocate_read_write(::config::hyperlight::PV_TIMER_PORT)?;
-    pv_timer_port.write32(::config::hyperlight::TIMER_PERIOD_US);
+    // Use a direct I/O port write instead of the allocator-managed port to avoid registering
+    // the PV timer port for general-purpose allocation.
+    //
+    // Safety: PV_TIMER_PORT is the Hyperlight PvTimerConfig port, and writing the period
+    // value is the expected interface to configure the paravirtual timer.
+    unsafe {
+        ::arch::io::out32(
+            ::config::hyperlight::PV_TIMER_PORT,
+            ::config::hyperlight::TIMER_PERIOD_US,
+        );
+    }
 
     Pit::new(ioports, ::config::kernel::TIMER_FREQ)
 }
@@ -1201,8 +1613,8 @@ pub fn init(
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
-        RAMFS_BASE.store(ramfs_base, Ordering::Relaxed);
-        RAMFS_END.store(ramfs_end, Ordering::Relaxed);
+        store_ramfs_base(ramfs_base);
+        store_ramfs_end(ramfs_end);
         info!("ramfs region: [{:#010x}, {:#010x})", ramfs_base, ramfs_end);
     }
 
@@ -1226,10 +1638,10 @@ pub fn init(
         );
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
-    // scratch_base = MAX_GPA - scratch_size + 1.
-    // MAX_GPA (not MAX_GVA) because the guest uses identity mapping (GVA == GPA)
-    // and the KVM memory slot is placed relative to MAX_GPA.
-    let scratch_base_address: usize = MAX_GPA - scratch_size + 1;
+    // The host maps the scratch region at GVA = MAX_GVA - scratch_size + 1.
+    // Use MAX_GVA (not MAX_GPA) because the CPU accesses memory through the
+    // host-built page tables, which map scratch at GVA addresses.
+    let scratch_base_address: usize = MAX_GVA - scratch_size + 1;
 
     // Sanity check: the scratch region must not descend into the user virtual address space.
     // The config crate already computes USER_END_RAW to avoid this overlap, but verify at
@@ -1249,14 +1661,14 @@ pub fn init(
     }
 
     // scratch_end is the exclusive end of the full scratch range, including the last page
-    // reserved for Hyperlight bookkeeping metadata.  When MAX_GPA == usize::MAX
-    // (i686-guest stable), the addition wraps to 0 — this is expected and handled
+    // reserved for Hyperlight bookkeeping metadata.  When MAX_GVA == usize::MAX
+    // (i686-guest), the addition wraps to 0 — this is expected and handled
     // correctly by region_contains() and max_physical_address().
     let scratch_end_address: usize = scratch_base_address.wrapping_add(scratch_size);
 
     // Record scratch region bounds for is_valid_physical_address.
-    SCRATCH_BASE.store(scratch_base_address, Ordering::Relaxed);
-    SCRATCH_END.store(scratch_end_address, Ordering::Relaxed);
+    store_scratch_base(scratch_base_address);
+    store_scratch_end(scratch_end_address);
     info!(
         "scratch region: [{:#010x}, {:#010x}) (size={:#x})",
         scratch_base_address, scratch_end_address, scratch_size
@@ -1296,11 +1708,26 @@ pub fn init(
         mmio_regions.push_back(scratch_output);
     }
 
-    // Reserve pages at the start of the free scratch area for the frame allocator bitmap,
-    // kpool bitmap, and GDT backing stores.  This memory is in scratch (never snapshot/CoW)
-    // and is registered as a reserved memory region so the frame allocator never hands it out.
-    let scratch_reserved_base: usize =
+    // Reserve pages in the free scratch area for the frame allocator bitmap,
+    // kpool bitmap, GDT backing stores, heap, etc.  This memory is in scratch (never
+    // snapshot/CoW) and is registered as a reserved memory region so the frame allocator
+    // never hands it out.
+    //
+    // The host places its page tables at the start of the free scratch area (right after
+    // the IO buffers), so our reserved structures must be placed AFTER the host page
+    // tables to avoid overlap.
+    let io_buffers_end: usize =
         scratch_base_address + INPUT_DATA_BUFFER_SIZE + OUTPUT_DATA_BUFFER_SIZE;
+    let boot_first_free: usize = load_boot_first_free_gpa();
+    let host_pt_gva_end: usize = gpa_to_gva(if boot_first_free != 0 {
+        boot_first_free
+    } else {
+        first_free_scratch_gpa()
+    });
+    // Page-align upward to ensure our structures start on a page boundary.
+    let scratch_reserved_base: usize =
+        ::sys::mm::align_up(core::cmp::max(io_buffers_end, host_pt_gva_end), PAGE_ALIGNMENT)
+            .expect("scratch_reserved_base: page alignment overflow");
     {
         // No need to zero the storage pages: the scratch region is guaranteed to be
         // zeroed out by Hyperlight before the guest starts.
@@ -1325,23 +1752,92 @@ pub fn init(
             SCRATCH_RESERVED_SIZE,
         );
     }
+
+    // Validate that our scratch-reserved region does not overlap the host-built page tables.
+    // The host places page tables in scratch at a GPA readable from the scratch metadata
+    // slot at SCRATCH_TOP_SNAPSHOT_PT_GPA_BASE_OFFSET. The page table size is derived as
+    // first_free_gpa − pt_base_gpa.
+    {
+        let pt_gpa_base: usize = pt_base_gpa();
+        // Use the cached boot-time first-free-GPA (before any CoW bump allocations
+        // advanced the pointer) to determine the actual PT end boundary.
+        let boot_first_free: usize = load_boot_first_free_gpa();
+        let pt_gpa_end: usize = if boot_first_free != 0 {
+            boot_first_free
+        } else {
+            first_free_scratch_gpa()
+        };
+        // Convert PT GPA range to GVA for comparison with our scratch_reserved_base (a GVA).
+        let pt_gva_base: usize = gpa_to_gva(pt_gpa_base);
+        let pt_gva_end: usize = gpa_to_gva(pt_gpa_end);
+        let reserved_end: usize = scratch_reserved_base + SCRATCH_RESERVED_SIZE;
+
+        info!(
+            "host page tables: GPA [{:#010x}, {:#010x}) => GVA [{:#010x}, {:#010x}), size={:#x}",
+            pt_gpa_base,
+            pt_gpa_end,
+            pt_gva_base,
+            pt_gva_end,
+            pt_gpa_end - pt_gpa_base
+        );
+
+        // Check for overlap: two ranges [a, b) and [c, d) overlap iff a < d && c < b.
+        if scratch_reserved_base < pt_gva_end && pt_gva_base < reserved_end {
+            let reason: &str = "scratch reserved region overlaps host page tables";
+            error!(
+                "init(): {} (reserved=[{:#010x}, {:#010x}), pt=[{:#010x}, {:#010x}))",
+                reason, scratch_reserved_base, reserved_end, pt_gva_base, pt_gva_end,
+            );
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+    }
+
     // Reserve the boot stack area at the top of the scratch region, just below
     // the I/O and bookkeeping pages.  The address is a compile-time constant
-    // derived from HYPERLIGHT_GPA_CEILING.
+    // derived from HYPERLIGHT_GPA_CEILING, which falls within the GVA scratch range.
     {
-        let boot_stack_guard_base: usize =
+        let boot_stack_guard: usize =
             memory_layout::HYPERLIGHT_BOOT_STACK_TOP - ::config::kernel::KSTACK_SIZE;
         let boot_stack_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
             "boot stack",
-            VirtualAddress::from_raw_value(boot_stack_guard_base),
+            VirtualAddress::from_raw_value(boot_stack_guard),
             ::config::kernel::KSTACK_SIZE,
             MemoryRegionType::Reserved,
             AccessPermission::RDWR,
         )?;
         memory_regions.push_back(boot_stack_region);
     }
+    // Reserve the early IDT page (one page below the boot stack guard page).
+    // This page is used by install_early_idt() during boot to hold the minimal IDT
+    // that intercepts page faults before the full HAL IDT is installed.
     {
-        let scratch_io_page: usize = scratch_end_address - 2 * mem::PAGE_SIZE;
+        let early_idt_base: usize = memory_layout::HYPERLIGHT_EARLY_IDT_BASE;
+        let early_idt_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+            "early idt",
+            VirtualAddress::from_raw_value(early_idt_base),
+            mem::PAGE_SIZE,
+            MemoryRegionType::Reserved,
+            AccessPermission::RDWR,
+        )?;
+        memory_regions.push_back(early_idt_region);
+    }
+    // Reserve the early GDT page (one page below the early IDT page).
+    // This page holds the relocated GDT written by install_early_idt() so the CPU can
+    // set the Accessed bit in GDT entries during exception delivery.
+    {
+        let early_gdt_base: usize = memory_layout::HYPERLIGHT_EARLY_GDT_BASE;
+        let early_gdt_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+            "early gdt",
+            VirtualAddress::from_raw_value(early_gdt_base),
+            mem::PAGE_SIZE,
+            MemoryRegionType::Reserved,
+            AccessPermission::RDWR,
+        )?;
+        memory_regions.push_back(early_gdt_region);
+    }
+    {
+        // scratch_end_address wraps to 0 when MAX_GVA == usize::MAX, so use wrapping_sub.
+        let scratch_io_page: usize = scratch_end_address.wrapping_sub(2 * mem::PAGE_SIZE);
         let scratch_io: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
             "scratch-io",
             PageAligned::from_raw_value(scratch_io_page)?,
@@ -1353,7 +1849,7 @@ pub fn init(
         mmio_regions.push_back(scratch_io);
     }
     {
-        let scratch_reserved_page: usize = scratch_end_address - mem::PAGE_SIZE;
+        let scratch_reserved_page: usize = scratch_end_address.wrapping_sub(mem::PAGE_SIZE);
         let scratch_reserved: MemoryRegion<VirtualAddress> = MemoryRegion::new(
             "scratch reserved",
             VirtualAddress::from_raw_value(scratch_reserved_page),
@@ -1365,12 +1861,135 @@ pub fn init(
     }
 
     // Set snapshot region end from the host-provided snapshot budget.
-    // pt_overhead is always 0 with nanvix-unstable (Hyperlight skips PT generation).
-    // The variable is acknowledged here for forward-compatibility.
-    let _ = pt_overhead;
-    let snapshot_end_address: usize = KERNEL_BASE_RAW + snapshot_budget_size;
-    SNAPSHOT_END.store(snapshot_end_address, Ordering::Relaxed);
-    info!("snapshot region: [{:#010x}, {:#010x})", KERNEL_BASE_RAW, snapshot_end_address);
+    // With i686-guest, the host builds guest page tables which adds pt_overhead bytes on
+    // top of the snapshot budget. Include pt_overhead so the snapshot region covers all
+    // host-placed data (kernel code, PEB, heap, init data, and page tables).
+    // The snapshot_end for CoW purposes covers the full budget (all pages may be CoW-protected).
+    // But the frame allocator bitmap only needs to cover actually-usable frames.
+    // On Hyperlight, pages beyond the last used section (kernel + initrd) may not have
+    // host-created PTEs, so they must not be handed out by the frame allocator.
+    let snapshot_end_for_cow: usize = SNAPSHOT_PHYS_BASE + snapshot_budget_size;
+    store_snapshot_end(snapshot_end_for_cow);
+    // Use the full snapshot budget as the bitmap end. The host maps ALL pages in the budget,
+    // even if they're not occupied by kernel/initrd data. This ensures the frame allocator
+    // has free frames available for CoW resolution and kpool allocations.
+    let snapshot_end_address: usize = SNAPSHOT_PHYS_BASE + snapshot_budget_size;
+    info!("snapshot region: [{:#010x}, {:#010x})", SNAPSHOT_PHYS_BASE, snapshot_end_address);
+
+    // Register gap-filling reserved regions within the snapshot to ensure every snapshot
+    // frame is booked without overlapping with individually-registered sub-regions
+    // (kernel text/data/rodata/bss, PEB, heap padding, kpool, initrd modules from kmain).
+    //
+    // The two gaps are:
+    //   1. The initrd header page — multibinary descriptors before the first module payload.
+    //   2. The snapshot tail — host budget padding after the last module.
+    //
+    // When no init_data is present, the entire range from kpool_end to snapshot_end is a gap.
+    {
+        let kpool_end: usize = kpool_base + ::config::kernel::KPOOL_SIZE;
+        let peb: *const HyperlightPEB = peb_base as *const HyperlightPEB;
+        let init_data_start: usize = unsafe { (*peb).init_data.ptr } as usize;
+        let init_data_size: usize = unsafe { (*peb).init_data.size } as usize;
+
+        if init_data_size > 0 {
+            // Gap between kpool end and init_data start (if any alignment padding exists).
+            if init_data_start > kpool_end {
+                let gap_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+                    "kpool-initrd gap",
+                    VirtualAddress::from_raw_value(kpool_end),
+                    init_data_start - kpool_end,
+                    MemoryRegionType::Reserved,
+                    AccessPermission::RDONLY,
+                )?;
+                memory_regions.push_back(gap_region);
+            }
+
+            // For multibinary (NVMB) format, the first page of the init_data blob contains
+            // the header and entry descriptors. Module payloads start at page-aligned offsets
+            // after this header, leaving the header page as a gap not covered by any module
+            // region. For single-binary format, the module payload starts at byte 8 within
+            // the first page (after the size header), and kmain page-aligns downward so the
+            // first page IS part of the module — no gap to register.
+            let init_data_slice: &[u8] = unsafe {
+                core::slice::from_raw_parts(
+                    init_data_start as *const u8,
+                    init_data_size.min(multibin::MAGIC.len()),
+                )
+            };
+            let is_multibinary: bool = init_data_slice.len() >= multibin::MAGIC.len()
+                && init_data_slice[..multibin::MAGIC.len()] == multibin::MAGIC;
+            if is_multibinary {
+                let initrd_header_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+                    "initrd header",
+                    VirtualAddress::from_raw_value(init_data_start),
+                    mem::PAGE_SIZE,
+                    MemoryRegionType::Reserved,
+                    AccessPermission::RDONLY,
+                )?;
+                memory_regions.push_back(initrd_header_region);
+            }
+
+            // Snapshot tail: padding between the end of init_data and snapshot_end.
+            // The host allocates a full snapshot budget that may extend beyond the last module.
+            let init_data_end: usize = init_data_start + init_data_size;
+            let tail_start: usize =
+                ::sys::mm::align_up(init_data_end, PAGE_ALIGNMENT).unwrap_or(init_data_end);
+            if snapshot_end_address > tail_start {
+                let tail_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+                    "snapshot tail",
+                    VirtualAddress::from_raw_value(tail_start),
+                    snapshot_end_address - tail_start,
+                    MemoryRegionType::Reserved,
+                    AccessPermission::RDONLY,
+                )?;
+                memory_regions.push_back(tail_region);
+            }
+        } else if snapshot_end_address > kpool_end {
+            // No init_data — the entire range from kpool_end to snapshot_end is unused.
+            let gap_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+                "snapshot tail",
+                VirtualAddress::from_raw_value(kpool_end),
+                snapshot_end_address - kpool_end,
+                MemoryRegionType::Reserved,
+                AccessPermission::RDONLY,
+            )?;
+            memory_regions.push_back(gap_region);
+        }
+    }
+
+    // Register the host page tables area. This is the scratch region between the IO buffers
+    // and the scratch-reserved structures that holds the host-built page directory and page
+    // tables. No individually-named region covers it.
+    if host_pt_gva_end > io_buffers_end {
+        let host_pt_size: usize = host_pt_gva_end - io_buffers_end;
+        let host_pt_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+            "host page tables",
+            VirtualAddress::from_raw_value(io_buffers_end),
+            host_pt_size,
+            MemoryRegionType::Reserved,
+            AccessPermission::RDONLY,
+        )?;
+        memory_regions.push_back(host_pt_region);
+    }
+
+    // Register pre-faulted CoW pages. These are bump-allocated scratch frames consumed by
+    // `eager_prefault_cow_pages()`. They lie between the scratch-reserved structures and
+    // the boot stack area. The bump pointer (first_free_scratch_gpa) marks their end.
+    {
+        let prefault_start_gva: usize = scratch_reserved_base + SCRATCH_RESERVED_SIZE;
+        let prefault_end_gva: usize = gpa_to_gva(first_free_scratch_gpa());
+        if prefault_end_gva > prefault_start_gva {
+            let prefault_size: usize = prefault_end_gva - prefault_start_gva;
+            let prefault_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+                "prefault pages",
+                VirtualAddress::from_raw_value(prefault_start_gva),
+                prefault_size,
+                MemoryRegionType::Reserved,
+                AccessPermission::RDWR,
+            )?;
+            memory_regions.push_back(prefault_region);
+        }
+    }
 
     // Build a sparse bitmap representing the physical memory layout.
     // Each disjoint physical region (snapshot, RAMFS, scratch) gets its own chunk in the
@@ -1387,13 +2006,17 @@ pub fn init(
     // The memory outlives the returned `SparseBitmap` (it is never freed) and no other
     // code writes to this range after this point.
     let physical_memory_layout: SparseBitmap = unsafe {
+        // Use GPAs for all regions. Snapshot and RAMFS are identity-mapped (GVA == GPA).
+        // Scratch GVA ≠ GPA; convert back to GPA for the frame allocator bitmap.
+        let scratch_base_gpa: usize = MAX_GPA + 1 - scratch_size;
+        let scratch_end_gpa: usize = MAX_GPA + 1;
         build_physical_memory_layout(
             KERNEL_BASE_RAW,
             snapshot_end_address,
             ramfs_base,
             ramfs_end_address,
-            scratch_base_address,
-            scratch_end_address,
+            scratch_base_gpa,
+            scratch_end_gpa,
             (frame_alloc_bitmap_ptr(scratch_reserved_base), FRAME_ALLOC_BITMAP_SIZE),
         )?
     };
@@ -1527,11 +2150,9 @@ unsafe fn build_physical_memory_layout(
     scratch_end_address: usize,
     storage: (*mut u8, usize),
 ) -> Result<SparseBitmap, Error> {
-    // Validate that region ends are not before their starts.
-    if snapshot_end_address < snapshot_start_address
-        || ramfs_end_address < ramfs_start_address
-        || scratch_end_address < scratch_start_address
-    {
+    // 32-bit address space (MAX_GVA + 1 overflows).  Use wrapping subtraction for
+    // scratch to handle this correctly.
+    if snapshot_end_address < snapshot_start_address || ramfs_end_address < ramfs_start_address {
         let reason: &str = "region end address precedes start address";
         error!("build_physical_memory_layout(): {}", reason);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
@@ -1540,7 +2161,7 @@ unsafe fn build_physical_memory_layout(
     let bits_per_byte: usize = u8::BITS as usize;
     let snapshot_size: usize = snapshot_end_address - snapshot_start_address;
     let ramfs_size: usize = ramfs_end_address - ramfs_start_address;
-    let scratch_size: usize = scratch_end_address - scratch_start_address;
+    let scratch_size: usize = scratch_end_address.wrapping_sub(scratch_start_address);
 
     let snapshot_frames: usize = snapshot_size / mem::FRAME_SIZE;
     let snapshot_padded_end: usize = snapshot_frames.div_ceil(bits_per_byte) * bits_per_byte;
@@ -1583,8 +2204,6 @@ unsafe fn build_physical_memory_layout(
 
     let scratch_frames: usize = scratch_size / mem::FRAME_SIZE;
     let scratch_bytes: usize = scratch_frames.div_ceil(bits_per_byte);
-    // Phantom bits are trailing padding bits in the byte-aligned bitmap that do not
-    // correspond to real frames. Pre-mark them as used so alloc() never returns them.
     let scratch_phantom: usize = scratch_bytes * bits_per_byte - scratch_frames;
 
     let total_bytes: usize = low_bytes + ramfs_bytes + scratch_bytes;
@@ -1600,37 +2219,46 @@ unsafe fn build_physical_memory_layout(
     }
 
     let base_ptr: *mut u8 = storage_ptr;
+    #[allow(unused_assignments)]
     let mut offset: usize = 0;
 
-    // Build a bitmap chunk from the shared storage at the current offset.
-    // `num_bytes` is the byte-aligned storage size, `num_frames` is the real frame count,
-    // and `num_phantom` is the number of trailing padding bits to pre-mark as used.
-    let mut make_chunk =
-        |num_bytes: usize, num_frames: usize, num_phantom: usize| -> Result<Bitmap, Error> {
-            let storage: RawArray<u8> = RawArray::from_raw_parts(base_ptr.add(offset), num_bytes)?;
+    // Helper: build a bitmap chunk from the shared storage at the current offset.
+    // Phantom bits (byte-alignment padding beyond the last real frame) are marked as used.
+    macro_rules! make_chunk {
+        ($num_bytes:expr, $num_frames:expr, $num_phantom:expr) => {{
+            let ptr = base_ptr.add(offset);
+            let storage: RawArray<u8> = RawArray::from_raw_parts(ptr, $num_bytes)?;
             let mut bitmap: Bitmap = Bitmap::from_raw_array(storage)?;
-            for i in 0..num_phantom {
-                bitmap.set(num_frames + i)?;
+            let nf: usize = $num_frames;
+            let np: usize = $num_phantom;
+            for i in 0..np {
+                bitmap.set(nf + i)?;
             }
-            offset += num_bytes;
-            Ok(bitmap)
-        };
+            #[allow(unused_assignments)]
+            {
+                offset += $num_bytes;
+            }
+            bitmap
+        }};
+    }
 
     // Low chunk: snapshot (and optionally RAMFS when merged).
     let snapshot_start_frame: usize = snapshot_start_address / mem::FRAME_SIZE;
-    let low_bitmap: Bitmap = make_chunk(low_bytes, low_end_frame, low_phantom)?;
+    let low_bitmap: Bitmap = make_chunk!(low_bytes, low_end_frame, low_phantom);
     let mut chunks: vec::Vec<(usize, Bitmap)> = vec![(snapshot_start_frame, low_bitmap)];
 
     // Separate RAMFS chunk (only when not merged with the snapshot).
     if ramfs_bytes > 0 {
-        let ramfs_bitmap: Bitmap = make_chunk(ramfs_bytes, ramfs_frames, ramfs_phantom)?;
+        let ramfs_bitmap: Bitmap = make_chunk!(ramfs_bytes, ramfs_frames, ramfs_phantom);
         chunks.push((ramfs_start_frame, ramfs_bitmap));
     }
 
-    // Scratch chunk: frames [scratch_start / FRAME_SIZE, ...).
+    // Scratch chunk: tracks frames in the scratch region so the frame allocator can
+    // hand them out. The bitmap uses GPAs.
     if scratch_frames > 0 {
-        let scratch_bitmap: Bitmap = make_chunk(scratch_bytes, scratch_frames, scratch_phantom)?;
-        chunks.push((scratch_start_address / mem::FRAME_SIZE, scratch_bitmap));
+        let scratch_start_frame: usize = scratch_start_address / mem::FRAME_SIZE;
+        let scratch_bitmap: Bitmap = make_chunk!(scratch_bytes, scratch_frames, scratch_phantom);
+        chunks.push((scratch_start_frame, scratch_bitmap));
     }
 
     SparseBitmap::new(chunks)
@@ -1726,19 +2354,11 @@ unsafe fn parse_initrd_image(
         read_initrd_cmdline(current_initrd_start, actual_initrd_size, total_allocation_size)?;
 
     // The ELF payload sits INITRD_SIZE_BYTES past the page-aligned init_data_start,
-    // so its address is not page-aligned.  Shift it back to init_data_start (the
-    // size header has already been consumed and is no longer needed).  The source
-    // and destination overlap, but core::ptr::copy handles that correctly.
-    let initrd_base: usize = init_data_start;
-    if current_initrd_start != initrd_base {
-        let src_ptr: *const u8 = current_initrd_start as *const u8;
-        let dst_ptr: *mut u8 = initrd_base as *mut u8;
-        core::ptr::copy(src_ptr, dst_ptr, actual_initrd_size);
-        debug!(
-            "parse_initrd_image(): initrd shifted from {current_initrd_start:#010x} to \
-             {initrd_base:#010x}"
-        );
-    }
+    // so its address is not page-aligned.  On microvm the payload is shifted back to
+    // init_data_start (the size header has already been consumed).  On hyperlight we
+    // cannot write to snapshot memory before the CoW handler is installed, so we skip
+    // the relocation and use the payload in-place.
+    let initrd_base: usize = current_initrd_start;
 
     Ok((initrd_base, actual_initrd_size, initrd_cmdline))
 }

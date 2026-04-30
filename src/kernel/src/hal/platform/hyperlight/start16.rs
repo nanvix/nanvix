@@ -2,48 +2,68 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// x86 16-bit Trampoline Code (Hyperlight)
+// x86 Trampoline Code (Hyperlight)
 //==================================================================================================
 //
-// This module contains 16-bit real-mode code placed in the `.trampoline` section at physical
-// address 0x8000. It provides:
-//   - `_do_start`: non-multiboot BSP entry (16-bit → protected mode → `_do_start2`)
-//   - `_ap_trampoline`: AP startup (16-bit → protected mode → `_do_ap_start`)
-//   - A minimal GDT (null + code + data) used during the real→protected mode transition.
+// This module contains code placed in the `.entry` and `.trampoline` sections:
+//
+//   - `_entry`: Jump stub at PLATFORM_BASE_ADDR (0x1000). Hyperlight starts execution here.
+//   - `_do_start`: BSP entry — 32-bit protected mode, jumps to `_do_start2`.
+//   - `_ap_trampoline` (SMP only): AP startup (16-bit → protected mode → `_do_ap_start`).
+//
+// With `i686-guest`, the VMM starts the BSP in 32-bit protected mode with paging enabled.
+// Segment registers are loaded by the VMM via `set_sregs()` with flat descriptors.  Page
+// tables are built by the VMM in the snapshot region and **copied** to scratch before the
+// guest starts; CR3 points to the scratch copy (RW).  No GDT load is needed on the BSP
+// path — the VMM-provided segment descriptors are used as-is.
 //
 
 use core::arch::global_asm;
 
 //==================================================================================================
-// Trampoline Section — BSP Entry
+// Entry Section — Jump stub at PLATFORM_BASE_ADDR
 //==================================================================================================
+//
+// On Hyperlight, the VMM starts execution at BASE_ADDRESS (PLATFORM_BASE_ADDR = 0x1000),
+// not at the ELF entry point. This stub is placed at the very first byte of the loaded image
+// and immediately jumps to `_do_start` in the trampoline section.
 
 global_asm!(
-    r#".section .trampoline,"ax",@progbits"#,
-    ".code16",
-    ".align 4",
-    ".globl _do_start",
-    "_do_start:",
-    // Zero data segment registers.
-    "    xorw  %dx,%dx",
-    "    movw  %dx,%ds",
-    "    movw  %dx,%es",
-    "    movw  %dx,%fs",
-    "    movw  %dx,%gs",
-    "    movw  %dx,%ss",
-    "    lgdt  gdtptr",
-    "    movl  %cr0, %edx",
-    "    orl   $1, %edx",
-    "    mov   %edx, %cr0",
-    ".extern _do_start2",
-    "    jmpl $0x8, $_do_start2",
+    r#".section .entry,"ax",@progbits"#,
+    ".code32",
+    ".globl _entry",
+    "_entry:",
+    "    jmp _do_start",
     options(att_syntax),
 );
 
 //==================================================================================================
-// Trampoline Section — AP Trampoline
+// Trampoline Section — BSP Entry (32-bit protected mode stub)
 //==================================================================================================
 
+global_asm!(
+    r#".section .trampoline,"ax",@progbits"#,
+    ".code32",
+    ".align 4",
+    ".globl _do_start",
+    "_do_start:",
+    // With Hyperlight stable (i686-guest), the host starts the vCPU directly
+    // in 32-bit protected mode with paging enabled.  The VMM already loaded
+    // valid flat segment descriptors via set_sregs() and CR3 points to the
+    // host-built page tables (copied to scratch, RW).  No GDT load is needed.
+    ".extern _do_start2",
+    "    jmp   _do_start2",
+    options(att_syntax),
+);
+
+//==================================================================================================
+// Trampoline Section — AP Trampoline and GDT (SMP only)
+//==================================================================================================
+//
+// The AP trampoline and its supporting GDT are only needed for multi-core startup.
+// SMP boot on Hyperlight is out of scope for the current integration.
+
+#[cfg(feature = "smp")]
 global_asm!(
     r#".section .trampoline,"ax",@progbits"#,
     ".code16",
@@ -66,10 +86,7 @@ global_asm!(
     options(att_syntax),
 );
 
-//==================================================================================================
-// Trampoline Section — GDT
-//==================================================================================================
-
+#[cfg(feature = "smp")]
 global_asm!(
     r#".section .trampoline,"ax",@progbits"#,
     ".p2align 2",

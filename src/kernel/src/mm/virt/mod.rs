@@ -5,14 +5,25 @@
 // Modules
 //==================================================================================================
 
+#[cfg(feature = "microvm")]
 mod identity_map;
 mod kpage;
 mod manager;
+#[cfg(feature = "hyperlight")]
+mod no_identity_map;
 mod page_table_allocator;
 mod vmem;
 
-#[cfg(feature = "hyperlight")]
+#[cfg(feature = "microvm")]
+use identity_map::init as identity_map_init;
+#[cfg(feature = "microvm")]
 pub(crate) use identity_map::memcpy;
+#[cfg(feature = "microvm")]
+use identity_map::memset;
+#[cfg(feature = "hyperlight")]
+pub(crate) use no_identity_map::memcpy;
+#[cfg(feature = "hyperlight")]
+use no_identity_map::memset;
 
 //==================================================================================================
 // Imports
@@ -87,6 +98,11 @@ pub enum PageTableStorage {
     Bss(&'static mut [PteWord; PAGE_TABLE_LENGTH]),
     /// Runtime storage backed by a kernel page from the page pool.
     KernelPage(KernelPage),
+    /// Host-built page table inherited from a pre-existing address space (e.g., Hyperlight).
+    /// The memory is in the scratch region and is not owned by the kernel — it must not be
+    /// freed on drop.
+    #[cfg_attr(not(feature = "hyperlight"), allow(dead_code))]
+    Inherited(*mut PteWord),
 }
 
 impl Deref for PageTableStorage {
@@ -99,6 +115,7 @@ impl Deref for PageTableStorage {
                 let base: *const PteWord = page.base().into_raw_value() as *const PteWord;
                 unsafe { core::slice::from_raw_parts(base, PAGE_TABLE_LENGTH) }
             },
+            Self::Inherited(ptr) => unsafe { core::slice::from_raw_parts(*ptr, PAGE_TABLE_LENGTH) },
         }
     }
 }
@@ -110,6 +127,9 @@ impl DerefMut for PageTableStorage {
             Self::KernelPage(page) => {
                 let base: *mut PteWord = page.base().into_raw_value() as *mut PteWord;
                 unsafe { core::slice::from_raw_parts_mut(base, PAGE_TABLE_LENGTH) }
+            },
+            Self::Inherited(ptr) => unsafe {
+                core::slice::from_raw_parts_mut(*ptr, PAGE_TABLE_LENGTH)
             },
         }
     }
@@ -153,6 +173,7 @@ impl DerefMut for PageDirectoryStorage {
 //==================================================================================================
 
 // FIXME: this function is too long and complex.
+#[cfg_attr(feature = "hyperlight", allow(dead_code))]
 pub fn init(
     mut virtual_memory_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
     mut mmio_memory_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,

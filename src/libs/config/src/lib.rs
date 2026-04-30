@@ -114,6 +114,25 @@ pub mod memory_layout {
             pub const HYPERLIGHT_BOOT_STACK_TOP: usize =
                 HYPERLIGHT_GPA_CEILING - 2 * crate::hyperlight::PAGE_SIZE;
 
+            ///
+            /// # Description
+            ///
+            /// Base address for the early IDT used during boot before the full IDT is installed.
+            /// Placed just below the boot stack guard page so that the early IDT has a known
+            /// fixed location in memory that does not overlap the boot stack or scratch region.
+            ///
+            pub const HYPERLIGHT_EARLY_IDT_BASE: usize = HYPERLIGHT_BOOT_STACK_TOP - crate::kernel::KSTACK_SIZE - crate::hyperlight::PAGE_SIZE;
+
+            ///
+            /// # Description
+            ///
+            /// Base address for the early GDT used during boot. Placed just below the early IDT
+            /// page so that it has a known, fixed location in the scratch region. The GDT must
+            /// be in writable memory so the CPU can set the Accessed bit in GDT entries during
+            /// segment loads (including exception delivery).
+            ///
+            pub const HYPERLIGHT_EARLY_GDT_BASE: usize = HYPERLIGHT_EARLY_IDT_BASE - crate::hyperlight::PAGE_SIZE;
+
             /// Alignment for the exclusive upper bound of the user virtual address space.
             pub const USER_END_ALIGNMENT: usize = 4 * 1024 * 1024;
 

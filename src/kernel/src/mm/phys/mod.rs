@@ -60,7 +60,12 @@ fn book_physical_memory_regions(
 
     // Book physical memory that is not usable.
     for region in physical_memory_regions.iter() {
-        info!("booking: {:?}", region);
+        info!(
+            "booking: {} @ {:#010x} (size={:#x})",
+            region.name(),
+            region.start().into_raw_value(),
+            region.size()
+        );
         frame::alloc_range(region)?;
     }
 
@@ -78,10 +83,16 @@ fn book_mmio_regions(
         let mut start: usize = region.start().into_raw_value();
         let end: usize = start + (region.size() - 1);
         while start < end {
-            let mmio_addr: VirtualAddress = VirtualAddress::from_raw_value(start);
-            let phys_addr: PageAligned<PhysicalAddress> = PageAligned::from_address(unsafe {
-                PhysicalAddress::from_mmio_address(mmio_addr)?
-            })?;
+            // Translate GVA→GPA so scratch-region MMIO addresses map to the correct
+            // frame allocator index. On microvm this is identity.
+            let gpa: usize = crate::hal::platform::gva_to_gpa(start);
+            let phys_addr: PageAligned<PhysicalAddress> = match PageAligned::from_raw_value(gpa) {
+                Ok(pa) => pa,
+                Err(_) => {
+                    start += mem::FRAME_SIZE;
+                    continue;
+                },
+            };
 
             // Attempt to book underlying frame.
             match frame::book(phys_addr) {

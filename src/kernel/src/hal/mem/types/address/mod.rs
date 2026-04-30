@@ -25,6 +25,7 @@ pub use ::sys::mm::{
 pub use aligned::*;
 pub use frame::*;
 pub use page::*;
+#[cfg(feature = "microvm")]
 pub use pd::*;
 pub use phys::*;
 

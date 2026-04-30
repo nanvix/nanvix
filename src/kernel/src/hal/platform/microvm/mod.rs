@@ -418,6 +418,28 @@ pub fn get_kstack_guard_base() -> usize {
     unsafe { &kstack_guard as *const u8 as usize }
 }
 
+/// Translates a guest virtual address to a guest physical address.
+///
+/// On microvm, GVA == GPA (identity-mapped).
+pub fn gva_to_gpa(gva: usize) -> usize {
+    gva
+}
+
+/// Translates a guest physical address to a guest virtual address.
+///
+/// On microvm, GPA == GVA (identity-mapped).
+#[allow(dead_code)]
+pub fn gpa_to_gva(gpa: usize) -> usize {
+    gpa
+}
+
+/// Returns `true` if the given GVA falls within a scratch region.
+///
+/// On microvm there is no scratch region, so this always returns `false`.
+pub fn is_scratch_address(_gva: usize) -> bool {
+    false
+}
+
 ///
 /// # Description
 ///
@@ -889,4 +911,13 @@ pub fn init(
         physical_memory_layout: Some(physical_memory_layout),
         kpool_bitmap: Some(kpool_bitmap),
     })
+}
+
+/// Translates a virtual address to a physical address.
+///
+/// On microvm the kernel uses a flat identity map (VA == PA), so this
+/// function returns the address unchanged.
+#[inline(always)]
+pub fn virt_to_phys(vaddr: usize) -> usize {
+    vaddr
 }

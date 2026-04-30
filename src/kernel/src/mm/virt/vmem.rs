@@ -20,7 +20,6 @@ use crate::{
             FrameAddress,
             PageAddress,
             PageAligned,
-            PageDirectoryAddress,
             PageTableAddress,
             PageTableAligned,
             PhysicalAddress,
@@ -41,23 +40,15 @@ use ::alloc::{
     collections::LinkedList,
     rc::Rc,
 };
-use ::arch::{
-    cpu::cr3::{
-        Cr3Register,
-        PageDirectoryBaseAddress as Cr3PageDirectoryBaseAddress,
-        PageLevelCacheDisableFlag,
-        PageLevelWriteThroughFlag,
+use ::arch::mem::{
+    self,
+    paging::{
+        PageDirectoryEntry,
+        PteWord,
     },
-    mem::{
-        self,
-        paging::{
-            PageDirectoryEntry,
-            PteWord,
-        },
-        PAGE_ALIGNMENT,
-        PAGE_TABLE_LENGTH,
-        PGTAB_ALIGNMENT,
-    },
+    PAGE_ALIGNMENT,
+    PAGE_TABLE_LENGTH,
+    PGTAB_ALIGNMENT,
 };
 use ::core::cell::RefCell;
 use ::sys::{
@@ -128,21 +119,81 @@ impl Vmem {
             kpage_tables.push_back(Rc::new(RefCell::new((vaddr, page_table))));
         }
 
-        // Register kernel PD for lazy identity mapping. On x86, the PD is also the CR3 root.
-        let pd_paddr_raw: usize = pgdir.physical_address()?.into_raw_value();
-        let pd_paddr: PageDirectoryAddress = PageDirectoryAddress::from_raw_value(pd_paddr_raw)?;
-        let kernel_cr3: Cr3Register = Cr3Register {
-            page_level_write_through: PageLevelWriteThroughFlag::Disabled,
-            page_level_cache_disable: PageLevelCacheDisableFlag::Enabled,
-            paging_structure_base_address: Cr3PageDirectoryBaseAddress::new(pd_paddr_raw as u32)
+        // On Hyperlight, inherit host-built page directory entries so that scratch-region
+        // mappings (I/O buffers, boot stack, kernel data/BSS/kpool) remain accessible.
+        // The host PD (in CR3) has the correct GVA→scratch GPA mappings after eager
+        // pre-faulting. Inheriting them into the root PD enables Vmem::clone to propagate
+        // these mappings to user-process PDs.
+        // On microvm, register the kernel PD for lazy identity mapping and set CR3.
+        #[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
+        {
+            use ::arch::mem::paging::PresentFlag;
+
+            let host_pd_ptr: *const PteWord = crate::hal::platform::get_root_pd_ptr();
+            unsafe {
+                pgdir.inherit_from(host_pd_ptr);
+            }
+
+            // Wrap each inherited host-built page table as a tracked kernel page table so that
+            // kctrl() can find and modify PTEs for MMIO permission changes.
+            // Walk the host PD and create an Inherited PageTableStorage for every present PDE
+            // that was not already registered by the kernel (i.e., not in kpage_tables).
+            unsafe {
+                for i in 0..PAGE_TABLE_LENGTH {
+                    let pde: PteWord = *host_pd_ptr.add(i);
+                    if !PresentFlag::is_set(pde) {
+                        continue;
+                    }
+
+                    let pt_gpa: usize = (pde & 0xFFFFF000) as usize;
+                    let pt_gva: usize = crate::hal::platform::gpa_to_gva(pt_gpa);
+                    let pt_vaddr: usize = i * mem::PGTAB_SIZE;
+                    let pt_addr: PageTableAddress =
+                        PageTableAddress::new(PageTableAligned::from_raw_value(pt_vaddr)?);
+
+                    // Skip if already tracked (e.g., registered by the kernel's own init path).
+                    let already_tracked: bool = kpage_tables
+                        .iter()
+                        .any(|entry| entry.borrow().0.into_raw_value() == pt_vaddr);
+                    if already_tracked {
+                        continue;
+                    }
+
+                    let storage: PageTableStorage =
+                        PageTableStorage::Inherited(pt_gva as *mut PteWord);
+                    let page_table: PageTable<PageTableStorage> = PageTable::from_existing(storage);
+                    kpage_tables.push_back(Rc::new(RefCell::new((pt_addr, page_table))));
+                }
+            }
+        }
+
+        #[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
+        {
+            use crate::hal::mem::PageDirectoryAddress;
+            use ::arch::cpu::cr3::{
+                Cr3Register,
+                PageDirectoryBaseAddress as Cr3PageDirectoryBaseAddress,
+                PageLevelCacheDisableFlag,
+                PageLevelWriteThroughFlag,
+            };
+            let pd_paddr_raw: usize = pgdir.physical_address()?.into_raw_value();
+            let pd_paddr: PageDirectoryAddress =
+                PageDirectoryAddress::from_raw_value(pd_paddr_raw)?;
+            let kernel_cr3: Cr3Register = Cr3Register {
+                page_level_write_through: PageLevelWriteThroughFlag::Disabled,
+                page_level_cache_disable: PageLevelCacheDisableFlag::Enabled,
+                paging_structure_base_address: Cr3PageDirectoryBaseAddress::new(
+                    pd_paddr_raw as u32,
+                )
                 .ok_or_else(|| {
                     Error::new(
                         ErrorCode::BadAddress,
                         "kernel page directory address is not 4 KB aligned",
                     )
                 })?,
-        };
-        super::identity_map::init(pd_paddr, kernel_cr3);
+            };
+            super::identity_map_init(pd_paddr, kernel_cr3);
+        }
 
         // Store root pages.
         let mut kpages: LinkedList<Rc<RefCell<KernelPage>>> = LinkedList::new();
@@ -174,6 +225,14 @@ impl Vmem {
             // FIXME: do not be so open about permissions.
             pgdir.map(entry.borrow().0, page_table_address, false, AccessPermission::RDWR)?;
             kernel_page_tables.push_back(entry.clone());
+        }
+
+        // On platforms that provide a root virtual address space via platform-provided page tables,
+        // inherit the entries from the source page directory so that the kernel retains access to
+        // host-provided mappings after the CR3 switch.
+        #[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
+        unsafe {
+            pgdir.inherit_from(from.pgdir.as_ptr());
         }
 
         // Store root pages.
@@ -215,6 +274,7 @@ impl Vmem {
     ///
     /// Upon success, empty is returned. Upon failure, an error code is returned instead.
     ///
+    #[cfg_attr(feature = "hyperlight", allow(dead_code))]
     pub fn map_kpage<T: Fn() -> Result<PageTable<PageTableStorage>, Error>>(
         &mut self,
         kpage: KernelPage,
@@ -725,7 +785,7 @@ impl Vmem {
 
                 if !dry_run {
                     // Copy memory from user space to kernel space.
-                    super::identity_map::memcpy(
+                    super::memcpy(
                         dst.into_raw_value() as *mut u8,
                         (src_frame.into_raw_value() + offset) as *const u8,
                         copy_size,
@@ -890,8 +950,7 @@ impl Vmem {
                 // Copy memory from kernel space to user space.
                 let dst: *mut u8 = (dst_frame.into_raw_value() + offset) as *mut u8;
                 let src: *const u8 = src.into_raw_value() as *const u8;
-                let copy_result: Result<(), Error> =
-                    super::identity_map::memcpy(dst, src, copy_size);
+                let copy_result: Result<(), Error> = super::memcpy(dst, src, copy_size);
                 if let Err(error) = copy_result {
                     let reason: &str = "failed to perform physical memory copy";
                     panic!(
@@ -1032,11 +1091,7 @@ impl Vmem {
                     // mappings for the full source and destination ranges before copying.
                     let src_phys_addr: usize = src_frame.into_raw_value() + src_offset;
                     let dst_phys_addr: usize = dst_frame.into_raw_value() + dst_offset;
-                    super::identity_map::memcpy(
-                        dst_phys_addr as *mut u8,
-                        src_phys_addr as *const u8,
-                        copy_size,
-                    )?;
+                    super::memcpy(dst_phys_addr as *mut u8, src_phys_addr as *const u8, copy_size)?;
                 }
 
                 remaining -= copy_size;
@@ -1080,7 +1135,7 @@ impl Vmem {
         let dst: PageAligned<PhysicalAddress> = uframe.into_physical_address();
         let base: *mut u8 = dst.into_raw_value() as *mut u8;
 
-        super::identity_map::memset(base, value as u8, mem::PAGE_SIZE)?;
+        super::memset(base, value as u8, mem::PAGE_SIZE)?;
 
         Ok(())
     }
@@ -1299,12 +1354,41 @@ impl Vmem {
         let page_address: PageAddress = PageAddress::new(vaddr);
 
         if dry_run {
-            page_table.borrow().1.lookup(page_address)?;
+            // For dry-run validation, check if the PTE is present or can be created.
+            // On Hyperlight, inherited page tables may not have PTEs for identity-mapped
+            // regions (e.g., RAMFS) that were added after the host built the page tables.
+            // In that case, the PTE will be created on the non-dry-run pass.
+            let pt_ref = page_table.borrow();
+            match pt_ref.1.is_page_present(page_address) {
+                Ok(true) => {},
+                // PTE absent — will be created in the non-dry-run pass.
+                Ok(false) => {},
+                Err(e) => return Err(e),
+            }
         } else {
-            page_table
-                .borrow_mut()
-                .1
-                .ctrl(false, page_address, access)?;
+            let mut pt_mut = page_table.borrow_mut();
+            // If the PTE is not present, create an identity-mapped entry first.
+            // This handles Hyperlight's inherited page tables where the host didn't
+            // create PTEs for regions added after snapshot page table construction
+            // (e.g., RAMFS identity-mapped via a separate KVM memory slot).
+            match pt_mut.1.is_page_present(page_address) {
+                Ok(false) => {
+                    let frame_addr: FrameAddress =
+                        FrameAddress::new(PageAligned::from_raw_value(vaddr.into_raw_value())?);
+                    pt_mut.1.map(
+                        page_address,
+                        frame_addr,
+                        false, // user-accessible (MMIO regions are mapped for user processes)
+                        false, // not write-through
+                        true,  // cache enabled
+                        access,
+                    )?;
+                },
+                Ok(true) => {
+                    pt_mut.1.ctrl(false, page_address, access)?;
+                },
+                Err(e) => return Err(e),
+            }
         }
 
         Ok(())

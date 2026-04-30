@@ -81,6 +81,10 @@ pub const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_millis(100);
 /// Label used for the RAMFS file mapping in the PEB.
 const RAMFS_LABEL: &str = "ramfs";
 
+/// Base guest physical address at which Hyperlight loads the kernel binary.
+/// Corresponds to `SandboxMemoryLayout::BASE_ADDRESS` from `hyperlight-host`.
+const HYPERLIGHT_BASE_ADDRESS: u64 = 0x1000;
+
 //==================================================================================================
 // Types
 //==================================================================================================
@@ -255,9 +259,9 @@ impl Vmm {
         let guest_heap_size: usize = Self::calculate_guest_heap_size(kernel_end, kpool_start)?;
 
         // Snapshot budget equation:  MEMORY_SIZE = snapshot_budget_size + ramfs + scratch
-        // With nanvix-unstable, Hyperlight skips guest page-table generation in
-        // Snapshot::from_env(), so snapshot_budget_size equals Hyperlight's get_memory_size()
-        // exactly — there is no PT overhead.
+        // With i686-guest, Hyperlight builds guest page tables which add pt_overhead bytes
+        // on top of the snapshot budget. The total snapshot KVM slot size is
+        // snapshot_budget_size + pt_overhead.
         let snapshot_budget_size: usize = {
             let unaligned: usize = kpool_end.checked_add(init_data_size).ok_or_else(|| {
                 error!("new(): kpool_end + init_data_size overflow");
@@ -306,10 +310,10 @@ impl Vmm {
                 anyhow::anyhow!("{e:?}")
             })?;
 
-        // With nanvix-unstable, Hyperlight does not append page tables to the snapshot (the
-        // #[cfg(not(feature = "nanvix-unstable"))] block in Snapshot::from_env() is compiled out),
-        // so shared_mem_size() == snapshot_budget_size and pt_overhead is 0.  The field is kept in
-        // GetMemoryLayout for forward-compatibility.
+        // With i686-guest, Hyperlight builds guest page tables and appends them to the
+        // snapshot. shared_mem_size() includes both the snapshot budget and the page table
+        // overhead. The pt_overhead field reports the difference so the guest kernel can
+        // account for the additional pages.
         let actual_snapshot: usize = sandbox.shared_mem_size();
         let pt_overhead: usize = actual_snapshot.saturating_sub(snapshot_budget_size);
         debug!(
@@ -320,13 +324,13 @@ impl Vmm {
 
         // Map RAMFS file into sandbox memory if provided.
         // The file is mapped copy-on-write at the first GPA after the sandbox's
-        // shared memory slot. With nanvix-unstable, BASE_ADDRESS is 0x0 so the
-        // shared memory occupies GPA [0, shared_mem_size).
+        // shared memory slot. The shared memory occupies
+        // GPA [HYPERLIGHT_BASE_ADDRESS, HYPERLIGHT_BASE_ADDRESS + shared_mem_size()).
         let mut layout_ramfs_base: u32 = 0;
         let mut layout_ramfs_size: u32 = 0;
         if let Some(ramfs_filename) = &args.ramfs_filename {
             let ramfs_path: &Path = Path::new(ramfs_filename);
-            let ramfs_gpa: u64 = sandbox.shared_mem_size() as u64;
+            let ramfs_gpa: u64 = HYPERLIGHT_BASE_ADDRESS + sandbox.shared_mem_size() as u64;
             let mapped_size: u64 = sandbox
                 .map_file_cow(ramfs_path, ramfs_gpa, Some(RAMFS_LABEL))
                 .map_err(|e| {
@@ -361,9 +365,8 @@ impl Vmm {
         // guest kernel calls this during init() to discover the authoritative snapshot, RAMFS, and
         // scratch region boundaries instead of inferring them from fragile address calculations.
         //
-        // pt_overhead is always 0 with nanvix-unstable (no guest page tables in the snapshot).  The
-        // field is preserved for forward-compatibility if upstream Hyperlight re-enables page-table
-        // generation for this feature.
+        // pt_overhead is the additional bytes used by host-built guest page tables (non-zero with
+        // i686-guest).  The guest uses this to determine the full extent of the snapshot region.
         let layout_snapshot_budget: u32 = u32::try_from(snapshot_budget_size).map_err(|_| {
             anyhow::anyhow!("snapshot_budget {snapshot_budget_size:#x} exceeds u32::MAX")
         })?;
@@ -555,7 +558,7 @@ impl Vmm {
                 Ok((code & 0xFF) as u16)
             },
             Err(error) => {
-                error!("run(): vmm failed during call (error={error:?})");
+                eprintln!("run(): vmm failed during call: {error:?}");
                 Ok(ErrorCode::ConnectionReset.into())
             },
         }

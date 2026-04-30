@@ -211,8 +211,8 @@ fn main() {
     };
 
     let platform_base_addr: &str = if cfg!(feature = "hyperlight") {
-        // TODO (#2204): Change platform base address for Hyperlight when we update Hperlight crate.
-        "0x0"
+        // Hyperlight stable (i686-guest) loads the guest binary at GPA 0x1000.
+        "0x1000"
     } else {
         "0x0"
     };
