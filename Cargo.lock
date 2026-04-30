@@ -1070,7 +1070,7 @@ dependencies = [
  "futures-task",
  "memchr",
  "pin-project-lite",
- "slab 0.4.12",
+ "slab",
 ]
 
 [[package]]
@@ -1197,7 +1197,7 @@ dependencies = [
  "futures-sink",
  "http",
  "indexmap 2.14.0",
- "slab 0.4.12",
+ "slab",
  "tokio",
  "tokio-util",
  "tracing",
@@ -1778,10 +1778,10 @@ dependencies = [
  "hyperlight-guest",
  "mmio-tag",
  "multibin",
+ "nanvix-slab",
  "no_fail",
  "paste",
  "raw-array",
- "slab 0.12.489",
  "sorted-vec",
  "sparse-bitmap",
  "static_assert",
@@ -2327,6 +2327,17 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "nanvix-slab"
+version = "0.12.489"
+dependencies = [
+ "bitmap",
+ "error",
+ "raw-array",
+ "sys",
+ "vstd",
 ]
 
 [[package]]
@@ -2893,7 +2904,7 @@ dependencies = [
  "rustc-hash",
  "rustls",
  "rustls-pki-types",
- "slab 0.4.12",
+ "slab",
  "thiserror 2.0.18",
  "tinyvec",
  "tracing",
@@ -3494,17 +3505,6 @@ name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
-
-[[package]]
-name = "slab"
-version = "0.12.489"
-dependencies = [
- "bitmap",
- "error",
- "raw-array",
- "sys",
- "vstd",
-]
 
 [[package]]
 name = "smallvec"
