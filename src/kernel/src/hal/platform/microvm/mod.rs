@@ -407,7 +407,7 @@ pub fn get_kstack_top() -> *const u8 {
 ///
 /// The base address of the boot kernel stack guard page.
 ///
-#[cfg(debug_assertions)]
+#[cfg(all(debug_assertions, feature = "exception-stack-guard"))]
 pub fn get_kstack_guard_base() -> usize {
     unsafe extern "C" {
         static kstack_guard: u8;

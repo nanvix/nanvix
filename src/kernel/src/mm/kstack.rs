@@ -17,13 +17,7 @@ use ::alloc::vec::Vec;
 use ::arch::mem::PAGE_ALIGNMENT;
 #[cfg(debug_assertions)]
 use ::config::kernel::KSTACK_GUARD_PATTERN;
-use ::core::{
-    fmt,
-    sync::atomic::{
-        AtomicU32,
-        Ordering,
-    },
-};
+use ::core::fmt;
 #[cfg(debug_assertions)]
 use ::sys::error::ErrorCode;
 use ::sys::{
@@ -38,6 +32,7 @@ use ::sys::{
 // Constants
 //==================================================================================================
 
+#[cfg(feature = "exception-stack-guard")]
 use ::arch::cpu::excp::Exception;
 
 //==================================================================================================
@@ -51,8 +46,10 @@ use ::arch::cpu::excp::Exception;
 ///
 /// TODO (#1665): this is a single global, so it is only correct on uniprocessor builds. For SMP,
 /// replace with a per-core variable (e.g., indexed by APIC ID or stored in per-core data).
+#[cfg(feature = "exception-stack-guard")]
 #[unsafe(no_mangle)]
-pub static EXCP_STACK_GUARD: AtomicU32 = AtomicU32::new(0);
+pub static EXCP_STACK_GUARD: ::core::sync::atomic::AtomicU32 =
+    ::core::sync::atomic::AtomicU32::new(0);
 
 //==================================================================================================
 // Structures
@@ -66,6 +63,7 @@ pub static EXCP_STACK_GUARD: AtomicU32 = AtomicU32::new(0);
 pub struct KernelStack {
     kpages: Vec<KernelPage>,
     /// Lowest safe ESP value for this stack (base + CONTEXT_HW_SIZE).
+    #[cfg(feature = "exception-stack-guard")]
     guard_threshold: u32,
 }
 
@@ -97,11 +95,13 @@ impl KernelStack {
         mm.alloc_kpages(true, count, &mut kframes)?;
         let kpages: Vec<KernelPage> = kframes.into_iter().map(KernelPage::new).collect();
 
+        #[cfg(feature = "exception-stack-guard")]
         let guard_threshold: u32 =
             (kpages[0].base().into_raw_value() + Exception::CONTEXT_HW_SIZE) as u32;
 
         let stack: Self = Self {
             kpages,
+            #[cfg(feature = "exception-stack-guard")]
             guard_threshold,
         };
 
@@ -122,6 +122,7 @@ impl KernelStack {
     ///
     /// The guard threshold value.
     ///
+    #[cfg(feature = "exception-stack-guard")]
     pub fn guard_threshold(&self) -> u32 {
         self.guard_threshold
     }
@@ -273,6 +274,7 @@ fn check_guard_page(guard_base: usize) -> Result<(), Error> {
 /// `mm::init()`, the corruption may have been overwritten by later stack frames shrinking. The
 /// check is best-effort and may not detect all early-boot overflows.
 ///
+#[cfg(feature = "exception-stack-guard")]
 pub fn check_boot_stack_guard() -> Result<(), Error> {
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {
@@ -294,8 +296,9 @@ pub fn check_boot_stack_guard() -> Result<(), Error> {
 ///
 /// - `threshold`: The guard threshold (lowest safe ESP) for the new active stack.
 ///
+#[cfg(feature = "exception-stack-guard")]
 pub fn set_active_guard(threshold: u32) {
-    EXCP_STACK_GUARD.store(threshold, Ordering::Release);
+    EXCP_STACK_GUARD.store(threshold, core::sync::atomic::Ordering::Release);
 }
 
 //==================================================================================================
@@ -320,11 +323,12 @@ impl Drop for KernelStack {
 
         // If this stack was the active one, clear the guard so a stale threshold is never
         // checked against a freed stack region.
+        #[cfg(feature = "exception-stack-guard")]
         let _ = EXCP_STACK_GUARD.compare_exchange(
             self.guard_threshold,
             0,
-            Ordering::Release,
-            Ordering::Relaxed,
+            core::sync::atomic::Ordering::Release,
+            core::sync::atomic::Ordering::Relaxed,
         );
 
         while let Some(kpage) = self.kpages.pop() {

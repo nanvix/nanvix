@@ -259,6 +259,7 @@ impl ThreadState {
     ///
     /// The guard threshold value, or `None` if this thread has no kernel stack.
     ///
+    #[cfg(feature = "exception-stack-guard")]
     pub(super) fn guard_threshold(&self) -> Option<u32> {
         self.kernel_stack.as_ref().map(|ks| ks.guard_threshold())
     }
