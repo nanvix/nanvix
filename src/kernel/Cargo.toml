@@ -78,6 +78,9 @@ stdio = []
 # Enables the dynamic exception stack guard.
 exception-stack-guard = []
 
+# Enables bootstrapping of root virtual address space from platform-provided page tables.
+platform-root-virtual-address-space-bootstrap = []
+
 # Enables latest performance optimizations.
 nightly-performance-optimizations = []
 
