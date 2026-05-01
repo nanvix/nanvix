@@ -54,7 +54,6 @@ extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 3
-runs_on = ["microvm"]
 
 [[tests]]
 executor = "http"
@@ -154,7 +153,6 @@ extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 3
-runs_on = ["microvm"]
 
 [[tests]]
 executor = "terminal"
