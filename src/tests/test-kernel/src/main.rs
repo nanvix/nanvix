@@ -25,7 +25,6 @@ mod demand_paging;
 mod direction_flag;
 #[cfg(not(feature = "hyperlight"))]
 mod mmio_ramfs;
-#[cfg(not(feature = "hyperlight"))]
 mod rendezvous;
 mod tls;
 
@@ -62,7 +61,6 @@ pub fn main() -> Result<(), Error> {
 
     demand_paging::run()?;
 
-    #[cfg(not(feature = "hyperlight"))]
     rendezvous::run()?;
 
     // Return an error with the specified exit code.
