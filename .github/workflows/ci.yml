@@ -799,8 +799,16 @@ jobs:
             echo-iterations: "1000"
             vfs-benchmarks: "vfs-bench"
             vfs-iterations: "100"
-          # NOTE (#1759, #1762): Hyperlight benchmarks are disabled until the
-          # round-trip-latency failure is investigated.
+          - machine-type: hyperlight
+            # NOTE (#1762): round-trip-latency is excluded due to a bulk data
+            # transfer failure at ≥84 bytes. warm-start-vmm and snapshot-restore
+            # are excluded (SIGKILL / SIGABRT respectively).
+            standard-benchmarks: "boot-time cold-start cold-start-uvm concurrent warm-start"
+            standard-iterations: "100"
+            echo-benchmarks: ""
+            echo-iterations: ""
+            vfs-benchmarks: ""
+            vfs-iterations: ""
     runs-on:
       group: Benchmark
       labels: [ self-hosted, Linux ]
@@ -1161,7 +1169,7 @@ jobs:
         with:
           benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,\
             round-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm"
-          machine-types: "microvm"
+          machine-types: "microvm,hyperlight"
           archs: "X64"
           dev-dir: "data/baremetal"
           runner-label: "self-hosted"
@@ -1180,7 +1188,7 @@ jobs:
             --dev-dir "data/baremetal" \
             --target-dir "$(pwd)" \
             --benchmarks "boot-time,cold-start,cold-start-uvm,concurrent,snapshot-restore,warm-start,warm-start-vmm" \
-            --machine-types "microvm" \
+            --machine-types "microvm,hyperlight" \
             --archs "X64" \
             --regression-threshold 40 \
             --baseline-window 20
