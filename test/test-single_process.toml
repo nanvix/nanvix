@@ -114,7 +114,6 @@ executor = "http"
 program = "./bin/dlfcn-rust.elf"
 input = "[]"
 expected_output = "ok"
-runs_on = ["microvm"] # FIXME: #1643 — kernel heap exhaustion under Hyperlight
 
 [[tests]]
 executor = "http"
@@ -205,7 +204,6 @@ expected_output = "ok"
 executor = "terminal"
 program = "./bin/dlfcn-rust.elf"
 expected_output = "ok"
-runs_on = ["microvm"] # FIXME: #1643 — kernel heap exhaustion under Hyperlight
 
 [[tests]]
 executor = "terminal"
