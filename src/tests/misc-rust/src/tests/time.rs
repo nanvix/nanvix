@@ -34,7 +34,6 @@ use ::syscall::{
 pub fn run() -> Result<(), Error> {
     test_clock_getres()?;
     test_clock_gettime()?;
-    #[cfg(not(feature = "hyperlight"))]
     test_nanosleep()?;
     test_times()?;
     Ok(())
@@ -163,7 +162,6 @@ fn test_clock_gettime() -> Result<(), Error> {
 }
 
 /// Tests whether we can sleep for a given amount of time with `nanosleep()`.
-#[cfg(not(feature = "hyperlight"))]
 fn test_nanosleep() -> Result<(), Error> {
     let req = timespec {
         tv_sec: 1,
