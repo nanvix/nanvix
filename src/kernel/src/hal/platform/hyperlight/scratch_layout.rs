@@ -92,7 +92,7 @@ macro_rules! scratch_layout {
     (@step $acc:expr; page_align = $page_align:expr;) => {
         /// Combined size of all scratch-resident kernel structures with inter-area padding,
         /// rounded up to a page boundary.
-        const SCRATCH_RESERVED_SIZE: usize = {
+        pub(super) const SCRATCH_RESERVED_SIZE: usize = {
             let raw: usize = $acc;
             match ::sys::mm::align_up(raw, $page_align) {
                 Some(v) => v,

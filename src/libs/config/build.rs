@@ -444,6 +444,14 @@ fn generate_hyperlight_config(
     );
     template = template.replace("{{PAGE_SIZE}}", &page_size_val.to_string());
 
+    // Platform base address (GPA where the guest binary is loaded).
+    let platform_base_addr: &str = config
+        .get("platform_base_addr")
+        .expect("platform_base_addr not found in hyperlight_constants.toml");
+    let platform_base_addr_val: usize =
+        parse_hex_or_decimal_usize(platform_base_addr, "platform_base_addr");
+    template = template.replace("{{PLATFORM_BASE_ADDR}}", &format!("{platform_base_addr_val:#x}"));
+
     // Boot magic.
     let boot_magic: &str = config
         .get("default_boot_magic")
