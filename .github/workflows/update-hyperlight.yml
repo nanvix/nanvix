@@ -4,9 +4,9 @@
 name: "Hyperlight Update"
 
 on:
-  # schedule:
-  #   # Run daily at 05:00 UTC.
-  #   - cron: "0 5 * * *"
+  schedule:
+    # Run daily at 05:00 UTC.
+    - cron: "0 5 * * *"
   workflow_dispatch:
 
 concurrency:
