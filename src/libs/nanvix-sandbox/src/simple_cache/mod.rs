@@ -29,6 +29,8 @@ use crate::{
     UninitializedSandbox,
     UserVmIdentifier,
 };
+pub use ::nanvix_sandbox_config::SimpleSandboxCacheConfig;
+
 use ::anyhow::Result;
 use ::log::{
     debug,
@@ -36,7 +38,6 @@ use ::log::{
     trace,
     warn,
 };
-use ::nanvix_sandbox_config::SimpleSandboxCacheConfig;
 use ::std::{
     collections::HashMap,
     fs,
