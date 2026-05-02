@@ -14,6 +14,8 @@ mod manager;
 #[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
 mod no_identity_map;
 mod page_table_allocator;
+#[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
+pub(in crate::mm) use page_table_allocator::PAGE_TABLE_ALLOCATOR;
 mod vmem;
 
 #[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
@@ -56,19 +58,9 @@ pub use vmem::Vmem;
 
 pub enum PageTableStorage {
     /// Boot-time BSS-backed storage, allocated via `PAGE_TABLE_ALLOCATOR`.
-    #[cfg_attr(
-        feature = "platform-root-virtual-address-space-bootstrap",
-        allow(dead_code)
-    )]
     Bss(&'static mut [PteWord; PAGE_TABLE_LENGTH]),
     /// Runtime storage backed by a kernel page from the page pool.
     KernelPage(KernelPage),
-    /// Host-built page table inherited from a pre-existing address space.
-    #[cfg_attr(
-        not(feature = "platform-root-virtual-address-space-bootstrap"),
-        allow(dead_code)
-    )]
-    Inherited(*mut PteWord),
 }
 
 impl Deref for PageTableStorage {
@@ -81,7 +73,6 @@ impl Deref for PageTableStorage {
                 let base: *const PteWord = page.base().into_raw_value() as *const PteWord;
                 unsafe { core::slice::from_raw_parts(base, PAGE_TABLE_LENGTH) }
             },
-            Self::Inherited(ptr) => unsafe { core::slice::from_raw_parts(*ptr, PAGE_TABLE_LENGTH) },
         }
     }
 }
@@ -93,9 +84,6 @@ impl DerefMut for PageTableStorage {
             Self::KernelPage(page) => {
                 let base: *mut PteWord = page.base().into_raw_value() as *mut PteWord;
                 unsafe { core::slice::from_raw_parts_mut(base, PAGE_TABLE_LENGTH) }
-            },
-            Self::Inherited(ptr) => unsafe {
-                core::slice::from_raw_parts_mut(*ptr, PAGE_TABLE_LENGTH)
             },
         }
     }
