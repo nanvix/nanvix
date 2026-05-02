@@ -24,8 +24,5 @@ mod standalone;
 pub use self::single_process::SimpleSandboxCacheConfig;
 pub use self::{
     multi_process::SandboxCacheConfig,
-    standalone::{
-        StandaloneConfig,
-        TerminalConfig,
-    },
+    standalone::StandaloneConfig,
 };

@@ -21,7 +21,7 @@ use ::log::{
     info,
     warn,
 };
-use ::nanvix_sandbox_config::TerminalConfig;
+use ::nanvix_sandbox_config::StandaloneConfig;
 use ::std::io::Read;
 use ::tokio::{
     io::{
@@ -64,7 +64,7 @@ const INPUT_SHUTDOWN_TIMEOUT: ::std::time::Duration = ::std::time::Duration::fro
 ///
 pub struct Terminal {
     /// Configuration for launching new VMs.
-    config: TerminalConfig,
+    config: StandaloneConfig,
 }
 
 //==================================================================================================
@@ -81,7 +81,7 @@ impl Terminal {
     ///
     /// - `config`: Configuration for launching VMs.
     ///
-    pub fn new(config: TerminalConfig) -> Self {
+    pub fn new(config: StandaloneConfig) -> Self {
         Self { config }
     }
 
