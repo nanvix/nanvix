@@ -75,10 +75,10 @@ const MAX_EXIT_CODE: i32 = 255;
 /// Binary name for Kernel.
 const KERNEL_BINARY_NAME: &str = "kernel.elf";
 /// Binary name for Linux Daemon.
-#[cfg(not(any(feature = "single-process", feature = "standalone")))]
+#[cfg(feature = "multi-process")]
 const LINUXD_BINARY_NAME: &str = "linuxd.elf";
 /// Binary name for User VM.
-#[cfg(not(any(feature = "single-process", feature = "standalone")))]
+#[cfg(feature = "multi-process")]
 const USERVM_BINARY_NAME: &str = "uservm.elf";
 
 //==================================================================================================
@@ -165,7 +165,7 @@ async fn async_main() -> Result<ExitCode> {
     let deployment: &str = "single-process";
     #[cfg(feature = "standalone")]
     let deployment: &str = "standalone";
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
+    #[cfg(feature = "multi-process")]
     let deployment: &str = "multi-process";
 
     // Determine target machine type from config.
@@ -176,7 +176,7 @@ async fn async_main() -> Result<ExitCode> {
     let (kernel_binary_path, _, _) =
         ensure_all_binaries_available(&args, machine, deployment).await?;
 
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
+    #[cfg(feature = "multi-process")]
     let (kernel_binary_path, linuxd_binary_path, uservm_binary_path) =
         ensure_all_binaries_available(&args, machine, deployment).await?;
 
@@ -216,7 +216,7 @@ async fn async_main() -> Result<ExitCode> {
         args.gdb_port(),
     );
 
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
+    #[cfg(feature = "multi-process")]
     let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
         args.control_plane_socket_type(),
         args.gateway_socket_type(),
@@ -264,7 +264,7 @@ async fn async_main() -> Result<ExitCode> {
         #[cfg(feature = "standalone")]
         let mut terminal: Terminal = Terminal::new(config);
         // In multi-process mode, the terminal connects through the sandbox cache.
-        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
+        #[cfg(feature = "multi-process")]
         let mut terminal: Terminal<()> = Terminal::new(config);
         let exit_code: i32 = terminal
             .run(None, None, &guest_binary_path, &guest_binary_args)
@@ -332,10 +332,10 @@ async fn ensure_all_binaries_available(
 ) -> Result<(String, String, String)> {
     let kernel_binary_path: String = format!("{}/{}", args.binary_directory(), KERNEL_BINARY_NAME);
 
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
+    #[cfg(feature = "multi-process")]
     let linuxd_binary_path: String = format!("{}/{}", args.binary_directory(), LINUXD_BINARY_NAME);
 
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
+    #[cfg(feature = "multi-process")]
     let uservm_binary_path: String = format!("{}/{}", args.binary_directory(), USERVM_BINARY_NAME);
 
     // Check if all binaries are available locally.
@@ -344,7 +344,7 @@ async fn ensure_all_binaries_available(
     #[cfg(any(feature = "single-process", feature = "standalone"))]
     let all_available: bool = kernel_available;
 
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
+    #[cfg(feature = "multi-process")]
     let all_available: bool = {
         let linuxd_available: bool = fs::metadata(&linuxd_binary_path).await.is_ok();
         let uservm_available: bool = fs::metadata(&uservm_binary_path).await.is_ok();
@@ -355,7 +355,7 @@ async fn ensure_all_binaries_available(
     if all_available {
         log_info!("using local binary {}: {}", KERNEL_BINARY_NAME, kernel_binary_path);
 
-        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
+        #[cfg(feature = "multi-process")]
         {
             log_info!("using local binary {}: {}", LINUXD_BINARY_NAME, linuxd_binary_path);
             log_info!("using local binary {}: {}", USERVM_BINARY_NAME, uservm_binary_path);
@@ -364,7 +364,7 @@ async fn ensure_all_binaries_available(
         #[cfg(any(feature = "single-process", feature = "standalone"))]
         return Ok((kernel_binary_path, String::new(), String::new()));
 
-        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
+        #[cfg(feature = "multi-process")]
         return Ok((kernel_binary_path, linuxd_binary_path, uservm_binary_path));
     }
 
@@ -387,7 +387,7 @@ async fn ensure_all_binaries_available(
     #[cfg(any(feature = "single-process", feature = "standalone"))]
     return Ok((kernel_cached_path, String::new(), String::new()));
 
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
+    #[cfg(feature = "multi-process")]
     {
         let linuxd_cached_path: String = registry
             .get_cached_binary(
@@ -454,7 +454,7 @@ fn print_startup_info(args: &Args) {
         log_info!("snapshot restore from: {}", snapshot);
     }
 
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
+    #[cfg(feature = "multi-process")]
     log_info!(
         "nanvixd {}, multi-process deployment, {} mode, l2 {}, machine {}",
         env!("CARGO_PKG_VERSION"),
