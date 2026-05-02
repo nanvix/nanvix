@@ -193,46 +193,4 @@ impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
         let paddr: usize = crate::hal::platform::virt_to_phys(vaddr);
         Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(paddr)?)?))
     }
-
-    ///
-    /// # Description
-    ///
-    /// Returns a raw pointer to the first entry in the page directory.
-    ///
-    /// # Returns
-    ///
-    /// A raw pointer to the first entry in the page directory.
-    ///
-    #[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
-    pub fn as_ptr(&self) -> *const PteWord {
-        self.entries.as_ptr()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Merges non-zero entries from `old_pd` into this page directory.
-    ///
-    /// For each PDE index, if `self` has a not-present entry and `old_pd` has a present
-    /// entry, the old entry is copied verbatim. Existing present entries in `self` are never
-    /// overwritten.
-    ///
-    /// This is used on platforms that provide a root virtual address space via platform-provided
-    /// page tables to inherit host-built page table mappings.
-    ///
-    /// # Safety
-    ///
-    /// - `old_pd` must point to a valid, page-aligned array of `PAGE_TABLE_LENGTH` PDE words.
-    /// - `self` and `old_pd` must not point to overlapping paging structures.
-    /// - The caller must ensure that the pointed-to memory remains valid for the duration of this
-    ///   call.
-    #[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
-    pub unsafe fn inherit_from(&mut self, old_pd: *const PteWord) {
-        use ::arch::mem::PAGE_TABLE_LENGTH;
-        for i in 0..PAGE_TABLE_LENGTH {
-            if !PresentFlag::is_set(self.entries[i]) && PresentFlag::is_set(*old_pd.add(i)) {
-                self.entries[i] = *old_pd.add(i);
-            }
-        }
-    }
 }

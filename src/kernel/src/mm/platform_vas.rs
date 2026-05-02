@@ -3,9 +3,11 @@
 
 //! Memory manager initialization when `platform-root-virtual-address-space-bootstrap` is enabled.
 //!
-//! The platform provides the root virtual address space — host-built page tables are used
-//! directly and the kernel does not create its own identity map or switch CR3. Only a root
-//! [`Vmem`] descriptor is created so the process manager can clone it for user processes.
+//! The host builds the initial page tables before guest entry. During kernel init this module
+//! walks the host page directory (from CR3), copies every page table into a BSS-backed slot
+//! owned by the kernel, and constructs a root [`Vmem`] descriptor. After initialization the
+//! kernel switches CR3 to its own page directory (backed by the BSS page-table allocator) so
+//! that all paging structures are fully owned and modifiable by the kernel.
 
 use crate::{
     collections::Bitmap,
@@ -17,6 +19,7 @@ use crate::{
             MemoryRegionType,
             PageAligned,
             PageTableAddress,
+            PageTableAligned,
             PhysicalAddress,
             TruncatedMemoryRegion,
             VirtualAddress,
@@ -28,11 +31,23 @@ use ::alloc::{
     collections::LinkedList,
     vec::Vec,
 };
+use ::arch::mem::{
+    self,
+    paging::{
+        PresentFlag,
+        PteWord,
+    },
+    PAGE_TABLE_LENGTH,
+};
 use ::sparse_bitmap::SparseBitmap;
-use ::sys::error::Error;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 use super::{
     phys,
+    virt::PAGE_TABLE_ALLOCATOR,
     KernelPage,
     PageTableStorage,
     PhysMemRegion,
@@ -168,10 +183,60 @@ pub fn init(
     #[cfg(feature = "test")]
     phys::test();
 
-    // On Hyperlight the host-built page tables are used directly — the kernel does not create
-    // its own identity map or switch CR3.
+    // Walk the host page directory and copy each page table into a BSS-allocated slot so the kernel
+    // owns all paging structures. This ensures the kernel can find and modify PTEs for MMIO
+    // permission changes without depending on host page table memory.
     let kernel_pages: LinkedList<KernelPage> = LinkedList::new();
-    let kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)> =
-        LinkedList::new();
+    let kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)> = {
+        let mut page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)> =
+            LinkedList::new();
+
+        let host_pd_ptr: *const PteWord = crate::hal::platform::get_root_pd_ptr();
+
+        // SAFETY: The host page directory is mapped and readable after CoW pre-faulting.
+        // This runs during single-threaded boot initialization. Each BSS slot returned by
+        // alloc_as() is fully initialized via copy_nonoverlapping before any read, so
+        // assume_init_mut() is sound (the contents are overwritten, not read as zeroes).
+        unsafe {
+            for i in 0..PAGE_TABLE_LENGTH {
+                let pde: PteWord = *host_pd_ptr.add(i);
+                if !PresentFlag::is_set(pde) {
+                    continue;
+                }
+
+                let pt_gpa: usize = (pde & crate::hal::platform::PTE_ADDR_MASK_U32) as usize;
+                let pt_gva: usize = crate::hal::platform::gpa_to_gva(pt_gpa);
+                let pt_vaddr: usize = i * mem::PGTAB_SIZE;
+                let pt_addr: PageTableAddress =
+                    PageTableAddress::new(PageTableAligned::from_raw_value(pt_vaddr)?);
+
+                // Allocate a BSS slot and copy the host page table contents into it.
+                let bss_slot: &'static mut [PteWord; PAGE_TABLE_LENGTH] = PAGE_TABLE_ALLOCATOR
+                    .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
+                    .map_err(|e| {
+                        error!("page table BSS allocation failed: {}", e);
+                        Error::new(
+                            ErrorCode::OutOfMemory,
+                            "BSS page table allocation failed during host PT copy",
+                        )
+                    })?
+                    .assume_init_mut();
+
+                let host_pt_ptr: *const PteWord = pt_gva as *const PteWord;
+                core::ptr::copy_nonoverlapping(
+                    host_pt_ptr,
+                    bss_slot.as_mut_ptr(),
+                    PAGE_TABLE_LENGTH,
+                );
+
+                let storage: PageTableStorage = PageTableStorage::Bss(bss_slot);
+                let page_table: PageTable<PageTableStorage> = PageTable::from_existing(storage);
+                page_tables.push_back((pt_addr, page_table));
+            }
+        }
+
+        page_tables
+    };
+
     VirtMemoryManager::init(kernel_pages, kernel_page_tables)
 }
