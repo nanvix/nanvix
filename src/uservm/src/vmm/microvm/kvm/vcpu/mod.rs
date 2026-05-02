@@ -557,7 +557,6 @@ impl VirtualProcessor {
     }
 
     /// Returns the current general-purpose registers of the virtual processor.
-    #[cfg(feature = "gdb")]
     pub fn get_regs(&self) -> Result<kvm_regs> {
         self.fd
             .get_regs()
@@ -573,7 +572,6 @@ impl VirtualProcessor {
     }
 
     /// Returns the current segment and control registers of the virtual processor.
-    #[cfg(feature = "gdb")]
     pub fn get_sregs(&self) -> Result<kvm_sregs> {
         self.fd
             .get_sregs()
@@ -770,11 +768,12 @@ impl VirtualProcessor {
                     VirtualProcessorExitContext::Unknown
                 },
             },
-            // vCPU thread was interrupted by a signal from the host.
-            // This is the expected mechanism for orchestrator-driven shutdown
-            // (SIGUSR1 handler sets SHUTDOWN), so it is not an unexpected exit.
+            // vCPU thread was interrupted by a signal from the host.  This is the expected
+            // mechanism for both orchestrator-driven shutdown (SIGUSR1) and profiler sampling
+            // (SIGUSR2). Use trace! to avoid flooding logs when the profiler runs at high frequency
+            // (e.g., 10kHz).
             Err(e) if e.errno() == libc::EINTR => {
-                warn!("run(): interrupted");
+                trace!("run(): interrupted");
                 VirtualProcessorExitContext::Interrupted
             },
             Err(error) => {
