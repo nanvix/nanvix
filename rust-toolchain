@@ -3,6 +3,3 @@ channel = "nightly-2025-12-08"
 components = [
     "rust-src",
 ]
-targets = [
-    "wasm32-wasip1",
-]

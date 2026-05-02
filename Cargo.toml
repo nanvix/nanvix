@@ -6,16 +6,13 @@ resolver = "2"
 default-members = ["src/utils/nanvixd"]
 members = [
         "src/benchmarks/echo-rust-nostd",
-        "src/benchmarks/echo-wasm-rust",
         "src/benchmarks/mount-bench-nostd",
         "src/benchmarks/noop-rust-nostd",
-        "src/benchmarks/noop-wasm-rust",
         "src/benchmarks/snapshot-rust-nostd",
         "src/benchmarks/vfs-bench-nostd",
         "src/daemons/linuxd",
         "src/daemons/memd",
         "src/daemons/procd",
-        "src/daemons/wasmd",
         "src/kernel",
         "src/libs/arch",
         "src/libs/bitmap",
@@ -77,7 +74,6 @@ members = [
         "src/tests/vfs-test",
         "src/uservm",
         "src/user/hello-rust-nostd",
-        "src/user/hello-wasm",
         "src/utils/echo-client",
         "src/utils/mkimage",
         "src/utils/mkramfs",
@@ -233,7 +229,6 @@ vfs = { path = "src/libs/vfs", default-features = false }
 vfs-bench-common = { path = "src/libs/vfs-bench-common", default-features = false }
 vstd = { version = "=0.0.0-2026-04-12-0118", default-features = false }
 vmm-sys-util = { version = "0.15.0", default-features = false }
-wasmi = { version = "1.0.9", default-features = false }
 windows = { version = "0.62", features = [
         "Win32_Foundation",
         "Win32_Security",
@@ -272,16 +267,6 @@ rpath = false
 inherits = "release"
 strip = false
 debug = "line-tables-only"
-
-[profile.dev-wasm]
-inherits = "dev"
-opt-level = "z"
-lto = true
-
-[profile.release-wasm]
-inherits = "release"
-opt-level = "z"
-lto = true
 
 [workspace.lints.rust]
 warnings = "deny"

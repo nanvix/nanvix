@@ -45,13 +45,6 @@ else
 export LOG_LEVEL ?= trace
 endif
 
-# Wasm binary to embed in the WASM Daemon
-export WASM_BINARY ?= $(BINARIES_DIR)/hello-wasm.wasm
-export WASM_BINARY_ARGS ?= ""
-
-# Wasm Daemon Socket Address
-export WASMD_SOCKADDR ?= 127.0.0.1:8585
-
 # Default System Image
 export IMAGE ?= nanvix.img
 
@@ -182,11 +175,6 @@ USERVM := $(BINARIES_DIR)/uservm.$(HOST_BIN_EXT)
 # Nanvix Variables
 #===================================================================================================
 
-# Socket address for the WASM Daemon
-ifneq ($(WASMD_SOCKADDR),)
-export NANVIX_WASMD_SOCKADDR := $(WASMD_SOCKADDR)
-endif
-
 # Name of the system.
 export NANVIX_SYSNAME := nanvix
 
@@ -239,13 +227,9 @@ ifeq ($(RELEASE),yes)
     export BUILD_MODE := release
     export CARGO_PROFILE := --release
   endif
-export WASM_CARGO_PROFILE := --profile release-wasm
-export WASM_BUILD_MODE := release-wasm
 else
 export BUILD_MODE := debug
 export CARGO_PROFILE :=
-export WASM_CARGO_PROFILE := --profile dev-wasm
-export WASM_BUILD_MODE := dev-wasm
 endif
 
 #===================================================================================================
@@ -271,13 +255,6 @@ export KERNEL_CARGO_CLEAN_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $
 export KERNEL_CARGO_CHECK_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) check --locked --no-default-features --message-format=json $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 export KERNEL_CARGO_CLIPPY_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) clippy --locked --no-default-features $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 export KERNEL_CARGO_FMT_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) fmt
-
-# Cargo commands for wasm target.
-export WASM_CARGO_BUILD_CMD := $(CARGO) build --locked $(WASM_CARGO_PROFILE) --target wasm32-wasip1 --no-default-features
-export WASM_CARGO_CLEAN_CMD := $(CARGO) clean --target wasm32-wasip1
-export WASM_CARGO_CHECK_CMD := $(CARGO) check --locked --target wasm32-wasip1 --message-format=json --no-default-features
-export WASM_CARGO_CLIPPY_CMD := $(CARGO) clippy --locked --target wasm32-wasip1 --no-default-features
-export WASM_CARGO_FMT_CMD := $(CARGO) fmt
 
 # Cargo commands for host target.
 export HOST_CARGO_BUILD_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) build --locked $(CARGO_PROFILE) --no-default-features
@@ -355,8 +332,6 @@ endif
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 
-ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
-
 ALL_HOST_RUST_LIBS := control-plane-api hwloc multibin multiimage profiler nanvix nanvix-http nanvix-registry nanvix-sandbox nanvix-sandbox-cache nanvix-terminal syscomm user-vm-api
 # Host rlibs excluded on Windows:
 #  - nanvix-http, nanvix-sandbox-cache: depend on Unix-only APIs.
@@ -422,9 +397,7 @@ all-nanvix: \
 	init \
 	all-guest-staticlibs \
 	all-guest-binaries \
-	all-wasmd \
 	all-kernel \
-	all-wasm-binaries \
 	all-snapshot
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
@@ -452,10 +425,8 @@ init-repo:
 clean: \
 	clean-guest-staticlibs \
 	clean-guest-binaries \
-	clean-wasmd \
 	clean-kernel \
 	clean-test-kernel \
-	clean-wasm-binaries \
 	clean-snapshot \
 	image-clean
 
@@ -640,9 +611,7 @@ rust-lint-check: \
 	rust-lint-check-kernel \
 	rust-lint-check-guest-binaries \
 	rust-lint-check-guest-rlibs \
-	rust-lint-check-guest-staticlibs \
-	rust-lint-check-wasmd \
-	rust-lint-check-wasm-binaries
+	rust-lint-check-guest-staticlibs
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 rust-lint-check: rust-lint-check-host-binaries rust-lint-check-host-rlibs rust-lint-check-nanvixd rust-lint-check-uservm rust-lint-check-nanvix-test
@@ -660,9 +629,7 @@ rust-lint: \
 	rust-lint-kernel \
 	rust-lint-guest-binaries \
 	rust-lint-guest-rlibs \
-	rust-lint-guest-staticlibs \
-	rust-lint-wasmd \
-	rust-lint-wasm-binaries
+	rust-lint-guest-staticlibs
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 rust-lint: rust-lint-host-binaries rust-lint-host-rlibs rust-lint-nanvixd rust-lint-uservm rust-lint-nanvix-test
@@ -724,9 +691,7 @@ rust-format: \
 	format-guest-binaries \
 	format-guest-rlibs \
 	format-guest-staticlibs \
-	format-kernel \
-	format-wasmd \
-	format-wasm-binaries
+	format-kernel
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 rust-format: format-host-binaries format-host-rlibs format-nanvixd format-uservm format-nanvix-test
@@ -744,9 +709,7 @@ rust-format-check: \
 	format-check-guest-binaries \
 	format-check-guest-rlibs \
 	format-check-guest-staticlibs \
-	format-check-kernel \
-	format-check-wasmd \
-	format-check-wasm-binaries
+	format-check-kernel
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 rust-format-check: format-check-host-binaries format-check-host-rlibs format-check-nanvixd format-check-uservm format-check-nanvix-test
@@ -817,9 +780,7 @@ check: \
 	check-kernel \
 	check-guest-binaries \
 	check-guest-rlibs \
-	check-guest-staticlibs \
-	check-wasmd \
-	check-wasm-binaries
+	check-guest-staticlibs
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 check: check-host-binaries check-host-rlibs check-nanvixd check-uservm check-nanvix-test
@@ -977,22 +938,10 @@ include build/make/generic-guest-rlibs.mk
 include build/make/generic-guest-binaries.mk
 
 #===================================================================================================
-# Build Rules for WASM Daemon Binary
-#===================================================================================================
-
-include build/make/wasmd.mk
-
-#===================================================================================================
 # Build Rules for Kernel Binary
 #===================================================================================================
 
 include build/make/kernel.mk
-
-#===================================================================================================
-# Build Rules for Generic WASM Binaries
-#===================================================================================================
-
-include build/make/generic-wasm-binaries.mk
 
 #===================================================================================================
 # Build Rules for Generic Host Rust Libraries
