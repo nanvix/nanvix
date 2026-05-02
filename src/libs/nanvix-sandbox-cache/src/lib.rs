@@ -16,6 +16,7 @@ pub use ::nanvix_sandbox::{
     HwLoc,
     SandboxTag,
 };
+pub use ::nanvix_sandbox_config::SandboxCacheConfig;
 
 //==================================================================================================
 // Imports
@@ -61,7 +62,6 @@ use ::nanvix_sandbox::{
     UserVmIdentifier,
     CONTROL_PLANE_ACCEPT_TIMEOUT,
 };
-use ::nanvix_sandbox_config::SandboxCacheConfig;
 use ::std::{
     collections::HashMap,
     fs,
