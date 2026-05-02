@@ -89,10 +89,7 @@ Source code for benchmark programs:
 | Benchmark App     | Path                                | Lang |
 |-------------------|-------------------------------------|------|
 | `echo-rust-nostd` | `src/benchmarks/echo-rust-nostd/`   | Rust |
-| `echo-wasm-rust`  | `src/benchmarks/echo-wasm-rust/`    | WASM |
-| `noop-js`         | `src/benchmarks/noop-js/`           | JS   |
 | `noop-rust-nostd` | `src/benchmarks/noop-rust-nostd/`   | Rust |
-| `noop-wasm-rust`  | `src/benchmarks/noop-wasm-rust/`    | WASM |
 
 ## Analyzing Results
 

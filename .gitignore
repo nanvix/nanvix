@@ -35,7 +35,6 @@ sysroot
 *.log
 *.o
 *.obj
-*.wasm
 .z.cache
 linuxd.stdout
 linuxd.stderr

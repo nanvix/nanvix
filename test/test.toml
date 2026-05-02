@@ -114,25 +114,13 @@ executor = "http"
 program = "./bin/dlfcn-rust.elf"
 input = "[]"
 expected_output = "ok"
-runs_on = ["microvm"] # FIXME: #1643 — kernel heap exhaustion under Hyperlight
+runs_on = ["microvm"]            # FIXME: #1643 — kernel heap exhaustion under Hyperlight
 
 [[tests]]
 executor = "http"
 program = "./bin/c-bindings-rust.elf"
 input = "[]"
 expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/wasmd.elf"
-input = '["hello world!"]'
-expected_output = "Hello, world!"
-
-[[tests]]
-executor = "http"
-program = "./bin/wasmd.elf"
-input = "[]"
-expected_output = "Hello, world!"
 
 #===================================================================================================
 # Terminal Executor Tests (Interactive Mode)
@@ -205,7 +193,7 @@ expected_output = "ok"
 executor = "terminal"
 program = "./bin/dlfcn-rust.elf"
 expected_output = "ok"
-runs_on = ["microvm"] # FIXME: #1643 — kernel heap exhaustion under Hyperlight
+runs_on = ["microvm"]            # FIXME: #1643 — kernel heap exhaustion under Hyperlight
 
 [[tests]]
 executor = "terminal"
