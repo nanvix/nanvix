@@ -15,8 +15,10 @@
 #[cfg(target_os = "windows")]
 pub mod etw;
 mod gva;
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
 mod host_session_stub;
+#[cfg(target_os = "linux")]
+pub mod perf_linux;
 mod samples;
 mod symbols;
 
@@ -44,7 +46,10 @@ pub use symbols::SymbolResolver;
 #[cfg(target_os = "windows")]
 pub use etw::EtwSession as HostKernelSession;
 
-/// On non-Windows platforms, use the stub until the platform-specific
-/// implementation is added (e.g., perf_linux.rs in the Linux PR).
-#[cfg(not(target_os = "windows"))]
+/// On Linux, use the perf-based host kernel session.
+#[cfg(target_os = "linux")]
+pub use perf_linux::PerfSession as HostKernelSession;
+
+/// On unsupported platforms, provide a no-op session stub so lib.rs compiles.
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
 pub use host_session_stub::HostKernelSession;
