@@ -31,7 +31,7 @@ use ::nanvix::sandbox_config::SimpleSandboxCacheConfig;
 #[cfg(all(unix, feature = "standalone"))]
 use ::nanvix::sandbox_config::StandaloneConfig;
 #[cfg(feature = "standalone")]
-use ::nanvix::terminal::TerminalConfig;
+use ::nanvix::sandbox_config::TerminalConfig;
 use ::nanvix::{
     config::{
         constants::MEGABYTE,

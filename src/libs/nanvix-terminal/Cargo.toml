@@ -35,8 +35,8 @@ multi-process = [
     "nanvix-sandbox-cache",
     "nanvix-sandbox-cache/multi-process",
 ]
-standalone = ["config", "uservm"]
-gdb = ["uservm?/gdb"]
+standalone = ["config", "nanvix-sandbox-config", "uservm"]
+gdb = ["uservm?/gdb", "nanvix-sandbox-config?/gdb"]
 # Enables fine-grained time profiling.
 profile-time = ["uservm?/profile-time", "nanvix-sandbox?/profile-time"]
 hyperlight = [
