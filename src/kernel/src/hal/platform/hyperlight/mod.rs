@@ -250,11 +250,23 @@ static KERNEL_PADDING: [u8; 2 * 1024 * 1024] = [0u8; 2 * 1024 * 1024];
 // Constants
 //==================================================================================================
 
-/// Number of page tables needed for identity-mapping physical memory regions.
 ///
-/// On Hyperlight the host page tables are used directly; only a small number of
-/// page table slots are needed for process creation.
-pub const NUM_PAGE_TABLES: usize = 4;
+/// # Description
+///
+/// Number of page tables needed for copying the host-provided paging structures into BSS.
+///
+/// On Hyperlight the host builds the page tables before guest entry. During kernel init the
+/// contents are copied into BSS-backed slots so the kernel owns all paging structures. The host
+/// page directory has present entries for two discontiguous GVA regions:
+///   - **Snapshot** (low GVA): identity-mapped kernel image and initrd, spanning at most
+///     `MEMORY_SIZE / PGTAB_SIZE + 1` page tables.
+///   - **Scratch** (high GVA): mapped near the top of the 32-bit address space, spanning at
+///     most `MEMORY_SIZE / PGTAB_SIZE + 1` page tables.
+///
+/// The `+1` accounts for the fact that each region is misaligned with respect to page table
+/// boundaries.
+///
+pub const NUM_PAGE_TABLES: usize = 2 * (MEMORY_SIZE / mem::PGTAB_SIZE + 1);
 
 //==================================================================================================
 // Structures
