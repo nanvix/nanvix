@@ -164,10 +164,15 @@ impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
         // Write page directory entry.
         self.write_pde(pgtable_address, pde);
 
+        // Invalidate the TLB entry for this page table range so the CPU does not use a
+        // stale PDE pointing to the freed page table.
+        // SAFETY: called from kernel mode after modifying a PDE.
+        unsafe { ::arch::mem::paging::invlpg(pgtable_address.into_raw_value()) };
+
         Ok(paddr)
     }
 
-    pub fn clean(&mut self) {
+    fn clean(&mut self) {
         for pde in self.entries.iter_mut() {
             *pde = 0;
         }
