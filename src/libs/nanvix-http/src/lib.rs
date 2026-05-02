@@ -15,8 +15,5 @@ mod server;
 //==================================================================================================
 
 #[cfg(feature = "standalone")]
-pub use client::{
-    StandaloneConfig,
-    StandaloneState,
-};
+pub use client::StandaloneState;
 pub use server::HttpServer;

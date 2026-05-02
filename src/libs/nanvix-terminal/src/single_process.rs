@@ -25,10 +25,7 @@ use ::log::{
     warn,
 };
 use ::nanvix_sandbox::{
-    simple_cache::{
-        SimpleSandboxCache,
-        SimpleSandboxCacheConfig,
-    },
+    simple_cache::SimpleSandboxCache,
     syscomm::{
         SocketStream,
         SocketStreamReader,
@@ -39,6 +36,7 @@ use ::nanvix_sandbox::{
     },
     UserVmIdentifier,
 };
+use ::nanvix_sandbox_config::SimpleSandboxCacheConfig;
 use ::std::{
     io::{
         ErrorKind,

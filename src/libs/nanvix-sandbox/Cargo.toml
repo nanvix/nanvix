@@ -23,6 +23,7 @@ linuxd = { workspace = true, optional = true }
 libc = { workspace = true }
 log = { workspace = true }
 rand = { workspace = true }
+nanvix-sandbox-config = { workspace = true, optional = true }
 serde_json = { workspace = true }
 syscomm = { workspace = true }
 sys = { workspace = true }
@@ -34,7 +35,11 @@ uservm = { workspace = true }
 default = ["microvm", "multi-process"]
 # If enabled this feature is enabled, the Linux Daemon (linuxd) and User VM (uservm) are embedded
 # into the sandbox.
-single-process = ["linuxd"]
+single-process = [
+    "linuxd",
+    "nanvix-sandbox-config",
+    "nanvix-sandbox-config/single-process",
+]
 multi-process = ["linuxd"]
 standalone = []
 gdb = ["uservm/gdb"]
