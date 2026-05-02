@@ -167,7 +167,7 @@ impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
         Ok(paddr)
     }
 
-    pub fn clean(&mut self) {
+    fn clean(&mut self) {
         for pde in self.entries.iter_mut() {
             *pde = 0;
         }
