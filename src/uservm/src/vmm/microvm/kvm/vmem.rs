@@ -244,6 +244,25 @@ impl VirtualMemory {
     ///
     /// # Description
     ///
+    /// Issues an `madvise` hint for a sub-region of the virtual memory.
+    ///
+    /// # Parameters
+    ///
+    /// - `start`: Byte offset from the start of the mapping (must be page-aligned).
+    /// - `len`: Size of the region in bytes.
+    /// - `advice`: madvise advice constant (e.g., `MADV_SEQUENTIAL`, `MADV_WILLNEED`).
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns empty. Otherwise, returns an error.
+    ///
+    pub fn madvise_at(&self, start: usize, len: usize, advice: i32) -> Result<()> {
+        self.mapping.madvise_at(start, len, advice)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Attaches a RAM filesystem descriptor to the virtual memory so the backing file remains
     /// alive for the VM's lifetime.
     ///
