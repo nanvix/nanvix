@@ -7,24 +7,15 @@ jobs:
   # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
   copilot-setup-steps:
     runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/nanvix/ci:ubuntu-24.04
 
     permissions:
       contents: read
+      packages: read
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: "Free Disk Space"
-        uses: ./.github/actions/free-disk-space
-        with:
-          remove-hostedtoolcache: "false"
-
-      - name: Install Rust
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          source $HOME/.cargo/env
-          rustup default nightly
-
-      - name: Pull Nanvix Docker Image
-        run: |
-          docker pull nanvix/toolchain:latest-minimal
+      - name: "Setup"
+        uses: ./.github/actions/native-setup
