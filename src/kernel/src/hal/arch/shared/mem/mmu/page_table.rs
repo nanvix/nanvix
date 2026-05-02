@@ -214,6 +214,11 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
         // Write page table entry.
         self.write_pte(page_address, pte);
 
+        // Invalidate the TLB entry so the CPU does not use a stale mapping to the
+        // old frame if this virtual address is re-mapped to a different frame.
+        // SAFETY: called from kernel mode after modifying a PTE.
+        unsafe { ::arch::mem::paging::invlpg(page_address.into_raw_value()) };
+
         self.nmapped -= 1;
 
         Ok(paddr)
@@ -328,6 +333,10 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
 
         // Write page table entry.
         self.write_pte(page_address, pte);
+
+        // Invalidate the TLB entry so the permission change takes effect immediately.
+        // SAFETY: called from kernel mode after modifying a PTE.
+        unsafe { ::arch::mem::paging::invlpg(page_address.into_raw_value()) };
 
         Ok(())
     }
