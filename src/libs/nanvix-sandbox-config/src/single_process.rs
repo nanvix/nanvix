@@ -11,12 +11,10 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    syscomm::SocketType,
-    HwLoc,
-    SyscallTable,
-};
+use ::hwloc::HwLoc;
+use ::linuxd::syscalls::SyscallTable;
 use ::std::sync::Arc;
+use ::syscomm::SocketType;
 
 //==================================================================================================
 // Structures

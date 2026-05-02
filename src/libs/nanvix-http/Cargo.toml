@@ -22,6 +22,7 @@ log = { workspace = true }
 nanvix-registry = { workspace = true }
 nanvix-sandbox = { workspace = true, optional = true }
 nanvix-sandbox-cache = { workspace = true, optional = true }
+nanvix-sandbox-config = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
 syscomm = { workspace = true }
@@ -31,10 +32,24 @@ user-vm-api = { workspace = true }
 
 [features]
 default = ["microvm", "multi-process"]
-single-process = ["linuxd", "nanvix-sandbox", "nanvix-sandbox/single-process"]
-multi-process = ["nanvix-sandbox-cache", "nanvix-sandbox-cache/multi-process"]
-standalone = ["nanvix-sandbox", "nanvix-sandbox/standalone"]
-gdb = ["uservm/gdb"]
+single-process = [
+    "nanvix-sandbox-config",
+    "nanvix-sandbox-config/single-process",
+    "linuxd",
+    "nanvix-sandbox",
+    "nanvix-sandbox/single-process",
+]
+multi-process = [
+    "nanvix-sandbox-config",
+    "nanvix-sandbox-cache",
+    "nanvix-sandbox-cache/multi-process",
+]
+standalone = [
+    "nanvix-sandbox-config",
+    "nanvix-sandbox",
+    "nanvix-sandbox/standalone",
+]
+gdb = ["uservm/gdb", "nanvix-sandbox-config?/gdb"]
 hyperlight = [
     "config/hyperlight",
     "uservm/hyperlight",

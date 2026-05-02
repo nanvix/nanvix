@@ -41,6 +41,7 @@ use ::log::{
     info,
     trace,
 };
+use ::nanvix_sandbox_config::StandaloneConfig;
 use ::std::{
     future::Future,
     marker::PhantomData,
@@ -65,66 +66,6 @@ use ::uservm::standalone::{
 //==================================================================================================
 // Structures
 //==================================================================================================
-
-///
-/// # Description
-///
-/// Configuration for standalone mode.
-///
-/// Holds the minimal set of paths required to launch a User VM without the full sandbox
-/// cache infrastructure.
-///
-#[derive(Clone)]
-pub struct StandaloneConfig {
-    /// Path to the guest kernel binary.
-    pub(crate) kernel_binary_path: String,
-    /// Optional path to a RAM filesystem image exposed to the guest.
-    pub(crate) ramfs_filename: Option<String>,
-    /// Optional file path for capturing guest stderr output.
-    pub(crate) console_file: Option<String>,
-    /// Optional snapshot path for restoring VM state instead of cold-booting.
-    pub(crate) snapshot_path: Option<String>,
-    /// Optional host directory to mount on the guest.
-    pub(crate) mount_directory: Option<String>,
-    /// Optional GDB server port for debugging the guest.
-    #[cfg(feature = "gdb")]
-    pub(crate) gdb_port: Option<u16>,
-}
-
-impl StandaloneConfig {
-    ///
-    /// # Description
-    ///
-    /// Creates a new standalone configuration.
-    ///
-    /// # Parameters
-    ///
-    /// - `kernel_binary_path`: Path to the guest kernel binary.
-    /// - `ramfs_filename`: Optional path to a RAM filesystem image.
-    /// - `console_file`: Optional file path for guest stderr capture.
-    /// - `snapshot_path`: Optional snapshot path for restoring VM state instead of cold-booting.
-    /// - `mount_directory`: Optional host directory to mount on the guest.
-    /// - `gdb_port`: Optional GDB server port.
-    ///
-    pub fn new(
-        kernel_binary_path: String,
-        ramfs_filename: Option<String>,
-        console_file: Option<String>,
-        snapshot_path: Option<String>,
-        mount_directory: Option<String>,
-        #[cfg(feature = "gdb")] gdb_port: Option<u16>,
-    ) -> Self {
-        Self {
-            kernel_binary_path,
-            ramfs_filename,
-            console_file,
-            snapshot_path,
-            mount_directory,
-            #[cfg(feature = "gdb")]
-            gdb_port,
-        }
-    }
-}
 
 ///
 /// # Description
@@ -279,15 +220,15 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
         };
 
         let (handle, io): (StandaloneVmHandle, StandaloneVmIo) = StandaloneVmHandle::spawn(
-            state.config.kernel_binary_path.clone(),
+            state.config.kernel_binary_path().to_string(),
             Some(message.program.clone()),
             initrd_args,
-            state.config.ramfs_filename.clone(),
-            state.config.console_file.clone(),
-            state.config.snapshot_path.clone(),
-            state.config.mount_directory.clone(),
+            state.config.ramfs_filename().map(|s| s.to_string()),
+            state.config.console_file().map(|s| s.to_string()),
+            state.config.snapshot_path().map(|s| s.to_string()),
+            state.config.mount_directory().map(|s| s.to_string()),
             #[cfg(feature = "gdb")]
-            state.config.gdb_port,
+            state.config.gdb_port(),
         );
 
         // Create a Unix socket that serves as the gateway stream. The test harness (or any

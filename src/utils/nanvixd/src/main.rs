@@ -24,14 +24,12 @@ use ::anyhow::Result;
 use ::log::error;
 #[cfg(unix)]
 use ::nanvix::http::HttpServer;
-#[cfg(all(unix, feature = "standalone"))]
-use ::nanvix::http::StandaloneConfig;
 #[cfg(feature = "multi-process")]
-use ::nanvix::sandbox_cache::SandboxCacheConfig;
+use ::nanvix::sandbox_config::SandboxCacheConfig;
 #[cfg(feature = "single-process")]
-use ::nanvix::sandbox_cache::SimpleSandboxCacheConfig;
+use ::nanvix::sandbox_config::SimpleSandboxCacheConfig;
 #[cfg(feature = "standalone")]
-use ::nanvix::terminal::TerminalConfig;
+use ::nanvix::sandbox_config::StandaloneConfig;
 use ::nanvix::{
     config::{
         constants::MEGABYTE,
@@ -207,9 +205,9 @@ async fn async_main() -> Result<ExitCode> {
         })?,
     );
 
-    #[cfg(all(unix, feature = "standalone"))]
+    #[cfg(feature = "standalone")]
     let config: StandaloneConfig = StandaloneConfig::new(
-        kernel_binary_path.clone(),
+        kernel_binary_path,
         args.ramfs_filename().map(|s| s.to_string()),
         args.console_file().clone(),
         args.snapshot_path().map(|s| s.to_string()),
@@ -264,15 +262,7 @@ async fn async_main() -> Result<ExitCode> {
         let mut terminal: Terminal<()> = Terminal::new(config);
         // In standalone mode, the terminal drives the VM directly (no linuxd).
         #[cfg(feature = "standalone")]
-        let mut terminal: Terminal = Terminal::new(TerminalConfig::new(
-            kernel_binary_path.clone(),
-            args.ramfs_filename().map(|s| s.to_string()),
-            args.console_file().clone(),
-            args.snapshot_path().map(|s| s.to_string()),
-            args.mount_directory().map(|s| s.to_string()),
-            #[cfg(feature = "gdb")]
-            args.gdb_port(),
-        ));
+        let mut terminal: Terminal = Terminal::new(config);
         // In multi-process mode, the terminal connects through the sandbox cache.
         #[cfg(not(any(feature = "single-process", feature = "standalone")))]
         let mut terminal: Terminal<()> = Terminal::new(config);

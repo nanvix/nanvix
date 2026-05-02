@@ -17,10 +17,7 @@ compile_error!("features `single-process` and `standalone` are mutually exclusiv
 
 use crate::client::HttpClient;
 #[cfg(feature = "standalone")]
-use crate::{
-    StandaloneConfig,
-    StandaloneState,
-};
+use crate::StandaloneState;
 use ::anyhow::Result;
 use ::hyper::server::conn::http1;
 use ::hyper_util::rt::TokioIo;
@@ -31,14 +28,17 @@ use ::log::{
 };
 #[cfg(feature = "single-process")]
 use ::nanvix_sandbox::simple_cache::SimpleSandboxCache;
-#[cfg(feature = "single-process")]
-use ::nanvix_sandbox::simple_cache::SimpleSandboxCacheConfig;
 #[cfg(not(any(feature = "single-process", feature = "standalone")))]
 use ::nanvix_sandbox_cache::{
     SandboxCache,
-    SandboxCacheConfig,
     SandboxCacheStateSummary,
 };
+#[cfg(not(any(feature = "single-process", feature = "standalone")))]
+use ::nanvix_sandbox_config::SandboxCacheConfig;
+#[cfg(feature = "single-process")]
+use ::nanvix_sandbox_config::SimpleSandboxCacheConfig;
+#[cfg(feature = "standalone")]
+use ::nanvix_sandbox_config::StandaloneConfig;
 use ::std::sync::Arc;
 #[cfg(feature = "single-process")]
 use ::tokio::sync::Mutex;
