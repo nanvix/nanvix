@@ -17,6 +17,7 @@ config = { workspace = true }
 log = { workspace = true }
 nanvix-sandbox = { workspace = true }
 rand = { workspace = true }
+nanvix-sandbox-config = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 [features]

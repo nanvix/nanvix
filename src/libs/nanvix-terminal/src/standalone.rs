@@ -21,6 +21,7 @@ use ::log::{
     info,
     warn,
 };
+use ::nanvix_sandbox_config::StandaloneConfig;
 use ::std::io::Read;
 use ::tokio::{
     io::{
@@ -56,65 +57,6 @@ const INPUT_SHUTDOWN_TIMEOUT: ::std::time::Duration = ::std::time::Duration::fro
 ///
 /// # Description
 ///
-/// Configuration for the terminal in standalone mode.
-///
-/// Holds the minimal set of paths required to launch a User VM directly.
-///
-#[derive(Clone)]
-pub struct TerminalConfig {
-    /// Path to the guest kernel binary.
-    kernel_binary_path: String,
-    /// Optional path to a RAM filesystem image exposed to the guest.
-    ramfs_filename: Option<String>,
-    /// Optional file path for capturing guest stderr output.
-    console_file: Option<String>,
-    /// Optional snapshot path for restoring VM state instead of cold-booting.
-    snapshot_path: Option<String>,
-    /// Optional host directory to mount on the guest.
-    mount_directory: Option<String>,
-    /// Optional GDB server port for debugging the guest.
-    #[cfg(feature = "gdb")]
-    gdb_port: Option<u16>,
-}
-
-impl TerminalConfig {
-    ///
-    /// # Description
-    ///
-    /// Creates a new terminal configuration.
-    ///
-    /// # Parameters
-    ///
-    /// - `kernel_binary_path`: Path to the guest kernel binary.
-    /// - `ramfs_filename`: Optional path to a RAM filesystem image.
-    /// - `console_file`: Optional file path for guest stderr capture.
-    /// - `snapshot_path`: Optional snapshot path for restoring VM state instead of cold-booting.
-    /// - `mount_directory`: Optional host directory to mount on the guest.
-    /// - `gdb_port`: Optional GDB server port.
-    ///
-    pub fn new(
-        kernel_binary_path: String,
-        ramfs_filename: Option<String>,
-        console_file: Option<String>,
-        snapshot_path: Option<String>,
-        mount_directory: Option<String>,
-        #[cfg(feature = "gdb")] gdb_port: Option<u16>,
-    ) -> Self {
-        Self {
-            kernel_binary_path,
-            ramfs_filename,
-            console_file,
-            snapshot_path,
-            mount_directory,
-            #[cfg(feature = "gdb")]
-            gdb_port,
-        }
-    }
-}
-
-///
-/// # Description
-///
 /// Terminal interface for interacting with user VMs in standalone mode.
 ///
 /// Spawns a User VM via `StandaloneVmHandle` and bridges host stdin/stdout with the guest's
@@ -122,7 +64,7 @@ impl TerminalConfig {
 ///
 pub struct Terminal {
     /// Configuration for launching new VMs.
-    config: TerminalConfig,
+    config: StandaloneConfig,
 }
 
 //==================================================================================================
@@ -139,7 +81,7 @@ impl Terminal {
     ///
     /// - `config`: Configuration for launching VMs.
     ///
-    pub fn new(config: TerminalConfig) -> Self {
+    pub fn new(config: StandaloneConfig) -> Self {
         Self { config }
     }
 
@@ -176,15 +118,15 @@ impl Terminal {
         };
 
         let (handle, io): (StandaloneVmHandle, StandaloneVmIo) = StandaloneVmHandle::spawn(
-            self.config.kernel_binary_path.clone(),
+            self.config.kernel_binary_path().to_string(),
             Some(guest_binary_path.to_string()),
             initrd_args,
-            self.config.ramfs_filename.clone(),
-            self.config.console_file.clone(),
-            self.config.snapshot_path.clone(),
-            self.config.mount_directory.clone(),
+            self.config.ramfs_filename().map(|s| s.to_string()),
+            self.config.console_file().map(|s| s.to_string()),
+            self.config.snapshot_path().map(|s| s.to_string()),
+            self.config.mount_directory().map(|s| s.to_string()),
             #[cfg(feature = "gdb")]
-            self.config.gdb_port,
+            self.config.gdb_port(),
         );
 
         // Bridge host stdin/stdout with guest I/O channels.

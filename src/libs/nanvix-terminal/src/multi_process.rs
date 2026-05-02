@@ -32,8 +32,8 @@ use ::nanvix_sandbox_cache::{
         WriteAll,
     },
     SandboxCache,
-    SandboxCacheConfig,
 };
+use ::nanvix_sandbox_config::SandboxCacheConfig;
 use ::std::{
     io::{
         ErrorKind,

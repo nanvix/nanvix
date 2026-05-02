@@ -20,6 +20,7 @@ nanvix-registry = { workspace = true }
 nanvix-sandbox = { workspace = true }
 nanvix-sandbox-cache = { workspace = true, optional = true }
 nanvix-terminal = { workspace = true }
+nanvix-sandbox-config = { workspace = true }
 sys = { workspace = true, features = ["std"], optional = true }
 syscall = { workspace = true, features = ["std"], optional = true }
 syscomm = { workspace = true }
@@ -34,6 +35,7 @@ default = ["microvm", "multi-process"]
 internal-api = ["sys", "syscall", "uservm"]
 single-process = [
     "linuxd",
+    "nanvix-sandbox-config/single-process",
     "nanvix-http?/single-process",
     "nanvix-sandbox/single-process",
     "nanvix-terminal/single-process",
@@ -50,7 +52,12 @@ standalone = [
     "nanvix-sandbox/standalone",
     "nanvix-terminal/standalone",
 ]
-gdb = ["nanvix-http?/gdb", "nanvix-sandbox/gdb", "nanvix-terminal/gdb"]
+gdb = [
+    "nanvix-sandbox-config/gdb",
+    "nanvix-http?/gdb",
+    "nanvix-sandbox/gdb",
+    "nanvix-terminal/gdb",
+]
 # Enables fine-grained time profiling.
 profile-time = ["nanvix-sandbox/profile-time", "nanvix-terminal/profile-time"]
 hyperlight = [

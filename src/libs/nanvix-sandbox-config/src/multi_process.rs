@@ -11,11 +11,9 @@
 // Imports
 //==================================================================================================
 
-use ::nanvix_sandbox::{
-    syscomm::SocketType,
-    HwLoc,
-};
+use ::hwloc::HwLoc;
 use ::std::marker::PhantomData;
+use ::syscomm::SocketType;
 
 //==================================================================================================
 // Structures

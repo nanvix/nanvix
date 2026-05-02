@@ -44,7 +44,4 @@ pub use self::multi_process::Terminal;
 #[cfg(feature = "single-process")]
 pub use self::single_process::Terminal;
 #[cfg(feature = "standalone")]
-pub use self::standalone::{
-    Terminal,
-    TerminalConfig,
-};
+pub use self::standalone::Terminal;
