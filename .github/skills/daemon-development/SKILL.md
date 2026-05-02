@@ -15,10 +15,9 @@ functionality.
 |----------|-----------------------|--------|----------------------|
 | `memd`   | `src/daemons/memd/`   | Guest  | Memory management.   |
 | `procd`  | `src/daemons/procd/`  | Guest  | Process management.  |
-| `wasmd`  | `src/daemons/wasmd/`  | Guest  | WebAssembly runtime. |
 | `linuxd` | `src/daemons/linuxd/` | Host   | L2 VM management.    |
 
-## Guest Daemons (`memd`, `procd`, `wasmd`)
+## Guest Daemons (`memd`, `procd`)
 
 Guest daemons are `#![no_std]`, `#![no_main]` Rust binaries that run inside the Nanvix microkernel
 environment. They communicate with the kernel through kernel calls (`sys::kcall`) and handle system
@@ -34,12 +33,6 @@ events/messages.
 
 - Manages process lifecycle (creation, termination, scheduling).
 - Handles IPC-based process management requests.
-
-### WebAssembly Daemon (`wasmd`)
-
-- Runs WASM modules using the `wasmi` interpreter.
-- Configured via `WASM_BINARY` and `WASMD_SOCKADDR`.
-- Socket address defaults to `127.0.0.1:8585`.
 
 ## Host Daemon (`linuxd`)
 

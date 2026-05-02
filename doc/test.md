@@ -63,7 +63,7 @@ The `nanvix-test.elf` utility supports two execution modes:
 **HTTP Mode:**
 
 - Programs are invoked via HTTP requests to nanvixd.
-- Supports all program types: native executables, WASM modules, and interpreter-based programs.
+- Supports native executables (ELF binaries).
 
 **Terminal Mode:**
 

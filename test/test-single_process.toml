@@ -121,18 +121,6 @@ program = "./bin/c-bindings-rust.elf"
 input = "[]"
 expected_output = "ok"
 
-[[tests]]
-executor = "http"
-program = "./bin/wasmd.elf"
-input = '["hello world!"]'
-expected_output = "Hello, world!"
-
-[[tests]]
-executor = "http"
-program = "./bin/wasmd.elf"
-input = "[]"
-expected_output = "Hello, world!"
-
 #===================================================================================================
 # Terminal Executor Tests (Interactive Mode)
 #===================================================================================================

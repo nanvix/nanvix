@@ -262,21 +262,6 @@ class TestParseCli(unittest.TestCase):
         _, cfg = zmod.parse_cli(["build", "--", "SYSROOT_DIR=/opt/sysroot"])
         self.assertEqual(cfg.sysroot_dir, "/opt/sysroot")
 
-    def test_key_value_wasm_binary(self) -> None:
-        """WASM_BINARY=foo.wasm in make_args sets cfg.wasm_binary."""
-        _, cfg = zmod.parse_cli(["build", "--", "WASM_BINARY=foo.wasm"])
-        self.assertEqual(cfg.wasm_binary, "foo.wasm")
-
-    def test_key_value_wasm_binary_args(self) -> None:
-        """WASM_BINARY_ARGS=--arg1 in make_args sets cfg.wasm_binary_args."""
-        _, cfg = zmod.parse_cli(["build", "--", "WASM_BINARY_ARGS=--arg1"])
-        self.assertEqual(cfg.wasm_binary_args, "--arg1")
-
-    def test_key_value_wasmd_sockaddr(self) -> None:
-        """WASMD_SOCKADDR=127.0.0.1:9999 in make_args sets cfg.wasmd_sockaddr."""
-        _, cfg = zmod.parse_cli(["build", "--", "WASMD_SOCKADDR=127.0.0.1:9999"])
-        self.assertEqual(cfg.wasmd_sockaddr, "127.0.0.1:9999")
-
     def test_passthrough_vars_do_not_change_config(self) -> None:
         """SCCACHE, MAKE_NO_PRINT, CLH_DIR, VERUS_EXECUTABLE_DIR are pass-through."""
         _, cfg = zmod.parse_cli(

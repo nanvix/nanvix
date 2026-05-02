@@ -65,9 +65,6 @@ KNOWN_MAKE_VARS: frozenset[str] = frozenset(
         "IMAGE",
         "CLH_DIR",
         "HOST_CPU",
-        "WASM_BINARY",
-        "WASM_BINARY_ARGS",
-        "WASMD_SOCKADDR",
         "MAKE_NO_PRINT",
         "MEMORY_SIZE",
         "MESSAGE_FORMAT",
@@ -264,10 +261,6 @@ class BuildConfig:
     sysroot_dir: str = ""
     host_cpu: str = ""
 
-    wasm_binary: str = ""
-    wasm_binary_args: str = ""
-    wasmd_sockaddr: str = ""
-
     image: str = ""
     memory_size: str = ""
     message_format: str = ""
@@ -337,12 +330,6 @@ def _parse_make_var(config: BuildConfig, key: str, val: str) -> None:
             config.whp = val.lower() == "yes"
         case "HOST_CPU":
             config.host_cpu = val
-        case "WASM_BINARY":
-            config.wasm_binary = val
-        case "WASM_BINARY_ARGS":
-            config.wasm_binary_args = val
-        case "WASMD_SOCKADDR":
-            config.wasmd_sockaddr = val
         case "IMAGE":
             config.image = val
         case "MEMORY_SIZE":

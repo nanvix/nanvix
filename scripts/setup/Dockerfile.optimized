@@ -70,7 +70,7 @@ ENV PATH="$HOME/.cargo/bin:$PATH"
 
 # Install Rust toolchain and components from the rust-toolchain file.
 # `rustup show` reads the file and auto-installs the specified channel,
-# components (e.g. rust-src), and targets (e.g. wasm32-wasip1).
+# components (e.g. rust-src).
 RUN cd /workspace && rustup show && \
     # Remove the copied rust-toolchain file and empty directory so they cannot
     # shadow a workspace mount or leave stale artifacts in the image.
