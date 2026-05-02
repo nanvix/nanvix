@@ -161,7 +161,7 @@ async fn async_main() -> Result<ExitCode> {
     print_startup_info(&args);
 
     // Determine deployment type based on feature flag.
-    #[cfg(all(feature = "single-process", not(feature = "standalone")))]
+    #[cfg(feature = "single-process")]
     let deployment: &str = "single-process";
     #[cfg(feature = "standalone")]
     let deployment: &str = "standalone";
@@ -186,7 +186,7 @@ async fn async_main() -> Result<ExitCode> {
     #[cfg(not(feature = "standalone"))]
     let tmp_directory: TemporaryDirectory = create_tmp_dir(args.tmp_directory()).await?;
 
-    #[cfg(all(feature = "single-process", not(feature = "standalone")))]
+    #[cfg(feature = "single-process")]
     let config: SimpleSandboxCacheConfig<()> = SimpleSandboxCacheConfig::new(
         args.control_plane_socket_type(),
         args.gateway_socket_type(),
@@ -258,7 +258,7 @@ async fn async_main() -> Result<ExitCode> {
 
         // In single-process mode, the terminal connects through the simplified sandbox cache
         // (which embeds linuxd as an async task).
-        #[cfg(all(feature = "single-process", not(feature = "standalone")))]
+        #[cfg(feature = "single-process")]
         let mut terminal: Terminal<()> = Terminal::new(config);
         // In standalone mode, the terminal drives the VM directly (no linuxd).
         #[cfg(feature = "standalone")]
@@ -433,7 +433,7 @@ fn print_startup_info(args: &Args) {
         "http"
     };
 
-    #[cfg(all(feature = "single-process", not(feature = "standalone")))]
+    #[cfg(feature = "single-process")]
     log_info!(
         "nanvixd {}, single-process deployment, {} mode, machine {}",
         env!("CARGO_PKG_VERSION"),
