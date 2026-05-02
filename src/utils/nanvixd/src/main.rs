@@ -24,12 +24,12 @@ use ::anyhow::Result;
 use ::log::error;
 #[cfg(unix)]
 use ::nanvix::http::HttpServer;
-#[cfg(all(unix, feature = "standalone"))]
-use ::nanvix::http::StandaloneConfig;
 #[cfg(feature = "multi-process")]
-use ::nanvix::sandbox_cache::SandboxCacheConfig;
+use ::nanvix::sandbox_config::SandboxCacheConfig;
 #[cfg(feature = "single-process")]
-use ::nanvix::sandbox_cache::SimpleSandboxCacheConfig;
+use ::nanvix::sandbox_config::SimpleSandboxCacheConfig;
+#[cfg(all(unix, feature = "standalone"))]
+use ::nanvix::sandbox_config::StandaloneConfig;
 #[cfg(feature = "standalone")]
 use ::nanvix::terminal::TerminalConfig;
 use ::nanvix::{

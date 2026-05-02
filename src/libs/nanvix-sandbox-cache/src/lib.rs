@@ -8,16 +8,9 @@
 //! the control-plane socket connections for communication with these instances.
 
 //==================================================================================================
-// Public Modules
-//==================================================================================================
-
-pub mod config;
-
-//==================================================================================================
 // Exports
 //==================================================================================================
 
-pub use self::config::SandboxCacheConfig;
 pub use ::nanvix_sandbox::{
     syscomm,
     HwLoc,
@@ -68,6 +61,7 @@ use ::nanvix_sandbox::{
     UserVmIdentifier,
     CONTROL_PLANE_ACCEPT_TIMEOUT,
 };
+use ::nanvix_sandbox_config::SandboxCacheConfig;
 use ::std::{
     collections::HashMap,
     fs,

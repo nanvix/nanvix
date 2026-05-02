@@ -49,10 +49,7 @@ pub(crate) use self::single_process::HttpClient;
 #[cfg(feature = "standalone")]
 pub(crate) use self::standalone::HttpClient;
 #[cfg(feature = "standalone")]
-pub use self::standalone::{
-    StandaloneConfig,
-    StandaloneState,
-};
+pub use self::standalone::StandaloneState;
 
 //==================================================================================================
 // Implementations

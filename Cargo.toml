@@ -29,6 +29,7 @@ members = [
         "src/libs/nanvix-registry",
         "src/libs/nanvix-sandbox",
         "src/libs/nanvix-sandbox-cache",
+        "src/libs/nanvix-sandbox-config",
         "src/libs/nanvix-terminal",
         "src/libs/no_fail",
         "src/libs/nvx",
@@ -167,6 +168,7 @@ nanvix-oci = { path = "src/libs/nanvix-oci" }
 nanvix-registry = { path = "src/libs/nanvix-registry", default-features = false }
 nanvix-sandbox = { path = "src/libs/nanvix-sandbox", default-features = false }
 nanvix-sandbox-cache = { path = "src/libs/nanvix-sandbox-cache", default-features = false }
+nanvix-sandbox-config = { path = "src/libs/nanvix-sandbox-config", default-features = false }
 nanvix-shim-core = { path = "src/libs/nanvix-shim-core" }
 nanvix-shim-proto = { path = "src/libs/nanvix-shim-proto" }
 nanvix-shim-standalone = { path = "src/libs/nanvix-shim-standalone" }
