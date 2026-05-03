@@ -31,7 +31,7 @@ uservm = { workspace = true }
 user-vm-api = { workspace = true }
 
 [features]
-default = ["microvm", "multi-process"]
+default = ["microvm", "standalone"]
 single-process = [
     "nanvix-sandbox-config",
     "nanvix-sandbox-config/single-process",

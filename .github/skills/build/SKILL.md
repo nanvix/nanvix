@@ -59,7 +59,7 @@ Set these as environment variables or pass them after `--` in the `z` command:
 |                  | `info`, `warn`,          |                 |
 |                  | `error`, `panic`         |                 |
 | `PROFILER`       | `yes`, `no`              | `no`            |
-| `DEPLOYMENT_MODE`| `standalone`,            | `multi-process` |
+| `DEPLOYMENT_MODE`| `standalone`,            | `standalone`    |
 |                  | `single-process`,        |                 |
 |                  | `multi-process`, `l2`    |                 |
 
