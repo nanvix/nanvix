@@ -58,11 +58,13 @@ use ::windows::Win32::{
             PAGE_NOACCESS,
             PAGE_READWRITE,
             PAGE_WRITECOPY,
+            PrefetchVirtualMemory,
             UNMAP_VIEW_OF_FILE_FLAGS,
             UnmapViewOfFileEx,
             VIRTUAL_FREE_TYPE,
             VirtualAlloc2,
             VirtualFree,
+            WIN32_MEMORY_RANGE_ENTRY,
         },
         Threading::GetCurrentProcess,
     },
@@ -936,6 +938,72 @@ impl VirtualMemory {
                     ranges.len()
                 );
                 error!("populate_ept(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Pre-faults host-side virtual pages for a sub-region of guest memory using
+    /// `PrefetchVirtualMemory`. This is the Windows equivalent of `madvise(MADV_WILLNEED)`:
+    /// it encourages the OS to bring the backing pages into physical memory ahead of time,
+    /// reducing page-fault stalls during guest execution.
+    ///
+    /// # Parameters
+    ///
+    /// - `start`: Byte offset from the start of the mapping (must be page-aligned).
+    /// - `len`: Size of the region in bytes.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns empty. Otherwise, returns an error.
+    ///
+    pub fn prefault_at(&self, start: usize, len: usize) -> Result<()> {
+        trace!("prefault_at(): start={start:#x}, len={len:#x}");
+
+        if len == 0 {
+            return Ok(());
+        }
+
+        let page_size: usize = ::arch::mem::PAGE_SIZE;
+
+        if !start.is_multiple_of(page_size) {
+            let reason: String =
+                format!("start offset {start:#x} is not page-aligned (page_size={page_size:#x})");
+            error!("prefault_at(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        if start.checked_add(len).is_none_or(|end| end > self.size) {
+            let reason: String = format!(
+                "prefault region [{start:#x}, {:#x}) exceeds mapping bounds (size={:#x})",
+                start.saturating_add(len),
+                self.size
+            );
+            error!("prefault_at(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        // SAFETY: `start` has been bounds-checked so `self.ptr.add(start)` stays within the
+        // allocated region. `GetCurrentProcess()` returns a valid pseudo-handle.
+        // `WIN32_MEMORY_RANGE_ENTRY` describes the virtual address range to prefetch.
+        let entry: WIN32_MEMORY_RANGE_ENTRY = WIN32_MEMORY_RANGE_ENTRY {
+            VirtualAddress: unsafe { self.ptr.add(start).cast() },
+            NumberOfBytes: len,
+        };
+
+        // SAFETY: The entry describes a valid committed or file-backed region within
+        // `self.ptr`. The function is advisory and does not modify memory contents.
+        unsafe {
+            PrefetchVirtualMemory(GetCurrentProcess(), &[entry], 0).map_err(|e| {
+                let reason: String = format!(
+                    "PrefetchVirtualMemory failed (start={start:#x}, len={len:#x}, error={e:?})"
+                );
+                error!("prefault_at(): {reason}");
                 anyhow::anyhow!(reason)
             })?;
         }
