@@ -15,6 +15,7 @@ use ::log::{
     error,
     info,
     trace,
+    warn,
 };
 use ::multiimage::MultiImageLayout;
 #[cfg(target_os = "linux")]
@@ -369,6 +370,26 @@ impl RamFs {
             error!("RamFs::map_file_into_guest(): {reason}");
             anyhow::anyhow!(reason)
         })?;
+
+        // Advise the host OS to prefault ramfs pages, reducing page-fault stalls
+        // during guest execution.
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "linux")] {
+                // MADV_WILLNEED encourages readahead/prefaulting without the eviction
+                // side-effects of MADV_SEQUENTIAL (which could hurt random re-reads).
+                vmem.madvise_at(base, self.ramfs_size(), ::libc::MADV_WILLNEED)
+                    .unwrap_or_else(|e| {
+                        warn!("RamFs::map_file_into_guest(): madvise MADV_WILLNEED failed: {e}");
+                    });
+            } else if #[cfg(target_os = "windows")] {
+                // PrefetchVirtualMemory is the Windows equivalent of MADV_WILLNEED:
+                // it brings backing pages into physical memory ahead of time.
+                vmem.prefault_at(base, self.ramfs_size())
+                    .unwrap_or_else(|e| {
+                        warn!("RamFs::map_file_into_guest(): prefault_at failed: {e}");
+                    });
+            }
+        }
 
         Ok(())
     }
