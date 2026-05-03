@@ -16,6 +16,15 @@
 // The following lints are allowed in tests to facilitate testing of error conditions.
 #![cfg_attr(not(test), forbid(clippy::expect_used))]
 
+#[cfg(all(feature = "standalone", feature = "multi-process"))]
+compile_error!("features `standalone` and `multi-process` are mutually exclusive");
+
+#[cfg(all(feature = "standalone", feature = "single-process"))]
+compile_error!("features `standalone` and `single-process` are mutually exclusive");
+
+#[cfg(all(feature = "single-process", feature = "multi-process"))]
+compile_error!("features `single-process` and `multi-process` are mutually exclusive");
+
 //==================================================================================================
 // Imports
 //==================================================================================================

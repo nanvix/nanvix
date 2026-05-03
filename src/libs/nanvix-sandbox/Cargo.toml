@@ -32,7 +32,7 @@ user-vm-api = { workspace = true }
 uservm = { workspace = true }
 
 [features]
-default = ["microvm", "multi-process"]
+default = ["microvm", "standalone"]
 # If enabled this feature is enabled, the Linux Daemon (linuxd) and User VM (uservm) are embedded
 # into the sandbox.
 single-process = [
