@@ -30,7 +30,7 @@ export TIMESTAMP_MSG ?= no
 export HOST_CPU ?=
 
 # Deployment mode: standalone, single-process, multi-process, l2
-export DEPLOYMENT_MODE ?= multi-process
+export DEPLOYMENT_MODE ?= standalone
 
 # Validate DEPLOYMENT_MODE.
 VALID_DEPLOYMENT_MODES := standalone single-process multi-process l2

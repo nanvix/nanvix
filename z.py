@@ -41,7 +41,7 @@ VALID_MESSAGE_FORMATS: tuple[str, ...] = ("json", "json-diagnostic-rendered-ansi
 
 DEFAULT_MACHINE = "microvm"
 DEFAULT_TARGET = "x86"
-DEFAULT_DEPLOYMENT_MODE_LINUX = "multi-process"
+DEFAULT_DEPLOYMENT_MODE_LINUX = "standalone"
 DEFAULT_DEPLOYMENT_MODE_WINDOWS = "standalone"
 DEFAULT_LOG_LEVEL_DEBUG = "trace"
 DEFAULT_LOG_LEVEL_RELEASE = "warn"
