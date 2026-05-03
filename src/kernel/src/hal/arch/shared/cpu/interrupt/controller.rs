@@ -58,8 +58,9 @@ static mut INTERRUPT_VECTOR: [Option<InterruptHandler>; INTERRUPT_VECTOR_LENGTH]
 enum InterruptControllerType {
     Legacy(Pic),
     Xapic(Xapic, Ioapic),
+    /// xAPIC-only mode: LAPIC handles timer delivery and EOI entirely in-kernel.
     #[cfg(target_arch = "x86")]
-    PicXapic(Pic, Xapic),
+    XapicOnly(Xapic),
 }
 
 pub struct InterruptController {
@@ -75,6 +76,21 @@ impl InterruptController {
         intmap: InterruptMap,
         #[cfg(target_arch = "x86")] eoi_xapic: Option<Xapic>,
     ) -> Result<Self, Error> {
+        // Skip PIC initialization when the xAPIC timer has already been initialized.
+        #[cfg(target_arch = "x86")]
+        if let Some(xapic_eoi) = eoi_xapic {
+            if pic.is_some() || xapic.is_some() || ioapic.is_some() {
+                let reason: &str = "pic, xapic, and ioapic must be None in xapic-only mode";
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            }
+            info!("using xapic-only mode (skipping pic init)");
+            return Ok(Self {
+                intmap,
+                intctrl: InterruptControllerType::XapicOnly(xapic_eoi),
+            });
+        }
+
         // If legacy PIC is available, initialize it.
         let pic: Option<Pic> = if let Some(mut pic) = pic {
             Some(pic.init()?)
@@ -136,17 +152,6 @@ impl InterruptController {
 
         // If legacy PIC is available, use it.
         if let Some(pic) = pic {
-            // On x86, if an xAPIC EOI handle was provided (by the xAPIC timer init path),
-            // use PIC for external IRQ routing and the xAPIC for EOI acknowledgement.
-            #[cfg(target_arch = "x86")]
-            if let Some(xapic_eoi) = eoi_xapic {
-                info!("using pic with xapic for eoi");
-                return Ok(Self {
-                    intmap,
-                    intctrl: InterruptControllerType::PicXapic(pic, xapic_eoi),
-                });
-            }
-
             info!("using legacy pic");
             return Ok(Self {
                 intmap,
@@ -170,39 +175,8 @@ impl InterruptController {
                 Ok(())
             },
             #[cfg(target_arch = "x86")]
-            InterruptControllerType::PicXapic(ref mut pic, ref mut xapic) => {
-                // xAPIC EOI (MMIO write to 0xFEE000B0) runs every
-                // tick to clear the ISR bit so the LAPIC can accept the
-                // next periodic interrupt.
+            InterruptControllerType::XapicOnly(ref mut xapic) => {
                 xapic.ack();
-
-                // PIC EOI (PMIO write to port 0x20) is throttled for
-                // timer interrupts: only every N-th tick causes a VM
-                // exit for pvclock updates. Between PIC EOI exits the
-                // guest uses tick interpolation in monotonic_time_ns()
-                // for zero-cost clock::now() calls. N=10 gives ~100 Hz
-                // pvclock refresh rate with ~1 ms interpolation accuracy.
-                // Non-timer IRQs (e.g., IKC) always send PIC EOI
-                // immediately so they do not skew the pvclock refresh
-                // cadence.
-                if intnum == InterruptNumber::Timer {
-                    use ::core::sync::atomic::{
-                        AtomicU32,
-                        Ordering,
-                    };
-
-                    /// PIC EOI divisor: send PIC EOI every N-th tick.
-                    const PIC_EOI_DIVISOR: u32 = 10;
-
-                    static EOI_COUNTER: AtomicU32 = AtomicU32::new(0);
-
-                    let tick: u32 = EOI_COUNTER.fetch_add(1, Ordering::Relaxed);
-                    if tick.is_multiple_of(PIC_EOI_DIVISOR) {
-                        pic.ack(intnum as u32);
-                    }
-                } else {
-                    pic.ack(intnum as u32);
-                }
                 Ok(())
             },
         }
@@ -220,8 +194,10 @@ impl InterruptController {
                 ioapic.enable(intnum, 0)
             },
             #[cfg(target_arch = "x86")]
-            InterruptControllerType::PicXapic(ref mut pic, _) => {
-                pic.unmask(intnum as u16);
+            InterruptControllerType::XapicOnly(_) => {
+                // No PIC to unmask. LAPIC timer is already unmasked
+                // during calibration; other interrupt sources (IKC)
+                // are injected directly via the LAPIC by the VMM.
                 Ok(())
             },
         }
@@ -256,8 +232,8 @@ impl InterruptController {
                 Err(Error::new(ErrorCode::OperationNotSupported, reason))
             },
             #[cfg(target_arch = "x86")]
-            InterruptControllerType::PicXapic(..) => {
-                let reason: &str = "pic does not support starting cores";
+            InterruptControllerType::XapicOnly(_) => {
+                let reason: &str = "xapic-only does not support starting cores";
                 error!("{reason}");
                 Err(Error::new(ErrorCode::OperationNotSupported, reason))
             },
@@ -275,7 +251,7 @@ impl InterruptController {
         let intnum: u8 = match self.intctrl {
             InterruptControllerType::Legacy(_) => intnum as u8,
             #[cfg(target_arch = "x86")]
-            InterruptControllerType::PicXapic(..) => intnum as u8,
+            InterruptControllerType::XapicOnly(_) => intnum as u8,
             InterruptControllerType::Xapic(_, _) => self.intmap[intnum],
         };
         unsafe { INTERRUPT_VECTOR[intnum as usize] = handler };
@@ -286,7 +262,7 @@ impl InterruptController {
         let intnum: u8 = match self.intctrl {
             InterruptControllerType::Legacy(_) => intnum as u8,
             #[cfg(target_arch = "x86")]
-            InterruptControllerType::PicXapic(..) => intnum as u8,
+            InterruptControllerType::XapicOnly(_) => intnum as u8,
             InterruptControllerType::Xapic(_, _) => self.intmap[intnum],
         };
         unsafe { Ok(INTERRUPT_VECTOR[intnum as usize]) }
