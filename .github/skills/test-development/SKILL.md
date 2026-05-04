@@ -53,6 +53,8 @@ modes are supported (`nanvixd` + kernel + guest). On Windows, only standalone mo
 
 Test configurations:
 
+- `test/test-standalone.toml` — Standalone mode (Linux).
+- `test/test-standalone-windows.toml` — Standalone mode (Windows).
 - `test/test-single_process.toml` — Single-process mode.
 - `test/test-multi_process.toml` — Multi-process mode.
 - `test/test-l2.toml` — L2 VM mode.
