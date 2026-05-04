@@ -52,6 +52,8 @@ The system integration tests can be run directly using:
 The appropriate test configuration is automatically selected based on the
 deployment mode:
 
+- **Standalone mode** (`DEPLOYMENT_MODE=standalone`): Uses `test/test-standalone.toml` on Linux and
+  `test/test-standalone-windows.toml` on Windows
 - **Single-process mode** (`DEPLOYMENT_MODE=single-process`): Uses `test/test-single_process.toml`
 - **L2 VM mode** (`DEPLOYMENT_MODE=l2`): Uses `test/test-l2.toml`
 - **Multi-process mode** (default): Uses `test/test-multi_process.toml`
