@@ -411,6 +411,59 @@ jobs:
           cargo test --locked --no-default-features \
             -p containerd-shim-nanvix-v1 --test integration -- --nocapture --test-threads=1
 
+      - name: "Docker Smoke Test"
+        if: matrix.machine-type == 'microvm' && matrix.deployment-type == 'standalone'
+        shell: bash
+        env:
+          NANVIX_DIR: ${{ github.workspace }}
+        run: |
+          set -Eeuo pipefail
+
+          CONTAINER_ID="nanvix-smoke-${{ github.run_id }}-${{ github.run_attempt }}"
+          IMAGE_REF="docker.io/library/nanvix-hello:latest"
+
+          cleanup() {
+            sudo ctr tasks kill "${CONTAINER_ID}" 2>/dev/null || true
+            sudo ctr containers delete "${CONTAINER_ID}" 2>/dev/null || true
+            sudo ctr images remove "${IMAGE_REF}" 2>/dev/null || true
+            sudo docker rmi nanvix-hello:latest 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          echo "::group::Install containerd"
+          ./scripts/install-containerd.sh
+          echo "::endgroup::"
+
+          echo "::group::Install shim"
+          NANVIX_DIR="${NANVIX_DIR}" ./scripts/install-shim.sh
+          echo "::endgroup::"
+
+          echo "::group::Build and import Docker image"
+          sudo docker build -f docker/nanvix-hello/Dockerfile -t nanvix-hello:latest .
+          sudo docker save nanvix-hello:latest | sudo ctr images import -
+          echo "::endgroup::"
+
+          echo "::group::Run container via nanvix shim"
+          OUTPUT=$(timeout 60 sudo ctr run --rm \
+            --runtime io.containerd.nanvix.v1 \
+            --label com.nanvix.os=nanvix \
+            --label com.nanvix.arch=x86 \
+            --label com.nanvix.initrd.path=/initrd/hello-rust-nostd.elf \
+            "${IMAGE_REF}" "${CONTAINER_ID}" 2>&1) || {
+            echo "::error::Container execution failed"
+            echo "${OUTPUT}"
+            exit 1
+          }
+          echo "${OUTPUT}"
+          echo "::endgroup::"
+
+          if echo "${OUTPUT}" | grep -q "hello, world!"; then
+            echo "Docker smoke test passed: 'hello, world!' found in output."
+          else
+            echo "::error::Docker smoke test failed: 'hello, world!' not found."
+            exit 1
+          fi
+
       - name: "Post-Cleanup Dangling Resources"
         if: always()
         uses: ./.github/actions/cleanup

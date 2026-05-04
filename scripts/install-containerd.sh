@@ -28,9 +28,9 @@ if ! pgrep -x dockerd &>/dev/null; then
 fi
 
 echo "=== Verifying ==="
-sudo docker info | head -3
+sudo docker info 2>/dev/null | head -3 || true
 containerd --version
-sudo ctr version | grep -E "Version|Revision"
+sudo ctr version | grep -E "Version|Revision" || true
 
 echo ""
 echo "=== Done ==="
