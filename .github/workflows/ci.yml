@@ -1222,10 +1222,14 @@ jobs:
   # from the Linux and GitHub-hosted baselines.
   windows-benchmark-finalize:
     name: "Windows Benchmark Finalize"
-    needs: [ windows-benchmark ]
+    needs: [ windows-benchmark, benchmark-finalize ]
     # NOTE: needs.windows-benchmark.result is the aggregate result across all
     # matrix legs. It is 'success' only when every leg succeeds.
-    if: ${{ !cancelled() && needs.windows-benchmark.result == 'success' }}
+    # Depends on benchmark-finalize to serialize pushes to dev and avoid
+    # rebase conflicts on append-only CSV files within the same pipeline run.
+    # Uses always() so this job is not skipped when benchmark-finalize is
+    # skipped or fails (e.g., a Linux benchmark leg fails).
+    if: ${{ always() && !cancelled() && needs.windows-benchmark.result == 'success' }}
     timeout-minutes: 30
     runs-on: ubuntu-24.04
     permissions:
