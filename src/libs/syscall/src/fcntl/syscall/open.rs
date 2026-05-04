@@ -43,7 +43,7 @@ pub fn open(pathname: &str, flags: c_int, mode: mode_t) -> Result<c_int, Error> 
     {
         ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
             let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::warn!("open(): VFS open failed (pathname={pathname:?}, error={e})");
+            ::syslog::debug!("open(): VFS open failed (pathname={pathname:?}, error={e})");
             Error::new(code, "vfs open failed")
         })
     }
