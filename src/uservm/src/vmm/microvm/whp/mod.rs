@@ -818,7 +818,7 @@ impl Vmm {
                             // PIT channel 2 output: return gate/OUT2 status.
                             0x61 => {
                                 let value: u8 = pit_ch2.read_speaker();
-                                Self::set_guest_rax(self.partition_handle, value as u64);
+                                self.vcpu.blocking_lock().set_rip_and_rax(value as u64);
                                 continue;
                             },
                             // Other legacy ports: return zero.
@@ -834,7 +834,7 @@ impl Vmm {
                             | 0x3F8..=0x3FF
                             | 0xCF8
                             | 0xCFC..=0xCFF => {
-                                Self::set_guest_rax(self.partition_handle, 0);
+                                self.vcpu.blocking_lock().set_rip_and_rax(0);
                                 continue;
                             },
                             _ => {},
@@ -842,6 +842,8 @@ impl Vmm {
                     }
 
                     // Slow path: application-level I/O (stdout, stdin, VMM port).
+                    // Flush any deferred RIP advance for reads that reach the slow path.
+                    self.vcpu.blocking_lock().flush_pending_rip();
 
                     let exit_status: Option<u16> = match self
                         .inner
@@ -1274,33 +1276,6 @@ impl Vmm {
             Err(error) => {
                 warn!("handle_shutdown(): failed to notify orchestrator thread (error={error:?})");
             },
-        }
-    }
-
-    /// Sets the guest vCPU's RAX register. Used to return data for
-    /// emulated PmioIn instructions (RIP is already advanced by the
-    /// vCPU exit handler).
-    fn set_guest_rax(
-        partition: windows::Win32::System::Hypervisor::WHV_PARTITION_HANDLE,
-        value: u64,
-    ) {
-        use windows::Win32::System::Hypervisor::{
-            WHV_REGISTER_NAME,
-            WHV_REGISTER_VALUE,
-            WHvSetVirtualProcessorRegisters,
-        };
-        const WHV_X64_REGISTER_RAX: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0);
-        let reg_names: [WHV_REGISTER_NAME; 1] = [WHV_X64_REGISTER_RAX];
-        let mut reg_values: [WHV_REGISTER_VALUE; 1] = [unsafe { std::mem::zeroed() }];
-        reg_values[0].Reg64 = value;
-        unsafe {
-            let _ = WHvSetVirtualProcessorRegisters(
-                partition,
-                0,
-                reg_names.as_ptr(),
-                1,
-                reg_values.as_ptr(),
-            );
         }
     }
 
