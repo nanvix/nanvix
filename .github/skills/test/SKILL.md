@@ -27,6 +27,7 @@ integration tests, and the combined test suite exposed through the `z` utility.
 
 Test configurations are auto-selected based on deployment mode:
 
+- Standalone: `test/test-standalone.toml` (Linux), `test/test-standalone-windows.toml` (Windows)
 - Single-process: `test/test-single_process.toml`
 - L2 VM: `test/test-l2.toml`
 - Multi-process: `test/test-multi_process.toml`
