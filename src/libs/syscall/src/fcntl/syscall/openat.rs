@@ -46,7 +46,7 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
     {
         ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
             let code: ErrorCode = e.into();
-            ::syslog::warn!("openat(): VFS open failed (pathname={pathname:?}, error={e})");
+            ::syslog::debug!("openat(): VFS open failed (pathname={pathname:?}, error={e})");
             Error::new(code, "vfs open failed")
         })
     }
