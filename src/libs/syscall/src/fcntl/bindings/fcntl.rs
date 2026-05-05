@@ -36,7 +36,11 @@ pub unsafe extern "C" fn fcntl(fd: c_int, cmd: c_int, args: ...) -> c_int {
     match file::fcntl(fd, &cmd) {
         Ok(ret) => ret,
         Err(error) => {
-            ::syslog::error!("fcntl(): failed ({error:?}, fd={fd:?}, cmd={cmd:?})");
+            if error.code == ::sys::error::ErrorCode::OperationNotSupported {
+                ::syslog::warn!("fcntl(): failed ({error:?}, fd={fd:?}, cmd={cmd:?})");
+            } else {
+                ::syslog::error!("fcntl(): failed ({error:?}, fd={fd:?}, cmd={cmd:?})");
+            }
             *__errno_location() = error.code.get();
             -1
         },

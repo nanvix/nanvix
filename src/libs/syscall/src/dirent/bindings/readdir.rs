@@ -85,11 +85,19 @@ pub unsafe extern "C" fn readdir(dirp: *mut DirectoryStream) -> *mut dirent {
         },
         // Error.
         Err(error) => {
-            ::syslog::error!(
-                "readdir(): failed to read directory entry (dirp={:?}, error={:?})",
-                dirp,
-                error
-            );
+            if error.code == ::sys::error::ErrorCode::OperationNotSupported {
+                ::syslog::warn!(
+                    "readdir(): failed to read directory entry (dirp={:?}, error={:?})",
+                    dirp,
+                    error
+                );
+            } else {
+                ::syslog::error!(
+                    "readdir(): failed to read directory entry (dirp={:?}, error={:?})",
+                    dirp,
+                    error
+                );
+            }
             *__errno_location() = error.code.get();
             ptr::null_mut()
         },

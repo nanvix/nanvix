@@ -88,10 +88,17 @@ pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: c_size_t
     match crate::unistd::syscall::write(fd, buffer) {
         Ok(bytes_written) => bytes_written as c_ssize_t,
         Err(error) => {
-            ::syslog::error!(
-                "write(): {error:?} (fd={fd:?}, buffer={:?}, count={count:?})",
-                buffer.as_ptr()
-            );
+            if error.code == ErrorCode::OperationNotSupported {
+                ::syslog::warn!(
+                    "write(): {error:?} (fd={fd:?}, buffer={:?}, count={count:?})",
+                    buffer.as_ptr()
+                );
+            } else {
+                ::syslog::error!(
+                    "write(): {error:?} (fd={fd:?}, buffer={:?}, count={count:?})",
+                    buffer.as_ptr()
+                );
+            }
             *__errno_location() = error.code.get();
             -1
         },

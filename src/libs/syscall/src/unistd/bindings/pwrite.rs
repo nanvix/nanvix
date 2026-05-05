@@ -90,10 +90,17 @@ pub unsafe extern "C" fn pwrite(
     match unistd::pwrite(fd, buffer, offset) {
         Ok(bytes_written) => bytes_written as c_ssize_t,
         Err(error) => {
-            ::syslog::error!(
-                "pwrite(): {error:?}, (fd={fd:?}, buffer={buffer:?}, count={count:?}, \
-                 offset={offset:?})"
-            );
+            if error.code == ErrorCode::OperationNotSupported {
+                ::syslog::warn!(
+                    "pwrite(): {error:?}, (fd={fd:?}, buffer={buffer:?}, count={count:?}, \
+                     offset={offset:?})"
+                );
+            } else {
+                ::syslog::error!(
+                    "pwrite(): {error:?}, (fd={fd:?}, buffer={buffer:?}, count={count:?}, \
+                     offset={offset:?})"
+                );
+            }
             *__errno_location() = error.code.get();
             -1
         },

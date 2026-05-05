@@ -73,7 +73,13 @@ pub unsafe extern "C" fn opendir(dirname: *const i8) -> *mut DirectoryStream {
     match dirent::opendir(dirname) {
         Ok(dirp) => Box::into_raw(dirp),
         Err(error) => {
-            ::syslog::error!("opendir(): {error:?} (dirname={dirname:?})");
+            if error.code == ErrorCode::NoSuchEntry
+                || error.code == ErrorCode::OperationNotSupported
+            {
+                ::syslog::warn!("opendir(): {error:?} (dirname={dirname:?})");
+            } else {
+                ::syslog::error!("opendir(): {error:?} (dirname={dirname:?})");
+            }
             *__errno_location() = error.code.get();
             ptr::null_mut()
         },
