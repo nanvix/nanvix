@@ -431,12 +431,32 @@ pub(super) fn save_boot_first_free_gpa(val: usize) {
 // runtime writes do not trigger copy-on-write faults.  The `scratch_layout!` macro generates
 // *_OFFSET, *_SIZE constants, per-entry _ptr() accessors, and the page-aligned
 // SCRATCH_RESERVED_SIZE constant from the entries below.
+
+/// Worst-case host-built paging frames in `i686-guest` mode. One page directory
+/// is shared by the snapshot and scratch GVA regions. [`NUM_PAGE_TABLES`] counts
+/// the page tables that map both regions. The host appends these frames to the
+/// snapshot via `pt_overhead`, so they must be tracked by the frame allocator
+/// bitmap.
+const HOST_PAGING_FRAMES_MAX: usize = NUM_PAGE_TABLES + 1;
+
+/// Per-chunk byte-alignment slack for the sparse frame allocator bitmap.
+///
+/// `build_physical_memory_layout` produces up to three byte-aligned chunks
+/// (snapshot, optional RAMFS, scratch). Each chunk's `div_ceil(_, u8::BITS)`
+/// can waste up to one byte versus a single global ceiling, so reserve up to
+/// one byte per chunk.
+const FRAME_ALLOC_BITMAP_CHUNK_PADDING: usize = 3;
+
 scratch_layout! {
     page_align = PAGE_ALIGNMENT;
 
-    /// One bit per frame for the entire `MEMORY_SIZE` address range, plus extra bytes
-    /// to account for byte-alignment padding in each sparse bitmap chunk.
-    FRAME_ALLOC_BITMAP : size = MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize) + 8,
+    /// One bit per frame for the entire physical layout. Sized to cover both
+    /// `MEMORY_SIZE` worth of guest frames and the host-built page tables that
+    /// `i686-guest` mode appends to the snapshot, plus per-chunk byte-alignment
+    /// slack added by `build_physical_memory_layout`.
+    FRAME_ALLOC_BITMAP : size = MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)
+                              + HOST_PAGING_FRAMES_MAX.div_ceil(u8::BITS as usize)
+                              + FRAME_ALLOC_BITMAP_CHUNK_PADDING,
                          align = WORD_ALIGNMENT;
     /// Kernel page pool bitmap storage.
     KPOOL_BITMAP       : size = ::config::kernel::KPOOL_SIZE / (mem::PAGE_SIZE * u8::BITS as usize),
