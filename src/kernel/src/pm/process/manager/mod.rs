@@ -68,7 +68,6 @@ use ::alloc::{
         vec_deque::VecDeque,
         LinkedList,
     },
-    ffi::CString,
     vec::Vec,
 };
 use ::arch::{
@@ -457,30 +456,26 @@ impl ProcessManager {
         // Strip leading and trailing spaces from arguments.
         let args: &str = args.trim();
 
-        // Convert args to C-style string.
-        let args: CString = match CString::new(args) {
-            Ok(cmdline) => cmdline,
-            Err(error) => {
-                let reason: &str = "failed to convert command line string";
-                error!("{} (error={:?})", reason, error);
-                return Err(Error::new(ErrorCode::InvalidArgument, reason));
-            },
-        };
-        let args: &[u8] = args.as_bytes_with_nul();
+        // Validate that args does not contain interior null bytes (for C-string semantics).
+        if args.as_bytes().contains(&0) {
+            let reason: &str = "command line contains interior null byte";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        // args_len includes the null terminator that will be written to user space.
+        let args_total_len: usize = args.len() + 1;
 
         // Strip leading and trailing spaces from environment variables.
         let env: &str = env.trim();
 
-        // Convert env to C-style string.
-        let env: CString = match CString::new(env) {
-            Ok(cmdline) => cmdline,
-            Err(error) => {
-                let reason: &str = "failed to convert environment string";
-                error!("{reason} (error={error:?})");
-                return Err(Error::new(ErrorCode::InvalidArgument, reason));
-            },
-        };
-        let env: &[u8] = env.as_bytes_with_nul();
+        // Validate that env does not contain interior null bytes (for C-string semantics).
+        if env.as_bytes().contains(&0) {
+            let reason: &str = "environment string contains interior null byte";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        // env_len includes the null terminator that will be written to user space.
+        let env_total_len: usize = env.len() + 1;
 
         // Create a new memory address space for the process.
         let mut vmem: Vmem = mm.new_vmem(self.get_running().state().vmem())?;
@@ -490,10 +485,11 @@ impl ProcessManager {
             mm.load_elf(&mut vmem, elf)?;
 
         // Allocate a user-space page, write command line arguments to it, and check for errors.
-        // Note we subtract a pointer size from PAGE_SIZE to account for the null terminator.
-        if args.len() > PAGE_SIZE - ::core::mem::size_of::<*const u8>() {
+        // The total length includes the null terminator written after the args bytes, and must fit
+        // entirely within a single page.
+        if args_total_len > PAGE_SIZE {
             let reason: &str = "command line is too long";
-            error!("{reason} (cmdline.len={:?})", args.len());
+            error!("{reason} (cmdline.len={:?})", args_total_len);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
         mm.alloc_upages(
@@ -504,18 +500,36 @@ impl ProcessManager {
             1,
             &mut Vec::with_capacity(1),
         )?;
-        vmem.copy_to_user_unaligned(
-            args_vaddr.into_inner(),
-            VirtualAddress::new(args.as_ptr() as usize),
-            args.len(),
-        )?;
-        debug!("arguments written to user space (args_vaddr={:?}, args={:?})", args_vaddr, args);
+        // Write args bytes directly to user space (no heap allocation needed).
+        if !args.is_empty() {
+            vmem.copy_to_user_unaligned(
+                args_vaddr.into_inner(),
+                VirtualAddress::new(args.as_ptr() as usize),
+                args.len(),
+            )?;
+        }
+        // Write the null terminator.
+        {
+            static NUL: u8 = 0;
+            let nul_vaddr: VirtualAddress =
+                VirtualAddress::new(args_vaddr.into_raw_value() + args.len());
+            vmem.copy_to_user_unaligned(
+                nul_vaddr,
+                VirtualAddress::new(&NUL as *const u8 as usize),
+                1,
+            )?;
+        }
+        debug!(
+            "arguments written to user space (args_vaddr={:?}, args={:?})",
+            args_vaddr,
+            args.as_bytes()
+        );
 
         // Allocate another page for the environment variables and check for errors.
-        // Note we subtract a pointer size from PAGE_SIZE to account for the null terminator.
-        if env.len() > PAGE_SIZE - ::core::mem::size_of::<*const u8>() {
+        // The total length includes the null terminator and must fit within a single page.
+        if env_total_len > PAGE_SIZE {
             let reason: &str = "environment variables are too long";
-            error!("{reason} (env.len={:?})", env.len());
+            error!("{reason} (env.len={:?})", env_total_len);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
         let envp_vaddr: PageAligned<VirtualAddress> = PageAligned::<VirtualAddress>::from_address(
@@ -530,15 +544,28 @@ impl ProcessManager {
             &mut Vec::with_capacity(1),
         )?;
 
-        // Populate the environment variable page.
-        vmem.copy_to_user_unaligned(
-            envp_vaddr.into_inner(),
-            VirtualAddress::new(env.as_ptr() as usize),
-            env.len(),
-        )?;
+        // Write env bytes directly to user space followed by a null terminator.
+        if !env.is_empty() {
+            vmem.copy_to_user_unaligned(
+                envp_vaddr.into_inner(),
+                VirtualAddress::new(env.as_ptr() as usize),
+                env.len(),
+            )?;
+        }
+        {
+            static NUL: u8 = 0;
+            let nul_vaddr: VirtualAddress =
+                VirtualAddress::new(envp_vaddr.into_raw_value() + env.len());
+            vmem.copy_to_user_unaligned(
+                nul_vaddr,
+                VirtualAddress::new(&NUL as *const u8 as usize),
+                1,
+            )?;
+        }
         debug!(
             "environment variables written to user space (envp_vaddr={:?}, env={:?})",
-            envp_vaddr, env
+            envp_vaddr,
+            env.as_bytes()
         );
 
         // Create a kernel context.
