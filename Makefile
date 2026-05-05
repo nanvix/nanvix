@@ -323,7 +323,7 @@ ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap bump-allocator cache config elf err
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd snapshot-rust-nostd vfs-bench-nostd mount-bench-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
-ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust c-bindings-rust mount-test
+ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust c-bindings-rust mount-test cmdline-len-rust
 # dlfcn-rust requires PIE linking for dlopen/dlsym; the x86_64 static
 # relocation model produces R_X86_64_32 relocations incompatible with PIE.
 ifneq ($(TARGET),x86_64)

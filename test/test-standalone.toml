@@ -148,6 +148,21 @@ program = "./bin/linux-app.elf"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
 
+[[tests]]
+executor = "http"
+program = "./bin/cmdline-len-rust.elf"
+# 4092 (MAX_CMDLINE_ARGS_LEN) - 20 (filename) - 1 (space separator) = 4071.
+program_args_padding_len = 4071
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/cmdline-len-rust.elf"
+# 4092 (MAX_CMDLINE_ARGS_LEN) - 20 (filename) - 1 (space separator) = 4071.
+program_args_padding_len = 4071
+expected_output = "ok"
+
 
 #===================================================================================================
 # Host Mount Tests

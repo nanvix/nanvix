@@ -18,7 +18,7 @@ MISC_RUST_FEATURES := $(strip $(MISC_RUST_FEATURES))
 MISC_RUST_CARGO_FEATURES := $(if $(MISC_RUST_FEATURES),--features "$(MISC_RUST_FEATURES)")
 
 # Guest binaries that support standalone deployment mode.
-STANDALONE_GUEST_BINARIES := file-rust linux-app thread-rust stress-rust arch-rust mount-test mount-bench-nostd
+STANDALONE_GUEST_BINARIES := file-rust linux-app thread-rust stress-rust arch-rust mount-test mount-bench-nostd cmdline-len-rust
 
 # Computes the cargo features string for a guest binary package.
 # test-kernel has its own overrides. When DEPLOYMENT_MODE=standalone, packages
