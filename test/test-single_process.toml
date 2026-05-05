@@ -195,3 +195,10 @@ expected_output = "ok"
 executor = "terminal"
 program = "./bin/c-bindings-rust.elf"
 expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/cmdline-len-rust.elf"
+# 4092 (MAX_CMDLINE_ARGS_LEN) - 20 (filename) - 1 (space separator) = 4071.
+program_args_padding_len = 4071
+expected_output = "ok"

@@ -1433,7 +1433,7 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
         // Single-binary format: parse old size-header + args layout.
         info!("parse_bootinfo(): single-binary initrd detected");
 
-        let (initrd_base, initrd_size, (_cmdline_len, cmdline)) = unsafe {
+        let (initrd_base, initrd_size, (cmdline_len, cmdline)) = unsafe {
             let (base, size, cmdline) = parse_initrd_image(current_data_start, total_size)?;
             (base, size, cmdline)
         };
@@ -1443,8 +1443,17 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
             initrd_base, initrd_size, cmdline
         );
 
+        // Module size must cover the ELF binary AND the trailing cmdline area
+        // (size header + length field + payload) so that the HAL maps the entire region.
+        // After parse_initrd_image the ELF has been relocated to init_data_start,
+        // but the cmdline bytes remain at their original offset
+        // (INITRD_SIZE_BYTES + initrd_size + WIRE_SIZE), so the module region
+        // must span from initrd_base to the end of the cmdline payload.
+        let module_size: usize =
+            INITRD_SIZE_BYTES + initrd_size + CmdlineArgsLen::WIRE_SIZE + cmdline_len.as_usize();
+
         let module: KernelModule =
-            KernelModule::new(PhysicalAddress::from_raw_value(initrd_base)?, initrd_size, cmdline);
+            KernelModule::new(PhysicalAddress::from_raw_value(initrd_base)?, module_size, cmdline);
         kernel_modules.push_back(module);
     }
 
