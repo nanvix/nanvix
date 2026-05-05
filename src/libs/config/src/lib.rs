@@ -47,6 +47,70 @@ pub mod system {
 
     /// Default node name.
     pub const DEFAULT_NODE_NAME: &str = "localhost";
+
+    /// Maximum length (in bytes) of guest command-line arguments.
+    ///
+    /// This value must not exceed `PAGE_SIZE - 1` (4095 on i686) because the kernel
+    /// allocates a single page for the argument string plus its null terminator.
+    /// We use 4092 to leave a small margin.
+    pub const MAX_CMDLINE_ARGS_LEN: usize = 4092;
+
+    ///
+    /// # Description
+    ///
+    /// Strongly-typed length of guest command-line arguments.
+    ///
+    /// This wrapper guarantees that the value fits in a `u16` and does not exceed
+    /// [`MAX_CMDLINE_ARGS_LEN`]. It is used as the wire type in the guest memory protocol.
+    ///
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct CmdlineArgsLen(u16);
+
+    impl CmdlineArgsLen {
+        /// Wire size of the length field in guest memory (2 bytes, little-endian).
+        pub const WIRE_SIZE: usize = core::mem::size_of::<u16>();
+
+        /// Creates a new [`CmdlineArgsLen`] from the byte length of a command-line string.
+        ///
+        /// # Returns
+        ///
+        /// Returns `Some(Self)` if `len <= MAX_CMDLINE_ARGS_LEN`, otherwise `None`.
+        pub const fn new(len: usize) -> Option<Self> {
+            if len > MAX_CMDLINE_ARGS_LEN {
+                None
+            } else {
+                Some(Self(len as u16))
+            }
+        }
+
+        /// Returns the length as a `usize`.
+        pub const fn as_usize(self) -> usize {
+            self.0 as usize
+        }
+
+        /// Encodes the length as little-endian bytes for the guest memory protocol.
+        pub const fn to_le_bytes(self) -> [u8; Self::WIRE_SIZE] {
+            self.0.to_le_bytes()
+        }
+
+        /// Decodes a length from little-endian bytes read from guest memory.
+        ///
+        /// Returns `None` if the decoded value exceeds [`MAX_CMDLINE_ARGS_LEN`].
+        pub const fn from_le_bytes(bytes: [u8; Self::WIRE_SIZE]) -> Option<Self> {
+            let val = u16::from_le_bytes(bytes);
+            if (val as usize) > MAX_CMDLINE_ARGS_LEN {
+                None
+            } else {
+                Some(Self(val))
+            }
+        }
+    }
+
+    impl core::fmt::Display for CmdlineArgsLen {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
 }
 
 //==================================================================================================

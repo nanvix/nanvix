@@ -68,6 +68,7 @@ use ::arch::{
     mem,
     mem::gdt::Gdte,
 };
+use ::config::system::CmdlineArgsLen;
 use ::sparse_bitmap::SparseBitmap;
 use ::sys::error::{
     Error,
@@ -586,11 +587,11 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
             // Single ELF binary with length-prefixed args after the initrd.
             info!("parse_bootinfo(): single-binary initrd detected");
             let initrd_cmdline_len_base: usize = initrd_base + total_bytes;
-            let initrd_cmdline_base: usize = initrd_cmdline_len_base + core::mem::size_of::<u8>();
+            let initrd_cmdline_base: usize = initrd_cmdline_len_base + CmdlineArgsLen::WIRE_SIZE;
 
             // Validate that the length field fits within the known initrd allocation.
             let cmdline_len_end: usize =
-                match initrd_cmdline_len_base.checked_add(core::mem::size_of::<u8>()) {
+                match initrd_cmdline_len_base.checked_add(CmdlineArgsLen::WIRE_SIZE) {
                     Some(end) => end,
                     None => {
                         let reason: &str = "cmdline length field address overflow";
@@ -604,10 +605,21 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             }
 
-            let cmdline_len: u8 = unsafe { *(initrd_cmdline_len_base as *const u8) };
+            let cmdline_len: CmdlineArgsLen = unsafe {
+                match CmdlineArgsLen::from_le_bytes(
+                    *(initrd_cmdline_len_base as *const [u8; CmdlineArgsLen::WIRE_SIZE]),
+                ) {
+                    Some(v) => v,
+                    None => {
+                        let reason: &str = "cmdline length exceeds maximum";
+                        error!("parse_bootinfo(): {}", reason);
+                        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                    },
+                }
+            };
 
             // Validate that the cmdline payload fits within memory bounds.
-            let cmdline_end: usize = match initrd_cmdline_base.checked_add(cmdline_len as usize) {
+            let cmdline_end: usize = match initrd_cmdline_base.checked_add(cmdline_len.as_usize()) {
                 Some(end) => end,
                 None => {
                     let reason: &str = "cmdline payload address overflow";
@@ -631,7 +643,7 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
             let cmdline: &'static str = unsafe {
                 let bytes: &'static [u8] = core::slice::from_raw_parts(
                     initrd_cmdline_base as *const u8,
-                    cmdline_len as usize,
+                    cmdline_len.as_usize(),
                 );
                 match core::str::from_utf8(bytes) {
                     Ok(s) => s,
@@ -651,7 +663,7 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
             // Module size must cover the ELF binary AND the trailing cmdline area
             // (length field + payload) so that the HAL maps the entire region.
             let module_size: usize =
-                total_bytes + core::mem::size_of::<u8>() + cmdline_len as usize;
+                total_bytes + CmdlineArgsLen::WIRE_SIZE + cmdline_len.as_usize();
 
             let module: KernelModule = KernelModule::new(
                 PhysicalAddress::from_raw_value(initrd_base)?,
