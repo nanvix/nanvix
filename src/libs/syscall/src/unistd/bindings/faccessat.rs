@@ -92,10 +92,17 @@ pub unsafe extern "C" fn faccessat(
     match crate::unistd::faccessat(dirfd, path, mode, flag) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
-                "faccessat(): {error:?} (dirfd={dirfd:?}, path={path:?}, mode={mode:?}, \
-                 flag={flag:?})"
-            );
+            if error.code == ErrorCode::NoSuchEntry {
+                ::syslog::warn!(
+                    "faccessat(): {error:?} (dirfd={dirfd:?}, path={path:?}, mode={mode:?}, \
+                     flag={flag:?})"
+                );
+            } else {
+                ::syslog::error!(
+                    "faccessat(): {error:?} (dirfd={dirfd:?}, path={path:?}, mode={mode:?}, \
+                     flag={flag:?})"
+                );
+            }
             *__errno_location() = error.code.get();
             -1
         },
