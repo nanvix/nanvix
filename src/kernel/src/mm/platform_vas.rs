@@ -15,8 +15,11 @@ use crate::{
         arch::x86::mem::mmu::page_table::PageTable,
         mem::{
             Address,
+            FrameAddress,
             MemoryRegion,
             MemoryRegionType,
+            MmioCachePolicy,
+            PageAddress,
             PageAligned,
             PageTableAddress,
             PageTableAligned,
@@ -38,6 +41,7 @@ use ::arch::mem::{
         PteWord,
     },
     PAGE_TABLE_LENGTH,
+    PGTAB_ALIGNMENT,
 };
 use ::sparse_bitmap::SparseBitmap;
 use ::sys::error::{
@@ -187,7 +191,7 @@ pub fn init(
     // owns all paging structures. This ensures the kernel can find and modify PTEs for MMIO
     // permission changes without depending on host page table memory.
     let kernel_pages: LinkedList<KernelPage> = LinkedList::new();
-    let kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)> = {
+    let mut kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)> = {
         let mut page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)> =
             LinkedList::new();
 
@@ -238,5 +242,140 @@ pub fn init(
         page_tables
     };
 
+    // Map MMIO regions into existing or new page tables.
+    let unmapped_mmio: LinkedList<TruncatedMemoryRegion<VirtualAddress>> =
+        filter_unmapped_mmio_regions(&mmio_regions, &kernel_page_tables);
+    map_mmio_regions(&unmapped_mmio, &mut kernel_page_tables)?;
+
     VirtMemoryManager::init(kernel_pages, kernel_page_tables)
+}
+
+/// Filters MMIO regions to those whose first page PTE is not already present in the host-copied
+/// page tables. Regions already initialized by the host (e.g., PEB, scratch) are excluded because
+/// their PTEs are already correct.
+fn filter_unmapped_mmio_regions(
+    mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+    kernel_page_tables: &LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
+) -> LinkedList<TruncatedMemoryRegion<VirtualAddress>> {
+    let mut result: LinkedList<TruncatedMemoryRegion<VirtualAddress>> = LinkedList::new();
+
+    for region in mmio_regions.iter() {
+        let base: usize = region.start().into_raw_value();
+        let pt_aligned: usize = ::sys::mm::align_down(base, PGTAB_ALIGNMENT);
+
+        let already_mapped: bool = kernel_page_tables.iter().any(|(addr, pt)| {
+            if addr.into_raw_value() != pt_aligned {
+                return false;
+            }
+            let page_addr: PageAddress = match PageAligned::from_raw_value(base) {
+                Ok(aligned) => PageAddress::new(aligned),
+                Err(_) => return false,
+            };
+            pt.is_page_present(page_addr).unwrap_or(false)
+        });
+
+        if !already_mapped {
+            result.push_back(region.clone());
+        }
+    }
+
+    result
+}
+
+///
+/// # Description
+///
+/// Maps MMIO regions into existing or new page tables.
+///
+/// For each page in each MMIO region, finds the page table covering the corresponding PDE range
+/// in `kernel_page_tables` and maps the PTE into it. If no page table exists for that range, a
+/// new BSS-backed page table is allocated and inserted.
+///
+/// # Parameters
+///
+/// - `mmio_regions`: MMIO regions whose PTEs are not yet present in `kernel_page_tables`.
+/// - `kernel_page_tables`: Page tables copied from the host page directory.
+///
+/// # Errors
+///
+/// - `ResourceBusy` if a PTE is already present (address space collision).
+/// - `OutOfMemory` if a BSS page table allocation fails.
+///
+fn map_mmio_regions(
+    mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+    kernel_page_tables: &mut LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
+) -> Result<(), Error> {
+    let mut sorted_regions: Vec<&TruncatedMemoryRegion<VirtualAddress>> =
+        mmio_regions.iter().collect();
+    sorted_regions.sort_by_key(|r| r.start().into_raw_value());
+
+    let mut pts: Vec<(PageTableAddress, PageTable<PageTableStorage>)> =
+        core::mem::take(kernel_page_tables).into_iter().collect();
+
+    for region in sorted_regions {
+        let cache_policy: MmioCachePolicy = region
+            .cache_policy()
+            .unwrap_or(MmioCachePolicy::UNCACHEABLE);
+        let base: usize = region.start().into_raw_value();
+        let end: usize = base + (region.size() - 1);
+        let mut raw_vaddr: usize = base;
+
+        while raw_vaddr <= end {
+            let pt_aligned: usize = ::sys::mm::align_down(raw_vaddr, PGTAB_ALIGNMENT);
+            let pt_addr: PageTableAddress =
+                PageTableAddress::new(PageTableAligned::from_raw_value(pt_aligned)?);
+
+            // Find existing page table for this PDE range, or allocate a new one.
+            let idx: usize = match pts.iter().position(|(addr, _): &(PageTableAddress, _)| {
+                addr.into_raw_value() == pt_addr.into_raw_value()
+            }) {
+                Some(i) => i,
+                None => {
+                    let insert_pos: usize = pts
+                        .iter()
+                        .position(|(addr, _): &(PageTableAddress, _)| {
+                            addr.into_raw_value() > pt_addr.into_raw_value()
+                        })
+                        .unwrap_or(pts.len());
+                    pts.insert(insert_pos, (pt_addr, alloc_empty_page_table()?));
+                    insert_pos
+                },
+            };
+
+            // TODO(#2261): use fill() to batch consecutive PTEs within the same page table.
+            let gpa: usize = crate::hal::platform::gva_to_gpa(raw_vaddr);
+            let paddr: FrameAddress = FrameAddress::new(PageAligned::from_raw_value(gpa)?);
+            pts[idx].1.map(
+                PageAddress::new(PageAligned::from_raw_value(raw_vaddr)?),
+                paddr,
+                true,
+                cache_policy.write_through(),
+                cache_policy.cache_enabled(),
+                region.perm(),
+            )?;
+
+            raw_vaddr += mem::PAGE_SIZE;
+        }
+    }
+
+    for entry in pts {
+        kernel_page_tables.push_back(entry);
+    }
+
+    Ok(())
+}
+
+/// Allocates an empty BSS-backed page table.
+fn alloc_empty_page_table() -> Result<PageTable<PageTableStorage>, Error> {
+    // SAFETY: called during single-threaded kernel init; BSS is zero-initialized.
+    let bss_slot: &'static mut [PteWord; PAGE_TABLE_LENGTH] = unsafe {
+        PAGE_TABLE_ALLOCATOR
+            .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
+            .map_err(|e| {
+                error!("page table BSS allocation failed for MMIO: {e}");
+                Error::new(ErrorCode::OutOfMemory, "BSS page table allocation failed for MMIO")
+            })?
+            .assume_init_mut()
+    };
+    Ok(PageTable::new(PageTableStorage::Bss(bss_slot)))
 }
