@@ -119,7 +119,11 @@ pub mod bindings {
                 0
             },
             Err(error) => {
-                ::syslog::error!("pipe(): failed (error={error:?})");
+                if error.code == ::sys::error::ErrorCode::OperationNotSupported {
+                    ::syslog::warn!("pipe(): failed (error={error:?})");
+                } else {
+                    ::syslog::error!("pipe(): failed (error={error:?})");
+                }
                 unsafe {
                     *__errno_location() = error.code.get();
                 }

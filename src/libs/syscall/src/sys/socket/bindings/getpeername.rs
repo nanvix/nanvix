@@ -97,9 +97,17 @@ pub unsafe extern "C" fn getpeername(
             0
         },
         Err(error) => {
-            ::syslog::error!(
-                "getpeername(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
-            );
+            if error.code == ::sys::error::ErrorCode::OperationNotSupported {
+                ::syslog::warn!(
+                    "getpeername(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, \
+                     len={len:?})"
+                );
+            } else {
+                ::syslog::error!(
+                    "getpeername(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, \
+                     len={len:?})"
+                );
+            }
             *__errno_location() = error.code.get();
             -1
         },

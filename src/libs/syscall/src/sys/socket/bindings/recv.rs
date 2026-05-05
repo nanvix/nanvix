@@ -126,9 +126,17 @@ pub unsafe extern "C" fn recv(
             },
         },
         Err(error) => {
-            ::syslog::error!(
-                "recv(): {error:?} (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, flags={flags:?})"
-            );
+            if error.code == ::sys::error::ErrorCode::OperationNotSupported {
+                ::syslog::warn!(
+                    "recv(): {error:?} (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, \
+                     flags={flags:?})"
+                );
+            } else {
+                ::syslog::error!(
+                    "recv(): {error:?} (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, \
+                     flags={flags:?})"
+                );
+            }
             *__errno_location() = error.code.get();
             -1
         },

@@ -107,7 +107,11 @@ pub mod bindings {
         match crate::unistd::close(fd) {
             Ok(()) => 0,
             Err(error) => {
-                ::syslog::error!("close(): failed ({:?})", error);
+                if error.code == ::sys::error::ErrorCode::OperationNotSupported {
+                    ::syslog::warn!("close(): failed ({:?})", error);
+                } else {
+                    ::syslog::error!("close(): failed ({:?})", error);
+                }
                 unsafe {
                     *__errno_location() = error.code.get();
                 }

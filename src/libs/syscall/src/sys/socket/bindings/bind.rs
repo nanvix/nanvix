@@ -80,9 +80,15 @@ pub unsafe extern "C" fn bind(sockfd: c_int, sockaddr: *const sockaddr, len: soc
     match crate::sys::socket::syscall::bind(sockfd, &sockaddr) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
-                "bind(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
-            );
+            if error.code == ::sys::error::ErrorCode::OperationNotSupported {
+                ::syslog::warn!(
+                    "bind(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
+                );
+            } else {
+                ::syslog::error!(
+                    "bind(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
+                );
+            }
             *__errno_location() = error.code.get();
             -1
         },

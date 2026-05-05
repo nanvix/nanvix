@@ -86,9 +86,15 @@ pub unsafe extern "C" fn accept(
             sockfd
         },
         Err(error) => {
-            ::syslog::error!(
-                "accept(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
-            );
+            if error.code == ::sys::error::ErrorCode::OperationNotSupported {
+                ::syslog::warn!(
+                    "accept(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
+                );
+            } else {
+                ::syslog::error!(
+                    "accept(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
+                );
+            }
             *__errno_location() = error.code.get();
             -1
         },
