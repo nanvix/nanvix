@@ -109,10 +109,17 @@ pub unsafe extern "C" fn readlinkat(
     match unistd::readlinkat(dirfd, path, buf) {
         Ok(bytes_read) => bytes_read,
         Err(error) => {
-            ::syslog::trace!(
-                "readlinkat(): {error:?}, (dirfd={dirfd:?}, path={path:?}, buf={buf:?}, \
-                 bufsize={bufsize:?})"
-            );
+            if error.code == ErrorCode::NoSuchEntry {
+                ::syslog::warn!(
+                    "readlinkat(): {error:?}, (dirfd={dirfd:?}, path={path:?}, buf={buf:?}, \
+                     bufsize={bufsize:?})"
+                );
+            } else {
+                ::syslog::error!(
+                    "readlinkat(): {error:?}, (dirfd={dirfd:?}, path={path:?}, buf={buf:?}, \
+                     bufsize={bufsize:?})"
+                );
+            }
             *__errno_location() = error.code.get();
             -1
         },

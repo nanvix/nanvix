@@ -103,15 +103,28 @@ fn readlinkat_linuxd(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t
 
         // Check whether system call succeeded or not.
         if response.status != 0 {
-            ::syslog::error!(
-                "readlinkat(): system call failed (dirfd={:?}, path={:?}, error_code={:?})",
-                dirfd,
-                path,
-                { response.status }
-            );
             // System call failed, parse error code and return.
             match ErrorCode::try_from(response.status) {
-                Ok(error_code) => break Err(Error::new(error_code, "system call failed")),
+                Ok(error_code) => {
+                    if error_code == ErrorCode::NoSuchEntry {
+                        ::syslog::warn!(
+                            "readlinkat(): system call failed (dirfd={:?}, path={:?}, \
+                             error_code={:?})",
+                            dirfd,
+                            path,
+                            error_code
+                        );
+                    } else {
+                        ::syslog::error!(
+                            "readlinkat(): system call failed (dirfd={:?}, path={:?}, \
+                             error_code={:?})",
+                            dirfd,
+                            path,
+                            error_code
+                        );
+                    }
+                    break Err(Error::new(error_code, "system call failed"));
+                },
                 Err(error) => {
                     ::syslog::error!(
                         "readlinkat(): failed to parse error code (dirfd={:?}, path={:?}, \
