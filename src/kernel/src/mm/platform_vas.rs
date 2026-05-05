@@ -64,11 +64,24 @@ use super::{
 // Standalone Functions
 //==================================================================================================
 
+///
+/// # Description
+///
 /// Splits memory regions into virtual and physical (platform-bootstrapped VAS path).
 ///
 /// When the platform bootstraps the root VAS, scratch GVAs are NOT identity-mapped (GVA ≠ GPA).
 /// The scratch-region addresses are managed by the host and the bump allocator, not the kernel
 /// frame allocator, so they require explicit GVA→GPA translation for physical frame booking.
+///
+/// # Parameters
+///
+/// - `memory_regions`: Memory regions to split.
+///
+/// # Returns
+///
+/// Upon success, a tuple of (other virtual memory regions, virtual memory regions, physical memory
+/// regions) is returned. Upon failure, an error is returned instead.
+///
 fn parse_memory_regions(
     memory_regions: LinkedList<MemoryRegion<VirtualAddress>>,
 ) -> Result<(VirtMemRegion, VirtMemRegion, PhysMemRegion), Error> {
@@ -244,42 +257,51 @@ pub fn init(
 
     // Map MMIO regions into existing or new page tables.
     let unmapped_mmio: LinkedList<TruncatedMemoryRegion<VirtualAddress>> =
-        filter_unmapped_mmio_regions(&mmio_regions, &kernel_page_tables);
+        filter_unmapped_mmio_regions(&mmio_regions, &kernel_page_tables)?;
     map_mmio_regions(&unmapped_mmio, &mut kernel_page_tables)?;
 
     VirtMemoryManager::init(kernel_pages, kernel_page_tables)
 }
 
+///
+/// # Description
+///
 /// Filters MMIO regions to those whose first page PTE is not already present in the host-copied
 /// page tables. Regions already initialized by the host (e.g., PEB, scratch) are excluded because
 /// their PTEs are already correct.
+///
+/// # Parameters
+///
+/// - `mmio_regions`: MMIO regions to check.
+/// - `kernel_page_tables`: Page tables copied from the host page directory.
+///
+/// # Returns
+///
+/// Upon success, a list of MMIO regions whose PTEs are not yet present is returned. Upon failure,
+/// an error is returned instead.
+///
 fn filter_unmapped_mmio_regions(
     mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
     kernel_page_tables: &LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
-) -> LinkedList<TruncatedMemoryRegion<VirtualAddress>> {
+) -> Result<LinkedList<TruncatedMemoryRegion<VirtualAddress>>, Error> {
     let mut result: LinkedList<TruncatedMemoryRegion<VirtualAddress>> = LinkedList::new();
 
     for region in mmio_regions.iter() {
         let base: usize = region.start().into_raw_value();
         let pt_aligned: usize = ::sys::mm::align_down(base, PGTAB_ALIGNMENT);
+        let page_addr: PageAddress = PageAddress::new(PageAligned::from_raw_value(base)?);
 
-        let already_mapped: bool = kernel_page_tables.iter().any(|(addr, pt)| {
-            if addr.into_raw_value() != pt_aligned {
-                return false;
-            }
-            let page_addr: PageAddress = match PageAligned::from_raw_value(base) {
-                Ok(aligned) => PageAddress::new(aligned),
-                Err(_) => return false,
-            };
-            pt.is_page_present(page_addr).unwrap_or(false)
-        });
+        let already_mapped: bool = kernel_page_tables
+            .iter()
+            .find(|(addr, _)| addr.into_raw_value() == pt_aligned)
+            .is_some_and(|(_, pt)| pt.is_page_present(page_addr).unwrap_or(false));
 
         if !already_mapped {
             result.push_back(region.clone());
         }
     }
 
-    result
+    Ok(result)
 }
 
 ///
@@ -365,7 +387,15 @@ fn map_mmio_regions(
     Ok(())
 }
 
+///
+/// # Description
+///
 /// Allocates an empty BSS-backed page table.
+///
+/// # Returns
+///
+/// Upon success, an empty page table is returned. Upon failure, an error is returned instead.
+///
 fn alloc_empty_page_table() -> Result<PageTable<PageTableStorage>, Error> {
     // SAFETY: called during single-threaded kernel init; BSS is zero-initialized.
     let bss_slot: &'static mut [PteWord; PAGE_TABLE_LENGTH] = unsafe {
