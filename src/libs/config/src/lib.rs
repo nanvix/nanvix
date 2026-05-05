@@ -240,10 +240,11 @@ pub mod memory_layout {
     /// Maximum capacity of the user heap in bytes. The heap is backed by the unified mmap region
     /// and grows lazily on demand.
     ///
-    /// Derived as a quarter of the VM's physical memory (`MEMORY_SIZE`) to leave room for the
-    /// kernel, page tables, user stacks, and program text.
+    /// Derived as half of the VM's physical memory (`MEMORY_SIZE`) to leave room for the kernel,
+    /// page tables, user stacks, and program text while still allowing large single-operation
+    /// allocations.
     ///
-    pub const USER_HEAP_CAPACITY: usize = crate::kernel::MEMORY_SIZE / 4;
+    pub const USER_HEAP_CAPACITY: usize = crate::kernel::MEMORY_SIZE / 2;
 
     // Compile-time assertion: USER_HEAP_CAPACITY must be strictly less than MEMORY_SIZE.
     static_assert::assert_eq!(USER_HEAP_CAPACITY < crate::kernel::MEMORY_SIZE);
