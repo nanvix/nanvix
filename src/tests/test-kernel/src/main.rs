@@ -23,7 +23,6 @@ use ::sys::error::{
 
 mod demand_paging;
 mod direction_flag;
-#[cfg(not(feature = "hyperlight"))]
 mod mmio_ramfs;
 mod rendezvous;
 mod tls;
@@ -52,7 +51,6 @@ const EXIT_CODE: i32 = 13;
 ///
 #[no_mangle]
 pub fn main() -> Result<(), Error> {
-    #[cfg(not(feature = "hyperlight"))]
     mmio_ramfs::run()?;
 
     tls::run()?;
