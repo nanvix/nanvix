@@ -101,8 +101,8 @@ pub fn run() -> Result<(), StressError> {
         }
     }
 
-    // Verify we allocated a substantial amount. The heap capacity is 32 MB; even after prior
-    // tests we should be able to claim a meaningful fraction.
+    // Verify we allocated a substantial amount. Even after prior tests we should be able to claim
+    // a meaningful fraction of USER_HEAP_CAPACITY.
     if total_allocated < FILL_BLOCK_SIZE {
         return Err(Error::new(
             ErrorCode::InvalidArgument,
