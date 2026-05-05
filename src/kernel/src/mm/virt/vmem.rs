@@ -731,8 +731,9 @@ impl Vmem {
 
                 if !dry_run {
                     // Copy memory from user space to kernel space.
+                    let dst_gpa: usize = crate::hal::platform::virt_to_phys(dst.into_raw_value());
                     super::memcpy(
-                        dst.into_raw_value() as *mut u8,
+                        dst_gpa as *mut u8,
                         (src_frame.into_raw_value() + offset) as *const u8,
                         copy_size,
                     )?;
@@ -895,7 +896,8 @@ impl Vmem {
 
                 // Copy memory from kernel space to user space.
                 let dst: *mut u8 = (dst_frame.into_raw_value() + offset) as *mut u8;
-                let src: *const u8 = src.into_raw_value() as *const u8;
+                let src_gpa: usize = crate::hal::platform::virt_to_phys(src.into_raw_value());
+                let src: *const u8 = src_gpa as *const u8;
                 let copy_result: Result<(), Error> = super::memcpy(dst, src, copy_size);
                 if let Err(error) = copy_result {
                     let reason: &str = "failed to perform physical memory copy";
