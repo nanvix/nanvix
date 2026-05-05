@@ -57,7 +57,6 @@ use crate::{
 };
 use ::alloc::{
     collections::LinkedList,
-    string::ToString,
     vec,
 };
 use ::arch::{
@@ -574,7 +573,7 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
             );
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
-        let image_data: &[u8] =
+        let image_data: &'static [u8] =
             unsafe { core::slice::from_raw_parts(initrd_base as *const u8, total_bytes) };
 
         // Detect initrd format by checking for NVMB multibinary magic.
@@ -589,17 +588,59 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
             let initrd_cmdline_len_base: usize = initrd_base + total_bytes;
             let initrd_cmdline_base: usize = initrd_cmdline_len_base + core::mem::size_of::<u8>();
 
+            // Validate that the length field fits within the known initrd allocation.
+            let cmdline_len_end: usize =
+                match initrd_cmdline_len_base.checked_add(core::mem::size_of::<u8>()) {
+                    Some(end) => end,
+                    None => {
+                        let reason: &str = "cmdline length field address overflow";
+                        error!("parse_bootinfo(): {}", reason);
+                        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                    },
+                };
+            if cmdline_len_end > ::config::memory_layout::USER_MMAP_BASE_RAW {
+                let reason: &str = "cmdline length field exceeds memory bounds";
+                error!("parse_bootinfo(): {}", reason);
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            }
+
             let cmdline_len: u8 = unsafe { *(initrd_cmdline_len_base as *const u8) };
-            let cmdline_bytes: &[u8] = unsafe {
-                core::slice::from_raw_parts(initrd_cmdline_base as *const u8, cmdline_len as usize)
-            };
-            let cmdline: &str = match core::str::from_utf8(cmdline_bytes) {
-                Ok(s) => s,
-                Err(_) => {
-                    let reason: &str = "invalid UTF-8 in command line";
-                    error!("invalid UTF-8 in command line");
+
+            // Validate that the cmdline payload fits within memory bounds.
+            let cmdline_end: usize = match initrd_cmdline_base.checked_add(cmdline_len as usize) {
+                Some(end) => end,
+                None => {
+                    let reason: &str = "cmdline payload address overflow";
+                    error!("parse_bootinfo(): {}", reason);
                     return Err(Error::new(ErrorCode::InvalidArgument, reason));
                 },
+            };
+            if cmdline_end > ::config::memory_layout::USER_MMAP_BASE_RAW {
+                let reason: &str = "cmdline payload exceeds memory bounds";
+                error!(
+                    "parse_bootinfo(): {} (cmdline_end={:#010x}, mmap_base={:#010x})",
+                    reason,
+                    cmdline_end,
+                    ::config::memory_layout::USER_MMAP_BASE_RAW
+                );
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            }
+
+            // SAFETY: the cmdline bytes reside in bootloader-provided memory that persists for the
+            // kernel's lifetime, so the resulting &'static str is sound.
+            let cmdline: &'static str = unsafe {
+                let bytes: &'static [u8] = core::slice::from_raw_parts(
+                    initrd_cmdline_base as *const u8,
+                    cmdline_len as usize,
+                );
+                match core::str::from_utf8(bytes) {
+                    Ok(s) => s,
+                    Err(_) => {
+                        let reason: &str = "invalid UTF-8 in command line";
+                        error!("invalid UTF-8 in command line");
+                        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                    },
+                }
             };
 
             info!(
@@ -607,10 +648,15 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
                 initrd_base, total_bytes, cmdline_len, cmdline
             );
 
+            // Module size must cover the ELF binary AND the trailing cmdline area
+            // (length field + payload) so that the HAL maps the entire region.
+            let module_size: usize =
+                total_bytes + core::mem::size_of::<u8>() + cmdline_len as usize;
+
             let module: KernelModule = KernelModule::new(
                 PhysicalAddress::from_raw_value(initrd_base)?,
-                total_bytes,
-                cmdline.to_string(),
+                module_size,
+                cmdline,
             );
             kernel_modules.push_back(module);
         }
