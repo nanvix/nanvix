@@ -86,17 +86,31 @@ fn faccessat_linuxd(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Resul
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
-            "faccessat(): failed (dirfd={:?}, path={:?}, mode={:?}, flag={:?}, error_code={:?})",
-            dirfd,
-            path,
-            mode,
-            flag,
-            { response.status },
-        );
-
         match ErrorCode::try_from(response.status) {
-            Ok(error_code) => Err(Error::new(error_code, "failed")),
+            Ok(error_code) => {
+                if error_code == ErrorCode::NoSuchEntry {
+                    ::syslog::warn!(
+                        "faccessat(): failed (dirfd={:?}, path={:?}, mode={:?}, flag={:?}, \
+                         error_code={:?})",
+                        dirfd,
+                        path,
+                        mode,
+                        flag,
+                        error_code,
+                    );
+                } else {
+                    ::syslog::error!(
+                        "faccessat(): failed (dirfd={:?}, path={:?}, mode={:?}, flag={:?}, \
+                         error_code={:?})",
+                        dirfd,
+                        path,
+                        mode,
+                        flag,
+                        error_code,
+                    );
+                }
+                Err(Error::new(error_code, "failed"))
+            },
             Err(_) => Err(Error::new(ErrorCode::InvalidMessage, "failed to parse error code")),
         }
     } else {

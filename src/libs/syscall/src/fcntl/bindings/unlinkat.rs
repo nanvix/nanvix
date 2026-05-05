@@ -76,9 +76,17 @@ pub unsafe extern "C" fn unlinkat(dirfd: c_int, pathname: *const c_char, flags: 
         Ok(()) => 0,
         // System call failed.
         Err(error) => {
-            ::syslog::error!(
-                "unlinkat(): {error:?} (dirfd={dirfd:?}, pathname={pathname:?}, flags={flags:?})"
-            );
+            if error.code == ErrorCode::NoSuchEntry {
+                ::syslog::warn!(
+                    "unlinkat(): {error:?} (dirfd={dirfd:?}, pathname={pathname:?}, \
+                     flags={flags:?})"
+                );
+            } else {
+                ::syslog::error!(
+                    "unlinkat(): {error:?} (dirfd={dirfd:?}, pathname={pathname:?}, \
+                     flags={flags:?})"
+                );
+            }
             *__errno_location() = error.code.get();
             -1
         },
