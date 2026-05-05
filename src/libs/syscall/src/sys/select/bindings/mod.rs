@@ -132,7 +132,11 @@ pub unsafe extern "C" fn select(
     match syscall::select(nfds as usize, read_ref, write_ref, error_ref, &timeout) {
         Ok(ready_fds) => ready_fds as c_int,
         Err(err) => {
-            ::syslog::error!("select(): syscall failed (nfds={nfds:?}, error={err:?})");
+            if err.code == ErrorCode::OperationNotSupported {
+                ::syslog::warn!("select(): syscall failed (nfds={nfds:?}, error={err:?})");
+            } else {
+                ::syslog::error!("select(): syscall failed (nfds={nfds:?}, error={err:?})");
+            }
             // SAFETY: `__errno_location()` returns a valid pointer.
             unsafe {
                 *__errno_location() = err.code.get();

@@ -73,7 +73,11 @@ pub unsafe extern "C" fn shutdown(sockfd: c_int, how: c_int) -> c_int {
     match socket::syscall::shutdown(sockfd, how) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!("shutdown(): {error:?} (sockfd={sockfd:?}, how={how:?})");
+            if error.code == ::sys::error::ErrorCode::OperationNotSupported {
+                ::syslog::warn!("shutdown(): {error:?} (sockfd={sockfd:?}, how={how:?})");
+            } else {
+                ::syslog::error!("shutdown(): {error:?} (sockfd={sockfd:?}, how={how:?})");
+            }
             *__errno_location() = error.code.get();
             -1
         },

@@ -98,9 +98,15 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
     match crate::sys::socket::syscall::socket(domain, typ, protocol) {
         Ok(sockfd) => sockfd,
         Err(error) => {
-            ::syslog::error!(
-                "socket(): {error:?} (domain={domain:?}, type={typ:?}, protocol={protocol:?})"
-            );
+            if error.code == ::sys::error::ErrorCode::OperationNotSupported {
+                ::syslog::warn!(
+                    "socket(): {error:?} (domain={domain:?}, type={typ:?}, protocol={protocol:?})"
+                );
+            } else {
+                ::syslog::error!(
+                    "socket(): {error:?} (domain={domain:?}, type={typ:?}, protocol={protocol:?})"
+                );
+            }
             *__errno_location() = error.code.get();
             -1
         },

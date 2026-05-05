@@ -56,12 +56,21 @@ pub unsafe extern "C" fn clock_getres(clock_id: clockid_t, res: *mut timespec) -
         Ok(()) => 0,
         // System call failed.
         Err(error) => {
-            ::syslog::error!(
-                "clock_getres(): failed (clock_id={:?}, res={:?}, error={:?})",
-                clock_id,
-                res,
-                error
-            );
+            if error.code == ::sys::error::ErrorCode::OperationNotSupported {
+                ::syslog::warn!(
+                    "clock_getres(): failed (clock_id={:?}, res={:?}, error={:?})",
+                    clock_id,
+                    res,
+                    error
+                );
+            } else {
+                ::syslog::error!(
+                    "clock_getres(): failed (clock_id={:?}, res={:?}, error={:?})",
+                    clock_id,
+                    res,
+                    error
+                );
+            }
             *__errno_location() = error.code.get();
             -1
         },

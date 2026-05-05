@@ -131,10 +131,17 @@ pub unsafe extern "C" fn socketpair(
     match crate::sys::socket::syscall::socketpair(domain, typ, protocol, socket_fds) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
-                "socketpair(): {error:?} (domain={domain:?}, typ={typ:?}, protocol={protocol:?}, \
-                 socket_fds={socket_fds:?})"
-            );
+            if error.code == ErrorCode::OperationNotSupported {
+                ::syslog::warn!(
+                    "socketpair(): {error:?} (domain={domain:?}, typ={typ:?}, \
+                     protocol={protocol:?}, socket_fds={socket_fds:?})"
+                );
+            } else {
+                ::syslog::error!(
+                    "socketpair(): {error:?} (domain={domain:?}, typ={typ:?}, \
+                     protocol={protocol:?}, socket_fds={socket_fds:?})"
+                );
+            }
             *__errno_location() = error.code.get();
             -1
         },

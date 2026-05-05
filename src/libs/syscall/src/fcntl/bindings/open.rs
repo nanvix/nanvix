@@ -77,7 +77,9 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
     match fcntl::open(pathname, flags, mode) {
         Ok(fd) => fd,
         Err(error) => {
-            if error.code == ErrorCode::NoSuchEntry {
+            if error.code == ErrorCode::NoSuchEntry
+                || error.code == ErrorCode::OperationNotSupported
+            {
                 ::syslog::warn!(
                     "open(): {error:?} (path={path:?}, flags={flags:?}, mode={mode:?})"
                 );

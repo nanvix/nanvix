@@ -100,9 +100,15 @@ pub unsafe extern "C" fn connect(
     match socket::syscall::connect(sockfd, &sockaddr) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
-                "connect(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
-            );
+            if error.code == ErrorCode::OperationNotSupported {
+                ::syslog::warn!(
+                    "connect(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
+                );
+            } else {
+                ::syslog::error!(
+                    "connect(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
+                );
+            }
             *__errno_location() = error.code.get();
             -1
         },
