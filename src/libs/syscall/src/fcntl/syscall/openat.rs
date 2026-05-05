@@ -46,7 +46,7 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
     {
         ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
             let code: ErrorCode = e.into();
-            ::syslog::debug!("openat(): VFS open failed (pathname={pathname:?}, error={e})");
+            ::syslog::warn!("openat(): VFS open failed (pathname={pathname:?}, error={e})");
             Error::new(code, "vfs open failed")
         })
     }
@@ -74,17 +74,30 @@ fn openat_linuxd(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Resu
     // Check whether system call succeeded or not.
     if response.status != 0 {
         // System call failed, parse error code and return it.
-        ::syslog::error!(
-            "openat(): failed (dirfd={:?}, pathname={:?}, flags={:?}, mode={:?}, error={:?})",
-            dirfd,
-            pathname,
-            flags,
-            mode,
-            { response.status }
-        );
         match ErrorCode::try_from(response.status) {
             // Succeeded to parse error code.
             Ok(error_code) => {
+                if error_code == ErrorCode::NoSuchEntry {
+                    ::syslog::warn!(
+                        "openat(): failed (dirfd={:?}, pathname={:?}, flags={:?}, mode={:?}, \
+                         error={:?})",
+                        dirfd,
+                        pathname,
+                        flags,
+                        mode,
+                        error_code
+                    );
+                } else {
+                    ::syslog::error!(
+                        "openat(): failed (dirfd={:?}, pathname={:?}, flags={:?}, mode={:?}, \
+                         error={:?})",
+                        dirfd,
+                        pathname,
+                        flags,
+                        mode,
+                        error_code
+                    );
+                }
                 // Return error.
                 Err(Error::new(error_code, "openat() failed"))
             },

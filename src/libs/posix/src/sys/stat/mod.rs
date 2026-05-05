@@ -292,12 +292,21 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut sys_stat::
     match stat::lstat(pathname, statbuf) {
         Ok(_) => 0,
         Err(error) => {
-            ::syslog::error!(
-                "lstat(): failed (pathname={}, statbuf={:p}, error={:?})",
-                pathname,
-                statbuf,
-                error
-            );
+            if error.code == ErrorCode::NoSuchEntry {
+                ::syslog::warn!(
+                    "lstat(): failed (pathname={}, statbuf={:p}, error={:?})",
+                    pathname,
+                    statbuf,
+                    error
+                );
+            } else {
+                ::syslog::error!(
+                    "lstat(): failed (pathname={}, statbuf={:p}, error={:?})",
+                    pathname,
+                    statbuf,
+                    error
+                );
+            }
             *__errno_location() = error.code.get();
             -1
         },
