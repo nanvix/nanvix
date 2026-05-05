@@ -963,8 +963,16 @@ jobs:
           - machine-type: microvm
             standard-benchmarks: "boot-time cold-start snapshot-restore vfs-bench warm-start-vmm"
             standard-iterations: "100"
-          # NOTE (#1759, #1762): Hyperlight benchmarks are disabled until the
-          # round-trip-latency failure is investigated.
+            profiler: "PROFILER=yes"
+          - machine-type: hyperlight
+            # NOTE (#1762): round-trip-latency is excluded due to a bulk data
+            # transfer failure at ≥84 bytes. warm-start-vmm and snapshot-restore
+            # are excluded (SIGKILL / SIGABRT respectively). cold-start-uvm,
+            # concurrent, and warm-start require multi-process mode which is not
+            # supported on Windows (standalone only).
+            standard-benchmarks: "boot-time cold-start"
+            standard-iterations: "100"
+            profiler: ""
     runs-on:
       group: Benchmark
       labels: [ self-hosted, Windows ]
@@ -1083,8 +1091,9 @@ jobs:
         shell: pwsh
         env:
           MACHINE_TYPE: ${{ matrix.machine-type }}
+          PROFILER_FLAG: ${{ matrix.profiler }}
         run: |
-          .\z.ps1 build -- all MACHINE=$env:MACHINE_TYPE RELEASE=yes LOG_LEVEL=panic PROFILER=yes
+          .\z.ps1 build -- all MACHINE=$env:MACHINE_TYPE RELEASE=yes LOG_LEVEL=panic $env:PROFILER_FLAG
 
       - name: "Run Micro-Benchmarks"
         shell: pwsh
@@ -1259,7 +1268,7 @@ jobs:
         uses: ./.github/actions/benchmark-report
         with:
           benchmarks: "boot-time,cold-start,snapshot-restore,vfs-bench,warm-start-vmm"
-          machine-types: "microvm"
+          machine-types: "microvm,hyperlight"
           archs: "X64"
           dev-dir: "data/windows-baremetal"
           runner-label: "windows-baremetal"
@@ -1277,7 +1286,7 @@ jobs:
             --dev-dir "data/windows-baremetal" \
             --target-dir "$(pwd)" \
             --benchmarks "boot-time,cold-start,snapshot-restore,warm-start-vmm" \
-            --machine-types "microvm" \
+            --machine-types "microvm,hyperlight" \
             --archs "X64" \
             --regression-threshold 40 \
             --baseline-window 20
@@ -1287,7 +1296,7 @@ jobs:
         uses: ./.github/actions/benchmark-persist
         with:
           benchmarks: "boot-time,cold-start,snapshot-restore,vfs-bench,warm-start-vmm"
-          machine-types: "microvm"
+          machine-types: "microvm,hyperlight"
           archs: "X64"
           target-dir: "data/windows-baremetal"
 
