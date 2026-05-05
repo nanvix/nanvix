@@ -140,6 +140,7 @@ use ::config::{
     },
     kernel::MEMORY_SIZE,
     memory_layout::KERNEL_BASE_RAW,
+    system::CmdlineArgsLen,
 };
 use ::core::sync::atomic::{
     AtomicUsize,
@@ -2287,7 +2288,7 @@ unsafe fn build_physical_memory_layout(
 unsafe fn parse_initrd_image(
     init_data_start: usize,
     total_allocation_size: usize,
-) -> Result<(usize, usize, (u8, &'static str)), Error> {
+) -> Result<(usize, usize, (CmdlineArgsLen, &'static str)), Error> {
     // Check if allocation is too small to hold the initrd header.
     if total_allocation_size < INITRD_SIZE_BYTES {
         let reason: &str = "insufficient initrd allocation size";
@@ -2346,7 +2347,7 @@ unsafe fn parse_initrd_image(
     );
 
     // Read initrd command line.
-    let initrd_cmdline: (u8, &'static str) =
+    let initrd_cmdline: (CmdlineArgsLen, &'static str) =
         read_initrd_cmdline(current_initrd_start, actual_initrd_size, total_allocation_size)?;
 
     // The ELF payload sits INITRD_SIZE_BYTES past the page-aligned init_data_start,
@@ -2390,7 +2391,7 @@ unsafe fn read_initrd_cmdline(
     initrd_start: usize,
     initrd_size: usize,
     total_allocation_size: usize,
-) -> Result<(u8, &'static str), Error> {
+) -> Result<(CmdlineArgsLen, &'static str), Error> {
     let args_section_size: usize =
         total_allocation_size.saturating_sub(::config::hyperlight::INITRD_SIZE_BYTES + initrd_size);
 
@@ -2412,7 +2413,7 @@ unsafe fn read_initrd_cmdline(
     };
 
     // Compute offset to arguments payload and check for overflows.
-    let args_bytes_offset: usize = match args_len_offset.checked_add(1) {
+    let args_bytes_offset: usize = match args_len_offset.checked_add(CmdlineArgsLen::WIRE_SIZE) {
         Some(offset) => offset,
         None => {
             let reason: &str = "initrd arguments payload address overflow";
@@ -2421,17 +2422,26 @@ unsafe fn read_initrd_cmdline(
         },
     };
 
-    // Check if arguments length byte is missing.
-    if args_section_size < 1 {
-        let reason: &str = "initrd arguments length byte missing";
+    // Check if arguments length field is missing.
+    if args_section_size < CmdlineArgsLen::WIRE_SIZE {
+        let reason: &str = "initrd arguments length field missing";
         error!("read_initrd_cmdline(): {reason}");
         return Err(Error::new(ErrorCode::BadFile, reason));
     }
 
-    let args_len: u8 = *(args_len_offset as *const u8);
-    let args_payload_size: usize = usize::from(args_len);
+    let args_len: CmdlineArgsLen = match CmdlineArgsLen::from_le_bytes(
+        *(args_len_offset as *const [u8; CmdlineArgsLen::WIRE_SIZE]),
+    ) {
+        Some(v) => v,
+        None => {
+            let reason: &str = "initrd arguments length exceeds maximum";
+            error!("read_initrd_cmdline(): {reason}");
+            return Err(Error::new(ErrorCode::BadFile, reason));
+        },
+    };
+    let args_payload_size: usize = args_len.as_usize();
 
-    if args_section_size < 1 + args_payload_size {
+    if args_section_size < CmdlineArgsLen::WIRE_SIZE + args_payload_size {
         let reason: &str = "initrd arguments truncated";
         error!(
             "read_initrd_cmdline(): {reason} (args_section_size={args_section_size}, \

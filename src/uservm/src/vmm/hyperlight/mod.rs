@@ -15,7 +15,10 @@ use crate::{
     },
 };
 use ::anyhow::Result;
-use ::core::convert::TryFrom;
+use ::config::system::{
+    CmdlineArgsLen,
+    MAX_CMDLINE_ARGS_LEN,
+};
 use ::hyperlight_host::{
     GuestBinary,
     GuestCounter,
@@ -654,17 +657,20 @@ impl Vmm {
 
         // Encode length-prefixed arguments.
         let args_bytes: Vec<u8> = args_string.into_bytes();
-        let args_len: u8 = match u8::try_from(args_bytes.len()) {
-            Ok(value) => value,
-            Err(_) => {
-                let reason: String =
-                    format!("initrd arguments too long (len={})", args_bytes.len());
+        let args_len: CmdlineArgsLen = match CmdlineArgsLen::new(args_bytes.len()) {
+            Some(v) => v,
+            None => {
+                let reason: String = format!(
+                    "initrd arguments too long (len={}, max={})",
+                    args_bytes.len(),
+                    MAX_CMDLINE_ARGS_LEN
+                );
                 error!("build_args_bytes(): {}", reason);
                 return Err(anyhow::anyhow!(reason));
             },
         };
 
-        Ok([&[args_len], &args_bytes[..]].concat())
+        Ok([&args_len.to_le_bytes()[..], &args_bytes[..]].concat())
     }
 
     ///
