@@ -115,10 +115,6 @@ use crate::{
 use ::alloc::{
     collections::linked_list::LinkedList,
     format,
-    string::{
-        String,
-        ToString,
-    },
     vec,
 };
 use ::arch::{
@@ -1429,10 +1425,9 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
 
         let initrd_base: usize = current_data_start;
 
-        kernel_modules.extend(crate::multibin::parse(
-            unsafe { core::slice::from_raw_parts(initrd_base as *const u8, total_size) },
-            initrd_base,
-        )?);
+        let initrd_data: &'static [u8] =
+            unsafe { core::slice::from_raw_parts(initrd_base as *const u8, total_size) };
+        kernel_modules.extend(crate::multibin::parse(initrd_data, initrd_base)?);
     } else {
         // Single-binary format: parse old size-header + args layout.
         info!("parse_bootinfo(): single-binary initrd detected");
@@ -1444,9 +1439,7 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
 
         info!(
             "initrd_base={:#010x}, initrd_size={:#010x}, cmdline={:?}",
-            initrd_base,
-            initrd_size,
-            cmdline.as_str()
+            initrd_base, initrd_size, cmdline
         );
 
         let module: KernelModule =
@@ -1901,8 +1894,8 @@ pub fn init(
     // frame is booked without overlapping with individually-registered sub-regions
     // (kernel text/data/rodata/bss, PEB, heap padding, kpool, initrd modules from kmain).
     //
-    // The two gaps are:
-    //   1. The initrd header page — multibinary descriptors before the first module payload.
+    // The gaps are:
+    //   1. kpool-initrd gap — alignment padding between kpool end and init_data start.
     //   2. The snapshot tail — host budget padding after the last module.
     //
     // When no init_data is present, the entire range from kpool_end to snapshot_end is a gap.
@@ -1925,30 +1918,12 @@ pub fn init(
                 memory_regions.push_back(gap_region);
             }
 
-            // For multibinary (NVMB) format, the first page of the init_data blob contains
-            // the header and entry descriptors. Module payloads start at page-aligned offsets
-            // after this header, leaving the header page as a gap not covered by any module
-            // region. For single-binary format, the module payload starts at byte 8 within
-            // the first page (after the size header), and kmain page-aligns downward so the
-            // first page IS part of the module — no gap to register.
-            let init_data_slice: &[u8] = unsafe {
-                core::slice::from_raw_parts(
-                    init_data_start as *const u8,
-                    init_data_size.min(multibin::MAGIC.len()),
-                )
-            };
-            let is_multibinary: bool = init_data_slice.len() >= multibin::MAGIC.len()
-                && init_data_slice[..multibin::MAGIC.len()] == multibin::MAGIC;
-            if is_multibinary {
-                let initrd_header_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-                    "initrd header",
-                    VirtualAddress::from_raw_value(init_data_start),
-                    mem::PAGE_SIZE,
-                    MemoryRegionType::Reserved,
-                    AccessPermission::RDONLY,
-                )?;
-                memory_regions.push_back(initrd_header_region);
-            }
+            // For multibinary (NVMB) format, the module region registered by kmain now
+            // covers the entire image (including the header page), so no separate gap
+            // registration is needed here. For single-binary format, the module payload
+            // starts at byte 8 within the first page (after the size header), and kmain
+            // page-aligns downward so the first page IS part of the module — no gap to
+            // register either.
 
             // Snapshot tail: padding between the end of init_data and snapshot_end.
             // The host allocates a full snapshot budget that may extend beyond the last module.
@@ -2312,7 +2287,7 @@ unsafe fn build_physical_memory_layout(
 unsafe fn parse_initrd_image(
     init_data_start: usize,
     total_allocation_size: usize,
-) -> Result<(usize, usize, (u8, String)), Error> {
+) -> Result<(usize, usize, (u8, &'static str)), Error> {
     // Check if allocation is too small to hold the initrd header.
     if total_allocation_size < INITRD_SIZE_BYTES {
         let reason: &str = "insufficient initrd allocation size";
@@ -2371,7 +2346,7 @@ unsafe fn parse_initrd_image(
     );
 
     // Read initrd command line.
-    let initrd_cmdline: (u8, String) =
+    let initrd_cmdline: (u8, &'static str) =
         read_initrd_cmdline(current_initrd_start, actual_initrd_size, total_allocation_size)?;
 
     // The ELF payload sits INITRD_SIZE_BYTES past the page-aligned init_data_start,
@@ -2415,7 +2390,7 @@ unsafe fn read_initrd_cmdline(
     initrd_start: usize,
     initrd_size: usize,
     total_allocation_size: usize,
-) -> Result<(u8, String), Error> {
+) -> Result<(u8, &'static str), Error> {
     let args_section_size: usize =
         total_allocation_size.saturating_sub(::config::hyperlight::INITRD_SIZE_BYTES + initrd_size);
 
@@ -2465,11 +2440,11 @@ unsafe fn read_initrd_cmdline(
         return Err(Error::new(ErrorCode::BadFile, reason));
     }
 
-    let args_bytes: &[u8] =
+    let args_bytes: &'static [u8] =
         core::slice::from_raw_parts(args_bytes_offset as *const u8, args_payload_size);
 
     // Convert arguments to UTF-8 string and check for errors.
-    let args_str: &str = match core::str::from_utf8(args_bytes) {
+    let args_str: &'static str = match core::str::from_utf8(args_bytes) {
         Ok(value) => value,
         Err(_) => {
             let reason: &str = "invalid UTF-8 in initrd arguments";
@@ -2478,5 +2453,5 @@ unsafe fn read_initrd_cmdline(
         },
     };
 
-    Ok((args_len, args_str.to_string()))
+    Ok((args_len, args_str))
 }
