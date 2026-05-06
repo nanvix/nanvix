@@ -107,7 +107,10 @@ fn main() {
             elf_data.len(),
             cmdline
         );
-        builder.add(elf_data, cmdline);
+        if let Err(err) = builder.add(elf_data, cmdline) {
+            eprintln!("{}: error: {:?}", PROGRAM_NAME, err);
+            process::exit(1);
+        }
     }
 
     let image: Vec<u8> = match builder.build() {

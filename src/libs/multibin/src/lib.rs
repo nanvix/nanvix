@@ -87,12 +87,8 @@ pub struct ParsedEntry {
 // Parser (no_std)
 //==================================================================================================
 
-///
-/// # Description
-///
 /// Maximum number of entries supported in a single multibinary image.
-///
-const MAX_ENTRIES: usize = 32;
+pub const MAX_ENTRIES: usize = 16;
 
 ///
 /// # Description
@@ -366,12 +362,23 @@ pub mod builder {
         /// - `elf_data`: Raw bytes of the ELF binary.
         /// - `cmdline`: Command-line string for this binary (UTF-8).
         ///
-        pub fn add(&mut self, elf_data: Vec<u8>, cmdline: &str) -> &mut Self {
+        /// # Returns
+        ///
+        /// A mutable reference to the builder on success, or an error if the maximum number of
+        /// entries has been reached.
+        ///
+        pub fn add(&mut self, elf_data: Vec<u8>, cmdline: &str) -> Result<&mut Self, error::Error> {
+            if self.entries.len() >= MAX_ENTRIES {
+                return Err(error::Error::new(
+                    error::ErrorCode::InvalidArgument,
+                    "maximum number of multibinary entries reached",
+                ));
+            }
             self.entries.push(BuildEntry {
                 elf_data,
                 cmdline: cmdline.as_bytes().to_vec(),
             });
-            self
+            Ok(self)
         }
 
         ///
@@ -491,8 +498,12 @@ mod tests {
     #[test]
     fn test_round_trip() {
         let mut builder: builder::MultibinBuilder = builder::MultibinBuilder::new();
-        builder.add(vec![0x7f, b'E', b'L', b'F', 1, 2, 3, 4], "testd");
-        builder.add(vec![0x7f, b'E', b'L', b'F', 5, 6, 7, 8], "procd;ENV=1");
+        builder
+            .add(vec![0x7f, b'E', b'L', b'F', 1, 2, 3, 4], "testd")
+            .unwrap();
+        builder
+            .add(vec![0x7f, b'E', b'L', b'F', 5, 6, 7, 8], "procd;ENV=1")
+            .unwrap();
 
         let image: Vec<u8> = builder.build().expect("build should succeed");
 
@@ -526,9 +537,9 @@ mod tests {
     #[test]
     fn test_iterator() {
         let mut builder: builder::MultibinBuilder = builder::MultibinBuilder::new();
-        builder.add(vec![1, 2, 3], "a");
-        builder.add(vec![4, 5, 6], "b");
-        builder.add(vec![7, 8, 9], "c");
+        builder.add(vec![1, 2, 3], "a").unwrap();
+        builder.add(vec![4, 5, 6], "b").unwrap();
+        builder.add(vec![7, 8, 9], "c").unwrap();
 
         let image: Vec<u8> = builder.build().expect("build should succeed");
         let result: ParseResult = parse(&image).expect("parse should succeed");
