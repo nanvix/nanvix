@@ -57,7 +57,7 @@ pub fn pthread_attr_getstack(
     // Ensure the attributes object is initialized.
     if attr.is_initialized == 0 {
         let reason: &'static str = "thread attributes object was not initialized";
-        ::syslog::error!("pthread_attr_getstack(): {reason} (attr={:p})", attr as *const _);
+        ::syslog::warn!("pthread_attr_getstack(): {reason} (attr={:p})", attr as *const _);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 

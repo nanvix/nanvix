@@ -82,21 +82,21 @@ impl MemorySegment {
         // Check if base address is not page-aligned.
         if !base.is_aligned(PAGE_ALIGNMENT) {
             let reason: &str = "unaligned base address";
-            ::syslog::error!("new(): {}", reason);
+            ::syslog::warn!("new(): {}", reason);
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
         // Check if capacity is zero.
         if capacity == 0 {
             let reason: &str = "zero capacity";
-            ::syslog::error!("new(): {}", reason);
+            ::syslog::warn!("new(): {}", reason);
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
         // Check if capacity is page-aligned.
         if !capacity.is_multiple_of(PAGE_SIZE) {
             let reason: &str = "unaligned capacity";
-            ::syslog::error!("new(): {}", reason);
+            ::syslog::warn!("new(): {}", reason);
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
@@ -167,7 +167,7 @@ impl MemorySegment {
         // Check if bytes exceed capacity.
         if offset + bytes.len() > self.capacity {
             let reason: &str = "bytes exceed capacity";
-            ::syslog::error!("load(): {}", reason);
+            ::syslog::warn!("load(): {}", reason);
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
@@ -259,7 +259,7 @@ fn map_range(
         if let Err(error) = mmap(pid, vaddr, 1, access) {
             // Failed to map page, attempt to rollback.
 
-            ::syslog::error!(
+            ::syslog::warn!(
                 "map_range(): failed to map page at {:X?}, rolling back (error={:?})",
                 vaddr,
                 error
@@ -306,7 +306,7 @@ fn unmap_range(
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
 
         if let Err(error) = munmap(pid, vaddr) {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "unmap_range(): failed to unmap page at {:X?}, skipping (error={:?})",
                 vaddr,
                 error
@@ -340,7 +340,7 @@ fn protect_range(
 
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
         if let Err(error) = mprotect(pid, vaddr, prot) {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "protect_range(): failed to change protection of page at {:X?}, skipping \
                  (error={:?})",
                 vaddr,

@@ -77,7 +77,7 @@ fn posix_fallocate_linuxd(fd: RawFileDescriptor, offset: off_t, len: off_t) -> R
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "posix_fallocate(): failed (fd={:?}, offset={:?}, len={:?}, status={:?})",
             fd,
             offset,
@@ -91,7 +91,7 @@ fn posix_fallocate_linuxd(fd: RawFileDescriptor, offset: off_t, len: off_t) -> R
             Ok(error_code) => Err(Error::new(error_code, "posix_fallocate() failed")),
             // Error was not parsed.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "posix_fallocate(): failed (fd={:?}, offset={:?}, len={:?}, error={:?})",
                     fd,
                     offset,
@@ -110,7 +110,7 @@ fn posix_fallocate_linuxd(fd: RawFileDescriptor, offset: off_t, len: off_t) -> R
             LinuxDaemonMessageHeader::FileSpaceControlResponse => Ok(()),
             // Response was not parsed.
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "posix_fallocate(): invalid response (fd={:?}, offset={:?}, len={:?}, \
                      header={:?})",
                     fd,

@@ -80,7 +80,7 @@ impl ChangeDirectoryRequest {
         // Check if path is too long.
         if path.len() > PATH_MAX {
             #[cfg(target_os = "none")]
-            ::syslog::error!("new(): path too long (path.len={:?})", path.len());
+            ::syslog::warn!("new(): path too long (path.len={:?})", path.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "path too long"));
         }
 
@@ -129,7 +129,7 @@ impl MessageDeserializer for ChangeDirectoryRequest {
         // Check if message is too short.
         if bytes.len() < Self::OFFSET_OF_PATH {
             #[cfg(target_os = "none")]
-            ::syslog::error!("try_from_bytes(): message too short (bytes.len={:?})", bytes.len());
+            ::syslog::warn!("try_from_bytes(): message too short (bytes.len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidMessage, "message too short"));
         }
 

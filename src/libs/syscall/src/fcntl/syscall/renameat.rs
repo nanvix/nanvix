@@ -96,7 +96,7 @@ fn renameat_linuxd(
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "renameat(): failed (olddirfd={:?}, oldpath={:?}, newdirfd={:?}, newpath={:?}, \
              error_code={:?})",
             olddirfd,
@@ -114,7 +114,7 @@ fn renameat_linuxd(
             },
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "renameat(): failed to parse error code (olddirfd={:?}, oldpath={:?}, \
                      newdirfd={:?}, newpath={:?}, error={:?})",
                     olddirfd,
@@ -133,7 +133,7 @@ fn renameat_linuxd(
             LinuxDaemonMessageHeader::RenameAtResponse => Ok(()),
             header => {
                 let reason: &str = "unexpected message header";
-                ::syslog::error!(
+                ::syslog::warn!(
                     "renameat(): {:?} (olddirfd={:?}, oldpath={:?}, newdirfd={:?}, newpath={:?}, \
                      header={:?})",
                     reason,

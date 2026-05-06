@@ -52,7 +52,7 @@ pub fn posix_fadvise(
     len: off_t,
     advice: c_int,
 ) -> Result<(), Error> {
-    ::syslog::error!(
+    ::syslog::trace!(
         "posix_fadvise(): fd={:?}, offset={:?}, len={:?}, advice={:?}",
         fd,
         offset,
@@ -96,7 +96,7 @@ fn posix_fadvise_linuxd(
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "posix_fadvise(): failed (fd={:?}, offset={:?}, len={:?}, advice={:?}, status={:?})",
             fd,
             offset,
@@ -111,7 +111,7 @@ fn posix_fadvise_linuxd(
             Ok(error_code) => Err(Error::new(error_code, "posix_fadvise() failed")),
             // Error code was not successfully parsed.
             Err(error) => {
-                ::syslog::error!("posix_fadvise(): invalid error code (error={:?})", error);
+                ::syslog::warn!("posix_fadvise(): invalid error code (error={:?})", error);
                 Err(Error::new(ErrorCode::TryAgain, "posix_fadvise(): failed"))
             },
         }
@@ -124,7 +124,7 @@ fn posix_fadvise_linuxd(
             LinuxDaemonMessageHeader::FileAdvisoryInformationResponse => Ok(()),
             header => {
                 // Response was not successfully parsed.
-                ::syslog::error!(
+                ::syslog::warn!(
                     "posix_fadvise(): unexpected message header (fd={:?}, offset={:?}, len={:?}, \
                      advice={:?}, header={:?})",
                     fd,

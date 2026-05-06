@@ -88,28 +88,16 @@ fn faccessat_linuxd(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Resul
     if response.status != 0 {
         match ErrorCode::try_from(response.status) {
             Ok(error_code) => {
-                if error_code == ErrorCode::NoSuchEntry {
-                    ::syslog::warn!(
-                        "faccessat(): failed (dirfd={:?}, path={:?}, mode={:?}, flag={:?}, \
-                         error_code={:?})",
-                        dirfd,
-                        path,
-                        mode,
-                        flag,
-                        error_code,
-                    );
-                } else {
-                    ::syslog::error!(
-                        "faccessat(): failed (dirfd={:?}, path={:?}, mode={:?}, flag={:?}, \
-                         error_code={:?})",
-                        dirfd,
-                        path,
-                        mode,
-                        flag,
-                        error_code,
-                    );
-                }
-                Err(Error::new(error_code, "failed"))
+                ::syslog::warn!(
+                    "faccessat(): failed (dirfd={:?}, path={:?}, mode={:?}, flag={:?}, \
+                     error_code={:?})",
+                    dirfd,
+                    path,
+                    mode,
+                    flag,
+                    error_code,
+                );
+                Err(Error::new(error_code, "faccessat() failed"))
             },
             Err(_) => Err(Error::new(ErrorCode::InvalidMessage, "failed to parse error code")),
         }
@@ -120,7 +108,7 @@ fn faccessat_linuxd(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Resul
         match message.header {
             LinuxDaemonMessageHeader::FileAccessAtResponse => Ok(()),
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "faccessat(): failed to parse response (dirfd={:?}, path={:?}, mode={:?}, \
                      flag={:?}, header={:?})",
                     dirfd,

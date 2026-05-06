@@ -95,7 +95,7 @@ pub fn select(
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "select(): failed (nfds={:?}, timeout={:?}, status={:?})",
             nfds,
             timeout,
@@ -108,7 +108,7 @@ pub fn select(
             Ok(error_code) => Err(Error::new(error_code, "select() failed")),
             // Error was not parsed.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "select(): {error:?} (nfds={:?}, timeout={:?}, status={:?})",
                     nfds,
                     timeout,
@@ -141,7 +141,7 @@ pub fn select(
             // Response was not parsed.
             header => {
                 let reason: &'static str = "invalid response";
-                ::syslog::error!(
+                ::syslog::warn!(
                     "select(): {reason} (header={header:?}, nfds={:?}, timeout={:?}, status={:?})",
                     nfds,
                     timeout,

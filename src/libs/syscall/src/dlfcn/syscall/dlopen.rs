@@ -100,7 +100,7 @@ pub fn dlopen(filename: &str, global: bool) -> Result<DlHandle, Error> {
                 .filter(|h| !handles_before.contains(h))
                 .copied()
                 .collect();
-            ::syslog::error!(
+            ::syslog::warn!(
                 "dlopen(): rolling back {} entries after failure (error={:?})",
                 new_handles.len(),
                 e
@@ -247,7 +247,7 @@ fn resolve_all_symbols(
                 Some(f) => f,
                 None => {
                     // Handle came from dlfiles.keys(), so this should not happen.
-                    ::syslog::error!(
+                    ::syslog::warn!(
                         "resolve_all_symbols(): handle {:?} missing from registry",
                         handle
                     );

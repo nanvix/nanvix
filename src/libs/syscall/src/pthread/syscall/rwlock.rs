@@ -164,7 +164,7 @@ pub fn pthread_rwlock_init(
         Ok(())
     } else {
         let reason: &str = "read-write lock is already initialized";
-        ::syslog::error!("pthread_rwlock_init(): {reason}");
+        ::syslog::warn!("pthread_rwlock_init(): {reason}");
         Err(Error::new(ErrorCode::InvalidArgument, reason))
     }
 }
@@ -191,7 +191,7 @@ pub fn pthread_rwlock_destroy(rwlock: &mut pthread_rwlock_t) -> Result<(), Error
         let locked_runtime_rwlock: MutexGuard<'_, ReadWriteLockState> = runtime.lock();
         if locked_runtime_rwlock.readers != 0 || locked_runtime_rwlock.writer_active {
             let reason: &str = "read-write lock is busy";
-            ::syslog::error!("pthread_rwlock_destroy(): {}", reason);
+            ::syslog::warn!("pthread_rwlock_destroy(): {}", reason);
             return Err(Error::new(ErrorCode::ResourceBusy, reason));
         }
     } else {
@@ -200,7 +200,7 @@ pub fn pthread_rwlock_destroy(rwlock: &mut pthread_rwlock_t) -> Result<(), Error
             return Ok(());
         } else {
             let reason: &str = "read-write lock is not initialized";
-            ::syslog::error!("pthread_rwlock_destroy(): {reason}");
+            ::syslog::warn!("pthread_rwlock_destroy(): {reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -360,7 +360,7 @@ pub fn pthread_rwlock_unlock(rwlock: &mut pthread_rwlock_t) -> Result<(), Error>
             // Must be a reader.
             if locked_runtime.readers == 0 {
                 let reason: &str = "unlock on unlocked read-write lock";
-                ::syslog::error!("pthread_rwlock_unlock(): {reason}");
+                ::syslog::warn!("pthread_rwlock_unlock(): {reason}");
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             }
             locked_runtime.readers -= 1;
@@ -407,7 +407,7 @@ fn get_runtime_rwlock(rwlock: &pthread_rwlock_t) -> Result<ReadWriteLock, Error>
             ))));
         } else {
             let reason: &str = "read-write lock is not initialized";
-            ::syslog::error!("lazy_register_rwlock(): {reason}");
+            ::syslog::warn!("lazy_register_rwlock(): {reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }

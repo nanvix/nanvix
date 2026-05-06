@@ -47,7 +47,7 @@ pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
     let path: &str = {
         // Check if `path` is invalid.
         if path.is_null() {
-            ::syslog::error!("unlink(): path is null (path={path:?})");
+            ::syslog::warn!("unlink(): path is null (path={path:?})");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         }
@@ -55,7 +55,7 @@ pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
         match ffi::CStr::from_ptr(path).to_str() {
             Ok(pathname) => pathname,
             Err(_) => {
-                ::syslog::error!("unlink(): invalid path (path={path:?})");
+                ::syslog::warn!("unlink(): invalid path (path={path:?})");
                 *__errno_location() = ErrorCode::InvalidArgument.get();
                 return -1;
             },
@@ -66,7 +66,7 @@ pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
     match unistd::unlink(path) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!("unlink(): {error:?} (path={path:?})");
+            ::syslog::warn!("unlink(): {error:?} (path={path:?})");
             *__errno_location() = error.code.get();
             -1
         },

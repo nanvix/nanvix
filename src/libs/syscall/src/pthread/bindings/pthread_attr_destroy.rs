@@ -61,7 +61,7 @@ use ::syslog::trace_libcall;
 pub unsafe extern "C" fn pthread_attr_destroy(attr: *mut pthread_attr_t) -> c_int {
     // Check if `attr` is points to an invalid address.
     if attr.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "pthread_attr_destroy(): invalid pointer to thread attributes object (attr={attr:p})"
         );
         return ErrorCode::InvalidArgument.get();
@@ -69,7 +69,7 @@ pub unsafe extern "C" fn pthread_attr_destroy(attr: *mut pthread_attr_t) -> c_in
 
     // Check if `attr` points to a misaligned address.
     if !(attr as usize).is_multiple_of(core::mem::align_of::<pthread_attr_t>()) {
-        ::syslog::error!(
+        ::syslog::warn!(
             "pthread_attr_destroy(): misaligned pointer to thread attributes object \
              (attr={attr:p})"
         );

@@ -141,7 +141,7 @@ impl DynamicLibrary {
             Ok(cstr) => cstr,
             Err(_) => {
                 let reason: &str = "failed to convert filename to C string";
-                ::syslog::error!("open(): {}", reason);
+                ::syslog::warn!("open(): {}", reason);
                 return Err(Error::new(ErrorCode::BadFile, reason));
             },
         };
@@ -152,7 +152,7 @@ impl DynamicLibrary {
         // Check if file is not a regular file.
         if attr.file_type() != FileType::RegularFile {
             let reason: &str = "file is not a regular file";
-            ::syslog::error!("open(): {}", reason);
+            ::syslog::warn!("open(): {}", reason);
             return Err(Error::new(ErrorCode::BadFile, reason));
         }
 
@@ -167,7 +167,7 @@ impl DynamicLibrary {
                 // Check if ELF file is not a dynamic library.
                 if !elf.is_lib {
                     let reason: &str = "file is not a dynamic library";
-                    ::syslog::error!("load(): {}", reason);
+                    ::syslog::warn!("load(): {}", reason);
                     return Err(Error::new(ErrorCode::BadFile, reason));
                 }
 
@@ -201,7 +201,7 @@ impl DynamicLibrary {
                             // Check if program headers overlap.
                             if base < end_address.into_raw_value() {
                                 let reason: &str = "program headers overlap";
-                                ::syslog::error!("load(): {} (phdr={:#x?}", reason, phdr);
+                                ::syslog::warn!("load(): {} (phdr={:#x?}", reason, phdr);
                                 return Err(Error::new(ErrorCode::BadFile, reason));
                             }
 
@@ -211,7 +211,7 @@ impl DynamicLibrary {
                                 mm::align_up(offset + phdr.p_memsz as usize, PAGE_ALIGNMENT)
                                     .ok_or_else(|| {
                                         let reason: &str = "align_up overflow";
-                                        ::syslog::error!(
+                                        ::syslog::warn!(
                                             "load(): {reason} (p_memsz={}, vaddr={:#x}, \
                                              base={:#x})",
                                             phdr.p_memsz,
@@ -223,7 +223,7 @@ impl DynamicLibrary {
                             let end_raw: usize =
                                 base.into_raw_value().checked_add(capacity).ok_or_else(|| {
                                     let reason: &str = "end_address overflow";
-                                    ::syslog::error!(
+                                    ::syslog::warn!(
                                         "load(): {reason} (base={:#x}, capacity={capacity})",
                                         base.into_raw_value()
                                     );
@@ -264,7 +264,7 @@ impl DynamicLibrary {
                         section_headers.insert(section_name.to_string(), section.clone())
                     {
                         let reason: &str = "duplicate section header";
-                        ::syslog::error!("load(): {} (section.name={:?})", reason, section_name);
+                        ::syslog::warn!("load(): {} (section.name={:?})", reason, section_name);
                         return Err(Error::new(ErrorCode::BadFile, reason));
                     }
                 }
@@ -274,7 +274,7 @@ impl DynamicLibrary {
                     Some(dynsym) => dynsym,
                     None => {
                         let reason: &str = "missing dynamic symbol table";
-                        ::syslog::error!("load(): {}", reason);
+                        ::syslog::warn!("load(): {}", reason);
                         return Err(Error::new(ErrorCode::BadFile, reason));
                     },
                 };
@@ -282,7 +282,7 @@ impl DynamicLibrary {
                     Some(dynstr) => dynstr,
                     None => {
                         let reason: &str = "missing dynamic string table";
-                        ::syslog::error!("load(): {}", reason);
+                        ::syslog::warn!("load(): {}", reason);
                         return Err(Error::new(ErrorCode::BadFile, reason));
                     },
                 };
@@ -305,7 +305,7 @@ impl DynamicLibrary {
             },
             Err(error) => {
                 let reason: &str = "failed to parse ELF file";
-                ::syslog::error!("load(): {} (error={:?})", reason, error);
+                ::syslog::warn!("load(): {} (error={:?})", reason, error);
                 Err(Error::new(ErrorCode::IoErr, reason))
             },
         }
@@ -347,7 +347,7 @@ impl DynamicLibrary {
                 let aligned_end: usize =
                     mm::align_up(unaligned_end, PAGE_ALIGNMENT).ok_or_else(|| {
                         let reason: &str = "align_up overflow in compute_load_size";
-                        ::syslog::error!("compute_load_size(): {reason}");
+                        ::syslog::warn!("compute_load_size(): {reason}");
                         Error::new(ErrorCode::BadFile, reason)
                     })?;
                 if aligned_end > max_end {
@@ -357,7 +357,7 @@ impl DynamicLibrary {
         }
         if max_end == 0 {
             let reason: &str = "no loadable segments found";
-            ::syslog::error!("compute_load_size(): {}", reason);
+            ::syslog::warn!("compute_load_size(): {}", reason);
             return Err(Error::new(ErrorCode::BadFile, reason));
         }
         Ok(max_end - min_base)
@@ -551,7 +551,7 @@ impl DynamicLibrary {
             Ok(sym)
         } else {
             let reason: &str = "invalid symbol index";
-            ::syslog::error!("get_symbol(): {} (rel={:?})", reason, rel);
+            ::syslog::warn!("get_symbol(): {} (rel={:?})", reason, rel);
             Err(Error::new(ErrorCode::BadFile, reason))
         }
     }
@@ -562,7 +562,7 @@ impl DynamicLibrary {
             Some((base, symbol_value)) => base + symbol_value,
             None => {
                 let reason: &str = "symbol not found";
-                ::syslog::error!(
+                ::syslog::warn!(
                     "get_symbol_value(): {} (symbol_name={:?}, symbol={:?})",
                     reason,
                     symbol_name,
@@ -643,7 +643,7 @@ impl DynamicLibrary {
                 // R_386_RELATIVE relocation must have a zero symbol index.
                 if rel.symbol_index() != 0 {
                     let reason: &str = "invalid R_386_RELATIVE relocation";
-                    ::syslog::error!("resolve(): {} (rel={:?})", reason, rel);
+                    ::syslog::warn!("resolve(): {} (rel={:?})", reason, rel);
                     return Err(Error::new(ErrorCode::BadFile, reason));
                 }
 
@@ -690,7 +690,7 @@ impl DynamicLibrary {
 
             relocation_entry_type => {
                 let reason: &str = "unsupported relocation type";
-                ::syslog::error!(
+                ::syslog::warn!(
                     "resolve(): {} (relocation_type={:?}, rel={:?})",
                     reason,
                     relocation_entry_type,
@@ -874,12 +874,12 @@ impl DynamicLibrary {
             },
             Some(Some(_)) => {
                 let reason: &str = "dependency already loaded";
-                ::syslog::error!("load_dependency(): {}", reason);
+                ::syslog::warn!("load_dependency(): {}", reason);
                 Err(Error::new(ErrorCode::BadFile, reason))
             },
             None => {
                 let reason: &str = "dependency not listed";
-                ::syslog::error!("load_dependency(): {}", reason);
+                ::syslog::warn!("load_dependency(): {}", reason);
                 Err(Error::new(ErrorCode::BadFile, reason))
             },
         }

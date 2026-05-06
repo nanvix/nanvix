@@ -80,7 +80,7 @@ fn unlinkat_linuxd(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Re
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "unlinkat(): failed (dirfd={}, pathname={}, flags={}, error_code={})",
             dirfd,
             pathname,
@@ -93,7 +93,7 @@ fn unlinkat_linuxd(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Re
             Ok(error_code) => Err(Error::new(error_code, "unlinkat() failed")),
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "unlinkat(): failed to parse error code (dirfd={:?}, pathname={:?}, \
                      flags={:?}, error={:?})",
                     dirfd,
@@ -112,7 +112,7 @@ fn unlinkat_linuxd(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Re
             LinuxDaemonMessageHeader::UnlinkAtResponse => Ok(()),
             // Response was not parsed.
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "unlinkat(): failed to parse response (dirfd={:?}, pathname={:?}, flags={:?}, \
                      header={:?})",
                     dirfd,

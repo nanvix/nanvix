@@ -18,7 +18,7 @@ use ::sysapi::{
     ffi::c_void,
     sys_types::c_size_t,
 };
-use ::syslog::error;
+use ::syslog::warn;
 
 //==================================================================================================
 // Standalone Functions
@@ -56,7 +56,7 @@ pub unsafe extern "C" fn aligned_alloc(alignment: c_size_t, size: c_size_t) -> *
     if size == 0 {
         // Zero-size allocations have implementation-defined behavior,
         // thus log a warning message and return null.
-        error!("aligned_alloc(): zero-size allocation (alignment={alignment:?}, size={size:?})");
+        warn!("aligned_alloc(): zero-size allocation (alignment={alignment:?}, size={size:?})");
         set_errno(EINVAL);
         return null_mut();
     }
@@ -65,7 +65,7 @@ pub unsafe extern "C" fn aligned_alloc(alignment: c_size_t, size: c_size_t) -> *
     if alignment == 0 {
         // Zero-size alignments have implementation-defined behavior,
         // thus log a warning message and return null.
-        error!("aligned_alloc(): zero-size alignment (alignment={alignment:?}, size={size:?})");
+        warn!("aligned_alloc(): zero-size alignment (alignment={alignment:?}, size={size:?})");
         set_errno(EINVAL);
         return null_mut();
     }
@@ -73,7 +73,7 @@ pub unsafe extern "C" fn aligned_alloc(alignment: c_size_t, size: c_size_t) -> *
     // Allocate memory and check for errors.
     let ptr: *mut u8 = BlockHeader::alloc(size as usize, Some(alignment as usize));
     if ptr.is_null() {
-        error!("aligned_alloc(): allocation failed (alignment={alignment:?}, size={size:?})");
+        warn!("aligned_alloc(): allocation failed (alignment={alignment:?}, size={size:?})");
         set_errno(ENOMEM);
         return null_mut();
     }

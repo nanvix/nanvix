@@ -72,13 +72,13 @@ pub unsafe extern "C" fn pthread_attr_getdetachstate(
 ) -> c_int {
     // Check if `attr` is not valid.
     if attr.is_null() {
-        ::syslog::error!("pthread_attr_getdetachstate(): invalid attribute pointer");
+        ::syslog::warn!("pthread_attr_getdetachstate(): invalid attribute pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `detachstate` is not valid.
     if detachstate.is_null() {
-        ::syslog::error!("pthread_attr_getdetachstate(): invalid detach state pointer");
+        ::syslog::warn!("pthread_attr_getdetachstate(): invalid detach state pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -123,13 +123,13 @@ pub unsafe extern "C" fn pthread_attr_getguardsize(
 ) -> c_int {
     // Check if `attr` is not valid.
     if attr.is_null() {
-        ::syslog::error!("pthread_attr_getguardsize(): invalid attribute pointer");
+        ::syslog::warn!("pthread_attr_getguardsize(): invalid attribute pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `guardsize` is not valid.
     if guardsize.is_null() {
-        ::syslog::error!("pthread_attr_getguardsize(): invalid guard size pointer");
+        ::syslog::warn!("pthread_attr_getguardsize(): invalid guard size pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -174,13 +174,13 @@ pub unsafe extern "C" fn pthread_attr_getschedparam(
 ) -> c_int {
     // Check if `attr` is not valid.
     if attr.is_null() {
-        ::syslog::error!("pthread_attr_getschedparam(): invalid attribute pointer");
+        ::syslog::warn!("pthread_attr_getschedparam(): invalid attribute pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `param` is not valid.
     if param.is_null() {
-        ::syslog::error!("pthread_attr_getschedparam(): invalid sched param pointer");
+        ::syslog::warn!("pthread_attr_getschedparam(): invalid sched param pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -225,13 +225,13 @@ pub unsafe extern "C" fn pthread_attr_getstackaddr(
 ) -> c_int {
     // Check if `attr` is not valid.
     if attr.is_null() {
-        ::syslog::error!("pthread_attr_getstackaddr(): invalid attribute pointer");
+        ::syslog::warn!("pthread_attr_getstackaddr(): invalid attribute pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `stackaddr` is not valid.
     if stackaddr.is_null() {
-        ::syslog::error!("pthread_attr_getstackaddr(): invalid stack address pointer");
+        ::syslog::warn!("pthread_attr_getstackaddr(): invalid stack address pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -276,13 +276,13 @@ pub unsafe extern "C" fn pthread_attr_getstacksize(
 ) -> c_int {
     // Check if `attr` is not valid.
     if attr.is_null() {
-        ::syslog::error!("pthread_attr_getstacksize(): invalid attribute pointer");
+        ::syslog::warn!("pthread_attr_getstacksize(): invalid attribute pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `stacksize` is not valid.
     if stacksize.is_null() {
-        ::syslog::error!("pthread_attr_getstacksize(): invalid stack size pointer");
+        ::syslog::warn!("pthread_attr_getstacksize(): invalid stack size pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -425,7 +425,7 @@ pub unsafe extern "C" fn pthread_attr_setdetachstate(
 ) -> c_int {
     // Check if `attr` is not valid.
     if attr.is_null() {
-        ::syslog::error!("pthread_attr_setdetachstate(): invalid attribute pointer");
+        ::syslog::warn!("pthread_attr_setdetachstate(): invalid attribute pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -468,7 +468,7 @@ pub unsafe extern "C" fn pthread_attr_setguardsize(
 ) -> c_int {
     // Check if `attr` is not valid.
     if attr.is_null() {
-        ::syslog::error!("pthread_attr_setguardsize(): invalid attribute pointer");
+        ::syslog::warn!("pthread_attr_setguardsize(): invalid attribute pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -512,13 +512,13 @@ pub unsafe extern "C" fn pthread_attr_setschedparam(
 ) -> c_int {
     // Check if `attr` is not valid.
     if attr.is_null() {
-        ::syslog::error!("pthread_attr_setschedparam(): invalid attribute pointer");
+        ::syslog::warn!("pthread_attr_setschedparam(): invalid attribute pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `param` is not valid.
     if param.is_null() {
-        ::syslog::error!("pthread_attr_setschedparam(): invalid sched param pointer");
+        ::syslog::warn!("pthread_attr_setschedparam(): invalid sched param pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -563,7 +563,7 @@ pub unsafe extern "C" fn pthread_attr_setstack(
 ) -> c_int {
     // Check if `attr` is not valid.
     if attr.is_null() {
-        ::syslog::error!("pthread_attr_setstack(): invalid attribute pointer");
+        ::syslog::warn!("pthread_attr_setstack(): invalid attribute pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -606,7 +606,7 @@ pub unsafe extern "C" fn pthread_attr_setstackaddr(
 ) -> c_int {
     // Check if `attr` is not valid.
     if attr.is_null() {
-        ::syslog::error!("pthread_attr_setstackaddr(): invalid attribute pointer");
+        ::syslog::warn!("pthread_attr_setstackaddr(): invalid attribute pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -646,7 +646,7 @@ pub unsafe extern "C" fn pthread_attr_setstackaddr(
 pub unsafe extern "C" fn pthread_setcanceltype(_type_: c_int, oldtype: *mut c_int) -> c_int {
     // Check if `oldtype` is not valid.
     if oldtype.is_null() {
-        ::syslog::error!("pthread_setcanceltype(): invalid old type pointer");
+        ::syslog::warn!("pthread_setcanceltype(): invalid old type pointer");
         return ErrorCode::InvalidArgument.get();
     }
 

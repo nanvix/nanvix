@@ -76,7 +76,7 @@ fn fcntl_linuxd(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
 
     // Check whether system call succeeded or not.
     if response.status == -1 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "fcntl(): failed (fd={:?}, cmd={:?}, arg={:?}, status={:?})",
             fd,
             cmd,
@@ -93,7 +93,7 @@ fn fcntl_linuxd(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
             },
             // Error code was not successfully parsed.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "fcntl(): failed to parse error code (fd={:?}, cmd={:?}, arg={:?}, error={:?})",
                     fd,
                     cmd,
@@ -117,7 +117,7 @@ fn fcntl_linuxd(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
             },
             // Response was not successfully parsed.
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "fcntl(): invalid response (fd={:?}, cmd={:?}, arg={:?}, header={:?})",
                     fd,
                     cmd,

@@ -58,7 +58,7 @@ pub unsafe extern "C" fn times(buffer: *mut tms) -> clock_t {
         Ok(clock) => clock,
         // System call failed.
         Err(error) => {
-            ::syslog::error!("times(): failed (buffer={:?}, error={:?})", buffer, error);
+            ::syslog::warn!("times(): failed (buffer={:?}, error={:?})", buffer, error);
             *__errno_location() = error.code.get();
             -1 as clock_t
         },

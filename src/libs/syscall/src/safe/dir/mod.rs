@@ -313,7 +313,7 @@ struct DirectoryInner {
 impl Drop for DirectoryInner {
     fn drop(&mut self) {
         if let Err(error) = closedir(&self.dir) {
-            ::syslog::error!("DirectoryInner::drop(): {error:?}");
+            ::syslog::warn!("DirectoryInner::drop(): {error:?}");
         }
     }
 }

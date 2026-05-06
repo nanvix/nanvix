@@ -69,7 +69,7 @@ pub unsafe extern "C" fn getpeername(
 ) -> c_int {
     // Check if the address is valid.
     if sockaddr.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "getpeername(): invalid socket address (sockfd={sockfd:?}, sockaddr={sockaddr:?}, \
              len={len:?})"
         );
@@ -79,7 +79,7 @@ pub unsafe extern "C" fn getpeername(
 
     // Check if the length is valid.
     if len.is_null() || (*len as usize) < mem::size_of::<sockaddr>() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "getpeername(): invalid length (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
         );
         *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -97,17 +97,9 @@ pub unsafe extern "C" fn getpeername(
             0
         },
         Err(error) => {
-            if error.code == ::sys::error::ErrorCode::OperationNotSupported {
-                ::syslog::warn!(
-                    "getpeername(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, \
-                     len={len:?})"
-                );
-            } else {
-                ::syslog::error!(
-                    "getpeername(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, \
-                     len={len:?})"
-                );
-            }
+            ::syslog::warn!(
+                "getpeername(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
+            );
             *__errno_location() = error.code.get();
             -1
         },

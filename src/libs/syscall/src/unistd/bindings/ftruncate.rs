@@ -66,11 +66,7 @@ pub unsafe extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
     match crate::unistd::ftruncate(fd, length) {
         Ok(()) => 0,
         Err(error) => {
-            if error.code == ::sys::error::ErrorCode::OperationNotSupported {
-                ::syslog::warn!("ftruncate(): {error:?} (fd={fd:?}, length={length:?})");
-            } else {
-                ::syslog::error!("ftruncate(): {error:?} (fd={fd:?}, length={length:?})");
-            }
+            ::syslog::warn!("ftruncate(): {error:?} (fd={fd:?}, length={length:?})");
             *__errno_location() = error.code.get();
             -1
         },

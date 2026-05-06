@@ -23,7 +23,7 @@ use sysapi::errno::__errno_location;
 pub unsafe extern "C" fn nanosleep(req: *const timespec, rem: *mut timespec) -> c_int {
     // Check if `req` is valid.
     if req.is_null() {
-        ::syslog::error!("nanosleep(): invalid req pointer");
+        ::syslog::warn!("nanosleep(): invalid req pointer");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -40,7 +40,7 @@ pub unsafe extern "C" fn nanosleep(req: *const timespec, rem: *mut timespec) -> 
     match crate::time::nanosleep(req, &mut rem) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "nanosleep(): failed (req={:?}, rem={:?}, error={:?})",
                 req,
                 rem,

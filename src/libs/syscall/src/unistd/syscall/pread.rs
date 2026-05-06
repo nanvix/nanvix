@@ -72,11 +72,11 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
         }
         if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
             let reason: &str = "illegal seek on stdio";
-            ::syslog::error!("pread(): {reason} (fd={fd})");
+            ::syslog::warn!("pread(): {reason} (fd={fd})");
             return Err(Error::new(ErrorCode::IllegalSeek, reason));
         }
         let reason: &str = "pread: fd is not a VFS fd in standalone mode";
-        ::syslog::error!("pread(): {reason} (fd={fd})");
+        ::syslog::warn!("pread(): {reason} (fd={fd})");
         Err(Error::new(ErrorCode::BadFile, reason))
     }
 
@@ -115,7 +115,7 @@ fn pread_linuxd(
 
         // Check whether system call succeeded or not.
         if response.status != 0 {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "pread(): failed (fd={}, buffer.len={}, offset={}, error_code={})",
                 fd,
                 buffer.len(),
@@ -128,7 +128,7 @@ fn pread_linuxd(
                 Ok(error_code) => return Err(Error::new(error_code, "pread() failed")),
                 // System call failed, return unknown error.
                 Err(error) => {
-                    ::syslog::error!("pread(): failed to convert error code (error={:?})", error);
+                    ::syslog::warn!("pread(): failed to convert error code (error={:?})", error);
                     return Err(Error::new(ErrorCode::TryAgain, "pread() failed"));
                 },
             }
@@ -160,7 +160,7 @@ fn pread_linuxd(
                     }
                 },
                 header => {
-                    ::syslog::error!(
+                    ::syslog::warn!(
                         "pread(): failed to parse response (fd={}, buffer.len={}, offset={}, \
                          header={:?})",
                         fd,
