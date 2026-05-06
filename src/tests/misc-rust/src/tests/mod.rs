@@ -7,6 +7,7 @@ use ::sys::error::Error;
 // Modules
 //==================================================================================================
 
+mod argv;
 mod env;
 mod sysinfo;
 mod time;
@@ -18,6 +19,7 @@ mod uid_gid;
 
 /// Runs every miscellaneous system call test.
 pub fn run_all() -> Result<(), Error> {
+    argv::run()?;
     uid_gid::run()?;
     time::run()?;
     sysinfo::run()?;
