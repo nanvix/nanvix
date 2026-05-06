@@ -16,7 +16,10 @@ use crate::safe::{
     RegularFileOpenFlags,
 };
 use ::alloc::{
-    collections::btree_map::BTreeMap,
+    collections::{
+        btree_map::BTreeMap,
+        btree_set::BTreeSet,
+    },
     ffi::CString,
     fmt,
     string::{
@@ -471,7 +474,11 @@ impl DynamicLibrary {
         ::syslog::trace!("lookup(): symbol={}, dlname={:?}", symbol_name, self.filename);
 
         // Search self and dependency tree without global fallback.
-        if let Some(result) = self.lookup_in_load_group(symbol_name)? {
+        // The visited set tracks which dependencies have been traversed in
+        // this lookup to avoid re-searching in diamond-shaped graphs and to
+        // prevent infinite recursion on cyclic dependencies.
+        let mut visited: BTreeSet<usize> = BTreeSet::new();
+        if let Some(result) = self.lookup_in_load_group(symbol_name, &mut visited)? {
             return Ok(Some(result));
         }
 
@@ -492,7 +499,15 @@ impl DynamicLibrary {
     /// Does NOT fall back to the global symbol table. This ensures that
     /// recursive dependency searches do not short-circuit to the global scope
     /// before the entire dependency tree has been checked.
-    fn lookup_in_load_group(&self, symbol_name: &str) -> Result<Option<(usize, usize)>, Error> {
+    ///
+    /// The `visited` set tracks `Arc` allocation addresses of dependencies
+    /// already traversed in this lookup, preventing redundant work on
+    /// diamond-shaped graphs and avoiding false-positive cycle detection.
+    fn lookup_in_load_group(
+        &self,
+        symbol_name: &str,
+        visited: &mut BTreeSet<usize>,
+    ) -> Result<Option<(usize, usize)>, Error> {
         if let Some(symbol) = self.find(symbol_name) {
             if !symbol.is_undefined() {
                 // Symbol is defined in this library.
@@ -505,16 +520,24 @@ impl DynamicLibrary {
         // of whether the root library references the symbol.
         for (_dlname, dlfile) in self.dependencies.iter() {
             if let Some(dlfile) = dlfile {
-                // Check if dependency is locked.
+                // Guard against deadlock: if the mutex is held by an ancestor
+                // in our call chain (true cycle back to a locked parent) or by
+                // a concurrent lookup, skip rather than spinning forever.
                 if dlfile.is_locked() {
-                    let reason: &str = "circular dependency detected";
-                    ::syslog::error!("lookup(): {:?} (symbol_name={:?})", reason, symbol_name);
-                    return Err(Error::new(ErrorCode::BadFile, reason));
+                    continue;
+                }
+
+                // Use the Arc's heap allocation address as a unique,
+                // lock-free identifier for this dependency. Skip if already
+                // traversed in this lookup (diamond-shaped dependency).
+                let id: usize = Arc::as_ptr(dlfile) as usize;
+                if !visited.insert(id) {
+                    continue;
                 }
 
                 let dlfile: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
 
-                if let Some(result) = dlfile.lookup_in_load_group(symbol_name)? {
+                if let Some(result) = dlfile.lookup_in_load_group(symbol_name, visited)? {
                     return Ok(Some(result));
                 }
             }
