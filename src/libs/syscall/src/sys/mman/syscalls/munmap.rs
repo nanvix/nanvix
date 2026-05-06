@@ -58,14 +58,14 @@ pub fn munmap(base: VirtualAddress, length: usize) -> Result<(), Error> {
     // Check if the base address is valid.
     if base < USER_MMAP_BASE || base >= USER_MMAP_END {
         let reason: &str = "invalid base address";
-        syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
+        syslog::warn!("munmap(): {reason} (base={base:?}, length={length})");
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
     // Check if base address is page-aligned.
     if !base.is_aligned(PAGE_ALIGNMENT) {
         let reason: &str = "base address is not page-aligned";
-        syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
+        syslog::warn!("munmap(): {reason} (base={base:?}, length={length})");
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
@@ -73,12 +73,12 @@ pub fn munmap(base: VirtualAddress, length: usize) -> Result<(), Error> {
     let end: VirtualAddress = match base.into_raw_value().checked_add(length) {
         Some(end) if end > USER_MMAP_END_RAW => {
             let reason: &str = "invalid end address";
-            syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
+            syslog::warn!("munmap(): {reason} (base={base:?}, length={length})");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         },
         None => {
             let reason: &str = "end address overflow";
-            syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
+            syslog::warn!("munmap(): {reason} (base={base:?}, length={length})");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         },
         Some(base_end) => VirtualAddress::from_raw_value(base_end),
@@ -87,7 +87,7 @@ pub fn munmap(base: VirtualAddress, length: usize) -> Result<(), Error> {
     // Check if length is page-aligned.
     if !length.is_multiple_of(usize::from(PAGE_ALIGNMENT)) {
         let reason: &str = "length is not page-aligned";
-        syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
+        syslog::warn!("munmap(): {reason} (base={base:?}, length={length})");
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
@@ -144,7 +144,7 @@ pub fn munmap(base: VirtualAddress, length: usize) -> Result<(), Error> {
         },
         None => {
             let reason: &str = "segment not found";
-            syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
+            syslog::warn!("munmap(): {reason} (base={base:?}, length={length})");
             Err(Error::new(ErrorCode::InvalidArgument, reason))
         },
     }

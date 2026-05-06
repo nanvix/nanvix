@@ -50,13 +50,13 @@ pub unsafe extern "C" fn pthread_cond_wait(
 ) -> c_int {
     // Check if `cond` is not valid.
     if cond.is_null() {
-        ::syslog::error!("pthread_cond_wait(): invalid condition variable pointer");
+        ::syslog::warn!("pthread_cond_wait(): invalid condition variable pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `mutex` is not valid.
     if mutex.is_null() {
-        ::syslog::error!("pthread_cond_wait(): invalid mutex pointer");
+        ::syslog::warn!("pthread_cond_wait(): invalid mutex pointer");
         return ErrorCode::InvalidArgument.get();
     }
 

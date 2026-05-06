@@ -77,33 +77,21 @@ fn openat_linuxd(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Resu
         match ErrorCode::try_from(response.status) {
             // Succeeded to parse error code.
             Ok(error_code) => {
-                if error_code == ErrorCode::NoSuchEntry {
-                    ::syslog::warn!(
-                        "openat(): failed (dirfd={:?}, pathname={:?}, flags={:?}, mode={:?}, \
-                         error={:?})",
-                        dirfd,
-                        pathname,
-                        flags,
-                        mode,
-                        error_code
-                    );
-                } else {
-                    ::syslog::error!(
-                        "openat(): failed (dirfd={:?}, pathname={:?}, flags={:?}, mode={:?}, \
-                         error={:?})",
-                        dirfd,
-                        pathname,
-                        flags,
-                        mode,
-                        error_code
-                    );
-                }
+                ::syslog::warn!(
+                    "openat(): failed (dirfd={:?}, pathname={:?}, flags={:?}, mode={:?}, \
+                     error={:?})",
+                    dirfd,
+                    pathname,
+                    flags,
+                    mode,
+                    error_code
+                );
                 // Return error.
                 Err(Error::new(error_code, "openat() failed"))
             },
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "openat(): failed to parse error code (dirfd={:?}, pathname={:?}, flags={:?}, \
                      mode={:?}, error={:?})",
                     dirfd,

@@ -54,7 +54,7 @@ use ::syslog::trace_syscall;
 pub unsafe extern "C" fn utimes(filename: *const c_char, times: *const timeval) -> c_int {
     // Check if `times` is invalid.
     if times.is_null() {
-        ::syslog::error!("utimes(): invalid times (filename={:?}, times={:?})", filename, times);
+        ::syslog::warn!("utimes(): invalid times (filename={:?}, times={:?})", filename, times);
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -63,11 +63,7 @@ pub unsafe extern "C" fn utimes(filename: *const c_char, times: *const timeval) 
     let times: &[timeval; 2] = match slice::from_raw_parts(times, 2).try_into() {
         Ok(times) => times,
         Err(_) => {
-            ::syslog::error!(
-                "utimes(): invalid times (filename={:?}, times={:?})",
-                filename,
-                times
-            );
+            ::syslog::warn!("utimes(): invalid times (filename={:?}, times={:?})", filename, times);
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -77,7 +73,7 @@ pub unsafe extern "C" fn utimes(filename: *const c_char, times: *const timeval) 
     let times_0: timespec = match times[0].try_into() {
         Ok(timespec) => timespec,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "utimes(): failed to convert times[0] (filename={filename:?}, times={times:?}, \
                  error={error:?})",
             );
@@ -90,7 +86,7 @@ pub unsafe extern "C" fn utimes(filename: *const c_char, times: *const timeval) 
     let times_1: timespec = match times[1].try_into() {
         Ok(timespec) => timespec,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "utimes(): failed to convert times[1] (filename={filename:?}, times={times:?}, \
                  error={error:?})",
             );

@@ -38,7 +38,7 @@ pub fn dlclose(handle: &DlHandle) -> Result<(), Error> {
     // Check if dynamic library file is opened.
     if !registry.contains_key(handle) {
         let reason: &str = "dynamic library file not open";
-        ::syslog::error!("dlclose(): {}", reason);
+        ::syslog::warn!("dlclose(): {}", reason);
         return Err(Error::new(ErrorCode::BadFile, reason));
     }
 

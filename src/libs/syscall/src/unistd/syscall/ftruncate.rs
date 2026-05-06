@@ -82,7 +82,7 @@ fn ftruncate_linuxd(fd: c_int, length: off_t) -> Result<(), Error> {
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "ftruncate(): system call failed: fd={}, length={}, status={}",
             fd,
             length,
@@ -105,7 +105,7 @@ fn ftruncate_linuxd(fd: c_int, length: off_t) -> Result<(), Error> {
             LinuxDaemonMessageHeader::FileTruncateResponse => Ok(()),
             // Invalid response.
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "ftruncate(): invalid response: fd={}, length={}, header={:?}",
                     fd,
                     length,

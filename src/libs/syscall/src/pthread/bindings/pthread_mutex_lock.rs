@@ -42,14 +42,14 @@ use ::syslog::trace_libcall;
 pub unsafe extern "C" fn pthread_mutex_lock(mutex: *mut pthread_mutex_t) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {
-        ::syslog::error!("pthread_mutex_lock(): invalid mutex pointer");
+        ::syslog::warn!("pthread_mutex_lock(): invalid mutex pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     match crate::pthread::pthread_mutex_lock(&mut *mutex) {
         Ok(_) => 0,
         Err(error) => {
-            ::syslog::error!("pthread_mutex_lock(): failed to lock mutex (error={:?})", error);
+            ::syslog::warn!("pthread_mutex_lock(): failed to lock mutex (error={:?})", error);
             error.code.get()
         },
     }

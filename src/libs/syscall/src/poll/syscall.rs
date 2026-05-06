@@ -186,7 +186,7 @@ fn poll_linuxd(
                     break Err(Error::new(error_code, reason));
                 },
                 Err(error) => {
-                    ::syslog::error!(
+                    ::syslog::warn!(
                         "poll(): failed to parse error code (fds={fds:?}, timeout={timeout:?}, \
                          error={error:?})"
                     );
@@ -200,7 +200,7 @@ fn poll_linuxd(
         {
             Ok(m) => m,
             Err(error) => {
-                ::syslog::error!("poll(): {error:?} (fds={fds:?}, timeout={timeout:?})");
+                ::syslog::warn!("poll(): {error:?} (fds={fds:?}, timeout={timeout:?})");
                 break Err(error);
             },
         };
@@ -212,7 +212,7 @@ fn poll_linuxd(
 
                 // Add response part to message assembler and check for errors.
                 if let Err(e) = assembler.add_part(part) {
-                    ::syslog::error!(
+                    ::syslog::warn!(
                         "poll(): failed to assemble response (fds={fds:?}, timeout={timeout:?})"
                     );
                     break Err(e);
@@ -240,14 +240,14 @@ fn poll_linuxd(
                         break Ok(ready);
                     },
                     Err(error) => {
-                        ::syslog::error!("poll(): {error:?} (fds={fds:?}, timeout={timeout:?})");
+                        ::syslog::warn!("poll(): {error:?} (fds={fds:?}, timeout={timeout:?})");
                         break Err(error);
                     },
                 }
             },
             _ => {
                 let reason: &'static str = "unexpected message header";
-                ::syslog::error!("poll(): {reason} (fds={fds:?}, timeout={timeout:?})");
+                ::syslog::warn!("poll(): {reason} (fds={fds:?}, timeout={timeout:?})");
                 break Err(Error::new(ErrorCode::InvalidMessage, reason));
             },
         }

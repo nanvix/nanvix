@@ -18,10 +18,7 @@ use ::sysapi::{
     ffi::c_void,
     sys_types::c_size_t,
 };
-use ::syslog::{
-    error,
-    warn,
-};
+use ::syslog::warn;
 
 //==================================================================================================
 // Standalone Functions
@@ -66,7 +63,7 @@ pub unsafe extern "C" fn malloc(size: c_size_t) -> *mut c_void {
     // Allocate memory and check for errors.
     let ptr: *mut u8 = BlockHeader::alloc(size as usize, None);
     if ptr.is_null() {
-        error!("malloc(): allocation failed (size={size:?})");
+        warn!("malloc(): allocation failed (size={size:?})");
         set_errno(ENOMEM);
         return null_mut();
     }

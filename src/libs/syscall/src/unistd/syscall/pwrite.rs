@@ -72,11 +72,11 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_s
         }
         if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
             let reason: &str = "illegal seek on stdio";
-            ::syslog::error!("pwrite(): {reason} (fd={fd})");
+            ::syslog::warn!("pwrite(): {reason} (fd={fd})");
             return Err(Error::new(ErrorCode::IllegalSeek, reason));
         }
         let reason: &str = "pwrite not available in standalone mode";
-        ::syslog::error!("pwrite(): {reason} (fd={fd})");
+        ::syslog::warn!("pwrite(): {reason} (fd={fd})");
         Err(Error::new(ErrorCode::OperationNotSupported, reason))
     }
 
@@ -115,7 +115,7 @@ fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<
 
         // Check whether the system call succeeded or not.
         if response.status != 0 {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "pwrite(): failed (fd={}, buffer.len={}, error_code={})",
                 fd,
                 buffer.len(),
@@ -127,7 +127,7 @@ fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<
                 Ok(error_code) => return Err(Error::new(error_code, "pwritev() failed")),
                 // Error code was not parsed.
                 Err(error) => {
-                    ::syslog::error!("pwrite(): failed to convert error code (error={:?})", error);
+                    ::syslog::warn!("pwrite(): failed to convert error code (error={:?})", error);
                     return Err(Error::new(ErrorCode::TryAgain, "pwritev() failed"));
                 },
             }
@@ -148,7 +148,7 @@ fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<
                 },
                 // Response was not expected.
                 header => {
-                    ::syslog::error!(
+                    ::syslog::warn!(
                         "pwrite(): failed to parse response (fd={}, buffer.len={}, header={:?})",
                         fd,
                         buffer.len(),

@@ -72,14 +72,14 @@ fn fchdir_linuxd(fd: c_int) -> Result<(), Error> {
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!("fchdir(): failed (fd={:?}, error_code={:?})", fd, { response.status });
+        ::syslog::warn!("fchdir(): failed (fd={:?}, error_code={:?})", fd, { response.status });
         // System call failed, parse error code and return.
         match ErrorCode::try_from(response.status) {
             // Succeeded to parse error code.
             Ok(error_code) => Err(Error::new(error_code, "fchdir() failed")),
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::syslog::error!("fchdir(): failed to convert error code (error={:?})", error);
+                ::syslog::warn!("fchdir(): failed to convert error code (error={:?})", error);
                 Err(Error::new(ErrorCode::TryAgain, "fchdir() failed"))
             },
         }

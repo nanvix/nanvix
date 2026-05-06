@@ -17,7 +17,7 @@ use ::sysapi::{
     ffi::c_void,
     sys_types::c_size_t,
 };
-use ::syslog::error;
+use ::syslog::warn;
 
 //==================================================================================================
 // Standalone Functions
@@ -67,7 +67,7 @@ pub unsafe extern "C" fn realloc(ptr: *mut c_void, size: c_size_t) -> *mut c_voi
     // Reallocate memory and check for errors.
     let new_ptr: *mut u8 = BlockHeader::realloc(ptr.cast::<u8>(), size as usize);
     if new_ptr.is_null() {
-        error!("realloc(): reallocation failed (ptr={ptr:?}, size={size:?})");
+        warn!("realloc(): reallocation failed (ptr={ptr:?}, size={size:?})");
         set_errno(ENOMEM);
         return null_mut();
     }

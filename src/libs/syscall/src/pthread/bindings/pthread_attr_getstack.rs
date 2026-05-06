@@ -71,7 +71,7 @@ pub unsafe extern "C" fn pthread_attr_getstack(
 ) -> c_int {
     // Check if `attr` points to an invalid address.
     if attr.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "pthread_attr_getstack(): invalid pointer to thread attributes object (attr={attr:p}, \
              stackaddr={stackaddr:p}, stacksize={stacksize:p})"
         );
@@ -79,7 +79,7 @@ pub unsafe extern "C" fn pthread_attr_getstack(
     }
     // Check if `attr` is misaligned.
     if !(attr as usize).is_multiple_of(core::mem::align_of::<pthread_attr_t>()) {
-        ::syslog::error!(
+        ::syslog::warn!(
             "pthread_attr_getstack(): misaligned pointer to thread attributes object \
              (attr={attr:p}, stackaddr={stackaddr:p}, stacksize={stacksize:p})"
         );
@@ -88,7 +88,7 @@ pub unsafe extern "C" fn pthread_attr_getstack(
 
     // Check if `stackaddr` points to an invalid address.
     if stackaddr.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "pthread_attr_getstack(): invalid pointer to stack address (attr={attr:p}, \
              stackaddr={stackaddr:p}, stacksize={stacksize:p})"
         );
@@ -97,7 +97,7 @@ pub unsafe extern "C" fn pthread_attr_getstack(
 
     // Check if `stackaddr` is misaligned.
     if !(stackaddr as usize).is_multiple_of(core::mem::align_of::<*mut c_void>()) {
-        ::syslog::error!(
+        ::syslog::warn!(
             "pthread_attr_getstack(): misaligned pointer to stack address (attr={attr:p}, \
              stackaddr={stackaddr:p}, stacksize={stacksize:p})"
         );
@@ -106,7 +106,7 @@ pub unsafe extern "C" fn pthread_attr_getstack(
 
     // Check if `stacksize` points to an invalid address.
     if stacksize.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "pthread_attr_getstack(): invalid pointer to stack size (attr={attr:p}, \
              stackaddr={stackaddr:p}, stacksize={stacksize:p})"
         );
@@ -115,7 +115,7 @@ pub unsafe extern "C" fn pthread_attr_getstack(
 
     // Check if `stacksize` is misaligned.
     if !(stacksize as usize).is_multiple_of(core::mem::align_of::<c_size_t>()) {
-        ::syslog::error!(
+        ::syslog::warn!(
             "pthread_attr_getstack(): misaligned pointer to stack size (attr={attr:p}, \
              stackaddr={stackaddr:p}, stacksize={stacksize:p})"
         );

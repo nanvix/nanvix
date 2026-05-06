@@ -35,7 +35,7 @@ use ::syslog::trace_syscall;
 pub unsafe extern "C" fn mprotect(addr: *mut c_char, length: c_size_t, prot: c_int) -> isize {
     // Check if address is invalid.
     if addr.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "mprotect(): invalid base address (addr={addr:?}, length={length}, prot={prot})"
         );
         unsafe {
@@ -54,7 +54,7 @@ pub unsafe extern "C" fn mprotect(addr: *mut c_char, length: c_size_t, prot: c_i
     let length: usize = match usize::try_from(length) {
         Ok(length) => length,
         Err(_) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "mprotect(): invalid length (addr={addr:?}, length={length}, prot={prot})"
             );
             unsafe {
@@ -71,7 +71,7 @@ pub unsafe extern "C" fn mprotect(addr: *mut c_char, length: c_size_t, prot: c_i
     let prot: MemoryMapProtectionFlags = match MemoryMapProtectionFlags::try_from(prot) {
         Ok(prot) => prot,
         Err(_) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "mprotect(): invalid protection flags (addr={addr:?}, length={length}, \
                  prot={prot})"
             );
@@ -89,7 +89,7 @@ pub unsafe extern "C" fn mprotect(addr: *mut c_char, length: c_size_t, prot: c_i
             0
         },
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "mprotect(): failed (addr={addr:?}, length={length}, prot={prot:?}), \
                  error={error:?}"
             );

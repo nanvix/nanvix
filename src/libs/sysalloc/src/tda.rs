@@ -154,7 +154,7 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
     let allocation_alignment: usize = max(tls_alignment, core::mem::align_of::<*mut u8>());
     let allocation_padding_size: usize = align_up(tls_size, allocation_alignment.try_into()?)
         .ok_or_else(|| {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "alloc(): align_up overflow (tls_size={tls_size}, \
                  allocation_alignment={allocation_alignment})"
             );
@@ -177,7 +177,7 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
     // Check if thread-local storage has an invalid alignment.
     if !tls_start_addr.is_multiple_of(tls_alignment) {
         let reason: &'static str = "tls start address is not page-aligned";
-        ::syslog::error!(
+        ::syslog::warn!(
             "alloc(): {reason} (tls_start_addr={tls_start_addr:x?}, tls_alignment={tls_alignment})",
         );
         return Err(Error::new(ErrorCode::ValueOutOfRange, reason));
@@ -188,7 +188,7 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
         Ok(layout) => layout,
         Err(_error) => {
             let reason: &'static str = "invalid layout for thread-local storage";
-            ::syslog::error!(
+            ::syslog::warn!(
                 "alloc(): {reason} (allocation_size={allocation_size}, \
                  allocation_alignment={allocation_alignment})",
             );
@@ -201,7 +201,7 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
     let allocation: *mut u8 = unsafe { crate::alloc(layout) };
     if allocation.is_null() {
         let reason: &'static str = "out of memory";
-        ::syslog::error!("init(): {reason}");
+        ::syslog::warn!("init(): {reason}");
         return Err(Error::new(ErrorCode::OutOfMemory, reason));
     }
 
@@ -225,7 +225,7 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
     // Compute pointer to thread-local storage.
     // SAFETY: `tda_ptr` is non-null and pointer arithmetic is within bounds.
     let tls_aligned_size: usize = align_up(tls_size, PAGE_ALIGNMENT).ok_or_else(|| {
-        ::syslog::error!("alloc(): align_up overflow (tls_size={tls_size}, tda_ptr={tda_ptr:?})");
+        ::syslog::warn!("alloc(): align_up overflow (tls_size={tls_size}, tda_ptr={tda_ptr:?})");
         Error::new(ErrorCode::OutOfMemory, "align_up overflow")
     })?;
     let tls_ptr: *mut u8 = unsafe { tda_ptr.sub(tls_aligned_size) };
@@ -254,7 +254,7 @@ pub fn cleanup() -> Result<(), sys::error::Error> {
     let tcb_ptr: *mut u8 = match sys::kcall::pm::get_thread_data_area() {
         Ok(ptr) => ptr,
         Err(error) => {
-            ::syslog::error!("cleanup_tda(): {error:?}");
+            ::syslog::warn!("cleanup_tda(): {error:?}");
             return Err(error);
         },
     };
@@ -275,7 +275,7 @@ pub fn cleanup() -> Result<(), sys::error::Error> {
     match sys::kcall::pm::set_thread_data_area(core::ptr::null_mut()) {
         Ok(()) => Ok(()),
         Err(error) => {
-            ::syslog::error!("cleanup_tda(): failed to clear tda pointer (error={error:?})");
+            ::syslog::warn!("cleanup_tda(): failed to clear tda pointer (error={error:?})");
             Err(error)
         },
     }
@@ -309,7 +309,7 @@ fn dealloc(tda_ptr: *mut u8) -> Result<(), Error> {
     let allocation_alignment: usize = max(tls_alignment, core::mem::align_of::<*mut u8>());
     let allocation_padding_size: usize = align_up(tls_size, allocation_alignment.try_into()?)
         .ok_or_else(|| {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "dealloc(): align_up overflow (tls_size={tls_size}, \
                  allocation_alignment={allocation_alignment})"
             );
@@ -330,7 +330,7 @@ fn dealloc(tda_ptr: *mut u8) -> Result<(), Error> {
         Ok(layout) => layout,
         Err(_error) => {
             let reason: &'static str = "invalid layout";
-            ::syslog::error!(
+            ::syslog::warn!(
                 "cleanup(): {reason} (allocation_size={allocation_size}, \
                  allocation_align={allocation_alignment})",
             );

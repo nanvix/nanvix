@@ -17,10 +17,7 @@ use ::core::{
         null_mut,
     },
 };
-use ::syslog::{
-    error,
-    warn,
-};
+use ::syslog::warn;
 
 //==================================================================================================
 // Constants
@@ -98,21 +95,21 @@ impl BlockHeader {
 
         // Validate alignment invariants so that free() can trust the header.
         if !alignment.is_power_of_two() || alignment > MAX_ALIGNMENT {
-            error!("alloc(): invalid alignment (alignment={alignment:?}, size={size:?})");
+            warn!("alloc(): invalid alignment (alignment={alignment:?}, size={size:?})");
             return null_mut();
         }
 
         // Compute size for underlying allocation (header_size + padding_size + requested_size).
         let alloc_size: usize = {
             let Some(alloc_size) = size.checked_add(BLOCK_HEADER_SIZE) else {
-                error!(
+                warn!(
                     "alloc(): overflow when computing allocation size (size={size:?}, \
                      alignment={alignment:?})"
                 );
                 return null_mut();
             };
             let Some(alloc_size) = alloc_size.checked_add(alignment - 1) else {
-                error!(
+                warn!(
                     "alloc(): overflow when computing allocation size (size={size:?}, \
                      alignment={alignment:?})"
                 );
@@ -123,7 +120,7 @@ impl BlockHeader {
             // (LlistNode, 8 bytes) are always naturally aligned when placed at
             // the base of a freed chunk.
             let Some(rounded) = alloc_size.checked_add(UNDERLYING_ALIGNMENT - 1) else {
-                error!(
+                warn!(
                     "alloc(): overflow when rounding allocation size (size={size:?}, \
                      alignment={alignment:?})"
                 );
@@ -136,7 +133,7 @@ impl BlockHeader {
         let layout: Layout = match Layout::from_size_align(alloc_size, UNDERLYING_ALIGNMENT) {
             Ok(layout) => layout,
             Err(error) => {
-                error!("alloc(): {error:?} (alignment={alignment:?}, size={size:?})");
+                warn!("alloc(): {error:?} (alignment={alignment:?}, size={size:?})");
                 return null_mut();
             },
         };
@@ -144,9 +141,7 @@ impl BlockHeader {
         // Perform allocation and check for errors.
         let base: *mut u8 = alloc(layout);
         if base.is_null() {
-            error!(
-                "alloc(): underlying allocation failed (alignment={alignment:?}, size={size:?})"
-            );
+            warn!("alloc(): underlying allocation failed (alignment={alignment:?}, size={size:?})");
             return null_mut();
         }
 
@@ -196,7 +191,7 @@ impl BlockHeader {
         // Allocate new block and check for errors.
         let new_ptr: *mut u8 = BlockHeader::alloc(new_size, Some(header_ref.alignment));
         if new_ptr.is_null() {
-            error!("realloc(): allocation failed (user_ptr={user_ptr:?}, new_size={new_size:?})");
+            warn!("realloc(): allocation failed (user_ptr={user_ptr:?}, new_size={new_size:?})");
             return null_mut();
         }
 
@@ -255,7 +250,7 @@ impl BlockHeader {
             && valid_underlying_alignment;
 
         if !valid {
-            error!(
+            warn!(
                 "BlockHeader::free(): corrupted header detected, leaking (user_ptr={user_ptr:p}, \
                  header={header:?})"
             );
@@ -266,9 +261,7 @@ impl BlockHeader {
         {
             Ok(layout) => layout,
             Err(error) => {
-                error!(
-                    "BlockHeader::free(): corrupted header (error={error:?}, header={header:?})"
-                );
+                warn!("BlockHeader::free(): corrupted header (error={error:?}, header={header:?})");
                 return Err(());
             },
         };

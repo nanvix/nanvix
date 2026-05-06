@@ -44,18 +44,18 @@ use ::syslog::trace_libcall;
 #[trace_libcall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn seteuid(uid: uid_t) -> c_int {
-    ::syslog::error!("seteuid(): uid={uid:?}");
+    ::syslog::trace!("seteuid(): uid={uid:?}");
 
     // Check whether `uid` equals to the effective user ID of the calling process.
     match unistd::geteuid() {
         Ok(euid) if uid == euid => 0,
         Ok(euid) => {
-            ::syslog::error!("seteuid(): operation not permitted (uid={uid:?}, euid={euid:?})");
+            ::syslog::warn!("seteuid(): operation not permitted (uid={uid:?}, euid={euid:?})");
             *__errno_location() = ErrorCode::OperationNotPermitted.get();
             -1
         },
         Err(error) => {
-            ::syslog::error!("seteuid(): {error:?} (uid={uid:?})");
+            ::syslog::warn!("seteuid(): {error:?} (uid={uid:?})");
             *__errno_location() = error.code.get();
             -1
         },

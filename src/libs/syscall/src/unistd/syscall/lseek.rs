@@ -82,7 +82,7 @@ fn lseek_linuxd(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<o
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "lseek(): failed (fd={}, offset={}, whence={}, error={})",
             fd,
             offset,
@@ -99,7 +99,7 @@ fn lseek_linuxd(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<o
             },
             // Error code was not successfully parsed.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "lseek(): failed to parse error code (fd={}, offset={}, whence={}, error={:?})",
                     fd,
                     offset,
@@ -123,7 +123,7 @@ fn lseek_linuxd(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<o
             },
             // Response was not successfully parsed.
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "lseek(): failed to parse response (fd={}, offset={}, whence={}, header={:?})",
                     fd,
                     offset,

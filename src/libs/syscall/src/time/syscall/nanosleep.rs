@@ -39,7 +39,7 @@ pub fn nanosleep(req: &timespec, rem: &mut Option<&mut timespec>) -> Result<(), 
     // Check if the requested time is valid.
     if req.tv_sec < 0 || req.tv_nsec < 0 || req.tv_nsec >= 1_000_000_000 {
         let reason: &str = "invalid sleep time";
-        ::syslog::error!("nanosleep(): {} (tv_sec={}, tv_nsec={})", reason, { req.tv_sec }, {
+        ::syslog::warn!("nanosleep(): {} (tv_sec={}, tv_nsec={})", reason, { req.tv_sec }, {
             req.tv_nsec
         });
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
@@ -49,7 +49,7 @@ pub fn nanosleep(req: &timespec, rem: &mut Option<&mut timespec>) -> Result<(), 
         Ok(secs) => secs,
         Err(_) => {
             let reason: &str = "invalid sleep time";
-            ::syslog::error!("nanosleep(): {} (tv_sec={}, tv_nsec={})", reason, { req.tv_sec }, {
+            ::syslog::warn!("nanosleep(): {} (tv_sec={}, tv_nsec={})", reason, { req.tv_sec }, {
                 req.tv_nsec
             });
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
@@ -59,7 +59,7 @@ pub fn nanosleep(req: &timespec, rem: &mut Option<&mut timespec>) -> Result<(), 
         Ok(nanos) => nanos,
         Err(_) => {
             let reason: &str = "invalid sleep time";
-            ::syslog::error!("nanosleep(): {} (tv_sec={}, tv_nsec={})", reason, { req.tv_sec }, {
+            ::syslog::warn!("nanosleep(): {} (tv_sec={}, tv_nsec={})", reason, { req.tv_sec }, {
                 req.tv_nsec
             });
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
@@ -80,7 +80,7 @@ pub fn nanosleep(req: &timespec, rem: &mut Option<&mut timespec>) -> Result<(), 
             Some(later) => later,
             None => {
                 let reason: &str = "invalid sleep time";
-                ::syslog::error!(
+                ::syslog::warn!(
                     "nanosleep(): {} (tv_sec={}, tv_nsec={})",
                     reason,
                     { req.tv_sec },

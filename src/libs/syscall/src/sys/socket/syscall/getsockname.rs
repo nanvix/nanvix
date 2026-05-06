@@ -69,7 +69,7 @@ pub fn getsockname(sockfd: c_int, sockaddr: &mut SocketAddr) -> Result<(), Error
     if response.status != 0 {
         // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::syslog::error!("getsockname(): failed ({:?})", error_code);
+        ::syslog::warn!("getsockname(): failed ({:?})", error_code);
         Err(Error::new(error_code, "getsockname() failed"))
     } else {
         // System call succeeded, parse response.

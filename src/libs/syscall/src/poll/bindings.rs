@@ -80,11 +80,7 @@ pub unsafe extern "C" fn poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) ->
             ready.len() as c_int
         },
         Err(error) => unsafe {
-            if error.code == ::sys::error::ErrorCode::OperationNotSupported {
-                ::syslog::warn!("poll(): failed (error={:?})", error);
-            } else {
-                ::syslog::error!("poll(): failed (error={:?})", error);
-            }
+            ::syslog::warn!("poll(): failed (error={:?})", error);
             *__errno_location() = error.code.get();
             -1
         },

@@ -65,13 +65,13 @@ pub fn clock_gettime(clock_id: clockid_t, tp: &mut Option<&mut timespec>) -> Res
         },
         CLOCK_PROCESS_CPUTIME_ID | CLOCK_THREAD_CPUTIME_ID => {
             let reason: &str = "unsupported clock id";
-            ::syslog::error!("clock_gettime(): {} (clock_id={:?}, tp={:x?})", reason, clock_id, tp);
+            ::syslog::warn!("clock_gettime(): {} (clock_id={:?}, tp={:x?})", reason, clock_id, tp);
             Err(Error::new(ErrorCode::OperationNotSupported, reason))
         },
 
         clock_id => {
             let reason: &str = "invalid clock id";
-            ::syslog::error!("clock_gettime(): {} (clock_id={:?}, tp={:x?})", reason, clock_id, tp);
+            ::syslog::warn!("clock_gettime(): {} (clock_id={:?}, tp={:x?})", reason, clock_id, tp);
             Err(Error::new(ErrorCode::InvalidArgument, reason))
         },
     }

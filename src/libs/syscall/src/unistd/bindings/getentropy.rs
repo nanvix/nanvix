@@ -91,7 +91,7 @@ fn prng() -> i32 {
 pub unsafe extern "C" fn getentropy(buffer: *mut c_void, length: size_t) -> c_int {
     // Check if buffer is null.
     if buffer.is_null() {
-        ::syslog::error!("getentropy(): invalid buffer (buffer={buffer:?}, length={length:?})");
+        ::syslog::warn!("getentropy(): invalid buffer (buffer={buffer:?}, length={length:?})");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }

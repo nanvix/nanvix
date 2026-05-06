@@ -105,7 +105,7 @@ fn linkat_linuxd(
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "linkat(): failed (olddirfd={}, oldpath={}, newdirfd={}, newpath={}, flags={}, \
              error={})",
             olddirfd,
@@ -124,7 +124,7 @@ fn linkat_linuxd(
             },
             // Error code was not successfully parsed.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "linkat(): failed to parse error code (olddirfd={}, oldpath={}, newdirfd={}, \
                      newpath={}, flags={}, error={:?})",
                     olddirfd,
@@ -147,7 +147,7 @@ fn linkat_linuxd(
             // Response was not successfully parsed.
             header => {
                 let reason: &str = "unexpected message header";
-                ::syslog::error!(
+                ::syslog::warn!(
                     "linkat(): {:?} (olddirfd={}, oldpath={}, newdirfd={}, newpath={}, flags={}, \
                      header={:?})",
                     reason,

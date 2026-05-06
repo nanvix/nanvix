@@ -154,7 +154,7 @@ pub fn pthread_join(thread: pthread_t) -> Result<usize, Error> {
     let tid: ThreadIdentifier = match thread.try_into() {
         Ok(tid) => tid,
         Err(error) => {
-            ::syslog::error!("pthread_join(): {error:?} (thread={thread:?})");
+            ::syslog::warn!("pthread_join(): {error:?} (thread={thread:?})");
             return Err(error);
         },
     };
