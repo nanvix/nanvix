@@ -40,7 +40,7 @@ use ::syslog::trace_libcall;
 pub unsafe extern "C" fn pthread_setcancelstate(state: c_int, oldstate: *mut c_int) -> c_int {
     // Check if `oldstate` is not valid.
     if oldstate.is_null() {
-        ::syslog::error!("pthread_setcancelstate(): invalid old state pointer");
+        ::syslog::warn!("pthread_setcancelstate(): invalid old state pointer");
         return ErrorCode::InvalidArgument.get();
     }
 

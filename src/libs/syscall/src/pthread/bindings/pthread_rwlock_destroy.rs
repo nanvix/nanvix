@@ -43,19 +43,19 @@ use ::syslog::trace_libcall;
 pub unsafe extern "C" fn pthread_rwlock_destroy(rwlock: *mut pthread_rwlock_t) -> c_int {
     // Check if `rwlock` object is invalid.
     if rwlock.is_null() {
-        ::syslog::error!("pthread_rwlock_destroy(): invalid read-write lock (rwlock={rwlock:p})");
+        ::syslog::warn!("pthread_rwlock_destroy(): invalid read-write lock (rwlock={rwlock:p})");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `rwlock` is unaligned.
     if !(rwlock as usize).is_multiple_of(align_of::<pthread_rwlock_t>()) {
-        ::syslog::error!("pthread_rwlock_destroy(): unaligned read-write lock (rwlock={rwlock:p})");
+        ::syslog::warn!("pthread_rwlock_destroy(): unaligned read-write lock (rwlock={rwlock:p})");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Attempt to destroy the read-write lock and check for errors.
     if let Err(error) = crate::pthread::pthread_rwlock_destroy(&mut *rwlock) {
-        ::syslog::error!("pthread_rwlock_destroy(): {error:?} (rwlock={rwlock:p})");
+        ::syslog::warn!("pthread_rwlock_destroy(): {error:?} (rwlock={rwlock:p})");
         return error.code.get();
     }
 

@@ -51,11 +51,7 @@ pub unsafe extern "C" fn listen(sockfd: c_int, backlog: c_int) -> c_int {
     match crate::sys::socket::syscall::listen(sockfd, backlog) {
         Ok(()) => 0,
         Err(error) => {
-            if error.code == ::sys::error::ErrorCode::OperationNotSupported {
-                ::syslog::warn!("listen(): {error:?} (sockfd={sockfd:?}, backlog={backlog:?})");
-            } else {
-                ::syslog::error!("listen(): {error:?} (sockfd={sockfd:?}, backlog={backlog:?})");
-            }
+            ::syslog::warn!("listen(): {error:?} (sockfd={sockfd:?}, backlog={backlog:?})");
             *__errno_location() = error.code.get();
             -1
         },

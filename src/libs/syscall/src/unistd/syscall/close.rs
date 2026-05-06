@@ -72,7 +72,7 @@ fn close_linuxd(fd: i32) -> Result<(), Error> {
     if response.status != 0 {
         // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::syslog::error!("close(): failed (error={})", error_code);
+        ::syslog::warn!("close(): failed (error={})", error_code);
         Err(Error::new(error_code, "close() failed"))
     } else {
         // System call succeeded, parse response.
@@ -107,11 +107,7 @@ pub mod bindings {
         match crate::unistd::close(fd) {
             Ok(()) => 0,
             Err(error) => {
-                if error.code == ::sys::error::ErrorCode::OperationNotSupported {
-                    ::syslog::warn!("close(): failed ({:?})", error);
-                } else {
-                    ::syslog::error!("close(): failed ({:?})", error);
-                }
+                ::syslog::warn!("close(): failed ({:?})", error);
                 unsafe {
                     *__errno_location() = error.code.get();
                 }

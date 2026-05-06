@@ -180,7 +180,7 @@ pub unsafe extern "C" fn dladdr(addr: *const c_void, dlip: *mut DlInfo) -> i32 {
     if addr.is_null() {
         let reason: &str = "addr is null";
         DL_LAST_ERROR.lock().set(reason);
-        ::syslog::error!("dladdr(): {}", reason);
+        ::syslog::warn!("dladdr(): {}", reason);
         return -1;
     }
 
@@ -188,7 +188,7 @@ pub unsafe extern "C" fn dladdr(addr: *const c_void, dlip: *mut DlInfo) -> i32 {
     if dlip.is_null() {
         let reason: &str = "info is null";
         DL_LAST_ERROR.lock().set(reason);
-        ::syslog::error!("dladdr(): {}", reason);
+        ::syslog::warn!("dladdr(): {}", reason);
         return -1;
     }
 
@@ -200,7 +200,7 @@ pub unsafe extern "C" fn dladdr(addr: *const c_void, dlip: *mut DlInfo) -> i32 {
         Ok(()) => 0,
         Err(error) => {
             DL_LAST_ERROR.lock().set(error.reason);
-            ::syslog::error!("dladdr(): {:?}", error);
+            ::syslog::warn!("dladdr(): {:?}", error);
             -1
         },
     }
@@ -237,7 +237,7 @@ pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> i32 {
     if handle.is_null() {
         let reason: &str = "handle is null";
         DL_LAST_ERROR.lock().set(reason);
-        ::syslog::error!("dlclose(): {}", reason);
+        ::syslog::warn!("dlclose(): {}", reason);
         return -1;
     }
 
@@ -251,7 +251,7 @@ pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> i32 {
         Ok(()) => 0,
         Err(error) => {
             DL_LAST_ERROR.lock().set(error.reason);
-            ::syslog::error!("dlclose(): {:?}", error);
+            ::syslog::warn!("dlclose(): {:?}", error);
             -1
         },
     }
@@ -326,7 +326,7 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_
         Ok(pathname) => pathname,
         Err(error) => {
             let reason: String = alloc::format!("invalid filename (error={error:?})");
-            ::syslog::error!("dlopen(): {}", reason);
+            ::syslog::warn!("dlopen(): {}", reason);
             DL_LAST_ERROR.lock().set(&reason);
             return ptr::null_mut();
         },
@@ -338,7 +338,7 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_
         None => {
             let reason: String = alloc::format!("invalid mode (mode={mode:#x})");
             DL_LAST_ERROR.lock().set(&reason);
-            ::syslog::error!("dlopen(): {}", reason);
+            ::syslog::warn!("dlopen(): {}", reason);
             return ptr::null_mut();
         },
     };
@@ -349,7 +349,7 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_
         Ok(handle) => handle.as_mut_ptr(),
         Err(error) => {
             DL_LAST_ERROR.lock().set(error.reason);
-            ::syslog::error!("dlopen(): {:?}", error);
+            ::syslog::warn!("dlopen(): {:?}", error);
             ptr::null_mut()
         },
     }
@@ -393,7 +393,7 @@ pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *m
     if symbol.is_null() {
         let reason: &str = "symbol is null";
         DL_LAST_ERROR.lock().set(reason);
-        ::syslog::error!("dlsym(): {}", reason);
+        ::syslog::warn!("dlsym(): {}", reason);
         return ptr::null_mut();
     }
 
@@ -402,7 +402,7 @@ pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *m
         Ok(symbol) => symbol,
         Err(error) => {
             let reason: String = alloc::format!("invalid symbol (error={error:?})");
-            ::syslog::error!("dlsym(): {}", reason);
+            ::syslog::warn!("dlsym(): {}", reason);
             DL_LAST_ERROR.lock().set(&reason);
             return ptr::null_mut();
         },
@@ -420,7 +420,7 @@ pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *m
         Ok(symbol) => symbol.into_raw_value() as *mut c_void,
         Err(error) => {
             DL_LAST_ERROR.lock().set(error.reason);
-            ::syslog::error!("dlsym(): {:?}", error);
+            ::syslog::warn!("dlsym(): {:?}", error);
             ptr::null_mut()
         },
     }

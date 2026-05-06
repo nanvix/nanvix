@@ -52,17 +52,10 @@ pub unsafe extern "C" fn posix_fadvise(
     match fcntl::posix_fadvise(fd, offset, len, advice) {
         Ok(()) => 0,
         Err(error) => {
-            if error.code == ::sys::error::ErrorCode::OperationNotSupported {
-                ::syslog::warn!(
-                    "posix_fadvise(): failed (fd={fd:?}, offset={offset:?}, len={len:?}, \
-                     advice={advice:?})"
-                );
-            } else {
-                ::syslog::error!(
-                    "posix_fadvise(): failed (fd={fd:?}, offset={offset:?}, len={len:?}, \
-                     advice={advice:?})"
-                );
-            }
+            ::syslog::warn!(
+                "posix_fadvise(): failed (fd={fd:?}, offset={offset:?}, len={len:?}, \
+                 advice={advice:?})"
+            );
 
             error.code.get()
         },

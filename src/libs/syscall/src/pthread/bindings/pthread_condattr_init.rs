@@ -45,7 +45,7 @@ use ::syslog::trace_libcall;
 pub unsafe extern "C" fn pthread_condattr_init(attr: *mut pthread_condattr_t) -> c_int {
     // Check if pointer to cond attribute object is valid.
     if attr.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "pthread_condattr_init(): invalid pointer to cond attribute object (attr={attr:p})"
         );
         return ErrorCode::InvalidArgument.get();
@@ -53,7 +53,7 @@ pub unsafe extern "C" fn pthread_condattr_init(attr: *mut pthread_condattr_t) ->
 
     // Check if pointer to cond attribute object is properly aligned.
     if !(attr as usize).is_multiple_of(::core::mem::align_of::<pthread_condattr_t>()) {
-        ::syslog::error!(
+        ::syslog::warn!(
             "pthread_condattr_init(): misaligned pointer to cond attribute object (attr={attr:p})"
         );
         return ErrorCode::InvalidArgument.get();

@@ -71,7 +71,7 @@ pub fn fchownat(
     {
         ::nvx::vfs::fd::vfs_fchownat(dirfd, path, owner, group, flag).map_err(|e| {
             let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::error!(
+            ::syslog::warn!(
                 "fchownat(): VFS fchownat failed (dirfd={dirfd:?}, path={path:?}, error={e})"
             );
             Error::new(code, "vfs fchownat failed")
@@ -106,7 +106,7 @@ fn fchownat_linuxd(
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "fchownat(): failed (dirfd={:?}, path={:?}, owner={:?}, group={:?}, flag={:?}, \
              error_code={:?})",
             dirfd,
@@ -128,7 +128,7 @@ fn fchownat_linuxd(
         match message.header {
             LinuxDaemonMessageHeader::FileChownAtResponse => Ok(()),
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "fchownat(): failed to parse response (dirfd={:?}, path={:?}, owner={:?}, \
                      group={:?}, flag={:?}, header={:?})",
                     dirfd,

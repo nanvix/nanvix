@@ -13,8 +13,8 @@ use ::sys::error::{
 };
 use ::sysapi::ffi::c_int;
 use ::syslog::{
-    error,
     trace,
+    warn,
 };
 #[cfg(not(feature = "standalone"))]
 use {
@@ -65,7 +65,7 @@ pub fn posix_getdents(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error>
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_getdents(fd, count).map_err(|e| {
                 let code: ErrorCode = e.into();
-                error!("posix_getdents(): VFS getdents failed (fd={fd}, error={e})");
+                warn!("posix_getdents(): VFS getdents failed (fd={fd}, error={e})");
                 Error::new(code, "vfs getdents failed")
             });
         }
@@ -91,14 +91,14 @@ fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Err
     // Build request message.
     let request: Message = GetDirectoryEntriesRequest::build(tid, fd, count).map_err(|error| {
         let reason: &str = "failed to build message";
-        error!("posix_getdents(): {reason} (error={:?})", error);
+        warn!("posix_getdents(): {reason} (error={:?})", error);
         Error::new(error.code, reason)
     })?;
 
     // Send request message.
     ::sys::kcall::ipc::send(&request).map_err(|error| {
         let reason: &str = "failed to send message";
-        error!("posix_getdents(): {reason} (error={:?})", error);
+        warn!("posix_getdents(): {reason} (error={:?})", error);
         Error::new(error.code, reason)
     })?;
 
@@ -106,7 +106,7 @@ fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Err
     let mut assembler: LinuxDaemonLongMessage =
         LinuxDaemonLongMessage::new(MESSAGE_ASSEMBLER_CAPACITY).map_err(|error| {
             let reason: &str = "failed to create message assembler";
-            error!("posix_getdents(): {reason} (error={:?})", error);
+            warn!("posix_getdents(): {reason} (error={:?})", error);
             Error::new(error.code, reason)
         })?;
 
@@ -114,7 +114,7 @@ fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Err
         // Wait for response message.
         let response: Message = ::sys::kcall::ipc::recv().map_err(|error| {
             let reason: &str = "failed to receive message";
-            error!("posix_getdents(): {reason} (error={:?})", error);
+            warn!("posix_getdents(): {reason} (error={:?})", error);
             Error::new(error.code, reason)
         })?;
 
@@ -124,12 +124,12 @@ fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Err
             match ErrorCode::try_from(response.status) {
                 Ok(error_code) => {
                     let reason: &str = "system call failed";
-                    error!("posix_getdents(): {reason} (error_code={error_code:?})");
+                    warn!("posix_getdents(): {reason} (error_code={error_code:?})");
                     break Err(Error::new(error_code, reason));
                 },
                 Err(_) => {
                     let reason: &str = "failed to parse error code";
-                    error!("posix_getdents(): {reason} (response.status={})", { response.status });
+                    warn!("posix_getdents(): {reason} (response.status={})", { response.status });
                     break Err(Error::new(ErrorCode::InvalidMessage, reason));
                 },
             }
@@ -145,7 +145,7 @@ fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Err
                     // Add part to message assembler and check for errors.
                     if let Err(error) = assembler.add_part(part) {
                         let reason: &str = "failed to assemble message";
-                        error!("posix_getdents(): {reason} (error={:?})", error);
+                        warn!("posix_getdents(): {reason} (error={:?})", error);
                         break Err(error);
                     }
 
@@ -159,14 +159,14 @@ fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Err
                     match GetDirectoryEntriesResponse::from_parts(&parts) {
                         Ok(response) => break Ok(response.entries),
                         Err(error) => {
-                            error!("posix_getdents(): invalid message (error={:?})", error);
+                            warn!("posix_getdents(): invalid message (error={:?})", error);
                             break Err(error);
                         },
                     }
                 },
                 header => {
                     let reason: &str = "unexpected message type";
-                    error!("posix_getdents(): {reason} (header={header:?})");
+                    warn!("posix_getdents(): {reason} (header={header:?})");
                     break Err(Error::new(ErrorCode::InvalidMessage, reason));
                 },
             }

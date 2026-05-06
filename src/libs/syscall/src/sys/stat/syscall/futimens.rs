@@ -44,7 +44,7 @@ use {
 ///
 #[allow(unreachable_code)]
 pub fn futimens(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), Error> {
-    ::syslog::error!("futimens(): fd={:?}, times={:?}", fd, times);
+    ::syslog::warn!("futimens(): fd={:?}, times={:?}", fd, times);
 
     // In standalone mode, forward operation to virtual file system (VFS).
     #[cfg(feature = "standalone")]
@@ -77,7 +77,7 @@ fn futimens_linuxd(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), E
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!("futimens(): failed (fd={:?}, times={:?}, status={:?})", fd, times, {
+        ::syslog::warn!("futimens(): failed (fd={:?}, times={:?}, status={:?})", fd, times, {
             response.status
         });
 
@@ -90,7 +90,7 @@ fn futimens_linuxd(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), E
             },
             // Error code was not successfully parsed.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "futimens(): failed to parse error code (fd={:?}, times={:?}, error={:?})",
                     fd,
                     times,
@@ -108,7 +108,7 @@ fn futimens_linuxd(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), E
             LinuxDaemonMessageHeader::UpdateFileAccessTimeResponse => Ok(()),
             // Response was not successfully parsed.
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "futimens(): invalid response (fd={:?}, times={:?}, header={:?})",
                     fd,
                     times,

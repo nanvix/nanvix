@@ -44,18 +44,18 @@ use ::syslog::trace_syscall;
 #[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn setgid(gid: gid_t) -> c_int {
-    ::syslog::error!("setgid(): gid={gid:?}");
+    ::syslog::trace!("setgid(): gid={gid:?}");
 
     // Check whether `gid` equals to the real group ID of the calling process.
     match unistd::getgid() {
         Ok(rgid) if gid == rgid => 0,
         Ok(rgid) => {
-            ::syslog::error!("setgid(): operation not permitted (gid={gid:?}, rgid={rgid:?})");
+            ::syslog::warn!("setgid(): operation not permitted (gid={gid:?}, rgid={rgid:?})");
             *__errno_location() = ErrorCode::OperationNotPermitted.get();
             -1
         },
         Err(error) => {
-            ::syslog::error!("setgid(): {error:?} (gid={gid:?})");
+            ::syslog::warn!("setgid(): {error:?} (gid={gid:?})");
             *__errno_location() = error.code.get();
             -1
         },

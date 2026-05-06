@@ -74,7 +74,7 @@ fn write_chunk(
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "write_chunk(): failed (fd={:?}, chunk.len={:?}, error_code={:?})",
             fd,
             chunk.len(),
@@ -84,7 +84,7 @@ fn write_chunk(
         match ErrorCode::try_from(response.status) {
             Ok(error_code) => return Err(Error::new(error_code, "write() failed")),
             Err(error) => {
-                ::syslog::error!("write_chunk(): failed to convert error code (error={:?})", error);
+                ::syslog::warn!("write_chunk(): failed to convert error code (error={:?})", error);
                 return Err(Error::new(ErrorCode::TryAgain, "write() failed"));
             },
         }
@@ -98,7 +98,7 @@ fn write_chunk(
             Ok(response.count as c_size_t)
         },
         header => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "write_chunk(): failed to parse response (fd={:?}, chunk.len={:?}, header={:?})",
                 fd,
                 chunk.len(),

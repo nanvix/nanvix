@@ -65,7 +65,7 @@ use ::syslog::trace_syscall;
 pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: c_size_t) -> c_ssize_t {
     // Check if buffer is invalid.
     if buffer.is_null() {
-        ::syslog::error!("read(): invalid buffer (fd={fd:?}, buffer={buffer:?}, count={count:?})");
+        ::syslog::warn!("read(): invalid buffer (fd={fd:?}, buffer={buffer:?}, count={count:?})");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -83,7 +83,7 @@ pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: c_size_t) -
     match crate::unistd::read(fd, buffer) {
         Ok(bytes_read) => bytes_read as c_ssize_t,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "read(): failed (error={error:?}, fd={fd:?}, buffer={:?}, count={count:?})",
                 buffer.as_ptr()
             );

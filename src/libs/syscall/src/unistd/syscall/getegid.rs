@@ -64,7 +64,7 @@ fn getegid_linuxd() -> Result<gid_t, Error> {
 
     // Check whether system call succeeded or not
     if response.status != 0 {
-        ::syslog::error!("getegid(): failed (tid={:?}, status={:?})", tid, { response.status });
+        ::syslog::warn!("getegid(): failed (tid={:?}, status={:?})", tid, { response.status });
 
         match ErrorCode::try_from(response.status) {
             // System call failed, return error
@@ -83,11 +83,7 @@ fn getegid_linuxd() -> Result<gid_t, Error> {
             },
             // Invalid response
             header => {
-                ::syslog::error!(
-                    "getegid(): invalid response (tid={:?}, header={:?})",
-                    tid,
-                    header
-                );
+                ::syslog::warn!("getegid(): invalid response (tid={:?}, header={:?})", tid, header);
                 Err(Error::new(ErrorCode::InvalidMessage, "invalid response"))
             },
         }

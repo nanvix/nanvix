@@ -73,7 +73,7 @@ pub fn mprotect(
     // Check if base address is page-aligned.
     if !base.is_aligned(PAGE_ALIGNMENT) {
         let reason: &'static str = "base address is not page-aligned";
-        ::syslog::error!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
+        ::syslog::warn!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
@@ -81,12 +81,12 @@ pub fn mprotect(
     let end: VirtualAddress = match base.into_raw_value().checked_add(len) {
         Some(end) if end > USER_MMAP_END_RAW => {
             let reason: &'static str = "invalid end address";
-            ::syslog::error!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
+            ::syslog::warn!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         },
         None => {
             let reason: &'static str = "address overflow";
-            ::syslog::error!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
+            ::syslog::warn!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         },
         Some(end) => VirtualAddress::from_raw_value(end),
@@ -95,7 +95,7 @@ pub fn mprotect(
     // Check if length is page-aligned.
     if !len.is_multiple_of(usize::from(PAGE_ALIGNMENT)) {
         let reason: &'static str = "length is not page-aligned";
-        ::syslog::error!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
+        ::syslog::warn!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
@@ -133,7 +133,7 @@ pub fn mprotect(
                 segment
             } else {
                 let reason: &'static str = "memory segment not found";
-                ::syslog::error!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
+                ::syslog::warn!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             };
 
@@ -151,7 +151,7 @@ pub fn mprotect(
         },
         None => {
             let reason: &'static str = "memory segment not found";
-            ::syslog::error!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
+            ::syslog::warn!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
             Err(Error::new(ErrorCode::OutOfMemory, reason))
         },
     }

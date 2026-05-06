@@ -60,7 +60,7 @@ pub fn pthread_mutex_init(
         Ok(())
     } else {
         let reason: &str = "mutex is not initialized";
-        ::syslog::error!("pthread_mutex_init(): {}", reason);
+        ::syslog::warn!("pthread_mutex_init(): {}", reason);
         Err(Error::new(ErrorCode::InvalidArgument, reason))
     }
 }
@@ -76,7 +76,7 @@ pub fn pthread_mutex_destroy(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
             return Ok(());
         } else {
             let reason: &str = "mutex is not initialized";
-            ::syslog::error!("pthread_mutex_destroy(): {}", reason);
+            ::syslog::warn!("pthread_mutex_destroy(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -97,7 +97,7 @@ pub fn pthread_mutex_lock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
             entry.insert(pthread_mutexattr_t::default());
         } else {
             let reason: &str = "mutex is not initialized";
-            ::syslog::error!("pthread_mutex_lock(): {}", reason);
+            ::syslog::warn!("pthread_mutex_lock(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -119,7 +119,7 @@ pub fn pthread_mutex_timedlock(
             entry.insert(pthread_mutexattr_t::default());
         } else {
             let reason: &str = "mutex is not initialized";
-            ::syslog::error!("pthread_mutex_timedlock(): {}", reason);
+            ::syslog::warn!("pthread_mutex_timedlock(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -138,7 +138,7 @@ pub fn pthread_mutex_trylock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
             entry.insert(pthread_mutexattr_t::default());
         } else {
             let reason: &str = "mutex is not initialized";
-            ::syslog::error!("pthread_mutex_trylock(): {}", reason);
+            ::syslog::warn!("pthread_mutex_trylock(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -154,11 +154,11 @@ pub fn pthread_mutex_trylock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
         Err(error) => {
             // Check if we have to interpose the error.
             if error.code == ErrorCode::OperationTimedOut {
-                ::syslog::error!("pthread_mutex_trylock(): mutex is already locked");
+                ::syslog::warn!("pthread_mutex_trylock(): mutex is already locked");
                 // Mutex is already locked.
                 Err(Error::new(ErrorCode::ResourceBusy, "mutex is already locked"))
             } else {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "pthread_mutex_trylock(): failed to lock mutex (error={:?})",
                     error
                 );
@@ -180,7 +180,7 @@ pub fn pthread_mutex_unlock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
             entry.insert(pthread_mutexattr_t::default());
         } else {
             let reason: &str = "mutex is not initialized";
-            ::syslog::error!("pthread_mutex_unlock(): {}", reason);
+            ::syslog::warn!("pthread_mutex_unlock(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }

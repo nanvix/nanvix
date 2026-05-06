@@ -88,7 +88,7 @@ fn mkdirat_linuxd(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Res
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "mkdirat(): failed (dirfd={:?}, pathname={:?}, mode={:?}, error_code={:?})",
             dirfd,
             pathname,
@@ -104,7 +104,7 @@ fn mkdirat_linuxd(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Res
             },
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "mkdirat(): failed to parse error code (dirfd={:?}, pathname={:?}, mode={:?}, \
                      error={:?})",
                     dirfd,
@@ -123,7 +123,7 @@ fn mkdirat_linuxd(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Res
             LinuxDaemonMessageHeader::MakeDirectoryAtResponse => Ok(()),
             header => {
                 let reason: &str = "unexpected message header";
-                ::syslog::error!(
+                ::syslog::warn!(
                     "mkdirat(): {:?} (dirfd={:?}, pathname={:?}, mode={:?}, header={:?})",
                     reason,
                     dirfd,

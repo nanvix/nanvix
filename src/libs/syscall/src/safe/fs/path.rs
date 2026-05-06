@@ -54,7 +54,7 @@ impl FileSystemPath {
         // Check if path is empty.
         if name.is_empty() {
             let reason: &str = "empty path";
-            ::syslog::error!("new(): {reason}");
+            ::syslog::warn!("new(): {reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
@@ -63,7 +63,7 @@ impl FileSystemPath {
             Ok(cstr) => cstr,
             Err(_) => {
                 let reason: &str = "invalid path";
-                ::syslog::error!("new(): {reason}");
+                ::syslog::warn!("new(): {reason}");
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             },
         };
@@ -71,7 +71,7 @@ impl FileSystemPath {
         // Check if path is too long.
         if name_cstr.as_bytes().len() > PATH_MAX {
             let reason: &str = "path is too long";
-            ::syslog::error!("new(): {reason}");
+            ::syslog::warn!("new(): {reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
@@ -108,13 +108,13 @@ impl FileSystemPath {
                 Ok(name) => FileSystemPath::new(&name),
                 Err(_) => {
                     let reason: &str = "invalid UTF-8 sequence in path";
-                    ::syslog::error!("try_from_bytes(): {reason}");
+                    ::syslog::warn!("try_from_bytes(): {reason}");
                     Err(Error::new(ErrorCode::InvalidArgument, reason))
                 },
             },
             Err(_) => {
                 let reason: &str = "invalid path bytes";
-                ::syslog::error!("try_from_bytes(): {reason}");
+                ::syslog::warn!("try_from_bytes(): {reason}");
                 Err(Error::new(ErrorCode::InvalidArgument, reason))
             },
         }
@@ -140,7 +140,7 @@ impl FileSystemPath {
         // Check if the other path is empty.
         if other.name.is_empty() {
             let reason: &str = "cannot join with an empty path";
-            ::syslog::error!("join(): {reason}");
+            ::syslog::warn!("join(): {reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
@@ -148,7 +148,7 @@ impl FileSystemPath {
         let joined_length: usize = self.name.len() + other.name.len() + 1; // +1 for the separator
         if joined_length > PATH_MAX {
             let reason: &str = "resulting path is too long";
-            ::syslog::error!("join(): {reason}");
+            ::syslog::warn!("join(): {reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 

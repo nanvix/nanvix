@@ -101,7 +101,7 @@ fn utimensat_linuxd(
     // Check whether system call succeeded or not.
     if response.status != 0 {
         // System call failed, parse error code and return it.
-        ::syslog::error!(
+        ::syslog::warn!(
             "utimensat(): failed (dirfd={:?}, pathname={:?}, times={:?}, flags={:?}, \
              error_code={:?})",
             dirfd,
@@ -116,7 +116,7 @@ fn utimensat_linuxd(
             Ok(error_code) => Err(Error::new(error_code, "utimensat() failed")),
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "utimensat(): failed to convert error code (dirfd={:?}, pathname={:?}, \
                      times={:?}, flags={:?}, error={:?})",
                     dirfd,
@@ -138,7 +138,7 @@ fn utimensat_linuxd(
             // Response was not successfully parsed.
             _ => {
                 let reason: &str = "unexpected message header";
-                ::syslog::error!(
+                ::syslog::warn!(
                     "utimensat(): failed (dirfd={:?}, pathname={:?}, times={:?}, flags={:?}, \
                      reason={:?})",
                     dirfd,
