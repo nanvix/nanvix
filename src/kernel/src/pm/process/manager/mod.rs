@@ -422,6 +422,36 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Writes a NUL-terminated string directly to user space without heap allocation.
+    /// The string bytes are copied from the source `&str` followed by a single `\0` terminator.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Virtual memory address space to write into.
+    /// - `dest`: Destination virtual address in user space.
+    /// - `s`: Source string to write (must not contain interior NUL bytes).
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    fn write_nul_terminated_to_user(
+        vmem: &mut Vmem,
+        dest: VirtualAddress,
+        s: &str,
+    ) -> Result<(), Error> {
+        if !s.is_empty() {
+            vmem.copy_to_user_unaligned(dest, VirtualAddress::new(s.as_ptr() as usize), s.len())?;
+        }
+        static NUL: u8 = 0;
+        let nul_vaddr: VirtualAddress = VirtualAddress::new(dest.into_raw_value() + s.len());
+        vmem.copy_to_user_unaligned(nul_vaddr, VirtualAddress::new(&NUL as *const u8 as usize), 1)?;
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Creates a new process.
     ///
     /// # Parameters
@@ -500,25 +530,8 @@ impl ProcessManager {
             1,
             &mut Vec::with_capacity(1),
         )?;
-        // Write args bytes directly to user space (no heap allocation needed).
-        if !args.is_empty() {
-            vmem.copy_to_user_unaligned(
-                args_vaddr.into_inner(),
-                VirtualAddress::new(args.as_ptr() as usize),
-                args.len(),
-            )?;
-        }
-        // Write the null terminator.
-        {
-            static NUL: u8 = 0;
-            let nul_vaddr: VirtualAddress =
-                VirtualAddress::new(args_vaddr.into_raw_value() + args.len());
-            vmem.copy_to_user_unaligned(
-                nul_vaddr,
-                VirtualAddress::new(&NUL as *const u8 as usize),
-                1,
-            )?;
-        }
+        // Write args as a NUL-terminated string directly to user space.
+        Self::write_nul_terminated_to_user(&mut vmem, args_vaddr.into_inner(), args)?;
         debug!(
             "arguments written to user space (args_vaddr={:?}, args={:?})",
             args_vaddr,
@@ -544,24 +557,8 @@ impl ProcessManager {
             &mut Vec::with_capacity(1),
         )?;
 
-        // Write env bytes directly to user space followed by a null terminator.
-        if !env.is_empty() {
-            vmem.copy_to_user_unaligned(
-                envp_vaddr.into_inner(),
-                VirtualAddress::new(env.as_ptr() as usize),
-                env.len(),
-            )?;
-        }
-        {
-            static NUL: u8 = 0;
-            let nul_vaddr: VirtualAddress =
-                VirtualAddress::new(envp_vaddr.into_raw_value() + env.len());
-            vmem.copy_to_user_unaligned(
-                nul_vaddr,
-                VirtualAddress::new(&NUL as *const u8 as usize),
-                1,
-            )?;
-        }
+        // Write env as a NUL-terminated string directly to user space.
+        Self::write_nul_terminated_to_user(&mut vmem, envp_vaddr.into_inner(), env)?;
         debug!(
             "environment variables written to user space (envp_vaddr={:?}, env={:?})",
             envp_vaddr,
