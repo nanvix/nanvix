@@ -327,10 +327,20 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     memory_regions.push_back(kimage.kpool());
 
     // Add kernel modules to list of memory regions.
+    // Track which page-aligned region bases have already been registered to avoid
+    // booking the same frames twice (multibinary modules share a single image region).
+    let mut registered_bases: [usize; ::multibin::MAX_ENTRIES] =
+        [usize::MAX; ::multibin::MAX_ENTRIES];
+    let mut registered_count: usize = 0;
     for module in kernel_modules.iter() {
-        let name: &str = module.cmdline();
-        let raw_start: usize = module.start().into_virtual_address().into_raw_value();
-        let size: usize = module.size();
+        // Use only the program name (first token) as the region name to avoid large
+        // heap allocations when the full command line is very long.
+        let name: &str = module
+            .cmdline()
+            .split_once(' ')
+            .map_or(module.cmdline(), |(n, _)| n);
+        let raw_start: usize = module.region_base().into_virtual_address().into_raw_value();
+        let size: usize = module.region_size();
         // Page-align the region: round start down and end up to page boundaries.
         // The module payload may start at an offset within a page (e.g., after a size header).
         let page_start: usize = ::sys::mm::align_down(raw_start, ::sys::mm::Alignment::Align4096);
@@ -342,6 +352,23 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
             Some(v) => v,
             None => panic!("kernel module region end overflows address space"),
         };
+
+        // Skip if this exact page-aligned base was already registered.
+        let mut already_registered: bool = false;
+        for base in registered_bases.iter().take(registered_count) {
+            if *base == page_start {
+                already_registered = true;
+                break;
+            }
+        }
+        if already_registered {
+            continue;
+        }
+        if registered_count < registered_bases.len() {
+            registered_bases[registered_count] = page_start;
+            registered_count += 1;
+        }
+
         let start: VirtualAddress = VirtualAddress::from_raw_value(page_start);
         let aligned_size: usize = page_end - page_start;
         let typ: MemoryRegionType = MemoryRegionType::Reserved;
