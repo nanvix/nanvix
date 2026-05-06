@@ -59,7 +59,7 @@ fn pipe_linuxd() -> Result<[i32; 2], Error> {
     if response.status != 0 {
         // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::syslog::error!("pipe(): failed (error={})", error_code);
+        ::syslog::warn!("pipe(): failed (error={})", error_code);
         Err(Error::new(error_code, "pipe() failed"))
     } else {
         // System call succeeded, parse response.
@@ -119,11 +119,7 @@ pub mod bindings {
                 0
             },
             Err(error) => {
-                if error.code == ::sys::error::ErrorCode::OperationNotSupported {
-                    ::syslog::warn!("pipe(): failed (error={error:?})");
-                } else {
-                    ::syslog::error!("pipe(): failed (error={error:?})");
-                }
+                ::syslog::warn!("pipe(): failed (error={error:?})");
                 unsafe {
                     *__errno_location() = error.code.get();
                 }

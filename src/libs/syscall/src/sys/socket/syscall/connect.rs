@@ -74,7 +74,7 @@ pub fn connect(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
     if response.status != 0 {
         // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::syslog::error!("connect(): failed ({:?})", error_code);
+        ::syslog::warn!("connect(): failed ({:?})", error_code);
         Err(Error::new(error_code, "connect() failed"))
     } else {
         // System call succeeded, parse response.

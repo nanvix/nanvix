@@ -23,7 +23,7 @@ use ::syslog::trace_syscall;
 pub unsafe extern "C" fn rmdir(path: *const c_char) -> c_int {
     // Validate the path pointer.
     if path.is_null() {
-        ::syslog::error!("rmdir(): path is null (path={path:?})");
+        ::syslog::warn!("rmdir(): path is null (path={path:?})");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }

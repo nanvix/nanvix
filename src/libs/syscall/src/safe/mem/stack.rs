@@ -70,7 +70,7 @@ impl Stack {
             Ok(layout) => layout,
             Err(error) => {
                 let reason: &str = "failed to create user stack layout";
-                ::syslog::error!("new(): {reason:?} (error={error:?}, size={size:?})");
+                ::syslog::warn!("new(): {reason:?} (error={error:?}, size={size:?})");
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             },
         };
@@ -80,7 +80,7 @@ impl Stack {
             ptr if !ptr.is_null() => VirtualAddress::from_raw_value(ptr as usize),
             _ => {
                 let reason: &str = "failed to allocate user stack";
-                ::syslog::error!("new(): {reason:?} (size={size:?})");
+                ::syslog::warn!("new(): {reason:?} (size={size:?})");
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             },
         };
@@ -123,9 +123,7 @@ impl Drop for Stack {
         let layout: Layout = match Layout::from_size_align(self.size, align_of::<usize>()) {
             Ok(layout) => layout,
             Err(error) => {
-                ::syslog::error!(
-                    "drop(): failed to create stack layout for drop (error={error:?})"
-                );
+                ::syslog::warn!("drop(): failed to create stack layout for drop (error={error:?})");
                 return;
             },
         };

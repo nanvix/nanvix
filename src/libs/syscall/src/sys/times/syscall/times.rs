@@ -71,12 +71,12 @@ pub fn times(buffer: &mut Option<&mut tms>) -> Result<clock_t, Error> {
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!("times(): failed (buffer={:?}, status={:?})", buffer, { response.status });
+        ::syslog::warn!("times(): failed (buffer={:?}, status={:?})", buffer, { response.status });
         // System call failed, parse error code and return it.
         match ErrorCode::try_from(response.status) {
             Ok(error_code) => Err(Error::new(error_code, "times() failed")),
             Err(error) => {
-                ::syslog::error!("times(): failed to parse error code (error={:?})", error);
+                ::syslog::warn!("times(): failed to parse error code (error={:?})", error);
                 Err(Error::new(ErrorCode::TryAgain, "times() failed"))
             },
         }
@@ -101,7 +101,7 @@ pub fn times(buffer: &mut Option<&mut tms>) -> Result<clock_t, Error> {
                 Ok(elapsed)
             },
             header => {
-                ::syslog::error!("times(): failed (buffer={:?}, header={:?})", buffer, header);
+                ::syslog::warn!("times(): failed (buffer={:?}, header={:?})", buffer, header);
                 Err(Error::new(ErrorCode::InvalidMessage, "times() failed"))
             },
         }

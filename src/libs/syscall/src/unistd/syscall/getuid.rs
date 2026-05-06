@@ -64,7 +64,7 @@ fn getuid_linuxd() -> Result<uid_t, Error> {
 
     // Check whether system call succeeded or not
     if response.status != 0 {
-        ::syslog::error!("getuid(): failed (tid={:?}, status={:?})", tid, { response.status });
+        ::syslog::warn!("getuid(): failed (tid={:?}, status={:?})", tid, { response.status });
 
         match ErrorCode::try_from(response.status) {
             // System call failed, return error
@@ -83,7 +83,7 @@ fn getuid_linuxd() -> Result<uid_t, Error> {
             },
             // Invalid response
             header => {
-                ::syslog::error!("getuid(): invalid response (tid={:?}, header={:?})", tid, header);
+                ::syslog::warn!("getuid(): invalid response (tid={:?}, header={:?})", tid, header);
                 Err(Error::new(ErrorCode::InvalidMessage, "invalid response"))
             },
         }

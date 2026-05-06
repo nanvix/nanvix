@@ -71,7 +71,7 @@ pub fn socketpair(
     // Check if array of file descriptors has expected length.
     if socket_fds.len() != 2 {
         let reason: &str = "array of file descriptors must have length 2";
-        ::syslog::error!("socketpair(): failed ({:?})", reason);
+        ::syslog::warn!("socketpair(): failed ({:?})", reason);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
@@ -86,7 +86,7 @@ pub fn socketpair(
     if response.status != 0 {
         // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::syslog::error!("socketpair(): failed ({:?})", error_code);
+        ::syslog::warn!("socketpair(): failed ({:?})", error_code);
         Err(Error::new(error_code, "socketpair() failed"))
     } else {
         // System call succeeded, parse response.

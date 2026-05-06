@@ -70,7 +70,7 @@ fn read_chunk(
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "read_chunk(): failed (fd={:?}, chunk.len={:?}, error_code={:?})",
             fd,
             chunk.len(),
@@ -80,7 +80,7 @@ fn read_chunk(
         match ErrorCode::try_from(response.status) {
             Ok(error_code) => return Err(Error::new(error_code, "read() failed")),
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "read_chunk(): failed (fd={:?}, chunk.len={:?}, error_code={:?})",
                     fd,
                     chunk.len(),
@@ -100,7 +100,7 @@ fn read_chunk(
 
             // Guard against a negative count that would wrap when cast to usize.
             if count < 0 {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "read_chunk(): linuxd returned negative count (fd={:?}, count={:?})",
                     fd,
                     count
@@ -114,7 +114,7 @@ fn read_chunk(
             // Sanity-check: the number of bytes reported by linuxd should match the bytes
             // actually pulled via the data chunk transfer.
             if (count as usize) != bytes_pulled {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "read_chunk(): byte count mismatch (resp.count={:?}, bytes_pulled={:?})",
                     count,
                     bytes_pulled
@@ -128,7 +128,7 @@ fn read_chunk(
             Ok(count as c_size_t)
         },
         header => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "read_chunk(): failed to parse response (fd={:?}, chunk.len={:?}, header={:?})",
                 fd,
                 chunk.len(),

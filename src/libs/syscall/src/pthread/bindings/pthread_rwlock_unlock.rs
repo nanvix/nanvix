@@ -43,13 +43,13 @@ use ::syslog::trace_libcall;
 pub unsafe extern "C" fn pthread_rwlock_unlock(rwlock: *mut pthread_rwlock_t) -> c_int {
     // Check if `rwlock` object is invalid.
     if rwlock.is_null() {
-        ::syslog::error!("pthread_rwlock_unlock(): invalid read-write lock (rwlock={rwlock:p})");
+        ::syslog::warn!("pthread_rwlock_unlock(): invalid read-write lock (rwlock={rwlock:p})");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `rwlock` is unaligned.
     if !(rwlock as usize).is_multiple_of(align_of::<pthread_rwlock_t>()) {
-        ::syslog::error!("pthread_rwlock_unlock(): unaligned read-write lock (rwlock={rwlock:p})");
+        ::syslog::warn!("pthread_rwlock_unlock(): unaligned read-write lock (rwlock={rwlock:p})");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -57,7 +57,7 @@ pub unsafe extern "C" fn pthread_rwlock_unlock(rwlock: *mut pthread_rwlock_t) ->
     match crate::pthread::pthread_rwlock_unlock(&mut *rwlock) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!("pthread_rwlock_unlock(): {error:?} (rwlock={rwlock:p})");
+            ::syslog::warn!("pthread_rwlock_unlock(): {error:?} (rwlock={rwlock:p})");
             error.code.get()
         },
     }

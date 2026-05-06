@@ -77,7 +77,7 @@ fn fchown_linuxd(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<()
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "fchown(): failed (fd={:?}, owner={:?}, group={:?}, status={:?})",
             fd,
             owner,
@@ -99,7 +99,7 @@ fn fchown_linuxd(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<()
             LinuxDaemonMessageHeader::FileChownResponse => Ok(()),
             // Invalid response.
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "fchown(): invalid response (fd={:?}, owner={:?}, group={:?}, header={:?})",
                     fd,
                     owner,

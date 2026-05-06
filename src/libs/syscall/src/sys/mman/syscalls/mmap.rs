@@ -50,7 +50,7 @@ pub fn mmap(length: usize, prot: MemoryMapProtectionFlags) -> Result<VirtualAddr
     let aligned_length: usize = ::sys::mm::align_up(length, ::arch::mem::PAGE_ALIGNMENT)
         .ok_or_else(|| {
             let reason: &str = "align_up overflow";
-            ::syslog::error!("mmap(): {reason} (length={length})");
+            ::syslog::warn!("mmap(): {reason} (length={length})");
             Error::new(ErrorCode::InvalidArgument, reason)
         })?;
 

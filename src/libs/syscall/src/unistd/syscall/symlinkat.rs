@@ -57,9 +57,7 @@ pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> 
     {
         ::nvx::vfs::fd::vfs_symlinkat(target, dirfd, linkpath).map_err(|e| {
             let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::error!(
-                "symlinkat(): VFS symlinkat failed (linkpath={linkpath:?}, error={e})"
-            );
+            ::syslog::warn!("symlinkat(): VFS symlinkat failed (linkpath={linkpath:?}, error={e})");
             Error::new(code, "vfs symlinkat failed")
         })
     }
@@ -89,7 +87,7 @@ fn symlinkat_linuxd(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Erro
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "symlinkat(): failed (target={:?}, dirfd={:?}, linkpath={:?}, error_code={:?})",
             target,
             dirfd,
@@ -105,7 +103,7 @@ fn symlinkat_linuxd(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Erro
             },
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "symlinkat(): failed to parse error code (target={:?}, dirfd={:?}, \
                      linkpath={:?}, error={:?})",
                     target,
@@ -124,7 +122,7 @@ fn symlinkat_linuxd(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Erro
             LinuxDaemonMessageHeader::SymbolicLinkAtResponse => Ok(()),
             // Response was not successfully parsed.
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "symlinkat(): failed to parse response (target={:?}, dirfd={:?}, \
                      linkpath={:?}, header={:?})",
                     target,

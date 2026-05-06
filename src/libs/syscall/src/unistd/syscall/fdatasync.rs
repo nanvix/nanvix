@@ -75,7 +75,7 @@ fn fdatasync_linuxd(fd: RawFileDescriptor) -> Result<(), Error> {
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!("fdatasync(): fd={:?}, status={:?}", fd, { response.status });
+        ::syslog::warn!("fdatasync(): fd={:?}, status={:?}", fd, { response.status });
 
         match ErrorCode::try_from(response.status) {
             // Error code was successfully parsed.
@@ -98,7 +98,7 @@ fn fdatasync_linuxd(fd: RawFileDescriptor) -> Result<(), Error> {
             LinuxDaemonMessageHeader::FileDataSyncResponse => Ok(()),
             // Invalid response.
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "fdatasync(): fd={:?}, status={:?}, header={:?}",
                     fd,
                     { response.status },

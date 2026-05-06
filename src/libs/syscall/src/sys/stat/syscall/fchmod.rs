@@ -74,13 +74,13 @@ fn fchmod_linuxd(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!("fchmod(): syscall failed (fd={:?}, mode={:o}, status={:?})", fd, mode, {
+        ::syslog::warn!("fchmod(): syscall failed (fd={:?}, mode={:o}, status={:?})", fd, mode, {
             response.status
         });
         // System call failed, parse error code and return it.
         match ErrorCode::try_from(response.status) {
             Ok(error_code) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "fchmod(): syscall failed (fd={:?}, mode={:o}, error_code={:?})",
                     fd,
                     mode,
@@ -89,7 +89,7 @@ fn fchmod_linuxd(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
                 Err(Error::new(error_code, "system call failed"))
             },
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "fchmod(): syscall failed (fd={:?}, mode={:o}, error={:?})",
                     fd,
                     mode,
@@ -106,7 +106,7 @@ fn fchmod_linuxd(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
             LinuxDaemonMessageHeader::FileChmodResponse => Ok(()),
             // Invalid response.
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "fchmod(): invalid response (fd={:?}, mode={:o}, header={:?})",
                     fd,
                     mode,
