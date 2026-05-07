@@ -65,6 +65,7 @@ rustc-dep-of-std = [
 ]
 standalone = ["dep:nvx", "nvx/standalone", "dep:sysalloc"]
 hyperlight = ["nvx?/hyperlight"]
+networking = []
 
 # TODO (#798): remove this feature flag once the signal module is stable.
 sigaction = []
