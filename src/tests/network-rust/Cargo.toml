@@ -18,7 +18,7 @@ nvx = { workspace = true }
 libc_string = { workspace = true }
 sys = { workspace = true, features = ["kcall"] }
 sysapi = { workspace = true }
-syscall = { workspace = true, features = ["syscall"] }
+syscall = { workspace = true, features = ["syscall", "networking"] }
 syslog = { workspace = true, default-features = true }
 config = { workspace = true }
 
