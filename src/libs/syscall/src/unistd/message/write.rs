@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::mem;
 use ::sys::{
@@ -35,21 +35,21 @@ pub struct WriteRequest {
     pub count: u32,
     pub buffer: [u8; Self::BUFFER_SIZE],
 }
-::static_assert::assert_eq_size!(WriteRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(WriteRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl WriteRequest {
     pub const BUFFER_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<u32>();
+        SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<u32>();
 
     fn new(fd: i32, count: c_size_t, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
         Self { fd, count, buffer }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
@@ -60,8 +60,8 @@ impl WriteRequest {
         buffer: [u8; Self::BUFFER_SIZE],
     ) -> Message {
         let message: WriteRequest = WriteRequest::new(fd, count, buffer);
-        let message: LinuxDaemonMessage =
-            LinuxDaemonMessage::new(LinuxDaemonMessageHeader::WriteRequest, message.into_bytes());
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::WriteRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::from(tid),
             MessageReceiver::from(crate::LINUXD),
@@ -84,10 +84,10 @@ pub struct WriteResponse {
     pub count: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(WriteResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(WriteResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl WriteResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
     fn new(count: c_ssize_t) -> Self {
         Self {
@@ -96,18 +96,18 @@ impl WriteResponse {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
     pub fn build(tid: ThreadIdentifier, count: c_ssize_t) -> Message {
         let message: WriteResponse = WriteResponse::new(count);
-        let message: LinuxDaemonMessage =
-            LinuxDaemonMessage::new(LinuxDaemonMessageHeader::WriteResponse, message.into_bytes());
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::WriteResponse, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::from(crate::LINUXD),
             MessageReceiver::from(tid),

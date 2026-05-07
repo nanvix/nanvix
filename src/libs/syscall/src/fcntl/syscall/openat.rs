@@ -21,8 +21,8 @@ use {
             OpenAtResponse,
         },
         message::MessagePartitioner,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::alloc::vec::Vec,
     ::sys::{
@@ -105,10 +105,10 @@ fn openat_linuxd(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Resu
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        match SystemCallMessage::try_from_bytes(response.payload) {
             // Response was successfully parsed.
             Ok(message) => match message.header {
-                LinuxDaemonMessageHeader::OpenAtResponse => {
+                SystemCallMessageHeader::OpenAtResponse => {
                     // Parse response.
                     let response: OpenAtResponse = OpenAtResponse::from_bytes(message.payload);
 

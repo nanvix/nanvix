@@ -11,8 +11,8 @@ use {
     crate::{
         message::MessagePartitioner,
         unistd::message::SymbolicLinkAtRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::alloc::{
         string::ToString,
@@ -116,10 +116,10 @@ fn symlinkat_linuxd(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Erro
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::SymbolicLinkAtResponse => Ok(()),
+            SystemCallMessageHeader::SymbolicLinkAtResponse => Ok(()),
             // Response was not successfully parsed.
             header => {
                 ::syslog::warn!(

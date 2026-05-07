@@ -10,8 +10,8 @@ use crate::{
         SendSocketRequest,
         SendSocketResponse,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::cmp;
 use ::sys::{
@@ -76,11 +76,11 @@ pub fn send(sockfd: c_int, buffer: &[u8], flags: c_int) -> Result<usize, Error> 
             }
         } else {
             // System call succeeded, parse response.
-            match LinuxDaemonMessage::try_from_bytes(response.payload) {
+            match SystemCallMessage::try_from_bytes(response.payload) {
                 // Response was successfully parsed.
                 Ok(message) => match message.header {
                     // Response was successfully parsed.
-                    LinuxDaemonMessageHeader::SendSocketResponse => {
+                    SystemCallMessageHeader::SendSocketResponse => {
                         // Parse response.
                         let response: SendSocketResponse =
                             SendSocketResponse::from_bytes(message.payload);

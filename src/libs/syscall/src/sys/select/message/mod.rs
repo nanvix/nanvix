@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::mem;
 use ::sys::{
@@ -49,14 +49,14 @@ pub struct SelectRequest {
     /// Required padding.
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(SelectRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(SelectRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 // Ensure that the maximum number of file descriptors can be encoded in a `u8`.
 ::static_assert::assert_eq!(FD_SETSIZE < u8::MAX as usize);
 
 impl SelectRequest {
     /// Size of the padding field.
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
         - mem::size_of::<u8>()
         - mem::size_of::<Option<fd_set>>()
         - mem::size_of::<Option<fd_set>>()
@@ -82,12 +82,12 @@ impl SelectRequest {
     }
 
     /// Deserializes a request from raw bytes.
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
     /// Serializes the request into raw bytes.
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
@@ -121,8 +121,8 @@ impl SelectRequest {
 
         let message: SelectRequest =
             SelectRequest::new(nfds_u8, readfds, writefds, errorfds, timeout);
-        let message: LinuxDaemonMessage =
-            LinuxDaemonMessage::new(LinuxDaemonMessageHeader::SelectRequest, message.into_bytes());
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::SelectRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::from(tid),
             MessageReceiver::from(crate::LINUXD),
@@ -164,11 +164,11 @@ pub struct SelectResponse {
     /// Required padding.
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(SelectResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(SelectResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl SelectResponse {
     /// Size of the padding field.
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
         - mem::size_of::<u8>()
         - mem::size_of::<Option<fd_set>>()
         - mem::size_of::<Option<fd_set>>()
@@ -191,12 +191,12 @@ impl SelectResponse {
     }
 
     /// Deserializes a response from raw bytes.
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
     /// Serializes the response into raw bytes.
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
@@ -209,8 +209,8 @@ impl SelectResponse {
         errorfds: &Option<fd_set>,
     ) -> Message {
         let message: SelectResponse = SelectResponse::new(ready_fds, readfds, writefds, errorfds);
-        let message: LinuxDaemonMessage =
-            LinuxDaemonMessage::new(LinuxDaemonMessageHeader::SelectResponse, message.into_bytes());
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::SelectResponse, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::from(crate::LINUXD),
             MessageReceiver::from(tid),

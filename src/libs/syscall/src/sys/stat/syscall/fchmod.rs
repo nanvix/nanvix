@@ -15,8 +15,8 @@ use sysapi::sys_types::mode_t;
 use {
     crate::{
         sys::stat::message::FileChmodRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         ipc::Message,
@@ -100,10 +100,10 @@ fn fchmod_linuxd(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::FileChmodResponse => Ok(()),
+            SystemCallMessageHeader::FileChmodResponse => Ok(()),
             // Invalid response.
             header => {
                 ::syslog::warn!(

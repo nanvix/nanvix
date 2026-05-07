@@ -27,8 +27,8 @@ use {
             PartialWriteRequest,
             PartialWriteResponse,
         },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::core::cmp,
     ::sys::{
@@ -133,11 +133,11 @@ fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<
             }
         } else {
             // System call succeeded, parse response.
-            let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+            let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
             // Response was successfully parsed.
             match message.header {
                 // Response was successfully parsed.
-                LinuxDaemonMessageHeader::PartialWriteResponse => {
+                SystemCallMessageHeader::PartialWriteResponse => {
                     // Parse response.
                     let message: PartialWriteResponse =
                         PartialWriteResponse::from_bytes(message.payload);

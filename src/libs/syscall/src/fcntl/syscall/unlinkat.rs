@@ -13,8 +13,8 @@ use {
     crate::{
         fcntl::message::UnlinkAtRequest,
         message::MessagePartitioner,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::alloc::vec::Vec,
     ::sys::{
@@ -106,10 +106,10 @@ fn unlinkat_linuxd(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Re
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::UnlinkAtResponse => Ok(()),
+            SystemCallMessageHeader::UnlinkAtResponse => Ok(()),
             // Response was not parsed.
             header => {
                 ::syslog::warn!(

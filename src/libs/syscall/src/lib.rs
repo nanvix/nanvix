@@ -111,7 +111,7 @@ use ::sys::{
 
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u16)]
-pub enum LinuxDaemonMessageHeader {
+pub enum SystemCallMessageHeader {
     OpenAtRequestPart,
     OpenAtResponse,
     UnlinkAtRequestPart,
@@ -211,12 +211,12 @@ pub enum LinuxDaemonMessageHeader {
     SelectRequest,
     SelectResponse,
 }
-// Manual TryFrom<u16> implementation for LinuxDaemonMessageHeader
-impl TryFrom<u16> for LinuxDaemonMessageHeader {
+// Manual TryFrom<u16> implementation for SystemCallMessageHeader
+impl TryFrom<u16> for SystemCallMessageHeader {
     type Error = ();
 
     fn try_from(value: u16) -> Result<Self, Self::Error> {
-        use LinuxDaemonMessageHeader::*;
+        use SystemCallMessageHeader::*;
         match value {
             x if x == OpenAtRequestPart as u16 => Ok(OpenAtRequestPart),
             x if x == OpenAtResponse as u16 => Ok(OpenAtResponse),
@@ -330,13 +330,13 @@ impl TryFrom<u16> for LinuxDaemonMessageHeader {
 }
 
 #[repr(C, packed)]
-pub struct LinuxDaemonMessage {
+pub struct SystemCallMessage {
     /// Message header.
-    pub header: LinuxDaemonMessageHeader,
+    pub header: SystemCallMessageHeader,
     /// Message payload.
     pub payload: [u8; Self::PAYLOAD_SIZE],
 }
-::static_assert::assert_eq_size!(LinuxDaemonMessage, Message::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(SystemCallMessage, Message::PAYLOAD_SIZE);
 
 //==================================================================================================
 // Constants
@@ -345,7 +345,7 @@ pub struct LinuxDaemonMessage {
 ///
 /// # Description
 ///
-/// Process identifier of the Linux Daemon Service
+/// Process identifier of the system call provider.
 ///
 pub const LINUXD: ProcessIdentifier = ProcessIdentifier::KERNEL;
 
@@ -353,21 +353,21 @@ pub const LINUXD: ProcessIdentifier = ProcessIdentifier::KERNEL;
 // Implementations
 //==================================================================================================
 
-impl LinuxDaemonMessage {
+impl SystemCallMessage {
     pub const PAYLOAD_SIZE: usize =
-        Message::PAYLOAD_SIZE - mem::size_of::<LinuxDaemonMessageHeader>();
+        Message::PAYLOAD_SIZE - mem::size_of::<SystemCallMessageHeader>();
 
-    pub fn new(header: LinuxDaemonMessageHeader, payload: [u8; Self::PAYLOAD_SIZE]) -> Self {
+    pub fn new(header: SystemCallMessageHeader, payload: [u8; Self::PAYLOAD_SIZE]) -> Self {
         Self { header, payload }
     }
 
     pub fn try_from_bytes(bytes: [u8; Message::PAYLOAD_SIZE]) -> Result<Self, Error> {
         // Check if message header is valid.
-        let _header: LinuxDaemonMessageHeader =
-            LinuxDaemonMessageHeader::try_from(u16::from_ne_bytes([bytes[0], bytes[1]]))
+        let _header: SystemCallMessageHeader =
+            SystemCallMessageHeader::try_from(u16::from_ne_bytes([bytes[0], bytes[1]]))
                 .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid message header"))?;
 
-        let message: LinuxDaemonMessage = unsafe { mem::transmute(bytes) };
+        let message: SystemCallMessage = unsafe { mem::transmute(bytes) };
 
         Ok(message)
     }

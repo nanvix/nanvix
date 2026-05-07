@@ -63,7 +63,7 @@ async fn forward_message_to_system_vm(
     // Label: uservm::io_thread::system_vm::write()
     profiler::timestamp_message!(
         &mut msg.payload,
-        std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+        std::mem::offset_of!(syscall::SystemCallMessage, payload)
             + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
     );
     // SAFETY: `Message` derives `Clone`; cloning avoids consuming the caller's binding.
@@ -305,7 +305,7 @@ impl IoThread {
 
                                         // Label: uservm::io_thread::system_vm::read()
                                         profiler::timestamp_message!(&mut message.payload,
-                                            std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                                            std::mem::offset_of!(syscall::SystemCallMessage, payload)
                                                 + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                                         );
 
@@ -425,7 +425,7 @@ impl IoThread {
                                     debug!("input flush completed");
                                     // Messages are no longer buffered, nothing to flush. We should remove this.
                                     if let Err(error) =
-                                        control_tx.send(IoControlCommand::LinuxDaemonFlushed).await
+                                        control_tx.send(IoControlCommand::SystemCallFlushed).await
                                     {
                                         debug!(
                                             "control channel closed while sending flush ack: {error}"

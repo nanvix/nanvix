@@ -7,13 +7,13 @@
 
 use crate::{
     message::{
-        LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
+        SystemCallMessagePart,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::alloc::{
     string::{
@@ -212,11 +212,11 @@ impl MessagePartitioner for UnlinkAtRequest {
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
-        LinuxDaemonMessagePart::build_request(
+        SystemCallMessagePart::build_request(
             tid,
-            LinuxDaemonMessageHeader::UnlinkAtRequestPart,
+            SystemCallMessageHeader::UnlinkAtRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -234,10 +234,10 @@ pub struct UnlinkAtResponse {
     pub ret: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(UnlinkAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(UnlinkAtResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl UnlinkAtResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
     fn new(ret: i32) -> Self {
         Self {
@@ -246,20 +246,18 @@ impl UnlinkAtResponse {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
     pub fn build(tid: ThreadIdentifier, ret: i32) -> Message {
         let message: UnlinkAtResponse = UnlinkAtResponse::new(ret);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::UnlinkAtResponse,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::UnlinkAtResponse, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::from(crate::LINUXD),
             MessageReceiver::from(tid),
