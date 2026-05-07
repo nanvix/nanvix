@@ -135,11 +135,11 @@ indexmap = "2.14.0"
 indicatif = "0.18.4"
 http = "1.4.0"
 http-body-util = "0.1.3"
-hyperlight-common = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "43118b299119f9ddad82ac5af4ef0837ef24c46b", default-features = false, features = [
+hyperlight-common = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "1fba3a5539e5760227a178454fc3967e0058fef8", default-features = false, features = [
         "i686-guest",
         "guest-counter",
 ] }
-hyperlight-host = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "43118b299119f9ddad82ac5af4ef0837ef24c46b", default-features = false, features = [
+hyperlight-host = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "1fba3a5539e5760227a178454fc3967e0058fef8", default-features = false, features = [
         "kvm",
         "mshv3",
         "hw-interrupts",
@@ -147,7 +147,7 @@ hyperlight-host = { git = "https://github.com/hyperlight-dev/hyperlight", rev = 
         "i686-guest",
         "guest-counter",
 ] }
-hyperlight-guest = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "43118b299119f9ddad82ac5af4ef0837ef24c46b", default-features = false, features = [
+hyperlight-guest = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "1fba3a5539e5760227a178454fc3967e0058fef8", default-features = false, features = [
         "i686-guest",
         "guest-counter",
 ] }
