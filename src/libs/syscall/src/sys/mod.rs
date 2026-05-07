@@ -6,6 +6,7 @@
 //==================================================================================================
 
 // Re-export constants that socket2 expects to find directly in sys module
+#[cfg(feature = "networking")]
 pub use crate::{
     netinet::in_::bindings::{
         ipproto::IPPROTO_IPV6,
@@ -29,6 +30,7 @@ pub mod mman;
 pub mod select;
 
 /// Sockets.
+#[cfg(feature = "networking")]
 pub mod socket;
 
 /// File status.
@@ -44,6 +46,7 @@ pub mod times;
 pub mod uio;
 
 /// Definitions for UNIX domain sockets.
+#[cfg(feature = "networking")]
 pub mod un;
 
 /// System name structure.

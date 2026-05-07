@@ -29,7 +29,7 @@ signal-hook = { workspace = true }
 static_assert = { workspace = true }
 sys = { workspace = true, features = ["std"] }
 sysapi = { workspace = true, features = ["std"] }
-syscall = { workspace = true, features = ["std"] }
+syscall = { workspace = true, features = ["std", "networking"] }
 syscomm = { workspace = true }
 log = { workspace = true }
 syslog = { workspace = true, features = ["std"] }
