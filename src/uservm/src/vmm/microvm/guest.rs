@@ -23,6 +23,10 @@ use crate::{
     pal::FileMapping,
 };
 use ::anyhow::Result;
+use ::config::system::{
+    CmdlineArgsLen,
+    MAX_CMDLINE_ARGS_LEN,
+};
 use ::log::{
     debug,
     error,
@@ -32,10 +36,7 @@ use ::serde::{
     Deserialize,
     Serialize,
 };
-use ::std::{
-    mem,
-    ptr,
-};
+use ::std::ptr;
 use arch::mem::PAGE_SIZE;
 
 //==================================================================================================
@@ -316,9 +317,30 @@ impl Guest {
 
         let (ptr, size) = { (vmem.get_raw_ptr(), vmem.get_size()) };
 
+        // Compute end of the args region with checked arithmetic to prevent overflow.
+        let args_region_end: usize = initrd_end
+            .checked_add(CmdlineArgsLen::WIRE_SIZE)
+            .and_then(|v| v.checked_add(args_bytes.len()))
+            .ok_or_else(|| {
+                let reason: String = "command line arguments region bounds overflow".to_string();
+                error!("write_args(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+
         // Check if there is enough space to write the arguments.
-        if initrd_end + mem::size_of::<u8>() + args_bytes.len() > size {
+        if args_region_end > size {
             let reason: String = "not enough space to write command line arguments".to_string();
+            error!("write_args(): {reason}");
+            return Err(anyhow::anyhow!(reason));
+        }
+
+        // Check that the args region does not overlap with the user mmap region.
+        if args_region_end > ::config::memory_layout::USER_MMAP_BASE_RAW {
+            let reason: String = format!(
+                "command line arguments overlap with user mmap region \
+                 (args_end={args_region_end:#010x}, mmap_base={:#010x})",
+                ::config::memory_layout::USER_MMAP_BASE_RAW
+            );
             error!("write_args(): {reason}");
             return Err(anyhow::anyhow!(reason));
         }
@@ -333,21 +355,29 @@ impl Guest {
                 args_bytes.len(),
             );
 
-            let args_len: u8 = match u8::try_from(args_bytes.len()) {
-                Ok(v) => v,
-                Err(_) => {
-                    let reason: String =
-                        format!("command line arguments too long (len={})", args_bytes.len());
+            let args_len: CmdlineArgsLen = match CmdlineArgsLen::new(args_bytes.len()) {
+                Some(v) => v,
+                None => {
+                    let reason: String = format!(
+                        "command line arguments too long (len={}, max={})",
+                        args_bytes.len(),
+                        MAX_CMDLINE_ARGS_LEN
+                    );
                     error!("write_args(): {reason}");
                     return Err(anyhow::anyhow!(reason));
                 },
             };
 
-            ptr::copy_nonoverlapping(&args_len, ptr.add(initrd_end), 1);
+            let args_len_le: [u8; CmdlineArgsLen::WIRE_SIZE] = args_len.to_le_bytes();
+            ptr::copy_nonoverlapping(
+                args_len_le.as_ptr(),
+                ptr.add(initrd_end),
+                CmdlineArgsLen::WIRE_SIZE,
+            );
             // Write command line arguments.
             ptr::copy_nonoverlapping(
                 args_bytes.as_ptr(),
-                ptr.add(initrd_end + mem::size_of::<u8>()),
+                ptr.add(initrd_end + CmdlineArgsLen::WIRE_SIZE),
                 args_bytes.len(),
             );
         }

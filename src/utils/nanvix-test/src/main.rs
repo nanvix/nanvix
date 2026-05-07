@@ -269,14 +269,28 @@ async fn run() -> Result<()> {
             name,
             iterations,
             program,
-            program_args,
+            mut program_args,
             input,
             expected_output,
             expect_empty_output,
             extra_nanvixd_args,
             expected_exit_code,
             runs_on: _,
+            program_args_padding_len,
         } = test_config;
+
+        // When program_args_padding_len is set, generate a synthetic argument string.
+        if let Some(padding_len) = program_args_padding_len {
+            if padding_len > ::nanvix::config::system::MAX_CMDLINE_ARGS_LEN {
+                let reason: String = format!(
+                    "program_args_padding_len ({padding_len}) exceeds MAX_CMDLINE_ARGS_LEN ({})",
+                    ::nanvix::config::system::MAX_CMDLINE_ARGS_LEN
+                );
+                error!("main(): {reason}");
+                return Err(::anyhow::anyhow!(reason));
+            }
+            program_args = Some("A".repeat(padding_len));
+        }
 
         // Parse extra_nanvixd_args string into a vector of arguments.
         let extra_nanvixd_args: Vec<String> = match extra_nanvixd_args.as_ref() {

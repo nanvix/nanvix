@@ -60,6 +60,7 @@ members = [
         "src/libs/vfs-bench-common",
         "src/tests/arch-rust",
         "src/tests/c-bindings-rust",
+        "src/tests/cmdline-len-rust",
         "src/tests/dlfcn-rust",
         "src/tests/file-rust",
         "src/tests/linux-app",
