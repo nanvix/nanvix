@@ -25,13 +25,13 @@ mod utimensat;
 use {
     crate::{
         message::{
-            LinuxDaemonLongMessage,
-            LinuxDaemonMessagePart,
             MessagePartitioner,
+            SystemCallLongMessage,
+            SystemCallMessagePart,
         },
         sys::stat::message::FileStatAtResponse,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::alloc::vec::Vec,
     ::sys::{
@@ -76,9 +76,9 @@ pub use utimensat::utimensat;
 ///
 #[cfg(not(feature = "standalone"))]
 fn fstatat_response() -> Result<sys_stat::stat, Error> {
-    let capacity: usize = sys_stat::stat::SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+    let capacity: usize = sys_stat::stat::SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
 
-    let mut assembler: LinuxDaemonLongMessage = LinuxDaemonLongMessage::new(capacity)?;
+    let mut assembler: SystemCallLongMessage = SystemCallLongMessage::new(capacity)?;
 
     loop {
         let response: Message = ::sys::kcall::ipc::recv()?;
@@ -91,11 +91,11 @@ fn fstatat_response() -> Result<sys_stat::stat, Error> {
             break Err(Error::new(error_code, "fstatat() failed"));
         } else {
             // System call succeeded, parse response.
-            match LinuxDaemonMessage::try_from_bytes(response.payload) {
+            match SystemCallMessage::try_from_bytes(response.payload) {
                 Ok(message) => match message.header {
-                    LinuxDaemonMessageHeader::FileStatAtResponsePart => {
-                        let part: LinuxDaemonMessagePart =
-                            LinuxDaemonMessagePart::from_bytes(message.payload);
+                    SystemCallMessageHeader::FileStatAtResponsePart => {
+                        let part: SystemCallMessagePart =
+                            SystemCallMessagePart::from_bytes(message.payload);
 
                         if let Err(e) = assembler.add_part(part) {
                             ::syslog::warn!("fstatat(): failed to add part to assembler");
@@ -106,7 +106,7 @@ fn fstatat_response() -> Result<sys_stat::stat, Error> {
                             continue;
                         }
 
-                        let parts: Vec<LinuxDaemonMessagePart> = assembler.take_parts();
+                        let parts: Vec<SystemCallMessagePart> = assembler.take_parts();
 
                         let response: FileStatAtResponse = FileStatAtResponse::from_parts(&parts)?;
                         break Ok(response.stat);

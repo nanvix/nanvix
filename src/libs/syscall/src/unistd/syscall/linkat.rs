@@ -13,8 +13,8 @@ use {
     crate::{
         message::MessagePartitioner,
         unistd::message::LinkAtRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::alloc::{
         string::ToString,
@@ -139,11 +139,11 @@ fn linkat_linuxd(
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::LinkAtResponse => Ok(()),
+            SystemCallMessageHeader::LinkAtResponse => Ok(()),
             // Response was not successfully parsed.
             header => {
                 let reason: &str = "unexpected message header";

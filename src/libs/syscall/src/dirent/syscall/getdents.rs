@@ -24,12 +24,12 @@ use {
             GetDirectoryEntriesResponse,
         },
         message::{
-            LinuxDaemonLongMessage,
-            LinuxDaemonMessagePart,
             MessagePartitioner,
+            SystemCallLongMessage,
+            SystemCallMessagePart,
         },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         ipc::Message,
@@ -84,7 +84,7 @@ pub fn posix_getdents(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error>
 #[cfg(not(feature = "standalone"))]
 fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error> {
     const MESSAGE_ASSEMBLER_CAPACITY: usize =
-        GetDirectoryEntriesResponse::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        GetDirectoryEntriesResponse::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
@@ -103,8 +103,8 @@ fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Err
     })?;
 
     // Create message assembler.
-    let mut assembler: LinuxDaemonLongMessage =
-        LinuxDaemonLongMessage::new(MESSAGE_ASSEMBLER_CAPACITY).map_err(|error| {
+    let mut assembler: SystemCallLongMessage =
+        SystemCallLongMessage::new(MESSAGE_ASSEMBLER_CAPACITY).map_err(|error| {
             let reason: &str = "failed to create message assembler";
             warn!("posix_getdents(): {reason} (error={:?})", error);
             Error::new(error.code, reason)
@@ -135,12 +135,12 @@ fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Err
             }
         } else {
             // System call succeeded, parse response.
-            let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+            let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
 
             match message.header {
-                LinuxDaemonMessageHeader::GetDirectoryEntriesResponsePart => {
-                    let part: LinuxDaemonMessagePart =
-                        LinuxDaemonMessagePart::from_bytes(message.payload);
+                SystemCallMessageHeader::GetDirectoryEntriesResponsePart => {
+                    let part: SystemCallMessagePart =
+                        SystemCallMessagePart::from_bytes(message.payload);
 
                     // Add part to message assembler and check for errors.
                     if let Err(error) = assembler.add_part(part) {
@@ -154,7 +154,7 @@ fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Err
                         continue;
                     }
 
-                    let parts: Vec<LinuxDaemonMessagePart> = assembler.take_parts();
+                    let parts: Vec<SystemCallMessagePart> = assembler.take_parts();
 
                     match GetDirectoryEntriesResponse::from_parts(&parts) {
                         Ok(response) => break Ok(response.entries),

@@ -15,8 +15,8 @@ use crate::{
         AddressFamily,
         SocketType,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -61,11 +61,11 @@ pub fn socket(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> Res
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        match SystemCallMessage::try_from_bytes(response.payload) {
             // Response was successfully parsed.
             Ok(message) => match message.header {
                 // Response was successfully parsed.
-                LinuxDaemonMessageHeader::CreateSocketResponse => {
+                SystemCallMessageHeader::CreateSocketResponse => {
                     let response: CreateSocketResponse =
                         CreateSocketResponse::from_bytes(message.payload);
 

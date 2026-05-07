@@ -13,8 +13,8 @@ use crate::{
         },
         SocketAddr,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -59,11 +59,11 @@ pub fn accept(sockfd: c_int) -> Result<(c_int, SocketAddr), Error> {
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        match SystemCallMessage::try_from_bytes(response.payload) {
             // Response was successfully parsed.
             Ok(message) => match message.header {
                 // Response was successfully parsed.
-                LinuxDaemonMessageHeader::AcceptSocketResponse => {
+                SystemCallMessageHeader::AcceptSocketResponse => {
                     let response: AcceptSocketResponse =
                         AcceptSocketResponse::from_bytes(message.payload);
 

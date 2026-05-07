@@ -27,8 +27,8 @@ use {
             SeekRequest,
             SeekResponse,
         },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         ipc::Message,
@@ -111,11 +111,11 @@ fn lseek_linuxd(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<o
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::SeekResponse => {
+            SystemCallMessageHeader::SeekResponse => {
                 // Parse response.
                 let response: SeekResponse = SeekResponse::from_bytes(message.payload);
 

@@ -17,8 +17,8 @@ use {
             FileControlRequest,
             FileControlResponse,
         },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         ipc::Message,
@@ -106,11 +106,11 @@ fn fcntl_linuxd(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::FileControlResponse => {
+            SystemCallMessageHeader::FileControlResponse => {
                 let message: FileControlResponse = FileControlResponse::from_bytes(message.payload);
                 let ret: c_int = message.ret;
                 Ok(ret)

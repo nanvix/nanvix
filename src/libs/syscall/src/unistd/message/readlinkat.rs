@@ -7,12 +7,12 @@
 
 use crate::{
     message::{
-        LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
+        SystemCallMessagePart,
     },
-    LinuxDaemonMessageHeader,
+    SystemCallMessageHeader,
 };
 use ::alloc::{
     string::String,
@@ -213,11 +213,11 @@ impl MessagePartitioner for ReadLinkAtRequest {
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
-        LinuxDaemonMessagePart::build_request(
+        SystemCallMessagePart::build_request(
             tid,
-            LinuxDaemonMessageHeader::ReadLinkAtRequestPart,
+            SystemCallMessageHeader::ReadLinkAtRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -362,11 +362,11 @@ impl MessagePartitioner for ReadLinkAtResponse {
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
-        LinuxDaemonMessagePart::build_response(
+        SystemCallMessagePart::build_response(
             tid,
-            LinuxDaemonMessageHeader::ReadLinkAtResponsePart,
+            SystemCallMessageHeader::ReadLinkAtResponsePart,
             total_parts,
             part_number,
             payload_size,

@@ -10,8 +10,8 @@ use crate::{
         SelectRequest,
         SelectResponse,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -119,11 +119,11 @@ pub fn select(
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::SelectResponse => {
+            SystemCallMessageHeader::SelectResponse => {
                 let response: SelectResponse = SelectResponse::from_bytes(message.payload);
 
                 for (fd_set, dest) in [

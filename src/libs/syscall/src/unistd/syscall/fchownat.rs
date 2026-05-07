@@ -18,8 +18,8 @@ use {
     crate::{
         message::MessagePartitioner,
         unistd::message::FileChownAtRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::alloc::vec::Vec,
     ::sys::{
@@ -123,10 +123,10 @@ fn fchownat_linuxd(
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
 
         match message.header {
-            LinuxDaemonMessageHeader::FileChownAtResponse => Ok(()),
+            SystemCallMessageHeader::FileChownAtResponse => Ok(()),
             header => {
                 ::syslog::warn!(
                     "fchownat(): failed to parse response (dirfd={:?}, path={:?}, owner={:?}, \

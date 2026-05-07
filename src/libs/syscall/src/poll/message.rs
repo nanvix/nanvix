@@ -7,12 +7,12 @@
 
 use crate::{
     message::{
-        LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
+        SystemCallMessagePart,
     },
-    LinuxDaemonMessageHeader,
+    SystemCallMessageHeader,
 };
 use ::alloc::vec::Vec;
 use ::core::mem;
@@ -229,11 +229,11 @@ impl MessagePartitioner for PollRequest {
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
-        LinuxDaemonMessagePart::build_request(
+        SystemCallMessagePart::build_request(
             tid,
-            LinuxDaemonMessageHeader::PollRequestPart,
+            SystemCallMessageHeader::PollRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -404,11 +404,11 @@ impl MessagePartitioner for PollResponse {
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
-        LinuxDaemonMessagePart::build_response(
+        SystemCallMessagePart::build_response(
             tid,
-            LinuxDaemonMessageHeader::PollResponsePart,
+            SystemCallMessageHeader::PollResponsePart,
             total_parts,
             part_number,
             payload_size,

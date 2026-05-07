@@ -27,8 +27,8 @@ use {
             PartialReadRequest,
             PartialReadResponse,
         },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::core::cmp,
     ::sys::{
@@ -134,11 +134,11 @@ fn pread_linuxd(
             }
         } else {
             // System call succeeded, parse response.
-            let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+            let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
             // Response was successfully parsed.
             match message.header {
                 // Response was successfully parsed.
-                LinuxDaemonMessageHeader::PartialReadResponse => {
+                SystemCallMessageHeader::PartialReadResponse => {
                     // Parse response.
                     let response: PartialReadResponse =
                         PartialReadResponse::from_bytes(message.payload);

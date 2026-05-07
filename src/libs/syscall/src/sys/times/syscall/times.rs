@@ -10,8 +10,8 @@ use crate::{
         TimesRequest,
         TimesResponse,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -82,10 +82,10 @@ pub fn times(buffer: &mut Option<&mut tms>) -> Result<clock_t, Error> {
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
 
         match message.header {
-            LinuxDaemonMessageHeader::TimesResponse => {
+            SystemCallMessageHeader::TimesResponse => {
                 // Parse response.
                 let response: TimesResponse = TimesResponse::from_bytes(message.payload);
 

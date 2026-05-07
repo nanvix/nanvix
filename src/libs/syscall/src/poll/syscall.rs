@@ -19,16 +19,16 @@ use ::sysapi::ffi::{
 use {
     crate::{
         message::{
-            LinuxDaemonLongMessage,
-            LinuxDaemonMessagePart,
             MessagePartitioner,
+            SystemCallLongMessage,
+            SystemCallMessagePart,
         },
         poll::message::{
             PollRequest,
             PollResponse,
         },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         ipc::Message,
@@ -172,8 +172,8 @@ fn poll_linuxd(
     }
 
     // Compute maximum number of parts in the response.
-    let capacity: usize = PollResponse::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
-    let mut assembler: LinuxDaemonLongMessage = LinuxDaemonLongMessage::new(capacity)?;
+    let capacity: usize = PollResponse::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
+    let mut assembler: SystemCallLongMessage = SystemCallLongMessage::new(capacity)?;
 
     loop {
         let response: Message = ipc::recv()?;
@@ -196,8 +196,7 @@ fn poll_linuxd(
         }
 
         // Parse system call response.
-        let message: LinuxDaemonMessage = match LinuxDaemonMessage::try_from_bytes(response.payload)
-        {
+        let message: SystemCallMessage = match SystemCallMessage::try_from_bytes(response.payload) {
             Ok(m) => m,
             Err(error) => {
                 ::syslog::warn!("poll(): {error:?} (fds={fds:?}, timeout={timeout:?})");
@@ -206,9 +205,9 @@ fn poll_linuxd(
         };
 
         match message.header {
-            LinuxDaemonMessageHeader::PollResponsePart => {
-                let part: LinuxDaemonMessagePart =
-                    LinuxDaemonMessagePart::from_bytes(message.payload);
+            SystemCallMessageHeader::PollResponsePart => {
+                let part: SystemCallMessagePart =
+                    SystemCallMessagePart::from_bytes(message.payload);
 
                 // Add response part to message assembler and check for errors.
                 if let Err(e) = assembler.add_part(part) {
@@ -223,7 +222,7 @@ fn poll_linuxd(
                     continue;
                 }
 
-                let parts: Vec<LinuxDaemonMessagePart> = assembler.take_parts();
+                let parts: Vec<SystemCallMessagePart> = assembler.take_parts();
 
                 // Assemble message.
                 match PollResponse::from_parts(&parts) {

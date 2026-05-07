@@ -141,7 +141,7 @@ impl MemoryThread {
                                     IkcFrame::Message(ref mut msg) => {
                                         // Label: uservm::memory_thread::data_rx::recv()
                                         profiler::timestamp_message!(&mut msg.payload,
-                                            std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                                            std::mem::offset_of!(syscall::SystemCallMessage, payload)
                                                 + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                                         );
                                     },

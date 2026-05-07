@@ -16,8 +16,8 @@ use {
     crate::{
         message::MessagePartitioner,
         sys::stat::message::MakeDirectoryAtRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::alloc::{
         string::ToString,
@@ -117,10 +117,10 @@ fn mkdirat_linuxd(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Res
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
-            LinuxDaemonMessageHeader::MakeDirectoryAtResponse => Ok(()),
+            SystemCallMessageHeader::MakeDirectoryAtResponse => Ok(()),
             header => {
                 let reason: &str = "unexpected message header";
                 ::syslog::warn!(

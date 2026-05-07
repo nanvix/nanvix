@@ -12,8 +12,8 @@ use {
     crate::{
         message::MessagePartitioner,
         sys::stat::message::UpdateFileAccessTimeAtRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::alloc::{
         string::ToString,
@@ -130,11 +130,11 @@ fn utimensat_linuxd(
         }
     } else {
         // System call succeeded, parse response.
-        let message = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::UpdateFileAccessTimeAtResponse => Ok(()),
+            SystemCallMessageHeader::UpdateFileAccessTimeAtResponse => Ok(()),
             // Response was not successfully parsed.
             _ => {
                 let reason: &str = "unexpected message header";

@@ -17,8 +17,8 @@ use ::sysapi::{
 use {
     crate::{
         unistd::message::FileTruncateRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         ipc::Message,
@@ -98,11 +98,11 @@ fn ftruncate_linuxd(fd: c_int, length: off_t) -> Result<(), Error> {
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::FileTruncateResponse => Ok(()),
+            SystemCallMessageHeader::FileTruncateResponse => Ok(()),
             // Invalid response.
             header => {
                 ::syslog::warn!(

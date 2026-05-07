@@ -16,8 +16,8 @@ use {
             CloseRequest,
             CloseResponse,
         },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         ipc::Message,
@@ -76,11 +76,11 @@ fn close_linuxd(fd: i32) -> Result<(), Error> {
         Err(Error::new(error_code, "close() failed"))
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        match SystemCallMessage::try_from_bytes(response.payload) {
             // Response was successfully parsed.
             Ok(message) => match message.header {
                 // Response was successfully parsed.
-                LinuxDaemonMessageHeader::CloseResponse => {
+                SystemCallMessageHeader::CloseResponse => {
                     // Parse response.
                     let _: CloseResponse = CloseResponse::from_bytes(message.payload);
 
