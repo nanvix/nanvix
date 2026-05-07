@@ -14,16 +14,16 @@ use ::sysapi::sys_types::c_ssize_t;
 use {
     crate::{
         message::{
-            LinuxDaemonLongMessage,
-            LinuxDaemonMessagePart,
             MessagePartitioner,
+            SystemCallLongMessage,
+            SystemCallMessagePart,
         },
         unistd::message::{
             ReadLinkAtRequest,
             ReadLinkAtResponse,
         },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::alloc::{
         string::ToString,
@@ -94,9 +94,9 @@ fn readlinkat_linuxd(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t
     }
 
     let capacity: usize =
-        ReadLinkAtResponse::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        ReadLinkAtResponse::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
 
-    let mut assembler: LinuxDaemonLongMessage = LinuxDaemonLongMessage::new(capacity)?;
+    let mut assembler: SystemCallLongMessage = SystemCallLongMessage::new(capacity)?;
 
     loop {
         let response: Message = ::sys::kcall::ipc::recv()?;
@@ -127,11 +127,11 @@ fn readlinkat_linuxd(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t
             }
         } else {
             // System call succeeded, parse response.
-            let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+            let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
             match message.header {
-                LinuxDaemonMessageHeader::ReadLinkAtResponsePart => {
-                    let part: LinuxDaemonMessagePart =
-                        LinuxDaemonMessagePart::from_bytes(message.payload);
+                SystemCallMessageHeader::ReadLinkAtResponsePart => {
+                    let part: SystemCallMessagePart =
+                        SystemCallMessagePart::from_bytes(message.payload);
 
                     if let Err(error) = assembler.add_part(part) {
                         ::syslog::warn!(
@@ -151,7 +151,7 @@ fn readlinkat_linuxd(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t
                         continue;
                     }
 
-                    let parts: Vec<LinuxDaemonMessagePart> = assembler.take_parts();
+                    let parts: Vec<SystemCallMessagePart> = assembler.take_parts();
 
                     match ReadLinkAtResponse::from_parts(&parts) {
                         Ok(response) => {

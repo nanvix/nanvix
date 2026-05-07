@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::mem;
 use ::sys::{
@@ -37,10 +37,10 @@ pub struct PartialWriteRequest {
     pub offset: off_t,
     pub buffer: [u8; Self::BUFFER_SIZE],
 }
-::static_assert::assert_eq_size!(PartialWriteRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(PartialWriteRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl PartialWriteRequest {
-    pub const BUFFER_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
+    pub const BUFFER_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
         - mem::size_of::<i32>()
         - mem::size_of::<u32>()
         - mem::size_of::<off_t>();
@@ -54,11 +54,11 @@ impl PartialWriteRequest {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
@@ -70,8 +70,8 @@ impl PartialWriteRequest {
         buffer: [u8; Self::BUFFER_SIZE],
     ) -> Message {
         let message: PartialWriteRequest = PartialWriteRequest::new(fd, count, offset, buffer);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::PartialWriteRequest,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::PartialWriteRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
@@ -95,10 +95,10 @@ pub struct PartialWriteResponse {
     pub count: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(PartialWriteResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(PartialWriteResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl PartialWriteResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
     fn new(count: c_ssize_t) -> Self {
         Self {
@@ -107,18 +107,18 @@ impl PartialWriteResponse {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
     pub fn build(tid: ThreadIdentifier, count: c_ssize_t) -> Message {
         let message: PartialWriteResponse = PartialWriteResponse::new(count);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::PartialWriteResponse,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::PartialWriteResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

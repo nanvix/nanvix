@@ -14,8 +14,8 @@ use {
     crate::{
         message::MessagePartitioner,
         unistd::message::ChangeDirectoryRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::alloc::vec::Vec,
     ::sys::{
@@ -97,9 +97,9 @@ fn chdir_linuxd(path: &str) -> Result<(), Error> {
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         match message.header {
-            LinuxDaemonMessageHeader::ChangeDirectoryResponse => Ok(()),
+            SystemCallMessageHeader::ChangeDirectoryResponse => Ok(()),
             header => {
                 let reason: &str = "unexpected message header";
                 ::syslog::warn!("chdir(): {:?} (path={:?}, header={:?})", reason, path, header);

@@ -15,8 +15,8 @@ use ::sysapi::time::timespec;
 use {
     crate::{
         sys::stat::message::UpdateFileAccessTimeRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         ipc::Message,
@@ -101,11 +101,11 @@ fn futimens_linuxd(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), E
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::UpdateFileAccessTimeResponse => Ok(()),
+            SystemCallMessageHeader::UpdateFileAccessTimeResponse => Ok(()),
             // Response was not successfully parsed.
             header => {
                 ::syslog::warn!(

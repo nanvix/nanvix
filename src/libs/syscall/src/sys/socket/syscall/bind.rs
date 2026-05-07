@@ -11,8 +11,8 @@ use crate::{
         sockaddr,
         SocketAddr,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -59,11 +59,11 @@ pub fn bind(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        match SystemCallMessage::try_from_bytes(response.payload) {
             // Response was successfully parsed.
             Ok(message) => match message.header {
                 // Response was successfully parsed.
-                LinuxDaemonMessageHeader::BindSocketResponse => Ok(()),
+                SystemCallMessageHeader::BindSocketResponse => Ok(()),
                 // Response was not successfully parsed.
                 _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
             },

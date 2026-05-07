@@ -16,8 +16,8 @@ use {
             PipeRequest,
             PipeResponse,
         },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         ipc::Message,
@@ -63,11 +63,11 @@ fn pipe_linuxd() -> Result<[i32; 2], Error> {
         Err(Error::new(error_code, "pipe() failed"))
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        match SystemCallMessage::try_from_bytes(response.payload) {
             // Response was successfully parsed.
             Ok(message) => match message.header {
                 // Response was successfully parsed.
-                LinuxDaemonMessageHeader::PipeResponse => {
+                SystemCallMessageHeader::PipeResponse => {
                     // Parse response.
                     let response: PipeResponse = PipeResponse::from_bytes(message.payload);
 

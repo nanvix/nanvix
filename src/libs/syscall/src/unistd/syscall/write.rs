@@ -12,8 +12,8 @@ use crate::{
         WriteRequest,
         WriteResponse,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -91,9 +91,9 @@ fn write_chunk(
     }
 
     // Parse response.
-    let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+    let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
     match message.header {
-        LinuxDaemonMessageHeader::WriteResponse => {
+        SystemCallMessageHeader::WriteResponse => {
             let response: WriteResponse = WriteResponse::from_bytes(message.payload);
             Ok(response.count as c_size_t)
         },

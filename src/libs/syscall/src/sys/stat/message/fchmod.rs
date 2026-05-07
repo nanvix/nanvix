@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::{
     fmt::Debug,
@@ -41,11 +41,11 @@ pub struct FileChmodRequest {
     /// Padding.
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(FileChmodRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileChmodRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl FileChmodRequest {
     pub const PADDING_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_int>() - mem::size_of::<mode_t>();
+        SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<c_int>() - mem::size_of::<mode_t>();
 
     fn new(fd: c_int, mode: mode_t) -> Self {
         Self {
@@ -55,20 +55,18 @@ impl FileChmodRequest {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
     pub fn build(tid: ThreadIdentifier, fd: c_int, mode: mode_t) -> Message {
         let message: FileChmodRequest = FileChmodRequest::new(fd, mode);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::FileChmodRequest,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::FileChmodRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::from(tid),
             MessageReceiver::from(crate::LINUXD),
@@ -90,11 +88,11 @@ impl FileChmodRequest {
 pub struct FileChmodResponse {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(FileChmodResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileChmodResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl FileChmodResponse {
     /// Size of padding.
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE;
 
     fn new() -> Self {
         Self {
@@ -102,14 +100,14 @@ impl FileChmodResponse {
         }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
     pub fn build(tid: ThreadIdentifier) -> Message {
         let message: FileChmodResponse = FileChmodResponse::new();
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::FileChmodResponse,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::FileChmodResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

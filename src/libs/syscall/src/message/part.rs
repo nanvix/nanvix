@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::{
     fmt::Debug,
@@ -34,10 +34,10 @@ use ::sys::{
 ///
 /// # Description
 ///
-/// This structure represents a part of a Linux Daemon Message.
+/// This structure represents a part of a System Call Message.
 ///
 #[repr(C, packed)]
-pub struct LinuxDaemonMessagePart {
+pub struct SystemCallMessagePart {
     /// Total parts.
     pub total_parts: u16,
     /// Part number.
@@ -47,11 +47,11 @@ pub struct LinuxDaemonMessagePart {
     /// Payload.
     pub payload: [u8; Self::PAYLOAD_SIZE],
 }
-::static_assert::assert_eq_size!(LinuxDaemonMessagePart, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(SystemCallMessagePart, SystemCallMessage::PAYLOAD_SIZE);
 
-impl LinuxDaemonMessagePart {
+impl SystemCallMessagePart {
     /// Maximum size of the payload.
-    pub const PAYLOAD_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
+    pub const PAYLOAD_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
         - mem::size_of::<u8>()
         - mem::size_of::<u16>()
         - mem::size_of::<u16>();
@@ -76,7 +76,7 @@ impl LinuxDaemonMessagePart {
     ///
     pub fn build_request(
         tid: ThreadIdentifier,
-        header: LinuxDaemonMessageHeader,
+        header: SystemCallMessageHeader,
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
@@ -105,7 +105,7 @@ impl LinuxDaemonMessagePart {
     ///
     pub fn build_response(
         tid: ThreadIdentifier,
-        header: LinuxDaemonMessageHeader,
+        header: SystemCallMessageHeader,
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
@@ -117,7 +117,7 @@ impl LinuxDaemonMessagePart {
     ///
     /// # Description
     ///
-    /// Converts a byte array into a Linux Daemon Message Part.
+    /// Converts a byte array into a System Call Message Part.
     ///
     /// # Parameters
     ///
@@ -125,22 +125,22 @@ impl LinuxDaemonMessagePart {
     ///
     /// # Returns
     ///
-    /// A Linux Daemon Message Part.
+    /// A System Call Message Part.
     ///
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
     ///
     /// # Description
     ///
-    /// Converts a Linux Daemon Message Part into a byte array.
+    /// Converts a System Call Message Part into a byte array.
     ///
     /// # Returns
     ///
     /// A byte array.
     ///
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
@@ -163,7 +163,7 @@ impl LinuxDaemonMessagePart {
     /// Upon success, the message is returned. Upon failure, an error is returned instead.
     fn build(
         tid: ThreadIdentifier,
-        header: LinuxDaemonMessageHeader,
+        header: SystemCallMessageHeader,
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
@@ -178,9 +178,9 @@ impl LinuxDaemonMessagePart {
             ));
         }
 
-        let message: LinuxDaemonMessagePart =
+        let message: SystemCallMessagePart =
             Self::new(total_parts, part_number, payload_size, payload)?;
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(header, message.into_bytes());
+        let message: SystemCallMessage = SystemCallMessage::new(header, message.into_bytes());
         if is_response {
             Ok(Message::new(
                 MessageSender::from(crate::LINUXD),
@@ -203,7 +203,7 @@ impl LinuxDaemonMessagePart {
     ///
     /// # Description
     ///
-    /// Creates a new part of a Linux Daemon Message.
+    /// Creates a new part of a System Call Message.
     ///
     /// # Parameters
     ///
@@ -232,11 +232,11 @@ impl LinuxDaemonMessagePart {
     }
 }
 
-impl Debug for LinuxDaemonMessagePart {
+impl Debug for SystemCallMessagePart {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "LinuxDaemonMessagePart {{ part_number: {}, total_parts={},  payload_size: {} }}",
+            "SystemCallMessagePart {{ part_number: {}, total_parts={},  payload_size: {} }}",
             { self.part_number },
             { self.total_parts },
             { self.payload_size }

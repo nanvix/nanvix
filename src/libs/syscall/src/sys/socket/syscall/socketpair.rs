@@ -15,8 +15,8 @@ use crate::{
         AddressFamily,
         SocketType,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -90,11 +90,11 @@ pub fn socketpair(
         Err(Error::new(error_code, "socketpair() failed"))
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::CreateSocketPairResponse => {
+            SystemCallMessageHeader::CreateSocketPairResponse => {
                 let response: CreateSocketPairResponse =
                     CreateSocketPairResponse::from_bytes(message.payload);
 

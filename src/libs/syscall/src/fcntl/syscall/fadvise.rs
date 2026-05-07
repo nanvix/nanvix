@@ -16,8 +16,8 @@ use sysapi::sys_types::off_t;
 use {
     crate::{
         fcntl::message::FileAdvisoryInformationRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         ipc::Message,
@@ -117,11 +117,11 @@ fn posix_fadvise_linuxd(
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::FileAdvisoryInformationResponse => Ok(()),
+            SystemCallMessageHeader::FileAdvisoryInformationResponse => Ok(()),
             header => {
                 // Response was not successfully parsed.
                 ::syslog::warn!(

@@ -12,8 +12,8 @@ use crate::{
         ReadRequest,
         ReadResponse,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -92,9 +92,9 @@ fn read_chunk(
     }
 
     // Parse response.
-    let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+    let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
     match message.header {
-        LinuxDaemonMessageHeader::ReadResponse => {
+        SystemCallMessageHeader::ReadResponse => {
             let resp: ReadResponse = ReadResponse::from_bytes(message.payload);
             let count: i32 = resp.count;
 

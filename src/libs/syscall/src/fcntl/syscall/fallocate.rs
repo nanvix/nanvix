@@ -12,8 +12,8 @@ use sysapi::sys_types::off_t;
 use {
     crate::{
         fcntl::message::FileSpaceControlRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         error::ErrorCode,
@@ -103,11 +103,11 @@ fn posix_fallocate_linuxd(fd: RawFileDescriptor, offset: off_t, len: off_t) -> R
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::FileSpaceControlResponse => Ok(()),
+            SystemCallMessageHeader::FileSpaceControlResponse => Ok(()),
             // Response was not parsed.
             header => {
                 ::syslog::warn!(

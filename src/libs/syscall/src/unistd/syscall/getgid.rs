@@ -14,8 +14,8 @@ use {
             GetIdsRequest,
             GetIdsResponse,
         },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         error::ErrorCode,
@@ -74,10 +74,10 @@ fn getgid_linuxd() -> Result<gid_t, Error> {
         }
     } else {
         // System call succeeded, parse response
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         match message.header {
             // Response was successfully parsed
-            LinuxDaemonMessageHeader::GetIdsResponse => {
+            SystemCallMessageHeader::GetIdsResponse => {
                 let response: GetIdsResponse = GetIdsResponse::from_bytes(message.payload);
                 Ok(response.gid)
             },
