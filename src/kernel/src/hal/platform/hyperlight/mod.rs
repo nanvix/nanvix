@@ -1451,6 +1451,12 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
         // must span from initrd_base to the end of the cmdline payload.
         let module_size: usize =
             INITRD_SIZE_BYTES + initrd_size + CmdlineArgsLen::WIRE_SIZE + cmdline_len.as_usize();
+        let module_size: usize =
+            ::sys::mm::align_up(module_size, PAGE_ALIGNMENT).ok_or_else(|| {
+                let reason: &str = "initrd module size align_up overflow";
+                error!("parse_bootinfo(): {reason}");
+                Error::new(ErrorCode::BadFile, reason)
+            })?;
 
         let module: KernelModule =
             KernelModule::new(PhysicalAddress::from_raw_value(initrd_base)?, module_size, cmdline);
