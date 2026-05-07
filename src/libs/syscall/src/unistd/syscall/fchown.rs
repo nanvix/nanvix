@@ -18,8 +18,8 @@ use ::sysapi::sys_types::{
 use {
     crate::{
         unistd::message::FileChownRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         ipc::Message,
@@ -93,10 +93,10 @@ fn fchown_linuxd(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<()
         }
     } else {
         // System call succeeded, parse response.
-        let message = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message = SystemCallMessage::try_from_bytes(response.payload)?;
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::FileChownResponse => Ok(()),
+            SystemCallMessageHeader::FileChownResponse => Ok(()),
             // Invalid response.
             header => {
                 ::syslog::warn!(

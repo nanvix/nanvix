@@ -728,7 +728,7 @@ pub fn build_input_fn(
                         // Label: uservm::lib::vm_input::vm_exit()
                         profiler::timestamp_message!(
                             &mut msg.payload,
-                            mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                            mem::offset_of!(syscall::SystemCallMessage, payload)
                                 + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                         );
 
@@ -740,7 +740,7 @@ pub fn build_input_fn(
                         // Label: uservm::lib::vm_input::vm_write_bytes()
                         profiler::timestamp_message!(
                             &mut msg.payload,
-                            mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                            mem::offset_of!(syscall::SystemCallMessage, payload)
                                 + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                         );
 
@@ -832,7 +832,7 @@ pub fn build_input_fn(
                 // Label: uservm::lib::vm_input::vm_exit()
                 profiler::timestamp_message!(
                     &mut msg.payload,
-                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                    std::mem::offset_of!(syscall::SystemCallMessage, payload)
                         + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                 );
 
@@ -859,7 +859,7 @@ pub fn build_input_fn(
                 // Label: uservm::lib::vm_input::vm_write_bytes()
                 profiler::timestamp_message!(
                     &mut msg.payload,
-                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                    std::mem::offset_of!(syscall::SystemCallMessage, payload)
                         + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                 );
 
@@ -1027,7 +1027,7 @@ pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
                 // Label: uservm::lib::vm_output::send()
                 profiler::timestamp_message!(
                     &mut message.payload,
-                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                    std::mem::offset_of!(syscall::SystemCallMessage, payload)
                         + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
                 );
 
@@ -1109,7 +1109,7 @@ pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
         // Label: uservm::lib::vm_output::send()
         profiler::timestamp_message!(
             &mut message.payload,
-            std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+            std::mem::offset_of!(syscall::SystemCallMessage, payload)
                 + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
         );
 

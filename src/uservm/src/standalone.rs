@@ -41,8 +41,8 @@ use ::sys::{
     pm::ThreadIdentifier,
 };
 use ::syscall::{
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
     unistd::message::{
         ReadRequest,
         ReadResponse,
@@ -331,19 +331,19 @@ async fn standalone_io_handler(
         trace!("standalone io_handler: received frame (type={})", frame.frame_type_byte());
         match frame {
             IkcFrame::Message(msg) => {
-                let ldm: LinuxDaemonMessage = match LinuxDaemonMessage::try_from_bytes(msg.payload)
-                {
-                    Ok(ldm) => ldm,
-                    Err(e) => {
-                        warn!("standalone io_handler: failed to parse message: {e:?}");
-                        continue;
-                    },
-                };
+                let syscall_msg: SystemCallMessage =
+                    match SystemCallMessage::try_from_bytes(msg.payload) {
+                        Ok(syscall_msg) => syscall_msg,
+                        Err(e) => {
+                            warn!("standalone io_handler: failed to parse message: {e:?}");
+                            continue;
+                        },
+                    };
 
-                match ldm.header {
-                    LinuxDaemonMessageHeader::WriteRequest => {
+                match syscall_msg.header {
+                    SystemCallMessageHeader::WriteRequest => {
                         let tid: ThreadIdentifier = extract_tid(msg.source);
-                        let req: WriteRequest = WriteRequest::from_bytes(ldm.payload);
+                        let req: WriteRequest = WriteRequest::from_bytes(syscall_msg.payload);
                         handle_write_request(
                             &mut vm_stdout_rx,
                             &vm_stdin_tx,
@@ -354,9 +354,9 @@ async fn standalone_io_handler(
                         )
                         .await;
                     },
-                    LinuxDaemonMessageHeader::ReadRequest => {
+                    SystemCallMessageHeader::ReadRequest => {
                         let tid: ThreadIdentifier = extract_tid(msg.source);
-                        let req: ReadRequest = ReadRequest::from_bytes(ldm.payload);
+                        let req: ReadRequest = ReadRequest::from_bytes(syscall_msg.payload);
                         handle_read_request(
                             &mut vm_stdout_rx,
                             &vm_stdin_tx,

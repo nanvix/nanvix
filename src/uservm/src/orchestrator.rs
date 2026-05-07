@@ -134,7 +134,7 @@ pub enum IoControlCommand {
     _PauseMicroVm,
     _CreateSnapshot(String),
     _ResumeMicroVm,
-    LinuxDaemonFlushed,
+    SystemCallFlushed,
     Shutdown,
 }
 
@@ -495,9 +495,9 @@ impl Orchestrator {
                 }
                 Ok(Continue(()))
             },
-            IoControlCommand::LinuxDaemonFlushed => {
+            IoControlCommand::SystemCallFlushed => {
                 // NOTE: this will be unreachable once the communication is fully implemented
-                // `LinuxDaemonFlushed` should only be sent in the middle of `pause_protocol`.
+                // `SystemCallFlushed` should only be sent in the middle of `pause_protocol`.
                 // In fact, it should already be unreachable, but it cannot be tested ATM.
                 Ok(Continue(()))
             },
@@ -647,7 +647,7 @@ impl Orchestrator {
         self.io_control_tx
             .send(IoControlResponse::FlushInput)
             .await?;
-        self.receive_linux_daemon_flushed().await?;
+        self.receive_system_call_flushed().await?;
         self.state = State::Paused;
         trace!("State: Running -> Paused");
         self.io_control_tx
@@ -659,31 +659,31 @@ impl Orchestrator {
     ///
     /// # Description
     ///
-    /// Attempts to receive a `LinuxDaemonFlushed` message from the control input.
+    /// Attempts to receive a `SystemCallFlushed` message from the control input.
     ///
     /// # Returns
     ///
     /// Upon success, empty is returned. Otherwise, an error is returned instead.
     ///
-    async fn receive_linux_daemon_flushed(&mut self) -> Result<()> {
+    async fn receive_system_call_flushed(&mut self) -> Result<()> {
         let start: Instant = Instant::now();
         let warn_interval: Duration = Duration::from_millis(TIMEOUT_WARNING_INTERVAL_IN_MS as u64);
         loop {
             match timeout(warn_interval, self.io_control_rx.recv()).await {
-                Ok(Some(IoControlCommand::LinuxDaemonFlushed)) => break,
+                Ok(Some(IoControlCommand::SystemCallFlushed)) => break,
                 Ok(Some(_other)) => {
                     // Ignore unrelated messages during flushing.
                     continue;
                 },
                 Ok(None) => {
                     let reason: String =
-                        "io_control_rx closed while waiting for LinuxDaemonFlushed".to_string();
-                    error!("receive_linux_daemon_flushed(): {reason}");
+                        "io_control_rx closed while waiting for SystemCallFlushed".to_string();
+                    error!("receive_system_call_flushed(): {reason}");
                     anyhow::bail!(reason)
                 },
                 Err(_) => {
                     let elapsed_ms: usize = start.elapsed().as_millis() as usize;
-                    warn!("{}ms have passed waiting for `LinuxDaemonFlushed`", elapsed_ms);
+                    warn!("{}ms have passed waiting for `SystemCallFlushed`", elapsed_ms);
                     continue;
                 },
             }
@@ -874,10 +874,10 @@ mod tests {
             // Allow orchestrator to enter pause_protocol loop.
             sleep(Duration::from_millis(5)).await;
             let _ = vcpu_resp_tx_clone.send(VcpuControlResponse::Paused).await;
-            // Allow orchestrator to send FlushOutput & FlushInput, then provide LinuxDaemonFlushed.
+            // Allow orchestrator to send FlushOutput & FlushInput, then provide SystemCallFlushed.
             sleep(Duration::from_millis(5)).await;
             let _ = io_cmd_tx_clone
-                .send(IoControlCommand::LinuxDaemonFlushed)
+                .send(IoControlCommand::SystemCallFlushed)
                 .await;
         });
 

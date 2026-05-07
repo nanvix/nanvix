@@ -14,8 +14,8 @@ use ::sys::error::{
 use {
     crate::{
         unistd::message::FileDataSyncRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         ipc::Message,
@@ -91,11 +91,11 @@ fn fdatasync_linuxd(fd: RawFileDescriptor) -> Result<(), Error> {
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::FileDataSyncResponse => Ok(()),
+            SystemCallMessageHeader::FileDataSyncResponse => Ok(()),
             // Invalid response.
             header => {
                 ::syslog::warn!(

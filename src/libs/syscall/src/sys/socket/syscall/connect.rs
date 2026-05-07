@@ -15,8 +15,8 @@ use crate::{
         socklen_t,
         SocketAddr,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -78,11 +78,11 @@ pub fn connect(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
         Err(Error::new(error_code, "connect() failed"))
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::ConnectSocketResponse => {
+            SystemCallMessageHeader::ConnectSocketResponse => {
                 let _response: ConnectSocketResponse =
                     ConnectSocketResponse::from_bytes(message.payload);
                 Ok(())

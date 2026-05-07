@@ -13,8 +13,8 @@ use crate::{
         },
         SocketAddr,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -73,11 +73,11 @@ pub fn getsockname(sockfd: c_int, sockaddr: &mut SocketAddr) -> Result<(), Error
         Err(Error::new(error_code, "getsockname() failed"))
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::GetSockNameResponse => {
+            SystemCallMessageHeader::GetSockNameResponse => {
                 let response: GetSockNameResponse =
                     GetSockNameResponse::from_bytes(message.payload);
 

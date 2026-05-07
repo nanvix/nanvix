@@ -14,8 +14,8 @@ use ::sysapi::ffi::c_int;
 use {
     crate::{
         unistd::message::FileSyncRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         ipc::Message,
@@ -79,10 +79,10 @@ fn fsync_linuxd(fd: c_int) -> Result<(), Error> {
         Err(Error::new(error_code, "fsync() failed"))
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::FileSyncResponse => Ok(()),
+            SystemCallMessageHeader::FileSyncResponse => Ok(()),
             // Invalid response.
             _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
         }

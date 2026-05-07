@@ -15,8 +15,8 @@ use {
     crate::{
         message::MessagePartitioner,
         unistd::message::FileAccessAtRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::alloc::vec::Vec,
     ::sys::{
@@ -103,10 +103,10 @@ fn faccessat_linuxd(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Resul
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
 
         match message.header {
-            LinuxDaemonMessageHeader::FileAccessAtResponse => Ok(()),
+            SystemCallMessageHeader::FileAccessAtResponse => Ok(()),
             header => {
                 ::syslog::warn!(
                     "faccessat(): failed to parse response (dirfd={:?}, path={:?}, mode={:?}, \

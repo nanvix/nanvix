@@ -15,8 +15,8 @@ use {
     crate::{
         message::MessagePartitioner,
         sys::stat::message::FileChmodAtRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::alloc::vec::Vec,
     ::sys::{
@@ -85,10 +85,10 @@ fn fchmodat_linuxd(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Resul
         Err(Error::new(error_code, "fchmodat() failed"))
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
 
         match message.header {
-            LinuxDaemonMessageHeader::FileChmodAtResponse => Ok(()),
+            SystemCallMessageHeader::FileChmodAtResponse => Ok(()),
             _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
         }
     }

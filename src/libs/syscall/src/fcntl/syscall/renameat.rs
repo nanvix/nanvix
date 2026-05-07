@@ -12,8 +12,8 @@ use {
     crate::{
         fcntl::message::RenameAtRequest,
         message::MessagePartitioner,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::alloc::vec::Vec,
     ::sys::{
@@ -128,9 +128,9 @@ fn renameat_linuxd(
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         match message.header {
-            LinuxDaemonMessageHeader::RenameAtResponse => Ok(()),
+            SystemCallMessageHeader::RenameAtResponse => Ok(()),
             header => {
                 let reason: &str = "unexpected message header";
                 ::syslog::warn!(
