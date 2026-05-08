@@ -61,10 +61,13 @@ endef
 $(foreach target,$(ALL_GUEST_BINARIES),$(eval $(call GUEST_BINARY_RULES,$(target))))
 
 # Batched build/check/lint grouping: split guest binaries by feature set.
-# - Regular: all except test-kernel (and standalone-capable in standalone mode).
+# - Regular: all except test-kernel and c-bindings-rust (and standalone-capable in standalone mode).
 # - Standalone: standalone-capable binaries (only in standalone mode).
 # - test-kernel: always separate (unique features).
-_GUEST_BINS_COMMON := $(filter-out test-kernel,$(ALL_GUEST_BINARIES))
+# - c-bindings-rust: built separately to avoid Cargo feature unification masking
+#   missing symbols (it validates that all expected C symbols link without
+#   features contributed by sibling crates like network-rust).
+_GUEST_BINS_COMMON := $(filter-out test-kernel c-bindings-rust,$(ALL_GUEST_BINARIES))
 
 ifeq ($(DEPLOYMENT_MODE),standalone)
 _GUEST_BINS_STANDALONE := $(filter $(STANDALONE_GUEST_BINARIES),$(_GUEST_BINS_COMMON))
@@ -89,6 +92,9 @@ ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
 endif
 ifneq ($(filter test-kernel,$(ALL_GUEST_BINARIES)),)
 	$(GUEST_CARGO_BUILD_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES)
+endif
+ifneq ($(filter c-bindings-rust,$(ALL_GUEST_BINARIES)),)
+	$(GUEST_CARGO_BUILD_CMD) -p c-bindings-rust $(GUEST_BINARY_CARGO_FEATURES)
 endif
 	@for pkg in $(ALL_GUEST_BINARIES); do \
 		$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$$pkg.elf $(BINARIES_DIR)/$$pkg.elf; \
@@ -123,6 +129,9 @@ endif
 ifneq ($(filter test-kernel,$(ALL_GUEST_BINARIES)),)
 	$(GUEST_CARGO_CHECK_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES)
 endif
+ifneq ($(filter c-bindings-rust,$(ALL_GUEST_BINARIES)),)
+	$(GUEST_CARGO_CHECK_CMD) -p c-bindings-rust $(GUEST_BINARY_CARGO_FEATURES)
+endif
 
 # Batched format: single cargo invocation for all guest binaries.
 _GUEST_BINS_FMT_PKGS := $(foreach pkg,$(ALL_GUEST_BINARIES),-p $(pkg))
@@ -145,6 +154,9 @@ endif
 ifneq ($(filter test-kernel,$(ALL_GUEST_BINARIES)),)
 	$(GUEST_CARGO_CLIPPY_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
 endif
+ifneq ($(filter c-bindings-rust,$(ALL_GUEST_BINARIES)),)
+	$(GUEST_CARGO_CLIPPY_CMD) -p c-bindings-rust $(GUEST_BINARY_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
+endif
 
 rust-lint-check-guest-binaries:
 ifneq ($(_GUEST_BINS_REGULAR_PKGS),)
@@ -155,4 +167,7 @@ ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
 endif
 ifneq ($(filter test-kernel,$(ALL_GUEST_BINARIES)),)
 	$(GUEST_CARGO_CLIPPY_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES) -- -D warnings
+endif
+ifneq ($(filter c-bindings-rust,$(ALL_GUEST_BINARIES)),)
+	$(GUEST_CARGO_CLIPPY_CMD) -p c-bindings-rust $(GUEST_BINARY_CARGO_FEATURES) -- -D warnings
 endif
