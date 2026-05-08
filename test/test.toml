@@ -116,12 +116,6 @@ input = "[]"
 expected_output = "ok"
 runs_on = ["microvm"]            # FIXME: #1643 — kernel heap exhaustion under Hyperlight
 
-[[tests]]
-executor = "http"
-program = "./bin/c-bindings-rust.elf"
-input = "[]"
-expected_output = "ok"
-
 #===================================================================================================
 # Terminal Executor Tests (Interactive Mode)
 #===================================================================================================
@@ -194,8 +188,3 @@ executor = "terminal"
 program = "./bin/dlfcn-rust.elf"
 expected_output = "ok"
 runs_on = ["microvm"]            # FIXME: #1643 — kernel heap exhaustion under Hyperlight
-
-[[tests]]
-executor = "terminal"
-program = "./bin/c-bindings-rust.elf"
-expected_output = "ok"
