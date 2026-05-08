@@ -43,7 +43,6 @@ pub use ::sysalloc;
 pub mod errno;
 
 /// Definitions for internet operations.
-#[cfg(feature = "networking")]
 pub mod arpa;
 
 /// Format of directory entries
@@ -65,7 +64,6 @@ pub mod fcntl;
 pub mod message;
 
 /// Internet protocols for network stack.
-#[cfg(feature = "networking")]
 pub mod netinet;
 
 /// Posix threads.
