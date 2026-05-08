@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 name: "Integration Test"
-description: "Run integration tests for microvm/hyperlight machine types"
+description: "Run integration tests for microvm machine type"
 
 inputs:
   build-type:
