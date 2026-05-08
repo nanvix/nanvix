@@ -43,6 +43,9 @@ steps for `microvm` and `hyperlight`.
 | `microvm`     | debug, release | standalone, single, multi, l2 |
 | `hyperlight`  | debug, release | single, multi, l2             |
 
+> **Note:** CI workflows only exercise `microvm`. The `hyperlight` machine
+> type is available in the local pipeline but is not covered by CI.
+
 ### Build Parameter Mapping
 
 | Deployment Type | `DEPLOYMENT_MODE` |
@@ -80,9 +83,9 @@ pipeline, but matrix coverage is split across multiple jobs and run on pull requ
 Matrix coverage in GitHub Actions:
 
 - `checks`: format + spellcheck (single run).
-- `lint`, `verify`, `ci-build`: `microvm` and `hyperlight` with `standalone`,
+- `lint`, `verify`, `ci-build`: `microvm` with `standalone`,
   `single-process`, and `multi-process`.
-- `ci-test`: same matrix, excluding `hyperlight + standalone`.
+- `ci-test`: same matrix.
 
 > **Note:** The local pipeline covers the `l2` deployment type, but CI does not run L2 jobs.
 

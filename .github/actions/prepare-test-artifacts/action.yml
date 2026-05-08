@@ -35,7 +35,7 @@ runs:
       run: chmod +x bin/*.elf 2>/dev/null || true
 
     - name: "Recreate sysroot symlink"
-      if: inputs.machine-type == 'microvm' || inputs.machine-type == 'hyperlight'
+      if: inputs.machine-type == 'microvm'
       shell: bash
       run: |
         # The sysroot symlink created during build uses an absolute path that
