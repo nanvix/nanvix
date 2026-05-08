@@ -1897,6 +1897,7 @@ dependencies = [
  "control-plane-api",
  "libc",
  "log",
+ "net-backend",
  "profiler",
  "rand 0.10.1",
  "signal-hook",
@@ -2379,6 +2380,17 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "net-backend"
+version = "0.12.533"
+dependencies = [
+ "libc",
+ "log",
+ "sys",
+ "sysapi",
+ "syscall",
 ]
 
 [[package]]

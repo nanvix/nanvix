@@ -83,6 +83,7 @@ members = [
         "src/utils/nanvix-test",
         "src/utils/nanvixd",
         "src/utils/strace",
+        "src/libs/net-backend",
         "src/libs/nanvix-oci",
         "src/libs/nanvix-shim-core",
         "src/libs/nanvix-shim-proto",
@@ -165,6 +166,7 @@ multibin = { path = "src/libs/multibin", default-features = false }
 multiimage = { path = "src/libs/multiimage", default-features = false }
 nanvix = { path = "src/libs/nanvix", default-features = false }
 nanvix-http = { path = "src/libs/nanvix-http", default-features = false }
+net-backend = { path = "src/libs/net-backend", default-features = false }
 nanvix-oci = { path = "src/libs/nanvix-oci" }
 nanvix-registry = { path = "src/libs/nanvix-registry", default-features = false }
 nanvix-sandbox = { path = "src/libs/nanvix-sandbox", default-features = false }
