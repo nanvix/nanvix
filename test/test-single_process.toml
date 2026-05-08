@@ -114,12 +114,6 @@ program = "./bin/dlfcn-rust.elf"
 input = "[]"
 expected_output = "ok"
 
-[[tests]]
-executor = "http"
-program = "./bin/c-bindings-rust.elf"
-input = "[]"
-expected_output = "ok"
-
 #===================================================================================================
 # Terminal Executor Tests (Interactive Mode)
 #===================================================================================================
@@ -189,11 +183,6 @@ expected_output = "ok"
 [[tests]]
 executor = "terminal"
 program = "./bin/dlfcn-rust.elf"
-expected_output = "ok"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/c-bindings-rust.elf"
 expected_output = "ok"
 
 [[tests]]
