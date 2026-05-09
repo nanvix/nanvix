@@ -7,10 +7,7 @@
 
 use crate::{
     config::RunnerConfig,
-    executor::{
-        DEFAULT_EXIT_CODE_SKIP_VALIDATION,
-        WorkloadSpec,
-    },
+    executor::WorkloadSpec,
     log_layout::{
         GuestLogTracker,
         RunnerLogPaths,
@@ -213,26 +210,7 @@ pub async fn test_with_terminal_executor(
         .await?;
 
         // Wait for the nanvixd process to exit and get its exit code.
-        // FIXME (#1010): On hyperlight, SIGKILL terminates nanvixd without a clean exit, causing
-        // wait_exit_code() to fail. When skip_exit_code_validation is true, we tolerate this
-        // failure since we cannot reliably get the exit code anyway.
-        let exit_code: i32 = match nanvixd.wait_exit_code().await {
-            Ok(code) => code,
-            Err(error) => {
-                if workload.skip_exit_code_validation() {
-                    warn!(
-                        "test_with_terminal_executor(): wait_exit_code failed but skipping \
-                         validation (program={}, iteration={}, error={})",
-                        workload.program_path(),
-                        iteration,
-                        error
-                    );
-                    DEFAULT_EXIT_CODE_SKIP_VALIDATION
-                } else {
-                    return Err(error);
-                }
-            },
-        };
+        let exit_code: i32 = nanvixd.wait_exit_code().await?;
 
         if let Err(error) = write(&stdout_file_path, &stdout_bytes) {
             let reason: String = format!(
@@ -275,29 +253,8 @@ pub async fn test_with_terminal_executor(
             return Err(::anyhow::anyhow!(reason));
         }
 
-        // Validate exit code unless skip_exit_code_validation() is set.
-        // FIXME (#1010): Remove skip_exit_code_validation() once graceful hyperlight interrupt
-        // is implemented. Currently hyperlight uses SIGKILL which prevents clean exit.
-        if !workload.skip_exit_code_validation() && exit_code != workload.expected_exit_code() {
-            let expected: i32 = workload.expected_exit_code();
-            let reason: String = format!(
-                "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
-                expected,
-                exit_code,
-                workload.program_path(),
-                iteration
-            );
-            error!("test_with_terminal_executor(): {reason}");
-            return Err(::anyhow::anyhow!(reason));
-        }
-
-        // When wait_exit_code succeeds on hyperlight, still validate the exit code
-        // — but only if the test explicitly declared an expected exit code.
-        if workload.skip_exit_code_validation()
-            && exit_code != DEFAULT_EXIT_CODE_SKIP_VALIDATION
-            && workload.has_explicit_expected_exit_code()
-            && exit_code != workload.expected_exit_code()
-        {
+        // Validate exit code.
+        if exit_code != workload.expected_exit_code() {
             let expected: i32 = workload.expected_exit_code();
             let reason: String = format!(
                 "exit code mismatch (expected={}, actual={}, program={}, iteration={})",

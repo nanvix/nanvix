@@ -243,10 +243,7 @@ async fn run() -> Result<()> {
     .await;
     warning::fail_if_triggered("prepare_runner_environment")?;
 
-    // Detect machine type at compile time based on enabled Cargo features.
-    #[cfg(feature = "hyperlight")]
-    let machine: &str = "hyperlight";
-    #[cfg(feature = "microvm")]
+    // Machine type used for filtering tests.
     let machine: &str = "microvm";
 
     for test_config in selected_tests {
@@ -361,7 +358,6 @@ async fn run() -> Result<()> {
                     expected_output.as_deref(),
                     expect_empty_output,
                     expected_exit_code,
-                    machine == "hyperlight",
                 );
 
                 test_with_http_executor(
@@ -415,7 +411,6 @@ async fn run() -> Result<()> {
                     expected_output.as_deref(),
                     expect_empty_output,
                     expected_exit_code,
-                    machine == "hyperlight",
                 );
 
                 test_with_terminal_executor(
