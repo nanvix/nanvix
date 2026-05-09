@@ -136,7 +136,7 @@ impl KernelStack {
     ///
     /// The size of the target kernel stack.
     ///
-    fn size(&self) -> usize {
+    pub(crate) fn size(&self) -> usize {
         config::kernel::KSTACK_SIZE
     }
 
@@ -153,7 +153,7 @@ impl KernelStack {
     ///
     /// As stacks grow downwards, the base address is the highest address of the stack.
     ///
-    fn base(&self) -> PageAligned<VirtualAddress> {
+    pub(crate) fn base(&self) -> PageAligned<VirtualAddress> {
         PageAligned::from_raw_value(self.kpages[0].base().into_raw_value()).unwrap()
     }
 
@@ -190,14 +190,18 @@ impl KernelStack {
         let guard_base: usize = self.kpages[0].base().into_raw_value();
         let word_count: usize = ::arch::mem::PAGE_SIZE / ::core::mem::size_of::<u32>();
         let guard_ptr: *mut u32 = guard_base as *mut u32;
-        for i in 0..word_count {
-            // SAFETY: The guard page is within allocated kernel memory and no other references
-            // to this memory exist at this point, so writing through a raw pointer derived from
-            // the page base address is sound.
-            unsafe {
-                guard_ptr.add(i).write_volatile(KSTACK_GUARD_PATTERN);
+        // Switch to the kernel address space so that the identity-mapped guard page
+        // is accessible even when CR3 points to a user page directory.
+        super::virt::with_kernel_address_space(|| {
+            for i in 0..word_count {
+                // SAFETY: The guard page is within allocated kernel memory and no other
+                // references to this memory exist at this point, so writing through a
+                // raw pointer derived from the page base address is sound.
+                unsafe {
+                    guard_ptr.add(i).write_volatile(KSTACK_GUARD_PATTERN);
+                }
             }
-        }
+        });
     }
 
     ///
@@ -243,17 +247,22 @@ impl KernelStack {
 fn check_guard_page(guard_base: usize) -> Result<(), Error> {
     let word_count: usize = ::arch::mem::PAGE_SIZE / ::core::mem::size_of::<u32>();
     let guard_ptr: *const u32 = guard_base as *const u32;
-    for i in 0..word_count {
-        // SAFETY: The caller guarantees that the guard page at `guard_base` is within valid
-        // kernel memory (either allocated kernel pages or the BSS section).
-        let val: u32 = unsafe { guard_ptr.add(i).read_volatile() };
-        if val != KSTACK_GUARD_PATTERN {
-            let reason: &str = "kernel stack guard watermark corrupted (possible stack overflow)";
-            error!("{}", reason);
-            return Err(Error::new(ErrorCode::BadAddress, reason));
+    // Switch to the kernel address space so that the identity-mapped guard page
+    // is accessible even when CR3 points to a user page directory.
+    super::virt::with_kernel_address_space(|| {
+        for i in 0..word_count {
+            // SAFETY: The caller guarantees that the guard page at `guard_base` is within valid
+            // kernel memory (either allocated kernel pages or the BSS section).
+            let val: u32 = unsafe { guard_ptr.add(i).read_volatile() };
+            if val != KSTACK_GUARD_PATTERN {
+                let reason: &str =
+                    "kernel stack guard watermark corrupted (possible stack overflow)";
+                error!("{}", reason);
+                return Err(Error::new(ErrorCode::BadAddress, reason));
+            }
         }
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 ///

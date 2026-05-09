@@ -127,3 +127,12 @@ pub(crate) fn memset(base: *mut u8, value: u8, size: usize) -> Result<(), Error>
 
     Ok(())
 }
+
+/// Executes a closure. On Hyperlight, the host-bootstrapped page tables are always active and the
+/// kernel does not manage its own CR3, so this is a trivial passthrough.
+pub(crate) fn with_kernel_address_space<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    f()
+}

@@ -28,6 +28,9 @@ use ::arch::mem::{
     PAGE_ALIGNMENT,
     PGTAB_ALIGNMENT,
 };
+#[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
+pub(crate) use virt::propagate_kernel_pdes;
+pub(crate) use virt::with_kernel_address_space;
 pub use virt::{
     KernelPage,
     PageTableStorage,

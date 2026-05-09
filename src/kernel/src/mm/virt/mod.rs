@@ -19,15 +19,23 @@ pub(in crate::mm) use page_table_allocator::PAGE_TABLE_ALLOCATOR;
 mod vmem;
 
 #[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
+pub(crate) use identity_map::identity_map_page;
+#[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
 use identity_map::init as identity_map_init;
 #[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
 pub(crate) use identity_map::memcpy;
 #[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
-use identity_map::memset;
+pub(in crate::mm) use identity_map::memset;
+#[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
+pub(crate) use identity_map::propagate_kernel_pdes;
+#[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
+pub(crate) use identity_map::with_kernel_address_space;
 #[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
 pub(crate) use no_identity_map::memcpy;
 #[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
-use no_identity_map::memset;
+pub(in crate::mm) use no_identity_map::memset;
+#[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
+pub(crate) use no_identity_map::with_kernel_address_space;
 
 //==================================================================================================
 // Imports
