@@ -41,7 +41,6 @@ gdb = ["uservm?/gdb", "nanvix-sandbox-config?/gdb"]
 profile-time = ["uservm?/profile-time", "nanvix-sandbox?/profile-time"]
 hyperlight = [
     "config?/hyperlight",
-    "uservm?/hyperlight",
     "nanvix-sandbox?/hyperlight",
     "nanvix-sandbox-cache?/hyperlight",
 ]

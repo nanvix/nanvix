@@ -45,7 +45,7 @@ standalone = []
 gdb = ["uservm/gdb"]
 # Enables fine-grained time profiling.
 profile-time = ["uservm/profile-time"]
-hyperlight = ["config/hyperlight", "uservm/hyperlight"]
+hyperlight = ["config/hyperlight"]
 microvm = ["config/microvm", "uservm/microvm"]
 whp = ["config/whp", "uservm/whp"]
 
