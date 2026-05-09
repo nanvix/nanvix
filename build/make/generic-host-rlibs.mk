@@ -9,7 +9,6 @@ MULTI_PROCESS_ONLY_RLIBS := nanvix-sandbox-cache
 
 # Machine-specific feature flags for host rlibs that depend on uservm.
 MACHINE_FEATURES :=
-MACHINE_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 MACHINE_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 MACHINE_FEATURES += $(if $(filter yes,$(WHP)),whp,)
 MACHINE_FEATURES := $(strip $(MACHINE_FEATURES))

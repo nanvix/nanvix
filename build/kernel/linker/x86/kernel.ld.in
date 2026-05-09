@@ -26,8 +26,7 @@ BOOT_ADDR = 0x00100000 + PLATFORM_BASE_ADDR;
 /*
  * Trampoline Address
  *
- * On Hyperlight, this equals PLATFORM_BASE_ADDR so the VMM enters _do_start
- * directly.  On microvm, it is offset to 0x8000 for AP real-mode startup.
+ * This is offset to 0x8000 for AP real-mode startup.
  */
 TRAMPOLINE_ADDR = @TRAMPOLINE_ADDR@;
 

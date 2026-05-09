@@ -23,9 +23,6 @@ updates:
       separator: "-"
     ignore:
       - dependency-name: "fatfs"
-      - dependency-name: "hyperlight-common"
-      - dependency-name: "hyperlight-host"
-      - dependency-name: "hyperlight-guest"
       - dependency-name: "spin"
       - dependency-name: "talc"
       - dependency-name: "vstd"
