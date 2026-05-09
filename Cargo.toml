@@ -107,7 +107,7 @@ bitmap = { path = "src/libs/bitmap", default-features = false }
 bump-allocator = { path = "src/libs/bump_allocator", default-features = false }
 build-utils = { path = "src/libs/build-utils" }
 bytes = "1.11.1"
-cc = "1.2.61"
+cc = "1.2.62"
 cfg-if = "1.0.4"
 chrono = "0.4.44"
 clap = { version = "4.6.1", default-features = false, features = [
