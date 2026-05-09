@@ -182,8 +182,7 @@ global_asm!(
     // variable EXCP_STACK_GUARD. A value of 0 disables the check.
     //
     // On microvm, a stack overflow triggers a clean VMM shutdown via
-    // the ACPI power-management port. On hyperlight, the macro is a
-    // no-op because that mechanism is not available.
+    // the ACPI power-management port.
     //
     // Clobbers: EDX, EAX (only on the overflow path which never returns).
     //

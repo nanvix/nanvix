@@ -29,11 +29,7 @@ raw-array = { workspace = true }
 slab = { workspace = true }
 sorted-vec = { workspace = true }
 sys = { workspace = true }
-flatbuffers = { workspace = true, optional = true }
-hyperlight-common = { workspace = true, optional = true }
-hyperlight-guest = { workspace = true, optional = true }
 multibin = { workspace = true, optional = true }
-paste = { workspace = true, optional = true }
 static_assert = { workspace = true }
 
 [build-dependencies]
@@ -43,20 +39,6 @@ build-utils = { workspace = true }
 default = ["microvm"]
 
 # Machine Types
-hyperlight = [
-    "arch/hyperlight",
-    "puts",
-    "stdio",
-    "pit",
-    "dep:flatbuffers",
-    "dep:hyperlight-common",
-    "dep:hyperlight-guest",
-    "dep:config",
-    "dep:multibin",
-    "dep:paste",
-    "config/hyperlight",
-    "platform-root-virtual-address-space-bootstrap",
-]
 microvm = [
     "arch/microvm",
     "putb",
@@ -78,9 +60,6 @@ stdio = []
 
 # Enables the dynamic exception stack guard.
 exception-stack-guard = []
-
-# Enables bootstrapping of root virtual address space from platform-provided page tables.
-platform-root-virtual-address-space-bootstrap = []
 
 # Enables latest performance optimizations.
 nightly-performance-optimizations = []

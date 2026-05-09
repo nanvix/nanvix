@@ -69,7 +69,6 @@ use ::sys::{
     ExitStatus,
 };
 
-#[cfg(not(feature = "hyperlight"))]
 use crate::mm::kheap;
 
 #[cfg(feature = "smp")]
@@ -97,7 +96,7 @@ mod klog;
 mod kmod;
 mod kpanic;
 mod mm;
-#[cfg(any(feature = "microvm", feature = "hyperlight"))]
+#[cfg(feature = "microvm")]
 mod multibin;
 pub(crate) mod pm;
 #[cfg(feature = "stdio")]
@@ -257,9 +256,8 @@ fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &LinkedList<KernelModule>) -
 #[unsafe(no_mangle)]
 pub extern "C" fn kmain(kargs: &KernelArguments) {
     // Install klog buffer backing storage before the first logging call.
-    // On Hyperlight this is done during the evolve phase (hyperlight_pre_kmain).
     // Under SMP there is no klog buffer.
-    #[cfg(all(not(feature = "hyperlight"), not(feature = "smp")))]
+    #[cfg(not(feature = "smp"))]
     {
         if let Err(e) = unsafe { crate::hal::platform::setup_klog_backing_storage() } {
             panic!("failed to set up klog backing storage: {:?}", e);
@@ -269,9 +267,6 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     info!("initializing the kernel...");
 
     // Initialize the kernel heap.
-    // On Hyperlight the heap is already initialized during the evolve phase
-    // (`hyperlight_pre_kmain`) so that FunctionCall deserialization can allocate.
-    #[cfg(not(feature = "hyperlight"))]
     {
         if let Err(e) = unsafe { crate::hal::platform::setup_heap_backing_storage() } {
             panic!("failed to set up heap backing storage: {:?}", e);

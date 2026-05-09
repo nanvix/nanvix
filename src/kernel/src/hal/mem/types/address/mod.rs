@@ -25,7 +25,6 @@ pub use ::sys::mm::{
 pub use aligned::*;
 pub use frame::*;
 pub use page::*;
-#[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
 pub use pd::*;
 pub use phys::*;
 

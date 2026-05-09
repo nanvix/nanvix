@@ -119,9 +119,7 @@ impl Vmem {
             kpage_tables.push_back(Rc::new(RefCell::new((vaddr, page_table))));
         }
 
-        // On platforms that do not bootstrap the root virtual address space, register the kernel
-        // page directory for lazy identity mapping and set CR3.
-        #[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
+        // Register the kernel page directory for lazy identity mapping and set CR3.
         {
             use crate::hal::mem::PageDirectoryAddress;
             use ::arch::cpu::cr3::{
@@ -220,7 +218,6 @@ impl Vmem {
     ///
     /// Upon success, empty is returned. Upon failure, an error code is returned instead.
     ///
-    #[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
     pub fn map_kpage<T: Fn() -> Result<PageTable<PageTableStorage>, Error>>(
         &mut self,
         kpage: KernelPage,
@@ -1303,9 +1300,6 @@ impl Vmem {
 
         if dry_run {
             // For dry-run validation, check if the PTE is present or can be created.
-            // On Hyperlight, inherited page tables may not have PTEs for identity-mapped
-            // regions (e.g., RAMFS) that were added after the host built the page tables.
-            // In that case, the PTE will be created on the non-dry-run pass.
             let pt_ref = page_table.borrow();
             match pt_ref.1.is_page_present(page_address) {
                 Ok(true) => {},
@@ -1316,9 +1310,6 @@ impl Vmem {
         } else {
             let mut pt_mut = page_table.borrow_mut();
             // If the PTE is not present, create an identity-mapped entry first.
-            // This handles Hyperlight's inherited page tables where the host didn't
-            // create PTEs for regions added after snapshot page table construction
-            // (e.g., RAMFS identity-mapped via a separate KVM memory slot).
             match pt_mut.1.is_page_present(page_address) {
                 Ok(false) => {
                     let frame_addr: FrameAddress =
