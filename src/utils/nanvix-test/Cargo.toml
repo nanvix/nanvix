@@ -32,7 +32,6 @@ default = ["microvm", "multi-process"]
 single-process = ["nanvix/single-process", "nanvixd/single-process"]
 multi-process = ["nanvix/multi-process", "nanvixd/multi-process"]
 standalone = ["nanvix/standalone", "nanvixd/standalone"]
-hyperlight = ["nanvix/hyperlight", "nanvixd/hyperlight"]
 microvm = ["nanvix/microvm", "nanvixd/microvm"]
 whp = ["nanvix/whp", "nanvixd/whp"]
 
