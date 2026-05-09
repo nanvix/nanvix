@@ -78,7 +78,7 @@ Available build parameters:
 |-------------------|-----------------|--------------------------------------------------------------------|
 | `DEPLOYMENT_MODE` | `standalone`    | `standalone`, `single-process`, `multi-process`, `l2`              |
 | `LOG_LEVEL`       | `error`         | `trace`, `debug`, `info`, `warn`, `error`, `panic`                 |
-| `MACHINE`         | `microvm`       | `hyperlight`, `microvm`, `qemu-pc`, `qemu-isapc`, `qemu-baremetal` |
+| `MACHINE`         | `microvm`       | `microvm`                                                          |
 | `PROFILER`        | `no`            | `yes`, `no`                                                        |
 | `RELEASE`         | `no`            | `yes`, `no`                                                        |
 | `TARGET`          | `x86`           | `x86`                                                              |

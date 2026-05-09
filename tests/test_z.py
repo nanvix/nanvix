@@ -409,12 +409,6 @@ class TestBuildConfig(unittest.TestCase):
         cfg.apply_platform_defaults(_windows_plat())
         self.assertTrue(cfg.whp)
 
-    def test_windows_no_whp_for_hyperlight(self) -> None:
-        """On Windows with machine=hyperlight, WHP is not auto-enabled."""
-        cfg = zmod.BuildConfig(machine="hyperlight")
-        cfg.apply_platform_defaults(_windows_plat())
-        self.assertFalse(cfg.whp)
-
     # --- --profile implies release + profiler ---
 
     def test_profile_implies_release_and_profiler(self) -> None:
@@ -526,12 +520,6 @@ class TestAssembleBuildMakeArgs(unittest.TestCase):
         cfg = zmod.BuildConfig(machine="microvm", make_args=["all"])
         injected, _ = zmod._assemble_build_make_args(_windows_plat(), cfg)
         self.assertIn("WHP=yes", injected)
-
-    def test_windows_no_whp_for_hyperlight(self) -> None:
-        """On Windows with machine=hyperlight, WHP=yes is not injected."""
-        cfg = zmod.BuildConfig(machine="hyperlight", make_args=["all"])
-        injected, _ = zmod._assemble_build_make_args(_windows_plat(), cfg)
-        self.assertNotIn("WHP=yes", injected)
 
     def test_windows_no_duplicate_deployment_mode(self) -> None:
         """User-supplied DEPLOYMENT_MODE= should not be overridden."""
@@ -1211,12 +1199,6 @@ class TestCmdHelp(unittest.TestCase):
 
 class TestParseMakeVar(unittest.TestCase):
     """Tests for _parse_make_var."""
-
-    def test_machine_hyperlight(self) -> None:
-        """Parsing MACHINE=hyperlight sets cfg.machine to 'hyperlight'."""
-        cfg = zmod.BuildConfig()
-        zmod._parse_make_var(cfg, "MACHINE", "hyperlight")
-        self.assertEqual(cfg.machine, "hyperlight")
 
     def test_valid_deployment_modes(self) -> None:
         """All values in VALID_DEPLOYMENT_MODES are accepted by _parse_make_var."""

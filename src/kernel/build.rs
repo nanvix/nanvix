@@ -136,19 +136,10 @@ fn main() {
     // Generate Linker Script
     //==============================================================================================
 
-    // Generate linker script from template with machine-specific MACHINE_RESERVED value.
+    // Generate linker script from template with machine-specific values.
     //
     // MACHINE_RESERVED is the space reserved after __KERNEL_END for machine-specific structures.
-    // The kernel must end early enough to leave room for these structures before KPOOL_BASE.
-    //
-    // For Hyperlight, this includes PEB, host function definitions, and I/O buffers.
-    // The exact sizes are defined in build/hyperlight_constants.toml.
-    //
-    // If __KERNEL_END + MACHINE_RESERVED >= KPOOL_BASE, Hyperlight creates zero-sized guard
-    // pages which KVM rejects with EINVAL. We use strictly less than to ensure at least one
-    // page of heap_padding exists.
-    //
-    // For non-Hyperlight targets, no reserved space is needed.
+    // No reserved space is needed for microvm.
     let target_arch: String =
         env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_else(|_| "x86".to_string());
     let linker_subdir: &str = if target_arch == "x86_64" {
@@ -160,76 +151,11 @@ fn main() {
         workspace_dir.join(format!("build/kernel/linker/{}/kernel.ld.in", linker_subdir));
     let linker_output_path: PathBuf = Path::new(&out_dir).join("kernel.ld");
 
-    let machine_reserved: String = if cfg!(feature = "hyperlight") {
-        // Read hyperlight configuration from TOML file.
-        let hyperlight_config_path: PathBuf = workspace_dir.join("build/hyperlight_constants.toml");
-        let hyperlight_config: HashMap<String, String> = load_toml(&hyperlight_config_path);
-        println!("cargo::rerun-if-changed={}", hyperlight_config_path.display());
+    let machine_reserved: String = "0x0".to_string();
+    let platform_base_addr: String = "0x0".to_string();
 
-        let page_size_str: &str = hyperlight_config
-            .get("page_size")
-            .expect("page_size not found in hyperlight_constants.toml");
-        let page_size: usize = page_size_str
-            .parse()
-            .unwrap_or_else(|_| panic!("Failed to parse page_size: '{}'", page_size_str));
-        let peb_pages_str: &str = hyperlight_config
-            .get("peb_pages")
-            .expect("peb_pages not found in hyperlight_constants.toml");
-        let peb_pages: usize = peb_pages_str
-            .parse()
-            .unwrap_or_else(|_| panic!("Failed to parse peb_pages: '{}'", peb_pages_str));
-        let hfd_pages_str: &str = hyperlight_config
-            .get("host_function_definitions_pages")
-            .expect("host_function_definitions_pages not found in hyperlight_constants.toml");
-        let hfd_pages: usize = hfd_pages_str.parse().unwrap_or_else(|_| {
-            panic!("Failed to parse host_function_definitions_pages: '{}'", hfd_pages_str)
-        });
-        let input_pages_str: &str = hyperlight_config
-            .get("input_data_buffer_pages")
-            .expect("input_data_buffer_pages not found in hyperlight_constants.toml");
-        let input_pages: usize = input_pages_str.parse().unwrap_or_else(|_| {
-            panic!("Failed to parse input_data_buffer_pages: '{}'", input_pages_str)
-        });
-        let output_pages_str: &str = hyperlight_config
-            .get("output_data_buffer_pages")
-            .expect("output_data_buffer_pages not found in hyperlight_constants.toml");
-        let output_pages: usize = output_pages_str.parse().unwrap_or_else(|_| {
-            panic!("Failed to parse output_data_buffer_pages: '{}'", output_pages_str)
-        });
-
-        let total_pages: usize = peb_pages
-            .checked_add(hfd_pages)
-            .and_then(|sum| sum.checked_add(input_pages))
-            .and_then(|sum| sum.checked_add(output_pages))
-            .expect("Overflow calculating total reserved pages");
-        let reserved: usize = total_pages
-            .checked_mul(page_size)
-            .expect("Overflow calculating reserved space in bytes");
-        format!("{:#x}", reserved)
-    } else {
-        "0x0".to_string()
-    };
-
-    let platform_base_addr: String = if cfg!(feature = "hyperlight") {
-        // Read from hyperlight_constants.toml so the value stays in sync with the config crate.
-        let hyperlight_config_path: PathBuf = workspace_dir.join("build/hyperlight_constants.toml");
-        let hyperlight_config: HashMap<String, String> = load_toml(&hyperlight_config_path);
-        let val: &str = hyperlight_config
-            .get("platform_base_addr")
-            .expect("platform_base_addr not found in hyperlight_constants.toml");
-        let parsed: usize = parse_hex_or_decimal(val, "platform_base_addr");
-        format!("{parsed:#x}")
-    } else {
-        "0x0".to_string()
-    };
-
-    // On Hyperlight the trampoline is at PLATFORM_BASE_ADDR (VMM enters _do_start directly).
-    // On microvm the trampoline is offset to 0x8000 for real-mode AP startup.
-    let trampoline_addr: String = if cfg!(feature = "hyperlight") {
-        platform_base_addr.clone()
-    } else {
-        format!("{:#x}", 0x8000usize)
-    };
+    // Trampoline is offset to 0x8000 for AP real-mode startup.
+    let trampoline_addr: String = format!("{:#x}", 0x8000usize);
 
     let linker_template: String =
         fs::read_to_string(&linker_template_path).expect("Failed to read linker script template");
