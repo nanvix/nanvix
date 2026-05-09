@@ -9,26 +9,22 @@
 //! kernel switches CR3 to its own page directory (backed by the BSS page-table allocator) so
 //! that all paging structures are fully owned and modifiable by the kernel.
 
-use crate::{
-    collections::Bitmap,
-    hal::{
-        arch::x86::mem::mmu::page_table::PageTable,
-        mem::{
-            Address,
-            FrameAddress,
-            MemoryRegion,
-            MemoryRegionType,
-            MmioCachePolicy,
-            PageAddress,
-            PageAligned,
-            PageTableAddress,
-            PageTableAligned,
-            PhysicalAddress,
-            TruncatedMemoryRegion,
-            VirtualAddress,
-        },
+use crate::hal::{
+    arch::x86::mem::mmu::page_table::PageTable,
+    mem::{
+        Address,
+        FrameAddress,
+        MemoryRegion,
+        MemoryRegionType,
+        MmioCachePolicy,
+        PageAddress,
+        PageAligned,
+        PageTableAddress,
+        PageTableAligned,
+        PhysicalAddress,
+        TruncatedMemoryRegion,
+        VirtualAddress,
     },
-    kimage::KernelImage,
 };
 use ::alloc::{
     collections::LinkedList,
@@ -157,11 +153,9 @@ fn parse_memory_regions(
 ///
 /// # Parameters
 ///
-/// - `kimage`: Kernel image.
 /// - `memory_regions`: Memory regions.
 /// - `mmio_regions`: MMIO regions.
 /// - `physical_memory_layout`: Physical memory layout bitmap.
-/// - `kpool_bitmap`: Statically-allocated bitmap for the kernel page pool.
 ///
 /// # Returns
 ///
@@ -169,19 +163,14 @@ fn parse_memory_regions(
 /// instead.
 ///
 pub fn init(
-    kimage: &KernelImage,
     memory_regions: LinkedList<MemoryRegion<VirtualAddress>>,
     mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
     physical_memory_layout: SparseBitmap,
-    kpool_bitmap: Bitmap,
 ) -> Result<Vmem, Error> {
     info!("initializing the memory manager ...");
 
     type VirtMemRegions = LinkedList<TruncatedMemoryRegion<VirtualAddress>>;
     type PhysMemRegions = LinkedList<TruncatedMemoryRegion<PhysicalAddress>>;
-
-    let kpool_base: PageAligned<PhysicalAddress> =
-        PageAligned::<PhysicalAddress>::from_raw_value(kimage.kpool().start().into_raw_value())?;
 
     let (_other_virtual_memory_regions, _virtual_memory_regions, physical_memory_regions): (
         VirtMemRegions,
@@ -189,13 +178,7 @@ pub fn init(
         PhysMemRegions,
     ) = parse_memory_regions(memory_regions)?;
 
-    phys::init(
-        kpool_base,
-        physical_memory_regions,
-        &mmio_regions,
-        physical_memory_layout,
-        kpool_bitmap,
-    )?;
+    phys::init(physical_memory_regions, &mmio_regions, physical_memory_layout)?;
 
     #[cfg(feature = "test")]
     phys::test();

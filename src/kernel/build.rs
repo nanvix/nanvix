@@ -25,9 +25,6 @@ use ::std::{
 // Constants
 //==================================================================================================
 
-/// Default path for `kernel_config.toml` file.
-const DEFAULT_KERNEL_CONFIG_PATH: &str = "build/kernel_config.toml";
-
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -112,26 +109,6 @@ fn main() {
     // Find the workspace root by locating the Cargo.toml with [workspace].
     let workspace_dir: PathBuf = build_utils::find_workspace_root();
 
-    // Read kernel configuration
-    let kernel_config_path: PathBuf = workspace_dir.join(DEFAULT_KERNEL_CONFIG_PATH);
-    let kernel_config: HashMap<String, String> = load_toml(&kernel_config_path);
-
-    /// Helper to retrieve a required key from the kernel config, panicking with a clear message
-    /// if missing.
-    fn required_key<'a>(config: &'a HashMap<String, String>, key: &str) -> &'a str {
-        config
-            .get(key)
-            .unwrap_or_else(|| panic!("Missing required key '{}' in kernel_config.toml", key))
-            .as_str()
-    }
-
-    // Extract kpool_base from config.
-    let kpool_base: usize =
-        parse_hex_or_decimal(required_key(&kernel_config, "kpool_base"), "kpool_base");
-
-    // Tell Cargo to rerun build script if config changes.
-    println!("cargo::rerun-if-changed={}", kernel_config_path.display());
-
     //==============================================================================================
     // Generate Linker Script
     //==============================================================================================
@@ -139,14 +116,8 @@ fn main() {
     // Generate linker script from template with machine-specific MACHINE_RESERVED value.
     //
     // MACHINE_RESERVED is the space reserved after __KERNEL_END for machine-specific structures.
-    // The kernel must end early enough to leave room for these structures before KPOOL_BASE.
-    //
     // For Hyperlight, this includes PEB, host function definitions, and I/O buffers.
     // The exact sizes are defined in build/hyperlight_constants.toml.
-    //
-    // If __KERNEL_END + MACHINE_RESERVED >= KPOOL_BASE, Hyperlight creates zero-sized guard
-    // pages which KVM rejects with EINVAL. We use strictly less than to ensure at least one
-    // page of heap_padding exists.
     //
     // For non-Hyperlight targets, no reserved space is needed.
     let target_arch: String =
@@ -235,7 +206,6 @@ fn main() {
         fs::read_to_string(&linker_template_path).expect("Failed to read linker script template");
     let linker_script: String = linker_template
         .replace("@MACHINE_RESERVED@", &machine_reserved)
-        .replace("@KPOOL_BASE@", &format!("{:#x}", kpool_base))
         .replace("@PLATFORM_BASE_ADDR@", &platform_base_addr)
         .replace("@TRAMPOLINE_ADDR@", &trampoline_addr);
 

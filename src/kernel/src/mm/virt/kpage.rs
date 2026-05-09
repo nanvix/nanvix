@@ -5,6 +5,12 @@
 // Imports
 //==================================================================================================
 
+#[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
+use crate::hal::mem::{
+    Address,
+    PageAligned,
+    VirtualAddress,
+};
 use crate::{
     hal::mem::PageAddress,
     mm::phys::KernelFrame,

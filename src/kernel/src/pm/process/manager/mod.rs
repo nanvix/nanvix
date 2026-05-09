@@ -233,8 +233,19 @@ impl ProcessManager {
         // gets dropped as soon as we exit this scope and underlying pages are released.
         let kernel_stack: KernelStack = KernelStack::new(mm)?;
 
+        // Propagate kernel identity-mapping PDEs for the kernel stack region into the target
+        // user page directory. This ensures the context switch can access the stack after
+        // loading the user CR3 (the `ret` instruction reads from the kernel stack).
+        #[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
+        {
+            let target_pd_paddr: usize = vmem.pgdir().physical_address()?.into_raw_value();
+            let stack_base: usize = kernel_stack.base().into_raw_value();
+            let stack_size: usize = kernel_stack.size();
+            crate::mm::propagate_kernel_pdes(target_pd_paddr, stack_base, stack_size)?;
+        }
+
         let cr3: u32 = vmem.pgdir().physical_address()?.into_raw_value() as u32;
-        let esp: u32 = unsafe {
+        let esp: u32 = crate::mm::with_kernel_address_space(|| unsafe {
             hal::arch::forge_user_stack(
                 kernel_stack.top().into_raw_value() as *mut u8,
                 args.user_stack_base.into_raw_value() + args.user_stack_size,
@@ -244,7 +255,7 @@ impl ProcessManager {
                 kernel_func.into_raw_value(),
                 enable_interrupts,
             )
-        } as u32;
+        }) as u32;
         let esp0: u32 = kernel_stack.top().into_raw_value() as u32;
 
         trace!("cr3={:#x}, esp={:#x}, ebp={:#x}", cr3, esp, esp0);

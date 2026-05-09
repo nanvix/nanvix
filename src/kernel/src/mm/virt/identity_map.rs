@@ -268,7 +268,7 @@ impl Drop for Cr3Guard {
 /// CR3-agnostic. If an interrupt fires while CR3 points to the kernel address space,
 /// the handler will execute in the kernel address space rather than the original one.
 ///
-fn with_kernel_address_space<F, R>(f: F) -> R
+pub(crate) fn with_kernel_address_space<F, R>(f: F) -> R
 where
     F: FnOnce() -> R,
 {
@@ -529,6 +529,48 @@ fn ensure_pte(
 ///
 /// # Description
 ///
+/// Propagates the kernel PDE at `pde_idx` to the currently-active page directory (if it differs
+/// from the kernel PD and lacks that PDE). This enables kernel code running in a user address
+/// space to access identity-mapped memory without faulting.
+///
+fn propagate_pde_to_current_pd(kernel_pd_paddr: usize, pde_idx: TableIndex) -> Result<(), Error> {
+    // SAFETY: running in supervisor mode.
+    let current_cr3: Cr3Register = unsafe { Cr3Register::read() };
+    let current_pd_paddr: usize = current_cr3.paging_structure_base_address.address() as usize;
+
+    // Nothing to do if we're already in the kernel address space.
+    if current_pd_paddr == kernel_pd_paddr {
+        return Ok(());
+    }
+    if current_pd_paddr == 0 {
+        trace!("propagate_pde_to_current_pd(): CR3 is zero (early boot?), skipping");
+        return Ok(());
+    }
+
+    // Read the kernel PDE.
+    let kernel_pd: Table<PageDirectoryEntry> = unsafe { Table::from_address(kernel_pd_paddr) };
+    let kernel_pde: PageDirectoryEntry = unsafe { kernel_pd.read(pde_idx) }
+        .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "invalid PDE index"))?;
+
+    if !kernel_pde.is_present() {
+        return Ok(());
+    }
+
+    // Only propagate if the current PD doesn't already have a present PDE at this index.
+    let current_pd: Table<PageDirectoryEntry> = unsafe { Table::from_address(current_pd_paddr) };
+    let current_pde: PageDirectoryEntry = unsafe { current_pd.read(pde_idx) }
+        .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "invalid PDE index"))?;
+
+    if !current_pde.is_present() {
+        unsafe { current_pd.write(pde_idx, kernel_pde) };
+    }
+
+    Ok(())
+}
+
+///
+/// # Description
+///
 /// Identity-maps a single page in the kernel page directory.
 ///
 /// If the target PTE is already present, this function is a no-op. If the PDE is absent, a new
@@ -551,7 +593,7 @@ fn ensure_pte(
 ///
 /// If the lazy mapper has not been initialized yet (boot page tables still active), this function
 /// is a no-op and returns success.
-fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
     let phys_addr: usize = phys_addr.into_raw_value();
 
     let pd_paddr: usize = KERNEL_PD_PADDR.load(Ordering::Acquire);
@@ -567,7 +609,84 @@ fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Erro
     let pd: Table<PageDirectoryEntry> = unsafe { Table::from_address(pd_paddr) };
     let pt_paddr: usize = ensure_pt(pd, pde_idx)?;
 
+    // Eagerly propagate the PDE to the currently-active page directory (if different from the
+    // kernel PD). This ensures that kernel code running in a user address space can immediately
+    // access the identity-mapped page without faulting.
+    propagate_pde_to_current_pd(pd_paddr, pde_idx)?;
+
     // SAFETY: the PT is identity-mapped (BSS-backed).
     let pt: Table<PageTableEntry> = unsafe { Table::from_address(pt_paddr) };
     ensure_pte(pt, pte_idx, phys_addr)
+}
+
+///
+/// # Description
+///
+/// Propagates kernel identity-mapping PDEs for the given physical address range into a target page
+/// directory. This ensures that the target PD (typically a user process PD) can access
+/// identity-mapped kernel memory (e.g., kernel stacks) without faulting.
+///
+/// For each page in `[start, start + size)`, copies the corresponding PDE from the kernel PD into
+/// the target PD if the kernel PD has a present PDE and the target PD does not.
+///
+/// # Parameters
+///
+/// - `target_pd_paddr`: Physical address of the target page directory.
+/// - `start`: Page-aligned start of the physical address range.
+/// - `size`: Size of the range in bytes (must be page-aligned and > 0).
+///
+/// # Returns
+///
+/// Upon success, `Ok(())`. Upon failure, an error is returned.
+///
+pub(crate) fn propagate_kernel_pdes(
+    target_pd_paddr: usize,
+    start: usize,
+    size: usize,
+) -> Result<(), Error> {
+    let kernel_pd_paddr: usize = KERNEL_PD_PADDR.load(Ordering::Acquire);
+    if kernel_pd_paddr == 0 {
+        return Ok(());
+    }
+
+    // SAFETY: both PDs are identity-mapped (BSS-backed or in kernel memory).
+    let kernel_pd: Table<PageDirectoryEntry> = unsafe { Table::from_address(kernel_pd_paddr) };
+    let target_pd: Table<PageDirectoryEntry> = unsafe { Table::from_address(target_pd_paddr) };
+
+    // Iterate over all PDE indices covered by [start, start + size).
+    let end: usize = start + size;
+    let mut addr: usize = start;
+    let mut last_pde_idx: Option<TableIndex> = None;
+
+    while addr < end {
+        let pde_idx: TableIndex = paging::pd_index(addr);
+
+        // Skip if we already processed this PDE index.
+        if last_pde_idx == Some(pde_idx) {
+            addr += mem::PAGE_SIZE;
+            continue;
+        }
+        last_pde_idx = Some(pde_idx);
+
+        // Read kernel PDE.
+        let kernel_pde: PageDirectoryEntry = unsafe { kernel_pd.read(pde_idx) }
+            .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "invalid PDE index"))?;
+
+        if !kernel_pde.is_present() {
+            addr += mem::PAGE_SIZE;
+            continue;
+        }
+
+        // Read target PDE — only propagate if not already present.
+        let target_pde: PageDirectoryEntry = unsafe { target_pd.read(pde_idx) }
+            .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "invalid PDE index"))?;
+
+        if !target_pde.is_present() {
+            unsafe { target_pd.write(pde_idx, kernel_pde) };
+        }
+
+        addr += mem::PAGE_SIZE;
+    }
+
+    Ok(())
 }

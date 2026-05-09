@@ -129,21 +129,14 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
-    /// Provides the raw value for [`KPOOL_END`], which can be used in constant-value expressions.
+    /// Provides the raw value for [`KERNEL_END`], which can be used in constant-value expressions.
     ///
     pub const KERNEL_END_RAW: usize = 0x4000_0000;
 
     ///
     /// # Description
     ///
-    /// Provides the raw value for [`KPOOL_BASE`], which can be used in constant-value expressions.
-    ///
-    pub const KPOOL_BASE_RAW: usize = crate::kernel::KPOOL_BASE_RAW;
-
-    ///
-    /// # Description
-    ///
-    /// Provides the raw value for [`KPOOL_END`], which can be used in constant-value expressions.
+    /// Provides the raw value for [`USER_BASE`], which can be used in constant-value expressions.
     ///
     pub const USER_BASE_RAW: usize = KERNEL_END_RAW;
 

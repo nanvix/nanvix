@@ -216,6 +216,19 @@ impl Bitmap {
     ///
     /// # Description
     ///
+    /// Returns the number of bits currently set (allocated) in the bitmap.
+    ///
+    /// # Returns
+    ///
+    /// The number of set bits.
+    ///
+    pub fn usage(&self) -> usize {
+        self.usage
+    }
+
+    ///
+    /// # Description
+    ///
     /// Allocates a bit in the bitmap.
     ///
     /// # Returns
