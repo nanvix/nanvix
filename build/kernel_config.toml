@@ -31,6 +31,14 @@ kpool_size = 4194304
 # - Must not cause kpool_base + kpool_size to exceed memory_size.
 kpool_base = 0x00800000
 
+# Kernel watermark (in frames).
+# User-side allocations are rejected when fulfilling them would leave fewer than this many free
+# frames in the system. Kernel allocations are never gated by this watermark.
+# Constraints:
+# - Must be non-zero.
+# - Recommended: 32-64 frames (128-256 KB), sized to cover worst-case kernel cleanup operations.
+kernel_watermark = 64
+
 #==================================================================================================
 # Stack Configuration
 #==================================================================================================
