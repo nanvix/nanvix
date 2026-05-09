@@ -7,6 +7,7 @@
 
 pub mod error;
 pub mod io;
+pub(crate) mod platform;
 pub mod query;
 pub mod socket;
 mod types;
@@ -15,9 +16,6 @@ mod types;
 // NetBackend
 //==================================================================================================
 
-///
-/// # Description
-///
 /// Platform-agnostic networking backend.
 ///
 /// This struct encapsulates all platform-specific networking logic and provides a clean Rust API
@@ -25,18 +23,44 @@ mod types;
 ///
 /// `NetBackend` is designed to be shared between `linuxd` and the future `networkd` daemon without
 /// code duplication.
-#[derive(Clone, Copy)]
-pub struct NetBackend(());
+pub struct NetBackend;
 
 impl NetBackend {
     /// Creates a new `NetBackend` instance.
-    pub fn new() -> Self {
-        Self(())
+    ///
+    /// Initializes the platform networking subsystem (no-op on Unix; calls `WSAStartup` on
+    /// Windows). Returns an error if platform initialization fails.
+    pub fn new() -> Result<Self, error::NetError> {
+        platform::init()?;
+        Ok(Self)
     }
 }
 
 impl Default for NetBackend {
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("platform networking initialization should succeed")
+    }
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    /// Tests that `NetBackend::default()` creates a valid instance.
+    #[test]
+    #[allow(clippy::default_constructed_unit_structs)]
+    fn default_creates_backend() {
+        let _backend: NetBackend = NetBackend::default();
+    }
+
+    /// Tests that `NetBackend::new()` creates a valid instance.
+    #[test]
+    fn new_creates_backend() {
+        let _backend: NetBackend =
+            NetBackend::new().expect("platform initialization should succeed");
     }
 }
