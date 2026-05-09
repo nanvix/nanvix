@@ -19,7 +19,7 @@ integration tests, and the combined test suite exposed through the `z` utility.
 ./z build -- run-unit-tests
 ```
 
-## System Integration Tests (microvm and hyperlight only)
+## System Integration Tests (microvm only)
 
 ```bash
 ./z build -- run-nanvix-tests
@@ -47,7 +47,7 @@ On Windows, unit tests can be run natively through `z.ps1`:
 ```
 
 System integration tests are also available on Windows for standalone mode
-(`DEPLOYMENT_MODE=standalone`) on both `microvm` and `hyperlight` machines:
+(`DEPLOYMENT_MODE=standalone`) on `microvm` machines:
 
 ```powershell
 .\z.ps1 build -- run-nanvix-tests

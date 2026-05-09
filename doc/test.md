@@ -11,7 +11,7 @@ This document guides you through testing Nanvix.
 - [Table of Contents](#table-of-contents)
 - [Running Full CI Pipeline](#running-full-ci-pipeline)
 - [Running Unit Tests](#running-unit-tests)
-- [Running System Integration Tests (MicroVM and Hyperlight Only)](#running-system-integration-tests-microvm-and-hyperlight-only)
+- [Running System Integration Tests (MicroVM Only)](#running-system-integration-tests-microvm-only)
   - [Test Modes](#test-modes)
 - [Running All Tests](#running-all-tests)
 
@@ -31,9 +31,9 @@ build parameters.
 ./z build -- run-unit-tests
 ```
 
-## Running System Integration Tests (MicroVM and Hyperlight Only)
+## Running System Integration Tests (MicroVM Only)
 
-> ℹ️ System integration tests are available on `microvm` and `hyperlight`
+> ℹ️ System integration tests are available on `microvm`
 machines on both Linux and Windows. On Windows, only standalone mode (`DEPLOYMENT_MODE=standalone`)
 is supported.
 
@@ -81,6 +81,5 @@ The `nanvix-test.elf` utility supports two execution modes:
 ./z build -- test
 ```
 
-On `microvm` and `hyperlight` machines,
 `./z build -- test` runs both unit tests and system
-integration tests. On other machines, only unit tests are executed.
+integration tests.
