@@ -36,19 +36,6 @@ rustc-dep-of-std = [
 ]
 
 # Machine Types
-hyperlight = [
-    "putb",
-    "puts",
-    "stdio",
-    "acpi",
-    "cpuid",
-    "ioapic",
-    "madt",
-    "msr",
-    "pic",
-    "pit",
-    "xapic",
-]
 microvm = [
     "putb",
     "stdio",

@@ -60,13 +60,6 @@ gdb = [
 ]
 # Enables fine-grained time profiling.
 profile-time = ["nanvix-sandbox/profile-time", "nanvix-terminal/profile-time"]
-hyperlight = [
-    "config/hyperlight",
-    "nanvix-http?/hyperlight",
-    "nanvix-sandbox/hyperlight",
-    "nanvix-sandbox-cache?/hyperlight",
-    "nanvix-terminal/hyperlight",
-]
 microvm = [
     "config/microvm",
     "nanvix-http?/microvm",

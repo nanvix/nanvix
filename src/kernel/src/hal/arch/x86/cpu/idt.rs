@@ -155,15 +155,13 @@ pub struct Idt;
 /// Pointer to the platform-provided IDT backing storage.
 ///
 /// Initialized by [`Idt::set_backing_storage()`] before [`init()`]. On microvm the storage
-/// is a BSS-allocated static array; on Hyperlight it resides in the scratch region so it is not
-/// part of the Copy-on-Write snapshot.
+/// is a BSS-allocated static array.
 static mut IDT: *mut Idte = core::ptr::null_mut();
 
 /// Pointer to the platform-provided IDTR backing storage.
 ///
 /// Initialized by [`Idt::set_backing_storage()`] before [`init()`]. On microvm the storage
-/// is a BSS-allocated static; on Hyperlight it resides in the scratch region so it is not
-/// part of the Copy-on-Write snapshot.
+/// is a BSS-allocated static.
 static mut IDTR: *mut Idtr = core::ptr::null_mut();
 
 //==================================================================================================

@@ -860,16 +860,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37ab347416e802de484e4d03c7316c48f1ecb56574dfd4a46a80f173ce1de04d"
 
 [[package]]
-name = "flatbuffers"
-version = "25.12.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35f6839d7b3b98adde531effaf34f0c2badc6f4735d26fe74709d8e513a96ef3"
-dependencies = [
- "bitflags 2.11.1",
- "rustc_version",
-]
-
-[[package]]
 name = "flexi_logger"
 version = "0.31.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1306,31 +1296,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyperlight-common"
-version = "0.15.0"
-source = "git+https://github.com/hyperlight-dev/hyperlight?rev=9749e047750a215dea680707433a12f9b33b0397#9749e047750a215dea680707433a12f9b33b0397"
-dependencies = [
- "anyhow",
- "flatbuffers",
- "log",
- "spin 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror 2.0.18",
- "tracing-core",
-]
-
-[[package]]
-name = "hyperlight-guest"
-version = "0.15.0"
-source = "git+https://github.com/hyperlight-dev/hyperlight?rev=9749e047750a215dea680707433a12f9b33b0397#9749e047750a215dea680707433a12f9b33b0397"
-dependencies = [
- "anyhow",
- "flatbuffers",
- "hyperlight-common",
- "serde_json",
- "tracing",
-]
-
-[[package]]
 name = "iana-time-zone"
 version = "0.1.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1637,14 +1602,10 @@ dependencies = [
  "cfg-if",
  "config",
  "elf",
- "flatbuffers",
- "hyperlight-common",
- "hyperlight-guest",
  "mmio-tag",
  "multibin",
  "nanvix-slab",
  "no_fail",
- "paste",
  "raw-array",
  "sorted-vec",
  "sparse-bitmap",
@@ -2421,12 +2382,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "paste"
-version = "1.0.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
-
-[[package]]
 name = "pastey"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2497,7 +2452,7 @@ dependencies = [
  "cfg-if",
  "num_enum",
  "nvx",
- "spin 0.10.0 (git+https://github.com/nanvix/spin-rs?branch=nanvix%2Fv0.10.0)",
+ "spin",
  "static_assert",
  "sys",
  "sysalloc",
@@ -3341,15 +3296,6 @@ dependencies = [
 [[package]]
 name = "spin"
 version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5fe4ccb98d9c292d56fec89a5e07da7fc4cf0dc11e156b41793132775d3e591"
-dependencies = [
- "lock_api",
-]
-
-[[package]]
-name = "spin"
-version = "0.10.0"
 source = "git+https://github.com/nanvix/spin-rs?branch=nanvix%2Fv0.10.0#ec00ed314406d2cc8313ef72c06178619ee0b48c"
 dependencies = [
  "compiler_builtins",
@@ -3485,7 +3431,7 @@ dependencies = [
  "config",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
- "spin 0.10.0 (git+https://github.com/nanvix/spin-rs?branch=nanvix%2Fv0.10.0)",
+ "spin",
  "static_assert",
  "sys",
  "syslog",
@@ -3516,7 +3462,7 @@ dependencies = [
  "nvx",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
- "spin 0.10.0 (git+https://github.com/nanvix/spin-rs?branch=nanvix%2Fv0.10.0)",
+ "spin",
  "static_assert",
  "sys",
  "sysalloc",
@@ -3871,19 +3817,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100"
 dependencies = [
  "pin-project-lite",
- "tracing-attributes",
  "tracing-core",
-]
-
-[[package]]
-name = "tracing-attributes"
-version = "0.1.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
 ]
 
 [[package]]
@@ -4144,7 +4078,7 @@ dependencies = [
  "error",
  "fat32",
  "fatfs",
- "spin 0.10.0 (git+https://github.com/nanvix/spin-rs?branch=nanvix%2Fv0.10.0)",
+ "spin",
  "sysapi",
 ]
 

@@ -413,29 +413,7 @@ fn vfs_init_ramfs() {
         };
         let total_size: usize = info.size();
 
-        // On Hyperlight, the MMIO region is mapped read-only (CoW) by the VMM.  For large images,
-        // mount in-place as a read-only filesystem to avoid copying the entire RAMFS into the heap
-        // (which would cause OOM).  For small images, copy to the heap so the filesystem remains
-        // writable.
-        // FIXME (#1760): this doubles memory footprint; need writable file mappings from hyperlight.
-        #[cfg(feature = "hyperlight")]
-        let (mount_ptr, mount_readonly, free_mmio_early) = {
-            if total_size >= ::config::memory_layout::RAMFS_READONLY_THRESHOLD {
-                let base_ptr: *mut u8 = info.base().into_raw_value() as *mut u8;
-                (base_ptr, true, false)
-            } else {
-                let base_ptr: *const u8 = info.base().into_raw_value() as *const u8;
-                let mut buf: alloc::vec::Vec<u8> = alloc::vec![0u8; total_size];
-                unsafe { core::ptr::copy_nonoverlapping(base_ptr, buf.as_mut_ptr(), total_size) };
-                let rw_ptr: *mut u8 = buf.as_mut_ptr();
-                core::mem::forget(buf);
-                let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
-                (rw_ptr, false, true)
-            }
-        };
-
-        // On other platforms the MMIO region is writable — mount directly.
-        #[cfg(not(feature = "hyperlight"))]
+        // Mount the MMIO region directly — it is writable.
         let (mount_ptr, mount_readonly, free_mmio_early) = {
             let base_ptr: *mut u8 = info.base().into_raw_value() as *mut u8;
             (base_ptr, false, false)
