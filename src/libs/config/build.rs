@@ -109,6 +109,12 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
         parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "kpool_base"), "kpool_base");
     constants.push_str(&format!("pub const KPOOL_BASE_RAW: usize = {val:#x};\n"));
 
+    let val: usize = parse_hex_or_decimal_usize(
+        required_key(&kernel_config_toml, "kernel_watermark"),
+        "kernel_watermark",
+    );
+    constants.push_str(&format!("pub const KERNEL_WATERMARK: usize = {val};\n"));
+
     let val: usize =
         parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "kstack_size"), "kstack_size");
     constants.push_str(&format!("pub const KSTACK_SIZE: usize = {val};\n"));
@@ -275,6 +281,13 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
         kredzone_size,
         WORD_SIZE,
     );
+
+    // kernel_watermark must be non-zero.
+    let kernel_watermark: usize = parse_hex_or_decimal_usize(
+        required_key(&kernel_config_toml, "kernel_watermark"),
+        "kernel_watermark",
+    );
+    assert!(kernel_watermark > 0, "kernel_watermark must be non-zero");
 
     // Write the generated file.
     fs::write(kernel_config_output_path, constants).expect("Failed to write kernel_config.rs");
