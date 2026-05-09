@@ -403,7 +403,7 @@ all-nanvix: \
 	all-kernel \
 	all-snapshot
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
 # The containerd shim is not needed in standalone mode.
 ifneq ($(DEPLOYMENT_MODE),standalone)
@@ -411,7 +411,7 @@ all-nanvix: all-nanvix-shim
 endif
 endif
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 all-nanvix: all-nanvix-bench
 endif
 
@@ -433,7 +433,7 @@ clean: \
 	clean-snapshot \
 	image-clean
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-test clean-test-kernel-ramfs
 ifneq ($(IS_WINDOWS),yes)
 clean: clean-nanvix-shim
@@ -467,7 +467,7 @@ install: all-nanvix
 	@mkdir -p ${SYSROOT_DIR}/lib
 	@mkdir -p ${SYSROOT_DIR}/etc/scripts
 	@cp ${KERNEL} ${SYSROOT_DIR}/bin/
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	@cp ${NANVIXD} ${SYSROOT_DIR}/bin/
 	@cp ${MKIMAGE} ${SYSROOT_DIR}/bin/
 	@cp ${MKRAMFS} ${SYSROOT_DIR}/bin/
@@ -546,7 +546,7 @@ help:
 	@echo ""
 	@echo "Parameter Values"
 	@echo "  DEPLOYMENT_MODE standalone, single-process, multi-process, l2"
-	@echo "  MACHINE         hyperlight, microvm"
+	@echo "  MACHINE         microvm"
 	@echo "  TARGET          x86, x86_64"
 	@echo "  RELEASE         yes, no"
 	@echo "  LOG_LEVEL       trace, debug, info, warn, error, panic"
@@ -616,7 +616,7 @@ rust-lint-check: \
 	rust-lint-check-guest-rlibs \
 	rust-lint-check-guest-staticlibs
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 rust-lint-check: rust-lint-check-host-binaries rust-lint-check-host-rlibs rust-lint-check-nanvixd rust-lint-check-uservm rust-lint-check-nanvix-test
 ifneq ($(IS_WINDOWS),yes)
 rust-lint-check: rust-lint-check-nanvix-shim
@@ -634,7 +634,7 @@ rust-lint: \
 	rust-lint-guest-rlibs \
 	rust-lint-guest-staticlibs
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 rust-lint: rust-lint-host-binaries rust-lint-host-rlibs rust-lint-nanvixd rust-lint-uservm rust-lint-nanvix-test
 ifneq ($(IS_WINDOWS),yes)
 rust-lint: rust-lint-nanvix-shim
@@ -696,7 +696,7 @@ rust-format: \
 	format-guest-staticlibs \
 	format-kernel
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 rust-format: format-host-binaries format-host-rlibs format-nanvixd format-uservm format-nanvix-test
 ifneq ($(IS_WINDOWS),yes)
 rust-format: format-nanvix-shim
@@ -714,7 +714,7 @@ rust-format-check: \
 	format-check-guest-staticlibs \
 	format-check-kernel
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 rust-format-check: format-check-host-binaries format-check-host-rlibs format-check-nanvixd format-check-uservm format-check-nanvix-test
 ifneq ($(IS_WINDOWS),yes)
 rust-format-check: format-check-nanvix-shim
@@ -785,7 +785,7 @@ check: \
 	check-guest-rlibs \
 	check-guest-staticlibs
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 check: check-host-binaries check-host-rlibs check-nanvixd check-uservm check-nanvix-test
 ifneq ($(IS_WINDOWS),yes)
 check: check-nanvix-shim
@@ -853,7 +853,7 @@ image-clean:
 .PHONY: test
 test:
 	@$(MAKE) run-unit-tests
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	@$(MAKE) run-nanvix-tests
 endif
 
@@ -864,7 +864,7 @@ ifneq ($(IS_WINDOWS),yes)
 run-unit-tests: test-python
 endif
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 # On Windows, only test uservm (other host rlibs have Unix-only test dependencies).
 ifeq ($(IS_WINDOWS),yes)
 run-unit-tests: test-uservm
