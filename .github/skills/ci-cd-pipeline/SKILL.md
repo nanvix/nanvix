@@ -36,15 +36,11 @@ The pipeline runs these steps in order:
 ### Machine-Dependent Steps
 
 `scripts/pipeline.sh` executes machine-dependent
-steps for `microvm` and `hyperlight`.
+steps for `microvm`.
 
 | Machine       | Build Types    | Deployment Types              |
 |---------------|----------------|-------------------------------|
 | `microvm`     | debug, release | standalone, single, multi, l2 |
-| `hyperlight`  | debug, release | single, multi, l2             |
-
-> **Note:** CI workflows only exercise `microvm`. The `hyperlight` machine
-> type is available in the local pipeline but is not covered by CI.
 
 ### Build Parameter Mapping
 

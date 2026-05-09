@@ -7,13 +7,11 @@ GUEST_BINARY_CARGO_FEATURES := $(if $(GUEST_BINARY_FEATURES),--features "$(GUEST
 
 # Package-specific features for test-kernel program.
 TEST_KERNEL_FEATURES := $(GUEST_BINARY_FEATURES)
-TEST_KERNEL_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 TEST_KERNEL_FEATURES := $(strip $(TEST_KERNEL_FEATURES))
 TEST_KERNEL_CARGO_FEATURES := $(if $(TEST_KERNEL_FEATURES),--features "$(TEST_KERNEL_FEATURES)")
 
 # Package-specific features for misc-rust program.
 MISC_RUST_FEATURES := $(GUEST_BINARY_FEATURES)
-MISC_RUST_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 MISC_RUST_FEATURES := $(strip $(MISC_RUST_FEATURES))
 MISC_RUST_CARGO_FEATURES := $(if $(MISC_RUST_FEATURES),--features "$(MISC_RUST_FEATURES)")
 
@@ -23,10 +21,8 @@ STANDALONE_GUEST_BINARIES := file-rust linux-app thread-rust stress-rust arch-ru
 # Computes the cargo features string for a guest binary package.
 # test-kernel has its own overrides. When DEPLOYMENT_MODE=standalone, packages
 # listed in STANDALONE_GUEST_BINARIES also get the 'standalone' cargo feature.
-# When MACHINE=hyperlight, standalone guest binaries also get the 'hyperlight' feature.
 _STANDALONE_FEATURE := standalone
-_HYPERLIGHT_FEATURE := $(if $(filter hyperlight,$(MACHINE)),hyperlight)
-_standalone_feature = $(if $(and $(filter standalone,$(DEPLOYMENT_MODE)),$(filter $(STANDALONE_GUEST_BINARIES),$(1))),$(_STANDALONE_FEATURE) $(_HYPERLIGHT_FEATURE))
+_standalone_feature = $(if $(and $(filter standalone,$(DEPLOYMENT_MODE)),$(filter $(STANDALONE_GUEST_BINARIES),$(1))),$(_STANDALONE_FEATURE))
 _pkg_features = $(strip $(GUEST_BINARY_FEATURES) $(call _standalone_feature,$(1)))
 
 # Returns package-specific cargo features, falling back to generic features.
@@ -72,7 +68,7 @@ _GUEST_BINS_COMMON := $(filter-out test-kernel c-bindings-rust,$(ALL_GUEST_BINAR
 ifeq ($(DEPLOYMENT_MODE),standalone)
 _GUEST_BINS_STANDALONE := $(filter $(STANDALONE_GUEST_BINARIES),$(_GUEST_BINS_COMMON))
 _GUEST_BINS_REGULAR := $(filter-out $(STANDALONE_GUEST_BINARIES),$(_GUEST_BINS_COMMON))
-_GUEST_BINS_STANDALONE_FEATURES := $(strip $(GUEST_BINARY_FEATURES) $(_STANDALONE_FEATURE) $(_HYPERLIGHT_FEATURE))
+_GUEST_BINS_STANDALONE_FEATURES := $(strip $(GUEST_BINARY_FEATURES) $(_STANDALONE_FEATURE))
 _GUEST_BINS_STANDALONE_CARGO_FEATURES := $(if $(_GUEST_BINS_STANDALONE_FEATURES),--features "$(_GUEST_BINS_STANDALONE_FEATURES)")
 else
 _GUEST_BINS_REGULAR := $(_GUEST_BINS_COMMON)

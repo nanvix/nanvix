@@ -398,6 +398,8 @@ pub mod microvm {
     pub const DEFAULT_LAPIC_BASE: usize = 0xFEE0_0000;
 }
 
-// Hyperlight build-time constants are generated from hyperlight_config.toml.
+// Hyperlight is no longer a supported machine type. The feature gate is kept so that downstream
+// crates that still declare `config/hyperlight` in their Cargo.toml continue to compile without
+// the feature enabled, but enabling it is a hard error.
 #[cfg(feature = "hyperlight")]
-include!(concat!(env!("OUT_DIR"), "/hyperlight_config.rs"));
+compile_error!("The `hyperlight` machine type has been removed. Only `microvm` is supported.");

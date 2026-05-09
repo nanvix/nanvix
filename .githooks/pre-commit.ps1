@@ -5,7 +5,7 @@
 # warnings, Make $(warning ...)) is not treated as a terminating error.
 $ErrorActionPreference = "Continue"
 
-$MachineTypes = @("microvm", "hyperlight")
+$MachineTypes = @("microvm")
 # Windows only supports standalone deployment (single-process and multi-process
 # require Linux-only daemons and APIs that cannot compile on Windows).
 $DeploymentTypes = @("standalone")
@@ -128,13 +128,13 @@ try {
             Write-Info "(pre-commit) Checking configuration: $buildType, $machine, $deployment..."
 
             $checkArgs = @{
-                ZScript = $zScript
-                Machine = $machine
-                ReleaseFlag = $releaseFlag
+                ZScript        = $zScript
+                Machine        = $machine
+                ReleaseFlag    = $releaseFlag
                 DeploymentFlag = $deploymentFlag
-                TempFile = $tempFile
-                BuildType = $buildType
-                Deployment = $deployment
+                TempFile       = $tempFile
+                BuildType      = $buildType
+                Deployment     = $deployment
             }
 
             Invoke-Check @checkArgs -Target "format-check"

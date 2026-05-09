@@ -28,7 +28,7 @@ from typing import NoReturn, Sequence
 # Constants
 # ==================================================================================================
 
-VALID_MACHINES: tuple[str, ...] = ("microvm", "hyperlight")
+VALID_MACHINES: tuple[str, ...] = ("microvm",)
 VALID_DEPLOYMENT_MODES: tuple[str, ...] = (
     "standalone",
     "single-process",
@@ -979,7 +979,7 @@ Options:
   --toolchain-dir DIR   Toolchain directory (setup only, Linux, default: ~/toolchain).
 
 Build Parameters (after --):
-  MACHINE=microvm|hyperlight     Target machine (default: microvm).
+  MACHINE=microvm                Target machine (default: microvm).
   RELEASE=yes|no                 Release mode.
   DEPLOYMENT_MODE=MODE           standalone|single-process|multi-process|l2.
   LOG_LEVEL=LEVEL                trace|debug|info|warn|error|panic.
