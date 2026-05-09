@@ -364,6 +364,20 @@ impl SparseBitmap {
     ///
     /// # Description
     ///
+    /// Returns the total number of bits currently set (allocated) across
+    /// all chunks.
+    ///
+    /// # Returns
+    ///
+    /// The sum of per-chunk usage counts.
+    ///
+    pub fn usage(&self) -> usize {
+        self.chunks.iter().map(|c| c.bitmap.usage()).sum()
+    }
+
+    ///
+    /// # Description
+    ///
     /// Locates the chunk whose covered range contains `index`, if any.
     /// Binary-searches the offset-sorted chunks in O(log n). Callers
     /// that only need a yes/no coverage answer can use

@@ -216,6 +216,27 @@ impl Bitmap {
     ///
     /// # Description
     ///
+    /// Returns the number of bits currently set (allocated) in the bitmap.
+    ///
+    /// # Returns
+    ///
+    /// The number of set bits.
+    ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            result as int == self@.usage(),
+            0 <= result as int,
+            result as int <= self@.num_bits,
+    )]
+    pub fn usage(&self) -> usize {
+        self.usage
+    }
+
+    ///
+    /// # Description
+    ///
     /// Allocates a bit in the bitmap.
     ///
     /// # Returns
