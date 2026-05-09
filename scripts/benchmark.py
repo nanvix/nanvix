@@ -24,7 +24,6 @@ from typing import Optional
 # Constants
 # ======================================================================
 
-HYPERLIGHT_MACHINE_TYPE = "hyperlight"
 MICROVM_MACHINE_TYPE = "microvm"
 IS_WINDOWS = platform.system() == "Windows"
 NA = "NA"
@@ -1430,7 +1429,7 @@ if __name__ == "__main__":
     run_parser.add_argument(
         "--machine-type",
         required=True,
-        choices=[MICROVM_MACHINE_TYPE, HYPERLIGHT_MACHINE_TYPE],
+        choices=[MICROVM_MACHINE_TYPE],
         help="Type of machine to run the benchmarks on",
     )
     run_parser.add_argument(
