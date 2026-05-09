@@ -4,13 +4,13 @@
 # Licensed under the MIT License.
 
 #
-# Runs Nanvix via nanvixd (microvm / hyperlight).
+# Runs Nanvix via nanvixd (microvm).
 #
 # Usage:
 #   run-nanvixd.sh <machine> <image> [timeout] [--wait-for-string <string>]
 #
 # Arguments:
-#   machine  Machine type (microvm or hyperlight).
+#   machine  Machine type (microvm).
 #   image    Path to the multibin system image.
 #   timeout  Timeout in seconds (default: 120).
 #
@@ -103,9 +103,9 @@ function check_args
 {
 	# Validate machine type.
 	case "${MACHINE}" in
-		microvm | hyperlight) ;;
+		microvm) ;;
 		*)
-			print_error "Unsupported machine type: '${MACHINE}'. Expected 'microvm' or 'hyperlight'."
+			print_error "Unsupported machine type: '${MACHINE}'. Expected 'microvm'."
 			usage
 			;;
 	esac
