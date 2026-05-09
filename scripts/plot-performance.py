@@ -361,7 +361,7 @@ def plot_benchmark_multiplot(
     """Plot a benchmark with one subplot per percentile and one line per machine.
 
     Produces a figure with three vertically-stacked subplots (p50, p95, p99).
-    Each subplot contains one line per machine (e.g. Microvm, Hyperlight).
+    Each subplot contains one line per machine (e.g. Microvm).
 
     # Parameters
 
