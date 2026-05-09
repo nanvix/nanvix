@@ -38,7 +38,7 @@ Libraries with unit tests are listed in
 
 ### System Integration Tests
 
-System tests are available on `microvm` and `hyperlight` machines. On Linux, all deployment
+System tests are available on `microvm` machines. On Linux, all deployment
 modes are supported (`nanvixd` + kernel + guest). On Windows, only standalone mode is supported.
 
 ```bash
