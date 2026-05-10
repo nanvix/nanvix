@@ -1,0 +1,81 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Check Self-Hosted Runners"
+description: "Check whether self-hosted runners matching a given OS and name
+  prefix are online.  Call once per OS to get per-platform availability."
+
+# NOTE: The /repos/{owner}/{repo}/actions/runners endpoint requires the
+# 'administration:read' permission, which is NOT available to the default
+# GITHUB_TOKEN.  If the call fails (403), the action conservatively assumes
+# runners are available and outputs 'true'.  To enable automatic
+# skip-when-offline behaviour, store a fine-grained PAT with
+# 'Administration: Read' as the RUNNER_ADMIN_TOKEN secret and pass it via
+# the github-token input.
+
+inputs:
+  github-token:
+    description: "Token with administration:read scope for listing runners.
+      Falls back to assuming runners are available when the token lacks
+      sufficient permissions."
+    required: true
+  os:
+    description: "Runner OS label to match (e.g. 'Linux' or 'Windows')."
+    required: true
+  runner-name-prefix:
+    description: "Only consider runners whose name starts with this prefix
+      (e.g. 'Prometheus').  Leave empty to consider all self-hosted runners."
+    required: false
+    default: ""
+
+outputs:
+  available:
+    description: "'true' if at least one matching self-hosted runner is online, 'false' otherwise"
+    value: ${{ steps.check.outputs.available }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Check Runner Availability"
+      id: check
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        CHECK_OS: ${{ inputs.os }}
+        RUNNER_NAME_PREFIX: ${{ inputs.runner-name-prefix }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        org="${GITHUB_REPOSITORY_OWNER}"
+        api_err_file=$(mktemp)
+
+        # Try org-level runners first (most common for shared self-hosted
+        # runners), then fall back to repo-level.
+        if runners_json=$(gh api --paginate "orgs/${org}/actions/runners" 2>"${api_err_file}"); then
+          echo "Queried org-level runners for '${org}'."
+        elif runners_json=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runners" 2>"${api_err_file}"); then
+          echo "Queried repo-level runners for '${GITHUB_REPOSITORY}'."
+        else
+          api_err=$(cat "${api_err_file}")
+          echo "::warning::Could not query runner status (${api_err:-unknown error}) — assuming runners are available."
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          rm -f "${api_err_file}"
+          exit 0
+        fi
+        rm -f "${api_err_file}"
+
+        count=$(echo "${runners_json}" | jq --arg os "${CHECK_OS}" --arg prefix "${RUNNER_NAME_PREFIX}" \
+          '[ .runners[]
+            | select(
+                .status == "online"
+                and (.labels | map(.name) | contains(["self-hosted", $os]))
+                and ($prefix == "" or (.name | startswith($prefix)))
+              )
+          ] | length')
+        if [ "${count}" -gt 0 ]; then
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          echo "${CHECK_OS} self-hosted runners online: ${count}"
+        else
+          echo "available=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::No ${CHECK_OS} self-hosted runners are online — dependent jobs will be skipped."
+        fi
