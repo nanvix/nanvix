@@ -53,6 +53,37 @@ jobs:
     uses: nanvix/nanvix/.github/workflows/branch-up-to-date.yml@dev
     secrets: inherit
 
+  # Check whether self-hosted runners are online so that benchmark jobs can be
+  # gracefully skipped when no runners are available instead of queuing
+  # indefinitely.  See .github/actions/check-runners/action.yml for details.
+  check-runners:
+    name: "Check Self-Hosted Runners"
+    if: github.repository == 'nanvix/nanvix'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      benchmark-linux: ${{ steps.check-linux.outputs.available }}
+      benchmark-windows: ${{ steps.check-windows.outputs.available }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: "Check Linux Runners"
+        id: check-linux
+        uses: ./.github/actions/check-runners
+        with:
+          github-token: ${{ secrets.RUNNER_ADMIN_TOKEN || secrets.GITHUB_TOKEN }}
+          os: "Linux"
+          runner-name-prefix: "prometheus"
+
+      - name: "Check Windows Runners"
+        id: check-windows
+        uses: ./.github/actions/check-runners
+        with:
+          github-token: ${{ secrets.RUNNER_ADMIN_TOKEN || secrets.GITHUB_TOKEN }}
+          os: "Windows"
+          runner-name-prefix: "WIN"
+
   # ==========================================================================================
   # Stage 1: Source Checks (GitHub-Hosted Runners)
   # ==========================================================================================
@@ -345,42 +376,26 @@ jobs:
           '["release"]') }}
         machine-type: [ microvm ]
         deployment-type: [ standalone, single-process, multi-process ]
-    runs-on:
-      group: Test
-      labels: [ self-hosted, Linux ]
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/nanvix/ci:ubuntu-24.04
+      options: --privileged
     permissions:
       contents: read
+      packages: read
+    env:
+      # The CI container runs as root without USER set; nanvixd uses it as
+      # fallback tenant-id and fails when the variable is missing.
+      USER: root
 
     steps:
-      - name: "Pre-Checkout Cleanup"
-        shell: bash
-        run: |
-          # Previous runs may leave root-owned files that prevent
-          # actions/checkout from resetting the workspace. The cleanup
-          # composite action cannot run before checkout, so perform a direct cleanup
-          # of the images directory without executing any workspace scripts.
-          if [[ -d "${GITHUB_WORKSPACE}/images" ]]; then
-            echo "Removing images directory before checkout..."
-            sudo rm -rf "${GITHUB_WORKSPACE}/images"
-          fi
-
       - uses: actions/checkout@v6
 
-      - name: "Isolate Cargo Home"
-        shell: bash
-        run: |
-          # Isolate Cargo home per job to prevent concurrent git-cache races on
-          # self-hosted runners that share the same filesystem.  Symlink the
-          # toolchain bin/ directory so that the Makefile can still resolve
-          # $CARGO_HOME/bin/cargo.
-          mkdir -p "$RUNNER_TEMP/.cargo"
-          ln -sfn "$HOME/.cargo/bin" "$RUNNER_TEMP/.cargo/bin"
-          echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
+      - name: "Setup"
+        uses: ./.github/actions/native-setup
 
-      - name: "Pre-Cleanup Dangling Resources"
-        uses: ./.github/actions/cleanup
-        with:
-          phase: pre
+      - name: "Setup KVM"
+        uses: ./.github/actions/setup-kvm
 
       - name: "Prepare Test Artifacts"
         uses: ./.github/actions/prepare-test-artifacts
@@ -396,9 +411,6 @@ jobs:
           machine-type: "${{ matrix.machine-type }}"
           deployment-type: "${{ matrix.deployment-type }}"
 
-      - name: "Link Toolchain"
-        uses: ./.github/actions/link-toolchain
-
       - name: "Shim Integration Test"
         shell: bash
         env:
@@ -408,12 +420,6 @@ jobs:
           echo "Running shim integration tests with NANVIX_DIR=${NANVIX_DIR}"
           cargo test --locked --no-default-features \
             -p containerd-shim-nanvix-v1 --test integration -- --nocapture --test-threads=1
-
-      - name: "Post-Cleanup Dangling Resources"
-        if: always()
-        uses: ./.github/actions/cleanup
-        with:
-          phase: post
 
       - name: "Upload logs in case of failures"
         if: failure() || cancelled()
@@ -783,7 +789,7 @@ jobs:
   # A finalize job aggregates results after the benchmark completes.
   benchmark:
     name: "Benchmark (${{ matrix.machine-type }})"
-    needs: [ precheck ]
+    needs: [ precheck, check-runners ]
     timeout-minutes: 240
     strategy:
       fail-fast: false
@@ -804,8 +810,10 @@ jobs:
       contents: read
 
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
+    # Skips gracefully when check-runners reports no Linux self-hosted runners.
     if: |
       !cancelled() &&
+      needs.check-runners.outputs.benchmark-linux != 'false' &&
       github.repository == 'nanvix/nanvix' && (
         github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
@@ -942,7 +950,7 @@ jobs:
   # exclusion steps are omitted.
   windows-benchmark:
     name: "Windows Benchmark (${{ matrix.machine-type }})"
-    needs: [ precheck ]
+    needs: [ precheck, check-runners ]
     timeout-minutes: 240
     strategy:
       fail-fast: false
@@ -959,10 +967,12 @@ jobs:
       contents: read
 
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
+    # Skips gracefully when check-runners reports no Windows self-hosted runners.
     # Fork PRs are excluded to prevent untrusted code from running on
     # self-hosted runners.
     if: |
       !cancelled() &&
+      needs.check-runners.outputs.benchmark-windows != 'false' &&
       github.repository == 'nanvix/nanvix' && (
         github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
@@ -1298,16 +1308,22 @@ jobs:
   release-archive:
     name: "Release Archive (${{ matrix.target-arch }}, ${{ matrix.machine-type }},
       ${{ matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
-    needs: [ ci-test, benchmark-finalize, windows-benchmark-finalize ]
+    needs: [ ci-test, benchmark-finalize, windows-benchmark-finalize, check-runners ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
+    # Benchmark finalize may be skipped when self-hosted runners are offline;
+    # release proceeds if check-runners confirmed no runners were available.
     if: |
       !cancelled() &&
       github.repository == 'nanvix/nanvix' &&
       github.ref == 'refs/heads/dev' &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       needs.ci-test.result == 'success' &&
-      needs.benchmark-finalize.result == 'success' &&
-      needs.windows-benchmark-finalize.result == 'success'
+      (needs.benchmark-finalize.result == 'success' ||
+        (needs.benchmark-finalize.result == 'skipped' &&
+          needs.check-runners.outputs.benchmark-linux == 'false')) &&
+      (needs.windows-benchmark-finalize.result == 'success' ||
+        (needs.windows-benchmark-finalize.result == 'skipped' &&
+          needs.check-runners.outputs.benchmark-windows == 'false'))
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -1358,16 +1374,23 @@ jobs:
         ci-test,
         benchmark-finalize,
         windows-benchmark-finalize,
+        check-runners,
       ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
+    # Benchmark finalize may be skipped when self-hosted runners are offline;
+    # release proceeds if check-runners confirmed no runners were available.
     if: |
       !cancelled() &&
       github.repository == 'nanvix/nanvix' &&
       github.ref == 'refs/heads/dev' &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       needs.ci-test.result == 'success' &&
-      needs.benchmark-finalize.result == 'success' &&
-      needs.windows-benchmark-finalize.result == 'success' &&
+      (needs.benchmark-finalize.result == 'success' ||
+        (needs.benchmark-finalize.result == 'skipped' &&
+          needs.check-runners.outputs.benchmark-linux == 'false')) &&
+      (needs.windows-benchmark-finalize.result == 'success' ||
+        (needs.windows-benchmark-finalize.result == 'skipped' &&
+          needs.check-runners.outputs.benchmark-windows == 'false')) &&
       needs.windows-integration-test.result == 'success'
     timeout-minutes: 60
     strategy:
@@ -1426,25 +1449,12 @@ jobs:
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       needs.release-archive.result == 'success' &&
       needs.windows-release-archive.result == 'success'
-    runs-on:
-      group: Test
-      labels: [ self-hosted, Linux ]
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
 
     steps:
       - uses: actions/checkout@v6
-
-      - name: "Isolate Cargo Home"
-        shell: bash
-        run: |
-          # Isolate Cargo home per job to prevent concurrent git-cache races on
-          # self-hosted runners that share the same filesystem.  Symlink the
-          # toolchain bin/ directory so that the Makefile can still resolve
-          # $CARGO_HOME/bin/cargo.
-          mkdir -p "$RUNNER_TEMP/.cargo"
-          ln -sfn "$HOME/.cargo/bin" "$RUNNER_TEMP/.cargo/bin"
-          echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
 
       - name: "Publish Release"
         uses: ./.github/actions/publish-release
@@ -1465,6 +1475,7 @@ jobs:
         benchmark-finalize,
         windows-benchmark,
         windows-benchmark-finalize,
+        check-runners,
         release-archive,
         windows-release-archive,
         publish-release,
