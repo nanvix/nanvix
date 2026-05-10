@@ -28,7 +28,6 @@ cfg-if = { workspace = true }
 [features]
 default = ["panic"]
 standalone = ["syscall/standalone"]
-hyperlight = ["syscall/hyperlight"]
 trace = ["nvx/trace", "syscall/trace", "syslog/trace"]
 debug = ["nvx/debug", "syscall/debug", "syslog/debug"]
 info = ["nvx/info", "syscall/info", "syslog/info"]

@@ -5,29 +5,18 @@
 // Modules
 //==================================================================================================
 
-#[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
 mod boot_init;
-#[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
 mod identity_map;
 mod kpage;
 mod manager;
-#[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
-mod no_identity_map;
 mod page_table_allocator;
-#[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
-pub(in crate::mm) use page_table_allocator::PAGE_TABLE_ALLOCATOR;
 mod vmem;
 
-#[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
-use identity_map::init as identity_map_init;
-#[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
 pub(crate) use identity_map::memcpy;
-#[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
-use identity_map::memset;
-#[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
-pub(crate) use no_identity_map::memcpy;
-#[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
-use no_identity_map::memset;
+use identity_map::{
+    init as identity_map_init,
+    memset,
+};
 
 //==================================================================================================
 // Imports
@@ -46,7 +35,6 @@ use ::core::ops::{
 // Exports
 //==================================================================================================
 
-#[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
 pub use boot_init::init;
 pub use kpage::KernelPage;
 pub use manager::VirtMemoryManager;

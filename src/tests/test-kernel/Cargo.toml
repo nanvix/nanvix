@@ -34,7 +34,6 @@ info = ["nvx/info", "syslog/info"]
 warn = ["nvx/warn", "syslog/warn"]
 error = ["nvx/error", "syslog/error"]
 panic = ["nvx/panic", "syslog/panic"]
-hyperlight = []
 
 [lints]
 workspace = true

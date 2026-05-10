@@ -1,7 +1,7 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! Memory manager initialization when `platform-root-virtual-address-space-bootstrap` is disabled.
+//! Memory manager initialization.
 //!
 //! The kernel builds its own root virtual address space: identity-mapped page tables are created,
 //! CR3 is loaded, and any virtual memory regions that lie outside physical memory (e.g., MMIO

@@ -50,11 +50,6 @@ standalone = [
     "nanvix-sandbox/standalone",
 ]
 gdb = ["uservm/gdb", "nanvix-sandbox-config?/gdb"]
-hyperlight = [
-    "config/hyperlight",
-    "nanvix-sandbox-cache?/hyperlight",
-    "nanvix-sandbox?/hyperlight",
-]
 microvm = [
     "config/microvm",
     "uservm/microvm",

@@ -243,8 +243,7 @@ mod buffer {
     /// Pointer to the platform-provided klog buffer backing storage.
     ///
     /// Initialized by [`set_backing_storage()`] before the first logging call. On microvm the
-    /// storage is a BSS-allocated static; on Hyperlight it resides in the scratch region so it is
-    /// not part of the Copy-on-Write snapshot.
+    /// storage is a BSS-allocated static.
     pub static mut KLOG_BUFFER: *mut KlogBuffer = core::ptr::null_mut();
 
     /// A fixed-size buffer that batches kernel log output before flushing to the platform device.
@@ -339,8 +338,7 @@ mod buffer {
     /// Installs platform-provided backing storage for the kernel log buffer.
     ///
     /// Must be called exactly once before the first logging macro invocation. On microvm the
-    /// storage is a BSS-allocated static; on Hyperlight it resides in the scratch region so
-    /// runtime writes do not trigger copy-on-write faults.
+    /// storage is a BSS-allocated static.
     ///
     /// # Parameters
     ///

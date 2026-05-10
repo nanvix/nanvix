@@ -23,7 +23,6 @@ static_assert = { workspace = true }
 [features]
 default = []
 std = []
-hyperlight = []
 microvm = []
 whp = []
 rustc-dep-of-std = [
