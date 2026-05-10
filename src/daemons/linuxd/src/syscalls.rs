@@ -1407,7 +1407,8 @@ impl<T> SyscallTable<T> {
             state,
 
             // Networking backend.
-            net_backend: NetBackend::new(),
+            net_backend: NetBackend::new()
+                .expect("platform networking initialization should succeed"),
 
             // unistd.rs system calls.
             chdir: SyscallAction::Forward(default_chdir),
