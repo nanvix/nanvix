@@ -68,8 +68,7 @@ pub type ShutdownVcpuFn = dyn Fn() + Send + 'static;
 /// # Description
 ///
 /// This structure holds the state of the VM, channels used for orchestrating control commands, and
-/// callback functions which implement specific functionality that's different between the MicroVM
-/// and Hyperlight.
+/// callback functions which implement specific VMM functionality.
 ///
 pub struct Orchestrator {
     /// The state of the VM.
@@ -506,49 +505,29 @@ impl Orchestrator {
 
                 // After sending an interrupt to the vCPU thread, we continue processing
                 // messages until we receive a shutdown message from the vCPU thread itself.
-                cfg_if::cfg_if! {
-                    // FIXME (#1010): there is currently no way for us to actually interrupt the
-                    // hyperlight thread so, instead of waiting for a shutdown message from the vCPU
-                    // itself, we kill it here. This may populate the logs with an error message
-                    // during shutdown, but is functionally equivalent.
-                    if #[cfg(feature = "hyperlight")] {
-                        // Wait for a grace period to allow the kernel's abort_with_code() to complete
-                        // before sending SIGKILL. See issue #1010 for context.
-                        debug!("try_receive_from_io_thread(): waiting {:?} before killing vcpu thread", crate::vmm::SHUTDOWN_GRACE_PERIOD);
-                        ::std::thread::sleep(crate::vmm::SHUTDOWN_GRACE_PERIOD);
-                        #[cfg(target_os = "linux")]
-                        {
-                            debug!("try_receive_from_io_thread(): killing vcpu thread id: {}", self.vcpu_tid);
-                            let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
-                            unsafe { ::libc::pthread_kill(pthread_id, KILL_SIGNAL) };
-                        }
-                        #[cfg(target_os = "windows")]
-                        {
-                            debug!("try_receive_from_io_thread(): requesting vCPU shutdown (tid={})", self.vcpu_tid);
-                            (self.shutdown_vcpu)();
-                        }
-                        self.state = State::ShuttingDown;
-                        Ok(Continue(()))
-                    } else {
-                        // SAFETY: we call pthread_kill on a non-zero TID that we have received from
-                        // the VCPU thread after boot, so this is safe.
-                        debug!("try_receive_from_io_thread(): signaling to vcpu thread (tid={})", self.vcpu_tid);
-                        #[cfg(target_os = "linux")]
-                        {
-                            let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
-                            unsafe { ::libc::pthread_kill(pthread_id, crate::vmm::INTERRUPT_SIGNAL) };
-                        }
-                        #[cfg(target_os = "windows")]
-                        {
-                            debug!("try_receive_from_io_thread(): requesting vCPU shutdown (tid={})", self.vcpu_tid);
-                            (self.shutdown_vcpu)();
-                        }
-
-                        // Transition to shutting down state.
-                        self.state = State::ShuttingDown;
-                        Ok(Continue(()))
-                    }
+                // SAFETY: we call pthread_kill on a non-zero TID that we have received from
+                // the VCPU thread after boot, so this is safe.
+                debug!(
+                    "try_receive_from_io_thread(): signaling to vcpu thread (tid={})",
+                    self.vcpu_tid
+                );
+                #[cfg(target_os = "linux")]
+                {
+                    let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
+                    unsafe { ::libc::pthread_kill(pthread_id, crate::vmm::INTERRUPT_SIGNAL) };
                 }
+                #[cfg(target_os = "windows")]
+                {
+                    debug!(
+                        "try_receive_from_io_thread(): requesting vCPU shutdown (tid={})",
+                        self.vcpu_tid
+                    );
+                    (self.shutdown_vcpu)();
+                }
+
+                // Transition to shutting down state.
+                self.state = State::ShuttingDown;
+                Ok(Continue(()))
             },
         }
     }

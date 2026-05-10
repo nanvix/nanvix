@@ -52,7 +52,6 @@ standalone = [
 gdb = ["uservm/gdb", "nanvix-sandbox-config?/gdb"]
 hyperlight = [
     "config/hyperlight",
-    "uservm/hyperlight",
     "nanvix-sandbox-cache?/hyperlight",
     "nanvix-sandbox?/hyperlight",
 ]
