@@ -270,20 +270,19 @@ mod tests {
     fn test_release_pattern() {
         let target: Target = Target::X86;
         let deployment: Deployment = Deployment::MultiProcess;
-        let machine: Machine = Machine::Hyperlight;
+        let machine: Machine = Machine::Microvm;
 
         let pattern: String =
             format!("nanvix-{}-{}-{}-release-{}mb-", target, machine, deployment, 128);
-        assert_eq!(pattern, "nanvix-x86-hyperlight-multi-process-release-128mb-");
+        assert_eq!(pattern, "nanvix-x86-microvm-multi-process-release-128mb-");
 
         // Verify the pattern matches the memory-size archive name format.
-        let name_128: &str =
-            "nanvix-x86-hyperlight-multi-process-release-128mb-abc123def456.tar.bz2";
+        let name_128: &str = "nanvix-x86-microvm-multi-process-release-128mb-abc123def456.tar.bz2";
         assert!(name_128.contains(&pattern));
 
         // Verify the pattern does NOT match a different memory size.
         let name_1024: &str =
-            "nanvix-x86-hyperlight-multi-process-release-1024mb-abc123def456.tar.bz2";
+            "nanvix-x86-microvm-multi-process-release-1024mb-abc123def456.tar.bz2";
         assert!(!name_1024.contains(&pattern));
     }
 
@@ -308,7 +307,7 @@ mod tests {
     fn test_all_release_patterns() {
         let targets: [Target; 1] = [Target::X86];
         let deployments: [Deployment; 2] = [Deployment::SingleProcess, Deployment::MultiProcess];
-        let machines: [Machine; 2] = [Machine::Hyperlight, Machine::Microvm];
+        let machines: [Machine; 1] = [Machine::Microvm];
         let memory_sizes: [u32; 4] = [128, 256, 512, 1024];
 
         for target in &targets {

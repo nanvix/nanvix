@@ -7,7 +7,7 @@ including the layer structure, annotation conventions, and how the shim consumes
 
 ## Background
 
-Nanvix is a microkernel-based OS that runs applications inside lightweight VMs (Hyperlight).
+Nanvix is a microkernel-based OS that runs applications inside lightweight VMs.
 A Nanvix workload consists of two parts:
 
 1. **Initrd binary** — The application ELF compiled for the Nanvix target (passed to `nanvixd`
@@ -132,5 +132,5 @@ Pulling `my-python-app:v2` on a machine that already has `v1` downloads only Lay
 | `com.nanvix.ramfs.root` | No | Path to the ramfs directory. If absent, no ramfs is attached. |
 | `com.nanvix.initrd.args` | No | Arguments passed to the application (space-separated) |
 | `com.nanvix.initrd.env` | No | Environment variables (`"KEY1=val1 KEY2=val2"`) |
-| `com.nanvix.execution-mode` | No | Execution mode override (`"standalone"`, `"hyperlight"`). Uses host default if absent. |
+| `com.nanvix.execution-mode` | No | Execution mode override (`"standalone"`). Uses host default if absent. |
 | `com.nanvix.version` | No | Nanvix version compatibility hint |

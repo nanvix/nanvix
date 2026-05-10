@@ -39,7 +39,7 @@ events/messages.
 - Runs on the host Linux system with full `std` support.
 - Manages L2 VM deployment and host-side resources.
 - Configuration in `build/linuxd_config.toml`.
-- Only built for `microvm` and `hyperlight` machines.
+- Only built for `microvm` machine.
 
 ## Building Daemons
 

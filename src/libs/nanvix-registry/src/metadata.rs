@@ -607,10 +607,10 @@ mod tests {
 
         registry.set_release(
             Target::X86,
-            Machine::Hyperlight,
-            Deployment::SingleProcess,
-            128,
-            "https://test.com/hyperlight-sp.tar.bz2".to_string(),
+            Machine::Microvm,
+            Deployment::MultiProcess,
+            256,
+            "https://test.com/microvm-mp-256.tar.bz2".to_string(),
             "abc333def".to_string(),
         );
 
@@ -629,7 +629,7 @@ mod tests {
         assert_eq!(entry.commit_id(), "abc222def");
 
         let entry: &ReleaseEntry = registry
-            .get_release(Target::X86, Machine::Hyperlight, Deployment::SingleProcess, 128)
+            .get_release(Target::X86, Machine::Microvm, Deployment::MultiProcess, 256)
             .expect("failed");
         assert_eq!(entry.commit_id(), "abc333def");
     }
@@ -738,7 +738,7 @@ mod tests {
         );
         original.set_release(
             Target::X86,
-            Machine::Hyperlight,
+            Machine::Microvm,
             Deployment::MultiProcess,
             128,
             "https://test.com/file2.tar.bz2".to_string(),
@@ -762,7 +762,7 @@ mod tests {
         assert_eq!(entry.commit_id(), "abc111def");
 
         let entry: &ReleaseEntry = loaded
-            .get_release(Target::X86, Machine::Hyperlight, Deployment::MultiProcess, 128)
+            .get_release(Target::X86, Machine::Microvm, Deployment::MultiProcess, 128)
             .expect("failed");
         assert_eq!(entry.commit_id(), "abc222def");
 
@@ -1015,7 +1015,7 @@ mod tests {
 
         registry.set_package(
             Target::X86,
-            Machine::Hyperlight,
+            Machine::Microvm,
             Deployment::MultiProcess,
             Package::CPython,
             "https://test.com/cpython.tar.bz2".to_string(),
@@ -1041,7 +1041,7 @@ mod tests {
 
         assert!(registry.is_package_installed(
             Target::X86,
-            Machine::Hyperlight,
+            Machine::Microvm,
             Deployment::MultiProcess,
             Package::CPython,
             &nanvix_commit_id

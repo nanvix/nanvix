@@ -16,7 +16,7 @@
 //! - Caches binaries locally in the user's cache directory.
 //! - Organizes cached artifacts by commit ID in subdirectories following the pattern `<machine>-<deployment>-<commit_id>`.
 //! - Supports multiple deployment types (`single-process`, `multi-process`).
-//! - Supports multiple target machines (`hyperlight`, `microvm`).
+//! - Supports target machine type (`microvm`).
 //! - Automatic tarball extraction (supports `.tar.bz2` format).
 //! - Cache management (automatic reuse and manual clearing).
 //! - Tracks latest downloaded artifacts via release registry.
@@ -96,7 +96,7 @@
 //!
 //!     // Use the registry normally - it will use the custom directory.
 //!     let binary_path: String = registry
-//!         .get_cached_binary("x86", "hyperlight", "multi-process", 128, "kernel.elf")
+//!         .get_cached_binary("x86", "microvm", "multi-process", 128, "kernel.elf")
 //!         .await?;
 //!
 //!     Ok(())
@@ -108,7 +108,7 @@
 //! The library consists of the following internal modules:
 //!
 //! - `deployment`: Defines deployment types (`SingleProcess`, `MultiProcess`).
-//! - `machine`: Defines target machine types (`Hyperlight`, `microvm`).
+//! - `machine`: Defines target machine types (`Microvm`).
 //! - `metadata`: Manages release registry tracking multiple machine-deployment configurations.
 //! - `package`: Defines package types and handles package downloads from GitHub.
 //! - `release`: Handles fetching and downloading releases from GitHub API.
@@ -398,7 +398,6 @@ impl Registry {
     /// - `target`: Target architecture. Supported values:
     ///   - `"x86"`: x86 architecture.
     /// - `machine`: Target machine type. Supported values:
-    ///   - `"hyperlight"`: Hyperlight machine type.
     ///   - `"microvm"`: microvm machine type.
     /// - `deployment`: Deployment type. Supported values:
     ///   - `"single-process"`: Single-process deployment mode.
@@ -430,9 +429,9 @@ impl Registry {
     /// async fn main() -> anyhow::Result<()> {
     ///     let registry: Registry = Registry::new(None);
     ///
-    ///     // Get the QuickJS binary for hyperlight multi-process deployment.
+    ///     // Get the QuickJS binary for microvm multi-process deployment.
     ///     let qjs_path: String = registry
-    ///         .get_cached_binary("x86", "hyperlight", "multi-process", 128, "qjs")
+    ///         .get_cached_binary("x86", "microvm", "multi-process", 128, "qjs")
     ///         .await?;
     ///
     ///     println!("QuickJS binary: {}", qjs_path);
@@ -475,7 +474,6 @@ impl Registry {
     /// - `target`: Target architecture. Supported values:
     ///   - `"x86"`: x86 architecture.
     /// - `machine`: Target machine type. Supported values:
-    ///   - `"hyperlight"`: Hyperlight machine type.
     ///   - `"microvm"`: microvm machine type.
     /// - `deployment`: Deployment type. Supported values:
     ///   - `"single-process"`: Single-process deployment mode.
@@ -512,7 +510,7 @@ impl Registry {
     ///
     ///     // Search for a configuration file from the cache directory root.
     ///     let config_path: String = registry
-    ///         .get_cached_artifact("x86", "hyperlight", "multi-process", 128, "config.json", None)
+    ///         .get_cached_artifact("x86", "microvm", "multi-process", 128, "config.json", None)
     ///         .await?;
     ///
     ///     // Search for a library file in a specific subdirectory.
@@ -681,7 +679,6 @@ impl Registry {
     /// - `target`: Target architecture. Supported values:
     ///   - `"x86"`: x86 architecture.
     /// - `machine`: Target machine type. Supported values:
-    ///   - `"hyperlight"`: Hyperlight machine type.
     ///   - `"microvm"`: microvm machine type.
     /// - `deployment`: Deployment type. Supported values:
     ///   - `"single-process"`: Single-process deployment mode.
@@ -1057,8 +1054,8 @@ impl Registry {
     /// build of Nanvix artifacts.
     ///
     /// Supported URL formats:
-    /// - Legacy: `https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-abc123def456.tar.bz2`
-    /// - New:    `https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-128mb-abc123def456.tar.bz2`
+    /// - Legacy: `https://github.com/nanvix/nanvix/releases/download/latest/nanvix-microvm-multi-process-release-abc123def456.tar.bz2`
+    /// - New:    `https://github.com/nanvix/nanvix/releases/download/latest/nanvix-microvm-multi-process-release-128mb-abc123def456.tar.bz2`
     ///
     /// The commit ID is always the last hyphen-delimited segment before the file extension.
     ///
@@ -1653,7 +1650,7 @@ mod tests {
     #[test]
     fn test_extract_commit_id() {
         // Test valid URL with commit ID and memory size.
-        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-x86-hyperlight-multi-process-release-128mb-abc123def456.tar.bz2";
+        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-x86-microvm-multi-process-release-128mb-abc123def456.tar.bz2";
         let commit_id: Option<String> = Registry::extract_commit_id(url);
         assert!(commit_id.is_some());
         assert_eq!(commit_id.expect("failed"), "abc123def456");
@@ -1665,7 +1662,7 @@ mod tests {
         assert_eq!(commit_id.expect("failed"), "1a2b3c4d5e6f");
 
         // Test valid URL with .tar.gz extension.
-        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-x86-hyperlight-multi-process-release-128mb-abc123def456.tar.gz";
+        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-x86-microvm-multi-process-release-128mb-abc123def456.tar.gz";
         let commit_id: Option<String> = Registry::extract_commit_id(url);
         assert!(commit_id.is_some());
         assert_eq!(commit_id.expect("failed"), "abc123def456");
