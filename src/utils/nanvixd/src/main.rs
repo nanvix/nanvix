@@ -328,7 +328,7 @@ async fn async_main() -> Result<ExitCode> {
 /// # Parameters
 ///
 /// - `args`: The parsed command-line arguments.
-/// - `machine`: The target machine type (e.g., `"microvm"`, `"hyperlight"`).
+/// - `machine`: The target machine type (e.g., `"microvm"`).
 /// - `deployment`: The deployment type (e.g., `"single-process"`, `"multi-process"`).
 ///
 /// # Returns

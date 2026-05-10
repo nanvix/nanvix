@@ -17,17 +17,6 @@ pub mod terminal;
 use ::anyhow::Result;
 
 //==================================================================================================
-// Constants
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Exit code used when we failed to retrieve the exit code and need to skip validation.
-///
-const DEFAULT_EXIT_CODE_SKIP_VALIDATION: i32 = -2;
-
-//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -74,15 +63,6 @@ pub struct WorkloadSpec<'a> {
     /// Optional expected exit code that the workload must produce.
     ///
     expected_exit_code: Option<i32>,
-    ///
-    /// # Description
-    ///
-    /// Indicates whether exit code validation should be skipped. This is used on hyperlight where
-    /// the User VM is terminated via SIGKILL and cannot reliably report exit codes.
-    ///
-    /// FIXME (#1010): Remove this workaround once graceful hyperlight interrupt is implemented.
-    ///
-    skip_exit_code_validation: bool,
 }
 
 impl<'a> WorkloadSpec<'a> {
@@ -100,7 +80,6 @@ impl<'a> WorkloadSpec<'a> {
     /// - `expect_empty_output`: Indicates whether the workload should produce an empty stdout
     ///   payload.
     /// - `expected_exit_code`: Optional exit code that the workload must produce.
-    /// - `skip_exit_code_validation`: Indicates whether exit code validation should be skipped.
     ///
     /// # Return Value
     ///
@@ -112,7 +91,6 @@ impl<'a> WorkloadSpec<'a> {
         expected_output: Option<&'a str>,
         expect_empty_output: bool,
         expected_exit_code: Option<i32>,
-        skip_exit_code_validation: bool,
     ) -> Self {
         Self {
             program_path,
@@ -121,7 +99,6 @@ impl<'a> WorkloadSpec<'a> {
             expected_output,
             expect_empty_output,
             expected_exit_code,
-            skip_exit_code_validation,
         }
     }
 
@@ -200,32 +177,6 @@ impl<'a> WorkloadSpec<'a> {
             None => 0,
         }
     }
-
-    ///
-    /// # Description
-    ///
-    /// Returns `true` when the test explicitly declared an expected exit code.
-    ///
-    /// # Return Value
-    ///
-    /// Returns `true` if `expected_exit_code` was set in the test configuration; otherwise `false`.
-    ///
-    pub const fn has_explicit_expected_exit_code(&self) -> bool {
-        self.expected_exit_code.is_some()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Indicates whether exit code validation should be skipped.
-    ///
-    /// # Return Value
-    ///
-    /// Returns `true` if exit code validation should be skipped; otherwise returns `false`.
-    ///
-    pub const fn skip_exit_code_validation(&self) -> bool {
-        self.skip_exit_code_validation
-    }
 }
 
 //==================================================================================================
@@ -295,50 +246,27 @@ mod tests {
     #[test]
     fn workload_spec_expected_exit_code_some() {
         let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(0), false);
+            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(0));
         assert_eq!(spec.expected_exit_code(), 0);
     }
 
     #[test]
     fn workload_spec_expected_exit_code_none() {
-        let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, false, None, false);
+        let spec: WorkloadSpec = WorkloadSpec::new("./bin/test.elf", None, None, None, false, None);
         assert_eq!(spec.expected_exit_code(), 0);
     }
 
     #[test]
     fn workload_spec_expected_exit_code_nonzero() {
         let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(13), false);
+            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(13));
         assert_eq!(spec.expected_exit_code(), 13);
-    }
-
-    #[test]
-    fn workload_spec_skip_exit_code_validation() {
-        let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(0), true);
-        assert!(spec.skip_exit_code_validation());
-        assert_eq!(spec.expected_exit_code(), 0);
     }
 
     #[test]
     fn workload_spec_expected_exit_code_negative() {
         let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, false, Some(-1), false);
+            WorkloadSpec::new("./bin/test.elf", None, None, None, false, Some(-1));
         assert_eq!(spec.expected_exit_code(), -1);
-    }
-
-    #[test]
-    fn workload_spec_has_explicit_expected_exit_code_some() {
-        let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, false, Some(0), false);
-        assert!(spec.has_explicit_expected_exit_code());
-    }
-
-    #[test]
-    fn workload_spec_has_explicit_expected_exit_code_none() {
-        let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, false, None, false);
-        assert!(!spec.has_explicit_expected_exit_code());
     }
 }
