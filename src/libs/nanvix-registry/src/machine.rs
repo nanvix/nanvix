@@ -19,8 +19,6 @@ use ::log::error;
 ///
 #[derive(Debug, Clone, Copy)]
 pub enum Machine {
-    /// Hyperlight machine type.
-    Hyperlight,
     /// MicroVM machine type.
     Microvm,
 }
@@ -30,8 +28,6 @@ pub enum Machine {
 //==================================================================================================
 
 impl Machine {
-    /// String representation of Hyperlight machine.
-    pub const HYPERLIGHT_STR: &'static str = "hyperlight";
     /// String representation of Microvm machine.
     pub const MICROVM_STR: &'static str = "microvm";
 
@@ -46,7 +42,6 @@ impl Machine {
     ///
     pub fn as_str(&self) -> &'static str {
         match self {
-            Machine::Hyperlight => Machine::HYPERLIGHT_STR,
             Machine::Microvm => Machine::MICROVM_STR,
         }
     }
@@ -92,7 +87,6 @@ impl TryFrom<&str> for Machine {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let value_lower: String = value.to_lowercase();
         match value_lower.as_str() {
-            Self::HYPERLIGHT_STR => Ok(Machine::Hyperlight),
             Self::MICROVM_STR => Ok(Machine::Microvm),
             _ => {
                 let reason: String = format!("Unknown machine type: {value}");
@@ -115,17 +109,6 @@ mod tests {
     ///
     /// # Description
     ///
-    /// Tests that `Hyperlight` machine converts to correct string representation.
-    ///
-    #[test]
-    fn test_hyperlight_as_str() {
-        let machine: Machine = Machine::Hyperlight;
-        assert_eq!(machine.as_str(), "hyperlight");
-    }
-
-    ///
-    /// # Description
-    ///
     /// Tests that `Microvm` machine converts to correct string representation.
     ///
     #[test]
@@ -137,35 +120,12 @@ mod tests {
     ///
     /// # Description
     ///
-    /// Tests that `Hyperlight` display trait works correctly.
-    ///
-    #[test]
-    fn test_hyperlight_display() {
-        let machine: Machine = Machine::Hyperlight;
-        assert_eq!(format!("{}", machine), "hyperlight");
-    }
-
-    ///
-    /// # Description
-    ///
     /// Tests that `Microvm` display trait works correctly.
     ///
     #[test]
     fn test_microvm_display() {
         let machine: Machine = Machine::Microvm;
         assert_eq!(format!("{}", machine), "microvm");
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Tests that valid hyperlight string is converted successfully.
-    ///
-    #[test]
-    fn test_try_from_valid_hyperlight() {
-        let result: Result<Machine> = Machine::try_from("hyperlight");
-        assert!(result.is_ok());
-        assert!(matches!(result.expect("failed"), Machine::Hyperlight));
     }
 
     ///
@@ -187,7 +147,7 @@ mod tests {
     ///
     #[test]
     fn test_try_from_case_insensitive() {
-        let test_cases: [&str; 4] = ["HYPERLIGHT", "Hyperlight", "MICROVM", "MicroVM"];
+        let test_cases: [&str; 2] = ["MICROVM", "MicroVM"];
 
         for case in &test_cases {
             let result: Result<Machine> = Machine::try_from(*case);
