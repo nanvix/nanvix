@@ -32,7 +32,6 @@ standalone = ["nanvix/standalone"]
 gdb = ["nanvix/gdb"]
 # Enables fine-grained time profiling.
 profile-time = ["nanvix/profile-time"]
-hyperlight = ["nanvix/hyperlight"]
 microvm = ["nanvix/microvm"]
 whp = ["nanvix/whp"]
 
