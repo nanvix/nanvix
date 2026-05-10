@@ -130,7 +130,6 @@
 //! ## Features
 //!
 //! - **`single-process`**: Enable single-process deployment mode
-//! - **`hyperlight`**: Enable Hyperlight virtualization backend support
 //!
 //! ## Architecture
 //!

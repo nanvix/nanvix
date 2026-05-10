@@ -44,7 +44,7 @@ pub struct SandboxConfig {
 
 /// Trait for Nanvix execution modes.
 ///
-/// Each execution mode (standalone, Hyperlight, distributed, etc.) implements this trait
+/// Each execution mode (standalone, distributed, etc.) implements this trait
 /// to define how sandboxes are prepared, started, managed, and cleaned up.
 ///
 /// The protocol layer (Task/Sandbox ttrpc services) delegates to this trait,
