@@ -70,7 +70,6 @@ impl KernelPage {
     ///
     /// The frame address of the target kernel page.
     ///
-    #[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
     pub fn frame_address(&self) -> crate::hal::mem::FrameAddress {
         self.kframe.base()
     }

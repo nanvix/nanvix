@@ -12,11 +12,8 @@
 //==================================================================================================
 
 pub mod elf;
-#[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
 mod kernel_vas;
 pub(crate) mod phys;
-#[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
-mod platform_vas;
 mod virt;
 
 //==================================================================================================
@@ -56,10 +53,7 @@ use ::arch::mem;
 // Re-exports
 //==================================================================================================
 
-#[cfg(not(feature = "platform-root-virtual-address-space-bootstrap"))]
 pub use kernel_vas::init;
-#[cfg(feature = "platform-root-virtual-address-space-bootstrap")]
-pub use platform_vas::init;
 
 //==================================================================================================
 // Static Assertions

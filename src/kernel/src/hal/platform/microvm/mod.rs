@@ -5,9 +5,6 @@
 // Modules
 //==================================================================================================
 
-#[cfg(all(feature = "microvm", feature = "hyperlight"))]
-compile_error!("features \"microvm\" and \"hyperlight\" are mutually exclusive");
-
 pub mod pvclock;
 mod start;
 mod start16;

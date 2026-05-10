@@ -193,8 +193,7 @@ pub const DEFAULT_ENTRIES: [Gdte; GDT_NUM_ENTRIES] = [
 /// Pointer to the platform-provided GDT backing storage.
 ///
 /// Initialized by [`Gdt::set_backing_storage()`] before [`Gdt::init()`]. On microvm the storage
-/// is a BSS-allocated static array; on Hyperlight it resides in the scratch region so it is not
-/// part of the Copy-on-Write snapshot.
+/// is a BSS-allocated static array.
 static mut GDT: *mut Gdte = core::ptr::null_mut();
 
 //==================================================================================================

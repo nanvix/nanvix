@@ -23,9 +23,6 @@ use ::sys::error::{
 // Constants
 //==================================================================================================
 
-#[cfg(feature = "hyperlight")]
-pub const NUM_OF_SLABS: usize = 10;
-#[cfg(not(feature = "hyperlight"))]
 pub const NUM_OF_SLABS: usize = 7;
 const SLAB_COUNT: usize = 32;
 pub const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
@@ -46,14 +43,6 @@ enum SlabSize {
     Slab128 = 128,
     Slab256 = 256,
     Slab512 = 512,
-    #[cfg(feature = "hyperlight")]
-    Slab1024 = 1024,
-    #[cfg(feature = "hyperlight")]
-    Slab2048 = 2048,
-    // FIXME (#1780): investigate what causes allocations >512 bytes under hyperlight
-    // and remove these extended slab tiers once the root cause is addressed.
-    #[cfg(feature = "hyperlight")]
-    Slab4096 = 4096,
 }
 
 struct Kheap {
@@ -64,12 +53,6 @@ struct Kheap {
     slab_128_bytes: Slab,
     slab_256_bytes: Slab,
     slab_512_bytes: Slab,
-    #[cfg(feature = "hyperlight")]
-    slab_1024_bytes: Slab,
-    #[cfg(feature = "hyperlight")]
-    slab_2048_bytes: Slab,
-    #[cfg(feature = "hyperlight")]
-    slab_4096_bytes: Slab,
 }
 
 //==================================================================================================
@@ -154,24 +137,6 @@ impl Kheap {
                 slab_size,
                 SlabSize::Slab512 as usize,
             )?,
-            #[cfg(feature = "hyperlight")]
-            slab_1024_bytes: Slab::from_raw_parts(
-                heap_start_addr.add(7 * slab_size),
-                slab_size,
-                SlabSize::Slab1024 as usize,
-            )?,
-            #[cfg(feature = "hyperlight")]
-            slab_2048_bytes: Slab::from_raw_parts(
-                heap_start_addr.add(8 * slab_size),
-                slab_size,
-                SlabSize::Slab2048 as usize,
-            )?,
-            #[cfg(feature = "hyperlight")]
-            slab_4096_bytes: Slab::from_raw_parts(
-                heap_start_addr.add(9 * slab_size),
-                slab_size,
-                SlabSize::Slab4096 as usize,
-            )?,
         })
     }
 
@@ -184,12 +149,6 @@ impl Kheap {
             SlabSize::Slab128 => self.slab_128_bytes.allocate().map_err(|_| AllocError),
             SlabSize::Slab256 => self.slab_256_bytes.allocate().map_err(|_| AllocError),
             SlabSize::Slab512 => self.slab_512_bytes.allocate().map_err(|_| AllocError),
-            #[cfg(feature = "hyperlight")]
-            SlabSize::Slab1024 => self.slab_1024_bytes.allocate().map_err(|_| AllocError),
-            #[cfg(feature = "hyperlight")]
-            SlabSize::Slab2048 => self.slab_2048_bytes.allocate().map_err(|_| AllocError),
-            #[cfg(feature = "hyperlight")]
-            SlabSize::Slab4096 => self.slab_4096_bytes.allocate().map_err(|_| AllocError),
         }
     }
 
@@ -202,12 +161,6 @@ impl Kheap {
             SlabSize::Slab128 => self.slab_128_bytes.deallocate(ptr).map_err(|_| AllocError),
             SlabSize::Slab256 => self.slab_256_bytes.deallocate(ptr).map_err(|_| AllocError),
             SlabSize::Slab512 => self.slab_512_bytes.deallocate(ptr).map_err(|_| AllocError),
-            #[cfg(feature = "hyperlight")]
-            SlabSize::Slab1024 => self.slab_1024_bytes.deallocate(ptr).map_err(|_| AllocError),
-            #[cfg(feature = "hyperlight")]
-            SlabSize::Slab2048 => self.slab_2048_bytes.deallocate(ptr).map_err(|_| AllocError),
-            #[cfg(feature = "hyperlight")]
-            SlabSize::Slab4096 => self.slab_4096_bytes.deallocate(ptr).map_err(|_| AllocError),
         }
     }
 
@@ -220,12 +173,6 @@ impl Kheap {
             65..=128 => Ok(SlabSize::Slab128),
             129..=256 => Ok(SlabSize::Slab256),
             257..=512 => Ok(SlabSize::Slab512),
-            #[cfg(feature = "hyperlight")]
-            513..=1024 => Ok(SlabSize::Slab1024),
-            #[cfg(feature = "hyperlight")]
-            1025..=2048 => Ok(SlabSize::Slab2048),
-            #[cfg(feature = "hyperlight")]
-            2049..=4096 => Ok(SlabSize::Slab4096),
             _ => Err(AllocError),
         }
     }

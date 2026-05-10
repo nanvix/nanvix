@@ -36,9 +36,6 @@ pub mod system {
         if #[cfg(feature = "microvm")] {
             /// Default machine name.
             pub const DEFAULT_MACHINE_NAME: &str = "microvm";
-        } else if #[cfg(feature = "hyperlight")] {
-            /// Default machine name.
-            pub const DEFAULT_MACHINE_NAME: &str = "hyperlight";
         } else {
             /// Default machine name.
             pub const DEFAULT_MACHINE_NAME: &str = "unknown";
@@ -147,63 +144,14 @@ pub mod memory_layout {
     ///
     pub const USER_BASE_RAW: usize = KERNEL_END_RAW;
 
-    // On Hyperlight the scratch region occupies the top of the 32-bit GPA space ([MAX_GPA -
-    // scratch_size + 1, MAX_GPA + 1)).  Reserved MMIO structures (input/output buffers, allocator
-    // bitmaps) are placed at the very bottom of the scratch region.  Because scratch_size can be as
-    // large as MEMORY_SIZE, those buffers can descend into the user address space, colliding with
-    // the user stack.  To prevent this, the user address space must end below the worst-case
-    // scratch base.  The value is aligned down to a 4 MB page-table boundary.
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "hyperlight")] {
-            ///
-            /// # Description
-            ///
-            /// First guest physical address above the addressable GPA range
-            /// (`MAX_GPA + 1` from `hyperlight-common`).  The kernel's compile-time
-            /// assertion ties this value to the upstream constant so it cannot
-            /// silently drift.
-            ///
-            pub const HYPERLIGHT_GPA_CEILING: usize = 0xFEE0_0000;
+    ///
+    /// # Description
+    ///
+    /// Exclusive upper bound of the user virtual address space.
+    ///
+    pub const USER_END_RAW: usize = 0xf0000000;
 
-            ///
-            /// # Description
-            ///
-            /// Boot stack top address for the Hyperlight kernel.
-            ///
-            /// Placed just below the scratch I/O and bookkeeping pages at the top of the scratch
-            /// region.  The scratch region always ends at [`HYPERLIGHT_GPA_CEILING`], so this
-            /// address is computable at build time.  The stack grows downward from this address;
-            /// the first [`KSTACK_SIZE`](crate::kernel::KSTACK_SIZE) bytes below it are the
-            /// combined guard page and usable stack.
-            pub const HYPERLIGHT_BOOT_STACK_TOP: usize =
-                HYPERLIGHT_GPA_CEILING - 2 * crate::hyperlight::PAGE_SIZE;
-
-            /// Alignment for the exclusive upper bound of the user virtual address space.
-            pub const USER_END_ALIGNMENT: usize = 4 * 1024 * 1024;
-
-            ///
-            /// # Description
-            ///
-            /// Exclusive upper bound of the user virtual address space (Hyperlight).
-            ///
-            /// Computed as `floor_4MB(HYPERLIGHT_GPA_CEILING - MEMORY_SIZE)` so that
-            /// the worst-case scratch region never overlaps the user stack.
-            ///
-            pub const USER_END_RAW: usize =
-                (HYPERLIGHT_GPA_CEILING - crate::kernel::MEMORY_SIZE) & !(USER_END_ALIGNMENT - 1);
-        } else {
-            ///
-            /// # Description
-            ///
-            /// Exclusive upper bound of the user virtual address space.
-            ///
-            pub const USER_END_RAW: usize = 0xf0000000;
-        }
-    }
-
-    // The subtraction in USER_END_RAW must not underflow, and the result must stay above the
-    // kernel region. The Hyperlight build.rs ceiling guarantees this today, but verify here so
-    // future configuration changes fail with a clear diagnostic at the source of the calculation.
+    // Verify that USER_END_RAW stays above the kernel region and fixed user-space regions.
     const _: () = assert!(USER_END_RAW > USER_BASE_RAW, "USER_END_RAW underflows into kernel");
     const _: () =
         assert!(USER_END_RAW > USER_MMAP_END_RAW, "USER_END_RAW overlaps fixed user-space regions");
@@ -312,10 +260,6 @@ pub mod memory_layout {
 
     // Compile-time assertion: USER_HEAP_CAPACITY must be strictly less than MEMORY_SIZE.
     static_assert::assert_eq!(USER_HEAP_CAPACITY < crate::kernel::MEMORY_SIZE);
-
-    /// RAMFS images larger than this threshold are mounted in-place as read-only
-    /// to avoid OOM when copying to the heap on Hyperlight.
-    pub const RAMFS_READONLY_THRESHOLD: usize = 8 * crate::constants::MEGABYTE;
 }
 
 //==================================================================================================
@@ -397,9 +341,3 @@ pub mod microvm {
     #[cfg(feature = "whp")]
     pub const DEFAULT_LAPIC_BASE: usize = 0xFEE0_0000;
 }
-
-// Hyperlight is no longer a supported machine type. The feature gate is kept so that downstream
-// crates that still declare `config/hyperlight` in their Cargo.toml continue to compile without
-// the feature enabled, but enabling it is a hard error.
-#[cfg(feature = "hyperlight")]
-compile_error!("The `hyperlight` machine type has been removed. Only `microvm` is supported.");

@@ -161,6 +161,6 @@ pub unsafe fn in32(port: u16) -> u32 {
 ///
 pub fn wait() {
     // On PC platforms this wrote to port 0x80 (POST diagnostics) to create a
-    // bus-cycle delay between consecutive PIC I/O accesses. Neither microvm
-    // nor Hyperlight handle that port, so the function is now a no-op.
+    // bus-cycle delay between consecutive PIC I/O accesses. The microvm
+    // platform does not handle that port, so the function is now a no-op.
 }
