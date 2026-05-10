@@ -1130,7 +1130,7 @@ mod tests {
         let release_fallback: PackageRelease = PackageRelease::new(
             Package::OpenSSL,
             Deployment::MultiProcess,
-            Machine::Hyperlight,
+            Machine::Microvm,
             "def456".to_string(),
             true,
         )
