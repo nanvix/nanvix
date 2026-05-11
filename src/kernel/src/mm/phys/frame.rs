@@ -3,7 +3,7 @@
 
 //! Frame allocator — module-level singleton.
 //!
-//! The frame allocator is backed by a [`SparseBitmap`] and exposed as free functions over a
+//! The frame allocator is backed by a [`Bitmap`] and exposed as free functions over a
 //! singleton so every in-kernel caller goes through the same state. No struct-valued handle is
 //! passed around.
 //!
@@ -24,6 +24,7 @@ use ::arch::mem::{
     self,
     paging::FrameNumber,
 };
+use ::bitmap::Bitmap;
 use ::config::constants;
 use ::core::{
     hint::unlikely,
@@ -33,7 +34,6 @@ use ::core::{
         Ordering,
     },
 };
-use ::sparse_bitmap::SparseBitmap;
 use ::sys::{
     error::{
         Error,
@@ -48,8 +48,8 @@ use ::sys::{
 
 /// Private state of the frame allocator singleton.
 struct Inner {
-    /// A sparse bitmap that keeps track of free/used frames.
-    bitmap: SparseBitmap,
+    /// A bitmap that keeps track of free/used frames.
+    bitmap: Bitmap,
 }
 
 impl Inner {
@@ -189,7 +189,7 @@ impl Inner {
     ///
     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
-        self.bitmap.find_chunk(frame_number).is_some()
+        frame_number < self.bitmap.number_of_bits()
     }
 
     ///
@@ -215,14 +215,13 @@ impl Inner {
         // Check that all frames in the range are covered by the bitmap and free,
         // then book them. Uncovered frames indicate a memory layout bug.
         //
-        // The coverage check (find_chunk) runs unconditionally — including optimized builds —
-        // because SparseBitmap::test() returns Ok(false) for uncovered indices, which would
-        // silently pass the "is free" check only to fail later on set(). This loop runs only
-        // at boot when booking memory regions, so the overhead is negligible.
+        // The coverage check runs unconditionally — including optimized builds —
+        // because out-of-bounds indices must be rejected before attempting to set them.
+        // This loop runs only at boot when booking memory regions, so the overhead is negligible.
         for index in start_frame_number..=end_frame_number {
-            if self.bitmap.find_chunk(index).is_none() {
+            if index >= self.bitmap.number_of_bits() {
                 let uncovered_addr: usize = index * mem::FRAME_SIZE;
-                let reason: &str = "frame index not covered by any bitmap chunk";
+                let reason: &str = "frame index not covered by the bitmap";
                 error!("{} (frame={:#010x}, region={:?})", reason, uncovered_addr, region);
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             }
@@ -295,16 +294,15 @@ fn instance() -> &'static mut Inner {
 ///
 /// Must be called exactly once during boot, before any other function
 /// in this module.
-pub(super) unsafe fn init(bitmap: SparseBitmap) -> Result<(), Error> {
+pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
     if unlikely(INSTANCE_INIT.load(ORDER)) {
         return Err(Error::new(ErrorCode::InvalidArgument, "frame allocator already initialized"));
     }
 
     info!(
-        "frame allocator: {} frames, {} MB, {} chunk(s)",
-        bitmap.capacity(),
-        (bitmap.capacity() * mem::FRAME_SIZE) / constants::MEGABYTE,
-        bitmap.chunk_count(),
+        "frame allocator: {} frames, {} MB",
+        bitmap.number_of_bits(),
+        (bitmap.number_of_bits() * mem::FRAME_SIZE) / constants::MEGABYTE,
     );
 
     // SAFETY: single-threaded boot; no other reference to `INSTANCE` exists.
@@ -341,7 +339,7 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
 ///
 pub(super) fn free_count() -> usize {
     let inner = instance();
-    inner.bitmap.capacity() - inner.bitmap.usage()
+    inner.bitmap.number_of_bits() - inner.bitmap.usage()
 }
 
 /// Free a frame previously returned by [`alloc`].

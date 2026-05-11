@@ -1608,7 +1608,6 @@ dependencies = [
  "no_fail",
  "raw-array",
  "sorted-vec",
- "sparse-bitmap",
  "static_assert",
  "sys",
  "type-safe",
@@ -3283,15 +3282,6 @@ dependencies = [
 [[package]]
 name = "sorted-vec"
 version = "0.12.555"
-
-[[package]]
-name = "sparse-bitmap"
-version = "0.12.555"
-dependencies = [
- "bitmap",
- "error",
- "sys",
-]
 
 [[package]]
 name = "spin"
