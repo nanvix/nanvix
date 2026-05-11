@@ -201,12 +201,12 @@ endif
 
 # Rust flags for guest target.
 export GUEST_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
-export GUEST_CARGO_FLAGS := -Zbuild-std=core,alloc
+export GUEST_CARGO_FLAGS := -Zbuild-std=core,alloc -Zjson-target-spec
 export GUEST_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-user.json
 export KERNEL_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
 # Note: use '-Z flag' (with a space) instead of '-Zflag' so that cargo-verus can parse and forward
 # the flags correctly. Regular cargo accepts both forms.
-export KERNEL_CARGO_FLAGS := -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem
+export KERNEL_CARGO_FLAGS := -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec
 export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
 
 # Rust flags for host target.

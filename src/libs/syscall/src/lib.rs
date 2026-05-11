@@ -7,8 +7,8 @@
 
 #![deny(clippy::all)]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(never_type)] // pthread requires this.
-#![feature(c_variadic)] // fcntl requires this.
+#![cfg_attr(feature = "syscall", feature(never_type))] // pthread requires this.
+#![cfg_attr(feature = "syscall", feature(c_variadic))] // fcntl requires this.
 
 //==================================================================================================
 // Modules
