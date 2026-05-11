@@ -296,9 +296,9 @@ impl IkcNotifier {
 
 /// Serializable WHP snapshot holding guest metadata and vCPU register state.
 ///
-/// Memory is saved separately via the sparse snapshot APIs
-/// [`vmem::VirtualMemory::save_snapshot_sparse`] and
-/// [`vmem::VirtualMemory::load_snapshot_sparse`].
+/// Memory is saved separately via the dense snapshot APIs
+/// [`vmem::VirtualMemory::save_snapshot_dense`] and
+/// [`vmem::VirtualMemory::load_snapshot_cow`].
 #[derive(Serialize, Deserialize)]
 struct WhpSnapshot {
     /// Guest metadata (kernel/initrd locations, credits, entry point).
@@ -1043,8 +1043,8 @@ impl Vmm {
             std::fs::create_dir_all(parent)?;
         }
 
-        // Save guest memory (sparse format: only non-zero pages).
-        if let Err(e) = self.vmem.lock().await.save_snapshot_sparse(&vmem_filepath) {
+        // Save guest memory (dense format: raw image for COW-mapped restore).
+        if let Err(e) = self.vmem.lock().await.save_snapshot_dense(&vmem_filepath) {
             let reason: String = format!("failed creating virtual memory snapshot (error={e:?})");
             error!("create_snapshot(): {reason}");
             anyhow::bail!(reason)
@@ -1087,8 +1087,8 @@ impl Vmm {
     pub async fn load_snapshot(&self, filepath: String) -> Result<()> {
         let (vmem_filepath, whp_filepath) = Self::make_snapshot_paths(&filepath);
 
-        // Load guest memory (sparse format).
-        if let Err(e) = self.vmem.lock().await.load_snapshot_sparse(&vmem_filepath) {
+        // Load guest memory (COW-mapped from dense snapshot file).
+        if let Err(e) = self.vmem.lock().await.load_snapshot_cow(&vmem_filepath) {
             let reason: String = format!("failed loading virtual memory snapshot (error={e:?})");
             error!("load_snapshot(): {reason}");
             anyhow::bail!(reason)
