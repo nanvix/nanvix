@@ -14,10 +14,7 @@ mod start16;
 //==================================================================================================
 
 use crate::{
-    collections::{
-        Bitmap,
-        RawArray,
-    },
+    collections::RawArray,
     hal::{
         arch::x86::{
             self,
@@ -52,10 +49,7 @@ use crate::{
     },
     kmod::KernelModule,
 };
-use ::alloc::{
-    collections::LinkedList,
-    vec,
-};
+use ::alloc::collections::LinkedList;
 use ::arch::{
     cpu::{
         idt::Idte,
@@ -65,8 +59,8 @@ use ::arch::{
     mem,
     mem::gdt::Gdte,
 };
+use ::bitmap::Bitmap;
 use ::config::system::CmdlineArgsLen;
-use ::sparse_bitmap::SparseBitmap;
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -102,9 +96,9 @@ pub struct Platform {
     pub arch: Arch,
     #[cfg(all(feature = "pit", not(feature = "whp")))]
     pub _pit: Pit,
-    /// A sparse bitmap representing the physical memory layout, owned by the platform and consumed
+    /// A bitmap representing the physical memory layout, owned by the platform and consumed
     /// by the memory manager during system initialization.
-    pub physical_memory_layout: Option<SparseBitmap>,
+    pub physical_memory_layout: Option<Bitmap>,
 }
 
 //==================================================================================================
@@ -935,16 +929,15 @@ pub fn init(
 
     let arch = x86::init(ioports, ioaddresses, madt)?;
 
-    // Build a sparse bitmap representing the physical memory layout.
-    let physical_memory_layout: SparseBitmap = {
+    // Build a bitmap representing the physical memory layout.
+    let physical_memory_layout: Bitmap = {
         // Safety: the frame allocator storage is valid and has a static lifetime.
         let storage: RawArray<u8> = unsafe {
             let (ptr, len): (*mut u8, usize) =
                 (FRAME_ALLOCATOR_STORAGE.as_mut_ptr(), FRAME_ALLOCATOR_STORAGE.len());
             RawArray::from_raw_parts(ptr, len)?
         };
-        let bitmap: Bitmap = Bitmap::from_raw_array(storage)?;
-        SparseBitmap::new(vec![(0, bitmap)])?
+        Bitmap::from_raw_array(storage)?
     };
 
     Ok(Platform {

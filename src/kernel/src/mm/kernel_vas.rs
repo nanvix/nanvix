@@ -25,7 +25,7 @@ use ::alloc::{
     vec::Vec,
 };
 use ::arch::mem;
-use ::sparse_bitmap::SparseBitmap;
+use ::bitmap::Bitmap;
 use ::sys::error::Error;
 
 use super::{
@@ -104,7 +104,7 @@ fn parse_memory_regions(
 pub fn init(
     memory_regions: LinkedList<MemoryRegion<VirtualAddress>>,
     mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
-    physical_memory_layout: SparseBitmap,
+    physical_memory_layout: Bitmap,
 ) -> Result<Vmem, Error> {
     info!("initializing the memory manager ...");
 
