@@ -29,7 +29,7 @@ use crate::{
 };
 use ::alloc::collections::LinkedList;
 use ::arch::mem;
-use ::sparse_bitmap::SparseBitmap;
+use ::bitmap::Bitmap;
 use ::sys::error::Error;
 
 //==================================================================================================
@@ -80,7 +80,7 @@ fn book_mmio_regions(
 
             // Only book frames that the frame allocator actually tracks.
             // MMIO regions above RAM (e.g. the LAPIC at 0xFEE0_0000) are not
-            // covered by the sparse bitmap and must be skipped.
+            // covered by the bitmap and must be skipped.
             if frame::is_covered(phys_addr) {
                 frame::book(phys_addr)?;
             }
@@ -109,7 +109,7 @@ fn book_mmio_regions(
 pub fn init(
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
     mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
-    physical_memory_layout: SparseBitmap,
+    physical_memory_layout: Bitmap,
 ) -> Result<(), Error> {
     // Initialize frame allocator singleton.
     info!("initializing the frame allocator ...");

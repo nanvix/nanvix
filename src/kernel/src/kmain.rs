@@ -58,11 +58,11 @@ use ::alloc::{
     collections::LinkedList,
     vec::Vec,
 };
+use ::bitmap::Bitmap;
 use ::core::sync::atomic::{
     AtomicUsize,
     Ordering,
 };
-use ::sparse_bitmap::SparseBitmap;
 use ::sys::{
     pm::ProcessIdentifier,
     ExitStatus,
@@ -372,7 +372,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         }
     }
 
-    let physical_memory_layout: SparseBitmap =
+    let physical_memory_layout: Bitmap =
         match Hal::init(&mut memory_regions, &mut mmio_regions, &mut ioaddresses, &madt, mem_lower)
         {
             Ok(result) => result,
