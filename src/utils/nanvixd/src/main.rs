@@ -31,16 +31,8 @@ compile_error!("features `single-process` and `multi-process` are mutually exclu
 
 use ::anyhow::Result;
 use ::log::error;
-#[cfg(not(feature = "standalone"))]
-use ::nanvix::config::constants::MEGABYTE;
-#[cfg(not(feature = "standalone"))]
-use ::nanvix::config::kernel::MEMORY_SIZE;
-#[cfg(not(feature = "standalone"))]
-use ::nanvix::config::system::DEFAULT_TARGET_NAME;
 #[cfg(unix)]
 use ::nanvix::http::HttpServer;
-#[cfg(not(feature = "standalone"))]
-use ::nanvix::registry::Registry;
 #[cfg(feature = "multi-process")]
 use ::nanvix::sandbox_config::SandboxCacheConfig;
 #[cfg(feature = "single-process")]
@@ -169,25 +161,13 @@ async fn async_main() -> Result<ExitCode> {
 
     print_startup_info(&args);
 
-    // Determine deployment type based on feature flag.
-    #[cfg(feature = "single-process")]
-    let deployment: &str = "single-process";
-    #[cfg(feature = "standalone")]
-    let deployment: &str = "standalone";
-    #[cfg(feature = "multi-process")]
-    let deployment: &str = "multi-process";
-
-    // Determine target machine type from config.
-    let machine: &str = DEFAULT_MACHINE_NAME;
-
     // Ensure all required binaries are available.
     #[cfg(any(feature = "single-process", feature = "standalone"))]
-    let (kernel_binary_path, _, _) =
-        ensure_all_binaries_available(&args, machine, deployment).await?;
+    let (kernel_binary_path, _, _) = ensure_all_binaries_available(&args).await?;
 
     #[cfg(feature = "multi-process")]
     let (kernel_binary_path, linuxd_binary_path, uservm_binary_path) =
-        ensure_all_binaries_available(&args, machine, deployment).await?;
+        ensure_all_binaries_available(&args).await?;
 
     // Create temporary directory that will be automatically cleaned up on drop.
     // Standalone mode does not use the temporary directory, so skip creating it
@@ -321,27 +301,18 @@ async fn async_main() -> Result<ExitCode> {
 /// # Description
 ///
 /// Ensures all required binaries are available. Checks if all binaries exist locally first.
-/// If any binary is missing, the behavior depends on the deployment mode:
-/// - **Standalone**: fails immediately with an error, since registry fetching is not supported.
-/// - **Single-process / Multi-process**: fetches missing binaries from the nanvix-registry.
+/// If any binary is missing, fails with an error listing the missing binaries.
 ///
 /// # Parameters
 ///
 /// - `args`: The parsed command-line arguments.
-/// - `machine`: The target machine type (e.g., `"microvm"`).
-/// - `deployment`: The deployment type (e.g., `"single-process"`, `"multi-process"`).
 ///
 /// # Returns
 ///
 /// On success, returns a tuple containing paths to (kernel, linuxd, uservm) binaries.
 /// On failure, returns an error describing what went wrong.
 ///
-#[cfg_attr(feature = "standalone", allow(unused_variables))]
-async fn ensure_all_binaries_available(
-    args: &Args,
-    machine: &str,
-    deployment: &str,
-) -> Result<(String, String, String)> {
+async fn ensure_all_binaries_available(args: &Args) -> Result<(String, String, String)> {
     let kernel_binary_path: String = format!("{}/{}", args.binary_directory(), KERNEL_BINARY_NAME);
 
     #[cfg(feature = "multi-process")]
@@ -399,51 +370,25 @@ async fn ensure_all_binaries_available(
 
     #[cfg(not(feature = "standalone"))]
     {
-        log_info!("not all binaries found locally, fetching all from registry");
-
-        let registry: Registry = Registry::new(None);
-        let memory_size_mb: u32 = (MEMORY_SIZE / MEGABYTE) as u32;
-
-        let kernel_cached_path: String = registry
-            .get_cached_binary(
-                DEFAULT_TARGET_NAME,
-                machine,
-                deployment,
-                memory_size_mb,
-                KERNEL_BINARY_NAME,
-            )
-            .await?;
-        log_info!("using registry binary {}: {}", KERNEL_BINARY_NAME, kernel_cached_path);
-
-        #[cfg(feature = "single-process")]
-        return Ok((kernel_cached_path, String::new(), String::new()));
+        let mut missing: Vec<&str> = Vec::new();
+        if !kernel_available {
+            missing.push(KERNEL_BINARY_NAME);
+        }
 
         #[cfg(feature = "multi-process")]
         {
-            let linuxd_cached_path: String = registry
-                .get_cached_binary(
-                    DEFAULT_TARGET_NAME,
-                    machine,
-                    deployment,
-                    memory_size_mb,
-                    LINUXD_BINARY_NAME,
-                )
-                .await?;
-            log_info!("using registry binary {}: {}", LINUXD_BINARY_NAME, linuxd_cached_path);
-
-            let uservm_cached_path: String = registry
-                .get_cached_binary(
-                    DEFAULT_TARGET_NAME,
-                    machine,
-                    deployment,
-                    memory_size_mb,
-                    USERVM_BINARY_NAME,
-                )
-                .await?;
-            log_info!("using registry binary {}: {}", USERVM_BINARY_NAME, uservm_cached_path);
-
-            Ok((kernel_cached_path, linuxd_cached_path, uservm_cached_path))
+            if fs::metadata(&linuxd_binary_path).await.is_err() {
+                missing.push(LINUXD_BINARY_NAME);
+            }
+            if fs::metadata(&uservm_binary_path).await.is_err() {
+                missing.push(USERVM_BINARY_NAME);
+            }
         }
+
+        let reason: String =
+            format!("required binaries not available locally: {}", missing.join(", "));
+        error!("ensure_all_binaries_available(): {reason}");
+        anyhow::bail!(reason);
     }
 }
 
@@ -788,7 +733,7 @@ mod tests {
         ])
         .expect("failed to parse args");
 
-        let result = ensure_all_binaries_available(&args, "microvm", "standalone").await;
+        let result = ensure_all_binaries_available(&args).await;
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
 
         let (kernel, linuxd, uservm) = result.expect("already checked");
@@ -819,7 +764,7 @@ mod tests {
         ])
         .expect("failed to parse args");
 
-        let result = ensure_all_binaries_available(&args, "microvm", "standalone").await;
+        let result = ensure_all_binaries_available(&args).await;
         assert!(result.is_err(), "expected Err, got: {:?}", result);
 
         let err_msg: String = format!("{}", result.expect_err("already checked"));

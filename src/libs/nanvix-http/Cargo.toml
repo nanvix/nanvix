@@ -19,7 +19,6 @@ hyper = { workspace = true, features = ["full"] }
 hyper-util = { workspace = true, features = ["full"] }
 linuxd = { workspace = true, optional = true }
 log = { workspace = true }
-nanvix-registry = { workspace = true }
 nanvix-sandbox = { workspace = true, optional = true }
 nanvix-sandbox-cache = { workspace = true, optional = true }
 nanvix-sandbox-config = { workspace = true, optional = true }
