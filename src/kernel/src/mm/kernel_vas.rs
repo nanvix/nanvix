@@ -7,22 +7,18 @@
 //! CR3 is loaded, and any virtual memory regions that lie outside physical memory (e.g., MMIO
 //! pages above `MEMORY_SIZE`) are explicitly mapped.
 
-use crate::{
-    collections::Bitmap,
-    hal::{
-        arch::x86::mem::mmu::page_table::PageTable,
-        mem::{
-            Address,
-            MemoryRegion,
-            MemoryRegionType,
-            PageAligned,
-            PageTableAddress,
-            PhysicalAddress,
-            TruncatedMemoryRegion,
-            VirtualAddress,
-        },
+use crate::hal::{
+    arch::x86::mem::mmu::page_table::PageTable,
+    mem::{
+        Address,
+        MemoryRegion,
+        MemoryRegionType,
+        PageAligned,
+        PageTableAddress,
+        PhysicalAddress,
+        TruncatedMemoryRegion,
+        VirtualAddress,
     },
-    kimage::KernelImage,
 };
 use ::alloc::{
     collections::LinkedList,
@@ -70,14 +66,12 @@ fn parse_memory_regions(
     while let Some(region) = memory_regions.pop_front() {
         if region.typ() == MemoryRegionType::Reserved || region.typ() == MemoryRegionType::Mmio {
             if PhysicalAddress::from_virtual_address(region.start()).is_ok() {
-                if region.typ() != MemoryRegionType::Usable {
-                    match TruncatedMemoryRegion::from_virtual_memory_region(region.clone()) {
-                        Ok(region) => physical_memory_regions.push_back(region),
-                        Err(err) => panic!(
-                            "failed to create physical memory region {:?} (error={:?})",
-                            region, err
-                        ),
-                    }
+                match TruncatedMemoryRegion::from_virtual_memory_region(region.clone()) {
+                    Ok(region) => physical_memory_regions.push_back(region),
+                    Err(err) => panic!(
+                        "failed to create physical memory region {:?} (error={:?})",
+                        region, err
+                    ),
                 }
                 virtual_memory_regions
                     .push_back(TruncatedMemoryRegion::from_memory_region(region)?);
@@ -98,11 +92,9 @@ fn parse_memory_regions(
 ///
 /// # Parameters
 ///
-/// - `kimage`: Kernel image.
 /// - `memory_regions`: Memory regions.
 /// - `mmio_regions`: MMIO regions.
 /// - `physical_memory_layout`: Physical memory layout bitmap.
-/// - `kpool_bitmap`: Statically-allocated bitmap for the kernel page pool.
 ///
 /// # Returns
 ///
@@ -110,19 +102,14 @@ fn parse_memory_regions(
 /// instead.
 ///
 pub fn init(
-    kimage: &KernelImage,
     memory_regions: LinkedList<MemoryRegion<VirtualAddress>>,
     mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
     physical_memory_layout: SparseBitmap,
-    kpool_bitmap: Bitmap,
 ) -> Result<Vmem, Error> {
     info!("initializing the memory manager ...");
 
     type VirtMemRegions = LinkedList<TruncatedMemoryRegion<VirtualAddress>>;
     type PhysMemRegions = LinkedList<TruncatedMemoryRegion<PhysicalAddress>>;
-
-    let kpool_base: PageAligned<PhysicalAddress> =
-        PageAligned::<PhysicalAddress>::from_raw_value(kimage.kpool().start().into_raw_value())?;
 
     let (mut other_virtual_memory_regions, virtual_memory_regions, physical_memory_regions): (
         VirtMemRegions,
@@ -130,13 +117,7 @@ pub fn init(
         PhysMemRegions,
     ) = parse_memory_regions(memory_regions)?;
 
-    phys::init(
-        kpool_base,
-        physical_memory_regions,
-        &mmio_regions,
-        physical_memory_layout,
-        kpool_bitmap,
-    )?;
+    phys::init(physical_memory_regions, &mmio_regions, physical_memory_layout)?;
 
     #[cfg(feature = "test")]
     phys::test();

@@ -59,10 +59,6 @@ pub use kernel_vas::init;
 // Static Assertions
 //==================================================================================================
 
-// Ensure that the kernel pool size is multiple of a page size.
-::static_assert::assert_eq!(config::kernel::KPOOL_SIZE.is_multiple_of(PAGE_ALIGNMENT as usize));
-// Ensure that the kernel pool size fits in a single page table.
-::static_assert::assert_eq!(config::kernel::KPOOL_SIZE <= mem::PGTAB_SIZE);
 // Ensure that the kernel stack size is multiple of a page size.
 ::static_assert::assert_eq!(config::kernel::KSTACK_SIZE.is_multiple_of(PAGE_ALIGNMENT as usize));
 // Ensure that the kernel stack size is at least two pages (one guard page + one usable page).
@@ -134,14 +130,6 @@ pub use kernel_vas::init;
 );
 ::static_assert::assert_eq!(
     config::memory_layout::USER_BASE_RAW >= config::memory_layout::KERNEL_END_RAW
-);
-// Ensure that the kernel pool lies within the kernel base and end addresses.
-::static_assert::assert_eq!(
-    config::memory_layout::KPOOL_BASE_RAW >= config::memory_layout::KERNEL_BASE_RAW
-);
-::static_assert::assert_eq!(
-    config::memory_layout::KPOOL_BASE_RAW + config::kernel::KPOOL_SIZE
-        < config::memory_layout::KERNEL_END_RAW
 );
 // Ensure that the mmap region lies within the user base and end addresses.
 ::static_assert::assert_eq!(

@@ -7,9 +7,11 @@
 //! This module implements identity mapping for physical memory accesses.
 //!
 //! Only the kernel process has physical memory identity-mapped into its virtual address space.
-//! At boot, page tables are allocated from BSS for kernel code/data/bss/kpool/modules. During
+//! At boot, page tables are allocated from BSS for kernel code/data/bss/modules. During
 //! [`init`], page tables for every PDE index in `[0, MEMORY_SIZE)` are pre-allocated from the
-//! BSS pool. This covers all physical memory and no new PDEs are created at runtime.
+//! BSS pool, covering all physical memory. If a frame is later allocated outside these
+//! pre-covered ranges, [`identity_map_page`] lazily installs a page table entry (and, when
+//! necessary, a new page table from the BSS pool) for the corresponding PDE.
 //!
 //! When a new user address space is created, [`sync_kernel_pdes`] copies all present kernel
 //! identity-mapping PDEs into the new page directory in a single pass.
@@ -638,7 +640,7 @@ fn ensure_pte(
 ///
 /// If the lazy mapper has not been initialized yet (boot page tables still active), this function
 /// is a no-op and returns success.
-fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
     let phys_addr: usize = phys_addr.into_raw_value();
 
     let pd_paddr: usize = KERNEL_PD_PADDR.load(Ordering::Acquire);

@@ -36,18 +36,6 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
-    /// Base address of the kernel pool.
-    ///
-    /// # Notes
-    ///
-    /// - This should be aligned page table boundaries.
-    /// - When changing this, required
-    ///
-    pub const KPOOL_BASE: VirtualAddress = VirtualAddress::new(KPOOL_BASE_RAW);
-
-    ///
-    /// # Description
-    ///
     /// Base address of user space.
     ///
     /// # Notes

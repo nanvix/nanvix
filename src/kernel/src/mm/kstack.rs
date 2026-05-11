@@ -136,7 +136,7 @@ impl KernelStack {
     ///
     /// The size of the target kernel stack.
     ///
-    fn size(&self) -> usize {
+    pub(crate) fn size(&self) -> usize {
         config::kernel::KSTACK_SIZE
     }
 
@@ -153,7 +153,7 @@ impl KernelStack {
     ///
     /// As stacks grow downwards, the base address is the highest address of the stack.
     ///
-    fn base(&self) -> PageAligned<VirtualAddress> {
+    pub(crate) fn base(&self) -> PageAligned<VirtualAddress> {
         PageAligned::from_raw_value(self.kpages[0].base().into_raw_value()).unwrap()
     }
 
@@ -191,9 +191,9 @@ impl KernelStack {
         let word_count: usize = ::arch::mem::PAGE_SIZE / ::core::mem::size_of::<u32>();
         let guard_ptr: *mut u32 = guard_base as *mut u32;
         for i in 0..word_count {
-            // SAFETY: The guard page is within allocated kernel memory and no other references
-            // to this memory exist at this point, so writing through a raw pointer derived from
-            // the page base address is sound.
+            // SAFETY: The guard page is within allocated kernel memory and no other
+            // references to this memory exist at this point, so writing through a
+            // raw pointer derived from the page base address is sound.
             unsafe {
                 guard_ptr.add(i).write_volatile(KSTACK_GUARD_PATTERN);
             }
