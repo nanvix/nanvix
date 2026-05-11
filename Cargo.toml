@@ -115,7 +115,7 @@ clap = { version = "4.6.1", default-features = false, features = [
 ] }
 compiler_builtins = "0.1.160"
 config = { path = "src/libs/config", default-features = false }
-containerd-shim-protos = { version = "0.10.0", features = ["async", "sandbox"] }
+containerd-shim-protos = { version = "0.11.0", features = ["async", "sandbox"] }
 control-plane-api = { path = "src/libs/control-plane-api", default-features = false }
 dirs = "6.0"
 elf = { path = "src/libs/elf", default-features = false }
