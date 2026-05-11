@@ -11,15 +11,11 @@
 #![allow(static_mut_refs)] // https://github.com/nanvix/kernel/issues/454
 #![allow(internal_features)]
 #![feature(allocator_api)] // kheap uses this.
-#![feature(core_intrinsics)] // identity_map uses this to bypass debug null-pointer checks.
 #![feature(linked_list_cursors)] // vmem uses this.
 #![feature(linked_list_remove)] // vmem uses this.
 #![feature(linked_list_retain)] // vmem uses this.
 #![feature(never_type)] // exit() uses this.
-#![feature(stmt_expr_attributes)] // stdio uses this.
 #![feature(likely_unlikely)] // performance hints.
-#![feature(cold_path)] // performance hints.
-#![feature(const_type_name)] // logging uses this for function name detection.
 #![no_std]
 #![no_main]
 #![allow(clippy::result_large_err)] // FIXME: introduced by thread manager.
