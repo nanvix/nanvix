@@ -8,7 +8,6 @@
 #![deny(clippy::all)]
 #![forbid(clippy::large_stack_frames)]
 #![forbid(clippy::large_stack_arrays)]
-#![cfg_attr(not(feature = "rustc-dep-of-std"), feature(allocator_api))]
 #![no_std]
 
 //==================================================================================================

@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(all(test, feature = "std"), feature(random))]
 // To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
 // we need `proc_macro_hygiene`.
 #![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
