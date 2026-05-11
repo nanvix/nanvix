@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use ::net_backend::NetBackend;
+use ::net_backend::{
+    error::NetError,
+    NetBackend,
+};
 
 //==================================================================================================
 // Function Type Aliases
@@ -1400,15 +1403,18 @@ impl<T> SyscallTable<T> {
     ///
     /// # Returns
     ///
-    /// A new syscall table.
+    /// Upon success, a new syscall table is returned. Upon failure, a `NetError` is returned.
     ///
-    pub fn new(state: T) -> Self {
-        Self {
+    /// # Errors
+    ///
+    /// Returns `NetError` if platform networking initialization fails.
+    ///
+    pub fn new(state: T) -> Result<Self, NetError> {
+        Ok(Self {
             state,
 
             // Networking backend.
-            net_backend: NetBackend::new()
-                .expect("platform networking initialization should succeed"),
+            net_backend: NetBackend::new()?,
 
             // unistd.rs system calls.
             chdir: SyscallAction::Forward(default_chdir),
@@ -1461,12 +1467,6 @@ impl<T> SyscallTable<T> {
 
             // times.rs system calls.
             times: SyscallAction::Forward(default_times),
-        }
-    }
-}
-
-impl Default for SyscallTable<()> {
-    fn default() -> Self {
-        Self::new(())
+        })
     }
 }
