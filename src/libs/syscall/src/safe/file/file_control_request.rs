@@ -10,7 +10,7 @@ use crate::safe::{
     FileStatusFlags,
     RawFileDescriptor,
 };
-use ::core::ffi::VaList;
+use ::core::ffi::VaListImpl;
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -141,11 +141,16 @@ impl TryFrom<(c_int, Option<c_int>)> for FileControlRequest {
     }
 }
 
-impl<'a> TryFrom<(c_int, VaList<'a>)> for FileControlRequest {
-    type Error = Error;
-
-    fn try_from(value: (c_int, VaList<'a>)) -> Result<Self, Self::Error> {
-        let (cmd, mut arg) = value;
+impl FileControlRequest {
+    /// # Safety
+    ///
+    /// The caller must ensure that the variadic arguments match the expected types for the given
+    /// `cmd`.
+    pub(crate) unsafe fn try_from_va_list(
+        cmd: c_int,
+        args: &mut VaListImpl<'_>,
+    ) -> Result<Self, Error> {
+        let mut arg = args.as_va_list();
         match cmd {
             F_DUPFD => {
                 let fd: c_int = unsafe { arg.arg() };

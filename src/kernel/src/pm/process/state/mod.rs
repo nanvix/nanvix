@@ -467,7 +467,7 @@ impl ProcessState {
 
         let _: BTreeMap<_, _> = self
             .mutexes
-            .extract_if(.., |&addr, mutex| mutex_addr == addr && mutex.reference_count() <= 2)
+            .extract_if(|&addr, mutex| mutex_addr == addr && mutex.reference_count() <= 2)
             .collect();
 
         Ok(())
@@ -528,7 +528,7 @@ impl ProcessState {
 
         let _: BTreeMap<_, _> = self
             .conditions
-            .extract_if(.., |&addr, cond| cond_addr == addr && cond.reference_count() <= 1)
+            .extract_if(|&addr, cond| cond_addr == addr && cond.reference_count() <= 1)
             .collect();
 
         Ok(())

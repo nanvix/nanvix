@@ -22,16 +22,17 @@ use ::syslog::trace_syscall;
 #[allow(clippy::missing_safety_doc)]
 #[trace_syscall]
 #[no_mangle]
-pub unsafe extern "C" fn fcntl(fd: c_int, cmd: c_int, args: ...) -> c_int {
+pub unsafe extern "C" fn fcntl(fd: c_int, cmd: c_int, mut args: ...) -> c_int {
     // Attempt to convert the command and arguments.
-    let cmd: FileControlRequest = match FileControlRequest::try_from((cmd, args)) {
-        Ok(cmd) => cmd,
-        Err(error) => {
-            ::syslog::warn!("fcntl(): invalid command ({error:?}, fd={fd:?}, cmd={cmd:?})");
-            *__errno_location() = error.code.get();
-            return -1;
-        },
-    };
+    let cmd: FileControlRequest =
+        match unsafe { FileControlRequest::try_from_va_list(cmd, &mut args) } {
+            Ok(cmd) => cmd,
+            Err(error) => {
+                ::syslog::warn!("fcntl(): invalid command ({error:?}, fd={fd:?}, cmd={cmd:?})");
+                *__errno_location() = error.code.get();
+                return -1;
+            },
+        };
 
     match file::fcntl(fd, &cmd) {
         Ok(ret) => ret,

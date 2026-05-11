@@ -64,7 +64,7 @@ format-check-guest-staticlibs:
 clean-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clean-guest-staticlib-$(target))
 
 rust-lint-guest-staticlibs:
-	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_STATICLIB_PKGS) $(GUEST_STATICLIB_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_STATICLIB_PKGS) $(GUEST_STATICLIB_CARGO_FEATURES) --lib --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-guest-staticlibs:
-	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_STATICLIB_PKGS) $(GUEST_STATICLIB_CARGO_FEATURES) -- -D warnings
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_STATICLIB_PKGS) $(GUEST_STATICLIB_CARGO_FEATURES) --lib -- -D warnings

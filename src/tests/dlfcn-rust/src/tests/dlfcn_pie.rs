@@ -92,7 +92,7 @@ fn test_dlopen_null() -> Result<(), Error> {
     // A second lookup should return the same address.
     let addr2 = dlsym(&DlHandle::GLOBAL, "exe_global_value")?;
     assert!(
-        addr.as_ptr() == addr2.as_ptr(),
+        core::ptr::eq(addr.as_ptr(), addr2.as_ptr()),
         "repeated global lookups should return the same address"
     );
 

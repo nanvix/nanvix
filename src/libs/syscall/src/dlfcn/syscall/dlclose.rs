@@ -45,7 +45,7 @@ pub fn dlclose(handle: &DlHandle) -> Result<(), Error> {
     let mut dep_dlfiles: Vec<Arc<Mutex<DynamicLibrary>>> = {
         let mut dlfile: Vec<(DlHandle, Arc<Mutex<DynamicLibrary>>)> = registry
         // Check if dynamic library should be removed from registry.
-            .extract_if(.., |dlhandle, dlfile| {
+            .extract_if(|dlhandle, dlfile| {
                 // Check if the handle matches the dynamic library name.
                 if handle == dlhandle {
                     // Check if this is the only remaining reference to the dynamic library file.
@@ -85,7 +85,7 @@ pub fn dlclose(handle: &DlHandle) -> Result<(), Error> {
     while let Some(dep_dlfile) = dep_dlfiles.pop() {
         // Check if dynamic library should be removed from registry.
         let mut dep_dlfile: Vec<(DlHandle, Arc<Mutex<DynamicLibrary>>)> = registry
-            .extract_if(.., |dlhandle, dlfile| {
+            .extract_if(|dlhandle, dlfile| {
                 // Check if the handle matches the dynamic library.
                 if &dep_dlfile.lock().handle() == dlhandle {
                     // Check if this is the only remaining reference to the dynamic library file.

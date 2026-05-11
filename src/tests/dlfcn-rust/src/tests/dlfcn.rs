@@ -167,7 +167,7 @@ fn test_dladdr() -> Result<(), Error> {
 
     // Verify symbol address matches what dlsym returned.
     assert!(
-        info.dli_saddr == add_raw_ptr.cast::<c_void>(),
+        core::ptr::eq(info.dli_saddr, add_raw_ptr.cast::<c_void>()),
         "dli_saddr should match the address returned by dlsym"
     );
 

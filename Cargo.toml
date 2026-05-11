@@ -175,7 +175,7 @@ serde_cbor = { version = "0.11.2", default-features = false, features = [
         "alloc",
         "std",
 ] }
-serde_json = { version = "1.0.149", default-features = false, features = [
+serde_json = { version = "1.0.140", default-features = false, features = [
         "alloc",
 ] }
 sha2 = "0.11.0"

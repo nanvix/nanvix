@@ -20,6 +20,7 @@
 #![feature(likely_unlikely)] // performance hints.
 #![feature(cold_path)] // performance hints.
 #![feature(const_type_name)] // logging uses this for function name detection.
+#![feature(btree_extract_if)] // process state uses this.
 #![no_std]
 #![no_main]
 #![allow(clippy::result_large_err)] // FIXME: introduced by thread manager.

@@ -142,28 +142,28 @@ clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binarie
 # Batched lint: group guest binaries by feature set (same as check).
 rust-lint-guest-binaries:
 ifneq ($(_GUEST_BINS_REGULAR_PKGS),)
-	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_REGULAR_PKGS) $(GUEST_BINARY_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_REGULAR_PKGS) $(GUEST_BINARY_CARGO_FEATURES) --bins --fix --allow-dirty --allow-no-vcs
 endif
 ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
-	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES) --bins --fix --allow-dirty --allow-no-vcs
 endif
 ifneq ($(filter test-kernel,$(ALL_GUEST_BINARIES)),)
-	$(GUEST_CARGO_CLIPPY_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
+	$(GUEST_CARGO_CLIPPY_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES) --bins --fix --allow-dirty --allow-no-vcs
 endif
 ifneq ($(filter c-bindings-rust,$(ALL_GUEST_BINARIES)),)
-	$(GUEST_CARGO_CLIPPY_CMD) -p c-bindings-rust $(GUEST_BINARY_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
+	$(GUEST_CARGO_CLIPPY_CMD) -p c-bindings-rust $(GUEST_BINARY_CARGO_FEATURES) --bins --fix --allow-dirty --allow-no-vcs
 endif
 
 rust-lint-check-guest-binaries:
 ifneq ($(_GUEST_BINS_REGULAR_PKGS),)
-	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_REGULAR_PKGS) $(GUEST_BINARY_CARGO_FEATURES) -- -D warnings
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_REGULAR_PKGS) $(GUEST_BINARY_CARGO_FEATURES) --bins -- -D warnings
 endif
 ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
-	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES) -- -D warnings
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES) --bins -- -D warnings
 endif
 ifneq ($(filter test-kernel,$(ALL_GUEST_BINARIES)),)
-	$(GUEST_CARGO_CLIPPY_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES) -- -D warnings
+	$(GUEST_CARGO_CLIPPY_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES) --bins -- -D warnings
 endif
 ifneq ($(filter c-bindings-rust,$(ALL_GUEST_BINARIES)),)
-	$(GUEST_CARGO_CLIPPY_CMD) -p c-bindings-rust $(GUEST_BINARY_CARGO_FEATURES) -- -D warnings
+	$(GUEST_CARGO_CLIPPY_CMD) -p c-bindings-rust $(GUEST_BINARY_CARGO_FEATURES) --bins -- -D warnings
 endif

@@ -379,7 +379,7 @@ fn test_get_set_round_trip() -> Result<(), Error> {
     let expected_ptr: *mut u8 = tda.as_mut_ptr().cast::<u8>();
 
     let returned_tda: *mut u8 = pm::get_thread_data_area()?;
-    if returned_tda != expected_ptr {
+    if !core::ptr::eq(returned_tda, expected_ptr) {
         ::syslog::error!(
             "test-kernel: tls: get_set_round_trip: expected {expected_ptr:?}, got {returned_tda:?}"
         );

@@ -49,11 +49,11 @@ format-check-guest-rlibs:
 	$(GUEST_CARGO_FMT_CMD) $(_GUEST_RLIB_PKGS) --check
 
 rust-lint-guest-rlibs:
-	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_RLIB_PKGS) --fix --allow-dirty --allow-no-vcs
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_RLIB_PKGS) --lib --fix --allow-dirty --allow-no-vcs
 	$(HOST_CARGO_CLIPPY_CMD) --tests --features=std $(_GUEST_RLIB_LINT_TEST_PKGS) --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-guest-rlibs:
-	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_RLIB_PKGS) -- -D warnings
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_RLIB_PKGS) --lib -- -D warnings
 	$(HOST_CARGO_CLIPPY_CMD) --tests --features=std $(_GUEST_RLIB_LINT_TEST_PKGS) -- -D warnings
 
 define GUEST_RLIB_TEST_RULES

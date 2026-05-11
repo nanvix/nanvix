@@ -102,7 +102,7 @@ impl AnonymousMapping {
             )
         };
 
-        if ptr == ::libc::MAP_FAILED {
+        if std::ptr::eq(ptr, ::libc::MAP_FAILED) {
             let reason: String = format!(
                 "failed to create anonymous mapping (error={})",
                 ::std::io::Error::last_os_error()
@@ -248,7 +248,7 @@ impl AnonymousMapping {
             .cast::<u8>()
         };
 
-        if result == ::libc::MAP_FAILED.cast::<u8>() {
+        if std::ptr::eq(result, ::libc::MAP_FAILED.cast::<u8>()) {
             let reason: String = format!(
                 "failed to remap region as file-backed at {:?} (error={})",
                 addr,
@@ -345,7 +345,7 @@ impl AnonymousMapping {
             .cast::<u8>()
         };
 
-        if result == ::libc::MAP_FAILED.cast::<u8>() {
+        if std::ptr::eq(result, ::libc::MAP_FAILED.cast::<u8>()) {
             let reason: String = format!(
                 "failed to restore anonymous mapping at {:?} (error={})",
                 self.ptr,

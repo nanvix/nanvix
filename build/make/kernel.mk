@@ -37,10 +37,10 @@ clean-kernel:
 	$(RM_CMD) $(BINARIES_DIR)/kernel.elf
 
 rust-lint-kernel:
-	$(KERNEL_CARGO_CLIPPY_CMD) $(KERNEL_CARGO_FEATURES) -p kernel --fix --allow-dirty --allow-no-vcs
+	$(KERNEL_CARGO_CLIPPY_CMD) $(KERNEL_CARGO_FEATURES) -p kernel --bin kernel --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-kernel:
-	$(KERNEL_CARGO_CLIPPY_CMD) $(KERNEL_CARGO_FEATURES) -p kernel -- -D warnings
+	$(KERNEL_CARGO_CLIPPY_CMD) $(KERNEL_CARGO_FEATURES) -p kernel --bin kernel -- -D warnings
 
 # Features used when building the kernel with in-kernel tests enabled.
 KERNEL_TEST_FEATURES := $(KERNEL_FEATURES) test

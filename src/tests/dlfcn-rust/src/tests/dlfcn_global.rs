@@ -68,7 +68,7 @@ fn test_global_promotion_on_reopen() -> Result<(), Error> {
 
     // Should be the same handle (cache hit).
     assert!(
-        handle.as_mut_ptr() == handle2.as_mut_ptr(),
+        core::ptr::eq(handle.as_mut_ptr(), handle2.as_mut_ptr()),
         "re-opening same library should return same handle"
     );
 

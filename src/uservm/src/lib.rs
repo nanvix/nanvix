@@ -33,6 +33,7 @@
 #![deny(clippy::cast_possible_truncation)]
 // The following lints are allowed in tests to facilitate testing of error conditions.
 #![cfg_attr(not(test), forbid(clippy::expect_used))]
+#![feature(let_chains)] // let chains in if/while conditions.
 
 //==================================================================================================
 // Feature Gates
