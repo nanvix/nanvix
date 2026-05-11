@@ -12,10 +12,13 @@ mod manager;
 mod page_table_allocator;
 mod vmem;
 
-pub(crate) use identity_map::memcpy;
 use identity_map::{
     init as identity_map_init,
     memset,
+};
+pub(crate) use identity_map::{
+    memcpy,
+    sync_kernel_pdes,
 };
 
 //==================================================================================================
@@ -108,4 +111,9 @@ impl DerefMut for PageDirectoryStorage {
             },
         }
     }
+}
+
+#[cfg(feature = "test")]
+pub fn test() {
+    assert!(identity_map::test::test());
 }

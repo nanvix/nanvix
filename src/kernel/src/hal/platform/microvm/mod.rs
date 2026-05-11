@@ -85,8 +85,13 @@ use crate::hal::platform::pit::Pit;
 /// Number of page tables needed for identity-mapping physical memory regions.
 ///
 /// On microvm all physical memory is contiguous starting at GPA 0, so the base count
-/// (one page table per `PGTAB_SIZE` bytes) is sufficient.
+/// (one page table per `PGTAB_SIZE` bytes) is sufficient. When the WHP backend is enabled,
+/// an additional page table is needed for the LAPIC MMIO region at `0xFEE0_0000`, which
+/// lies outside the identity-mapped physical memory range.
 ///
+#[cfg(feature = "whp")]
+pub const NUM_PAGE_TABLES: usize = config::kernel::MEMORY_SIZE / mem::PGTAB_SIZE + 1;
+#[cfg(not(feature = "whp"))]
 pub const NUM_PAGE_TABLES: usize = config::kernel::MEMORY_SIZE / mem::PGTAB_SIZE;
 
 //==================================================================================================

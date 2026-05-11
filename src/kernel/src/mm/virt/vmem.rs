@@ -20,6 +20,7 @@ use crate::{
             FrameAddress,
             PageAddress,
             PageAligned,
+            PageDirectoryAddress,
             PageTableAddress,
             PageTableAligned,
             PhysicalAddress,
@@ -144,7 +145,7 @@ impl Vmem {
                     )
                 })?,
             };
-            super::identity_map_init(pd_paddr, kernel_cr3);
+            super::identity_map_init(pd_paddr, kernel_cr3)?;
         }
 
         // Store root pages.
@@ -183,6 +184,15 @@ impl Vmem {
         let mut kernel_pages: LinkedList<Rc<RefCell<KernelPage>>> = LinkedList::new();
         for entry in from.kernel_pages.iter() {
             kernel_pages.push_back(entry.clone());
+        }
+
+        // Sync all present kernel identity-mapping PDEs into the new page directory. These
+        // PDEs are pre-allocated at boot and point to BSS page tables shared across all
+        // address spaces; copying them here ensures the new process can access kernel memory.
+        {
+            let target_pd_paddr: PageDirectoryAddress =
+                PageDirectoryAddress::from_raw_value(pgdir.physical_address()?.into_raw_value())?;
+            super::sync_kernel_pdes(target_pd_paddr)?;
         }
 
         Ok(Self {
