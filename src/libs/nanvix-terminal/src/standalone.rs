@@ -22,7 +22,10 @@ use ::log::{
     warn,
 };
 use ::nanvix_sandbox_config::StandaloneConfig;
-use ::std::io::Read;
+use ::std::io::{
+    ErrorKind,
+    Read,
+};
 use ::tokio::{
     io::{
         self,
@@ -30,7 +33,6 @@ use ::tokio::{
         Stdout,
     },
     sync::mpsc,
-    time,
 };
 use ::uservm::standalone::{
     StandaloneVmHandle,
@@ -46,9 +48,6 @@ const IO_BUFFER_SIZE: usize = 4096;
 
 /// Capacity of the bounded channel between the stdin reader thread and the async input task.
 const STDIN_CHANNEL_CAPACITY: usize = 4096;
-
-/// Maximum time to wait for the input task to shut down gracefully before aborting it.
-const INPUT_SHUTDOWN_TIMEOUT: ::std::time::Duration = ::std::time::Duration::from_secs(1);
 
 //==================================================================================================
 // Structures
@@ -169,7 +168,7 @@ impl Terminal {
         } = io;
 
         // --- Input path (independent task): host stdin → guest input ---
-        let mut input_handle: ::tokio::task::JoinHandle<()> = ::tokio::spawn(async move {
+        let input_handle: ::tokio::task::JoinHandle<()> = ::tokio::spawn(async move {
             let (stdin_tx, mut stdin_rx): (mpsc::Sender<Vec<u8>>, mpsc::Receiver<Vec<u8>>) =
                 mpsc::channel(STDIN_CHANNEL_CAPACITY);
 
@@ -193,21 +192,32 @@ impl Terminal {
         // --- Output path (current task): guest output → host stdout ---
         // TODO (#1706): Flush conditionally based on tty semantics instead of every chunk.
         let mut stdout: Stdout = io::stdout();
+        let mut io_error: Option<::std::io::Error> = None;
         while let Some(data) = output_rx.recv().await {
-            stdout.write_all(&data).await?;
-            stdout.flush().await?;
+            if let Err(e) = stdout.write_all(&data).await {
+                if e.kind() != ErrorKind::BrokenPipe {
+                    error!("failed to write to stdout: {e}");
+                    io_error = Some(e);
+                }
+                break;
+            }
+            if let Err(e) = stdout.flush().await {
+                if e.kind() != ErrorKind::BrokenPipe {
+                    error!("failed to flush stdout: {e}");
+                    io_error = Some(e);
+                }
+                break;
+            }
         }
 
-        // Wait briefly for the input task to shut down; abort if it does not complete in time.
-        if time::timeout(INPUT_SHUTDOWN_TIMEOUT, &mut input_handle)
-            .await
-            .is_err()
-        {
-            warn!("input task did not shut down in time, aborting");
-            input_handle.abort();
-        }
+        // Abort the input task immediately — the stdin thread blocks on read() and cannot be
+        // interrupted portably, so waiting provides no benefit.
+        input_handle.abort();
 
-        Ok(())
+        match io_error {
+            Some(e) => Err(e.into()),
+            None => Ok(()),
+        }
     }
 
     ///
