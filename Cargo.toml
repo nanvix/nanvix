@@ -26,7 +26,6 @@ members = [
         "src/libs/hwloc",
         "src/libs/nanvix",
         "src/libs/nanvix-http",
-        "src/libs/nanvix-registry",
         "src/libs/nanvix-sandbox",
         "src/libs/nanvix-sandbox-cache",
         "src/libs/nanvix-sandbox-config",
@@ -150,7 +149,6 @@ nanvix = { path = "src/libs/nanvix", default-features = false }
 nanvix-http = { path = "src/libs/nanvix-http", default-features = false }
 net-backend = { path = "src/libs/net-backend", default-features = false }
 nanvix-oci = { path = "src/libs/nanvix-oci" }
-nanvix-registry = { path = "src/libs/nanvix-registry", default-features = false }
 nanvix-sandbox = { path = "src/libs/nanvix-sandbox", default-features = false }
 nanvix-sandbox-cache = { path = "src/libs/nanvix-sandbox-cache", default-features = false }
 nanvix-sandbox-config = { path = "src/libs/nanvix-sandbox-config", default-features = false }
