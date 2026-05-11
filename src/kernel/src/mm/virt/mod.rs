@@ -112,3 +112,8 @@ impl DerefMut for PageDirectoryStorage {
         }
     }
 }
+
+#[cfg(feature = "test")]
+pub fn test() {
+    assert!(identity_map::test::test());
+}

@@ -149,6 +149,9 @@ pub fn init(
 
     let mut vmem: Vmem = VirtMemoryManager::init(kernel_pages, kernel_page_tables)?;
 
+    #[cfg(feature = "test")]
+    virt::test();
+
     // Map virtual memory regions that lie outside the physical memory.
     while let Some(region) = other_virtual_memory_regions.pop_front() {
         info!("mapping: {:?}", region);
