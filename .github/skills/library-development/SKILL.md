@@ -52,7 +52,6 @@ These run on the host system and are compiled with the host Rust build command
 |------------------------|----------------------------------|--------------|
 | `nanvix`               | `src/libs/nanvix/`               | Host API.    |
 | `nanvix-http`          | `src/libs/nanvix-http/`          | HTTP.        |
-| `nanvix-registry`      | `src/libs/nanvix-registry/`      | Registry.    |
 | `nanvix-sandbox`       | `src/libs/nanvix-sandbox/`       | Sandbox.     |
 | `nanvix-sandbox-cache` | `src/libs/nanvix-sandbox-cache/` | Cache.       |
 | `nanvix-terminal`      | `src/libs/nanvix-terminal/`      | Terminal.    |
