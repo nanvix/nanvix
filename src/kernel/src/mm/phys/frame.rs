@@ -4,8 +4,8 @@
 //! Frame allocator — module-level singleton.
 //!
 //! The frame allocator is backed by a [`SparseBitmap`] and exposed as free functions over a
-//! singleton so every in-kernel caller (upool, kpool, anything else that needs a raw frame) goes
-//! through the same state. No struct-valued handle is passed around.
+//! singleton so every in-kernel caller goes through the same state. No struct-valued handle is
+//! passed around.
 //!
 //! Access to the frame allocator is synchronized externally and performed by a single thread, so
 //! the backing bitmap uses non-atomic operations.
@@ -81,6 +81,46 @@ impl Inner {
         };
 
         // Attempt to convert the frame number to a frame address.
+        match FrameAddress::from_frame_number(frame_number) {
+            Ok(frame_address) => Ok(frame_address),
+            Err(error) => {
+                error!("{error:?}");
+                Err(error)
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Allocates `count` physically contiguous frames.
+    ///
+    /// # Parameters
+    ///
+    /// - `count`: Number of contiguous frames to allocate.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the base `FrameAddress` of the contiguous range is returned. Upon failure,
+    /// an error is returned instead.
+    ///
+    fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+        let frame_number: usize = match self.bitmap.alloc_range(count) {
+            Ok(index) => index,
+            Err(error) => {
+                error!("{error:?} (count={count})");
+                return Err(error);
+            },
+        };
+        let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
+            Some(frame_number) => frame_number,
+            None => {
+                let reason: &str = "frame number is out of bounds";
+                error!("{reason:?}");
+                return Err(Error::new(ErrorCode::OutOfMemory, reason));
+            },
+        };
+
         match FrameAddress::from_frame_number(frame_number) {
             Ok(frame_address) => Ok(frame_address),
             Err(error) => {
@@ -172,12 +212,13 @@ impl Inner {
         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
         let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
 
-        // When nightly-performance-optimizations is off, verify that every frame index in the
-        // range is covered by the sparse bitmap. SparseBitmap::test() returns Ok(false) for
-        // uncovered indices, which would incorrectly appear as "free" and pass the check below,
-        // only to fail on set(). With the feature enabled this check is elided because
-        // PhysicalAddress construction already guarantees valid physical addresses.
-        #[cfg(not(feature = "nightly-performance-optimizations"))]
+        // Check that all frames in the range are covered by the bitmap and free,
+        // then book them. Uncovered frames indicate a memory layout bug.
+        //
+        // The coverage check (find_chunk) runs unconditionally — including optimized builds —
+        // because SparseBitmap::test() returns Ok(false) for uncovered indices, which would
+        // silently pass the "is free" check only to fail later on set(). This loop runs only
+        // at boot when booking memory regions, so the overhead is negligible.
         for index in start_frame_number..=end_frame_number {
             if self.bitmap.find_chunk(index).is_none() {
                 let uncovered_addr: usize = index * mem::FRAME_SIZE;
@@ -185,12 +226,8 @@ impl Inner {
                 error!("{} (frame={:#010x}, region={:?})", reason, uncovered_addr, region);
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             }
-        }
-
-        // Check if all frames in the range are free.
-        for index in start_frame_number..=end_frame_number {
             match self.bitmap.test(index) {
-                Ok(false) => continue,
+                Ok(false) => {},
                 Ok(true) => {
                     let conflicting_addr: usize = index * mem::FRAME_SIZE;
                     let region_start: usize = region.start().into_raw_value();
@@ -279,6 +316,32 @@ pub(super) unsafe fn init(bitmap: SparseBitmap) -> Result<(), Error> {
 /// Allocate a frame.
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
     instance().alloc()
+}
+
+/// # Description
+///
+/// Allocates `count` physically contiguous frames.
+///
+/// # Returns
+///
+/// Returns the base `FrameAddress` of the contiguous range.
+///
+pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
+    instance().alloc_contiguous(count)
+}
+
+///
+/// # Description
+///
+/// Returns the number of free frames in the system.
+///
+/// # Returns
+///
+/// The number of free frames in the system.
+///
+pub(super) fn free_count() -> usize {
+    let inner = instance();
+    inner.bitmap.capacity() - inner.bitmap.usage()
 }
 
 /// Free a frame previously returned by [`alloc`].

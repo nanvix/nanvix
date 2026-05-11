@@ -12,11 +12,10 @@ mod manager;
 mod page_table_allocator;
 mod vmem;
 
-use identity_map::{
-    init as identity_map_init,
-    memset,
-};
+use identity_map::init as identity_map_init;
+pub(in crate::mm) use identity_map::memset;
 pub(crate) use identity_map::{
+    identity_map_page,
     memcpy,
     sync_kernel_pdes,
 };

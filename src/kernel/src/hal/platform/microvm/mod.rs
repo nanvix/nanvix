@@ -105,9 +105,6 @@ pub struct Platform {
     /// A sparse bitmap representing the physical memory layout, owned by the platform and consumed
     /// by the memory manager during system initialization.
     pub physical_memory_layout: Option<SparseBitmap>,
-    /// A bitmap for the kernel page pool, owned by the platform and consumed by the memory manager
-    /// during system initialization.
-    pub kpool_bitmap: Option<Bitmap>,
 }
 
 //==================================================================================================
@@ -127,16 +124,6 @@ static mut IDT_STORAGE: [Idte; idt::IDT_LEN] = unsafe { core::mem::zeroed() };
 
 /// IDTR backing storage, allocated in BSS.
 static mut IDTR_STORAGE: Idtr = unsafe { core::mem::zeroed() };
-
-// Ensure the number of kpool pages is a multiple of 8 so the bitmap has no padding bits.
-::static_assert::assert_eq!(
-    (config::kernel::KPOOL_SIZE / mem::PAGE_SIZE).is_multiple_of(u8::BITS as usize)
-);
-
-/// Kernel page pool bitmap storage.
-static mut KPOOL_BITMAP_STORAGE: [u8; config::kernel::KPOOL_SIZE
-    / (mem::PAGE_SIZE * u8::BITS as usize)] =
-    [0; config::kernel::KPOOL_SIZE / (mem::PAGE_SIZE * u8::BITS as usize)];
 
 /// Heap backing storage, allocated in BSS.
 #[repr(align(4096))]
@@ -960,22 +947,10 @@ pub fn init(
         SparseBitmap::new(vec![(0, bitmap)])?
     };
 
-    // Build a bitmap for the kernel page pool.
-    let kpool_bitmap: Bitmap = {
-        // Safety: the kpool bitmap storage is valid and has a static lifetime.
-        let storage: RawArray<u8> = unsafe {
-            let (ptr, len): (*mut u8, usize) =
-                (KPOOL_BITMAP_STORAGE.as_mut_ptr(), KPOOL_BITMAP_STORAGE.len());
-            RawArray::from_raw_parts(ptr, len)?
-        };
-        Bitmap::from_raw_array(storage)?
-    };
-
     Ok(Platform {
         arch,
         #[cfg(all(feature = "pit", not(feature = "whp")))]
         _pit: register_pit(ioports)?,
         physical_memory_layout: Some(physical_memory_layout),
-        kpool_bitmap: Some(kpool_bitmap),
     })
 }
