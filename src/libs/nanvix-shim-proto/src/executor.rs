@@ -201,11 +201,7 @@ impl ShimExecutor {
 
         // Build the ttrpc server from the listener.
         #[cfg(unix)]
-        let server = {
-            use std::os::unix::io::FromRawFd;
-            let s = unsafe { ttrpc::asynchronous::Server::from_raw_fd(fd) };
-            s.set_domain_unix()
-        };
+        let server = unsafe { ttrpc::asynchronous::Server::new().add_unix_listener(fd)? };
         #[cfg(windows)]
         let server = {
             // On Windows, ttrpc creates the named pipe during start().
