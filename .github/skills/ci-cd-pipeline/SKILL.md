@@ -101,7 +101,11 @@ Matrix coverage in GitHub Actions:
 Minor releases can be created with:
 
 ```bash
-./scripts/create-minor-release.sh
+# Linux / macOS
+python3 scripts/create-minor-release.py
+
+# Windows
+python scripts/create-minor-release.py
 ```
 
 ## Pipeline Output
