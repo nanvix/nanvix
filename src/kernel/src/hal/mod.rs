@@ -15,24 +15,21 @@ pub mod platform;
 // Imports
 //==================================================================================================
 
-use crate::{
-    collections::Bitmap,
-    hal::{
-        arch::x86::cpu::ExceptionController,
-        cpu::InterruptManager,
-        io::{
-            IoMemoryAllocator,
-            IoPortAllocator,
-        },
-        mem::{
-            MemoryRegion,
-            TruncatedMemoryRegion,
-            VirtualAddress,
-        },
-        platform::{
-            madt::MadtInfo,
-            Platform,
-        },
+use crate::hal::{
+    arch::x86::cpu::ExceptionController,
+    cpu::InterruptManager,
+    io::{
+        IoMemoryAllocator,
+        IoPortAllocator,
+    },
+    mem::{
+        MemoryRegion,
+        TruncatedMemoryRegion,
+        VirtualAddress,
+    },
+    platform::{
+        madt::MadtInfo,
+        Platform,
     },
 };
 use ::alloc::collections::linked_list::LinkedList;
@@ -119,8 +116,8 @@ impl Hal {
     ///
     /// # Returns
     ///
-    /// Upon success, the physical memory layout bitmap and the kernel pool bitmap are returned.
-    /// Upon failure, an error is returned instead.
+    /// Upon success, the physical memory layout bitmap is returned.  Upon failure, an error is
+    /// returned instead.
     ///
     /// # Panics
     ///
@@ -132,7 +129,7 @@ impl Hal {
         ioaddresses: &mut IoMemoryAllocator,
         madt: &Option<MadtInfo>,
         mem_lower: Option<usize>,
-    ) -> Result<(SparseBitmap, Bitmap), Error> {
+    ) -> Result<SparseBitmap, Error> {
         // Check if the hardware abstraction layer is already initialized.
         if unlikely(HAL_INIT.load(ORDER)) {
             panic!("hardware abstraction layer was already initialized");
@@ -157,16 +154,6 @@ impl Hal {
             Some(bitmap) => bitmap,
             None => {
                 let reason: &str = "physical memory layout is not available";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::ResourceBusy, reason));
-            },
-        };
-
-        // Take ownership of the kernel pool bitmap from the platform.
-        let kpool_bitmap: Bitmap = match platform.kpool_bitmap.take() {
-            Some(bitmap) => bitmap,
-            None => {
-                let reason: &str = "kernel pool bitmap is not available";
                 error!("{reason}");
                 return Err(Error::new(ErrorCode::ResourceBusy, reason));
             },
@@ -218,7 +205,7 @@ impl Hal {
         unsafe { HAL.write(hal) };
         HAL_INIT.store(true, ORDER);
 
-        Ok((physical_memory_layout, kpool_bitmap))
+        Ok(physical_memory_layout)
     }
 
     ///

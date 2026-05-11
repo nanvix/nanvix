@@ -319,7 +319,7 @@ impl VirtMemoryManager {
             // concurrent or re-entrant access to the physical memory manager is possible.
             let mut kframe: KernelFrame =
                 unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
-            kframe.clear();
+            kframe.clear()?;
             let kpage: KernelPage = KernelPage::new(kframe);
             let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
             let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
@@ -425,7 +425,7 @@ impl VirtMemoryManager {
         let mut kframe: KernelFrame =
             unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
         if clear {
-            kframe.clear();
+            kframe.clear()?;
         }
         Ok(KernelPage::new(kframe))
     }
@@ -468,8 +468,11 @@ impl VirtMemoryManager {
         // or re-entrant access to the physical memory manager is possible.
         unsafe { PhysMemoryManager::get_mut() }.alloc_many_kernel_frames(count, kframes)?;
         if clear {
-            for kframe in kframes.iter_mut() {
-                kframe.clear();
+            let clear_result = kframes.iter_mut().try_for_each(|kframe| kframe.clear());
+            if let Err(e) = clear_result {
+                // Drop all allocated frames to free them back to the physical memory manager.
+                kframes.clear();
+                return Err(e);
             }
         }
 

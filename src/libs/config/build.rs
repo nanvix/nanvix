@@ -101,13 +101,11 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
     );
     constants.push_str(&format!("pub const NUM_PROCESSORS: usize = {val};\n"));
 
-    let val: usize =
-        parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "kpool_size"), "kpool_size");
-    constants.push_str(&format!("pub const KPOOL_SIZE: usize = {val};\n"));
-
-    let val: usize =
-        parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "kpool_base"), "kpool_base");
-    constants.push_str(&format!("pub const KPOOL_BASE_RAW: usize = {val:#x};\n"));
+    let val: usize = parse_hex_or_decimal_usize(
+        required_key(&kernel_config_toml, "kernel_watermark"),
+        "kernel_watermark",
+    );
+    constants.push_str(&format!("pub const KERNEL_WATERMARK: usize = {val};\n"));
 
     let val: usize =
         parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "kstack_size"), "kstack_size");
@@ -185,10 +183,6 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
     // Build-Time Assertions
     //==============================================================================================
 
-    let kpool_base: usize =
-        parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "kpool_base"), "kpool_base");
-    let kpool_size: usize =
-        parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "kpool_size"), "kpool_size");
     let kstack_size: usize =
         parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "kstack_size"), "kstack_size");
     let kredzone_size: usize = parse_hex_or_decimal_usize(
@@ -200,47 +194,6 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
     const PAGE_SIZE: usize = 4096;
     const PAGE_TABLE_SIZE: usize = 4 * 1024 * 1024;
     const WORD_SIZE: usize = core::mem::size_of::<u32>();
-
-    // memory_size must accommodate the kernel pool.
-    let kpool_end: usize = match kpool_base.checked_add(kpool_size) {
-        Some(sum) => sum,
-        None => panic!(
-            "kpool_base ({:#x}) + kpool_size ({:#x}) overflows usize",
-            kpool_base, kpool_size,
-        ),
-    };
-    assert!(
-        kpool_end <= memory_size_bytes,
-        "kpool_base ({:#x}) + kpool_size ({:#x}) = {:#x} exceeds memory_size ({:#x})",
-        kpool_base,
-        kpool_size,
-        kpool_end,
-        memory_size_bytes,
-    );
-
-    // kpool_base must be page-table aligned (4 MB boundary).
-    assert!(
-        kpool_base.is_multiple_of(PAGE_TABLE_SIZE),
-        "kpool_base ({:#x}) must be aligned to a page table boundary ({:#x})",
-        kpool_base,
-        PAGE_TABLE_SIZE,
-    );
-
-    // kpool_size must be page-aligned.
-    assert!(
-        kpool_size.is_multiple_of(PAGE_SIZE),
-        "kpool_size ({}) must be a multiple of PAGE_SIZE ({})",
-        kpool_size,
-        PAGE_SIZE,
-    );
-
-    // kpool_size must not exceed the size of a page table.
-    assert!(
-        kpool_size <= PAGE_TABLE_SIZE,
-        "kpool_size ({}) must not exceed PAGE_TABLE_SIZE ({})",
-        kpool_size,
-        PAGE_TABLE_SIZE,
-    );
 
     // kstack_size must be page-aligned.
     assert!(
@@ -275,6 +228,13 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
         kredzone_size,
         WORD_SIZE,
     );
+
+    // kernel_watermark must be non-zero.
+    let kernel_watermark: usize = parse_hex_or_decimal_usize(
+        required_key(&kernel_config_toml, "kernel_watermark"),
+        "kernel_watermark",
+    );
+    assert!(kernel_watermark > 0, "kernel_watermark must be non-zero");
 
     // Write the generated file.
     fs::write(kernel_config_output_path, constants).expect("Failed to write kernel_config.rs");

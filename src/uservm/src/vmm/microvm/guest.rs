@@ -254,7 +254,7 @@ impl Guest {
     /// # Description
     ///
     /// Computes GPA ranges that should be pre-populated in the EPT/SLAT before guest execution.
-    /// The returned ranges cover the kernel image, initrd, and kpool.
+    /// The returned ranges cover the kernel image and initrd.
     ///
     /// Each region is listed individually so that future memory layout changes do not silently
     /// leave a region un-populated.
@@ -284,8 +284,6 @@ impl Guest {
         if let Some((base, size)) = self.initrd {
             ranges.push(page_align(base, size));
         }
-
-        ranges.push((::config::kernel::KPOOL_BASE_RAW as u64, ::config::kernel::KPOOL_SIZE as u64));
 
         Ok(ranges)
     }

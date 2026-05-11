@@ -31,7 +31,6 @@
 extern crate alloc;
 
 use crate::{
-    collections::Bitmap,
     hal::{
         io::IoMemoryAllocator,
         mem::{
@@ -319,7 +318,6 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         memory_regions.push_back(data);
     }
     memory_regions.push_back(kimage.bss());
-    memory_regions.push_back(kimage.kpool());
 
     // Add kernel modules to list of memory regions.
     // Track which page-aligned region bases have already been registered to avoid
@@ -374,7 +372,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         }
     }
 
-    let (physical_memory_layout, kpool_bitmap): (SparseBitmap, Bitmap) =
+    let physical_memory_layout: SparseBitmap =
         match Hal::init(&mut memory_regions, &mut mmio_regions, &mut ioaddresses, &madt, mem_lower)
         {
             Ok(result) => result,
@@ -384,14 +382,12 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         };
 
     // Initialize the memory manager.
-    let root: Vmem =
-        match mm::init(&kimage, memory_regions, mmio_regions, physical_memory_layout, kpool_bitmap)
-        {
-            Ok(root) => root,
-            Err(err) => {
-                panic!("failed to initialize memory manager: {:?}", err);
-            },
-        };
+    let root: Vmem = match mm::init(memory_regions, mmio_regions, physical_memory_layout) {
+        Ok(root) => root,
+        Err(err) => {
+            panic!("failed to initialize memory manager: {:?}", err);
+        },
+    };
 
     // Check boot stack guard watermark for corruption.
     #[cfg(feature = "exception-stack-guard")]
