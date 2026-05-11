@@ -22,7 +22,10 @@ use ::log::{
     warn,
 };
 use ::nanvix_sandbox_config::StandaloneConfig;
-use ::std::io::Read;
+use ::std::io::{
+    ErrorKind,
+    Read,
+};
 use ::tokio::{
     io::{
         self,
@@ -189,16 +192,32 @@ impl Terminal {
         // --- Output path (current task): guest output → host stdout ---
         // TODO (#1706): Flush conditionally based on tty semantics instead of every chunk.
         let mut stdout: Stdout = io::stdout();
+        let mut io_error: Option<::std::io::Error> = None;
         while let Some(data) = output_rx.recv().await {
-            stdout.write_all(&data).await?;
-            stdout.flush().await?;
+            if let Err(e) = stdout.write_all(&data).await {
+                if e.kind() != ErrorKind::BrokenPipe {
+                    error!("failed to write to stdout: {e}");
+                    io_error = Some(e);
+                }
+                break;
+            }
+            if let Err(e) = stdout.flush().await {
+                if e.kind() != ErrorKind::BrokenPipe {
+                    error!("failed to flush stdout: {e}");
+                    io_error = Some(e);
+                }
+                break;
+            }
         }
 
         // Abort the input task immediately — the stdin thread blocks on read() and cannot be
         // interrupted portably, so waiting provides no benefit.
         input_handle.abort();
 
-        Ok(())
+        match io_error {
+            Some(e) => Err(e.into()),
+            None => Ok(()),
+        }
     }
 
     ///
