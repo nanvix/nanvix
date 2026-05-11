@@ -19,3 +19,14 @@ pub enum NetError {
     /// The operation failed with a specific error code.
     Errno(ErrorCode),
 }
+
+impl core::fmt::Display for NetError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            NetError::Interrupted => write!(f, "operation interrupted (EINTR)"),
+            NetError::Errno(code) => write!(f, "network error: {code}"),
+        }
+    }
+}
+
+impl std::error::Error for NetError {}
