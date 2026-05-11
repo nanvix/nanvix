@@ -34,9 +34,10 @@ runs:
       if: steps.verify-merge.outputs.is_merge == 'true'
       shell: bash
       # This step runs the minor release script, which:
-      # - Increments the minor version, updates changelogs, and tags the release.
+      # - Increments the patch version in Cargo.toml and regenerates Cargo.lock.
+      # - Commits the version bump with a standardized message.
       # - Requires the following secret to be available in the workflow:
       #   - DEPLOY_PRIVATE_SSH_KEY: used in the checkout step for SSH-based operations.
-      # - The script must be executable and located at ./scripts/create-minor-release.sh.
+      # - The script must be located at ./scripts/create-minor-release.py.
       run: |
-        ./scripts/create-minor-release.sh --push
+        python3 scripts/create-minor-release.py --push
