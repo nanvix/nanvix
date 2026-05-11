@@ -133,7 +133,7 @@ pub unsafe extern "C" fn select(
         Ok(ready_fds) => ready_fds as c_int,
         Err(err) => {
             if err.code == ErrorCode::OperationNotSupported {
-                ::syslog::warn!("select(): syscall failed (nfds={nfds:?}, error={err:?})");
+                ::syslog::debug!("select(): syscall failed (nfds={nfds:?}, error={err:?})");
             } else {
                 ::syslog::warn!("select(): syscall failed (nfds={nfds:?}, error={err:?})");
             }

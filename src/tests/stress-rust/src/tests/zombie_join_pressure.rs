@@ -117,7 +117,7 @@ fn run_round(_round: usize) -> Result<(), StressError> {
             },
             Err(err) => {
                 // Join already-spawned threads before propagating the error.
-                for (tid, stack) in tids.into_iter().zip(stacks.into_iter()) {
+                for (tid, stack) in tids.into_iter().zip(stacks) {
                     let mut retval: usize = 0;
                     let _ = join_thread(tid, &mut retval);
                     drop(stack);
@@ -128,7 +128,7 @@ fn run_round(_round: usize) -> Result<(), StressError> {
     }
 
     // Join every worker and validate return values.
-    for (tid, stack) in tids.into_iter().zip(stacks.into_iter()) {
+    for (tid, stack) in tids.into_iter().zip(stacks) {
         let mut retval: usize = 0;
         join_thread(tid, &mut retval)?;
         drop(stack);

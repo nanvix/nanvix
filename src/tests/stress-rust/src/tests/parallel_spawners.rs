@@ -77,7 +77,7 @@ pub fn run() -> Result<(), StressError> {
         stacks.push(stack);
     }
 
-    for (tid, stack) in tids.into_iter().zip(stacks.into_iter()) {
+    for (tid, stack) in tids.into_iter().zip(stacks) {
         let mut retval: usize = 0;
         ::sys::kcall::pm::join_thread(tid, &mut retval)?;
         drop(stack);
