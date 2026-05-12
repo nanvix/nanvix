@@ -87,6 +87,7 @@
 //!     Some("/path/to/toolchain/bin".to_string()),  // clh_bin_path
 //!     Some("/tmp".to_string()),  // tmp_directory
 //!     Some(false),  // l2
+//!     false,  // networking_enabled
 //! );
 //!
 //! // Create control-plane acceptor.

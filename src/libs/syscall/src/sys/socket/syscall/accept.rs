@@ -30,17 +30,7 @@ use ::sysapi::ffi::c_int;
 // Standalone Functions
 //==================================================================================================
 
-#[allow(unreachable_code)]
 pub fn accept(sockfd: c_int) -> Result<(c_int, SocketAddr), Error> {
-    #[cfg(feature = "standalone")]
-    {
-        let _ = sockfd;
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "accept not available in standalone mode",
-        ));
-    }
-
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.

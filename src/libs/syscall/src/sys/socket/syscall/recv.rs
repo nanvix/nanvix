@@ -28,17 +28,7 @@ use ::sysapi::ffi::c_int;
 // Standalone Functions
 //==================================================================================================
 
-#[allow(unreachable_code)]
 pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<usize, Error> {
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (sockfd, buffer, flags);
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "recv not available in standalone mode",
-        ));
-    }
-
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Check if count is invalid.

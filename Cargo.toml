@@ -12,6 +12,7 @@ members = [
         "src/benchmarks/vfs-bench-nostd",
         "src/daemons/linuxd",
         "src/daemons/memd",
+        "src/daemons/networkd",
         "src/daemons/procd",
         "src/kernel",
         "src/libs/arch",
@@ -148,6 +149,7 @@ multiimage = { path = "src/libs/multiimage", default-features = false }
 nanvix = { path = "src/libs/nanvix", default-features = false }
 nanvix-http = { path = "src/libs/nanvix-http", default-features = false }
 net-backend = { path = "src/libs/net-backend", default-features = false }
+networkd = { path = "src/daemons/networkd", default-features = false }
 nanvix-oci = { path = "src/libs/nanvix-oci" }
 nanvix-sandbox = { path = "src/libs/nanvix-sandbox", default-features = false }
 nanvix-sandbox-cache = { path = "src/libs/nanvix-sandbox-cache", default-features = false }

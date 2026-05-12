@@ -32,6 +32,8 @@ log = { workspace = true }
 mkramfs = { workspace = true }
 multibin = { workspace = true, features = ["std"] }
 multiimage = { workspace = true, features = ["std"] }
+nanvix-sandbox-config = { workspace = true }
+networkd = { workspace = true }
 profiler = { workspace = true, features = ["auto-calibrate"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"], optional = true }

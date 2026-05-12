@@ -64,7 +64,6 @@ rustc-dep-of-std = [
     "spin/rustc-dep-of-std",
 ]
 standalone = ["dep:nvx", "nvx/standalone", "dep:sysalloc"]
-networking = []
 
 # TODO (#798): remove this feature flag once the signal module is stable.
 sigaction = []

@@ -52,19 +52,17 @@ impl CloseRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, fd: i32) -> Message {
+    pub fn build(tid: ThreadIdentifier, fd: i32, destination: MessageReceiver) -> Message {
         let message: CloseRequest = CloseRequest::new(fd);
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::CloseRequest, message.into_bytes());
-        let message: Message = Message::new(
+        Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
+            destination,
             MessageType::Ikc,
             None,
             message.into_bytes(),
-        );
-
-        message
+        )
     }
 }
 
@@ -104,12 +102,12 @@ impl CloseResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, ret: i32) -> Message {
+    pub fn build(tid: ThreadIdentifier, ret: i32, sender: MessageSender) -> Message {
         let message: CloseResponse = CloseResponse::new(ret);
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::CloseResponse, message.into_bytes());
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            sender,
             MessageReceiver::from(tid),
             MessageType::Ikc,
             None,

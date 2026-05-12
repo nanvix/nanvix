@@ -32,17 +32,7 @@ use ::sysapi::ffi::c_int;
 // Standalone Functions
 //==================================================================================================
 
-#[allow(unreachable_code)]
 pub fn socket(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> Result<c_int, Error> {
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (domain, typ, protocol);
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "socket not available in standalone mode",
-        ));
-    }
-
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.

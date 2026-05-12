@@ -83,6 +83,15 @@ print it to the terminal instead:
 ./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/hello-rust-nostd.elf
 ```
 
+### Enabling Host Networking
+
+By default, networking system calls from the guest are blocked. To allow the guest to access the
+host network stack, pass `-allow-host-networking`:
+
+```bash
+./bin/nanvixd.elf -allow-host-networking -console-file /dev/stdout -- ./bin/network-rust.elf
+```
+
 Everything after `--` is forwarded to the application as arguments:
 
 ```bash
@@ -272,14 +281,15 @@ are silently discarded.
 
 Optional flags:
 
-| Flag                  | Description                                                                   |
-| --------------------- | ----------------------------------------------------------------------------- |
-| `-stderr <file>`      | Redirect guest stderr to a file instead of host stderr.                       |
-| `-initrd_args <args>` | Arguments forwarded to the initrd payload.                                    |
-| `-ramfs <file>`       | Path to a RAM filesystem image exposed to the guest.                          |
-| `-user-vm-id <id>`    | VM identifier (defaults to `0` in standalone mode).                           |
-| `-log-to-file`        | Write logs to files instead of stdout.                                        |
-| `-log-dir <dir>`      | Directory for log files (used with `-log-to-file`).                           |
+| Flag                        | Description                                                             |
+| --------------------------- | ----------------------------------------------------------------------- |
+| `-stderr <file>`            | Redirect guest stderr to a file instead of host stderr.                 |
+| `-initrd_args <args>`       | Arguments forwarded to the initrd payload.                              |
+| `-ramfs <file>`             | Path to a RAM filesystem image exposed to the guest.                    |
+| `-user-vm-id <id>`          | VM identifier (defaults to `0` in standalone mode).                     |
+| `-log-to-file`              | Write logs to files instead of stdout.                                  |
+| `-log-dir <dir>`            | Directory for log files (used with `-log-to-file`).                     |
+| `-allow-host-networking`    | Enable host networking for the guest (disabled when omitted).           |
 
 Enable verbose logging with `RUST_LOG`:
 

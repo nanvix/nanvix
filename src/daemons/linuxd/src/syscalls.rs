@@ -1336,7 +1336,8 @@ pub struct SyscallTable<T> {
     pub state: T,
 
     /// Networking backend for socket operations.
-    pub net_backend: NetBackend,
+    /// When `None`, all socket system calls are blocked (networking disabled).
+    pub net_backend: Option<NetBackend>,
 
     // unistd.rs system calls.
     pub chdir: SyscallAction<ChdirFn<T>>,
@@ -1400,6 +1401,8 @@ impl<T> SyscallTable<T> {
     /// # Parameters
     ///
     /// - `state`: State that is passed to each system call action function.
+    /// - `networking_enabled`: If `true`, socket operations are forwarded to the networking
+    ///   backend. If `false`, all socket system calls are blocked.
     ///
     /// # Returns
     ///
@@ -1409,12 +1412,18 @@ impl<T> SyscallTable<T> {
     ///
     /// Returns `NetError` if platform networking initialization fails.
     ///
-    pub fn new(state: T) -> Result<Self, NetError> {
+    pub fn new(state: T, networking_enabled: bool) -> Result<Self, NetError> {
+        let net_backend: Option<NetBackend> = if networking_enabled {
+            Some(NetBackend::new()?)
+        } else {
+            None
+        };
+
         Ok(Self {
             state,
 
             // Networking backend.
-            net_backend: NetBackend::new()?,
+            net_backend,
 
             // unistd.rs system calls.
             chdir: SyscallAction::Forward(default_chdir),

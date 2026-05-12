@@ -176,3 +176,20 @@ input = "[]"
 expect_empty_output = true
 expected_exit_code = 0
 runs_on = ["microvm"]
+
+#===================================================================================================
+# Networking Tests
+#===================================================================================================
+
+[[tests]]
+executor = "http"
+program = "./bin/network-rust.elf"
+extra_nanvixd_args = "-allow-host-networking"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/network-rust.elf"
+extra_nanvixd_args = "-allow-host-networking"
+expected_output = "ok"

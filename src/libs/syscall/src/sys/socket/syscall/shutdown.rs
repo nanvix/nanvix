@@ -27,17 +27,7 @@ use ::sysapi::ffi::c_int;
 // Standalone Functions
 //==================================================================================================
 
-#[allow(unreachable_code)]
 pub fn shutdown(sockfd: c_int, how: Shutdown) -> Result<(), Error> {
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (sockfd, how);
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "shutdown not available in standalone mode",
-        ));
-    }
-
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.

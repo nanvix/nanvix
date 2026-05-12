@@ -296,6 +296,7 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCache<T> {
                     clh_bin_path,
                     Some(sandbox_tmp_dir.to_string_lossy().into_owned()),
                     Some(false), // l2 (not supported in single-process/standalone)
+                    self.config.networking_mode().is_enabled(),
                 );
 
                 let uninitialized_sandbox: UninitializedSandbox<T> =
