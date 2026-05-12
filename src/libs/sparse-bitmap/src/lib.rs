@@ -818,10 +818,6 @@ impl SparseBitmap {
         let ghost gs = (old_chunks_seq[entry as int].offset + start_bit_in_entry) as int;
         let ghost mut committed: int = 0;
 
-        proof {
-            assert forall|k: int| #![auto] entry as int + 1 <= k < self.chunks@.len() as int
-                implies self.chunks@[k] == old_chunks_seq[k] by {}
-        }
 
         while remaining > 0
             invariant
