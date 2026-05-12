@@ -820,8 +820,7 @@ impl SparseBitmap {
 
         proof {
             assert forall|k: int| #![auto] entry as int + 1 <= k < self.chunks@.len() as int
-                implies self.chunks@[k] == old_chunks_seq[k]
-            by { assert(self.chunks@[k] == pre_commit_chunks[k]); }
+                implies self.chunks@[k] == old_chunks_seq[k] by {}
         }
 
         while remaining > 0
