@@ -83,6 +83,21 @@ ipc_message_size = 64
 ikc_poll_batch_size = 8
 
 #==================================================================================================
+# Thread Limits
+#==================================================================================================
+
+# Maximum number of threads that may exist system-wide at the same time (including the kernel
+# thread). When this limit is reached, create_thread and create_process return OutOfMemory instead
+# of proceeding with allocations that could exhaust the kernel heap.
+# A thread slot is considered occupied from creation until the zombie is joined or harvested.
+# Constraints:
+# - Must be at least 1 (the kernel thread always exists).
+# Notes:
+# - Each thread consumes at least one kernel stack (kstack_size bytes). At the default kstack_size
+#   of 64 KiB, 32 threads imply up to ~2 MiB of kernel-stack reservation.
+max_threads = 32
+
+#==================================================================================================
 # Synchronization Limits
 #==================================================================================================
 

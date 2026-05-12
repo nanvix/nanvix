@@ -1899,6 +1899,9 @@ impl ProcessManager {
                 // Frames allocated to the user stack are freed when we exit this scope.
                 // Frames allocated to the kernel stack are freed when we exit this scope.
             }
+
+            // Notify the thread manager that this thread has been reaped.
+            self.tm.on_thread_reaped();
         }
 
         Ok(Some((state.pid(), status)))
