@@ -198,3 +198,189 @@ Let me read more of the file and understand the error.
 Turn 4
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | grep -B10 "1 
+[RESULT ✓] bash: 1155 | /                 forall|b: int| bit_idx <= b < entry_cap as int
+1156 | |                     ==> !self.chunks@[entry as int].bitmap@.set_bits.contains(b),
+     | |                                                                                -
+     | |                                       ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] view: 1120.             old(self).inv(),
+1121.             count > 0,
+1122.             entry < old(self).chunks@.len(),
+1123.         ensures
+1124.             self.inv(),
+1125.             self@.chunks =~= old(self)@.chunks,
+1126.             result matches Ok(Some(start)) ==> {
+1127.                 &&...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Let me read more context around the error and the rest of the file.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] I see the issue. The loop invariant at line 1155 says `forall|b: int| bit_idx <= b < entry_cap as int ==> !self.chunks@[entry as int].bitmap@.set_bits.contains(b)`, but when the loop breaks (at the `break` on line 1180), bit_idx has been decremented by 1, and the bit at bit_idx IS set (that's why we break). So the invariant can't hold at break.
+
+The fix is to change `invariant` to `invariant_except_break` for that specific clause, as the Verus hint suggests.
+
+
+Now I'm tracing through the loop logic more carefully. The sequence is: decrement bit_idx, check if the bit at that position is set, then break if it is. At the break point, the invariant claiming all bits from bit_idx onward are unset would be violated since we just found a set bit at bit_idx. That's exactly why `invariant_except_break` is the right annotation here.
+
+Looking at the ensures clause, I can see it's already specifying what should be true when we exit - that bit_idx equals entry_cap minus trailing_free, and the relationship between trailing_free and which bits are set. So the invariant and ensures are working together correctly once I apply the right annotation. So when we break from the loop, `bit_idx` has already been decremented, but `trailing_free` hasn't been incremented yet—meaning the invariant `trailing_free == entry_cap - bit_idx` is violated at that point. The invariant only holds at the top of each iteration, not when we exit early via break. hold at break too. Looking at the Verus loop semantics, `invariant` must hold at every iteration start and at break, while `invariant_except_break` holds at iteration start but not at break, and `ensures` must hold whenever the loop exits. So if I use `invariant_except_break` for the free-bits clause, the ensures still needs to capture what's true at the break point—and it already does with that bitmap clause. But at break, bit_idx has been decremented and set, so I need to verify the ensures condition actually holds with those values.
+
+At the break point, bit_idx was just decremented, the bit at that new position is set (which triggered the break), and trailing_free hasn't been incremented yet. So the bits in the range [bit_idx+1, entry_cap) are free from the old invariant, but the ensures clause expects trailing_free to equal entry_cap minus bit_idx, when it actually equals entry_cap minus (bit_idx + 1)—so the ensures is also failing for the same mismatch. So the ensures clause should actually track that at the break point, the bit at position `entry_cap - trailing_free - 1` is set, which corresponds to `bit_idx`. And all bits after that position up to `entry_cap` are free. The challenge is that the loop's break condition creates this relationship between `trailing_free` and the actual bit positions, which makes the postcondition tricky to express cleanly. bit_idx, restoring the invariant for the next iteration. But at the break point, the invariant doesn't hold—bit_idx has been decremented, trailing_free equals entry_cap - bit_idx - 1 (not entry_cap - bit_idx), and the free-bits invariant also fails since bit_idx itself is set. I need to figure out what the actual fix should be. the existing ensures clause to see what's actually being guaranteed. Looking at the postconditions, I can see that `trailing_free == entry_cap - bit_idx` and the assertion about free bits are both incorrect when we break early from the loop. I need to examine how these ensures are used downstream to understand what the correct postconditions should actually be. So the real issue is that the invariant `trailing_free == entry_cap - bit_idx` doesn't hold at the break point—it should be `trailing_free == entry_cap - bit_idx - 1` instead, since we've found a set bit at position `bit_idx` and the free bits actually start after it. The subsequent code at line 1195 relies on `trailing_free` correctly counting the free bits, which it does in this case, so I need to figure out what the actual postcondition should be. I can express the ensures clause in a way that covers both cases: the free bits span from position (entry_cap - trailing_free) up to entry_cap, which correctly captures the normal exit where all bits are free and the break case where only the higher bits remain free.
+
+Looking at how trailing_free is used after the loop, it's treated as the count of free bits at the end of the chunk, and the code relies on the relationship that the free range starts at entry_cap - trailing_free. So the fix is to move the invariant `trailing_free == entry_cap - bit_idx` to the loop ensures to maintain this relationship correctly. Refining the invariant and ensures clauses...
+
+Looking at how `trailing_free` is actually used in the rest of the function, I see it's referenced multiple times but `bit_idx` isn't used after the loop, so I can safely express everything in terms of `trailing_free` and remove the `bit_idx` dependency from the postcondition. I need to trace through the rest of the function to see which ensures properties are actually relied upon in the cross-chunk walk and other post-loop logic.
+[RESULT ✓] view: 1555.             invariant
+1556.                 self.inv(),
+1557.                 self@ =~= old_view,
+1558.                 old_view =~= old(self)@,
+1559.                 n == self.chunks@.len(),
+1560.                 n > 0,
+1561.                 count > 0,
+1562.                 0 <= entry <= n,
+1...
+[RESULT ✓] view: 1193.         }
+1194. 
+1195.         if trailing_free == 0 {
+1196.             proof {
+1197.                 lemma_trailing_zero_no_cross_range(
+1198.                     old(self)@, self.chunks@, entry as int, count as int);
+1199.             }
+1200.             return Ok(None);
+1201.         }
+120...
+[RESULT ✓] view: 1415. 
+1416.         // ── Call commit helper ──
+1417.         let global_start = self.commit_cross_chunk_alloc(
+1418.             entry, count, trailing_free, entry_cap, last_chunk,
+1419.             Ghost(phase1b_free_prefixes), Ghost(old_chunks_seq));
+1420. 
+1421.         Ok(Some(global_start))
+1...
+[RESULT ✓] view: 100.     #[verus_spec(result =>
+101.         requires
+102.             self.inv(),
+103.         ensures
+104.             result == self.spec_covers(index as int),
+105.     )]
+106.     fn covers(&self, index: usize) -> bool {
+107.         index >= self.offset && index < self.end()
+108.     }
+109. }
+1...
+[RESULT ✓] view: 1620.                 Ok(()) => {
+1621.                     &&& self.inv()
+1622.                     &&& old(self)@.is_covered(index as int)
+1623.                     &&& !old(self)@.is_bit_set(index as int)
+1624.                     &&& self@.set_bits =~= old(self)@.set_bits.insert(index as int)
+16...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.proof.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.proof.rs
+
+[THINKING] Now I have a good overview. Let me also read the remaining parts of the file I haven't seen yet, particularly:
+- The `sort_chunks_by_offset` function (around line 458)
+- The `new` function (around line 523)
+- The `alloc` function (around line 300)
+- The `commit_cross_chunk_alloc` function (around line 700)
+
+And I need to understand the proof file structure.
+
+Let me first fix the existing verification error (the invariant that should be invariant_except_break), then proceed to extract proof blocks.
+[RESULT ✓] view: 270.     }
+271. 
+272.     ///
+273.     /// # Description
+274.     ///
+275.     /// Allocates a single free bit, sets it, and returns its global
+276.     /// index.
+277.     ///
+278.     /// Thin wrapper over [`Self::alloc_range`] with `count = 1`. Lets
+279.     /// single-bit and range allocation sh...
+[RESULT ✓] view: 600.                 Some(_) => {},
+601.                 None => return Err(Error::new(
+602.                     ErrorCode::InvalidArgument, "chunk range overflows usize",
+603.                 )),
+604.             }
+605. 
+606.             capacity_bits = match capacity_bits.checked_add(num_bits) {
+6...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // Helper Lemmas for lifted_set_bits
+5. //==================================================================================================
+6. 
+7. /// Every element of `lifted_...
+[RESULT ✓] view: 2380.         forall|i: int, j: int| #![auto] 0 <= i < j < sb.chunks@.len()
+2381.             ==> sb.chunks@[i].offset as int + sb.chunks@[i].bitmap@.num_bits
+2382.                 <= sb.chunks@[j].offset as int,
+2383.         // Per-chunk properties (from constructor loop invariants)
+2384.         ...
+[RESULT ✓] view: 460.             n == old_built.len(),
+461.             i as int <= n as int,
+462.             built@.len() == old_built.len(),
+463.             // Prefix [0, i) is sorted
+464.             forall|k: int, l: int| 0 <= k < l && l < i as int
+465.                 ==> (#[trigger] built@[k]).offset <= (#[...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Now I have a clear picture. Let me first fix the verification error, then proceed with extraction and minimization. The error is a loop invariant that fails at `break` — needs `invariant_except_break`.
+[TOOL] report_intent: Fixing verification error
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] Now I have a good understanding of the codebase. Let me plan the approach:
+
+1. **Fix the existing verification error** - The invariant at line 1155 needs to be `invariant_except_break` since at break, bit_idx has been decremented and the bit at bit_idx is set.
+
+2. **Extract proof blocks** - 14 proof blocks over 5 lines need to be extracted into named lemmas in the proof file.
+
+3. **Minimize** - Remove redundant assertions and hints.
+
+Let me first fix the verification error, then extract proof blocks, then minimize.
+
+For the loop error at line 1144-1192:
+
+
+The loop has invariant clauses that fail at the break point. Specifically, the invariant about `trailing_free` and the one about unset bits both become false when we exit via break since `bit_idx` gets decremented. I need to move these two failing invariants to `invariant_except_break` and then adjust the ensures clauses to correctly express what's true at both normal exit and break conditions.
+
+At normal exit, `bit_idx` is 0 so `trailing_free` equals `entry_cap` with all bits free. At break, `trailing_free` equals `entry_cap - bit_idx - 1` with bits from `bit_idx + 1` onward free and the bit at `bit_idx` set. I can express this with a single invariant about which bits are free based on the relationship between `trailing_free` and `entry_cap`, plus the existing ensures about the set bit. Now I need to verify whether `bit_idx` is actually used after the loop to make sure this approach works. Writing loop invariants... I see that `invariant_except_break` is the right Verus construct here. At normal loop exit, `bit_idx` reaches 0 and `trailing_free` equals `entry_cap`, making all bits free. At a break, the invariant tracks what's true at that point—`trailing_free` is set based on how many iterations completed, and the bits from `bit_idx + 1` onward are marked as free.
+
+I'm writing the ensures clause to capture both exit paths: it asserts that bits in the range `[entry_cap - trailing_free, entry_cap)` are free, and if we haven't filled the entire entry, the bit at position `entry_cap - trailing_free - 1` is set. I should also verify whether `bit_idx` bounds need to be included in the ensures.
+
+Now I'm checking whether the existing ensures clause `trailing_free == entry_cap - bit_idx` provides enough information for downstream code. Looking at how `trailing_free` is used later—specifically in the calculation of `need`—I need to make sure my new ensures clause preserves the constraints that subsequent code depends on. At normal exit when bit_idx fails the condition, both the regular invariant and ensures hold. For the break case, I need to verify the ensures from the regular invariants plus the break condition—knowing that bit_idx was decremented and the bit at that position is set, which means trailing_free equals entry_cap minus the original bit_idx value.
+
+Actually, I'm realizing the distinction: `invariant_except_break` only holds at loop entry and back-edges, not at break points. So at break, I can only rely on the regular invariants to prove the ensures clause, which specifies that all bits from entry_cap - trailing_free onward are set in the bitmap. At the break point, trailing_free equals entry_cap minus bit_idx minus one, and the bits from bit_idx plus one onward are free. For the ensures clause, I can verify that entry_cap minus trailing_free equals bit_idx plus one, which matches the required free bits range, and trailing_free is less than entry_cap since bit_idx is non-negative.
+
+The tricky part is that Verus needs explicit assertions in the break body to connect the intermediate state at the break point to what the ensures clause expects—the verifier won't automatically reason through the loop's effects without help.
+
+Actually, thinking about this more carefully: at the break point, Verus has access to all the invariants that held at the start of this iteration plus the transformations from the statements executed before the break. So it should be able to deduce that since `bit_idx` decreased by 1 and `trailing_free` stayed constant, the relationship `trailing_free == entry_cap - bit_idx - 1` now holds.
+
+The key insight is that the free bits range `[bit_idx + 1, entry_cap)` matches exactly what the invariant promised for `[bit_idx_start, entry_cap)`, since `bit_idx_start == bit_idx + 1` after the decrement. This should let Verus connect the dots and verify the postcondition about which bits are free.
+
+I think the solution is to move those two clauses into `invariant_except_break`, fix the ensures clause, and possibly add a proof block at the break point to help Verus along. Since this code is in a `verus!{}` macro block, `invariant_except_break` should be available. Let me implement this fix and verify it works.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -20

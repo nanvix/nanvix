@@ -1,0 +1,26 @@
+Timestamp: 2026-05-12_22-00-30
+Mode: cargo
+Crate: sparse-bitmap
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking sparse-bitmap v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap)
+error: expected curly braces
+    --> src/libs/sparse-bitmap/src/lib.rs:1153:13
+     |
+1153 |             invariant_except_break
+     |             ^^^^^^^^^^^^^^^^^^^^^^
+
+error: could not compile `sparse-bitmap` (lib) due to 1 previous error

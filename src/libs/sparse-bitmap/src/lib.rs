@@ -1150,6 +1150,7 @@ impl SparseBitmap {
                 entry < self.chunks@.len(),
                 entry_cap as int == self.chunks@[entry as int].bitmap@.num_bits,
                 0 <= bit_idx <= entry_cap,
+            invariant_except_break
                 trailing_free == entry_cap - bit_idx,
                 // all bits in [bit_idx, entry_cap) are free
                 forall|b: int| bit_idx <= b < entry_cap as int
@@ -1161,9 +1162,8 @@ impl SparseBitmap {
                 self.chunks@ =~= old_chunks_seq,
                 entry < self.chunks@.len(),
                 entry_cap as int == self.chunks@[entry as int].bitmap@.num_bits,
-                0 <= bit_idx <= entry_cap,
-                trailing_free == entry_cap - bit_idx,
-                forall|b: int| bit_idx as int <= b < entry_cap as int
+                0 <= trailing_free <= entry_cap,
+                forall|b: int| (entry_cap - trailing_free) as int <= b < entry_cap as int
                     ==> !self.chunks@[entry as int].bitmap@.set_bits.contains(b),
                 // If trailing_free < entry_cap, the bit just below is set
                 trailing_free < entry_cap ==>
