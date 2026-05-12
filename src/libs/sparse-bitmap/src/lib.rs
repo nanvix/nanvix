@@ -802,8 +802,6 @@ impl SparseBitmap {
 
         self.chunks.insert(entry, chunk_e);
         proof {
-            lemma_chunk_update_preserves_structure(
-                old_chunks_seq, self.chunks@, entry as int);
             lemma_lifted_set_bits_alloc_range(
                 old_chunks_seq, self.chunks@, entry as int,
                 start_bit_in_entry as int, take_from_entry as int);
