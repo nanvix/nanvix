@@ -4,7 +4,9 @@
   "source_path": "src/libs/sparse-bitmap/src/lib.rs",
   "current_phase": "polish",
   "current_phase_idx": 5,
-  "completed_phases": [],
+  "completed_phases": [
+    "polish"
+  ],
   "phase_results": {
     "polish": {
       "phase": "polish",
@@ -19,7 +21,7 @@
     }
   },
   "prover_session_id": "10ad3aa1-16c8-4c15-a5ca-2cf5de1dc53f",
-  "completed": false,
+  "completed": true,
   "base_branch": "verus-mm-phys",
   "verus_branch": "verus-mm-phys",
   "phase_boundary_shas": {
