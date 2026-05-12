@@ -84,6 +84,9 @@ pub mod sys;
 /// Definitions for I/O polling.
 pub mod poll;
 
+/// Standard library functions.
+pub mod stdlib;
+
 // Safe wrappers.
 #[cfg(feature = "syscall")]
 pub mod safe;
