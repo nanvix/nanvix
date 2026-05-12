@@ -50,6 +50,74 @@ include!("frame.spec.rs");
 include!("frame.proof.rs");
 
 //==================================================================================================
+// Conversion Wrappers (external-bottom trust boundary)
+//
+// Thin wrappers that encapsulate the FrameNumber / FrameAddress conversion chain.
+// Verus cannot express assume_specification on generic trait methods (Deref) and
+// cannot call exec functions in spec mode on external types without View. These
+// wrappers isolate the trust boundary to the conversion logic only.
+//==================================================================================================
+
+/// Convert a FrameAddress to its bitmap index (frame number as usize).
+// VERUS REWRITE: wraps frame.into_frame_number().into_raw_value()
+#[verus_verify(external_body)]
+#[verus_spec(ret =>
+    requires self_.inv(),
+    ensures ret as int == self_@ / spec_page_size(),
+)]
+fn frame_addr_to_bitmap_index(self_: FrameAddress) -> usize { ... }
+
+/// Convert a bitmap index to a FrameAddress.
+// VERUS REWRITE: wraps FrameNumber::from_raw_value + FrameAddress::from_frame_number
+#[verus_verify(external_body)]
+#[verus_spec(ret =>
+    requires
+        frame_addr_of(index as int) <= usize::MAX as int,
+    ensures
+        ret.is_ok(),
+        ret matches Ok(fa) ==> {
+            &&& fa@ == index as int * spec_page_size()
+            &&& fa.inv()
+        },
+)]
+fn bitmap_index_to_frame_addr(index: usize) -> Result<FrameAddress, Error> { ... }
+
+/// Convert a PageAligned<PhysicalAddress> to its bitmap index.
+// VERUS REWRITE: wraps phys_addr.into_frame_number().into_raw_value() (via Deref)
+#[verus_verify(external_body)]
+#[verus_spec(ret =>
+    requires self_.inv(),
+    ensures ret as int == self_@ / spec_page_size(),
+)]
+fn page_aligned_pa_to_bitmap_index(self_: PageAligned<PhysicalAddress>) -> usize { ... }
+
+/// Get the start frame number from a TruncatedMemoryRegion.
+// VERUS REWRITE: wraps region.start().into_frame_number().into_raw_value()
+#[verus_verify(external_body)]
+#[verus_spec(ret =>
+    requires region.inv(),
+    ensures ret as int == region@.start / spec_page_size(),
+)]
+fn region_start_frame_number(region: &TruncatedMemoryRegion<PhysicalAddress>) -> usize { ... }
+
+/// Get the raw size from a TruncatedMemoryRegion.
+// VERUS REWRITE: wraps region.size()
+#[verus_verify(external_body)]
+#[verus_spec(ret =>
+    ensures ret as int == region@.size,
+)]
+fn region_size_raw(region: &TruncatedMemoryRegion<PhysicalAddress>) -> usize { ... }
+
+/// Get the raw start address from a TruncatedMemoryRegion.
+// VERUS REWRITE: wraps region.start().into_raw_value() (via Deref)
+#[verus_verify(external_body)]
+#[verus_spec(ret =>
+    requires region.inv(),
+    ensures ret as int == region@.start,
+)]
+fn region_start_raw(region: &TruncatedMemoryRegion<PhysicalAddress>) -> usize { ... }
+
+//==================================================================================================
 // Inner
 //==================================================================================================
 
@@ -72,7 +140,6 @@ impl Inner {
     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -82,10 +149,7 @@ impl Inner {
                 Ok(frame) => {
                     &&& frame.inv()
                     &&& old(self)@.free_frames.contains(frame@)
-                    &&& self@ == UpoolView {
-                        allocated_frames: old(self)@.allocated_frames.insert(frame@),
-                        free_frames: old(self)@.free_frames.remove(frame@),
-                    }
+                    &&& self@ == old(self)@.spec_alloc(frame@)
                 },
                 Err(_) => {
                     &&& self@ == old(self)@
@@ -108,7 +172,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -118,10 +181,7 @@ impl Inner {
             match result {
                 Ok(()) => {
                     &&& old(self)@.allocated_frames.contains(frame@)
-                    &&& self@ == UpoolView {
-                        allocated_frames: old(self)@.allocated_frames.remove(frame@),
-                        free_frames: old(self)@.free_frames.insert(frame@),
-                    }
+                    &&& self@ == old(self)@.spec_free(frame@)
                 },
                 Err(_) => {
                     &&& self@ == old(self)@
@@ -144,7 +204,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -154,10 +213,7 @@ impl Inner {
             match result {
                 Ok(()) => {
                     &&& old(self)@.free_frames.contains(phys_addr@)
-                    &&& self@ == UpoolView {
-                        allocated_frames: old(self)@.allocated_frames.insert(phys_addr@),
-                        free_frames: old(self)@.free_frames.remove(phys_addr@),
-                    }
+                    &&& self@ == old(self)@.spec_book(phys_addr@)
                 },
                 Err(_) => {
                     &&& self@ == old(self)@
@@ -180,11 +236,11 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
             region.inv(),
+            region@.start + region@.size <= usize::MAX as int,
         ensures
             self.inv(),
             ({
@@ -195,10 +251,7 @@ impl Inner {
                 match result {
                     Ok(()) => {
                         &&& frames.subset_of(old(self)@.free_frames)
-                        &&& self@ == UpoolView {
-                            allocated_frames: old(self)@.allocated_frames.union(frames),
-                            free_frames: old(self)@.free_frames.difference(frames),
-                        }
+                        &&& self@ == old(self)@.spec_alloc_range(frames)
                     },
                     Err(_) => {
                         &&& self@ == old(self)@
@@ -211,7 +264,6 @@ impl Inner {
         &mut self,
         region: &TruncatedMemoryRegion<PhysicalAddress>,
     ) -> Result<(), Error> { ... }
-}
 
 //==================================================================================================
 // Constants
@@ -248,11 +300,13 @@ fn instance() -> &'static mut Inner { ... }
 pub(super) unsafe fn init(bitmap: SparseBitmap) -> Result<(), Error> { ... }
 
 /// Allocate a frame.
+/// Singleton pattern: state transition tracked by Inner::alloc.
 #[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         match result {
             Ok(frame) => frame.inv(),
+            // Singleton pattern: cannot express state-preservation without ghost accessor.
             Err(_) => true,
         },
 )]
@@ -264,13 +318,38 @@ verus! {
 /// Free a frame previously returned by [`alloc`].
 #[verifier::external_body]
 pub(super) fn free(frame: FrameAddress) -> (result: Result<(), Error>)
+    requires
+        frame.inv(),
+    ensures
+        // Singleton pattern: state transition tracked by Inner::free.
+        result.is_ok() || result.is_err(),
     opens_invariants none
     no_unwind
-{ ... }
+{
+    instance().free(frame)
+}
 }
 
 /// Reserve a frame so [`alloc`] will skip it.
+/// Singleton pattern: state transition tracked by Inner::book.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        phys_addr.inv(),
+    ensures
+        // Singleton pattern: cannot express state transition without ghost accessor.
+        result.is_ok() || result.is_err(),
+)]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> { ... }
 
 /// Book every frame in the given physical memory region.
+/// Singleton pattern: state transition tracked by Inner::alloc_range.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        region.inv(),
+    ensures
+        // Singleton pattern: cannot express state transition without ghost accessor.
+        result.is_ok() || result.is_err(),
+)]
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> { ... }
