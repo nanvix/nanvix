@@ -3149,3 +3149,21 @@ Let me focus on reducing blocks 1 and 2 first. For block 1, I'll try removing th
 Turn 148
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -5
+[RESULT ✓] bash: cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17/17 exec functions have contracts
+  status: CLEAN
+
+Log written to: verus-ai-logs/verus-logs/verus_2026-05-12_22-42-19.log
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 149
+────────────────────────────────────────────────────────────
+7→6 lines. Try removing the assert-forall bridge assertion:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 150
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -5

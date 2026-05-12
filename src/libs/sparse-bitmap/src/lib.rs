@@ -756,8 +756,7 @@ impl SparseBitmap {
         proof {
             assert forall|b: int|
                 start_bit_in_entry as int <= b < (start_bit_in_entry + take_from_entry) as int
-                implies !chunk_e.bitmap@.set_bits.contains(b)
-            by { assert(!old_chunks_seq[entry as int].bitmap@.set_bits.contains(b)); }
+                implies !chunk_e.bitmap@.set_bits.contains(b) by {}
         }
 
         let ghost old_entry_set_bits = chunk_e.bitmap@.set_bits;
