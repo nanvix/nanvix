@@ -299,10 +299,20 @@ pub unsafe extern "C" fn pthread_attr_getstacksize(
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
 #[trace_libcall]
-pub extern "C" fn pthread_detach(_thread: pthread_t) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/502
-    ::syslog::debug!("pthread_detach(): not implemented");
-    ErrorCode::OperationNotSupported.get()
+pub extern "C" fn pthread_detach(thread: pthread_t) -> c_int {
+    match ::sys::pm::ThreadIdentifier::try_from(thread) {
+        Ok(tid) => match ::sys::kcall::pm::detach_thread(tid) {
+            Ok(()) => 0,
+            Err(error) => {
+                ::syslog::warn!("pthread_detach(): detach_thread failed ({error:?})");
+                error.code.get()
+            },
+        },
+        Err(error) => {
+            ::syslog::warn!("pthread_detach(): invalid thread id ({error:?})");
+            ErrorCode::InvalidArgument.get()
+        },
+    }
 }
 
 //==================================================================================================
