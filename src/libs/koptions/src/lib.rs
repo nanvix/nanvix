@@ -17,6 +17,13 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Token string recognised as the snapshot kernel option.
+pub const SNAPSHOT_TOKEN: &str = "snapshot";
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -31,6 +38,9 @@ use alloc::vec::Vec;
 ///
 #[derive(Debug, PartialEq, Eq)]
 pub enum KernelOption<'a> {
+    /// Enables the guest VM to initiate exactly one VM snapshot.
+    /// Format: bare `snapshot` token (no value).
+    Snapshot,
     /// An unrecognised kernel argument preserved verbatim for diagnostics.
     /// Format: `<key>=<value>` or a bare `<key>`.
     Unknown(&'a str),
@@ -66,7 +76,10 @@ pub fn parse<'a>(kernel_args: &'a str) -> Vec<KernelOption<'a>> {
             continue;
         }
 
-        let option: KernelOption<'a> = KernelOption::Unknown(token);
+        let option: KernelOption<'a> = match token {
+            SNAPSHOT_TOKEN => KernelOption::Snapshot,
+            _ => KernelOption::Unknown(token),
+        };
 
         options.push(option);
     }
@@ -112,5 +125,23 @@ mod tests {
         assert_eq!(options.len(), 2);
         assert_eq!(options[0], KernelOption::Unknown("test_magic=0xCAFE"));
         assert_eq!(options[1], KernelOption::Unknown("unknown_flag"));
+    }
+
+    /// The bare `snapshot` token is parsed as Snapshot.
+    #[test]
+    fn parse_snapshot() {
+        let options: Vec<KernelOption<'_>> = parse("snapshot");
+        assert_eq!(options.len(), 1);
+        assert_eq!(options[0], KernelOption::Snapshot);
+    }
+
+    /// Snapshot mixed with other options.
+    #[test]
+    fn parse_snapshot_with_others() {
+        let options: Vec<KernelOption<'_>> = parse("foo=bar snapshot baz");
+        assert_eq!(options.len(), 3);
+        assert_eq!(options[0], KernelOption::Unknown("foo=bar"));
+        assert_eq!(options[1], KernelOption::Snapshot);
+        assert_eq!(options[2], KernelOption::Unknown("baz"));
     }
 }

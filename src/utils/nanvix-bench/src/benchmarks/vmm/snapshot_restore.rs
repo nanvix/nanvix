@@ -115,7 +115,7 @@ impl Benchmark {
             let user_vm_handle = UserVm::spawn(UserVmArgs {
                 kernel_filename: kernel_filename.clone(),
                 initrd_filename: Some(snapshot_program),
-                initrd_args: None,
+                initrd_args: Some(format!(";;{}", ::koptions::SNAPSHOT_TOKEN)),
                 ramfs_filename: None,
                 stderr: Some(if cfg!(windows) { "NUL" } else { "/dev/null" }.to_string()),
                 vcpu_thread_stdout_tx,

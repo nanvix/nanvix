@@ -53,6 +53,7 @@ use crate::{
 use ::alloc::collections::LinkedList;
 use ::bitmap::Bitmap;
 use ::core::sync::atomic::{
+    AtomicBool,
     AtomicUsize,
     Ordering,
 };
@@ -185,6 +186,21 @@ static PERF_IKC_MESSAGES_SENT: AtomicUsize = AtomicUsize::new(0);
 
 /// Number of IKC messages received.
 static PERF_IKC_MESSAGES_RECEIVED: AtomicUsize = AtomicUsize::new(0);
+
+/// Whether the guest is entitled to take a VM snapshot.
+/// Set to `true` during boot when the `snapshot` kernel option is present.
+/// Consumed (set to `false`) on the first successful snapshot request.
+static SNAPSHOT_ALLOWED: AtomicBool = AtomicBool::new(false);
+
+/// Attempts to consume the one-time snapshot permission.
+///
+/// Returns `true` if the snapshot was allowed and the permission has now been consumed.
+/// Returns `false` if the snapshot was never enabled or has already been consumed.
+pub(crate) fn try_consume_snapshot() -> bool {
+    SNAPSHOT_ALLOWED
+        .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+}
 
 //==================================================================================================
 // Standalone Functions
@@ -362,6 +378,15 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         ::koptions::parse(kernel_args);
     if !kernel_options.is_empty() {
         info!("kernel options: {:?}", kernel_options);
+    }
+
+    // Enable snapshot capability if the `snapshot` option was passed.
+    for opt in &kernel_options {
+        if *opt == ::koptions::KernelOption::Snapshot {
+            info!("snapshot capability enabled via kernel option");
+            SNAPSHOT_ALLOWED.store(true, Ordering::SeqCst);
+            break;
+        }
     }
 
     // Verify that kernel arguments were stored and can be retrieved correctly.

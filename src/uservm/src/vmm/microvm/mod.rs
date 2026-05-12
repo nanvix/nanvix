@@ -347,6 +347,9 @@ pub(crate) struct InteriorMicroVmHandle {
     /// When true, skip the next snapshot command (set after loading a snapshot to avoid
     /// re-triggering the snapshot when KVM re-executes the `out` instruction on restore).
     skip_next_snapshot: bool,
+    /// When true, the guest is entitled to take exactly one snapshot.
+    /// Set from the `snapshot` kernel option; consumed on the first successful request.
+    snapshot_allowed: bool,
 }
 
 //==================================================================================================
@@ -442,6 +445,16 @@ impl Vmm {
 
         #[cfg(feature = "profile-time")]
         perf_timings.set_vmem_create(vmem_create_start.elapsed().as_micros() as u64);
+
+        // Determine whether the snapshot kernel option is present before
+        // initrd_args is consumed by load_initrd.
+        let snapshot_allowed: bool = args.initrd_args.as_deref().is_some_and(|a| {
+            ::cmdline::find_kernel_args_start(a)
+                .map(|pos| &a[pos + 1..])
+                .is_some_and(|kargs| {
+                    ::koptions::parse(kargs).contains(&::koptions::KernelOption::Snapshot)
+                })
+        });
 
         let guest: Arc<Mutex<Guest>> = if args.restoring_from_snapshot {
             // When restoring from a snapshot, skip kernel/initrd/ramfs loading and vCPU reset.
@@ -605,6 +618,7 @@ impl Vmm {
                 control_tx: args.control_tx,
                 kernel_filename: args.kernel_filename,
                 skip_next_snapshot: false,
+                snapshot_allowed,
             })),
             ikc_notifier,
             #[cfg(feature = "profile-time")]
@@ -1179,10 +1193,18 @@ impl Vmm {
                 locked_inner.skip_next_snapshot = false;
                 return Ok(());
             }
+            if !locked_inner.snapshot_allowed {
+                error!("handle_snapshot(): snapshot refused (not enabled or already consumed)");
+                anyhow::bail!(
+                    "snapshot refused: not enabled via kernel option or already consumed"
+                );
+            }
             locked_inner.kernel_filename.clone()
         };
         match self.create_snapshot(kernel_filename).await {
             Ok(()) => {
+                // Consume the one-shot permission only after a successful snapshot.
+                self.inner.lock().await.snapshot_allowed = false;
                 trace!("handle_snapshot(): snapshot created successfully");
                 Ok(())
             },
