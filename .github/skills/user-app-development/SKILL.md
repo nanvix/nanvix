@@ -34,6 +34,13 @@ Nanvix.  User applications are programs that run inside the Nanvix guest environ
     -console-file /dev/stdout \
     -- ./bin/echo-rust-nostd.elf \
     "arg1 arg2;VAR1=foo VAR2=bar"
+
+# Pass arguments, environment variables, and kernel arguments.
+# Format: "<app args>;<env vars>;<kernel args>"
+./bin/nanvixd.elf \
+    -console-file /dev/stdout \
+    -- ./bin/echo-rust-nostd.elf \
+    "arg1 arg2;VAR1=foo;feature1 feature2"
 ```
 
 ### HTTP Mode (for multi-application scenarios)

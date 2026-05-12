@@ -230,7 +230,7 @@ fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &mut LinkedList<KernelModule
             // SAFETY: module pages are mapped read-write; `iter_mut` yields exclusive access
             // so no other reference aliases the cmdline bytes.
             let cmdline_buf: &mut [u8] = unsafe { kmod.cmdline_bytes_mut() };
-            let (args, env): (&str, &str) = ::cmdline::split_cmdline(cmdline_buf);
+            let (args, env, _): (&str, &str, &str) = ::cmdline::split_cmdline(cmdline_buf);
             // Capture compacted length before create_process borrows args/env.
             let compacted_len: usize = args.len() + env.len();
 
@@ -293,6 +293,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
         IoMemoryAllocator,
         LinkedList<KernelModule>,
+        &'static str,
     );
     let (
         madt,
@@ -301,6 +302,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         mut mmio_regions,
         mut ioaddresses,
         mut kernel_modules,
+        kernel_args,
     ): KernelArgs = match kargs.parse() {
         Ok(bootinfo) => (
             bootinfo.madt,
@@ -309,11 +311,16 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
             bootinfo.mmio_regions,
             bootinfo.ioaddresses,
             bootinfo.kernel_modules,
+            bootinfo.kernel_args,
         ),
         Err(err) => {
             panic!("failed to parse kernel arguments: {:?}", err);
         },
     };
+
+    if !kernel_args.is_empty() {
+        info!("kernel args: {:?}", kernel_args);
+    }
 
     info!("parsing kernel image...");
     let kimage: KernelImage = match KernelImage::new() {
