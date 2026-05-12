@@ -440,6 +440,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             self.config.log_directory().to_string(),
             linuxd_tmp_dir.to_string_lossy().into_owned(),
             self.config.l2(),
+            self.config.networking_mode().is_enabled(),
         );
 
         let linuxd: Arc<LinuxDaemon> = {
@@ -703,6 +704,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             Some(self.config.clh_bin_path().to_string()),
             Some(sandbox_tmp_dir.to_string_lossy().into_owned()),
             Some(self.config.l2()),
+            self.config.networking_mode().is_enabled(),
         );
 
         let uninitialized_sandbox: UninitializedSandbox<T> =

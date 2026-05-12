@@ -49,6 +49,8 @@ pub struct LinuxDaemonArgs<T> {
     tmp_directory: String,
     /// Flag to deploy linuxd inside an L2 VM (using cloud-hypervisor).
     l2: bool,
+    /// Whether networking system calls are enabled.
+    networking_enabled: bool,
     /// Optional system call table for overriding default system call behavior.
     #[cfg(feature = "single-process")]
     syscall_table: Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>>,
@@ -79,6 +81,7 @@ impl<T> LinuxDaemonArgs<T> {
     /// - `log_directory`: Directory path for writing log files.
     /// - `tmp_directory`: Temporary directory path for Unix sockets and transient files.
     /// - `l2`: Flag to deploy linuxd inside an L2 VM (using cloud-hypervisor).
+    /// - `networking_enabled`: Whether networking system calls are enabled.
     /// - `syscall_table`: Optional system call table for overriding default system call behavior (only if in single-process mode).
     ///
     /// # Returns
@@ -96,6 +99,7 @@ impl<T> LinuxDaemonArgs<T> {
         log_directory: String,
         tmp_directory: String,
         l2: bool,
+        networking_enabled: bool,
         #[cfg(feature = "single-process")] syscall_table: Option<
             ::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>,
         >,
@@ -111,6 +115,7 @@ impl<T> LinuxDaemonArgs<T> {
             log_directory,
             tmp_directory,
             l2,
+            networking_enabled,
             #[cfg(feature = "single-process")]
             syscall_table,
             #[cfg(not(feature = "single-process"))]
@@ -234,6 +239,19 @@ impl<T> LinuxDaemonArgs<T> {
     ///
     pub fn l2(&self) -> bool {
         self.l2
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether networking system calls are enabled.
+    ///
+    /// # Returns
+    ///
+    /// `true` if networking is enabled; `false` otherwise.
+    ///
+    pub fn networking_enabled(&self) -> bool {
+        self.networking_enabled
     }
 
     ///
