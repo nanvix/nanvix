@@ -3215,3 +3215,31 @@ Try removing the assert-forall in the Ok branch:
 Turn 155
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -5
+[RESULT ✓] bash: cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17/17 exec functions have contracts
+  status: CLEAN
+
+Log written to: verus-ai-logs/verus-logs/verus_2026-05-12_22-43-14.log
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 156
+────────────────────────────────────────────────────────────
+6→3 lines. Now check the matching loop in the inner (next chunk) loop:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] view: 935.                     Ok(()) => {
+936.                         proof {
+937.                             assert forall|b: int| (bit_n + 1) as int <= b < take as int
+938.                                 implies !chunk_n.bitmap@.set_bits.contains(b) by {}
+939.                             lemma_range...
+
+────────────────────────────────────────────────────────────
+Turn 157
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 158
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -5
