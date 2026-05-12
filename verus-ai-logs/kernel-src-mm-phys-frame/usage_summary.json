@@ -1,11 +1,11 @@
 {
   "module": "kernel-src-mm-phys-frame",
-  "generated_at": "2026-04-25T01:40:36.117419",
-  "total_calls": 12,
-  "calls_with_usage": 12,
+  "generated_at": "2026-05-12T21:56:22.861284",
+  "total_calls": 13,
+  "calls_with_usage": 13,
   "calls_timed_out": 0,
   "calls_failed": 0,
-  "total_duration_s": 12496.5,
+  "total_duration_s": 14253.5,
   "total_input_tokens": 0,
   "total_output_tokens": 0,
   "total_tokens": 0,
@@ -39,14 +39,20 @@
       "input_tokens": 0,
       "output_tokens": 0,
       "duration_s": 1758.1
+    },
+    "polish": {
+      "calls": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 1757.0
     }
   },
   "per_role": {
     "prover": {
-      "calls": 5,
+      "calls": 6,
       "input_tokens": 0,
       "output_tokens": 0,
-      "duration_s": 10234.4
+      "duration_s": 11991.4
     },
     "dialogue-reviewer-t1": {
       "calls": 3,
@@ -333,6 +339,30 @@
           "linesAdded": 370,
           "linesRemoved": 0,
           "filesModified": []
+        }
+      }
+    },
+    {
+      "timestamp": "2026-05-12T21:56:07.685887",
+      "phase": "polish",
+      "role": "prover",
+      "model": "claude-opus-4.6",
+      "exit_code": 0,
+      "session_id": "19ee8461-ae9f-4cd4-8798-84f8680cb058",
+      "log_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/polish/prover-claude-20260512-212650.txt",
+      "duration_s": 1757.0,
+      "usage": {
+        "premiumRequests": 3,
+        "totalApiDurationMs": 1649464,
+        "sessionDurationMs": 1754428,
+        "codeChanges": {
+          "linesAdded": 647,
+          "linesRemoved": 720,
+          "filesModified": [
+            "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs",
+            "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs",
+            "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/polish/checklist.md"
+          ]
         }
       }
     }

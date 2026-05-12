@@ -168,3 +168,12 @@ Module: frame
 [2026-05-12 21:56:07] ✅ polish: PASS (0/0)
 [2026-05-12 21:56:07] [GATE] Running build: make build
 [2026-05-12 21:56:08] [GATE] Running verify: make verify
+[2026-05-12 21:56:22] [GATE] ✅ Build + Verify passed after polish
+
+============================================================
+PIPELINE COMPLETE: frame
+  ✅ polish                    no-review                29m17s
+  ──────────────────────────────────────────────────────────
+  Total: 29m32s
+============================================================
+[2026-05-12 21:56:22] [USAGE] Summary: 13 calls, 0 tokens, 3h57m33s total → /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-frame/usage_summary.json
