@@ -616,7 +616,6 @@ impl Inner {
         let pc_frames = pc_fns.map(|i: int| i * ps);
         assert(pc_fns.contains(index));
         assert(pc_frames.contains(fa));
-        assert(!old_inner@.free_frames.contains(fa));
         assert(!pc_frames.subset_of(old_inner@.free_frames));
         self.lemma_inv_implies_wf();
     }

@@ -1485,3 +1485,33 @@ Still passing. Let me now try removing the `assert(self.bitmap@.is_covered(index
 Turn 84
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: cheating: assume=0 external_body=24 admit=0 trusted=0 no_decreases=0 cfg_gate=9
+  coverage: 13/15 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verus-logs/verus_2026-05-12_21-50-34.log
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+Now let me try to minimize the proof file too. Let me check the `lemma_alloc_range_conflict` for redundant assertions:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 588.     /// Prove that an index that is not free (uncovered or already set) makes the
+589.     /// range-mapped frames NOT a subset of free_frames.
+590.     /// Used by both error paths in alloc_range (coverage-check and test-loop).
+591.     proof fn lemma_alloc_range_conflict(
+592.         &self,
+...
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+The assertions in the conflict lemma are likely needed as triggers for Verus. Let me try removing `assert(!old_inner@.free_frames.contains(fa))` since it follows from `lemma_addr_not_free` + `lemma_view_unchanged`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
