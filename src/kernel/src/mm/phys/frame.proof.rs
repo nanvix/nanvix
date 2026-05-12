@@ -327,6 +327,7 @@ impl Inner {
             implies self@.free_frames.contains(addr)
         by {
             if addr == fa {
+                assert(old_inner.bitmap@.is_covered(idx));
                 assert(self.bitmap@.is_covered(idx));
                 assert(!self.bitmap@.set_bits.contains(idx));
             } else {
@@ -576,6 +577,10 @@ impl Inner {
             vstd::set_lib::set_int_range(sfn, (idx + 1) as int) =~=
                 vstd::set_lib::set_int_range(sfn, idx as int).insert(idx as int),
     {
+        assert forall|x: int|
+            vstd::set_lib::set_int_range(sfn, (idx + 1) as int).contains(x) <==>
+            vstd::set_lib::set_int_range(sfn, idx as int).insert(idx as int).contains(x)
+        by {}
     }
 }
 

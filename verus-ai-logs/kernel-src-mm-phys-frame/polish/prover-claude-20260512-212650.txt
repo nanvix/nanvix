@@ -861,3 +861,123 @@ Now let me run verification to see if it passes:
 [TOOL] report_intent: Running verification
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 3 errors
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 20 verified, 3 errors (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  Module mm::phys::frame:
+    ⚠️  external_body: 9
+    ⚠️  cfg-gated exec...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+3 errors. Let me check the error details:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cat verus-ai-logs/verus-logs/verus_2026-05-12_
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -E "^error|FAILED|precondition|postcondit
+[RESULT ✓] bash: error: assertion failed
+error: postcondition not satisfied
+    | |________________________________________________________________________________^ failed this postcondition
+error: precondition not satisfied
+    |               ---------- failed precondition
+error: precondition not satisfied
+    |  ...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -B 3 -A 15 "assertion failed\|postconditi
+[RESULT ✓] bash: Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+note: verifying module mm::phys::frame
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/frame.proof.rs:330:24
+    |
+330 |                 assert(self.bitmap@.is_covered(idx));
+    |      ...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Three issues to fix:
+
+1. `lemma_range_insert_step` - needs a proof body (Verus can't auto-prove set_int_range decomposition)
+2. `lemma_frame_quotients_bounded` - missing `start >= 0` precondition (region@.start is guaranteed non-negative by inv but not explicitly passed)
+3. `lemma_clear_bit_updates_view` - assertion about `is_covered(idx)` fails (need to derive from `set_bits.contains(idx)` via bitmap wf)
+
+Let me fix these:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 320.             } else {
+321.                 assert(!old_inner.bitmap@.set_bits.contains(i));
+322.                 assert(old_inner.bitmap@.is_covered(i));
+323.             }
+324.         }
+325.         assert forall|addr: int|
+326.             old_inner@.free_frames.contains(addr) || addr == fa
+3...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+The issue at line 330 is that `self.bitmap@.is_covered(idx)` can't be proven. After removing idx from set_bits, chunks are unchanged and old_inner has `set_bits.contains(idx)` which implies `is_covered(idx)` (from bitmap.inv()). Since chunks are unchanged, `self.bitmap@.is_covered(idx)` should still be true. Let me add the bridging assertion:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+Now fix `lemma_range_insert_step` - it needs a proof body:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Now fix the `start >= 0` precondition issue. The region@.start is non-negative by construction (it's a physical address), but the arithmetic lemmas need it explicitly. Let me add the precondition to the call sites:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 394.         let num_frames: usize = region_size_raw(region) / mem::FRAME_SIZE;
+395. 
+396.         // Prove: start_frame_number + num_frames does not overflow usize.
+397.         proof! {
+398.             let ps = spec_page_size();
+399.             Self::lemma_frame_quotients_bounded(
+400.          ...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+The issue is that `region@.start >= 0` and `region@.size >= 0` aren't proven. These are usize values so they should be non-negative. Let me check if there's an invariant... region.inv() should give this. Let me check what region@ provides:
+
+The ensures of `region_start_frame_number` says `ret as int == region@.start / spec_page_size()`, and `region_size_raw` says `ret as int == region@.size`. Since these return usize, `region@.start` and `region@.size` must be non-negative. But Verus might need it explicitly.
+
+Let me update the lemma preconditions to relax them, or add assertions at call site:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 500. 
+501.         assert(self@.allocated_frames =~= old_inner@.allocated_frames.union(frames));
+502.         assert(self@.free_frames =~= old_inner@.free_frames.difference(frames));
+503.     }
+504. 
+505.     /// Prove that frame quotients sum is bounded when region start + size ≤ usize::MAX.
+506.  ...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+The `start >= 0` and `size >= 0` preconditions are needed. I need to establish these at the call site. `region@.start` and `region@.size` should be non-negative since they come from usize values. Let me add assertions:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
