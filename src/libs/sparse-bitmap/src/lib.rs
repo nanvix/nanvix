@@ -802,7 +802,6 @@ impl SparseBitmap {
 
         self.chunks.insert(entry, chunk_e);
         proof {
-            lemma_seq_remove_insert_is_update(pre_commit_chunks, entry as int, chunk_e);
             lemma_chunk_update_preserves_structure(
                 old_chunks_seq, self.chunks@, entry as int);
             lemma_lifted_set_bits_alloc_range(
