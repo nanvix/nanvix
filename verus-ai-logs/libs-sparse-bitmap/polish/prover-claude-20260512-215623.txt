@@ -384,3 +384,21 @@ I think the solution is to move those two clauses into `invariant_except_break`,
 Turn 9
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -20
+[RESULT ✓] bash: Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: cached (no recompilation), — (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  ✅ All 17 exec function...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cargo clean -p sparse-bitmap 2>&1 && make veri
+
+[THINKING] It's using cached results. I need to force a clean build. Let me check the Makefile.
