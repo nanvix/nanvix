@@ -14,6 +14,7 @@ use ::sys::{
     },
     kcall::pm::{
         create_thread,
+        detach_thread,
         gettime,
         join_thread,
     },
@@ -74,12 +75,30 @@ impl KernelThread {
         drop(self.stack.take());
         Ok(retval)
     }
+
+    /// Detaches the thread so it is auto-harvested when it exits.
+    ///
+    /// The caller's `Stack` handle is intentionally leaked because the thread may still be
+    /// using it. The kernel will unmap the thread's stack pages once the detached thread
+    /// terminates (and, in the worst case, on process teardown).
+    pub fn detach(mut self) -> Result<(), Error> {
+        let tid: ThreadIdentifier = self
+            .tid
+            .take()
+            .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "thread handle missing"))?;
+        detach_thread(tid)?;
+        // Intentionally leak the stack — the thread may still be using it.
+        if let Some(stack) = self.stack.take() {
+            core::mem::forget(stack);
+        }
+        Ok(())
+    }
 }
 
 impl Drop for KernelThread {
     fn drop(&mut self) {
         if self.tid.is_some() {
-            panic!("KernelThread dropped without joining");
+            panic!("KernelThread dropped without joining or detaching");
         }
     }
 }

@@ -39,11 +39,14 @@ use ::syscall::unistd;
 pub fn main() -> Result<(), Error> {
     tests::run_all()?;
 
-    // Magic string for CI harness.
+    // Magic string for CI harness — emitted before the nowait test because it exits the process.
     {
         let magic_string: &[u8] = b"ok";
         unistd::write(STDOUT_FILENO, magic_string)?;
     }
+
+    // The nowait test exits the process with detached blocked threads. It must run last.
+    tests::run_nowait()?;
 
     Ok(())
 }
