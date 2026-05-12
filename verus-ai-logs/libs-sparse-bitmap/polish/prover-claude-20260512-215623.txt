@@ -2984,3 +2984,27 @@ Needed. Restore it:
 Turn 137
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  ✅ All 17 exec functions have contracts.
+
+=== Summary ===
+  verification: 89 verified, 1 errors (exit 101)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17/17 exec func...
+
+────────────────────────────────────────────────────────────
+Turn 138
+────────────────────────────────────────────────────────────
+Order matters. Restore the working version:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] The issue is that I merged the two conditionals (the lemma call + _trig in the first one, but moved _trig after the lemma calls). The order matters. Let me put it back to the working order: first conditional with lemma, then the three non-conditional lemma calls and ghost mutation, then the second conditional with _trig.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 139
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
