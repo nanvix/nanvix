@@ -909,28 +909,9 @@ impl SparseBitmap {
             let mut chunk_n = self.chunks.remove(next);
 
             proof {
-                assert(pre_inner_chunks[next as int] == old_chunks_seq[next as int]);
-                assert(chunk_n.bitmap@.set_bits
-                    =~= old_chunks_seq[next as int].bitmap@.set_bits);
                 let idx = next as int - entry as int - 1;
-                assert(idx == (cur - entry) as int);
-                assert(idx < phase1b_free_prefixes.len());
                 lemma_seq_sum_from_unfold(phase1b_free_prefixes, idx);
-                let rest = seq_sum_from(phase1b_free_prefixes, idx + 1);
-                assert(cap_next as int == old_chunks_seq[next as int].bitmap@.num_bits);
-                assert(phase1b_free_prefixes[idx] <= cap_next as int);
                 lemma_seq_sum_from_nonneg(phase1b_free_prefixes, idx + 1);
-                assert(rest >= 0);
-                assert(remaining as int >= phase1b_free_prefixes[idx]);
-                if phase1b_free_prefixes[idx] == cap_next as int {
-                    assert(remaining as int >= cap_next as int);
-                    assert(take as int == cap_next as int);
-                } else {
-                    assert(rest == 0);
-                    assert(remaining as int == phase1b_free_prefixes[idx]);
-                    assert(remaining as int <= cap_next as int);
-                    assert(take as int == remaining as int);
-                }
                 assert(take as int == phase1b_free_prefixes[idx]);
                 assert forall|b: int| 0 <= b < take as int
                     implies !chunk_n.bitmap@.set_bits.contains(b)

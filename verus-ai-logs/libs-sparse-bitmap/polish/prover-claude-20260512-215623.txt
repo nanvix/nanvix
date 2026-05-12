@@ -2344,3 +2344,142 @@ Turn 95
 Turn 96
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
+[RESULT ✓] bash: Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  ✅ All 17 exec functions have contracts.
+
+=== Summary ===
+  verification: 90 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17...
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+Block #5 entirely removed (24→0 lines). Now block #3 (inner pre-commit, 28 lines):
+[TOOL] report_intent: Minimizing remaining proof blocks
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -n "proof {" src/libs/sparse-bitmap/src/l
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 509:            proof {
+579:            proof {
+587:            proof {
+608:            proof {
+617:        proof {
+659:            proof {
+676:        proof {
+756:        proof {
+784:            proof {
+791:                    proof {
+798:                Err(_e) => { proof { assert(false); } },
+804...
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+Let me view the current state of the blocks I still need to minimize. Let me check each remaining block:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] view: 911.             proof {
+912.                 assert(pre_inner_chunks[next as int] == old_chunks_seq[next as int]);
+913.                 assert(chunk_n.bitmap@.set_bits
+914.                     =~= old_chunks_seq[next as int].bitmap@.set_bits);
+915.                 let idx = next as int - entry as i...
+[RESULT ✓] view: 978.             proof {
+979.                 lemma_seq_remove_insert_is_update(pre_inner_chunks, next as int, chunk_n);
+980.                 assert forall|k: int| #![auto] 0 <= k < self.chunks@.len() && k != next as int
+981.                     implies self.chunks@[k] == pre_inner_chunks[k]
+982.   ...
+[RESULT ✓] view: 740.             self@.set_bits =~= old(self)@.set_bits.union(
+741.                 BitmapView::range_set(
+742.                     (old_chunks_seq[entry as int].offset + entry_cap - trailing_free) as int,
+743.                     (old_chunks_seq[entry as int].offset + entry_cap - trailing_free + co...
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+Let me see the remaining blocks in `try_alloc_cross_chunk_from`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] Now let me understand the remaining blocks. The big block at lines 978-1028 is block #1 (inner post-insert, 51 lines). It has a ghost mutation at line 1019 (`committed = committed + take as int;`). 
+
+The block at lines 911-938 is block #3 (inner pre-commit take computation, 28 lines).
+
+Let me also check the blocks in `try_alloc_cross_chunk_from`:
+[RESULT ✓] view: 1200.                 // trailing_free loop ensures: if trailing_free < entry_cap, bit below is set
+1201.                 trailing_free < entry_cap ==>
+1202.                     self.chunks@[entry as int].bitmap@.set_bits.contains(
+1203.                         (entry_cap as int - trailing_free as i...
+[RESULT ✓] view: 1360.     /// VERUS REWRITE: moved from outside verus! block; applied compile
+1361.     /// workarounds (remove/insert, match on ErrorCode, no continue,
+1362.     /// while loops instead of for).
+1363.     pub fn alloc_range(&mut self, count: usize) -> (result: Result<usize, Error>)
+1364.         re...
+[RESULT ✓] view: 1440.                         let result_offset = chunk.offset + local;
+1441.                         let ghost new_chunk = chunk;
+1442.                         self.chunks.insert(idx, chunk);
+1443.                         self.next_chunk_hint = idx;
+1444. 
+1445.                         proof {
+1446...
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+Let me run the check tool to get current block sizes:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423 && python3 scripts/check_proof_blocks.py target-systems/nanvix/src/libs
+
+[THINKING] Let me now run `check_proof_blocks.py` to get the current state:
+[RESULT ✓] bash: File                                          Function                  Start   End Lines  Status
+----------------------------------------------------------------------------------------------------
+target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs sort_chunks_by_offset       509   511     3  ...
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+10 blocks remain >5 lines. Let me tackle them systematically. Starting with block at 911-938 (28 lines, inner pre-commit):
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] OK, so now I have 10 proof blocks >5 lines. Let me work through them systematically. I'll focus on the proof blocks first, starting with the largest ones:
+
+1. `commit_cross_chunk_alloc` 978-1028 (51 lines) — the big one with ghost mutation
+2. `commit_cross_chunk_alloc` 911-938 (28 lines) — inner pre-commit
+3. `try_alloc_cross_chunk_from` 1302-1329 (28 lines) — pfp update with ghost mutation
+4. `commit_cross_chunk_alloc` 756-762 (7 lines) — pre-commit free bits
+
+
+5. `commit_cross_chunk_alloc` 791-796 (6 lines) — entry bit set ok
+6. `try_alloc_cross_chunk_from` 1210-1215 (6 lines) — single lemma call
+7. `try_alloc_cross_chunk_from` 1221-1226 (6 lines) — single lemma call
+8. `try_alloc_cross_chunk_from` 1281-1287 (7 lines) — single lemma call
+9. `try_alloc_cross_chunk_from` 1341-1346 (6 lines) — single lemma call
+10. `alloc_range` 1445-1450 (6 lines) — two lemma calls
+
+Now I'm prioritizing by size to tackle the larger proofs first. Starting with the biggest one at #3, the inner pre-commit section spanning lines 911-938 with 28 lines inside the inner loop.
+[RESULT ✓] view: 905.             let take: usize = if remaining < cap_next { remaining } else { cap_next };
+906. 
+907.             // Remove next chunk, set bits [0, take), re-insert
+908.             let ghost pre_inner_chunks = self.chunks@;
+909.             let mut chunk_n = self.chunks.remove(next);
+910. 
+911.  ...
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+Try aggressive minimization — keep only the two lemma calls and key assertion:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] This block proves `take == phase1b_free_prefixes[idx]` and bits are free. Let me try an aggressive minimization — keep only the two lemma calls and the essential bridge:
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
