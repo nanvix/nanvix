@@ -28,17 +28,7 @@ use ::sysapi::ffi::c_int;
 // Standalone Functions
 //==================================================================================================
 
-#[allow(unreachable_code)]
 pub fn bind(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (sockfd, sockaddr);
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "bind not available in standalone mode",
-        ));
-    }
-
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let sockaddr: sockaddr = sockaddr::from(sockaddr);

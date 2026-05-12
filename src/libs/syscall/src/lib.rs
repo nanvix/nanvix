@@ -92,6 +92,10 @@ pub mod safe;
 // Imports
 //==================================================================================================
 
+pub use ::config::fds::{
+    is_socket_fd,
+    SOCKET_FD_BASE,
+};
 use ::core::{
     convert::TryFrom,
     mem,
@@ -348,6 +352,28 @@ pub struct SystemCallMessage {
 /// Process identifier of the system call provider.
 ///
 pub const LINUXD: ProcessIdentifier = ProcessIdentifier::KERNEL;
+
+///
+/// # Description
+///
+/// Process identifier of the network daemon.
+///
+pub const NETWORKD: ProcessIdentifier = ProcessIdentifier::NETWORKD;
+
+/// Destination process for networking system call requests.
+#[cfg(feature = "standalone")]
+pub const NETWORK_DESTINATION: ProcessIdentifier = NETWORKD;
+#[cfg(not(feature = "standalone"))]
+pub const NETWORK_DESTINATION: ProcessIdentifier = LINUXD;
+
+/// Source process for networking system call responses.
+///
+/// Must match the daemon that actually handles the request so that responses
+/// carry the correct origin in both deployment modes.
+#[cfg(feature = "standalone")]
+pub const NETWORK_SOURCE: ProcessIdentifier = NETWORKD;
+#[cfg(not(feature = "standalone"))]
+pub const NETWORK_SOURCE: ProcessIdentifier = LINUXD;
 
 //==================================================================================================
 // Implementations
