@@ -3008,3 +3008,42 @@ Order matters. Restore the working version:
 Turn 139
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
+[RESULT ✓] bash: Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  ✅ All 17 exec functions have contracts.
+
+=== Summary ===
+  verification: 90 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17...
+
+────────────────────────────────────────────────────────────
+Turn 140
+────────────────────────────────────────────────────────────
+Good, 18 lines. This block has ghost mutation so it can't be fully extracted. It's already at a reasonable size. Now the 9-line block at 911:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] view: 908.             let ghost pre_inner_chunks = self.chunks@;
+909.             let mut chunk_n = self.chunks.remove(next);
+910. 
+911.             proof {
+912.                 let idx = next as int - entry as int - 1;
+913.                 lemma_seq_sum_from_unfold(phase1b_free_prefixes, idx);
+914.     ...
+
+────────────────────────────────────────────────────────────
+Turn 141
+────────────────────────────────────────────────────────────
+Try removing the take assertion:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] 9 lines. Let me try removing the `assert(take as int == phase1b_free_prefixes[idx])`:
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 142
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -5
