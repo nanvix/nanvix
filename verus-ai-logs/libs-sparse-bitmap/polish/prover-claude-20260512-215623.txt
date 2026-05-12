@@ -3065,3 +3065,87 @@ Turn 143
 Turn 144
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -5
+[RESULT ✓] bash: coverage: 17/17 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verus-logs/verus_2026-05-12_22-41-32.log
+make: *** [Makefile:633: verify-sparse-bitmap] Error 101
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 145
+────────────────────────────────────────────────────────────
+Needed. Restore:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 146
+────────────────────────────────────────────────────────────
+8 lines, can't reduce further. Now let me handle the remaining 6-7 line blocks. View them:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] view: 756.         proof {
+757.             assert(pre_commit_chunks =~= old_chunks_seq);
+758.             assert forall|b: int|
+759.                 start_bit_in_entry as int <= b < (start_bit_in_entry + take_from_entry) as int
+760.                 implies !chunk_e.bitmap@.set_bits.contains(b)
+761.      ...
+[RESULT ✓] view: 791.                     proof {
+792.                         assert forall|b: int|
+793.                             (bit_e + 1) as int <= b < (start_bit_in_entry + take_from_entry) as int
+794.                             implies !chunk_e.bitmap@.set_bits.contains(b) by {}
+795.                      ...
+[RESULT ✓] view: 1155.             if next >= n_chunks {
+1156.                 proof {
+1157.                     lemma_walk_fail_gap_case(
+1158.                         old(self)@, self.chunks@, entry as int, count as int,
+1159.                         trailing_free as int, entry_cap as int, need as int,
+1160.      ...
+[RESULT ✓] view: 1226.                             // Case (c): set bit in follow chunk blocks cross-chunk range
+1227.                             proof {
+1228.                                 lemma_walk_fail_set_bit_case(
+1229.                                     old(self)@, self.chunks@, entry as int, count as int...
+[RESULT ✓] view: 1263.         // At this point self@ =~= old(self)@ (no mutations yet).
+1264.         proof {
+1265.             lemma_cross_chunk_range_is_free(
+1266.                 old(self)@, self.chunks@, phase1b_free_prefixes,
+1267.                 entry as int, last_chunk as int, entry_cap as int,
+1268.      ...
+[RESULT ✓] view: 1367. 
+1368.                         proof {
+1369.                             lemma_seq_remove_insert_is_update(old_chunks_seq, idx as int, new_chunk);
+1370.                             lemma_single_chunk_alloc_ok(
+1371.                                 &*self, old_chunks_seq, old_view, pre_alloc_bi...
+
+────────────────────────────────────────────────────────────
+Turn 147
+────────────────────────────────────────────────────────────
+Try reducing block at 756 - remove bridge assertion:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] Let me look at each of these remaining blocks:
+
+1. **756-762 (7 lines)** - pre-commit free bits: has an assert-bridge and assert-forall. Try removing the bridge `assert(pre_commit_chunks =~= old_chunks_seq)`:
+2. **791-796 (6 lines)** - entry bit loop body: assert-forall + lemma call. Can't reduce much.
+3. **1156-1161 (6 lines)** - lemma_walk_fail_gap_case with lots of params. Single lemma call, just long due to param count.
+
+
+4. **1167-1172 (6 lines)** - another instance of the same lemma with identical parameters.
+5. **1227-1233 (7 lines)** - lemma_walk_fail_set_bit_case with even more parameters.
+6. **1264-1269 (6 lines)** - lemma_cross_chunk_range_is_free, a single call.
+7. **1368-1373 (6 lines)** - two lemma calls.
+
+These 6-7 line blocks that are mostly single lemma calls with many parameters can't really be compressed further—the length comes from the parameter lists themselves.
+
+Let me focus on reducing blocks 1 and 2 first. For block 1, I'll try removing the assertion about pre_commit_chunks to see if that helps trim it down.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 148
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -5

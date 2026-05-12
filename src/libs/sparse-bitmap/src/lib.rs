@@ -754,7 +754,6 @@ impl SparseBitmap {
         let mut chunk_e = self.chunks.remove(entry);
 
         proof {
-            assert(pre_commit_chunks =~= old_chunks_seq);
             assert forall|b: int|
                 start_bit_in_entry as int <= b < (start_bit_in_entry + take_from_entry) as int
                 implies !chunk_e.bitmap@.set_bits.contains(b)
@@ -911,6 +910,7 @@ impl SparseBitmap {
             proof {
                 let idx = next as int - entry as int - 1;
                 lemma_seq_sum_from_unfold(phase1b_free_prefixes, idx);
+                lemma_seq_sum_from_nonneg(phase1b_free_prefixes, idx + 1);
                 assert forall|b: int| 0 <= b < take as int
                     implies !chunk_n.bitmap@.set_bits.contains(b)
                 by { assert(!old_chunks_seq[next as int].bitmap@.set_bits.contains(b)); }
