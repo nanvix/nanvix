@@ -960,14 +960,6 @@ impl SparseBitmap {
                 lemma_seq_remove_insert_is_update(pre_inner_chunks, next as int, chunk_n);
                 lemma_chunk_update_preserves_structure(
                     pre_inner_chunks, self.chunks@, next as int);
-                assert forall|k: int| #![auto] 0 <= k < self.chunks@.len() implies {
-                    &&& self.chunks@[k].offset == old_chunks_seq[k].offset
-                    &&& self.chunks@[k].bitmap@.num_bits == old_chunks_seq[k].bitmap@.num_bits
-                } by {
-                    if k == next as int {
-                        assert(pre_inner_chunks[k].offset == old_chunks_seq[k].offset);
-                    }
-                }
                 let remaining_prime = (remaining - take) as int;
                 let cur_prime_idx = (next - entry) as int;
                 if remaining_prime > 0 {
