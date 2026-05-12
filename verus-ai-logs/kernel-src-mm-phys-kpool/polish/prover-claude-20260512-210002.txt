@@ -409,3 +409,28 @@ Turn 19
 ────────────────────────────────────────────────────────────
 Now let's run the kpool verification again:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: cached (no recompilation), — (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  Module mm::phys::kpool:
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Still showing "cached (no recompilation)". Let me clean and retry:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cargo clean 2>&1 | tail -5
+[RESULT ✓] bash: Removed 7240 files, 2.3GiB total
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::kpool 2>&1
