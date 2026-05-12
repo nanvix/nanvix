@@ -23,6 +23,7 @@ use ::chrono::Local;
 use ::nanvix::{
     hwloc::HwLoc,
     log::DEFAULT_LOG_DIRECTORY,
+    sandbox_config::NetworkingMode,
     syscomm::SocketType,
 };
 use ::std::{
@@ -85,6 +86,8 @@ pub struct Args {
     /// Optional GDB server port: when set, the uservm starts a GDB RSP server on this TCP port.
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
+    /// Networking mode (applies to all deployment modes).
+    networking_mode: NetworkingMode,
 }
 
 //==================================================================================================
@@ -134,6 +137,8 @@ impl Args {
     /// Command-line option for GDB server port (standalone mode only).
     #[cfg(feature = "gdb")]
     pub const OPT_GDB_PORT: &'static str = "-gdb-port";
+    /// Command-line flag that enables host networking for the guest.
+    pub const OPT_ALLOW_HOST_NETWORKING: &'static str = "-allow-host-networking";
 
     ///
     /// # Description
@@ -183,6 +188,7 @@ impl Args {
         let mut mount_directory: Option<String> = None;
         #[cfg(feature = "gdb")]
         let mut gdb_port: Option<u16> = None;
+        let mut networking_mode: NetworkingMode = NetworkingMode::Disabled;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -320,6 +326,9 @@ impl Args {
                         anyhow::anyhow!("invalid GDB port (arg={}, error={e:?})", args[i])
                     })?);
                 },
+                Self::OPT_ALLOW_HOST_NETWORKING => {
+                    networking_mode = NetworkingMode::Enabled;
+                },
                 arg => {
                     return Err(anyhow::anyhow!("invalid argument: {arg}"));
                 },
@@ -433,6 +442,7 @@ impl Args {
             mount_directory,
             #[cfg(feature = "gdb")]
             gdb_port,
+            networking_mode,
         })
     }
 
@@ -485,7 +495,9 @@ Options:
   {snapshot} <path>                         Restore VM from snapshot instead of cold-booting \
              (standalone mode only).
   {mount} <host-dir>                       Mount a host directory on the guest at /mnt (standalone \
-             mode only).{gdb_port_line}
+             mode only).
+  {allow_host_networking}                   Enable host networking for the guest (disabled when \
+             omitted).{gdb_port_line}
 ",
             http_usage = http_usage,
             program_name = program_name,
@@ -506,6 +518,7 @@ Options:
             tmp_dir = Self::OPT_TMP_DIRECTORY,
             snapshot = Self::OPT_SNAPSHOT,
             mount = Self::OPT_MOUNT_DIRECTORY,
+            allow_host_networking = Self::OPT_ALLOW_HOST_NETWORKING,
             gdb_port_line = if cfg!(feature = "gdb") {
                 "\n  -gdb-port <port>                         GDB server port (standalone mode \
                  only)."
@@ -775,5 +788,10 @@ Options:
     #[cfg(feature = "gdb")]
     pub fn gdb_port(&self) -> Option<u16> {
         self.gdb_port
+    }
+
+    /// Returns the networking mode.
+    pub fn networking_mode(&self) -> NetworkingMode {
+        self.networking_mode
     }
 }

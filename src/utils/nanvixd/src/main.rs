@@ -42,7 +42,6 @@ use ::nanvix::sandbox_config::StandaloneConfig;
 use ::nanvix::{
     config::system::DEFAULT_MACHINE_NAME,
     sandbox::NAMED_RESOURCE_PREFIX,
-    sandbox_config::NetworkingMode,
     terminal::Terminal,
 };
 use ::nanvixd::{
@@ -193,7 +192,7 @@ async fn async_main() -> Result<ExitCode> {
             error!("main(): {reason}");
             anyhow::anyhow!(reason)
         })?,
-        NetworkingMode::Disabled,
+        args.networking_mode(),
     );
 
     #[cfg(feature = "standalone")]
@@ -203,7 +202,7 @@ async fn async_main() -> Result<ExitCode> {
         args.console_file().clone(),
         args.snapshot_path().map(|s| s.to_string()),
         args.mount_directory().map(|s| s.to_string()),
-        NetworkingMode::Disabled,
+        args.networking_mode(),
         #[cfg(feature = "gdb")]
         args.gdb_port(),
     );
@@ -229,7 +228,7 @@ async fn async_main() -> Result<ExitCode> {
             error!("main(): {reason}");
             anyhow::anyhow!(reason)
         })?,
-        NetworkingMode::Disabled,
+        args.networking_mode(),
     );
 
     // Check for interactive mode or HTTP mode.

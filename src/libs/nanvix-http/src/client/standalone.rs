@@ -227,6 +227,7 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
             state.config.console_file().map(|s| s.to_string()),
             state.config.snapshot_path().map(|s| s.to_string()),
             state.config.mount_directory().map(|s| s.to_string()),
+            state.config.networking_mode(),
             #[cfg(feature = "gdb")]
             state.config.gdb_port(),
         );
