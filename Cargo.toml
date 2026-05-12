@@ -49,6 +49,7 @@ members = [
         "src/libs/libc_stdlib",
         "src/libs/libc_string",
         "src/libs/cache",
+        "src/libs/cmdline",
         "src/libs/multibin",
         "src/libs/multiimage",
         "src/libs/mmio-tag",
@@ -143,6 +144,7 @@ libc = "0.2.186"
 linuxd = { path = "src/daemons/linuxd", default-features = false }
 log = "0.4.29"
 cache = { path = "src/libs/cache", default-features = false }
+cmdline = { path = "src/libs/cmdline", default-features = false }
 mkramfs = { path = "src/utils/mkramfs" }
 multibin = { path = "src/libs/multibin", default-features = false }
 multiimage = { path = "src/libs/multiimage", default-features = false }
