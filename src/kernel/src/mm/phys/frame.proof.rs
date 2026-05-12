@@ -505,12 +505,16 @@ impl Inner {
             ps >= 2,
             sfn >= 0,
             nf >= 0,
-            start == sfn * ps,
-            size == nf * ps,
+            start % ps == 0,
+            size % ps == 0,
+            sfn == start / ps,
+            nf == size / ps,
             start + size <= usize::MAX as int,
         ensures
             sfn + nf <= usize::MAX as int,
     {
+        lemma_fundamental_div_mod(start, ps);
+        lemma_fundamental_div_mod(size, ps);
         vstd::arithmetic::mul::lemma_mul_inequality(1, ps, sfn);
         vstd::arithmetic::mul::lemma_mul_is_commutative(ps, sfn);
         vstd::arithmetic::mul::lemma_mul_inequality(1, ps, nf);
