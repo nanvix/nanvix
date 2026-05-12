@@ -392,6 +392,9 @@ impl ProcessManager {
                         // Frames allocated to the kernel stack are freed when we exit this scope.
                     }
 
+                    // Notify the thread manager that this thread has been reaped.
+                    Self::get_mut().tm.on_thread_reaped();
+
                     break Ok(status);
                 },
 
