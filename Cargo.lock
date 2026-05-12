@@ -1529,6 +1529,7 @@ dependencies = [
  "log",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
+ "spin",
  "static_assert",
  "sysapi",
  "syslog",
