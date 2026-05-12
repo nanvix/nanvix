@@ -957,7 +957,6 @@ impl SparseBitmap {
 
             self.chunks.insert(next, chunk_n);
             proof {
-                lemma_seq_remove_insert_is_update(pre_inner_chunks, next as int, chunk_n);
                 let remaining_prime = (remaining - take) as int;
                 let cur_prime_idx = (next - entry) as int;
                 if remaining_prime > 0 {
