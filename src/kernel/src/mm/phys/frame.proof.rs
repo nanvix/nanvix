@@ -200,9 +200,6 @@ impl Inner {
     {
         let ps = spec_page_size();
 
-        // old free_frames contains fa
-        assert(old_inner@.free_frames.contains(fa));
-
         // allocated = old.insert(fa)
         assert forall|addr: int| self@.allocated_frames.contains(addr) implies
             old_inner@.allocated_frames.contains(addr) || addr == fa

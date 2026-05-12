@@ -1710,3 +1710,33 @@ Let me also try removing `assert(nf * ps == size)` since it should follow from t
 Turn 103
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: cheating: assume=0 external_body=24 admit=0 trusted=0 no_decreases=0 cfg_gate=9
+  coverage: 13/15 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verus-logs/verus_2026-05-12_21-53-36.log
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+Still passing. Let me also try removing `assert(old_inner@.free_frames.contains(fa))` in `lemma_set_bit_updates_view`:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 198.             self@.allocated_frames =~= old_inner@.allocated_frames.insert(fa),
+199.             self@.free_frames =~= old_inner@.free_frames.remove(fa),
+200.     {
+201.         let ps = spec_page_size();
+202. 
+203.         // old free_frames contains fa
+204.         assert(old_inner@.free_frame...
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
