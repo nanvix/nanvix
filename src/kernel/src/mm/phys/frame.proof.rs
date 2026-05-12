@@ -577,10 +577,14 @@ impl Inner {
             vstd::set_lib::set_int_range(sfn, (idx + 1) as int) =~=
                 vstd::set_lib::set_int_range(sfn, idx as int).insert(idx as int),
     {
-        assert forall|x: int|
-            vstd::set_lib::set_int_range(sfn, (idx + 1) as int).contains(x) <==>
-            vstd::set_lib::set_int_range(sfn, idx as int).insert(idx as int).contains(x)
-        by {}
+        let r1 = vstd::set_lib::set_int_range(sfn, (idx + 1) as int);
+        let r2 = vstd::set_lib::set_int_range(sfn, idx as int).insert(idx as int);
+        assert forall|x: int| r1.contains(x) <==> r2.contains(x) by {
+            // set_int_range(a, b) contains x iff a <= x < b
+            // r1 contains x iff sfn <= x < idx + 1, i.e., sfn <= x <= idx
+            // r2 contains x iff (sfn <= x < idx) || x == idx
+            // These are equivalent.
+        }
     }
 }
 

@@ -981,3 +981,58 @@ The `start >= 0` and `size >= 0` preconditions are needed. I need to establish t
 Turn 43
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: - frame.rs:109 region_start_frame_number: external_body
+    - frame.rs:119 region_size_raw: external_body
+    - frame.rs:130 region_start_raw: external_body
+    - frame.rs:174 alloc: external_body
+    - frame.rs:243 free: external_body
+    - frame.rs:652 alloc: external_body
+    - frame.rs:684 book:...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+2 errors remain. Let me check:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -B 3 -A 15 "assertion failed\|postconditi
+[RESULT ✓] bash: Checking kernel v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel)
+note: verifying module mm::phys::frame
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/frame.proof.rs:581:13
+    |
+581 | /             vstd::set_lib::set_int_range(sfn, (idx + 1) as int)...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Two issues:
+
+1. `lemma_range_insert_step` - Verus can't prove the set equality automatically. Need a different approach.
+2. `frame@ == frame_addr_of(frame_number as int)` in `free` - the conversion proof for free needs to remain as before since `lemma_fundamental_div_mod` alone isn't sufficient with `frame_addr_to_bitmap_index`.
+
+Let me fix both:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 247.         // `assume_specification` cannot match generic method signatures.
+248.         // This wrapper encapsulates the same conversion chain with a spec.
+249.         let frame_number: usize = frame_addr_to_bitmap_index(frame);
+250.         proof! {
+251.             // Establish: frame@ == fra...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+The `frame_addr_to_bitmap_index` ensures `ret as int == self_@ / spec_page_size()`, and `frame.inv()` gives `frame@ % spec_page_size() == 0`. The div_mod lemma gives `frame@ = ps * (frame@/ps) + frame@%ps = ps * frame_number`. But `frame_addr_of(frame_number) = frame_number * ps`, so we need commutativity:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+Now fix `lemma_range_insert_step`. The issue is that `set_int_range(sfn, idx+1)` might use a different definition. Let me try using `by(compute)` or make it more explicit:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
