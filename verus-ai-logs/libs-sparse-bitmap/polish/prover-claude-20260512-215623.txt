@@ -436,3 +436,413 @@ error: expected curly braces
 Turn 13
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | grep -A2 "exp
+[RESULT ✓] bash: error: expected curly braces
+    --> src/libs/sparse-bitmap/src/lib.rs:1153:13
+     |
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] grep: invariant_except_break
+
+[THINKING] The error is at line 1153 - `invariant_except_break`. Let me check if Verus uses a different syntax for this. Let me check the Verus docs or examples.
+
+Actually, in Verus, the keyword might need to be placed differently. Let me check the verus syntax. Looking at the Verus documentation/source for `invariant_except_break`:
+
+In Verus, inside a `verus!{}` block, while loops use:
+```
+while condition
+    invariant ...
+    invariant_except_break ...
+    ensures ...
+    decreases ...
+{
+    ...
+
+
+}
+```
+
+But wait, maybe Verus's attribute-based syntax doesn't support `invariant_except_break` in the same way. The error "expected curly braces" at line 1153 suggests Verus doesn't recognize `invariant_except_break` as a keyword in this context - the syntax might be different. Let me look for how `invariant_except_break` is actually used in the codebase or Verus documentation.
+[RESULT ✓] grep: Output too large to read at once (27.0 KB). Saved to: /tmp/copilot-tool-output-1778594468452-mvw44x.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "invariant_except_break" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/ 2>/dev/null | head -20
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/src/lib.rs:409:                    invariant_except_break
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs:1153:            invariant_except_break
+/home/ruize/veru...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -B5 -A10 "invariant_except_break" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitm
+
+[THINKING] Let me see how bitmap uses it (in lib.rs of bitmap):
+[RESULT ✓] bash: #[cfg_attr(verus_keep_ghost, verus_spec(
+                    invariant
+                        self.alloc_range_second_loop_invariant(old(self), size, start, initial_start, offset,
+                                                               wrapped, free, checked_before, start_before_inner),
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -A5 "invariant_except_break" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/tree-sitter-verus/grammar.js | head -20
+
+[THINKING] I see! In the bitmap crate, `invariant_except_break` is used with attribute-based syntax `#[cfg_attr(verus_keep_ghost, verus_spec(...))]`. But in our case, we're inside a `verus! {}` block. Let me check if the syntax is different inside `verus! {}`.
+
+Looking at the error more carefully: "expected curly braces" at line 1153. The issue is that inside `verus! {}`, the `while` loop syntax uses `invariant`, `invariant_ensures`, `invariant_except_break`, `ensures`, `decreases` as keywords. But the parser might not recognize `invariant_except_break` in the `verus!{}` macro.
+ 
+Let me check the Verus source code to see if `invariant_except_break` is actually supported inside `verus! {}` blocks, or if I need to use a different approach.
+[RESULT ✓] bash: [$.invariant_except_break_clause],
+
+    // e.g. assert forall |x:int| assert(false) by { .. }
+    // [$.assert_expression, $.assert_by_expression],
+
+    // e.g. (expr matches 1) .. 10 vs expr matches (1 .. 10)
+--
+        'decreases', 'invariant', 'invariant_ensures', 'invariant_except_break',
+      ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -B2 -A10 "invariant_except_break_clause" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/tree-sitter-verus/grammar.js
+[RESULT ✓] bash: [$.invariant_clause],
+    [$.invariant_ensures_clause],
+    [$.invariant_except_break_clause],
+
+    // e.g. assert forall |x:int| assert(false) by { .. }
+    // [$.assert_expression, $.assert_by_expression],
+
+    // e.g. (expr matches 1) .. 10 vs expr matches (1 .. 10)
+    [$._pattern, $.range_patte...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep "invariant_except_break_clause:" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/tree-sitter-verus/grammar.js
+[RESULT ✓] bash: invariant_except_break_clause: $ => seq(
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -A3 "invariant_except_break_clause:" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/tree-sitter-verus/grammar.js
+[RESULT ✓] bash: invariant_except_break_clause: $ => seq(
+      'invariant_except_break',
+      sepBy(',', $._expression),
+      optional(','),
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] OK, so `invariant_except_break` is indeed a keyword in the verus grammar for while loops. The error "expected curly braces" is unusual. Let me look at the actual error log more carefully to understand what's happening.
+
+Let me look at the exact code I generated around line 1153.
+[RESULT ✓] view: 1144.         while bit_idx > 0
+1145.             invariant
+1146.                 self.inv(),
+1147.                 self@ =~= old_view,
+1148.                 old_view =~= old(self)@,
+1149.                 self.chunks@ =~= old_chunks_seq,
+1150.                 entry < self.chunks@.len(),
+1151.       ...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/verus-logs/verus_2026-05-12_22-00-
+[RESULT ✓] bash: Timestamp: 2026-05-12_22-00-55
+Mode: cargo
+Crate: sparse-bitmap
+Directory: N/A
+Module: <all>
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking sparse-bitmap v0.12.469 (/hom...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -B5 -A20 "while_expression:" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/tree-sitter-verus/grammar.js
+
+[THINKING] The issue is that "expected curly braces" means the Verus macro parser doesn't recognize `invariant_except_break` here. Maybe it's a `while` loop limitation — perhaps `invariant_except_break` is only supported in `loop` expressions (not `while` loops)?Let me check the grammar more carefully.
+[RESULT ✓] bash: match_pattern: $ => seq(
+      $._pattern,
+      optional(seq('if', field('condition', $._condition))),
+    ),
+
+    while_expression: $ => seq(
+      optional(seq($.label, ':')),
+      'while',
+      field('condition', $._condition),
+      ...$verus([
+        repeat(choice(
+          $.invariant_cla...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -r "verus" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/Cargo.toml 2>/dev/null | head -5; ls
+
+[THINKING] The grammar does include `invariant_except_break_clause` in `while_expression`. So it should be supported. But the Verus compiler/macro isn't recognizing it. Maybe the issue is that the `verus!{}` macro proc-macro doesn't support `invariant_except_break` for `while` loops, even though the grammar does.
+
+Let me check if maybe this is a Verus version issue. Let me look at what version of Verus is being used.
+[RESULT ✓] bash: "cfg(verus_keep_ghost)",
+        "cfg(verus_keep_ghost_body)",
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/Makefile
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -i "verus_macro_version\|verus.*version\|vstd.*version\|verus-lang\|VERUS_BIN\|VERUS_HOME" /home/ruize/verus-ai-exp
+[RESULT ✓] bash: # When unset, `ensure-verus` auto-installs the pinned version from
+# build/verus-version into $(VERUS_INSTALL_DIR) via scripts/setup/verus.sh.
+  VERUS_BINARY := verus.exe
+  VERUS_BINARY := verus
+# Ensures the correct Verus version is installed before verification.
+	verus_path="$$verus_dir/$(VERUS_BI...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/build/verus-version 2>/dev/null
+[RESULT ✓] bash: 0.2026.04.12.f1166c4
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Let me check if `loop` with `invariant_except_break` works in verus blocks.
+[TOOL] bash: grep -B2 -A15 "loop_expression:" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/tree-sitter-verus/grammar.js
+
+[THINKING] OK, so it's using Verus version 0.2026.04.12.f1166c4. The grammar supports `invariant_except_break` in while loops, but the Verus proc macro might not. Let me check what the actual proc macro expects.
+
+Actually, it could be that the verus! macro uses a different parser than the grammar.js. Let me check if this is perhaps a verus proc-macro limitation and the actual Rust macro doesn't support it.Let me try an alternative approach:
+1. Instead of using `invariant_except_break`, restructure the loop to avoid the break entirely
+
+
+2. Or use `invariant_ensures` instead
+
+Wait, let me clarify the semantics here. `invariant_ensures` holds at each iteration start and is guaranteed at exit, whereas `invariant_except_break` holds at iteration start but not when breaking. If `invariant_except_break` isn't supported in the verus! macro, I need to figure out which of these other options actually works for what I'm trying to express.
+
+I could refactor the loop to avoid using `break` altogether—instead of breaking, I'd set a flag and check it in the while condition. Or I could weaken the invariant to account for both the normal case and the break case, though that gets complicated. Let me try eliminating the break first since that seems cleanest. Exploring the loop structure to see if I can update trailing_free before the test check instead of after, though that would incorrectly count the set bit as free. I'm considering a tentative approach where I increment trailing_free speculatively before testing the bit. Restructuring the loop to avoid break...
+
+Still writing verification logic... Refining the invariant to weaken the relationship between trailing_free and bit_idx, since the tight coupling breaks when we exit early. The real challenge is ensuring the loop postcondition holds regardless of whether we break or complete normally—I need to verify that the ensures clause can actually be satisfied in both cases. Restructuring the loop to avoid break statements... Refining the loop invariant...
+
+I see the issue—when the loop stops, the invariant breaks because `bit_idx` gets decremented but `trailing_free` doesn't increment in that final iteration. I need to adjust `bit_idx` back up after stopping so the invariant `trailing_free == entry_cap - bit_idx` holds at the loop exit.
+
+The approach is to decrement `bit_idx`, test the bit, and if it's set, increment `bit_idx` back to restore the invariant before setting `stop = true`. This way the invariant is maintained throughout, and the bits from `bit_idx` onward remain unexamined as expected. The trailing_free calculation works out correctly whether the loop exits early or completes—if we stop, trailing_free equals entry_cap minus the position of the last set bit, and if we exhaust all bits, everything remaining is free. I'm concerned about potential overflow when restoring bit_idx, but since we're only incrementing back from a value that came from decrementing a valid index, we stay within bounds. Let me try a cleaner approach by restructuring the loop...
+
+Restructuring loop logic... Weakening the invariant... Refining the loop invariant by replacing the bit index with a trailing free count expression, which maintains equivalence since they're related by subtraction, and adding a postcondition that ensures the boundary bit is set when there are free slots remaining. I'm realizing the invariant `trailing_free == entry_cap - bit_idx` actually breaks at the loop exit—when we decrement `bit_idx` and break, `trailing_free` hasn't been updated yet, so they're no longer equal. I need to reconsider what invariant actually holds across iterations and at the break point, focusing on the core property that bits from `(entry_cap - trailing_free)` onward are all free. I'm realizing the invariant relationship between `bit_idx` and `trailing_free` breaks at the loop exit, so I need to rethink this. Let me try dropping `bit_idx` from the invariant entirely and express everything just in terms of `trailing_free` instead. Since `invariant_except_break` isn't available in while loops, I'll switch to using a `loop` construct instead, which does support it. This lets me maintain the invariant that `bit_idx > 0` except at the break point, while keeping the relationship `trailing_free == entry_cap - bit_idx` throughout the loop.
+
+Actually, I'm realizing the semantics get tricky here—when I transform a while loop into a loop with an explicit break, the condition check itself becomes a break statement, which affects how invariants apply. Let me try a different approach using a flag variable instead of relying on break to handle the loop termination, which would let me express the invariants more cleanly in the while loop syntax.
+
+Continuing with the loop body, I'm testing each bit position and handling the result—if the bit is set, I mark that we found something, otherwise I increment the trailing free count. There's also error handling for the test operation. _cap - trailing_free = X + 1, and the bits from X+1 onward are free as expected. The bit at position X is set, which satisfies the invariant. When found_set stays false, I'm incrementing trailing_free and decrementing bit_idx, so trailing_free correctly equals entry_cap minus the new bit_idx.
+
+Once the loop terminates—either because found_set is true or bit_idx reaches zero—I can rely on either having found a set bit with the corresponding free bits tracked, or having confirmed all bits are free. The subsequent code then checks this condition to determine which path to take.
+
+But I'm realizing this flag-based approach fundamentally restructures the loop, and the constraint about source integrity means I shouldn't alter the exec code's structure even if it's semantically equivalent. The break statement is part of the actual loop logic, so I need to preserve that original control flow rather than refactoring it away. Defining the weakened invariant... In a complete iteration where we don't break, bit_idx decrements and trailing_free increments by one, maintaining the invariant that trailing_free equals entry_cap minus bit_idx. When the loop exits normally with bit_idx reaching zero, trailing_free reaches entry_cap, confirming all bits are accounted for as free.
+
+Now examining what happens when we break early: the invariant bounds still hold, and we know the bit at bit_idx is set, but trailing_free could equal either entry_cap minus bit_idx or entry_cap minus bit_idx minus one depending on the exact state when we exit. The issue is that Verus only knows the range from the invariant, not the exact value of `trailing_free` at the break point, so it can't verify that the bit at `bit_idx` is set for the ensures clause. I could add a specific invariant at break stating the bit is set, but that only holds at the break itself, not throughout the loop. Let me look at what the code actually needs after the loop to figure out the cleanest way to restructure this.
+
+The downstream code needs three things: `trailing_free` bounded between 0 and `entry_cap`, all trailing bits from `entry_cap - trailing_free` onward to be free, and when `trailing_free < entry_cap`, the bit just before the free region must be set. These are the constraints I need to ensure the loop provides.
+
+At the break point, `entry_cap - trailing_free - 1` equals `bit_idx`, and since we break because that bit is set, the third constraint holds naturally. The challenge is that Verus requires loop invariants to hold at break too, so I can't use an invariant that only holds at normal exit—I need to think about whether adding this as an ensures clause with a proof block at break would work, or if I need a different approach like `invariant_except_break`. the body's modifications up to the break point. At a break statement, invariants don't actually need to hold—that's what `invariant_except_break` is for. The `ensures` clause specifies what must be true when exiting at the break, while regular `invariant` must hold at the start of each iteration and at the back-edge, but not necessarily at break points.
+
+Since `invariant_except_break` isn't available for while loops in this version, I need to either weaken the invariant to hold at break, restructure to avoid the break, or convert to a `loop` construct instead. Let me try converting to a loop...
+
+Converting to loop construct... Continuing the loop logic...
+
+I'm realizing that `invariant_except_break` actually does hold at the first break point since we haven't executed any loop body yet—we just checked if `bit_idx == 0` and immediately broke. The variables haven't changed from their state at loop entry, so the invariant values should still be valid. The question is whether Verus can track that the break happens before any mutations occur. I'm realizing the distinction between what Verus checks versus what's actually true in the program state. At a break point, Verus verifies the regular invariant holds, but it doesn't explicitly check `invariant_except_break`. However, the values themselves are still there—bit_idx really is 0, and trailing_free really does equal entry_cap minus that value, because nothing changed since the loop entry where those facts were established. The question is whether Verus can reason about these facts at the break point even though it won't formally verify them there. The key distinction is that both regular and except_break invariants are assumed at the loop top, but Verus only requires the regular invariants to hold at break points—the except_break clauses are exempt from that check. However, if an except_break invariant happens to be true at a particular break due to the code path taken, Verus can still use that fact in its reasoning.
+
+At the first break where `bit_idx == 0`, I have both types of invariants available as assumptions, so I can derive that `trailing_free == entry_cap` and the bits in range `[0, entry_cap)` are free, which satisfies the ensures clause even though the except_break invariant isn't formally required to hold there.
+
+For the second break when `is_set` is true, I'm working through the state at that point: `bit_idx` has been decremented to `bit_idx_top - 1`, and since the bit tested positive, I can use the invariant_except_break to establish that `trailing_free = entry_cap - bit_idx - 1` and the free bits span from `bit_idx + 1` to `entry_cap`.
+
+The key insight is that this approach actually works—the loop with the manual condition check maintains all the necessary invariants. Now I'm considering whether switching from a `while` loop to a `loop` with an explicit `if break` is acceptable given the source integrity constraints. The execution behavior is identical: we're still iterating downward through the bits, counting trailing free bits, and stopping when we find a set bit or reach zero. It's just a syntactic transformation from `while` to `loop + if`, which should be fine.
+
+Before I commit to this change, I should verify that `loop` with `invariant_except_break` actually works in Verus...
+[RESULT ✓] bash: ),
+
+    loop_expression: $ => seq(
+      optional(seq($.label, ':')),
+      'loop',
+      ...$verus([
+        repeat(choice(
+          $.invariant_clause,
+          $.invariant_ensures_clause,
+          $.invariant_except_break_clause,
+          $.ensures_clause,
+          $.decreases_clause,
+      ...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "invariant_except_break" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/ 2>/dev/null | head -10
+
+[THINKING] Good, `loop` supports `invariant_except_break` in the grammar. Now let me check if the Verus proc macro actually handles it. Let me search for usage in the codebase or vstd.
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423 -name "*.rs" -exec grep -l "invariant_except_break" {} \; 2>/dev/null
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/tree-sitter-verus/examples/bitmap.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/tree-sitter-verus/examples/verusfmt.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/src/lib.rs
+/home/ruize/verus-ai-exp/verus-ai-phy...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -B30 "invariant_except_break" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/s
+
+[THINKING] The bitmap crate uses `invariant_except_break` with the attribute-based syntax (`#[cfg_attr(verus_keep_ghost, verus_spec(...))]`), not inside a `verus!{}` block. And the sparse-bitmap file now has it because I just added it.
+
+Let me check if the bitmap crate has it inside a `verus!{}` block or outside.
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n "invariant_except_break\|verus!\|cfg_attr.*verus" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/n
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n "invariant_except_break" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/src
+[RESULT ✓] bash: 409:                    invariant_except_break
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/bitmap/src/lib.rs
+[RESULT ✓] view: 395. 
+396.                 // Check if all bits in the range are free.
+397.                 proof_decl! {
+398.                     let ghost start_before_inner: usize = start;
+399.                     // Ghost: snapshot the "checked before" region for the inner loop.
+400.                     let gho...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n "invariant_except_break" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/dependencies/syn/src/expr.rs | head
+
+[THINKING] So in the bitmap crate, `invariant_except_break` is used with the attribute-based syntax `#[cfg_attr(verus_keep_ghost, verus_spec(...))]`, NOT inside a `verus!{}` block. The sparse-bitmap code IS inside a `verus!{}` block.
+
+The error "expected curly braces" at line 1153 suggests that the `verus!{}` macro parser doesn't recognize `invariant_except_break` as a keyword for while loops. Maybe it only works for `loop` expressions in the macro, or maybe it's only supported via the attribute-based syntax.
+
+
+I should try rewriting the while loop using the attribute-based syntax outside the macro, or convert it to a `loop` inside the `verus!{}` block. Let me check the verus syn parser to see what the macro actually supports for while loops.
+[RESULT ✓] bash: 538:        pub invariant_except_break: Option<InvariantExceptBreak>,
+736:        pub invariant_except_break: Option<InvariantExceptBreak>,
+2572:            let invariant_except_break = input.parse()?;
+2587:                invariant_except_break,
+2924:            let invariant_except_break = input.p...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/dependencies/syn/src/expr.rs
+[RESULT ✓] view: 530. 
+531. ast_struct! {
+532.     /// Conditionless loop: `loop { ... }`.
+533.     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
+534.     pub struct ExprLoop #full {
+535.         pub attrs: Vec<Attribute>,
+536.         pub label: Option<Label>,
+537.         pub loop_token: Token![loop],
+538.      ...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/dependencies/syn/src/expr.rs
+[RESULT ✓] view: 728. ast_struct! {
+729.     /// A while loop: `while expr { ... }`.
+730.     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
+731.     pub struct ExprWhile #full {
+732.         pub attrs: Vec<Attribute>,
+733.         pub label: Option<Label>,
+734.         pub while_token: Token![while],
+735.         ...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/dependencies/syn/src/expr.rs
+[RESULT ✓] view: 2560.                 body: Block { brace_token, stmts },
+2561.             })
+2562.         }
+2563.     }
+2564. 
+2565.     #[cfg(feature = "full")]
+2566.     #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
+2567.     impl Parse for ExprLoop {
+2568.         fn parse(input: ParseStream) -> Result<S...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/dependencies/syn/src/expr.rs
+[RESULT ✓] view: 2910.         Ok(ClosureArg {
+2911.             tracked_token: input.parse()?,
+2912.             pat: closure_arg_pat(input)?,
+2913.         })
+2914.     }
+2915. 
+2916.     #[cfg(feature = "full")]
+2917.     #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
+2918.     impl Parse for ExprWhile {
+2919...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+Found the issue - `invariant_except_break` must appear BEFORE `invariant` in the parse order! Let me fix.
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] Interesting! The Verus syn parser DOES parse `invariant_except_break` for both `while` and `loop` expressions. The parse order is:
+
+For while: `while <cond> <invariant_except_break?> <invariant?> <invariant_ensures?> <ensures?> <decreases?> { ... }`
+For loop: `loop <invariant_except_break?> <invariant?> <invariant_ensures?> <ensures?> <decreases?> { ... }`
+
+Wait, the order is important! `invariant_except_break` is parsed BEFORE `invariant`. 
+
+I've got the order backwards in my code — I have `invariant` first, then `invariant_except_break`, but it needs to be the other way around. That's why it's failing to parse correctly.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -20

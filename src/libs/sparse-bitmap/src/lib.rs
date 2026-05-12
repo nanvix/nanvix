@@ -1142,6 +1142,11 @@ impl SparseBitmap {
         let mut trailing_free: usize = 0;
         let mut bit_idx: usize = entry_cap;
         while bit_idx > 0
+            invariant_except_break
+                trailing_free == entry_cap - bit_idx,
+                // all bits in [bit_idx, entry_cap) are free
+                forall|b: int| bit_idx <= b < entry_cap as int
+                    ==> !self.chunks@[entry as int].bitmap@.set_bits.contains(b),
             invariant
                 self.inv(),
                 self@ =~= old_view,
@@ -1150,11 +1155,6 @@ impl SparseBitmap {
                 entry < self.chunks@.len(),
                 entry_cap as int == self.chunks@[entry as int].bitmap@.num_bits,
                 0 <= bit_idx <= entry_cap,
-            invariant_except_break
-                trailing_free == entry_cap - bit_idx,
-                // all bits in [bit_idx, entry_cap) are free
-                forall|b: int| bit_idx <= b < entry_cap as int
-                    ==> !self.chunks@[entry as int].bitmap@.set_bits.contains(b),
             ensures
                 self.inv(),
                 self@ =~= old_view,
