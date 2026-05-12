@@ -753,11 +753,6 @@ impl SparseBitmap {
         let ghost pre_commit_view = self@;
         let mut chunk_e = self.chunks.remove(entry);
 
-        proof {
-            assert forall|b: int|
-                start_bit_in_entry as int <= b < (start_bit_in_entry + take_from_entry) as int
-                implies !chunk_e.bitmap@.set_bits.contains(b) by {}
-        }
 
         let ghost old_entry_set_bits = chunk_e.bitmap@.set_bits;
         let mut bit_e: usize = start_bit_in_entry;
