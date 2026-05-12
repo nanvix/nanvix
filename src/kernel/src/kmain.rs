@@ -50,16 +50,14 @@ use crate::{
     },
     pm::ProcessManager,
 };
-use ::alloc::{
-    collections::LinkedList,
-    vec::Vec,
-};
+use ::alloc::collections::LinkedList;
 use ::bitmap::Bitmap;
 use ::core::sync::atomic::{
     AtomicUsize,
     Ordering,
 };
 use ::sys::{
+    error::Error,
     pm::ProcessIdentifier,
     ExitStatus,
 };
@@ -207,30 +205,42 @@ fn test() {
 /// # Parameters
 ///
 /// - `mm`: A reference to the virtual memory manager to use.
-/// - `kmods`: A reference to the list of kernel modules to spawn.
+/// - `kmods`: A mutable reference to the list of kernel modules to spawn.
 ///
 /// # Returns
 ///
 /// The number of servers that were successfully spawned.
 ///
-fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &LinkedList<KernelModule>) -> usize {
+fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &mut LinkedList<KernelModule>) -> usize {
     // SAFETY: the process manager is initialized, this is a single-core system, interrupts are
     // disabled, and the resulting `&mut ProcessManager` does not alias `mm`.
     let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
 
     let mut count: usize = 0;
     // Spawn all servers.
-    for kmod in kmods.iter() {
+    for kmod in kmods.iter_mut() {
+        info!("spawning server: {:?}", kmod.cmdline());
+
         // SAFETY: `kmod.start()` points to a valid, page-aligned ELF image loaded by the
         // bootloader that remains in memory for the lifetime of the kernel.
         let elf: &Elf32Fhdr = unsafe { Elf32Fhdr::from_address(kmod.start().into_raw_value()) };
         let pid: ProcessIdentifier = {
-            // Split command line into arguments an environment variables using ";" as the delimiter.
-            let cmdline: Vec<&str> = kmod.cmdline().split(';').collect();
-            let args: &&str = cmdline.first().unwrap_or(&"");
-            let env: &&str = cmdline.get(1).unwrap_or(&"");
+            // Split command line into arguments and environment variables in place.
+            // A single `;` separates args from env; `\;` is a literal `;`.
+            // SAFETY: module pages are mapped read-write; `iter_mut` yields exclusive access
+            // so no other reference aliases the cmdline bytes.
+            let cmdline_buf: &mut [u8] = unsafe { kmod.cmdline_bytes_mut() };
+            let (args, env): (&str, &str) = ::cmdline::split_cmdline(cmdline_buf);
+            // Capture compacted length before create_process borrows args/env.
+            let compacted_len: usize = args.len() + env.len();
 
-            match pm.create_process(mm, elf, args, env) {
+            let result: Result<ProcessIdentifier, Error> = pm.create_process(mm, elf, args, env);
+
+            // Update the tracked length so that a subsequent cmdline() call returns the
+            // compacted content without stale trailing bytes.
+            kmod.set_cmdline_len(compacted_len);
+
+            match result {
                 Ok(pid) => {
                     count += 1;
                     pid
@@ -242,7 +252,7 @@ fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &LinkedList<KernelModule>) -
             }
         };
 
-        info!("server {} spawned, pid={:?}", kmod.cmdline(), pid);
+        info!("server spawned, pid={:?}", pid);
     }
 
     count
@@ -284,20 +294,26 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         IoMemoryAllocator,
         LinkedList<KernelModule>,
     );
-    let (madt, mem_lower, mut memory_regions, mut mmio_regions, mut ioaddresses, kernel_modules):
-        KernelArgs = match kargs.parse() {
-            Ok(bootinfo) => (
-                bootinfo.madt,
-                bootinfo.mem_lower,
-                bootinfo.memory_regions,
-                bootinfo.mmio_regions,
-                bootinfo.ioaddresses,
-                bootinfo.kernel_modules,
-            ),
-            Err(err) => {
-                panic!("failed to parse kernel arguments: {:?}", err);
-            },
-        };
+    let (
+        madt,
+        mem_lower,
+        mut memory_regions,
+        mut mmio_regions,
+        mut ioaddresses,
+        mut kernel_modules,
+    ): KernelArgs = match kargs.parse() {
+        Ok(bootinfo) => (
+            bootinfo.madt,
+            bootinfo.mem_lower,
+            bootinfo.memory_regions,
+            bootinfo.mmio_regions,
+            bootinfo.ioaddresses,
+            bootinfo.kernel_modules,
+        ),
+        Err(err) => {
+            panic!("failed to parse kernel arguments: {:?}", err);
+        },
+    };
 
     info!("parsing kernel image...");
     let kimage: KernelImage = match KernelImage::new() {
@@ -362,7 +378,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         let aligned_size: usize = page_end - page_start;
         let typ: MemoryRegionType = MemoryRegionType::Reserved;
         if let Ok(region) =
-            MemoryRegion::new(name, start, aligned_size, typ, AccessPermission::RDONLY)
+            MemoryRegion::new(name, start, aligned_size, typ, AccessPermission::RDWR)
         {
             memory_regions.push_back(region);
         }
@@ -480,7 +496,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
 
     // SAFETY: the memory manager is initialized and access is synchronized.
     let status: ExitStatus =
-        if spawn_servers(unsafe { VirtMemoryManager::get_mut() }, &kernel_modules) > 0 {
+        if spawn_servers(unsafe { VirtMemoryManager::get_mut() }, &mut kernel_modules) > 0 {
             // Enable timer interrupts, if they are supported.
             // SAFETY: the hardware abstraction layer is initialized and access is synchronized.
             if let Some(intman) = unsafe { Hal::get_mut() }.intman() {

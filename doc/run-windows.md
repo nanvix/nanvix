@@ -67,9 +67,10 @@ Everything after `--` is forwarded to the application as arguments:
 ```
 
 Arguments and environment variables are packed into a single string separated by `;`. Everything
-before the semicolon becomes command-line arguments; everything after it becomes environment
-variables as space-separated `KEY=VALUE` pairs (e.g., `"arg1 arg2;VAR1=foo VAR2=bar"`). Use an empty
-string when neither is needed. To pass only environment variables, start the string with `;`:
+before the first unescaped semicolon becomes command-line arguments; everything after it becomes
+environment variables as space-separated `KEY=VALUE` pairs (e.g., `"arg1 arg2;VAR1=foo VAR2=bar"`).
+Use an empty string when neither is needed. To pass only environment variables, start the string
+with `;`:
 
 ```powershell
 # Arguments and environment variables.
@@ -77,6 +78,14 @@ string when neither is needed. To pass only environment variables, start the str
 
 # Environment variables only.
 .\bin\nanvixd.exe -- .\bin\echo-rust-nostd.elf ";VAR1=foo"
+```
+
+To include a literal `;` in the argument portion, escape it as `\;`:
+
+```powershell
+# Argument containing a literal semicolon.
+.\bin\nanvixd.exe -- .\bin\echo-rust-nostd.elf "arg1 with\;semicolon arg2;VAR1=foo"
+# args: ["arg1", "with;semicolon", "arg2"]   env: ["VAR1=foo"]
 ```
 
 ## Logging

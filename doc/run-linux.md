@@ -19,7 +19,13 @@ Run a hello-world application and see its output on the terminal:
 
 ## Table of Contents
 
+- [Quick Start](#quick-start)
+- [Table of Contents](#table-of-contents)
 - [Interactive Mode](#interactive-mode)
+  - [Shim Configuration](#shim-configuration)
+- [Running Containers](#running-containers)
+  - [Building a Nanvix OCI image](#building-a-nanvix-oci-image)
+  - [Importing and running with `ctr`](#importing-and-running-with-ctr)
 - [HTTP Mode](#http-mode)
   - [Starting the Server](#starting-the-server)
   - [Spawning an Application (NEW)](#spawning-an-application-new)
@@ -99,9 +105,10 @@ Everything after `--` is forwarded to the application as arguments:
 ```
 
 Arguments and environment variables are packed into a single string separated by `;`. Everything
-before the semicolon becomes command-line arguments; everything after it becomes environment
-variables as space-separated `KEY=VALUE` pairs (e.g., `"arg1 arg2;VAR1=foo VAR2=bar"`). Use an empty
-string when neither is needed. To pass only environment variables, start the string with `;`:
+before the first unescaped semicolon becomes command-line arguments; everything after it becomes
+environment variables as space-separated `KEY=VALUE` pairs (e.g., `"arg1 arg2;VAR1=foo VAR2=bar"`).
+Use an empty string when neither is needed. To pass only environment variables, start the string
+with `;`:
 
 ```bash
 # Arguments and environment variables.
@@ -109,6 +116,14 @@ string when neither is needed. To pass only environment variables, start the str
 
 # Environment variables only.
 ./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-rust-nostd.elf ";VAR1=foo"
+```
+
+To include a literal `;` in the argument portion, escape it as `\;`:
+
+```bash
+# Argument containing a literal semicolon.
+./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-rust-nostd.elf "arg1 with\;semicolon arg2;VAR1=foo"
+# args: ["arg1", "with;semicolon", "arg2"]   env: ["VAR1=foo"]
 ```
 
 ## HTTP Mode
@@ -205,9 +220,10 @@ All requests are `POST` to `http://<host:port>/`. The message type is specified 
 | `program_args` | string | yes      | Arguments and environment variables.     |
 
 Arguments and environment variables are packed into a single string separated by `;`. Everything
-before the semicolon becomes command-line arguments; everything after it becomes environment
-variables as space-separated `KEY=VALUE` pairs (e.g., `"arg1 arg2;VAR1=foo VAR2=bar"`). Use an empty
-string when neither is needed. To pass only environment variables, start the string with `;`.
+before the first unescaped semicolon becomes command-line arguments; everything after it becomes
+environment variables as space-separated `KEY=VALUE` pairs (e.g., `"arg1 arg2;VAR1=foo VAR2=bar"`).
+Use an empty string when neither is needed. To pass only environment variables, start the string
+with `;`. To include a literal `;` in the argument portion, escape it as `\;`.
 
 **Success response (200):**
 

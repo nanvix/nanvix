@@ -317,8 +317,8 @@ export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
 #===================================================================================================
 
 ALL_GUEST_STATIC_LIBS := posix
-ALL_GUEST_RUST_LIBS := arch bitmap bump-allocator cache config elf error fat32 type-safe nvx proc raw-array nanvix-slab sorted-vec static_assert sysapi syscall sysalloc syslog-macros syslog sys libc_stdlib libc_string mmio-tag multiimage vfs-bench-common
-ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap bump-allocator cache config elf error fat32 type-safe proc raw-array nanvix-slab sorted-vec static_assert libc_string syslog-macros syslog mmio-tag
+ALL_GUEST_RUST_LIBS := arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe nvx proc raw-array nanvix-slab sorted-vec static_assert sysapi syscall sysalloc syslog-macros syslog sys libc_stdlib libc_string mmio-tag multiimage vfs-bench-common
+ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe proc raw-array nanvix-slab sorted-vec static_assert libc_string syslog-macros syslog mmio-tag
 
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd snapshot-rust-nostd vfs-bench-nostd mount-bench-nostd
