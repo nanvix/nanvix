@@ -8,6 +8,12 @@
 //! control-plane, or gateway.
 
 //==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::NetworkingMode;
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -31,6 +37,8 @@ pub struct StandaloneConfig {
     snapshot_path: Option<String>,
     /// Optional host directory to mount on the guest.
     mount_directory: Option<String>,
+    /// Networking mode (disabled or enabled).
+    networking_mode: NetworkingMode,
     /// Optional GDB server port for debugging the guest.
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
@@ -53,6 +61,7 @@ impl StandaloneConfig {
     /// - `console_file`: Optional file path for guest stderr capture.
     /// - `snapshot_path`: Optional snapshot path for restoring VM state instead of cold-booting.
     /// - `mount_directory`: Optional host directory to mount on the guest.
+    /// - `networking_mode`: Networking mode for host networking.
     /// - `gdb_port`: Optional GDB server port.
     ///
     pub fn new(
@@ -61,6 +70,7 @@ impl StandaloneConfig {
         console_file: Option<String>,
         snapshot_path: Option<String>,
         mount_directory: Option<String>,
+        networking_mode: NetworkingMode,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
     ) -> Self {
         Self {
@@ -69,6 +79,7 @@ impl StandaloneConfig {
             console_file,
             snapshot_path,
             mount_directory,
+            networking_mode,
             #[cfg(feature = "gdb")]
             gdb_port,
         }
@@ -97,6 +108,11 @@ impl StandaloneConfig {
     /// Returns the optional host directory to mount on the guest.
     pub fn mount_directory(&self) -> Option<&str> {
         self.mount_directory.as_deref()
+    }
+
+    /// Returns the networking mode.
+    pub fn networking_mode(&self) -> NetworkingMode {
+        self.networking_mode
     }
 
     /// Returns the optional GDB server port.

@@ -11,6 +11,7 @@
 // Imports
 //==================================================================================================
 
+use crate::NetworkingMode;
 use ::hwloc::HwLoc;
 use ::std::marker::PhantomData;
 use ::syscomm::SocketType;
@@ -64,6 +65,8 @@ pub struct SandboxCacheConfig<T> {
     l2_snapshot_path: String,
     /// Path to the temporary directory for Unix sockets and transient files.
     tmp_directory: String,
+    /// Networking mode (disabled or enabled).
+    networking_mode: NetworkingMode,
     /// Phantom data to maintain the generic type parameter `T` in the structure.
     _phantom: PhantomData<T>,
 }
@@ -95,6 +98,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
     /// - `l2`: Flag to deploy linuxd inside an L2 VM.
     /// - `l2_snapshot_path`: Path to the L2 VM's base snapshot.
     /// - `tmp_directory`: Path to the temporary directory.
+    /// - `networking_mode`: Networking mode for host networking.
     ///
     /// # Returns
     ///
@@ -117,6 +121,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
         l2: bool,
         l2_snapshot_path: &str,
         tmp_directory: &str,
+        networking_mode: NetworkingMode,
     ) -> Self {
         Self {
             control_plane_socket_type,
@@ -134,6 +139,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
             l2,
             l2_snapshot_path: l2_snapshot_path.to_string(),
             tmp_directory: tmp_directory.to_string(),
+            networking_mode,
             _phantom: PhantomData,
         }
     }
@@ -331,5 +337,10 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
     ///
     pub fn tmp_directory(&self) -> &str {
         &self.tmp_directory
+    }
+
+    /// Returns the networking mode.
+    pub fn networking_mode(&self) -> NetworkingMode {
+        self.networking_mode
     }
 }

@@ -11,6 +11,7 @@
 // Imports
 //==================================================================================================
 
+use crate::NetworkingMode;
 use ::hwloc::HwLoc;
 use ::linuxd::syscalls::SyscallTable;
 use ::std::sync::Arc;
@@ -53,6 +54,8 @@ pub struct SimpleSandboxCacheConfig<T> {
     log_directory: String,
     /// Path to the temporary directory for Unix sockets and transient files.
     tmp_directory: String,
+    /// Networking mode (disabled or enabled).
+    networking_mode: NetworkingMode,
 }
 
 //==================================================================================================
@@ -78,6 +81,7 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCacheConfig<T> {
         clh_bin_path: &str,
         log_directory: &str,
         tmp_directory: &str,
+        networking_mode: NetworkingMode,
     ) -> Self {
         Self {
             control_plane_socket_type,
@@ -91,6 +95,7 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCacheConfig<T> {
             clh_bin_path: clh_bin_path.to_string(),
             log_directory: log_directory.to_string(),
             tmp_directory: tmp_directory.to_string(),
+            networking_mode,
         }
     }
 
@@ -147,5 +152,10 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCacheConfig<T> {
     /// Returns the path to the temporary directory.
     pub fn tmp_directory(&self) -> &str {
         &self.tmp_directory
+    }
+
+    /// Returns the networking mode.
+    pub fn networking_mode(&self) -> NetworkingMode {
+        self.networking_mode
     }
 }
