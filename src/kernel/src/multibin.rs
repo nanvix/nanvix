@@ -25,10 +25,18 @@ use ::sys::{
 ///
 /// # Description
 ///
-/// Parses a multibinary image and returns a list of kernel modules.
+/// Parses a multibinary image and returns a list of kernel modules plus the shared kernel
+/// arguments.
 ///
 /// Each entry in the multibinary image becomes a [`KernelModule`] whose physical address is
-/// computed as `initrd_base + entry.offset`.
+/// computed as `initrd_base + entry.offset`. Kernel arguments are stored once in the image
+/// header and apply to the entire image rather than to individual modules.
+///
+/// **Note:** Kernel arguments from the multibinary header are stored verbatim and do not
+/// undergo `\;` unescape processing. The `\;` escape convention applies only to the packed
+/// command-line string format used in the single-binary initrd path. Because multibinary
+/// kernel args are structurally separated by the image header, semicolon escaping is not
+/// needed.
 ///
 /// # Parameters
 ///
@@ -37,9 +45,12 @@ use ::sys::{
 ///
 /// # Returns
 ///
-/// A [`Vec`] of [`KernelModule`]s on success, or an [`Error`] if the image is malformed.
+/// A tuple `(modules, kernel_args)` on success, or an [`Error`] if the image is malformed.
 ///
-pub fn parse(image_data: &'static [u8], initrd_base: usize) -> Result<Vec<KernelModule>, Error> {
+pub fn parse(
+    image_data: &'static [u8],
+    initrd_base: usize,
+) -> Result<(Vec<KernelModule>, &'static str), Error> {
     let parsed: multibin::ParseResult = multibin::parse(image_data).map_err(|e| {
         error!("parse(): failed to parse multibinary image: {:?}", e);
         e
@@ -51,6 +62,22 @@ pub fn parse(image_data: &'static [u8], initrd_base: usize) -> Result<Vec<Kernel
         image_data.len(),
         parsed.count()
     );
+
+    // Extract kernel arguments from the image header.
+    let kernel_args: &str = if parsed.kernel_args_size() > 0 {
+        let ka_bytes: &[u8] = &image_data
+            [parsed.kernel_args_offset()..parsed.kernel_args_offset() + parsed.kernel_args_size()];
+        match core::str::from_utf8(ka_bytes) {
+            Ok(s) => s,
+            Err(_) => {
+                let reason: &str = "invalid UTF-8 in multibinary kernel args";
+                error!("parse(): {}", reason);
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            },
+        }
+    } else {
+        ""
+    };
 
     let mut modules: Vec<KernelModule> = Vec::new();
 
@@ -92,5 +119,5 @@ pub fn parse(image_data: &'static [u8], initrd_base: usize) -> Result<Vec<Kernel
         modules.push(module);
     }
 
-    Ok(modules)
+    Ok((modules, kernel_args))
 }
