@@ -20,7 +20,6 @@ Run a hello-world application and see its output on the terminal:
 ## Table of Contents
 
 - [Quick Start](#quick-start)
-- [Table of Contents](#table-of-contents)
 - [Interactive Mode](#interactive-mode)
   - [Shim Configuration](#shim-configuration)
 - [Running Containers](#running-containers)
@@ -104,11 +103,17 @@ Everything after `--` is forwarded to the application as arguments:
 ./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-rust-nostd.elf arg1 arg2
 ```
 
-Arguments and environment variables are packed into a single string separated by `;`. Everything
-before the first unescaped semicolon becomes command-line arguments; everything after it becomes
-environment variables as space-separated `KEY=VALUE` pairs (e.g., `"arg1 arg2;VAR1=foo VAR2=bar"`).
+Arguments, environment variables, and kernel arguments are packed into a single string separated
+by `;`. The format is `<app args>;<env vars>;<kernel args>`:
+
+- Everything before the first unescaped `;` becomes command-line arguments.
+- Everything between the first and second unescaped `;` becomes environment variables as
+  space-separated `KEY=VALUE` pairs.
+- Everything after the second unescaped `;` becomes kernel arguments — a space-separated string
+  that the kernel uses to enable/disable internal features.
+
 Use an empty string when neither is needed. To pass only environment variables, start the string
-with `;`:
+with `;`. To pass only kernel arguments, use `;;`:
 
 ```bash
 # Arguments and environment variables.
@@ -116,14 +121,20 @@ with `;`:
 
 # Environment variables only.
 ./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-rust-nostd.elf ";VAR1=foo"
+
+# All three components.
+./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-rust-nostd.elf "arg1 arg2;VAR1=foo;feature1 feature2"
+
+# Kernel arguments only.
+./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-rust-nostd.elf ";;feature1 feature2"
 ```
 
-To include a literal `;` in the argument portion, escape it as `\;`:
+To include a literal `;` in any section, escape it as `\;`:
 
 ```bash
 # Argument containing a literal semicolon.
 ./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-rust-nostd.elf "arg1 with\;semicolon arg2;VAR1=foo"
-# args: ["arg1", "with;semicolon", "arg2"]   env: ["VAR1=foo"]
+# args: ["arg1", "with;semicolon", "arg2"]   env: ["VAR1=foo"]   kernel_args: []
 ```
 
 ## HTTP Mode
@@ -217,13 +228,16 @@ All requests are `POST` to `http://<host:port>/`. The message type is specified 
 | `tenant_id`    | string | yes      | Tenant identifier for resource isolation.|
 | `app_name`     | string | yes      | Application name for identification.     |
 | `program`      | string | yes      | Path to the program binary to execute.   |
-| `program_args` | string | yes      | Arguments and environment variables.     |
+| `program_args` | string | yes      | Arguments, environment variables, and kernel arguments. |
 
-Arguments and environment variables are packed into a single string separated by `;`. Everything
-before the first unescaped semicolon becomes command-line arguments; everything after it becomes
-environment variables as space-separated `KEY=VALUE` pairs (e.g., `"arg1 arg2;VAR1=foo VAR2=bar"`).
+Arguments, environment variables, and kernel arguments are packed into a single string separated
+by `;`. The format is `<app args>;<env vars>;<kernel args>`. Everything before the first unescaped
+semicolon becomes command-line arguments; everything between the first and second unescaped
+semicolon becomes environment variables as space-separated `KEY=VALUE` pairs; everything after the
+second unescaped semicolon becomes kernel arguments — a space-separated string that the kernel uses
+to enable/disable internal features (e.g., `"arg1 arg2;VAR1=foo;feature1 feature2"`).
 Use an empty string when neither is needed. To pass only environment variables, start the string
-with `;`. To include a literal `;` in the argument portion, escape it as `\;`.
+with `;`. To include a literal `;` in any section, escape it as `\;`.
 
 **Success response (200):**
 
