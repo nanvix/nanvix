@@ -3440,3 +3440,52 @@ The three lemma calls each prove different things: one establishes an index is i
 Actually, let me double-check the extraction rules against what I'm seeing. Blocks over 5 lines must extract, but there are legitimate exceptions—ghost mutations prevent extraction, and single lemma calls with many parameters don't benefit from being wrapped. I should note these exceptions in the report rather than force extractions that don't make sense. Before I finalize, let me see if I can at least extract the pre-mutation portion of that 17-line block separately.
 
 Writing wrapper lemma... I think the wrapper lemma approach isn't worth it since it would just bundle existing lemma calls without proving anything new. So I'll accept these proof blocks as they are—the 17-line one with ghost mutations and the shorter single-call blocks with their parameter formatting—and document the reasoning clearly in the report.
+[RESULT ✓] bash: Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  ✅ All 17 exec functions have contracts.
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  cover...
+
+────────────────────────────────────────────────────────────
+Turn 171
+────────────────────────────────────────────────────────────
+Let me get the final block count summary:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423 && python3 scripts/check_proof_blocks.py target-systems/nanvix/src/libs
+[RESULT ✓] bash: target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs try_alloc_cross_chunk_from  1166  1204      33  ⚠️  EXTRACT (>5 clauses)
+target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs alloc_range                1395  1408      11  ⚠️  EXTRACT (>5 clauses)
+target-systems/nanvix/src/libs/sparse-bitma...
+
+────────────────────────────────────────────────────────────
+Turn 172
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423 && python3 scripts/check_proof_blocks.py target-systems/nanvix/src/libs
+[RESULT ✓] bash: Proof blocks: 46 total, 5 over 5 lines, 41 OK
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 173
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Writing polish report
+[TOOL] bash: mkdir -p /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/libs-sparse-bitmap/polish
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 174
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/libs-sparse-bitmap/polish/checklist.md
+[RESULT ✓] create: Created file /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/libs-sparse-bitmap/polish/checklist.md with 2572 characters
+
+────────────────────────────────────────────────────────────
+Turn 175
+────────────────────────────────────────────────────────────
+Now let me do a final full verification to ensure everything is clean:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && touch src/libs/sparse-bitmap/src/lib.rs && mak
