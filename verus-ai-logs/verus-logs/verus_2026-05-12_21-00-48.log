@@ -1,0 +1,201 @@
+Timestamp: 2026-05-12_21-00-48
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::kpool
+Exit code: 101
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=24
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking sparse-bitmap v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap)
+error[E0425]: cannot find value `last_chunk` in this scope
+   --> src/libs/sparse-bitmap/src/lib.rs:713:13
+    |
+701 |         _last_chunk: usize,
+    |         ----------- `_last_chunk` defined here
+...
+713 |             last_chunk >= entry,
+    |             ^^^^^^^^^^
+    |
+help: the leading underscore in `_last_chunk` marks it as unused, consider renaming it to `last_chunk`
+    |
+701 -         _last_chunk: usize,
+701 +         last_chunk: usize,
+    |
+
+error[E0425]: cannot find value `last_chunk` in this scope
+   --> src/libs/sparse-bitmap/src/lib.rs:714:13
+    |
+701 |         _last_chunk: usize,
+    |         ----------- `_last_chunk` defined here
+...
+714 |             last_chunk < old_chunks_seq.len(),
+    |             ^^^^^^^^^^
+    |
+help: the leading underscore in `_last_chunk` marks it as unused, consider renaming it to `last_chunk`
+    |
+701 -         _last_chunk: usize,
+701 +         last_chunk: usize,
+    |
+
+error[E0425]: cannot find value `last_chunk` in this scope
+   --> src/libs/sparse-bitmap/src/lib.rs:719:45
+    |
+701 |         _last_chunk: usize,
+    |         ----------- `_last_chunk` defined here
+...
+719 |             phase1b_free_prefixes.len() == (last_chunk - entry) as int,
+    |                                             ^^^^^^^^^^
+    |
+help: the leading underscore in `_last_chunk` marks it as unused, consider renaming it to `last_chunk`
+    |
+701 -         _last_chunk: usize,
+701 +         last_chunk: usize,
+    |
+
+error[E0425]: cannot find value `last_chunk` in this scope
+   --> src/libs/sparse-bitmap/src/lib.rs:739:48
+    |
+701 |         _last_chunk: usize,
+    |         ----------- `_last_chunk` defined here
+...
+739 |             forall|i: int| entry as int <= i < last_chunk as int ==>
+    |                                                ^^^^^^^^^^
+    |
+help: the leading underscore in `_last_chunk` marks it as unused, consider renaming it to `last_chunk`
+    |
+701 -         _last_chunk: usize,
+701 +         last_chunk: usize,
+    |
+
+error[E0425]: cannot find value `last_chunk` in this scope
+   --> src/libs/sparse-bitmap/src/lib.rs:863:24
+    |
+701 |         _last_chunk: usize,
+    |         ----------- `_last_chunk` defined here
+...
+863 |                 assert(last_chunk > entry);
+    |                        ^^^^^^^^^^
+    |
+help: the leading underscore in `_last_chunk` marks it as unused, consider renaming it to `last_chunk`
+    |
+701 -         _last_chunk: usize,
+701 +         last_chunk: usize,
+    |
+
+error[E0425]: cannot find value `last_chunk` in this scope
+   --> src/libs/sparse-bitmap/src/lib.rs:865:59
+    |
+701 |         _last_chunk: usize,
+    |         ----------- `_last_chunk` defined here
+...
+865 |                 assert forall|i: int| entry as int <= i < last_chunk as int implies
+    |                                                           ^^^^^^^^^^
+    |
+help: the leading underscore in `_last_chunk` marks it as unused, consider renaming it to `last_chunk`
+    |
+701 -         _last_chunk: usize,
+701 +         last_chunk: usize,
+    |
+
+error[E0425]: cannot find value `last_chunk` in this scope
+   --> src/libs/sparse-bitmap/src/lib.rs:910:49
+    |
+701 |         _last_chunk: usize,
+    |         ----------- `_last_chunk` defined here
+...
+910 |                 phase1b_free_prefixes.len() == (last_chunk - entry) as int,
+    |                                                 ^^^^^^^^^^
+    |
+help: the leading underscore in `_last_chunk` marks it as unused, consider renaming it to `last_chunk`
+    |
+701 -         _last_chunk: usize,
+701 +         last_chunk: usize,
+    |
+
+error[E0425]: cannot find value `last_chunk` in this scope
+   --> src/libs/sparse-bitmap/src/lib.rs:911:24
+    |
+701 |         _last_chunk: usize,
+    |         ----------- `_last_chunk` defined here
+...
+911 |                 cur <= last_chunk,
+    |                        ^^^^^^^^^^
+    |
+help: the leading underscore in `_last_chunk` marks it as unused, consider renaming it to `last_chunk`
+    |
+701 -         _last_chunk: usize,
+701 +         last_chunk: usize,
+    |
+
+error[E0425]: cannot find value `last_chunk` in this scope
+   --> src/libs/sparse-bitmap/src/lib.rs:912:17
+    |
+701 |         _last_chunk: usize,
+    |         ----------- `_last_chunk` defined here
+...
+912 |                 last_chunk < self.chunks@.len(),
+    |                 ^^^^^^^^^^
+    |
+help: the leading underscore in `_last_chunk` marks it as unused, consider renaming it to `last_chunk`
+    |
+701 -         _last_chunk: usize,
+701 +         last_chunk: usize,
+    |
+
+error[E0425]: cannot find value `last_chunk` in this scope
+   --> src/libs/sparse-bitmap/src/lib.rs:924:41
+    |
+701 |         _last_chunk: usize,
+    |         ----------- `_last_chunk` defined here
+...
+924 |                 remaining > 0 ==> cur < last_chunk,
+    |                                         ^^^^^^^^^^
+    |
+help: the leading underscore in `_last_chunk` marks it as unused, consider renaming it to `last_chunk`
+    |
+701 -         _last_chunk: usize,
+701 +         last_chunk: usize,
+    |
+
+error[E0425]: cannot find value `last_chunk` in this scope
+   --> src/libs/sparse-bitmap/src/lib.rs:944:52
+    |
+701 |         _last_chunk: usize,
+    |         ----------- `_last_chunk` defined here
+...
+944 |                 forall|i: int| entry as int <= i < last_chunk as int ==>
+    |                                                    ^^^^^^^^^^
+    |
+help: the leading underscore in `_last_chunk` marks it as unused, consider renaming it to `last_chunk`
+    |
+701 -         _last_chunk: usize,
+701 +         last_chunk: usize,
+    |
+
+error[E0425]: cannot find value `last_chunk` in this scope
+   --> src/libs/sparse-bitmap/src/lib.rs:953:38
+    |
+701 |         _last_chunk: usize,
+    |         ----------- `_last_chunk` defined here
+...
+953 |                 proof { assert(cur < last_chunk); assert(false); }
+    |                                      ^^^^^^^^^^
+    |
+help: the leading underscore in `_last_chunk` marks it as unused, consider renaming it to `last_chunk`
+    |
+701 -         _last_chunk: usize,
+701 +         last_chunk: usize,
+    |
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `sparse-bitmap` (lib) due to 12 previous errors
