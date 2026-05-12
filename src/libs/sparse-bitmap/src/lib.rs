@@ -958,11 +958,6 @@ impl SparseBitmap {
             self.chunks.insert(next, chunk_n);
             proof {
                 let remaining_prime = (remaining - take) as int;
-                let cur_prime_idx = (next - entry) as int;
-                if remaining_prime > 0 {
-                    lemma_seq_sum_from_positive_implies_in_range(
-                        phase1b_free_prefixes, cur_prime_idx);
-                }
                 lemma_lifted_set_bits_alloc_range(
                     pre_inner_chunks, self.chunks@, next as int, 0int, take as int);
                 lemma_range_set_union_contiguous(

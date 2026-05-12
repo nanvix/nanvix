@@ -2886,3 +2886,79 @@ Turn 129
 Turn 130
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
+[RESULT ✓] bash: Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  ✅ All 17 exec functions have contracts.
+
+=== Summary ===
+  verification: 90 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17...
+
+────────────────────────────────────────────────────────────
+Turn 131
+────────────────────────────────────────────────────────────
+28→5 lines! Now tackle the remaining smaller blocks. Let me view them all:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] view: 742.                     (old_chunks_seq[entry as int].offset + entry_cap - trailing_free) as int,
+743.                     (old_chunks_seq[entry as int].offset + entry_cap - trailing_free + count) as int)),
+744.             global_start as int ==
+745.                 (old_chunks_seq[entry as int].o...
+[RESULT ✓] view: 775.                 chunk_e.bitmap@.set_bits.finite(),
+776.                 // Bits not yet processed are still free
+777.                 forall|b: int| bit_e as int <= b < (start_bit_in_entry + take_from_entry) as int
+778.                     ==> !chunk_e.bitmap@.set_bits.contains(b),
+779.        ...
+
+────────────────────────────────────────────────────────────
+Turn 132
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423 && python3 scripts/check_proof_blocks.py target-systems/nanvix/src/libs
+
+[THINKING] Let me now run the check tool again to see the updated state:
+[RESULT ✓] bash: target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs try_alloc_cross_chunk_from  1228  1234     7  ⚠️  EXTRACT (>5)
+target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs commit_cross_chunk_alloc    911   919     9  ⚠️  EXTRACT (>5)
+target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs commit_...
+
+────────────────────────────────────────────────────────────
+Turn 133
+────────────────────────────────────────────────────────────
+Let me view and minimize the remaining blocks. Starting with the 17-line block at 959:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] 9 proof blocks >5 lines remaining. Let me view and try to minimize each:
+
+1. `commit_cross_chunk_alloc` 959-975 (17 lines) — this is the block we reduced to 18 lines, now the tool says 17. Wait, this is the inner-loop post-insert block.
+2. `commit_cross_chunk_alloc` 911-919 (9 lines) — inner pre-commit  
+3. `try_alloc_cross_chunk_from` 1228-1234 (7 lines) — single lemma call
+4. Various 6-line blocks
+
+
+Let me start by looking at the 17-line block to see where I can trim it down further.
+[RESULT ✓] view: 956.             }
+957. 
+958.             self.chunks.insert(next, chunk_n);
+959.             proof {
+960.                 let remaining_prime = (remaining - take) as int;
+961.                 let cur_prime_idx = (next - entry) as int;
+962.                 if remaining_prime > 0 {
+963.              ...
+
+────────────────────────────────────────────────────────────
+Turn 134
+────────────────────────────────────────────────────────────
+Try removing `lemma_seq_sum_from_positive_implies_in_range`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] This 17-line block has a ghost mutation (`committed = committed + take as int;`) at line 971. The ghost mutation prevents extraction, so I need to minimize it further. Let me try removing the conditional lemma call:
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 135
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15

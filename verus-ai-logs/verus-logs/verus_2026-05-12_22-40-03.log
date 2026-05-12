@@ -1,0 +1,27 @@
+Timestamp: 2026-05-12_22-40-03
+Mode: cargo
+Crate: sparse-bitmap
+Directory: N/A
+Module: <all>
+Exit code: 101
+89 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking sparse-bitmap v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap)
+error: while loop: Resource limit (rlimit) exceeded; consider rerunning with --profile for more details
+   --> src/libs/sparse-bitmap/src/lib.rs:822:9
+    |
+822 |         while remaining > 0
+    |         ^^^^^^^^^^^^^^^^^^^
+
+verification results:: 89 verified, 1 errors
+error: could not compile `sparse-bitmap` (lib) due to 1 previous error
