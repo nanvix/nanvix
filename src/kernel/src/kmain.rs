@@ -357,6 +357,13 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         pm::set_kernel_args(kernel_args);
     }
 
+    // Parse kernel arguments into structured options.
+    let kernel_options: ::alloc::vec::Vec<::koptions::KernelOption<'_>> =
+        ::koptions::parse(kernel_args);
+    if !kernel_options.is_empty() {
+        info!("kernel options: {:?}", kernel_options);
+    }
+
     // Verify that kernel arguments were stored and can be retrieved correctly.
     #[cfg(feature = "test")]
     test_kernel_args(kernel_args);

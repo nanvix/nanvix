@@ -1457,6 +1457,7 @@ dependencies = [
  "cmdline",
  "config",
  "elf",
+ "koptions",
  "mmio-tag",
  "multibin",
  "nanvix-slab",
