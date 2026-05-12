@@ -3272,3 +3272,68 @@ Try removing `lemma_seq_remove_insert_is_update` from the alloc_range Ok branch:
 Turn 161
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -5
+[RESULT ✓] bash: cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17/17 exec functions have contracts
+  status: CLEAN
+
+Log written to: verus-ai-logs/verus-logs/verus_2026-05-12_22-43-58.log
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 162
+────────────────────────────────────────────────────────────
+6→5 lines. Now run the full block check to see what's left:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423 && python3 scripts/check_proof_blocks.py target-systems/nanvix/src/libs
+[RESULT ✓] bash: target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs commit_cross_chunk_alloc    946   962    17  ⚠️  EXTRACT (>5)
+target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs try_alloc_cross_chunk_from  1144  1149     6  ⚠️  EXTRACT (>5)
+target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs try_all...
+
+────────────────────────────────────────────────────────────
+Turn 163
+────────────────────────────────────────────────────────────
+Let me try further minimizing the 8-line block at 901:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] 6 proof blocks >5 lines remaining:
+1. `commit_cross_chunk_alloc` 946-962 (17 lines) — inner post-insert with ghost mutation, already minimized2. `commit_cross_chunk_alloc` 901-908 (8 lines) — inner pre-commit, already minimized3. `try_alloc_cross_chunk_from` 1144-1149 (6 lines) — single lemma call (`lemma_walk_fail_gap_case`)4. `try_alloc_cross_chunk_from` 1155-1160 (6 lines) — same lemma call
+
+
+5. `try_alloc_cross_chunk_from` 1215-1221 (7 lines) — `lemma_walk_fail_set_bit_case`
+6. `try_alloc_cross_chunk_from` 1252-1257 (6 lines) — `lemma_cross_chunk_range_is_free`
+
+The first two blocks have ghost mutations and are already at their minimum. For blocks 3-6, they're all single lemma calls with many parameters causing them to span multiple lines—I should check if I can reduce the parameter count or inline them instead.
+
+Looking at block 3, it's calling a lemma with 9 parameters, and block 5 has 11 parameters. These are structurally irreducible since they're single lemma calls that just happen to need many arguments. Extracting them into a wrapper would only add indirection, so I'll note them as "single lemma call, kept inline due to parameter count" in the report.
+
+But I'm realizing the extraction skill requires >5 lines must be extracted, yet extracting a single-call block into another lemma with identical parameters just adds complexity without benefit. The skill also says 4-5 lines should be extracted only if generic or reusable, and these blocks are tightly coupled to their execution context. For the 17-line and 8-line blocks with ghost mutations, I could split around the mutation points, but that would be artificial and hurt readability. For the single lemma call blocks, I should try formatting them more compactly instead. Continuing with the rest of that block, I see the ghost mutation and the trigger assignment both need to stay inline since they're essential to the loop invariant. The three lemma calls before them could potentially be factored out into a helper, but that would require bundling a lot of complex parameters together, which might not be worth the extraction.
+
+Looking at the extraction guidelines, I need to identify what each block proves and whether it can stand alone. Block 946-962 has the ghost mutation making it tricky to extract cleanly. But block 901-908 is pure proof with no mutations — just lemma applications and an assertion — so that's a better candidate. For the shorter single-call blocks, I'm weighing whether extraction adds clarity or just creates more boilerplate.
+
+Actually, I can split the 17-line block differently: extract the three lemma calls that happen before the ghost mutation into a helper, then keep the mutation and its follow-up inline. That way I'm not trying to extract around the mutation.
+
+The extracted helper would need a lot of parameters though—pre_inner_chunks, self.chunks, next, gs, count, remaining, take, phase1b_free_prefixes, entry—and the remaining block would still be over 5 lines anyway. I've also already tested removing the `_trig` ghost variable and replacing it with an assertion, but that caused rlimit issues before. So I'll accept this block as-is and focus on extracting the other candidates instead.
+
+Now I'm looking at the 8-line block that proves take equals the corresponding phase1b_free_prefixes entry and that all bits up to take are free in the chunk. But this block references next, entry, phase1b_free_prefixes, take, chunk_n, and old_chunks_seq—extracting it would require passing all of these as parameters plus adding requires clauses, which would make the lemma quite specialized and harder to read than just keeping it inline.
+
+For the remaining blocks, I should be pragmatic: the 17-line block at 946-962 with ghost mutation is worth extracting, and the 8-line block is extractable, but the single lemma calls with many parameters are already as simple as they can be—wrapping them in another lemma would just add indirection without improving clarity.
+
+Let me try one more pass at minimizing that 8-line block to see if I can eliminate the assert-forall bridge and simplify the proof structure.
+[RESULT ✓] view: 898.             let ghost pre_inner_chunks = self.chunks@;
+899.             let mut chunk_n = self.chunks.remove(next);
+900. 
+901.             proof {
+902.                 let idx = next as int - entry as int - 1;
+903.                 lemma_seq_sum_from_unfold(phase1b_free_prefixes, idx);
+904.     ...
+
+────────────────────────────────────────────────────────────
+Turn 164
+────────────────────────────────────────────────────────────
+Try removing the assert-forall bridge:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 165
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -5
