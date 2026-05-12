@@ -15,7 +15,7 @@ libc = { workspace = true }
 log = { workspace = true }
 sys = { workspace = true, features = ["std"] }
 sysapi = { workspace = true, features = ["std"] }
-syscall = { workspace = true, features = ["std", "networking"] }
+syscall = { workspace = true, features = ["std"] }
 
 [features]
 default = []
