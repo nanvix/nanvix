@@ -239,3 +239,625 @@ $(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
 Turn 7
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: ⚠️  external_body: 9
+    ⚠️  cfg-gated exec code: 2
+  Affected functions:
+    - frame.rs:68 frame_addr_to_bitmap_index: external_body
+    - frame.rs:85 bitmap_index_to_frame_addr: external_body
+    - frame.rs:98 page_aligned_pa_to_bitmap_index: external_body
+    - frame.rs:109 region_start_frame_num...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). Now let me read the proof-extraction and proof-minimization skills, then plan my approach.
+[TOOL] report_intent: Reading polish skills
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/.github/skills/proof-extraction/SKILL.md 2>/dev/
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: NOT FOUND
+---SEPARATOR---
+NOT FOUND
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423 -name "SKILL.md" -path "*/proof-extraction/*" -o -name "SKILL.md" -pa
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/docs/skills/proof-extraction/SKILL.md
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/docs/skills/proof-minimization/SKILL.md
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/docs/skills/proof-extraction/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/docs/skills/proof-minimization/SKILL.md
+[RESULT ✓] view: 1. ---
+2. name: proof-minimization
+3. description: "Remove redundant proof artifacts (assertions, lemmas, hints, dead code) without weakening guarantees. Use when polishing verified code to reduce verbosity."
+4. ---
+5. 
+6. # Proof Minimization
+7. 
+8. Remove redundant proof artifacts to make verifica...
+[RESULT ✓] view: 1. ---
+2. name: proof-extraction
+3. description: "Extract large inline proof blocks from exec code into named lemmas in .proof.rs. Use when polishing verified code to improve readability and proof organization."
+4. ---
+5. 
+6. # Proof Extraction
+7. 
+8. Extract large inline `proof { ... }` blocks from...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+
+[THINKING] Now I have a clear picture of the task. Let me analyze the proof blocks and plan the extraction.
+
+There are 15 blocks >5 lines that need extraction. Let me identify the patterns:
+
+1. **alloc error path (lines 178-242)**: Proves bitmap unchanged → view unchanged → free_frames.is_empty() → self.inv()
+2. **alloc success path (lines 248-255)**: Small block proving index postconditions
+3. **alloc success path (lines 262-340)**: Proves old(self)@.free_frames.contains(fa) → spec_alloc match → self.inv()
+
+
+4. **free conversion (lines 381-385)**: Just 5 lines, borderline
+5. **free success (lines 388-466)**: Proves allocated_frames → free_frames → spec_free match → self.inv()
+6. **free error (lines 470-540)**: Proves view unchanged → !allocated_frames.contains(fa) → self.inv()
+7. **book conversion (lines 582-592)**: 11 lines proving phys_addr@ == frame_addr_of(frame_number)
+8. **book success (lines 595-673)**: Proves free_frames.contains(fa) → spec
+
+_book match → self.inv()
+9. **book error (lines 677-749)**: Proves view unchanged → !free_frames.contains(fa) → self.inv()
+10. **alloc_range overflow (lines 808-828)**: Proves sfn + nf doesn't overflow
+11. **alloc_range efn_calc (lines 836-867)**: Proves efn = (start+size)/ps and efn*ps = start+size
+12. **alloc_range uncovered (lines 888-921)**: Proves postcondition in uncovered error case
+13. **alloc_range test_true (lines 954-987)**: Proves postcondition in "already allocated" error case
+14. **alloc_range set loop body (lines 1027-1039)**: Bridge coverage proof
+15. **alloc_range set loop post**: Continuing through the remaining loop invariant proofs
+
+, then the large postcondition proof for the Ok case.
+
+I'm noticing several recurring proof patterns across the error and success paths. The view unchanged pattern keeps appearing whenever bitmap operations don't change the underlying state. The spec matching proofs follow predictable structures too—allocated and free frame sets get updated symmetrically depending on whether we're allocating, freeing, or booking frames.
+
+There's also the injectivity property of frame addresses that comes up repeatedly when establishing that different frame indices map to different addresses. I'm thinking about extracting these common patterns into reusable lemmas that can be called from the main proof blocks instead of repeating the logic inline. Since these would be proof methods on the Inner type, they can access self and take the old state as a tracked parameter, which should give them enough context to work with the bitmap and frame state. I need to reconsider how these proofs work since they're inside exec functions with access to `self` and `old(self)`, but extracted lemmas would need the old and new inner states as parameters. Looking at the existing lemmas in the proof file, they follow a pattern of taking `&self` and an `old_inner: &Inner` parameter, so I can apply that same structure. Now I'm identifying the distinct proof patterns to group them effectively—starting with cases where the bitmap state remains unchanged across alloc, free, and book error paths. I see the issue now—when I extract these patterns into separate proof lemmas, I can't use the special `old(self)` construct that's available inside exec functions. Instead, I'll need to pass the old state as a parameter like `old_inner: &Inner`. Let me start defining the first lemma to check that when the bitmap stays the same, the view of allocated frames remains unchanged.
+
+For the second lemma, I'm capturing the pattern where setting a bit transitions a frame from free to allocated—this handles both the successful allocation and booking cases. The third lemma would mirror this for clearing bits and moving frames back to free.
+
+Then I'm establishing some key invariant properties: one showing that when the bitmap is completely full, there are no free frames left; another proving that frames not in the set bits aren't allocated; and a final one checking that frames are only free when they're either uncovered or their bits are clear.
+
+Now I'm re-examining the inline proofs more carefully. For the alloc error case, I need to verify that the bitmap stays unchanged, the view remains the same, and the free frames set is empty. For the success path, I'm checking some preconditions about page size, the index coverage, and ensuring the frame address doesn't overflow.
+
+Looking at the alloc success path, I need to confirm the frame invariant holds, that the old free frames contained this frame, and that the allocated and free sets update correctly. Similarly for the free operation—both the success case where I remove from allocated and add to free, and the error case where nothing changes and the frame wasn't in the allocated set to begin with.
+
+For the book conversion proof, I'm verifying that a physical address equals the frame address of its corresponding frame number through a series of arithmetic lemmas about division, modulo, and multiplication.
+
+Looking at the remaining proofs, I see the book success case follows the same pattern as alloc, while the book error case mirrors the free error structure but for free_frames. The alloc_range overflow proofs are specific to that function's arithmetic, and there are various proof blocks scattered through the loop bodies.
+
+I'm thinking strategically about which lemmas would have the highest impact to extract. The view-unchanged lemma appears three times across alloc error, free error, and book error cases—that alone could save around 120 lines. I should also look at the set-bit-updates pattern since it seems to recur.
+
+Looking at the alloc_range early-exit proofs for uncovered and test_true cases, they both follow a similar structure: proving the bitmap stays unchanged and that frames don't subset into the free frames. There's a pattern emerging here that might be worth extracting as well.
+
+Now I'm thinking through what lemmas I can actually create in the proof file. The tricky part is that these proofs reference `old(self)`, which only exists inside exec functions, so I'd need to pass the old state as a parameter to any extracted lemma. I'm sketching out a plan for lemmas like one that proves the view stays unchanged when the bitmap is unmodified, another for the postcondition after setting a bit, and one for the postcondition after clearing a bit.
+
+There are more lemmas I could extract—ones about when the free list is empty, when an address isn't allocated, properties of address alignment, and overflow checks—but I'm realizing some of these might be too tightly coupled to their specific context to be worth extracting as standalone lemmas. I should focus on the ones that will have the most impact on simplifying the main proof. I'm also considering lemma_alloc_range_postcondition for the loop proof, though that would require the full bitmap state as a precondition which gets complicated. Let me focus on the most straightforward extractions first, verify them, then iterate. The patterns are clear enough that I should just start implementing rather than overthinking this.
+
+Now I'm mapping out which blocks can be extracted into lemmas. The view-unchanged pattern shows up repeatedly across the error cases and some of the alloc_range branches—it's the core assertion that allocated_frames remains equivalent before and after an operation. I'll start by extracting that pattern since it's the most reusable.
+
+For the set-bit updates, I'm seeing a different structure emerge in the success cases where the bitmap actually changes, so that'll need its own lemma to handle the view updates properly. .bitmap@.chunks =~= old_inner.bitmap@.chunks
+- old_inner.bitmap@.set_bits.contains(idx)
+- fa == frame_addr_of(idx)
+- spec_page_size() > 0
+
+Now I need to implement these lemmas in frame.proof.rs and update the corresponding call sites in frame.rs. Let me start by writing out all the lemmas first, then I'll go back and update where they're used.
+
+I should also think through the alloc_range function proofs since those are more involved. Looking at the different sections there: proving the overflow check for sfn + nf, establishing the efn properties, handling the uncovered error postcondition, and a few other cases that are already partially done.
+
+The biggest piece is the post-loop proof that spans nearly 100 lines. I could extract that into its own lemma that takes the bitmap union property as a precondition and proves the resulting frames, allocated, and free set properties. Though that would be a complex lemma with many preconditions to manage.
+
+Looking at the error case proofs, they share a pattern where I need to show the view hasn't changed and that frames don't overlap with certain ranges. The view unchanged part is already handled by an existing lemma, so I just need to focus on the subset checks specific to each error case.
+
+The arithmetic-heavy proofs around overflow and end-of-file calculations are tightly coupled to the allocation logic itself. I'm thinking through whether extracting those would actually improve readability or just fragment the proof further.
+
+My strategy is to start with the most reusable lemmas first—the ones that appear across multiple functions—then move to function-specific lemmas that would clean up the main proof bodies. I'm going to start implementing these lemmas now, following the pattern of the existing `lemma_internal_inv_preserved` which takes `&self` and `old_inner: &Inner` as parameters. I need to be careful about how `old(self)` is referenced in the proof blocks, especially within the alloc_range function context. I'm thinking through the order of operations here - it makes sense to batch the lemma extractions and their call site updates together rather than doing everything at once, since that'll make debugging easier if verification fails. I'll start with the simpler lemmas first and work my way up to the more complex ones.
+
+Writing the lemma definitions... Continuing the proof for free frames... Continuing with the lemma proof... Continuing the proof for the free frames invariant... Continuing the proof by showing that for any address in the old free frames (except the one we're clearing), it remains in the new free frames, then asserting that the updated free frames equal the old ones with that address removed.
+
+Now I'm working through the lemma that establishes how clearing a bit updates the abstract view—specifically that the allocated frames lose the frame address while the free frames gain it. Continuing the proof by establishing that the allocated frames set equals the old set with the frame address removed, using commutativity and equality lemmas to verify the frame indices match up correctly. Continuing the proof for the reverse direction... Finishing the proof for the bitmap condition, then moving on to `lemma_addr_not_allocated` which establishes that when an index isn't in the set bits, its corresponding frame address isn't in the allocated frames list. Establishing the injectivity constraint through arithmetic lemmas to prove that no other index could map to the same frame address, then asserting that the frame isn't in the allocated set. and if not covered then it can't be in set_bits by the bitmap's well-formedness property. So the error postcondition guarantees that `idx` is not in `set_bits`, which is what I need for `lemma_addr_not_allocated`.
+
+For `lemma_addr_not_free`, I'm setting up a similar proof structure where I assert that no index `i` can satisfy both being covered and having its frame address equal to `fa` while also not being in `set_bits`. I'm using the injectivity of `frame_addr_of` to establish this contradiction. Writing the proof function... Completing the proof by applying the fundamental division-modulo lemma to establish that the physical address equals the frame address, then noting that the free version achieves the same result more concisely with just the lemma application and assertion. Defining the lemma function... Completing the proof with lemma applications...
+
+Actually, looking back at the original proof structure, I need to be more careful about what lemmas are actually being invoked. The proof is using the fundamental division-modulo properties along with commutativity of multiplication to establish that when both start and size are divisible by the page size, their quotients when divided by the page size stay within the valid range. Let me trace through what the original code is doing more carefully to make sure I'm capturing the right approach. Finishing the inequality proofs to establish that the frame number plus count stays within bounds, then realizing this 21-line proof block might be worth extracting into a helper lemma to keep things cleaner.
+
+Looking at the other proof sections now—the alloc_range end frame calculation is another 32 lines establishing that the end frame equals the total size divided by page size, and the post-loop assertions span nearly 100 lines, so both are candidates for extraction to make the main logic more readable.
+
+I think the mechanical refactoring approach makes sense here rather than consulting further—I'll start extracting these proof blocks into lemmas following the patterns already established, beginning with the post-loop section and its preconditions around bitmap invariants and frame calculations. Finishing the ensures clause with the frame allocation logic, then I need to implement this by creating the new lemmas in the proof file, updating the main frame code to call them, and running verification before doing a minimization pass. Looking at those three assertions, they're just instantiating what the loop invariant already gives us—that the bitmap stays unchanged means the allocated and free frames stay unchanged too. The invariant directly provides `self.bitmap@ =~= old(self).bitmap@`, so these assertions follow immediately without needing a separate lemma. The 34-line blocks might be inflated by other reasoning, but this particular view-unchanged part is already baked into the invariant itself.
+
+For the uncovered case, there's a sequence of postcondition setup, variable connections, proving the state equality, establishing the frames subset property with a witness, and then calling the invariant well-formedness lemma. Separately, there's a proof block that applies a multiplication inequality lemma to handle the overflow check for `index * FRAME_SIZE`.
+
+The test_true block follows the same pattern, though it's somewhat repetitive with the postcondition variable setup. I could potentially extract the "prove frames aren't a subset because one frame isn't free" pattern, but it's tricky since the reasoning differs depending on whether the frame is uncovered or already set. I should focus on the highest-impact extractions first and see how the verification performs.
+
+Before diving into implementation, I need to be careful about how these lemmas integrate with Verus. Looking at the existing proof file structure, it's wrapped in a `verus!` block and contains the spec function for frame addresses, the View implementation for Inner, and the Inner impl with its invariant methods. My new additions will need to fit into this structure.
+
+The new lemmas should go into the `Inner` impl block for methods that take `&self`, or as standalone functions for pure arithmetic lemmas. I'm also realizing that the preconditions for these lemmas are actually satisfied by the postconditions of the bitmap operations—`bitmap.alloc()` and `bitmap.set()` both provide the coverage guarantee I need, and `bitmap.clear()` provides the set_bits guarantee. So the lemma contracts should be sound.
+
+For the `lemma_clear_bit_updates_view`, I need to verify that `old_inner` has `is_covered(idx)` to establish that the frame address was in the allocated frames. Looking at the free success path, the proof shows that `set_bits.contains(idx)` implies `is_covered(idx)` through the bitmap well-formedness invariant, so the lemma can derive this from the bitmap's internal invariant. Now I'm thinking through whether the proof can actually access `internal_inv` since it's marked as `closed spec`. The key insight is that since the proof file is included directly into the same module via `include!`, the closed spec definition becomes visible within that scope, so I can reference it in the proof.
+
+Looking at the alloc_range post-loop proof section, I'm considering whether to extract it as a separate lemma since it's quite large at nearly 100 lines with complex preconditions and ensures clauses.
+
+Examining the proof structure more carefully, I see it establishes four key assertions: that the allocated frames are a subset of the old free frames, that the new allocated frames equal the old allocated frames unioned with the new frames, that the free frames are correctly updated by removing the allocated frames, and that the spec_alloc_range predicate holds.
+
+Then I'm extracting this into a separate lemma that takes the old inner state and frame range parameters, with preconditions checking the internal invariant, bitmap validity, and that the bitmap chunks remain unchanged. Refining the ensures clause...
+
+The `spec_alloc_range` function constructs a new UpoolView by unioning the allocated frames and differencing the free frames. So the equality `self@ =~= old@.spec_alloc_range(frames)` breaks down into two field equalities: the allocated frames should match the union, and the free frames should match the difference.
+
+Now I need to write out the full implementation, but first I want to verify the proof strategy works consistently. For the alloc case, the `lemma_set_bit_updates_view` approach establishes the connection between the bitmap operation and the view update, where the frame address comes directly from the bitmap's index-to-frame conversion. The book case has a similar structure but the precondition about the frame address is derived differently in the proof. (idx) <= usize::MAX as int) to satisfy the bitmap_index_to_frame_addr preconditions. Now I'm ready to implement the full solution, starting with organizing the lemmas I need to add to frame.proof.rs: lemma_view_unchanged for the three places it's used, lemma_set_bit_updates_view for the allocation and book success paths, lemma_clear_bit_updates_view for the free path, and lemma_bitmap_full_means_free_empty for another case.
+
+I also need lemma_addr_not_allocated for the free error case, lemma_addr_not_free for the book error case, and lemma_aligned_addr_is_frame_addr for the free and book conversions. For alloc_range, I'll add lemma_alloc_range_updates_view for the post-loop state, plus two specialized arithmetic lemmas: one proving the sum of frame quotients stays bounded, and another for the frame number calculation.
+
+The loop body proofs for coverage and set range updates are tightly coupled to the iteration logic, so extracting those might be difficult. But the early exit error proofs—both the uncovered and already-allocated cases—follow a similar pattern, so I could potentially create a helper lemma to reduce duplication.
+
+I'm sketching out what this helper would look like: it would take the old inner state and frame indices as parameters, then verify that the allocated and free frame sets remain unchanged when an error occurs. The preconditions would establish that the bitmap state is preserved and that we've found a witness frame within the requested range that's already allocated. Defining a witness lemma...
+
+Actually, that's probably overkill—Verus should handle it automatically. The real challenge is proving that the witness frame isn't in the old free set. For the uncovered path, I need to show that if the bitmap doesn't cover the index, then no frame address derived from any index can equal our witness frame, which means it can't be in free_frames. ` would actually work for both cases! The precondition `!self.bitmap@.is_covered(idx) || self.bitmap@.set_bits.contains(idx)` is satisfied either when the bit is uncovered or when it's already set. The tricky part is that `alloc_range` proofs operate on `old(self)`, so I need to be careful about when the bitmap state is equivalent between the old and current versions.
+
+Since the loop invariant guarantees `self.bitmap@ =~= old(self).bitmap@` in the read-only sections, calling `lemma_addr_not_free` on the current `self` gives me the result I need for `old(self)` as well. And because `self@ == old(self)@` from `lemma_view_unchanged`, I can use that to bridge between the two states and establish that `!self@.free_frames.contains(fa)` implies the same for `old(self)`.
+
+So the early exit proofs in `alloc_range` can leverage `lemma_view_unchanged` to connect the states properly.
+
+Now I'm settling on the final set of lemmas to implement: `lemma_view_unchanged` for the three call sites where the view stays the same, `lemma_set_bit_updates_view` for the two places where setting a bit changes things, and `lemma_clear_bit_updates_view` for the one case with clearing. This should compress those 34-line proof blocks down to about 10 lines each.
+
+I'm also adding lemmas for the bitmap state checks like `lemma_bitmap_full_means_free_empty`, `lemma_addr_not_allocated`, and `lemma_addr_not_free` to handle the various error paths. Looking at the free error case specifically, when bitmap.clear() fails, the postconditions tell me that either the index isn't covered or the bit isn't set, which means the index definitely isn't in the set of allocated bits. In the error case, the bitmap remains unchanged from before the operation, so I'm checking that the index was never in the bitmap's set_bits to begin with—this follows directly from the bitmap.clear error condition, which fires when the index either isn't covered or isn't set. The error cases both lead to the same conclusion: the bit isn't in the set. The well-formedness property tells me that if a bit isn't covered, it can't be in the set, and if the bit isn't set, that's directly what I need. So either way, I can establish that the index isn't in the old bitmap's set_bits. The challenge is whether Verus can automatically derive this from the bitmap.clear error postcondition, or if I need to help it along.
+
+I could structure the lemma precondition to match exactly what the call site can prove—combining the clear error condition with the bitmap's invariant—so that the implication to `!set_bits.contains(idx)` becomes straightforward. Writing lemma signatures... The test_true case means `is_bit_set(index as int)` holds, which implies `set_bits.contains(index as int)`, so I can invoke the lemma with the second disjunct. I'm confident in this approach now and ready to implement it. For `lemma_aligned_addr_is_frame_addr`, I notice it appears in both the free and book functions—the free version is just a couple of proof lines that can stay inline, while the book version is longer.
+
+Looking at the book version, I'm working through the proof steps: establishing that the page size is positive, the physical address is aligned, computing the frame number from division, applying the fundamental division-modulo lemma, and then using commutativity to show the physical address equals the frame address. Some of these assertions might be redundant, so I should check which ones are actually necessary.
+
+The free version accomplishes the same thing with just two proof lines, so I'm wondering if I can strip down the book version similarly. The core insight is that both versions are doing the same calculation—dividing by page size and using commutativity—just with different variable names. Let me try minimizing the assertions and see if the essential lemmas are sufficient.
+
+Now I'm ready to implement this. I'll write out the proof file with all the lemmas, update frame.rs to call them instead of using inline proofs, and then verify everything works.
+
+Writing proof file content... Now I'm planning the new lemmas to add to the proof file. I need a lemma showing that when the bitmap's set_bits and chunks remain unchanged, the abstract view of allocated and free frames stays identical, and then another lemma for what happens after setting a specific bit. Writing proof lemmas... Refining the lemma calls... In Verus, `old(self)` behaves like a reference in proof mode, so I can call proof methods on it directly. The lemma `lemma_bitmap_full_means_free_empty` should work when invoked as `old(self).lemma_bitmap_full_means_free_empty()`, since the precondition about `self`'s internal invariant is satisfied by the requires clause.
+
+When the bitmap allocation fails, I need to understand what that means for the state. The error case tells me the bitmap is full (all covered bits are set), and I'm working through the postcondition of the failed allocation to establish that no addresses remain in the free frames set. I need to call a lemma that establishes the bitmap is full when allocation fails, which should give me the postcondition that all covered bits are set. I'm checking whether the bitmap's `alloc()` error case already provides this guarantee in the right form, and examining the proof logic to see how it derives that no free frames remain. I'm sketching out a lemma that would establish the connection between a full bitmap and an empty free frames list, but I'm realizing this extraction might not be worth the effort—it's only a handful of lines and heavily tied to the specific alloc error case, plus satisfying its precondition would require additional work to bridge from the alloc postcondition. I should probably focus on the lemmas that provide clearer value instead.
+
+The high-impact extractions are the ones dealing with view invariants and bit operations—those will cut down the most lines and have straightforward preconditions. For the smaller lemmas around bitmap state and address allocation, I'll attempt them but keep them inline if verification becomes complicated.
+
+Now I need to actually start implementing this. All the extracted lemmas need to live inside the `verus!` block since that's how the proof file is structured, so I'll write the additions to the proof file first, then update the frame.rs code accordingly.
+
+Planning the inline replacements in frame.rs...
+
+Writing proof code... Still writing proof logic... Still writing proof blocks... So the precondition might not be automatically derivable, but I'll attempt it first and refactor if needed. For the book's success path, I can drastically simplify the proof by calling three key lemmas—one to update the view, one to preserve the invariant, and one to verify well-formedness—reducing 79 lines down to just 5.
+
+For the error path, I'm taking a similar approach: asserting that the bitmap state remains unchanged, then invoking lemmas to show the address was already unavailable and that the invariant still holds, cutting 73 lines down to 8.
+
+The alloc_range post-loop section follows the same pattern—using lemmas to verify the view updates correctly across the frame range and that invariants are preserved, reducing 99 lines to just 6.
+
+Still writing proof blocks... Finishing the assertions and checking the preconditions for lemma_addr_not_free to ensure the bitmap coverage requirement is satisfied.
+
+Now I'm working through the alloc_range test_true error case, setting up the proof structure with page size calculations and frame number ranges. I'm looking at the overflow and end frame number calculations for alloc_range—these are both arithmetic-heavy proofs that don't depend on self at all, so they could work as standalone proof functions. I'm thinking about extracting a lemma that bounds the frame quotients based on the start address, size, and page size parameters. Hmm, looking back at the original proof, I see it uses intermediate assertions to establish the key facts. Let me reconsider whether a minimal version would work, and I'm also thinking through `lemma_alloc_range_efn_properties` which needs to prove three related arithmetic properties about the end frame number and handle potential overflow. I'm wondering if I can consolidate the overflow and efn proofs into a single lemma that covers all the necessary arithmetic relationships.
+
+Writing lemma definition... Continuing with the proof steps: I need to show that start/ps + size/ps is bounded by usize::MAX, then establish that multiplying this sum by ps recovers the original start + size. The key insight is using distributivity to expand (start/ps + size/ps) * ps into separate terms, and then applying a lemma that hoists division over addition when the divisor evenly divides both operands. I see the proof uses nonlinear_arith to handle the distributivity and arithmetic relationships. Rather than extracting multiple lemmas, I'll consolidate the arithmetic reasoning into a single lemma that takes region parameters directly instead of the execution variable names, then move forward with implementing the alloc_range loop body proofs. Now I'm proving that the set range expands correctly when we insert the next index, showing how the bitmap's set bits union with the new range.
+
+I'm finalizing my implementation strategy and reviewing which proof blocks to extract into separate lemmas versus keep inline. Looking at a summary table of the allocator and deallocator operations, I can see which blocks need new lemmas and roughly how many lines each extraction will save. I'm tallying up the actual line savings when accounting for the lemma definitions that get added to the proof file. The inline reductions look good at around 400 lines net, but I need to factor in that these helper lemmas will add roughly 215 lines total to the codebase, so the real benefit is more modest than the initial calculation suggested.
+
+Now I'm ready to start implementing. I'll begin by writing out the proof file with all the lemmas, then refactor frame.rs to use them, and finally verify everything compiles and works correctly.
+
+I'm working through how to connect the view-level properties to the bitmap operations in the lemma for `alloc_range_updates_view`. The challenge is establishing that the old inner state's coverage properties follow from the bitmap's covered bits, which involves understanding how the SparseBitmap view definitions compose together.
+
+For the `lemma_view_unchanged` call sites, the loop invariant already establishes that the bitmap hasn't changed, so the view's set_bits and chunks fields should remain equal as well. Verus should handle the field-by-field decomposition of the struct equality automatically. Actually, looking at the original code, loops 1 and 2 maintain the full bitmap view unchanged, so I can derive the field equalities from that simpler invariant. For loop 3, I need to track the chunks and set_bits separately since they change in different ways. I'll assert these field equalities to satisfy the lemma requirements. not be equal to `old(self).bitmap@.set_bits` unless I explicitly verify the field equality. Let me look at what `SparseBitmapView` actually contains—it has `set_bits` and `chunks` fields, plus spec functions like `is_covered` and `is_bit_set` that depend on those fields. So if the loop invariant establishes `self.bitmap@ =~= old(self).bitmap@`, that should mean all fields are extensionally equal, but I might need to decompose this explicitly for Verus to recognize that `set_bits` and `chunks` haven't changed.
+
+Now I'm ready to write the actual proof code. I need to be especially careful with the requires clause for `lemma_alloc_range_updates_view`, particularly around what the state looks like after the third loop—the bitmap should satisfy its invariant, and I need to track what `chunks` and other fields contain at that point. all available at the call site since `old(self).inv()` is a precondition of `alloc_range`, and `inv()` includes both `self@.wf()` and `internal_inv()`. For the bitmap invariant, the set operations should maintain it as a postcondition, though I need to verify that the loop's bitmap modifications preserve the invariant correctly.
+
+Now I'm ready to write the code, but first I need to check what `lemma_set_bit_updates_view` requires—specifically whether `old_inner.bitmap@.is_covered` is available.
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Planning proof extraction
+[TOOL] task: {'name': 'rubber-duck-polish-plan', 'agent_type': 'rubber-duck', 'description': 
+[RESULT ✓] report_intent: Intent logged
+[TOOL] report_intent: Reviewing proof plan
+[TOOL] skill: proof-extraction
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] skill: Skill "proof-extraction" loaded successfully. Follow the instructions in the skill context.
+[TOOL] rg: proof \{|proof fn lemma_|struct Inner|impl.*Inner|spec fn|alloc_range|fn alloc|fn free|fn book|SparseBitmapView
+[TOOL] glob: **/frame*.rs
+[RESULT ✓] glob: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phy...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs:50:    pub open spec fn spec_alloc(self, frame: int) -> UpoolView {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs:58:    pub open spec f...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.spec.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use vstd::arithmetic::div_mod::*;
+4. 
+5. /// Helper: convert a bitmap index to a frame (physical) address.
+6. pub open spec fn frame_addr_of(i: int) -> int {
+7.     i * spec_page_size()
+8. }
+9. 
+10. impl View for Inner {
+11.     type V = UpoolView;
+12. 
+13.     closed spec fn view...
+[RESULT ✓] view: 140. struct Inner {
+141.     /// A sparse bitmap that keeps track of free/used frames.
+142.     bitmap: SparseBitmap,
+143. }
+144. 
+145. #[verus_verify]
+146. impl Inner {
+147.     ///
+148.     /// # Description
+149.     ///
+150.     /// Allocates a frame.
+151.     ///
+152.     /// # Returns
+153.     ...
+[RESULT ✓] view: 700.                                 && addr == frame_addr_of(i);
+701.                             assert(self.bitmap@.set_bits.contains(i));
+702.                         }
+703.                     }
+704.                     assert forall|addr: int|
+705.                         self@.free_frames.con...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::UpoolView;
+4. use crate::hal::mem::spec_page_size;
+5. 
+6. // ---------------------------------------------------------------------------
+7. // External type specifications (arch crate)
+8. // ---------------------------------------------------------------------------
+9. ...
+[RESULT ✓] view: 360.             frame.inv(),
+361.         ensures
+362.             self.inv(),
+363.             match result {
+364.                 Ok(()) => {
+365.                     &&& old(self)@.allocated_frames.contains(frame@)
+366.                     &&& self@ == old(self)@.spec_free(frame@)
+367.          ...
+[TOOL] rg: struct SparseBitmap|impl SparseBitmap|fn alloc|fn set\(|fn clear\(|fn test\(|is_full|is_covered|set_bits|chunks
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1080.                     let i = choose|i: int|
+1081.                         self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+1082.                     if old(self).bitmap@.set_bits.contains(i) {
+1083.                         assert(old(self)@.allocated_frames.contains(addr));
+1084. ...
+[RESULT ✓] rg: No matches found.
+[TOOL] rg: pub struct SparseBitmap|struct SparseBitmap|SparseBitmapView|pub open spec fn is_covered|fn set\(|fn clear\(|fn alloc\(
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs:148:pub struct SparseBitmap {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs:308:    pub fn alloc(&mut self) -> Result<usize, Error> {
+/home/ru...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.spec.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] view: 28. pub struct SparseBitmapView {
+29.     /// Sorted, non-overlapping chunk descriptors.
+30.     /// Each element is (offset, num_bits) describing the half-open range
+31.     /// [offset, offset + num_bits).
+32.     pub chunks: Seq<(int, int)>,
+33. 
+34.     /// Set of global indices where bits are s...
+[RESULT ✓] view: 300.                     &&& self.inv()
+301.                     &&& old(self)@.is_full()
+302.                     &&& self@ =~= old(self)@
+303.                     &&& e.code == ErrorCode::OutOfMemory
+304.                 },
+305.             },
+306.     )]
+307.     // VERUS REWRITE: intermediate va...
+[RESULT ✓] view: 1610.     }
+1611. 
+1612.     /// Sets the bit at the given global `index`.
+1613.     /// Uses Vec::remove + mutate + Vec::insert to avoid &mut indexing.
+1614.     // VERUS REWRITE: find_chunk_mut → find_chunk_index + remove/insert (&mut index unsupported)
+1615.     pub fn set(&mut self, index: usize...
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.spec.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[TOOL] rg: is_full
+[RESULT ✓] view: 110.     pub open spec fn chunks_touch(&self, i: int, j: int) -> bool {
+111.         &&& 0 <= i < self.chunks.len()
+112.         &&& 0 <= j < self.chunks.len()
+113.         &&& self.chunks[i].0 + self.chunks[i].1 == self.chunks[j].0
+114.     }
+115. 
+116.     /// Whether the range [start, start + cou...
+[RESULT ✓] view: 270.     }
+271. 
+272.     ///
+273.     /// # Description
+274.     ///
+275.     /// Allocates a single free bit, sets it, and returns its global
+276.     /// index.
+277.     ///
+278.     /// Thin wrapper over [`Self::alloc_range`] with `count = 1`. Lets
+279.     /// single-bit and range allocation sh...
+[RESULT ✓] rg: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.spec.rs:161:    pub open spec fn is_full(&self) -> bool {
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.proof.rs:220:        view.is_full(),
+/home/r...
+## Blocking Issues
+
+1. **Your final plan still leaves several >5-line proof blocks inline**
+   - **Impact:** This conflicts with the stated polishing goal and the proof-extraction rule. The two alloc_range arithmetic blocks (~53 lines), the 13-line loop bridge, and the 7-line range update block will still be flagged.
+   - **Recommended fix:** Extract at least the non-loop arithmetic blocks into lemmas such as:
+     - `lemma_region_frame_count_no_overflow(region, start_frame_number, num_frames)`
+     - `lemma_end_frame_number_matches_region_end(region, start_frame_number, num_frames, end_frame_number)`
+     For loop-coupled blocks, either extract small lemmas like `lemma_covered_range_transfers_equal_chunks` / `lemma_range_insert_step`, or explicitly accept that the check will still fail.
+
+2. **`lemma_addr_not_allocated` precondition is underspecified**
+   - **Issue:** “When idx not in set_bits” is not directly what `clear Err` gives. `clear Err` gives `!is_covered(idx) || !is_bit_set(idx)`. To derive `!set_bits.contains(idx)` in the uncovered case, the lemma needs bitmap well-formedness.
+   - **Impact:** The call site may not be able to establish the lemma preconditions without extra inline reasoning.
+   - **Recommended fix:** Either:
+     - require `old_inner.bitmap.inv()` / `old_inner.inv()` plus the original Err disjunction, or
+     - keep a small inline proof deriving `!old_inner.bitmap@.set_bits.contains(idx)` before calling the lemma.
+
+## Non-Blocking Issues
+
+1. **`lemma_addr_not_free(&self, idx, fa)` may be ambiguous about which state it reasons over**
+   - **Issue:** Some uses need to prove `!old(self)@.free_frames.contains(fa)` while the receiver `self` is the post-state. In unchanged cases this is okay only after separately proving view equality.
+   - **Recommended fix:** Define the lemma as reasoning about the receiver’s own view, e.g. `target.lemma_addr_not_free(idx, fa)`, and call it on `old(self)` where possible. Otherwise clearly pair it with `lemma_view_unchanged`.
+
+2. **`lemma_set_bit_updates_view` / `lemma_clear_bit_updates_view` need stronger explicit preconditions**
+   - **Issue:** These proofs rely on more than “idx inserted/removed”: they need `fa == frame_addr_of(idx)`, chunk equality, set-bit update equality, relevant coverage/set-bit facts, and `spec_page_size() > 0` for injectivity.
+   - **Recommended fix:** Require something like:
+     - `old_inner.internal_inv()` or `old_inner.inv()`
+     - `self.bitmap@.chunks =~= old_inner.bitmap@.chunks`
+     - exact `set_bits` insert/remove equality
+     - `fa == frame_addr_of(idx)`
+     - `old covered/free` or `old set` facts as appropriate.
+
+3. **`lemma_alloc_range_updates_view` should also prove the subset postcondition**
+   - **Issue:** Your description says it proves `spec_alloc_range`, but the postcondition also requires `frames.subset_of(old(self)@.free_frames)`.
+   - **Recommended fix:** Make the lemma ensure both:
+     - `frames.subset_of(old_inner@.free_frames)`
+     - `self@ == old_inner@.spec_alloc_range(frames)`
+     with `frames` defined exactly as in the function postcondition.
+
+4. **Call-site count for `lemma_view_unchanged` looks off**
+   - **Issue:** You list “3 call sites” but name alloc Err, free Err, book Err, and alloc_range early exits. There appear to be at least four/five logical uses.
+   - **Impact:** Easy to miss one long duplicated block.
+   - **Recommended fix:** Re-run `check_proof_blocks.py` after each extraction pass and ensure all unchanged-bitmap view-equivalence blocks are covered.
+
+## Suggestions
+
+1. Prefer a more general helper name like `lemma_bitmap_view_unchanged_implies_view_unchanged` if it requires bitmap view equality/field equality.
+
+2. Consider extracting a tiny injectivity lemma:
+   - `lemma_frame_addr_injective(i, j)`
+   - Requires `spec_page_size() > 0`
+   - Ensures `frame_addr_of(i) == frame_addr_of(j) ==> i == j`
+   
+   This would simplify several planned lemmas and reduce repeated `mul_is_commutative` / `lemma_mul_equality_converse` sequences.
+
+Overall, the grouping is mostly sound, but the arithmetic/loop-coupled leftovers and underspecified preconditions are the main risks.
+[RESULT ✓] task: ## Blocking Issues
+
+1. **Your final plan still leaves several >5-line proof blocks inline**
+   - **Impact:** This conflicts with the stated polishing goal and the proof-extraction rule. The two alloc_range arithmetic blocks (~53 lines), the 13-line loop bridge, and the 7-line range update block will...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Good feedback. Key takeaways:
+1. Need to also extract arithmetic proofs and loop-body proofs
+2. Fix `lemma_addr_not_allocated` precondition to match bitmap Err disjunction
+3. Include `frames.subset_of` in `lemma_alloc_range_updates_view`
+4. Consider extracting `lemma_frame_addr_injective` helper
+
+Let me now implement. I'll start with the proof file, then update frame.rs, then verify in batches.
+[TOOL] report_intent: Implementing proof extraction
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use vstd::arithmetic::div_mod::*;
+4. 
+5. /// Helper: convert a bitmap index to a frame (physical) address.
+6. pub open spec fn frame_addr_of(i: int) -> int {
+7.     i * spec_page_size()
+8. }
+9. 
+10. impl View for Inner {
+11.     type V = UpoolView;
+12. 
+13.     closed spec fn view...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Now let me write the complete updated proof file with all new lemmas:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Now let me update frame.rs to use the extracted lemmas. I'll do this function by function:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 174.     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+175.         let index: usize = match self.bitmap.alloc() {
+176.             Ok(index) => index,
+177.             Err(error) => {
+178.                 proof! {
+179.                     // bitmap unchanged
+180.                     assert(s...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Now update the alloc success path:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 183.                 }
+184.                 #[cfg(not(verus_keep_ghost))]
+185.                 error!("{error:?}");
+186.                 return Err(error);
+187.             },
+188.         };
+189.         proof! {
+190.             let ps = spec_page_size();
+191.             let idx = index as int;
+1...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Now update the `free` function:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 216.     /// Frees a frame that was previously allocated.
+217.     ///
+218.     /// # Parameters
+219.     ///
+220.     /// - `frame`: Address of the frame to free.
+221.     ///
+222.     /// # Returns
+223.     ///
+224.     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned ins...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Now update the `book` function:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 350.                         }
+351.                     }
+352.                     assert forall|addr: int|
+353.                         old(self)@.allocated_frames.contains(addr) || addr == fa
+354.                         implies self@.allocated_frames.contains(addr)
+355.                     by {
+3...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 580.             // so efn * ps = (sfn + nf) * ps = sfn * ps + nf * ps = start + size
+581.             vstd::arithmetic::mul::lemma_mul_is_commutative(ps, start_frame_number as int);
+582.             assert((start_frame_number as int) * ps == region@.start);
+583.             // Prove (sfn + nf) * ps...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Now let me replace the book function's proof blocks and the alloc_range arithmetic:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Now update the alloc_range arithmetic proofs:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 390.         let start_frame_number: usize = region_start_frame_number(region);
+391.         // VERUS REWRITE: replaced `start + size/FRAME_SIZE - 1` and `..=` (inclusive range)
+392.         // with exclusive upper bound. RangeInclusive<usize> lacks ForLoopGhostIteratorNew.
+393.         // VERUS REW...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Now update the alloc_range early-exit proofs and the post-loop proof. Let me view the current state:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 415.         // range is covered by the sparse bitmap. SparseBitmap::test() returns Ok(false) for
+416.         // uncovered indices, which would incorrectly appear as "free" and pass the check below,
+417.         // only to fail on set(). With the feature enabled this check is elided because
+418.   ...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Now update the test_true (Ok(true)) error proof:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 475.         for index in start_frame_number..end_frame_number {
+476.             match self.bitmap.test(index) {
+477.                 Ok(false) => {
+478.                     // Frame is free — nothing to do.
+479.                 },
+480.                 Ok(true) => {
+481.                     proof! ...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Now update the alloc_range set-loop body and post-loop proof:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 520.             }
+521.         }
+522. 
+523.         // Book all frames in the range.
+524.         #[verus_spec(
+525.             invariant
+526.                 self.bitmap.inv()
+527.                 && self.bitmap@.chunks =~= old(self).bitmap@.chunks
+528.                 && self.bitmap@.set_bits =~...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 610.                 }
+611.             }
+612. 
+613.             // 3. free_frames = old.free \ frames
+614.             assert forall|addr: int|
+615.                 self@.free_frames.contains(addr) <==>
+616.                 old(self)@.free_frames.difference(frames).contains(addr)
+617.             b...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Now replace the loop-body bridge and post-loop proof:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Now let me run verification to see if it passes:
+[TOOL] report_intent: Running verification
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] report_intent: Intent logged
