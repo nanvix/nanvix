@@ -25,6 +25,10 @@ use ::alloc::{
     string::String,
     vec::Vec,
 };
+use ::config::fds::{
+    VFS_FD_BASE,
+    VFS_MAX_OPEN_FILES,
+};
 use ::fat32::Fat32Error;
 use ::spin::Mutex;
 use ::sysapi::{
@@ -50,15 +54,6 @@ use ::sysapi::{
 //==================================================================================================
 // Constants
 //==================================================================================================
-
-/// Base file descriptor number for VFS-managed handles.
-///
-/// VFS file descriptors occupy the range `[VFS_FD_BASE, VFS_FD_BASE + VFS_MAX_OPEN_FILES)`.
-/// This range must not overlap with linuxd-assigned file descriptors.
-const VFS_FD_BASE: c_int = 1024;
-
-/// Maximum number of simultaneously open VFS files.
-const VFS_MAX_OPEN_FILES: usize = 64;
 
 /// Block size reported in stat results (bytes).
 const STAT_BLOCK_SIZE: i64 = 4096;
@@ -367,7 +362,7 @@ pub fn is_vfs_path(path: &str) -> bool {
 
 /// Returns `true` if the given file descriptor belongs to the VFS.
 pub fn is_vfs_fd(fd: c_int) -> bool {
-    fd >= VFS_FD_BASE && fd < VFS_FD_BASE + VFS_MAX_OPEN_FILES as c_int
+    ::config::fds::is_vfs_fd(fd)
 }
 
 /// Resolves a `dirfd` + `path` pair into an absolute VFS path.

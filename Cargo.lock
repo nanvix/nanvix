@@ -3538,6 +3538,7 @@ dependencies = [
 name = "vfs"
 version = "0.13.7"
 dependencies = [
+ "config",
  "error",
  "fat32",
  "fatfs",
