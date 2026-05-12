@@ -5,12 +5,26 @@
   "current_phase": "polish",
   "current_phase_idx": 5,
   "completed_phases": [],
-  "phase_results": {},
+  "phase_results": {
+    "polish": {
+      "phase": "polish",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 1757.2,
+      "review_rounds": 0
+    }
+  },
   "prover_session_id": "19ee8461-ae9f-4cd4-8798-84f8680cb058",
   "completed": false,
   "base_branch": "verus-mm-phys",
   "verus_branch": "verus-mm-phys",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "polish": "d5f61b5e0648bb81909618a39d349a06577379c3"
+  },
   "phase_start_shas": {
     "polish": "906293fffcdac4c0a2f770f49a7bde074ac148d2"
   },
@@ -19,6 +33,12 @@
       "phase": "polish",
       "event": "start",
       "sha": "906293fffcdac4c0a2f770f49a7bde074ac148d2",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "polish",
+      "event": "end",
+      "sha": "d5f61b5e0648bb81909618a39d349a06577379c3",
       "rollback_iter": 0
     }
   ],

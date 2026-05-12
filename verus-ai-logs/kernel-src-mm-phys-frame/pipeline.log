@@ -164,3 +164,7 @@ Module: frame
 [2026-05-12 21:26:50] [PROVER] Running polish...
 [2026-05-12 21:26:50] [COPILOT] Running: copilot --model claude-opus-4.6 ...
 [2026-05-12 21:56:07]   ↳ prover done in 29m16s (exit=0)
+[2026-05-12 21:56:07] [PHASE] polish: no-review (29m17s)
+[2026-05-12 21:56:07] ✅ polish: PASS (0/0)
+[2026-05-12 21:56:07] [GATE] Running build: make build
+[2026-05-12 21:56:08] [GATE] Running verify: make verify
