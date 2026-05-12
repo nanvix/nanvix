@@ -251,7 +251,7 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
 ///
 pub fn cleanup() -> Result<(), sys::error::Error> {
     // Get the base address for thread data area.
-    let tcb_ptr: *mut u8 = match sys::kcall::pm::get_thread_data_area() {
+    let tcb_ptr: *mut u8 = match sys::kcall::pm::__kcall_get_thread_data_area() {
         Ok(ptr) => ptr,
         Err(error) => {
             ::syslog::warn!("cleanup_tda(): {error:?}");
@@ -272,7 +272,7 @@ pub fn cleanup() -> Result<(), sys::error::Error> {
     mark_uninitialized();
 
     // Clear the thread-local storage pointer first to avoid dangling pointers.
-    match sys::kcall::pm::set_thread_data_area(core::ptr::null_mut()) {
+    match sys::kcall::pm::__kcall_set_thread_data_area(core::ptr::null_mut()) {
         Ok(()) => Ok(()),
         Err(error) => {
             ::syslog::warn!("cleanup_tda(): failed to clear tda pointer (error={error:?})");

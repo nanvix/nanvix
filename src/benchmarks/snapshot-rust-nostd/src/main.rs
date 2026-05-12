@@ -27,6 +27,6 @@ use ::sys::error::Error;
 ///
 #[unsafe(no_mangle)]
 pub fn main() -> Result<(), Error> {
-    ::sys::kcall::pm::snapshot()?;
+    ::sys::kcall::pm::__kcall_snapshot()?;
     Ok(())
 }

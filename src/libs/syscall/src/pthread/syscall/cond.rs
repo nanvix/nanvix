@@ -21,8 +21,8 @@ use ::sys::{
         ErrorCode,
     },
     kcall::pm::{
-        signal_cond,
-        wait_cond,
+        __kcall_signal_cond,
+        __kcall_wait_cond,
     },
     pm::{
         ConditionAddress,
@@ -72,7 +72,7 @@ pub fn pthread_cond_broadcast(cond: &pthread_cond_t) -> Result<(), Error> {
     }
 
     let _awakened: usize =
-        signal_cond(ConditionAddress::from(cond as *const pthread_cond_t as usize), true)?;
+        __kcall_signal_cond(ConditionAddress::from(cond as *const pthread_cond_t as usize), true)?;
 
     Ok(())
 }
@@ -136,7 +136,7 @@ pub fn pthread_cond_signal(cond: &pthread_cond_t) -> Result<(), Error> {
     }
 
     let _awakened: usize =
-        signal_cond(ConditionAddress::from(cond as *const pthread_cond_t as usize), false)?;
+        __kcall_signal_cond(ConditionAddress::from(cond as *const pthread_cond_t as usize), false)?;
 
     Ok(())
 }
@@ -157,7 +157,7 @@ pub fn pthread_cond_timedwait(
             entry.insert(pthread_condattr_t::default());
         } else {
             let reason: &str = "condition variable is not initialized";
-            ::syslog::warn!("pthread_wait_cond(): {}", reason);
+            ::syslog::warn!("pthread_cond_timedwait(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -173,12 +173,12 @@ pub fn pthread_cond_timedwait(
             entry.insert(pthread_mutexattr_t::default());
         } else {
             let reason: &str = "mutex is not initialized";
-            ::syslog::warn!("pthread_wait_cond(): {}", reason);
+            ::syslog::warn!("pthread_cond_timedwait(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
 
-    wait_cond(
+    __kcall_wait_cond(
         ConditionAddress::from(cond as *const pthread_cond_t as usize),
         MutexAddress::from(mutex as *const pthread_mutex_t as usize),
         timeout,
@@ -197,7 +197,7 @@ pub fn pthread_cond_wait(cond: &pthread_cond_t, mutex: &pthread_mutex_t) -> Resu
             entry.insert(pthread_condattr_t::default());
         } else {
             let reason: &str = "condition variable is not initialized";
-            ::syslog::warn!("pthread_wait_cond(): {}", reason);
+            ::syslog::warn!("pthread_cond_wait(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -213,12 +213,12 @@ pub fn pthread_cond_wait(cond: &pthread_cond_t, mutex: &pthread_mutex_t) -> Resu
             entry.insert(pthread_mutexattr_t::default());
         } else {
             let reason: &str = "mutex is not initialized";
-            ::syslog::warn!("pthread_wait_cond(): {}", reason);
+            ::syslog::warn!("pthread_cond_wait(): {}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
 
-    wait_cond(
+    __kcall_wait_cond(
         ConditionAddress::from(cond as *const pthread_cond_t as usize),
         MutexAddress::from(mutex as *const pthread_mutex_t as usize),
         None,

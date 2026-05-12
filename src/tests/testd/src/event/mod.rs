@@ -29,7 +29,7 @@ use ::sys::{
 ///
 fn test_subscribe_unsubscribe() -> bool {
     // Acquire exception control capability.
-    match ::sys::kcall::pm::capctl(Capability::ExceptionControl, true) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::ExceptionControl, true) {
         Ok(()) => (),
         _ => return false,
     }
@@ -38,14 +38,16 @@ fn test_subscribe_unsubscribe() -> bool {
     let debug_exception: ExceptionEvent = ExceptionEvent::Exception1;
 
     // Attempt to subscribe to event.
-    match ::sys::kcall::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Register)
-    {
+    match ::sys::kcall::event::__kcall_evctrl(
+        Event::Exception(debug_exception),
+        EventCtrlRequest::Register,
+    ) {
         Ok(()) => (),
         _ => return false,
     }
 
     // Attempt to unsubscribe from event.
-    match ::sys::kcall::event::evctrl(
+    match ::sys::kcall::event::__kcall_evctrl(
         Event::Exception(debug_exception),
         EventCtrlRequest::Unregister,
     ) {
@@ -54,7 +56,7 @@ fn test_subscribe_unsubscribe() -> bool {
     }
 
     // Release exception control capability.
-    matches!(::sys::kcall::pm::capctl(Capability::ExceptionControl, false), Ok(()))
+    matches!(::sys::kcall::pm::__kcall_capctl(Capability::ExceptionControl, false), Ok(()))
 }
 
 ///
@@ -72,7 +74,10 @@ fn test_subscribe_without_capability() -> bool {
 
     // Attempt to subscribe to event.
     !matches!(
-        ::sys::kcall::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Register),
+        ::sys::kcall::event::__kcall_evctrl(
+            Event::Exception(debug_exception),
+            EventCtrlRequest::Register
+        ),
         Ok(())
     )
 }
@@ -88,7 +93,7 @@ fn test_subscribe_without_capability() -> bool {
 ///
 fn test_unsubscribe_without_subscription() -> bool {
     // Acquire exception control capability.
-    match ::sys::kcall::pm::capctl(Capability::ExceptionControl, true) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::ExceptionControl, true) {
         Ok(()) => (),
         _ => return false,
     }
@@ -97,14 +102,15 @@ fn test_unsubscribe_without_subscription() -> bool {
     let debug_exception: ExceptionEvent = ExceptionEvent::Exception1;
 
     // Attempt to unsubscribe from event.
-    if let Ok(()) =
-        ::sys::kcall::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Unregister)
-    {
+    if let Ok(()) = ::sys::kcall::event::__kcall_evctrl(
+        Event::Exception(debug_exception),
+        EventCtrlRequest::Unregister,
+    ) {
         return false;
     }
 
     // Release exception control capability.
-    matches!(::sys::kcall::pm::capctl(Capability::ExceptionControl, false), Ok(()))
+    matches!(::sys::kcall::pm::__kcall_capctl(Capability::ExceptionControl, false), Ok(()))
 }
 
 ///
@@ -118,7 +124,7 @@ fn test_unsubscribe_without_subscription() -> bool {
 ///
 fn test_unsubscribe_without_capability() -> bool {
     // Acquire exception control capability.
-    match ::sys::kcall::pm::capctl(Capability::ExceptionControl, true) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::ExceptionControl, true) {
         Ok(()) => (),
         _ => return false,
     }
@@ -127,21 +133,23 @@ fn test_unsubscribe_without_capability() -> bool {
     let debug_exception: ExceptionEvent = ExceptionEvent::Exception1;
 
     // Subscribe to event.
-    match ::sys::kcall::event::evctrl(Event::Exception(debug_exception), EventCtrlRequest::Register)
-    {
+    match ::sys::kcall::event::__kcall_evctrl(
+        Event::Exception(debug_exception),
+        EventCtrlRequest::Register,
+    ) {
         Ok(()) => (),
         _ => return false,
     }
 
     // Release exception control capability.
-    match ::sys::kcall::pm::capctl(Capability::ExceptionControl, false) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::ExceptionControl, false) {
         Ok(()) => (),
         _ => return false,
     }
 
     // Attempt to unsubscribe from event.
     matches!(
-        ::sys::kcall::event::evctrl(
+        ::sys::kcall::event::__kcall_evctrl(
             Event::Exception(debug_exception),
             EventCtrlRequest::Unregister
         ),

@@ -53,14 +53,14 @@ pub fn getuid() -> Result<uid_t, Error> {
 /// Forwards a `getuid` request to linuxd via IPC.
 #[cfg(not(feature = "standalone"))]
 fn getuid_linuxd() -> Result<uid_t, Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it
     let request: Message = GetIdsRequest::build(tid);
-    ::sys::kcall::ipc::send(&request)?;
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not
     if response.status != 0 {

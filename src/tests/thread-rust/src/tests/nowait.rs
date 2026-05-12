@@ -9,7 +9,10 @@ use crate::runtime::KernelThread;
 use ::core::time::Duration;
 use ::sys::{
     error::Error,
-    kcall::pm::sleep,
+    kcall::pm::{
+        __kcall_exit,
+        __kcall_sleep,
+    },
 };
 
 //==================================================================================================
@@ -29,8 +32,7 @@ const WORKER_SLEEP: Duration = Duration::from_secs(5);
 /// The kernel must cleanly tear down the process, terminating the blocked worker. Because this test
 /// calls `exit()`, it **must be the last test** executed by the binary.
 pub fn run() -> Result<(), Error> {
-    test_exit_with_detached_blocked_thread()?;
-    Ok(())
+    test_exit_with_detached_blocked_thread()
 }
 
 fn test_exit_with_detached_blocked_thread() -> Result<(), Error> {
@@ -39,11 +41,12 @@ fn test_exit_with_detached_blocked_thread() -> Result<(), Error> {
 
     // Exit the process. The kernel will interrupt the sleeping worker and clean up.
     // exit() diverges on success; on failure we propagate the error.
-    ::sys::kcall::pm::exit(0)?;
+    let Err(e) = __kcall_exit(0);
+    Err(e)
 }
 
 extern "C" fn worker_sleep(_arg: usize) -> usize {
     // Block for a long time. The kernel will interrupt this sleep when the process exits.
-    let _ = sleep(WORKER_SLEEP);
+    let _ = __kcall_sleep(WORKER_SLEEP);
     0
 }

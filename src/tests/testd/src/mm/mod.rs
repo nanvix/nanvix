@@ -49,12 +49,12 @@ const _: () = assert!(
 ///
 fn test_mmap_munmap() -> bool {
     // Acquire memory management capability.
-    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, true) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, true) {
         Ok(()) => (),
         _ => return false,
     }
 
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
@@ -62,19 +62,19 @@ fn test_mmap_munmap() -> bool {
     let vaddr: VirtualAddress = USER_MMAP_END;
 
     // Map a page.
-    match ::sys::kcall::mm::mmap(mypid, vaddr, 1, AccessPermission::RDONLY) {
+    match ::sys::kcall::mm::__kcall_mmap(mypid, vaddr, 1, AccessPermission::RDONLY) {
         Ok(_) => (),
         Err(_) => return false,
     }
 
     // Unmap the page.
-    match ::sys::kcall::mm::munmap(mypid, vaddr) {
+    match ::sys::kcall::mm::__kcall_munmap(mypid, vaddr) {
         Ok(_) => (),
         Err(_) => return false,
     }
 
     // Release memory management capability.
-    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, false) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, false) {
         Ok(()) => (),
         _ => return false,
     }
@@ -93,12 +93,12 @@ fn test_mmap_munmap() -> bool {
 ///
 fn test_mmap_write_munmap() -> bool {
     // Acquire memory management capability.
-    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, true) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, true) {
         Ok(()) => (),
         _ => return false,
     }
 
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
@@ -106,7 +106,7 @@ fn test_mmap_write_munmap() -> bool {
     let vaddr: VirtualAddress = USER_MMAP_END;
 
     // Map a page.
-    match ::sys::kcall::mm::mmap(mypid, vaddr, 1, AccessPermission::WRONLY) {
+    match ::sys::kcall::mm::__kcall_mmap(mypid, vaddr, 1, AccessPermission::WRONLY) {
         Ok(_) => (),
         Err(_) => return false,
     }
@@ -128,13 +128,13 @@ fn test_mmap_write_munmap() -> bool {
     }
 
     // Unmap the page.
-    match ::sys::kcall::mm::munmap(mypid, vaddr) {
+    match ::sys::kcall::mm::__kcall_munmap(mypid, vaddr) {
         Ok(_) => (),
         Err(_) => return false,
     }
 
     // Release memory management capability.
-    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, false) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, false) {
         Ok(()) => (),
         _ => return false,
     }
@@ -153,12 +153,12 @@ fn test_mmap_write_munmap() -> bool {
 ///
 fn test_mmap_munmap_many_times_inplace() -> bool {
     // Acquire memory management capability.
-    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, true) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, true) {
         Ok(()) => (),
         _ => return false,
     }
 
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
@@ -167,20 +167,20 @@ fn test_mmap_munmap_many_times_inplace() -> bool {
         let vaddr: VirtualAddress = USER_MMAP_END;
 
         // Map a page.
-        match ::sys::kcall::mm::mmap(mypid, vaddr, 1, AccessPermission::RDONLY) {
+        match ::sys::kcall::mm::__kcall_mmap(mypid, vaddr, 1, AccessPermission::RDONLY) {
             Ok(_) => (),
             Err(_) => return false,
         }
 
         // Unmap the page.
-        match ::sys::kcall::mm::munmap(mypid, vaddr) {
+        match ::sys::kcall::mm::__kcall_munmap(mypid, vaddr) {
             Ok(_) => (),
             Err(_) => return false,
         }
     }
 
     // Release memory management capability.
-    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, false) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, false) {
         Ok(()) => (),
         _ => return false,
     }
@@ -199,12 +199,12 @@ fn test_mmap_munmap_many_times_inplace() -> bool {
 ///
 fn test_mmap_munmap_many_times_rolling() -> bool {
     // Acquire memory management capability.
-    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, true) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, true) {
         Ok(()) => (),
         _ => return false,
     }
 
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
@@ -216,20 +216,20 @@ fn test_mmap_munmap_many_times_rolling() -> bool {
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
 
         // Map a page.
-        match ::sys::kcall::mm::mmap(mypid, vaddr, 1, AccessPermission::RDONLY) {
+        match ::sys::kcall::mm::__kcall_mmap(mypid, vaddr, 1, AccessPermission::RDONLY) {
             Ok(_) => (),
             Err(_) => return false,
         }
 
         // Unmap the page.
-        match ::sys::kcall::mm::munmap(mypid, vaddr) {
+        match ::sys::kcall::mm::__kcall_munmap(mypid, vaddr) {
             Ok(_) => (),
             Err(_) => return false,
         }
     }
 
     // Release memory management capability.
-    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, false) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, false) {
         Ok(()) => (),
         _ => return false,
     }
@@ -248,11 +248,11 @@ fn test_mmap_munmap_many_times_rolling() -> bool {
 ///
 fn test_mmap_munmap_return_zeros() -> bool {
     // Acquire memory management capability.
-    if ::sys::kcall::pm::capctl(Capability::MemoryManagement, true).is_err() {
+    if ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, true).is_err() {
         return false;
     }
 
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
@@ -260,7 +260,7 @@ fn test_mmap_munmap_return_zeros() -> bool {
     let vaddr: VirtualAddress = USER_MMAP_END;
 
     // Map a page.
-    if ::sys::kcall::mm::mmap(mypid, vaddr, 1, AccessPermission::WRONLY).is_err() {
+    if ::sys::kcall::mm::__kcall_mmap(mypid, vaddr, 1, AccessPermission::WRONLY).is_err() {
         return false;
     }
 
@@ -272,12 +272,12 @@ fn test_mmap_munmap_return_zeros() -> bool {
     }
 
     // Unmap the page.
-    if ::sys::kcall::mm::munmap(mypid, vaddr).is_err() {
+    if ::sys::kcall::mm::__kcall_munmap(mypid, vaddr).is_err() {
         return false;
     }
 
     // Map the page again to read.
-    if ::sys::kcall::mm::mmap(mypid, vaddr, 1, AccessPermission::RDONLY).is_err() {
+    if ::sys::kcall::mm::__kcall_mmap(mypid, vaddr, 1, AccessPermission::RDONLY).is_err() {
         return false;
     }
 
@@ -292,12 +292,12 @@ fn test_mmap_munmap_return_zeros() -> bool {
     }
 
     // Unmap the page.
-    if ::sys::kcall::mm::munmap(mypid, vaddr).is_err() {
+    if ::sys::kcall::mm::__kcall_munmap(mypid, vaddr).is_err() {
         return false;
     }
 
     // Release memory management capability.
-    if ::sys::kcall::pm::capctl(Capability::MemoryManagement, false).is_err() {
+    if ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, false).is_err() {
         return false;
     }
 
@@ -321,11 +321,11 @@ fn test_mmap_multi_page() -> bool {
     const NPAGES: usize = 4;
 
     // Acquire memory management capability.
-    if ::sys::kcall::pm::capctl(Capability::MemoryManagement, true).is_err() {
+    if ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, true).is_err() {
         return false;
     }
 
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
@@ -333,7 +333,7 @@ fn test_mmap_multi_page() -> bool {
     let base_vaddr: VirtualAddress = USER_MMAP_END;
 
     // Map multiple pages in a single call.
-    if ::sys::kcall::mm::mmap(mypid, base_vaddr, NPAGES, AccessPermission::RDWR).is_err() {
+    if ::sys::kcall::mm::__kcall_mmap(mypid, base_vaddr, NPAGES, AccessPermission::RDWR).is_err() {
         return false;
     }
 
@@ -374,13 +374,13 @@ fn test_mmap_multi_page() -> bool {
     for i in 0..NPAGES {
         let page_addr: usize = base_vaddr.into_raw_value() + i * PAGE_SIZE;
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(page_addr);
-        if ::sys::kcall::mm::munmap(mypid, vaddr).is_err() {
+        if ::sys::kcall::mm::__kcall_munmap(mypid, vaddr).is_err() {
             return false;
         }
     }
 
     // Release memory management capability.
-    if ::sys::kcall::pm::capctl(Capability::MemoryManagement, false).is_err() {
+    if ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, false).is_err() {
         return false;
     }
 
