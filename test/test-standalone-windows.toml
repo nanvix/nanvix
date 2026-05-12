@@ -54,6 +54,7 @@ iterations = 2
 executor = "terminal"
 program = "./bin/test-kernel.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
+program_args = ";;test_magic=0xDEADBEEF"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 13

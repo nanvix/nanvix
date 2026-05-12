@@ -8,6 +8,7 @@
 mod capctl;
 mod create_thread;
 mod detach_thread;
+mod get_kernel_args;
 mod get_thread_data_area;
 mod gettime;
 mod join_thread;
@@ -30,6 +31,7 @@ mod wait_cond;
 pub use capctl::capctl;
 pub use create_thread::create_thread;
 pub use detach_thread::detach_thread;
+pub use get_kernel_args::set_kernel_args;
 pub use get_thread_data_area::get_thread_data_area;
 pub use gettime::gettime;
 pub use join_thread::join_thread;
