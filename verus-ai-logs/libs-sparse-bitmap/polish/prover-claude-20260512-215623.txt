@@ -418,3 +418,11 @@ error: could not compile `sparse-bitmap` (lib) due to 1 previous error
 Turn 11
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | grep "error" 
+[RESULT ✓] bash: error: expected curly braces
+error: could not compile `sparse-bitmap` (lib) due to 1 previous error
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | grep -B3 "exp
