@@ -87,3 +87,7 @@ Module: kpool
 [2026-05-12 21:00:02] [PROVER] Running polish...
 [2026-05-12 21:00:02] [COPILOT] Running: copilot --model claude-opus-4.6 ...
 [2026-05-12 21:26:14]   ↳ prover done in 26m12s (exit=0)
+[2026-05-12 21:26:15] [PHASE] polish: no-review (26m12s)
+[2026-05-12 21:26:15] ✅ polish: PASS (0/0)
+[2026-05-12 21:26:15] [GATE] Running build: make build
+[2026-05-12 21:26:29] [GATE] Running verify: make verify
