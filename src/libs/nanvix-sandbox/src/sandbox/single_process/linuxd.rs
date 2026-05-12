@@ -136,11 +136,13 @@ impl LinuxDaemon {
                 Some(table) => table,
                 None => {
                     let table: ::linuxd::syscalls::SyscallTable<T> =
-                        ::linuxd::syscalls::SyscallTable::new(T::default()).map_err(|e| {
-                            let reason: &str = "failed to initialize syscall table";
-                            error!("spawn(): {reason} (error={e:?})");
-                            anyhow::Error::new(e).context(reason)
-                        })?;
+                        ::linuxd::syscalls::SyscallTable::new(T::default(), false).map_err(
+                            |e| {
+                                let reason: &str = "failed to initialize syscall table";
+                                error!("spawn(): {reason} (error={e:?})");
+                                anyhow::Error::new(e).context(reason)
+                            },
+                        )?;
                     ::std::sync::Arc::new(table)
                 },
             };

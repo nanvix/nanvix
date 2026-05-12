@@ -29,7 +29,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        MessageSender,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::{
@@ -141,7 +144,9 @@ pub fn do_close<T>(
 
     debug!("libc::close(): fd={fd:?}");
     match unsafe { handle_close(syscall_table, fd) } {
-        ret if ret == 0 => Ok(CloseResponse::build(tid, ret)),
+        ret if ret == 0 => {
+            Ok(CloseResponse::build(tid, ret, MessageSender::from(::syscall::LINUXD)))
+        },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
 
