@@ -68,3 +68,19 @@ PIPELINE COMPLETE: kpool
   Total: 2h00m54s
 ============================================================
 [2026-04-24 22:12:17] [USAGE] Summary: 8 calls, 0 tokens, 2h00m53s total → /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/usage_summary.json
+[2026-05-12 21:00:02] [BRANCH] Staying on current branch: verus-mm-phys
+[2026-05-12 21:00:02] [ABSTRACTION] Body-removed source: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/body_removed_source.rs (37556 -> 13598 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: kpool
+Source: src/kernel/src/mm/phys/kpool.rs
+Crate:  kpool
+Branch: verus-mm-phys (base: verus-mm-phys)
+Phases: polish → polish
+############################################################
+
+============================================================
+PHASE: polish
+Module: kpool
+============================================================

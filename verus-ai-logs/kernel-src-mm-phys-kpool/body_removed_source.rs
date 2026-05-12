@@ -18,14 +18,18 @@ use crate::{
     collections::Bitmap,
     hal::{
         mem::{
-            Address,
             FrameAddress,
             PageAligned,
             PhysicalAddress,
+            pa_into_raw,
         },
         platform::is_valid_physical_region,
     },
 };
+#[cfg(verus_keep_ghost)]
+use crate::collections::BitmapView;
+#[cfg(verus_keep_ghost)]
+use crate::hal::mem::spec_page_size;
 use ::alloc::vec::Vec;
 use ::arch::mem;
 use ::core::{
@@ -77,7 +81,6 @@ impl Inner {
     ///
     /// Upon success, the kernel pool.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             base.inv(),
@@ -102,7 +105,6 @@ impl Inner {
     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -143,7 +145,6 @@ impl Inner {
     /// Upon success, `Ok(())` is returned and `addrs` is filled with `count`
     /// contiguous entries. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -176,7 +177,7 @@ impl Inner {
                     }
                 },
                 Err(_) => {
-                    &&& count == 0 || forall|i: int| !old(self)@.range_free(i, count as int)
+                    &&& old(addrs)@.len() > 0 || count == 0 || forall|i: int| !old(self)@.range_free(i, count as int)
                     &&& self@ == old(self)@
                     &&& addrs@ == old(addrs)@
                 },
@@ -197,7 +198,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -344,8 +344,6 @@ pub struct KernelFrame {
 
 #[cfg(verus_keep_ghost)]
 verus! {
-
-use crate::hal::mem::spec_page_size;
 
 impl View for KernelFrame
 {

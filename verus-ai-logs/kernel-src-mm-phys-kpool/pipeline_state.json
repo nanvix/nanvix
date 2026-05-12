@@ -2,44 +2,26 @@
   "module_name": "kpool",
   "log_name": "kernel-src-mm-phys-kpool",
   "source_path": "src/kernel/src/mm/phys/kpool.rs",
-  "current_phase": "cheating-elimination",
-  "current_phase_idx": 4,
-  "completed_phases": [
-    "proving",
-    "cheating-elimination"
-  ],
-  "phase_results": {
-    "proving": {
-      "phase": "proving",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "dialogue-RESOLVED",
-      "review_file": null,
-      "duration_s": 6129.4,
-      "review_rounds": 2
-    },
-    "cheating-elimination": {
-      "phase": "cheating-elimination",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "dialogue-RESOLVED",
-      "review_file": null,
-      "duration_s": 1125.0,
-      "review_rounds": 2
+  "current_phase": "polish",
+  "current_phase_idx": 5,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_session_id": null,
+  "completed": false,
+  "base_branch": "verus-mm-phys",
+  "verus_branch": "verus-mm-phys",
+  "phase_boundary_shas": {},
+  "phase_start_shas": {
+    "polish": "ceb88ee1d9ce82fe32dc3b4d57a576177d55c211"
+  },
+  "phase_history": [
+    {
+      "phase": "polish",
+      "event": "start",
+      "sha": "ceb88ee1d9ce82fe32dc3b4d57a576177d55c211",
+      "rollback_iter": 0
     }
-  },
-  "prover_session_id": "b3e0949e-3f4a-4a36-91da-120046e43784",
-  "completed": true,
-  "base_branch": "verus-ai/upool",
-  "verus_branch": "verus-ai/kpool",
-  "phase_boundary_shas": {
-    "proving": "a8440ea1cb1d7a4727cc149b914e37a456d9e583",
-    "cheating-elimination": "b7cb24bedb718a598f8d5a5bd20c94cb910d803a"
-  },
+  ],
   "rollback_counts": {},
   "rollback_context": ""
 }
