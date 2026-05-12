@@ -39,8 +39,8 @@ pub use ::arch::mem::*;
 pub use ::sys::mm::*;
 
 pub use ::sys::kcall::mm::{
-    mmap,
-    munmap,
+    __kcall_mmap,
+    __kcall_munmap,
 };
 
 pub use allocator::*;

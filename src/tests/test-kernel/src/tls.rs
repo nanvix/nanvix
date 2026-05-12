@@ -155,8 +155,8 @@ fn assert_eq_or_fail(test: &'static str, expected: u32, actual: u32) -> Result<(
 ///
 /// Propagates errors from `get_thread_data_area()` or `set_thread_data_area()`.
 fn setup_tda(tda: &mut TdaBuffer) -> Result<*mut u8, Error> {
-    let original_tda: *mut u8 = pm::get_thread_data_area()?;
-    pm::set_thread_data_area(tda.as_mut_ptr().cast::<u8>())?;
+    let original_tda: *mut u8 = pm::__kcall_get_thread_data_area()?;
+    pm::__kcall_set_thread_data_area(tda.as_mut_ptr().cast::<u8>())?;
     Ok(original_tda)
 }
 
@@ -172,7 +172,7 @@ fn setup_tda(tda: &mut TdaBuffer) -> Result<*mut u8, Error> {
 ///
 /// Propagates errors from `set_thread_data_area()`.
 fn teardown_tda(original_tda: *mut u8) -> Result<(), Error> {
-    pm::set_thread_data_area(original_tda)?;
+    pm::__kcall_set_thread_data_area(original_tda)?;
     Ok(())
 }
 
@@ -252,7 +252,7 @@ fn test_multiple_offsets() -> Result<(), Error> {
 ///
 /// Returns an error if `%gs:0x0` does not reflect the active buffer's value.
 fn test_reassignment() -> Result<(), Error> {
-    let original: *mut u8 = pm::get_thread_data_area()?;
+    let original: *mut u8 = pm::__kcall_get_thread_data_area()?;
 
     let mut tda_a: TdaBuffer = Box::new([0u32; TDA_SLOTS]);
     let mut tda_b: TdaBuffer = Box::new([0u32; TDA_SLOTS]);
@@ -265,19 +265,19 @@ fn test_reassignment() -> Result<(), Error> {
     }
 
     // Point TDA to buffer A and verify.
-    pm::set_thread_data_area(tda_a.as_mut_ptr().cast::<u8>())?;
+    pm::__kcall_set_thread_data_area(tda_a.as_mut_ptr().cast::<u8>())?;
     let val_a: u32 = unsafe { read_gs_offset_0() };
     let mut result: Result<(), Error> = assert_eq_or_fail("reassignment_a", magic_a, val_a);
 
     // Switch TDA to buffer B and verify (only if buffer A succeeded).
     if result.is_ok() {
-        pm::set_thread_data_area(tda_b.as_mut_ptr().cast::<u8>())?;
+        pm::__kcall_set_thread_data_area(tda_b.as_mut_ptr().cast::<u8>())?;
         let val_b: u32 = unsafe { read_gs_offset_0() };
         result = assert_eq_or_fail("reassignment_b", magic_b, val_b);
     }
 
     // Cleanup.
-    pm::set_thread_data_area(original)?;
+    pm::__kcall_set_thread_data_area(original)?;
     result
 }
 
@@ -304,14 +304,14 @@ fn test_clear_and_restore() -> Result<(), Error> {
 
     if result.is_ok() {
         // Clear TDA (set to null).
-        pm::set_thread_data_area(core::ptr::null_mut())?;
+        pm::__kcall_set_thread_data_area(core::ptr::null_mut())?;
 
         // Verify get_thread_data_area() returns null after clearing.
         // NOTE: we intentionally do NOT read %gs:0x0 here because the segment
         // base has been zeroed and the selector set to null, so a %gs-relative
         // read would fault (GP or PF). The getter is the only safe way to
         // verify that the TDA was actually cleared.
-        let cleared_tda: *mut u8 = pm::get_thread_data_area()?;
+        let cleared_tda: *mut u8 = pm::__kcall_get_thread_data_area()?;
         if !cleared_tda.is_null() {
             ::syslog::error!(
                 "test-kernel: tls: clear_restore: TDA not null after clear ({cleared_tda:?})"
@@ -322,7 +322,7 @@ fn test_clear_and_restore() -> Result<(), Error> {
 
     if result.is_ok() {
         // Restore TDA and verify the magic value is accessible again.
-        pm::set_thread_data_area(tda.as_mut_ptr().cast::<u8>())?;
+        pm::__kcall_set_thread_data_area(tda.as_mut_ptr().cast::<u8>())?;
         let after: u32 = unsafe { read_gs_offset_0() };
         result = assert_eq_or_fail("clear_restore_after", TDA_MAGIC, after);
     }
@@ -378,7 +378,7 @@ fn test_get_set_round_trip() -> Result<(), Error> {
     let original: *mut u8 = setup_tda(&mut tda)?;
     let expected_ptr: *mut u8 = tda.as_mut_ptr().cast::<u8>();
 
-    let returned_tda: *mut u8 = pm::get_thread_data_area()?;
+    let returned_tda: *mut u8 = pm::__kcall_get_thread_data_area()?;
     if returned_tda != expected_ptr {
         ::syslog::error!(
             "test-kernel: tls: get_set_round_trip: expected {expected_ptr:?}, got {returned_tda:?}"
@@ -401,7 +401,7 @@ fn test_get_set_round_trip() -> Result<(), Error> {
 ///
 /// Returns an error if any iteration produces a mismatched read.
 fn test_repeated_reassignment() -> Result<(), Error> {
-    let original: *mut u8 = pm::get_thread_data_area()?;
+    let original: *mut u8 = pm::__kcall_get_thread_data_area()?;
 
     let mut tda_a: TdaBuffer = Box::new([0u32; TDA_SLOTS]);
     let mut tda_b: TdaBuffer = Box::new([0u32; TDA_SLOTS]);
@@ -415,14 +415,14 @@ fn test_repeated_reassignment() -> Result<(), Error> {
 
     let mut result: Result<(), Error> = Ok(());
     for _ in 0..REPEAT_ITERATIONS {
-        pm::set_thread_data_area(tda_a.as_mut_ptr().cast::<u8>())?;
+        pm::__kcall_set_thread_data_area(tda_a.as_mut_ptr().cast::<u8>())?;
         let val_a: u32 = unsafe { read_gs_offset_0() };
         if let Err(e) = assert_eq_or_fail("repeated_reassign_a", magic_a, val_a) {
             result = Err(e);
             break;
         }
 
-        pm::set_thread_data_area(tda_b.as_mut_ptr().cast::<u8>())?;
+        pm::__kcall_set_thread_data_area(tda_b.as_mut_ptr().cast::<u8>())?;
         let val_b: u32 = unsafe { read_gs_offset_0() };
         if let Err(e) = assert_eq_or_fail("repeated_reassign_b", magic_b, val_b) {
             result = Err(e);
@@ -430,7 +430,7 @@ fn test_repeated_reassignment() -> Result<(), Error> {
         }
     }
 
-    pm::set_thread_data_area(original)?;
+    pm::__kcall_set_thread_data_area(original)?;
     result
 }
 
@@ -507,7 +507,7 @@ extern "C" fn tda_worker(arg: usize) -> usize {
     let tda_ptr: *mut u8 = arg as *mut u8;
 
     // Install the worker's TDA.
-    if pm::set_thread_data_area(tda_ptr).is_err() {
+    if pm::__kcall_set_thread_data_area(tda_ptr).is_err() {
         return 0;
     }
 
@@ -584,10 +584,10 @@ fn test_tda_survives_create_join() -> Result<(), Error> {
     let stack: WorkerStack = WorkerStack::new(USER_THREAD_STACK_SIZE)?;
     let mut args: ThreadCreateArgs =
         make_thread_args(&stack, tda_worker, worker_tda.as_mut_ptr() as usize);
-    let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
+    let tid: ThreadIdentifier = pm::__kcall_create_thread(&mut args)?;
 
     let mut retval: usize = 0;
-    pm::join_thread(tid, &mut retval)?;
+    pm::__kcall_join_thread(tid, &mut retval)?;
     drop(stack);
 
     if retval != WORKER_EXIT_STATUS {
@@ -636,10 +636,10 @@ fn test_repeated_create_join() -> Result<(), Error> {
         let stack: WorkerStack = WorkerStack::new(USER_THREAD_STACK_SIZE)?;
         let mut args: ThreadCreateArgs =
             make_thread_args(&stack, tda_worker_generic, worker_tda.as_mut_ptr() as usize);
-        let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
+        let tid: ThreadIdentifier = pm::__kcall_create_thread(&mut args)?;
 
         let mut retval: usize = 0;
-        pm::join_thread(tid, &mut retval)?;
+        pm::__kcall_join_thread(tid, &mut retval)?;
         drop(stack);
 
         // Check that the worker succeeded.
@@ -669,7 +669,7 @@ fn test_repeated_create_join() -> Result<(), Error> {
 /// verify the value after joining.
 extern "C" fn tda_worker_generic(arg: usize) -> usize {
     let tda_ptr: *mut u8 = arg as *mut u8;
-    if pm::set_thread_data_area(tda_ptr).is_err() {
+    if pm::__kcall_set_thread_data_area(tda_ptr).is_err() {
         return 0;
     }
     let gs_value: u32 = unsafe { read_gs_offset_0() };
@@ -704,10 +704,10 @@ fn test_worker_tda_independence() -> Result<(), Error> {
     let stack: WorkerStack = WorkerStack::new(USER_THREAD_STACK_SIZE)?;
     let mut args: ThreadCreateArgs =
         make_thread_args(&stack, tda_worker_generic, worker_tda.as_mut_ptr() as usize);
-    let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
+    let tid: ThreadIdentifier = pm::__kcall_create_thread(&mut args)?;
 
     let mut retval: usize = 0;
-    pm::join_thread(tid, &mut retval)?;
+    pm::__kcall_join_thread(tid, &mut retval)?;
     drop(stack);
 
     // Verify the worker read its own magic (not the main thread's).

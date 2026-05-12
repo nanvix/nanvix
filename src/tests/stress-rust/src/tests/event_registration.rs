@@ -16,8 +16,8 @@ use ::sys::{
         ExceptionEvent,
     },
     kcall::{
-        event::evctrl,
-        sched::sched_yield,
+        event::__kcall_evctrl,
+        sched::__kcall_sched_yield,
     },
     pm::Capability,
 };
@@ -53,11 +53,11 @@ pub fn run() -> Result<(), StressError> {
             }
 
             let target: Event = Event::Exception(*ev);
-            evctrl(target, EventCtrlRequest::Register)?;
-            evctrl(target, EventCtrlRequest::Unregister)?;
+            __kcall_evctrl(target, EventCtrlRequest::Register)?;
+            __kcall_evctrl(target, EventCtrlRequest::Unregister)?;
 
             if (cycle + index) & 0x3 == 0 {
-                sched_yield()?;
+                __kcall_sched_yield()?;
             }
         }
     }

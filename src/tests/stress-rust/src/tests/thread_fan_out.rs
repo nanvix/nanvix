@@ -22,8 +22,8 @@ use ::sys::{
         ErrorCode,
     },
     kcall::{
-        pm::create_thread,
-        sched::sched_yield,
+        pm::__kcall_create_thread,
+        sched::__kcall_sched_yield,
     },
     pm::{
         ThreadCreateArgs,
@@ -67,10 +67,10 @@ pub fn run() -> Result<(), StressError> {
     for round in 0..FAN_OUT_ROUNDS {
         let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?;
         let mut args: ThreadCreateArgs = thread_args(&stack, fan_out_worker, round);
-        let tid: ThreadIdentifier = create_thread(&mut args)?;
+        let tid: ThreadIdentifier = __kcall_create_thread(&mut args)?;
 
         let mut retval: usize = 0;
-        ::sys::kcall::pm::join_thread(tid, &mut retval)?;
+        ::sys::kcall::pm::__kcall_join_thread(tid, &mut retval)?;
         drop(stack);
         if retval == FAN_OUT_FAILURE {
             let code_raw: usize = FAN_OUT_ERROR_CODE.swap(0, Ordering::AcqRel);
@@ -131,7 +131,7 @@ extern "C" fn fan_out_worker(round: usize) -> usize {
 /// `Ok(tag)` on success where `tag` encodes the round value.
 fn fan_out_worker_impl(round: usize) -> Result<usize, Error> {
     for _ in 0..FAN_OUT_SPINS {
-        sched_yield()?;
+        __kcall_sched_yield()?;
     }
     FAN_OUT_COMPLETED.fetch_add(1, Ordering::AcqRel);
     Ok(round ^ FAN_OUT_RETURN_TAG)

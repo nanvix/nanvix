@@ -301,7 +301,7 @@ pub unsafe extern "C" fn pthread_attr_getstacksize(
 #[trace_libcall]
 pub extern "C" fn pthread_detach(thread: pthread_t) -> c_int {
     match ::sys::pm::ThreadIdentifier::try_from(thread) {
-        Ok(tid) => match ::sys::kcall::pm::detach_thread(tid) {
+        Ok(tid) => match ::sys::kcall::pm::__kcall_detach_thread(tid) {
             Ok(()) => 0,
             Err(error) => {
                 ::syslog::warn!("pthread_detach(): detach_thread failed ({error:?})");

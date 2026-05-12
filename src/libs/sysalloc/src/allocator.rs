@@ -215,7 +215,7 @@ impl OomHandler for NanvixOomHandler {
 ///
 #[allow(static_mut_refs)]
 pub fn init(base: VirtualAddress, capacity: usize) -> Result<(), Error> {
-    let pid: ProcessIdentifier = kcall::pm::getpid()?;
+    let pid: ProcessIdentifier = kcall::pm::__kcall_getpid()?;
 
     let size: usize = PAGE_SIZE;
 

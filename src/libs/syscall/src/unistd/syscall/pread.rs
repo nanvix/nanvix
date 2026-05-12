@@ -92,7 +92,7 @@ fn pread_linuxd(
     buffer: &mut [u8],
     offset: off_t,
 ) -> Result<c_size_t, Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let mut total_read: c_size_t = 0;
     let mut buffer_offset: usize = 0;
@@ -108,10 +108,10 @@ fn pread_linuxd(
             chunk_size as c_size_t,
             offset + buffer_offset as off_t,
         );
-        ::sys::kcall::ipc::send(&request)?;
+        ::sys::kcall::ipc::__kcall_send(&request)?;
 
         // Receive response.
-        let response: Message = ::sys::kcall::ipc::recv()?;
+        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
         // Check whether system call succeeded or not.
         if response.status != 0 {

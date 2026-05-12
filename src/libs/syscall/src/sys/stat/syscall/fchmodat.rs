@@ -67,17 +67,17 @@ pub fn fchmodat(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(
 /// Forwards a `fchmodat` request to linuxd via IPC.
 #[cfg(not(feature = "standalone"))]
 fn fchmodat_linuxd(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let request: FileChmodAtRequest = FileChmodAtRequest::new(dirfd, mode, flag, path)?;
 
     let requests: Vec<Message> = request.into_parts(tid)?;
 
     for request in &requests {
-        ::sys::kcall::ipc::send(request)?;
+        ::sys::kcall::ipc::__kcall_send(request)?;
     }
 
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

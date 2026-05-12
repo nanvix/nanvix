@@ -180,7 +180,7 @@ pub unsafe extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
     cleanup();
 
     // Exits the runtime.
-    let Err(error) = ::sys::kcall::pm::exit(status);
+    let Err(error) = ::sys::kcall::pm::__kcall_exit(status);
     panic!("failed to exit process (error={error:?})");
 }
 
@@ -321,7 +321,7 @@ fn init() {
     #[cfg(any(target_os = "none", target_os = "nanvix"))]
     match sysalloc::tda::alloc() {
         core::prelude::v1::Ok(Some(tda_ptr)) => {
-            if let Err(error) = ::sys::kcall::pm::set_thread_data_area(tda_ptr) {
+            if let Err(error) = ::sys::kcall::pm::__kcall_set_thread_data_area(tda_ptr) {
                 panic!("init(): failed to set thread data area (error={error:?})");
             }
             sysalloc::tda::mark_initialized();
@@ -391,26 +391,27 @@ fn vfs_init_ramfs() {
     }
 
     // Acquire IO management capability.
-    if ::sys::kcall::pm::capctl(Capability::IoManagement, true).is_err() {
+    if ::sys::kcall::pm::__kcall_capctl(Capability::IoManagement, true).is_err() {
         ::syslog::warn!("vfs_init_ramfs(): failed to acquire IoManagement capability");
         return;
     }
 
     // Attempt to allocate and mount the RAMFS MMIO region.
     let mounted: bool = (|| -> bool {
-        if ::sys::kcall::mm::mmio_alloc(RAMFS_MMIO_TAG).is_err() {
+        if ::sys::kcall::mm::__kcall_mmio_alloc(RAMFS_MMIO_TAG).is_err() {
             // No RAMFS region available — the guest was simply not launched with `-ramfs`.
             return false;
         }
 
-        let info: ::sys::mm::MmioRegionInfo = match ::sys::kcall::mm::mmio_info(RAMFS_MMIO_TAG) {
-            Ok(i) => i,
-            Err(_) => {
-                // Free the MMIO mapping on failure.
-                let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
-                return false;
-            },
-        };
+        let info: ::sys::mm::MmioRegionInfo =
+            match ::sys::kcall::mm::__kcall_mmio_info(RAMFS_MMIO_TAG) {
+                Ok(i) => i,
+                Err(_) => {
+                    // Free the MMIO mapping on failure.
+                    let _ = ::sys::kcall::mm::__kcall_mmio_free(RAMFS_MMIO_TAG);
+                    return false;
+                },
+            };
         let total_size: usize = info.size();
 
         // Mount the MMIO region directly — it is writable.
@@ -428,7 +429,7 @@ fn vfs_init_ramfs() {
                 Err(_) => {
                     ::syslog::warn!("vfs_init_ramfs(): failed to parse multi-image header");
                     if !free_mmio_early {
-                        let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+                        let _ = ::sys::kcall::mm::__kcall_mmio_free(RAMFS_MMIO_TAG);
                     }
                     return false;
                 },
@@ -439,7 +440,7 @@ fn vfs_init_ramfs() {
                 Err(_) => {
                     ::syslog::warn!("vfs_init_ramfs(): failed to parse multi-image entries");
                     if !free_mmio_early {
-                        let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+                        let _ = ::sys::kcall::mm::__kcall_mmio_free(RAMFS_MMIO_TAG);
                     }
                     return false;
                 },
@@ -454,14 +455,14 @@ fn vfs_init_ramfs() {
                     total_size
                 );
                 if !free_mmio_early {
-                    let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+                    let _ = ::sys::kcall::mm::__kcall_mmio_free(RAMFS_MMIO_TAG);
                 }
                 return false;
             }
             if ::multiimage::validate_entries(entries, header.total_size).is_err() {
                 ::syslog::warn!("vfs_init_ramfs(): multi-image entry validation failed");
                 if !free_mmio_early {
-                    let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+                    let _ = ::sys::kcall::mm::__kcall_mmio_free(RAMFS_MMIO_TAG);
                 }
                 return false;
             }
@@ -502,7 +503,7 @@ fn vfs_init_ramfs() {
             {
                 ::syslog::warn!("vfs_init_ramfs(): failed to mount RAMFS image");
                 if !free_mmio_early {
-                    let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+                    let _ = ::sys::kcall::mm::__kcall_mmio_free(RAMFS_MMIO_TAG);
                 }
                 return false;
             }
@@ -512,7 +513,7 @@ fn vfs_init_ramfs() {
     })();
 
     // Release IO management capability.
-    let _ = ::sys::kcall::pm::capctl(Capability::IoManagement, false);
+    let _ = ::sys::kcall::pm::__kcall_capctl(Capability::IoManagement, false);
 
     if mounted {
         ::syslog::info!("vfs_init_ramfs(): mounted RAMFS at {}", RAMFS_MOUNT_PATH);

@@ -116,15 +116,15 @@ fn test_ramfs_mount() -> Result<(), Error> {
 
     let result: Result<(), Error> = (|| {
         // Acquire IO management capability.
-        pm::capctl(Capability::IoManagement, true)?;
+        pm::__kcall_capctl(Capability::IoManagement, true)?;
         cap_acquired = true;
 
         // Attach RAMFS MMIO region.
-        mm::mmio_alloc(RAMFS_MMIO_TAG)?;
+        mm::__kcall_mmio_alloc(RAMFS_MMIO_TAG)?;
         region_attached = true;
 
         // Get region info.
-        let info: ::sys::mm::MmioRegionInfo = mm::mmio_info(RAMFS_MMIO_TAG)?;
+        let info: ::sys::mm::MmioRegionInfo = mm::__kcall_mmio_info(RAMFS_MMIO_TAG)?;
         let total_size: usize = info.size();
 
         ::syslog::info!("vfs-test: ramfs region (size={})", total_size,);
@@ -139,9 +139,9 @@ fn test_ramfs_mount() -> Result<(), Error> {
         }
 
         // Release MMIO region before mounting.
-        mm::mmio_free(RAMFS_MMIO_TAG)?;
+        mm::__kcall_mmio_free(RAMFS_MMIO_TAG)?;
         region_attached = false;
-        pm::capctl(Capability::IoManagement, false)?;
+        pm::__kcall_capctl(Capability::IoManagement, false)?;
         cap_acquired = false;
 
         // Leak the buffer so it lives for the program's lifetime.
@@ -180,10 +180,10 @@ fn test_ramfs_mount() -> Result<(), Error> {
 
     // Cleanup on error.
     if region_attached {
-        let _ = mm::mmio_free(RAMFS_MMIO_TAG);
+        let _ = mm::__kcall_mmio_free(RAMFS_MMIO_TAG);
     }
     if cap_acquired {
-        let _ = pm::capctl(Capability::IoManagement, false);
+        let _ = pm::__kcall_capctl(Capability::IoManagement, false);
     }
 
     result

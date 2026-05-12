@@ -66,7 +66,7 @@ pub fn socketpair(
         ));
     }
 
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Check if array of file descriptors has expected length.
     if socket_fds.len() != 2 {
@@ -77,10 +77,10 @@ pub fn socketpair(
 
     // Build request and send it.
     let request: Message = CreateSocketPairRequest::build(tid, domain, typ, protocol);
-    ::sys::kcall::ipc::send(&request)?;
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

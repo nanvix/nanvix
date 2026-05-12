@@ -64,12 +64,12 @@ fn getcwd_linuxd() -> Result<String, Error> {
 /// Handles the request of the `getcwd()` system call.
 #[cfg(not(feature = "standalone"))]
 fn getcwd_request() -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let request: Message = GetCurrentWorkingDirectoryRequest::build(tid);
 
     // Send request.
-    ::sys::kcall::ipc::send(&request)
+    ::sys::kcall::ipc::__kcall_send(&request)
 }
 
 /// Handles the response of the `getcwd()` system call.
@@ -82,7 +82,7 @@ fn getcwd_response() -> Result<String, Error> {
     let mut assembler: SystemCallLongMessage = SystemCallLongMessage::new(capacity)?;
 
     loop {
-        let response: Message = ::sys::kcall::ipc::recv()?;
+        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
         // Check whether the system call succeeded or not.
         if response.status != 0 {

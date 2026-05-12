@@ -166,7 +166,7 @@ impl Heap {
 
         for page in (new_end..old_end).step_by(mem::PAGE_SIZE).rev() {
             let page_addr: VirtualAddress = VirtualAddress::from_raw_value(page);
-            if let Err(error) = kcall::mm::munmap(self.pid, page_addr) {
+            if let Err(error) = kcall::mm::__kcall_munmap(self.pid, page_addr) {
                 ::syslog::warn!(
                     "shrink(): failed to unmap page at {:X?}, stopping (error={:?})",
                     page_addr,
@@ -214,7 +214,7 @@ pub fn map_range(
 
     // Use batch mmap kcall to map all pages in a single kernel transition.
     if let Err(error) =
-        kcall::mm::mmap(pid, VirtualAddress::new(start), npages, AccessPermission::RDWR)
+        kcall::mm::__kcall_mmap(pid, VirtualAddress::new(start), npages, AccessPermission::RDWR)
     {
         ::syslog::warn!(
             "map_range(): batch mmap failed at {:X?}..{:X?}, npages={} (error={:?})",
@@ -251,7 +251,7 @@ pub fn unmap_range(
 
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
 
-        if let Err(error) = kcall::mm::munmap(pid, vaddr) {
+        if let Err(error) = kcall::mm::__kcall_munmap(pid, vaddr) {
             ::syslog::warn!(
                 "unmap_range(): failed to unmap page at {:X?}, skipping (error={:?})",
                 vaddr,

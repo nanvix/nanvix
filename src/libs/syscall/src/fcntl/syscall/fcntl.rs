@@ -65,14 +65,14 @@ pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
 /// Forwards a `fcntl` request to linuxd via IPC.
 #[cfg(not(feature = "standalone"))]
 fn fcntl_linuxd(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
     let request: Message = FileControlRequest::build(tid, fd, cmd, arg.unwrap_or(0));
-    ::sys::kcall::ipc::send(&request)?;
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status == -1 {

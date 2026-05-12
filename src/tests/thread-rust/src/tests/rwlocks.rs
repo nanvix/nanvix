@@ -110,7 +110,7 @@ fn reader_a_impl() -> Result<usize, Error> {
 
     // Wait until reader B also acquires the read lock.
     while STAGE.load(Ordering::Acquire) < 2 {
-        ::sys::kcall::sched::sched_yield()?;
+        ::sys::kcall::sched::__kcall_sched_yield()?;
     }
 
     unsafe {
@@ -127,7 +127,7 @@ extern "C" fn reader_b_entry(_arg: usize) -> usize {
 fn reader_b_impl() -> Result<usize, Error> {
     // Wait until reader A has acquired.
     while STAGE.load(Ordering::Acquire) < 1 {
-        ::sys::kcall::sched::sched_yield()?;
+        ::sys::kcall::sched::__kcall_sched_yield()?;
     }
 
     // SAFETY: see reader_a_impl.
@@ -144,7 +144,7 @@ fn reader_b_impl() -> Result<usize, Error> {
 
     // Wait until reader A releases before we release.
     while STAGE.load(Ordering::Acquire) < 3 {
-        ::sys::kcall::sched::sched_yield()?;
+        ::sys::kcall::sched::__kcall_sched_yield()?;
     }
 
     unsafe {
@@ -196,7 +196,7 @@ fn test_rwlock_dynamic_init() -> Result<(), Error> {
 
     // Wait until writer is inside.
     while WRITER_INSIDE.load(Ordering::Acquire) == 0 {
-        ::sys::kcall::sched::sched_yield()?;
+        ::sys::kcall::sched::__kcall_sched_yield()?;
     }
 
     // Launch reader which must block until writer releases.
@@ -209,7 +209,7 @@ fn test_rwlock_dynamic_init() -> Result<(), Error> {
             0,
             "reader entered while writer holds lock"
         );
-        ::sys::kcall::sched::sched_yield()?;
+        ::sys::kcall::sched::__kcall_sched_yield()?;
     }
 
     let ret_w = writer.join()?;
@@ -243,7 +243,7 @@ fn dyn_writer_impl() -> Result<usize, Error> {
 
     // Hold the lock for a while.
     for _ in 0..4000_u32 {
-        ::sys::kcall::sched::sched_yield()?;
+        ::sys::kcall::sched::__kcall_sched_yield()?;
     }
 
     WRITER_INSIDE.store(0, Ordering::Release);
@@ -271,7 +271,7 @@ fn dyn_reader_impl() -> Result<usize, Error> {
 
     // Hold the read lock briefly.
     for _ in 0..2000_u32 {
-        ::sys::kcall::sched::sched_yield()?;
+        ::sys::kcall::sched::__kcall_sched_yield()?;
     }
 
     READER_INSIDE.store(0, Ordering::Release);
