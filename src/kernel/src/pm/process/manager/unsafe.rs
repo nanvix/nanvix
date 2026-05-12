@@ -22,7 +22,10 @@ use crate::{
     pm::{
         process::{
             manager::ProcessManager,
-            state::RunningProcess,
+            state::{
+                ProcessRefMut,
+                RunningProcess,
+            },
         },
         sync::{
             condvar::Condvar,
@@ -303,6 +306,82 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Harvests a zombie thread by reclaiming its kernel and user stacks, unmapping user-stack
+    /// pages from the process address space, and notifying the thread manager.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier that owns the zombie thread.
+    /// - `zombie_thread`: The zombie thread to harvest.
+    ///
+    /// # Safety
+    ///
+    /// This function is safe to call if and only if the following conditions are met:
+    /// - The process manager is initialized.
+    /// - Access to the process manager is synchronized.
+    /// - The memory manager is initialized.
+    /// - Access to the memory manager is synchronized.
+    ///
+    unsafe fn harvest_zombie_thread(pid: ProcessIdentifier, zombie_thread: ZombieThread) {
+        // If the zombie has no user stack (kernel-only thread), the kernel stack is
+        // reclaimed via KernelStack::Drop and no page unmapping is needed.
+        if let (Some(_kernel_stack), Some(user_stack)) = zombie_thread.harvest() {
+            // Traverse pages belonging to user stack.
+            let base: usize = user_stack.base().into_raw_value();
+            let top: usize = user_stack.top().into_raw_value();
+            // Resolve the process vmem once before the loop.
+            let mut process_ref: ProcessRefMut<'_> = match Self::get_mut().find_process_mut(pid) {
+                Ok(process) => process,
+                Err(error) => {
+                    // Unexpected failure — log but continue since the address space will be
+                    // reclaimed when it is destroyed.
+                    error!("failed to find process (pid={pid:?}, error={error:?})",);
+                    return;
+                },
+            };
+            let vmem: &mut Vmem = process_ref.state_mut().vmem_mut();
+            // TODO: Use an iterator for this.
+            for raw_addr in (base..top).step_by(PAGE_SIZE) {
+                let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(raw_addr)
+                {
+                    Ok(vaddr) => vaddr,
+                    Err(_) => {
+                        // SAFETY: the following condition is unreachable, because
+                        // pages in the user stack are always page-aligned.
+                        unreachable!("address conversion should succeed")
+                    },
+                };
+                // Attempt to unmap page.
+                match VirtMemoryManager::get_mut().try_unmap_upage(vmem, vaddr) {
+                    Ok(true) => {
+                        // Page was present and has been successfully unmapped.
+                    },
+                    Ok(false) => {
+                        // Page was never mapped (not demand-paged). Skip silently.
+                    },
+                    Err(error) => {
+                        // Unexpected failure — log but continue since the
+                        // address space will be reclaimed when it is destroyed.
+                        warn!(
+                            "harvest_zombie_thread(): failed to unmap page (vaddr={:?}, \
+                             error={:?})",
+                            vaddr, error
+                        );
+                    },
+                }
+            }
+
+            // Frames allocated to the user stack are freed when we exit this scope.
+            // Frames allocated to the kernel stack are freed when we exit this scope.
+        }
+
+        // Notify the thread manager that this thread has been reaped.
+        Self::get_mut().tm.on_thread_reaped();
+    }
+
+    ///
+    /// # Description
+    ///
     /// Joins a thread.
     ///
     /// # Parameters
@@ -344,57 +423,7 @@ impl ProcessManager {
             match result {
                 Ok(zombie_thread) => {
                     let status: ExitStatus = zombie_thread.status();
-
-                    // Harvest zombie thread.
-                    if let (Some(_kernel_stack), Some(user_stack)) = zombie_thread.harvest() {
-                        // Traverse pages belonging to user stack.
-                        let base: usize = user_stack.base().into_raw_value();
-                        let top: usize = user_stack.top().into_raw_value();
-                        // TODO: Use an iterator for this.
-                        for raw_addr in (base..top).step_by(PAGE_SIZE) {
-                            let vaddr: PageAligned<VirtualAddress> =
-                                match PageAligned::from_raw_value(raw_addr) {
-                                    Ok(vaddr) => vaddr,
-                                    Err(_) => {
-                                        // SAFETY: the following condition is unreachable, because
-                                        // pages in the user stack are always page-aligned.
-                                        unreachable!("address conversion should succeed")
-                                    },
-                                };
-                            // Attempt to unmap page.
-                            match VirtMemoryManager::get_mut().try_unmap_upage(
-                                Self::get_mut()
-                                    .find_process_mut(pid)
-                                    .map_err(SleepError::Generic)?
-                                    .state_mut()
-                                    .vmem_mut(),
-                                vaddr,
-                            ) {
-                                Ok(true) => {
-                                    // Page was present and has been successfully unmapped.
-                                },
-                                Ok(false) => {
-                                    // Page was never mapped (not demand-paged). Skip silently.
-                                },
-                                Err(error) => {
-                                    // Unexpected failure — log but continue since the
-                                    // address space will be reclaimed when it is destroyed.
-                                    warn!(
-                                        "harvest_zombies(): failed to unmap page (vaddr={:?}, \
-                                         error={:?})",
-                                        vaddr, error
-                                    );
-                                },
-                            }
-                        }
-
-                        // Frames allocated to the user stack are freed when we exit this scope.
-                        // Frames allocated to the kernel stack are freed when we exit this scope.
-                    }
-
-                    // Notify the thread manager that this thread has been reaped.
-                    Self::get_mut().tm.on_thread_reaped();
-
+                    Self::harvest_zombie_thread(pid, zombie_thread);
                     break Ok(status);
                 },
 
