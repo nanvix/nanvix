@@ -20,6 +20,7 @@ config = { workspace = true }
 core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
 flexi_logger = { workspace = true, optional = true }
 log = { workspace = true, optional = true }
+spin = { workspace = true, features = ["lazy", "spin_mutex"] }
 static_assert = { workspace = true }
 sysapi = { workspace = true }
 syslog = { workspace = true }
@@ -36,6 +37,7 @@ rustc-dep-of-std = [
     "cfg-if/rustc-dep-of-std",
     "compiler_builtins/rustc-dep-of-std",
     "config/rustc-dep-of-std",
+    "spin/rustc-dep-of-std",
     "static_assert/rustc-dep-of-std",
     "sysapi/rustc-dep-of-std",
     "syslog/rustc-dep-of-std",
