@@ -542,10 +542,7 @@ impl Inner {
         vstd::arithmetic::mul::lemma_mul_is_commutative(ps, nf);
         assert(nf * ps == size);
         lemma_hoist_over_denominator(start, nf, ps as nat);
-        assert(sfn + nf == (start + size) / ps);
         vstd::arithmetic::mul::lemma_mul_is_commutative(ps, sfn);
-        assert(sfn * ps == start);
-        assert(start + size == sfn * ps + nf * ps);
         assert(start + size == ((sfn) + (nf)) * (ps as int)) by (nonlinear_arith)
             requires
                 start == (sfn) * ps,
