@@ -1850,3 +1850,160 @@ Now update the source file to call the extracted lemma:
 Turn 70
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -20
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 5.27s
+
+=== Results ===
+  90 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  ✅ All 17 exec functions have contracts.
+
+=== Summary ===
+  verification: 90 verified, 0 e...
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] The first extraction worked. 90 verified (up from 89, because I added a new lemma), 0 errors. Let me continue with more extractions.
+
+Now let me do the next batch. I'll extract block #6 (postcondition, 18 lines) and block #2 (entry insert, 29 lines).
+
+Let me re-read block #6 (1090-1107):
+```rust
+        proof {
+            assert forall|k: int| 0 <= k < self.chunks@.len() implies
+                self@.chunks[k] == old(self)@.chunks[k]
+
+
+```
+
+Finishing the proof block...
+```
+Now I'm thinking through what parameters the lemma needs: the current sparse bitmap state, the old view snapshot, the sequence of old chunks, and the loop variables for entry, start bit, and count. The lemma should prove both that the invariant holds and that the set_bits postcondition is satisfied. I need to identify what preconditions are necessary—the structural properties of the chunks from the loop's ensures clause, how the current chunks relate to the old ones through their offsets and bit counts, the correspondence between the old view and old chunks, and the lifted_set_bits relationship. Looking at what the loop invariant guarantees when it exits with remaining equal to zero should give me the exact conditions I need.
+```
+Examining the loop invariant conditions...
+``` I need to reconsider these loop invariants more carefully to ensure they're capturing the right constraints.
+[RESULT ✓] view: 869. 
+870.         while remaining > 0
+871.             invariant
+872.                 self.chunks@.len() == old_chunks_seq.len(),
+873.                 cur >= entry,
+874.                 cur < self.chunks@.len(),
+875.                 self.chunks@.len() > 0,
+876.                 (self.next_chunk_hint...
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+Let me check the current line numbers after the edit:
+[TOOL] grep: Re-establish self.inv
+
+[THINKING] Now I see the loop invariant. After the loop exits (remaining == 0), the following hold:- `self.chunks@.len() == old_chunks_seq.len()`
+- Structural properties (bitmap.inv, num_bits > 0, etc.)
+- `forall|k| self.chunks@[k].offset == old_chunks_seq[k].offset && self.chunks@[k].bitmap@.num_bits == old_chunks_seq[k].bitmap@.num_bits`- View consistency
+- `lifted_set_bits(self.chunks@, 0) =~= lifted_set_bits(old_chunks_seq, 0).union(BitmapView::range_set(gs, gs + count as int))` (since remaining == 0)- `committed >= 0`, `committed + 0 == seq_sum_from(pfp, 0)`
+
+
+- `take_from_entry + committed == count`
+
+At the loop exit, the set bits across all chunks match the original set bits plus the newly committed range. Now I need to verify that block #6 can establish the view consistency and re-establish the invariant by showing the chunks haven't changed structurally and the overall state is valid.
+
+The key is that `self@.set_bits` is defined directly from the chunks' lifted representation, so it inherits the loop invariant. Since the old chunks sequence matches the original view, the postcondition follows—the new set bits are exactly the union of what was there before plus the committed range. For the chunks themselves, each one preserves its offset and bit count from the original sequence, so the view reconstruction stays consistent.
+
+For the internal invariant, the structural properties come straight from the loop, and the capacity check works because capacity hasn't changed—it was preserved in the loop invariant, and since the chunks view is equivalent to the old one, the capacity computation yields the same result.
+
+Now I'm working on the lemma statement itself, being careful about what the caller needs after the block completes. The function returns `global_start` with postconditions that `self.inv()` holds and the chunks view is properly updated.
+
+Writing the lemma signature... Continuing with the invariant checks... Verifying the chunk properties match and asserting the set bits are correctly updated with the new range, then using a lemma to confirm the capacity depends only on the chunks structure. I need to establish the connection between `old_view.set_bits` and the lifted representation of the old chunks. The View definition should give me this relationship, but the SMT solver might not automatically unfold the spec function, so I may need to explicitly reason through how the field read on SparseBitmapView relates to the computed value from the chunks. that the SMT solver won't automatically unfold the view definition when it's passed as a parameter, even though `closed spec` functions are transparent within the same module. I need to figure out whether I can rely on that unfolding or if I need an explicit reveal to connect the old state's set_bits with the lifted representation. old_chunks at the start, so I need to make sure that precondition is satisfied. The cleanest approach is to call the lemma for the invariant and chunks part, then handle the set_bits postcondition separately with a direct assertion.
+
+But wait—the lemma only handles a single chunk update, and here I'm updating multiple chunks in the loop, so it doesn't actually apply. I need to write a dedicated lemma that accounts for the full set of changes and includes the `old_view.set_bits =~= lifted_set_bits(old_chunks, 0)` precondition.
+
+Let me see if I can avoid extracting block #6 altogether by condensing it to five lines or fewer.
+
+Still writing proof block... be derivable from the lemma call, so I'll test removing those assertions to see if the proof still holds. The key assertions that likely can't be removed are the forall loop, the extensional equality check for chunks, the capacity lemma, and the final set_bits postcondition since those establish the core invariants and properties needed.
+
+Let me try a minimal version with just the essential steps...
+
+Trying minimal proof code... So I'm checking whether the loop invariant already guarantees that the chunks array remains unchanged, which would let me eliminate the explicit assertion and equality check. If the invariant maintains that each chunk's offset and bitmap properties stay consistent with their original values throughout the loop, then the extensional equality should follow automatically without needing to spell it out.
+
+Let me try minimizing all the blocks first before deciding which ones need extraction—that way I can avoid unnecessary refactoring if the code shrinks enough to fit within the line limits. these might be derivable from the forall in the loop invariant. The capacity assertion and internal invariant check could also be provable automatically. Let me try a batch approach where I remove multiple assertions at once and verify, bisecting if needed. I'll start with block #6 since it's the postcondition and easiest to test in isolation, then move through the others. For that block, I'm going to try stripping out the assert-forall body, the capacity assertion, and the internal invariant check to see what actually needs to stay.
+[RESULT ✓] grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs-1082-        // remaining == 0 follows from the loop ensures clause.
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs-1083-
+/home/ruize/verus-ai-...
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+Good, first extraction works (90 verified). Let me now try minimizing the postcondition block (#6) by removing potentially redundant assertions:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] OK, so block #6 is at lines 1085-1102 (18 lines). Let me try minimizing it.
+
+The block has:
+1. assert-forall with 2 inner asserts (lines 1086-1092, 7 lines)
+2. extensional equality (line 1093)
+3. capacity lemma call (line 1094)
+4. capacity assert (line 1095)
+5. internal_inv assert (line 1096)
+6. lemma_new_establishes_inv call (line 1097)
+7. set_bits assert (lines 1098-1101, 4 lines)
+
+
+Now I'm testing whether I can drop the intermediate assertions about capacity and internal invariants — they might follow automatically from the other steps. I'm looking at a proof block that verifies chunk properties are preserved, then establishes the invariant, and finally checks the bit-setting behavior. Simplifying the proof further... Trying a simpler proof that relies on the SMT solver seeing through the view definition to connect the set_bits relationships without an explicit assertion. This gets down to 7 lines, right at the threshold, though it might not work without additional hints. So the tool counts the entire proof block including the braces, which means my 6-line version would still be reported as 6 lines total—over the 5-line threshold. To meet the constraint, I'd need to compress it down to just 3 interior lines, which means fitting the entire proof into 5 lines including the braces. I'm exploring whether the extensional equality marker can work implicitly within the assert-forall structure, but even with that approach the proof block still exceeds the 5-line limit, so it seems most of these verification blocks will need to stay longer than ideal.
+
+Rather than extracting each proof individually, I should create a general-purpose lemma that handles the common pattern appearing across multiple blocks: proving the view chunks match, then re-establishing the invariant through the capacity lemma and the new-establishes-inv lemma. This would consolidate the repetitive verification logic.
+
+Defining a reusable lemma... Defining verification constraints... Finishing the assertion that chunk properties match, then invoking a lemma to establish that capacity depends only on chunks, verifying the internal invariant holds, and finally using a lemma to confirm the sparse bitmap satisfies the full invariant. This is a reusable proof pattern for re-establishing invariants when chunk structure is preserved.
+
+At the call site, I'm passing the current state and the old chunks sequence to the lemma, but I need to verify that the old view satisfies the required preconditions—specifically that the chunks length matches and the offsets align with the old state. The SMT solver should be able to see through the View definition since we're in the same module, and the ghost binding should provide the necessary equivalence between the old chunks sequence and the old state's chunks. is also in the same crate through `include!`, so within the module the closed spec should be transparent to the SMT solver. But when `lemma_reestablish_inv` takes `old_view` as a parameter, the solver only sees it as an abstract SparseBitmapView value without knowing its origin, so I need explicit requires clauses to connect the chunks data.
+
+Looking at the existing `lemma_inv_after_chunk_update`, it already establishes this pattern with requires that assert the correspondence between old_view.chunks and old_chunks. At the call site where I pass `old(self)@`, Verus should be able to verify these requirements hold because the view function definition makes that relationship transparent. For (2), the view definition shows that `old(self)@.chunks[k].0` comes directly from `old(self).chunks@[k].offset as int`, and since `old(self).chunks@ =~= old_chunks_seq`, we get `old(self).chunks@[k] == old_chunks_seq[k]`, which means `old(self)@.chunks[k].0 == old_chunks_seq[k].offset as int`. The solver should be able to unfold the view definition to establish this, though there's a question about how the equivalence between `old_chunks_seq` and `old(self).chunks@` was actually established in the function's precondition. `old_chunks_seq =~= old(self).chunks@` along with the loop invariant properties, and I need to verify that the lemma's requirements are satisfied. The key obligations are checking that the chunk lengths match, the next chunk hint is within bounds, and the capacity bits remain consistent with the original view.
+
+For the capacity bits specifically, I'm tracing through the invariant: `self.capacity_bits == old(self).capacity_bits` holds throughout the loop, and since `old(self).inv()` establishes that `old(self).capacity_bits as int == old(self)@.capacity()`, this gives me `self.capacity_bits as int == old(self)@.capacity()`. The structural properties of the chunks array also follow from the loop invariant, including that offsets are preserved across iterations.
+
+The trickier part is establishing the properties about `old_view.chunks` — I need the solver to unfold the closed spec view function `old(self)@`, which should be possible since we're in the same module, though I'm not entirely sure if it'll happen automatically without explicit hints. I'll try it and see what the solver does.
+
+After the lemma call, block #6 still needs to prove that the set bits operation produces the union of the old and new set bits, which is another piece I need to verify. old(self)@.set_bits.union(range_set(gs, gs + count)), where gs is the starting bit position in the entry and gs + count is the ending position. The postcondition requires this same union but expressed in terms of entry_cap and trailing_free, and I can verify they're equivalent since start_bit_in_entry equals entry_cap - trailing_free.
+
+Now I'm wondering whether the SMT solver can see through the view definitions to connect self@.set_bits with the lifted representation of the chunks. Since the view function is defined in the same module as closed spec, it should be able to make that connection, though I might need an explicit assert to trigger it. The original assert statement helps ensure the solver verifies the postcondition, and after lemma_reestablish_inv establishes the invariant, the solver should have enough information about the view to work with the loop invariant.
+
+Let me try calling lemma_reestablish_inv and see if the postcondition verifies without the assert—if the set_bits condition fails, I can add it back. I'm planning to implement this by adding lemma_reestablish_inv to the proof file and modifying block #6 accordingly. For the full batch, I want to extract blocks #2, #5, and #6 together: block #6 will call the lemma, block #2 can be split between the structural part using the lemma and inline calls for the rest, and I need to review block #5 to understand the pre-loop setup.
+
+Now looking at block #5, I'm verifying the chunk length, the hint bounds, and that chunks beyond the entry point match the original sequence, while also checking that the remaining count and committed values align with the phase calculations. Wrapping up the preconditions block that validates the loop invariants—checking that the chunk sequence length matches, the hint is in bounds, chunks past the entry point are unchanged, the remaining count aligns with the sequence sum, and when there's remaining work, verifying the free prefix list is populated, the touching chain property holds, and the offset arithmetic checks out.
+
+Rather than extracting this into a single lemma since it proves many disparate facts, I should try minimizing it instead. Some of these assertions might be derivable from context, while others like the arithmetic relationships and the conditional properties are essential. I'm going to add a helper lemma to the proof file, refactor block #6 to use it, then strip out obviously redundant assertions from the earlier blocks and verify everything still works.
+
+Looking at block #2 more carefully though—it establishes properties right after the entry chunk insert, but I don't actually need the full invariant at that point. The loop that follows has its own separate structural properties, not the complete `inv()`. So I should extract just the individual properties that block #2 actually needs, not the full invariant. The lemma I need already captures most of this—it requires the chunk update preconditions and ensures the invariant holds plus the lifted set bits are updated correctly. So I'm really just verifying that the structural properties and view consistency all follow from those conditions.
+
+For the proof block, I can keep the sequence lemma inline, add a quick assertion that non-entry chunks stay unchanged, invoke the main lemma, then handle the set bits update with another lemma call. That's roughly 8 lines total, which is still a bit long, but the assertion for unchanged chunks is unavoidable since I need to establish that precondition.
+
+Actually, I'm realizing I could combine several of these steps into a single higher-level lemma that handles the sequence update, the invariant reestablishment, and the set bits proof all at once. That would let me collapse block #2 down significantly. So I should create two general-purpose lemmas: one for reestablishing the invariant after the loop finishes, and another for...
+
+Writing lemma definition... Continuing with the formal verification conditions... Continuing with the verification conditions for the chunk operations, checking that the hint stays within bounds, the old view's chunk metadata matches the actual chunks, and validating the bit range constraints for the operation. Continuing with the proof by asserting that non-ci chunks remain unchanged through the intermediate state, then invoking a lemma to re-establish the invariant after the chunk update, and finally verifying that offsets and bit counts are preserved. I'm checking whether all the preconditions for `lemma_inv_after_chunk_update` are satisfied by my new lemma's requirements. The first few conditions look good—the chunk index bounds, the length invariant, and the equality of unchanged chunks are all covered. Now I need to verify the remaining offset and bitmap constraints are also derivable from what I've already established. Now I'm verifying the invariants hold at the call site in `commit_cross_chunk_alloc`, where we have the old view snapshot and the pre-commit chunks. The capacity and hint values remain unchanged from the old state, and the invariant for capacity follows directly from the old view's validity. After removing and reinserting the chunk, the length is restored so `self.chunks@.len() == old(self).chunks@.len()` and the invariant `self.next_chunk_hint < self.chunks@.len()` holds at block #2. Now I need to trace through block #1, which performs the same remove-modify-reinsert pattern for the `next` chunk inside the inner loop.
+
+The issue is that `pre_inner_chunks` (the snapshot taken before block #1's removal) is no longer equivalent to `old_chunks_seq` because `self.chunks@` has already been modified by block #2 and previous iterations. The proof needs to account for this by showing that despite these modifications, the offset and bitmap properties of all chunks remain consistent with the original sequence. I need to relax the precondition for `lemma_chunk_alloc_and_reinsert` since the chunks have diverged in their set_bits but maintain matching structural properties. Instead of requiring exact equivalence, I'll specify that the lengths match and the offset/num_bits fields align across both sequences, while allowing the bitmap contents to differ for already-committed chunks. Then I need to rework how I bridge the non-ci unchanged proof without relying on that equivalence.
+
+I'm asserting that chunks at indices other than the next position remain unchanged from the pre-inner state, and separately verifying that the offset and bitmap num_bits fields match between the current and old chunk sequences for all indices.
+
+I realize this proof is getting quite involved for what block #1 needs. Rather than trying to extract complex lemmas with intricate signatures, I should probably just write separate, context-specific lemmas for each block—it'll mean more code in the proof file but the source code stays cleaner.
+
+Actually, let me step back and try a different strategy altogether. Instead of pulling proof logic into lemmas with complicated types, I should focus on reducing the proof blocks themselves by leaning more heavily on lemmas that already exist.
+
+Simplifying block #2 by calling `lemma_seq_remove_insert_is_update` to handle the sequence manipulation, then asserting the chunk properties that follow from that operation...
+
+But now I'm realizing the loop invariant still needs to establish that chunks remain sorted and non-overlapping after each update, and without `lemma_chunk_update_preserves_structure` doing that work, I need to figure out where those structural guarantees come from. The bridge assertion should let the solver connect the unchanged chunks to their original offsets, which preserves the sorted property without needing the lemma. Let me test whether verification passes without explicitly calling the structural preservation lemma.
+
+I'm going to try a more pragmatic approach: make targeted changes one at a time, starting with minimizing the postcondition block by stripping out intermediate assertions, then verify and iterate based on what fails.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -20

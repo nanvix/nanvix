@@ -1084,21 +1084,10 @@ impl SparseBitmap {
         // ── Re-establish self.inv() and prove postcondition ──
         proof {
             assert forall|k: int| 0 <= k < self.chunks@.len() implies
-                self@.chunks[k] == old(self)@.chunks[k]
-            by {
-                assert(self.chunks@[k].offset == old_chunks_seq[k].offset);
-                assert(self.chunks@[k].bitmap@.num_bits
-                    == old_chunks_seq[k].bitmap@.num_bits);
-            }
+                self@.chunks[k] == old(self)@.chunks[k] by {}
             assert(self@.chunks =~= old(self)@.chunks);
             lemma_capacity_from_depends_only_on_chunks(self@, old(self)@, 0);
-            assert(self.capacity_bits as int == self@.capacity());
-            assert(self.internal_inv());
             Self::lemma_new_establishes_inv(&*self);
-            assert(self@.set_bits =~= old(self)@.set_bits.union(
-                BitmapView::range_set(
-                    (self.chunks@[entry as int].offset + start_bit_in_entry) as int,
-                    (self.chunks@[entry as int].offset + start_bit_in_entry + count) as int)));
         }
 
         let global_start = self.chunks[entry].offset + start_bit_in_entry;
