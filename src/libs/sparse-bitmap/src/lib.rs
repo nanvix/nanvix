@@ -902,8 +902,6 @@ impl SparseBitmap {
                 let idx = next as int - entry as int - 1;
                 lemma_seq_sum_from_unfold(phase1b_free_prefixes, idx);
                 lemma_seq_sum_from_nonneg(phase1b_free_prefixes, idx + 1);
-                assert forall|b: int| 0 <= b < take as int
-                    implies !chunk_n.bitmap@.set_bits.contains(b) by {}
             }
 
             let ghost old_next_set_bits = chunk_n.bitmap@.set_bits;
