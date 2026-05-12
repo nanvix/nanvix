@@ -344,6 +344,34 @@ pub fn join_thread(tid: ThreadIdentifier, retval: &mut usize) -> Result<(), Erro
 }
 
 //==================================================================================================
+// Detach Thread
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Detaches a thread. A detached thread is automatically harvested when it exits, without requiring
+/// another thread to join it.
+///
+/// # Parameters
+///
+/// - `tid`: Thread identifier of the thread to detach.
+///
+/// # Returns
+///
+/// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
+///
+pub fn detach_thread(tid: ThreadIdentifier) -> Result<(), Error> {
+    let result: i64 = kcall1!(KcallNumber::DetachThread.into(), i32::from(tid) as u32);
+
+    if unlikely(result != 0) {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to detach thread"))
+    } else {
+        Ok(())
+    }
+}
+
+//==================================================================================================
 // Lock Mutex
 //==================================================================================================
 
