@@ -3464,6 +3464,8 @@ dependencies = [
  "mkramfs",
  "multibin",
  "multiimage",
+ "nanvix-sandbox-config",
+ "networkd",
  "profiler",
  "serde",
  "serde_cbor",
