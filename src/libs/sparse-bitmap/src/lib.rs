@@ -1247,14 +1247,8 @@ impl SparseBitmap {
             }
 
             proof {
-                // After inner check walk: forall|b| 0 <= b < take ==> bit b is free in chunk[next]
                 let ghost old_pfp = phase1b_free_prefixes;
                 phase1b_free_prefixes = phase1b_free_prefixes.push(take as int);
-                assert(phase1b_free_prefixes.len() == (next - entry) as int);
-                let new_idx = phase1b_free_prefixes.len() - 1;
-                assert(entry as int + 1 + new_idx == next as int);
-                assert(0 < phase1b_free_prefixes[new_idx]);
-                assert(phase1b_free_prefixes[new_idx] <= self.chunks@[next as int].bitmap@.num_bits);
                 lemma_seq_sum_from_push(old_pfp, take as int, 0);
                 assert forall|i: int| 0 <= i < phase1b_free_prefixes.len()
                     implies (
@@ -1270,9 +1264,6 @@ impl SparseBitmap {
                         }
                     }
                 }
-                assert(self.chunks@[last_chunk as int].offset as int
-                    + self.chunks@[last_chunk as int].bitmap@.num_bits
-                    == self.chunks@[next as int].offset as int);
             }
 
             need = need - take;

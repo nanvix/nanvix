@@ -2763,3 +2763,76 @@ Finishing the loop body and updating the committed count. I'm also adding a ghos
 Turn 122
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
+[RESULT ✓] bash: Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  ✅ All 17 exec functions have contracts.
+
+=== Summary ===
+  verification: 90 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17...
+
+────────────────────────────────────────────────────────────
+Turn 123
+────────────────────────────────────────────────────────────
+51→18 lines, passing. Now the block in `try_alloc_cross_chunk_from` at 1302-1329 (28 lines, pfp update with ghost mutation):
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] view: 1275.                     == self.chunks@[next as int].offset as int);
+1276.             }
+1277. 
+1278.             need = need - take;
+1279.             last_chunk = next;
+1280.         }
+1281. 
+1282.         // ── Phase 2: commit — set bits in entry chunk ──
+1283.         let _take_from_entry: usi...
+
+────────────────────────────────────────────────────────────
+Turn 124
+────────────────────────────────────────────────────────────
+Let me view the block at 1247-1276 (the walk loop inner proof):
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] The block at lines 1288-1293 is already 6 lines (just a single lemma call). That's already at the threshold - just 1 line over. Let me check what `check_proof_blocks.py` reported... it said 1302-1329 is 28 lines. Let me re-look at the output:
+
+```
+target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs try_alloc_cross_chunk_from  1302  1329    28  ⚠️  EXTRACT (>5)
+```
+
+That's in the walk loop. Let me view those lines:
+[RESULT ✓] view: 1245.                 }
+1246.                 check_bit = check_bit + 1;
+1247.             }
+1248. 
+1249.             proof {
+1250.                 // After inner check walk: forall|b| 0 <= b < take ==> bit b is free in chunk[next]
+1251.                 let ghost old_pfp = phase1b_free_prefixes;
+125...
+
+────────────────────────────────────────────────────────────
+Turn 125
+────────────────────────────────────────────────────────────
+Try minimizing this 28-line block:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] This block (lines 1249-1276, 28 lines) has a ghost mutation (`phase1b_free_prefixes = phase1b_free_prefixes.push(take as int);`). Let me try minimizing the assertions around it. 
+
+The essential parts are:
+1. Ghost mutation: `phase1b_free_prefixes = phase1b_free_prefixes.push(take as int);`
+2. `lemma_seq_sum_from_push` — likely needed for the sum computation
+3. The assert-forall about `phase1b_free_prefixes[i]` — might be needed for loop invariant
+
+
+4. The assert about touching chunks — might be needed
+
+Let me try removing the intermediate simple assertions (lines 1253-1257) and the final assert (1273-1275) to see if the proof still holds.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 126
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
