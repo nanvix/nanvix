@@ -1083,8 +1083,6 @@ impl SparseBitmap {
 
         // ── Re-establish self.inv() and prove postcondition ──
         proof {
-            assert forall|k: int| 0 <= k < self.chunks@.len() implies
-                self@.chunks[k] == old(self)@.chunks[k] by {}
             lemma_capacity_from_depends_only_on_chunks(self@, old(self)@, 0);
             Self::lemma_new_establishes_inv(&*self);
         }

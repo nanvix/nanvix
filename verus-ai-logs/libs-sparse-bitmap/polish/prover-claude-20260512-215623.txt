@@ -2051,3 +2051,37 @@ That's 6 lines. Still >5. Let me try merging the assert-forall into a single lin
 Turn 76
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
+[RESULT ✓] bash: Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  ✅ All 17 exec functions have contracts.
+
+=== Summary ===
+  verification: 90 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17...
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+6 lines. Let me try removing the assert-forall entirely:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] Block #6 is now 6 lines. Still >5. Can I get it to 5?
+
+The remaining content is:
+1. `proof {` — 1 line
+2. `assert forall|k: int| 0 <= k < self.chunks@.len() implies` — 1 line
+3. `    self@.chunks[k] == old(self)@.chunks[k] by {}` — 1 line4. `lemma_capacity_from_depends_only_on_chunks(self@, old(self)@, 0);` — 1 line5. 
+`Self::lemma_new_establishes_inv(&*self);` — 1 line6. `}` — 1 line
+
+I'm wondering if I can drop the assert-forall statement entirely and let the solver figure out that the view chunks match on its own.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
