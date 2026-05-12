@@ -2132,3 +2132,39 @@ Turn 80
 Turn 81
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
+[RESULT ✓] bash: Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  ✅ All 17 exec functions have contracts.
+
+=== Summary ===
+  verification: 90 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17...
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+12 lines. Let me try removing the non-entry unchanged bridge:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] Block #2 reduced from 29 lines to 12 lines. Let me try removing more. I removed:1. `assert(pre_commit_chunks =~= old_chunks_seq)` - bridge
+2. Two asserts about offset/num_bits preservation3. The view consistency assert-forall (8 lines)
+4. The set_bits extensional equality assert (4 lines)Remaining (12 lines):1. lemma_seq_remove_insert_is_update (1 line)
+2. assert-forall for non-entry unchanged (3 lines)
+3. lemma_chunk_update_preserves_structure (2 lines)
+
+
+4. lemma_lifted_set_bits_alloc_range (3 lines)
+5. proof { } (2 lines)
+
+I'm testing whether I can remove the non-entry unchanged assertion and let the structure preservation lemma handle it automatically.
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
