@@ -871,6 +871,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
 mod tests {
     use super::*;
     use ::nanvix_sandbox::syscomm::SocketType;
+    use ::nanvix_sandbox_config::NetworkingMode;
 
     // Constant for test user VM identifier that is guaranteed to not exist.
     const NONEXISTENT_USER_VM_ID: u32 = 99999;
@@ -961,6 +962,7 @@ mod tests {
             false,
             &format!("{}/snapshot", tmp_dir.path()),
             tmp_dir.path(),
+            NetworkingMode::Disabled,
         );
         (config, tmp_dir)
     }
@@ -1007,6 +1009,7 @@ mod tests {
             l2,
             &format!("{}/snapshot", tmp_dir.path()),
             tmp_dir.path(),
+            NetworkingMode::Disabled,
         );
 
         (config, tmp_dir)
