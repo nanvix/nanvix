@@ -2673,3 +2673,50 @@ Need the trigger. Restore it:
 Turn 117
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  ✅ All 17 exec functions have contracts.
+
+=== Summary ===
+  verification: 89 verified, 1 errors (exit 101)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17/17 exec func...
+
+────────────────────────────────────────────────────────────
+Turn 118
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && cat verus-ai-logs/verus-logs/verus_2026-05-12_
+
+[THINKING] Hmm, the error is not from removing the trig — it's from the variable renaming. Let me check: I merged `remaining_prime` and `cur_prime_idx` inlining. Let me check the error:
+[RESULT ✓] bash: 1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+--
+error: while loop: Resource limit (rlimit) exceeded; consider rerunning with --profile for more details
+   --> src/libs/sparse-bitmap/src/lib.rs:822:9
+    |
+822 |    ...
+
+────────────────────────────────────────────────────────────
+Turn 119
+────────────────────────────────────────────────────────────
+Rlimit hit. Restore the `remaining_prime` variable — solver needs the local binding:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] Resource limit exceeded — the `remaining_prime` local binding was needed to help the prover, not just for naming. Let me restore the previous working version which kept `remaining_prime`:
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 120
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
