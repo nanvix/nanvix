@@ -1036,3 +1036,104 @@ Now fix `lemma_range_insert_step`. The issue is that `set_int_range(sfn, idx+1)`
 Turn 48
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: === Function Coverage ===
+  13/15 exec functions have contracts.
+  Unverified functions:
+    - instance
+    - init
+
+=== Summary ===
+  verification: 22 verified, 1 errors (exit 101)
+  cheating: assume=0 external_body=24 admit=0 trusted=0 no_decreases=0 cfg_gate=9
+  coverage: 13/15 exec functions have...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+One error left. Let me check which one:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -A 10 "error:" verus-ai-logs/verus-logs/v
+[RESULT ✓] bash: error: assertion failed
+   --> src/kernel/src/mm/phys/frame.proof.rs:582:31
+    |
+582 |         assert forall|x: int| r1.contains(x) <==> r2.contains(x) by {
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+note: automatically chose triggers for this expressio...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+The empty-body `by {}` still doesn't work. Verus needs explicit hints about `set_int_range` definition. Let me check the vstd definition:
+[TOOL] bash: grep -n "set_int_range" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/source/vstd/set_lib.rs | head -10
+[RESULT ✓] bash: grep: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd/source/vstd/set_lib.rs: No such file or directory
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/vstd -name "*.rs" | xargs grep -l "set_int_range" 2>/dev/null | head 
+[RESULT ✓] bash: 
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423 -name "*.rs" -path "*/vstd/*" | head -20 && find /home/ruize/verus-ai
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/vstd/arithmetic/div_mod.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/vstd/arithmetic/internals/div_internals.rs
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/vstd/arithmetic/internals/div_internals_nonlinear.rs
+...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n "set_int_range" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/vstd/set_lib.rs | head -10
+[RESULT ✓] bash: 1161:pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
+1171:        set_int_range(lo, hi).finite(),
+1172:        set_int_range(lo, hi).len() == hi - lo,
+1176:        assert(set_int_range(lo, hi) =~= Set::empty());
+1179:        assert(set_int_range(lo, hi - 1).insert(hi - 1) =~= set_int_...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/verus/source/vstd/set_lib.rs
+[RESULT ✓] view: 1161. pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
+1162.     Set::new(|i: int| lo <= i && i < hi)
+1163. }
+1164. 
+1165. /// If a set solely contains integers in the range [a, b), then its size is
+1166. /// bounded by b - a.
+1167. pub proof fn lemma_int_range(lo: int, hi: int)
+1168. ...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+`set_int_range(lo, hi) = Set::new(|i| lo <= i && i < hi)`. So `set_int_range(sfn, idx+1).contains(x)` is `sfn <= x && x < idx+1` which means `sfn <= x <= idx`. And `set_int_range(sfn, idx).insert(idx).contains(x)` is `(sfn <= x && x < idx) || x == idx` which is equivalent. Verus should prove this automatically if we trigger on both set definitions.
+
+The issue might be that the triggers are wrong. Let me try a different approach - use the existing `lemma_int_range` from vstd which already proves `set_int_range(lo, hi-1).insert(hi-1) =~= set_int_range(lo, hi)`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+Now I also need to add `sfn <= idx` to the call site. Let me check where it's called:
+[TOOL] bash: grep -n "lemma_range_insert_step" /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/
+[RESULT ✓] bash: 559:                Self::lemma_range_insert_step(start_frame_number as int, index as int);
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 540.                 && start_frame_number <= index && index <= end_frame_number
+541.                 && (forall|j: int| start_frame_number as int <= j < end_frame_number as int ==> old(self).bitmap@.is_covered(j))
+542.                 && (forall|j: int| start_frame_number as int <= j < end_frame_nu...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+Good, the loop invariant ensures `start_frame_number <= index`, so `sfn <= idx` should be satisfied. Let me run verification:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
