@@ -329,6 +329,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
+name = "cmdline"
+version = "0.13.6"
+dependencies = [
+ "compiler_builtins",
+ "rustc-std-workspace-core",
+]
+
+[[package]]
 name = "cmdline-len-rust"
 version = "0.13.8"
 dependencies = [
@@ -1446,6 +1454,7 @@ dependencies = [
  "build-utils",
  "bump-allocator",
  "cfg-if",
+ "cmdline",
  "config",
  "elf",
  "mmio-tag",
