@@ -1625,3 +1625,38 @@ Now update the call sites in frame.rs to use the simplified interface:
 Turn 95
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: - init
+
+=== Summary ===
+  verification: 23 verified, 1 errors (exit 101)
+  cheating: assume=0 external_body=24 admit=0 trusted=0 no_decreases=0 cfg_gate=9
+  coverage: 13/15 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verus-logs/verus_2026-05-12_21-52-28.log
+m...
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+One error. Let me check:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && grep -A 10 "error:" verus-ai-logs/verus-logs/v
+[RESULT ✓] bash: error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:391:13
+    |
+391 | /             Self::lemma_frame_quotients_bounded(
+392 | |                 region@.start, region@.size,
+393 | |                 start_frame_number as int, num_frames as int, ps);
+    | |______________________...
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+The issue is `start == sfn * ps`. We have `sfn = start / ps` from `region_start_frame_number` ensures, but `start == sfn * ps` requires `start % ps == 0` which is in the preconditions of `alloc_range`. Let me check - we need `start = sfn * ps` but we only know `sfn = start / ps`. With `start % ps == 0`, we can derive `start = sfn * ps` via `lemma_fundamental_div_mod`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
