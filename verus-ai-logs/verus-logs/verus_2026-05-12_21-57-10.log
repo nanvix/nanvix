@@ -1,0 +1,52 @@
+Timestamp: 2026-05-12_21-57-10
+Mode: cargo
+Crate: sparse-bitmap
+Directory: N/A
+Module: <all>
+Exit code: 101
+88 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking sparse-bitmap v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap)
+note: while loop: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+    --> src/libs/sparse-bitmap/src/lib.rs:1144:9
+     |
+1144 |         while bit_idx > 0
+     |         ^^^^^^^^^^^^^^^^^
+
+error: loop invariant not satisfied
+    --> src/libs/sparse-bitmap/src/lib.rs:1180:25
+     |
+1153 |                 trailing_free == entry_cap - bit_idx,
+     |                 ------------------------------------
+     |                 |
+     |                 failed this invariant
+     |                 (hint: if this is not supposed to be true at the break, use 'invariant_except_break' for it instead of 'invariant', and use 'ensures' for what is true at the break)
+...
+1180 |                         break;
+     |                         ^^^^^ at this loop exit
+
+error: loop invariant not satisfied
+    --> src/libs/sparse-bitmap/src/lib.rs:1180:25
+     |
+1155 | /                 forall|b: int| bit_idx <= b < entry_cap as int
+1156 | |                     ==> !self.chunks@[entry as int].bitmap@.set_bits.contains(b),
+     | |                                                                                -
+     | |                                                                                |
+     | |________________________________________________________________________________failed this invariant
+     |                                                                                  (hint: if this is not supposed to be true at the break, use 'invariant_except_break' for it instead of 'invariant', and use 'ensures' for what is true at the break)
+...
+1180 |                           break;
+     |                           ^^^^^ at this loop exit
+
+verification results:: 88 verified, 1 errors
+error: could not compile `sparse-bitmap` (lib) due to 2 previous errors
