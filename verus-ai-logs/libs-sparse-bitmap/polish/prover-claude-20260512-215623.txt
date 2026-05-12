@@ -3185,3 +3185,33 @@ Turn 151
 Turn 152
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -5
+[RESULT ✓] bash: cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17/17 exec functions have contracts
+  status: CLEAN
+
+Log written to: verus-ai-logs/verus-logs/verus_2026-05-12_22-42-54.log
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 153
+────────────────────────────────────────────────────────────
+Block 756 entirely removed (7→0). Now try reducing 791 (6 lines):
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] view: 785.                         assert forall|b: int|
+786.                             (bit_e + 1) as int <= b < (start_bit_in_entry + take_from_entry) as int
+787.                             implies !chunk_e.bitmap@.set_bits.contains(b) by {}
+788.                         lemma_range_set_insert_end(sta...
+
+────────────────────────────────────────────────────────────
+Turn 154
+────────────────────────────────────────────────────────────
+Try removing the assert-forall in the Ok branch:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] The block at line 784-789 (6 lines) has an assert-forall and a lemma call. Let me try removing the assert-forall:
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 155
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -5

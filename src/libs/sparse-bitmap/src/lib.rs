@@ -782,9 +782,6 @@ impl SparseBitmap {
             match set_result {
                 Ok(()) => {
                     proof {
-                        assert forall|b: int|
-                            (bit_e + 1) as int <= b < (start_bit_in_entry + take_from_entry) as int
-                            implies !chunk_e.bitmap@.set_bits.contains(b) by {}
                         lemma_range_set_insert_end(start_bit_in_entry as int, bit_e as int);
                     }
                 },
