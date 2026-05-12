@@ -1256,13 +1256,7 @@ impl SparseBitmap {
                         || seq_sum_from(phase1b_free_prefixes, i + 1) == 0
                     )
                 by {
-                    if i < old_pfp.len() {
-                        assert(phase1b_free_prefixes[i] == old_pfp[i]);
-                    } else {
-                        if (take as int) < self.chunks@[next as int].bitmap@.num_bits {
-                            assert(seq_sum_from(phase1b_free_prefixes, i + 1) == 0);
-                        }
-                    }
+                    if i < old_pfp.len() {} else {}
                 }
             }
 
