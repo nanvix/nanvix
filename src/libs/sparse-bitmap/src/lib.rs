@@ -803,29 +803,11 @@ impl SparseBitmap {
         self.chunks.insert(entry, chunk_e);
         proof {
             lemma_seq_remove_insert_is_update(pre_commit_chunks, entry as int, chunk_e);
-            assert(pre_commit_chunks =~= old_chunks_seq);
-            assert(self.chunks@[entry as int].offset == old_chunks_seq[entry as int].offset);
-            assert(self.chunks@[entry as int].bitmap@.num_bits
-                == old_chunks_seq[entry as int].bitmap@.num_bits);
             assert forall|k: int| #![auto] 0 <= k < self.chunks@.len() && k != entry as int
                 implies self.chunks@[k] == old_chunks_seq[k]
             by { assert(self.chunks@[k] == pre_commit_chunks[k]); }
             lemma_chunk_update_preserves_structure(
                 old_chunks_seq, self.chunks@, entry as int);
-            assert forall|k: int| #![auto] 0 <= k < self.chunks@.len() implies {
-                &&& self@.chunks[k].0 == self.chunks@[k].offset as int
-                &&& self@.chunks[k].1 == self.chunks@[k].bitmap@.num_bits
-            } by {
-                if k == entry as int {
-                    assert(self.chunks@[k].offset == old_chunks_seq[entry as int].offset);
-                    assert(self.chunks@[k].bitmap@.num_bits
-                        == old_chunks_seq[entry as int].bitmap@.num_bits);
-                } else {}
-            }
-            assert(self.chunks@[entry as int].bitmap@.set_bits =~=
-                old_chunks_seq[entry as int].bitmap@.set_bits.union(
-                    BitmapView::range_set(start_bit_in_entry as int,
-                        (start_bit_in_entry + take_from_entry) as int)));
             lemma_lifted_set_bits_alloc_range(
                 old_chunks_seq, self.chunks@, entry as int,
                 start_bit_in_entry as int, take_from_entry as int);

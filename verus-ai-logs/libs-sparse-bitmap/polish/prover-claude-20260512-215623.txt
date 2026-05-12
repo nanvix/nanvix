@@ -2085,3 +2085,50 @@ I'm wondering if I can drop the assert-forall statement entirely and let the sol
 Turn 78
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
+[RESULT ✓] bash: Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  ✅ All 17 exec functions have contracts.
+
+=== Summary ===
+  verification: 90 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+Block #6 reduced to 4 lines (≤5, no extraction needed!). Let me now aggressively minimize block #2 (entry insert, 29 lines):
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] Excellent! Block #6 is now 4 lines! That's ≤5 so no extraction needed. I removed:
+- The assert-forall with inner asserts (7 lines)
+- The extensional equality assert (1 line)
+- The capacity assert (1 line)
+- The internal_inv assert (1 line)
+- The set_bits assert (4 lines)
+Total removed: 14 lines, reducing from 18 to 4 lines.
+
+Now let me try the same aggressive minimization approach on the other blocks. Let me tackle them in order of size.Let me now try block #2 (entry insert, originally 29 lines, currently at lines 803-831). Let me re-read it:
+[RESULT ✓] view: 800.             bit_e = bit_e + 1;
+801.         }
+802. 
+803.         self.chunks.insert(entry, chunk_e);
+804.         proof {
+805.             lemma_seq_remove_insert_is_update(pre_commit_chunks, entry as int, chunk_e);
+806.             assert(pre_commit_chunks =~= old_chunks_seq);
+807.            ...
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
