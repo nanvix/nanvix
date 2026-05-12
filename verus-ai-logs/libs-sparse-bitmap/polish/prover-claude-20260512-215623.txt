@@ -2720,3 +2720,46 @@ Rlimit hit. Restore the `remaining_prime` variable — solver needs the local bi
 Turn 120
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  ✅ All 17 exec functions have contracts.
+
+=== Summary ===
+  verification: 89 verified, 1 errors (exit 101)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17/17 exec func...
+
+────────────────────────────────────────────────────────────
+Turn 121
+────────────────────────────────────────────────────────────
+Let me restore the version that worked (without `lemma_seq_remove_insert_is_update` but with the second `_trig` conditional):
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] Hmm, still failing. Let me check which version was working. The one with the second `if remaining_prime > 0` block having both `_trig` and the two assertions was working. Let me go back to the version with:
+- no assert-forall
+- `remaining_prime`, `cur_prime_idx` local vars
+- `_trig` in second conditional
+- but the assertions in the second conditional about offsets
+
+The working version was:
+```
+            self.chunks.insert(next, chunk_n);
+            proof {
+                lemma_seq_remove_insert_is_update(pre_inner_chunks, next as int, chunk_n);
+
+
+```
+
+Now I'm setting up the local variables for the remaining count and current prime index, then checking if there's anything left to process. I'm calling the lemmas to verify the allocation range and union properties...
+
+Finishing the loop body and updating the committed count. I'm also adding a ghost trigger variable to track the old chunks sequence. After testing, I found that removing `lemma_seq_remove_insert_is_update` actually helped pass the check at 18 lines, but trying to simplify further by removing the second conditional caused resource limit issues. I should restore the version that keeps the second conditional but drops that problematic lemma.
+
+```
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 122
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
