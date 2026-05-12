@@ -2444,4 +2444,46 @@ proof fn lemma_circular_scan_exhausts(
     }
 }
 
+//==================================================================================================
+// Extracted inline proof blocks
+//==================================================================================================
+
+/// Selection-sort swap step: capacity, lifted_set_bits, and sorting progress are preserved.
+proof fn lemma_sort_swap_step(
+    pre: Seq<Chunk>, post: Seq<Chunk>, lo: int, hi: int,
+)
+    requires
+        0 <= lo <= hi < pre.len(),
+        post =~= pre.remove(hi).insert(lo, pre[hi]),
+        forall|k: int, l: int| 0 <= k < l < lo
+            ==> (#[trigger] pre[k]).offset <= (#[trigger] pre[l]).offset,
+        forall|k: int, l: int| 0 <= k < lo && lo <= l < pre.len()
+            ==> (#[trigger] pre[k]).offset <= (#[trigger] pre[l]).offset,
+        forall|k: int| lo <= k < pre.len()
+            ==> pre[hi].offset <= (#[trigger] pre[k]).offset,
+        forall|k: int| 0 <= k < pre.len() ==> (#[trigger] pre[k]).bitmap.inv(),
+        forall|k: int| #![auto] 0 <= k < pre.len() ==> pre[k].bitmap@.num_bits > 0,
+        forall|k: int| #![auto] 0 <= k < pre.len() ==> pre[k].bitmap@.set_bits.finite(),
+        forall|k: int| #![auto] 0 <= k < pre.len()
+            ==> pre[k].offset as int + pre[k].bitmap@.num_bits <= usize::MAX as int,
+    ensures
+        post.len() == pre.len(),
+        chunk_seq_capacity(post, 0) == chunk_seq_capacity(pre, 0),
+        lifted_set_bits(post, 0) =~= lifted_set_bits(pre, 0),
+        forall|k: int, l: int| 0 <= k < l < lo + 1
+            ==> (#[trigger] post[k]).offset <= (#[trigger] post[l]).offset,
+        forall|k: int, l: int| 0 <= k < lo + 1 && lo + 1 <= l < post.len()
+            ==> (#[trigger] post[k]).offset <= (#[trigger] post[l]).offset,
+        forall|k: int| 0 <= k < post.len() ==> (#[trigger] post[k]).bitmap.inv(),
+        forall|k: int| #![auto] 0 <= k < post.len() ==> post[k].bitmap@.num_bits > 0,
+        forall|k: int| #![auto] 0 <= k < post.len() ==> post[k].bitmap@.set_bits.finite(),
+        forall|k: int| #![auto] 0 <= k < post.len()
+            ==> post[k].offset as int + post[k].bitmap@.num_bits <= usize::MAX as int,
+{
+    lemma_chunk_seq_capacity_remove_from(pre, hi, 0);
+    lemma_chunk_seq_capacity_insert_from(pre.remove(hi), lo, pre[hi], 0);
+    lemma_lifted_set_bits_move_left(pre, lo, hi);
+    lemma_sort_step(pre, post, lo, hi);
+}
+
 } // verus!

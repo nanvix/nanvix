@@ -507,12 +507,7 @@ fn sort_chunks_by_offset(built: &mut Vec<Chunk>)
             built.insert(i, chunk);
 
             proof {
-                lemma_chunk_seq_capacity_remove_from(pre_swap, min_idx as int, 0);
-                lemma_chunk_seq_capacity_insert_from(
-                    pre_swap.remove(min_idx as int), i as int,
-                    pre_swap[min_idx as int], 0);
-                lemma_lifted_set_bits_move_left(pre_swap, i as int, min_idx as int);
-                lemma_sort_step(pre_swap, built@, i as int, min_idx as int);
+                lemma_sort_swap_step(pre_swap, built@, i as int, min_idx as int);
             }
         }
 
