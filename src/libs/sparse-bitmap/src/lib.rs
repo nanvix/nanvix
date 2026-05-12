@@ -819,28 +819,13 @@ impl SparseBitmap {
         let ghost mut committed: int = 0;
 
         proof {
-            assert(self.chunks@.len() == old_chunks_seq.len());
-            assert((self.next_chunk_hint as int) < self.chunks@.len());
             assert forall|k: int| #![auto] entry as int + 1 <= k < self.chunks@.len() as int
                 implies self.chunks@[k] == old_chunks_seq[k]
-            by {
-                assert(self.chunks@[k] == pre_commit_chunks[k]);
-                assert(pre_commit_chunks =~= old_chunks_seq);
-            }
-            assert(remaining as int == seq_sum_from(phase1b_free_prefixes, 0));
-            assert(take_from_entry as int + committed + remaining as int == count as int);
+            by { assert(self.chunks@[k] == pre_commit_chunks[k]); }
             if remaining > 0 {
-                assert(phase1b_free_prefixes.len() > 0);
-                assert(last_chunk > entry);
-                assert(take_from_entry == trailing_free);
-                assert forall|i: int| entry as int <= i < last_chunk as int implies
-                    old_chunks_seq[i].offset as int + old_chunks_seq[i].bitmap@.num_bits
-                        == (#[trigger] old_chunks_seq[(i + 1) as int]).offset as int
-                by {};
                 assert(old_chunks_seq[(entry as int + 1)].offset as int
                     == gs + count as int - remaining as int);
             }
-            assert(old_chunks_seq =~= old(self).chunks@);
         }
 
         while remaining > 0
