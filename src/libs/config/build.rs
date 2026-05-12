@@ -177,6 +177,10 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
     );
     constants.push_str(&format!("pub const KLOG_BUFFER_SIZE: usize = {val};\n"));
 
+    let val: usize =
+        parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "max_threads"), "max_threads");
+    constants.push_str(&format!("pub const MAX_THREADS: usize = {val};\n"));
+
     constants.push_str("}\n");
 
     //==============================================================================================
@@ -235,6 +239,11 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
         "kernel_watermark",
     );
     assert!(kernel_watermark > 0, "kernel_watermark must be non-zero");
+
+    // max_threads must be at least 1 (the kernel thread always exists).
+    let max_threads: usize =
+        parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "max_threads"), "max_threads");
+    assert!(max_threads >= 1, "max_threads must be at least 1");
 
     // Write the generated file.
     fs::write(kernel_config_output_path, constants).expect("Failed to write kernel_config.rs");
