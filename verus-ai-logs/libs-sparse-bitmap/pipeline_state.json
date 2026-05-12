@@ -1,0 +1,27 @@
+{
+  "module_name": "sparse-bitmap",
+  "log_name": "libs-sparse-bitmap",
+  "source_path": "src/libs/sparse-bitmap/src/lib.rs",
+  "current_phase": "polish",
+  "current_phase_idx": 5,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_session_id": null,
+  "completed": false,
+  "base_branch": "verus-mm-phys",
+  "verus_branch": "verus-mm-phys",
+  "phase_boundary_shas": {},
+  "phase_start_shas": {
+    "polish": "4ffd3c10325819e55ecdf6ee99c76eb503ec55aa"
+  },
+  "phase_history": [
+    {
+      "phase": "polish",
+      "event": "start",
+      "sha": "4ffd3c10325819e55ecdf6ee99c76eb503ec55aa",
+      "rollback_iter": 0
+    }
+  ],
+  "rollback_counts": {},
+  "rollback_context": ""
+}
