@@ -1427,3 +1427,25 @@ Also try removing the `assert(self@ =~= ...)` in the post-loop block since lemma
 Turn 78
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: - instance
+    - init
+
+=== Summary ===
+  verification: 24 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=24 admit=0 trusted=0 no_decreases=0 cfg_gate=9
+  coverage: 13/15 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verus-logs/verus_2026-05-...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+Still passing. **Batch 3**: Try removing `assert(old(self).bitmap@.is_covered(idx))` in alloc (line 191 - should follow from bitmap.alloc() postcondition) and the `assert(frame_addr_of(idx) <= usize::MAX as int)` (should follow from `internal_inv`):
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
