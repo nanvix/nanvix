@@ -1335,3 +1335,49 @@ Now the second duplicate:
 Turn 69
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: Detail: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/cheating-detail.txt
+
+=== Function Coverage ===
+  13/15 exec functions have contracts.
+  Unverified functions:
+    - instance
+    - init
+
+=== Summary ===
+  verification: 24 verified, 0 errors (exit 0)
+  cheatin...
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+24 verified, 0 errors. Now let me proceed to the minimization pass. I'll try removing redundant assertions in batches. Let me look at the remaining proof blocks and identify candidates for removal:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 186.                 return Err(error);
+187.             },
+188.         };
+189.         proof! {
+190.             let idx = index as int;
+191.             assert(old(self).bitmap@.is_covered(idx));
+192.             assert(idx >= 0);
+193.             assert(frame_addr_of(idx) <= usize::MAX as int);
+...
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+Let me try removing the bridging assertions. I'll start with `alloc`:
+
+**Batch 1**: Try removing `assert(idx >= 0)` at line 192 (trivially true for usize), and `assert(fa == frame_addr_of(idx))` at line 205 (should follow from postcondition of `bitmap_index_to_frame_addr`):
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
