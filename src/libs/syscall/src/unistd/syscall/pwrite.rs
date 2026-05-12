@@ -91,7 +91,7 @@ fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<
     let mut total_written: c_size_t = 0;
     let mut buffer_offset: usize = 0;
 
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     while buffer_offset < buffer.len() {
         let chunk_size: usize =
@@ -108,10 +108,10 @@ fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<
             offset + buffer_offset as off_t,
             chunk,
         );
-        ::sys::kcall::ipc::send(&request)?;
+        ::sys::kcall::ipc::__kcall_send(&request)?;
 
         // Receive response.
-        let response: Message = ::sys::kcall::ipc::recv()?;
+        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
         // Check whether the system call succeeded or not.
         if response.status != 0 {

@@ -85,14 +85,14 @@ fn posix_fadvise_linuxd(
     len: off_t,
     advice: c_int,
 ) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
     let request: Message = FileAdvisoryInformationRequest::build(tid, fd, offset, len, advice);
-    ::sys::kcall::ipc::send(&request)?;
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

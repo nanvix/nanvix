@@ -26,14 +26,14 @@ use ::sys::{
     },
     kcall::{
         pm::{
-            create_thread,
-            join_thread,
-            lock_mutex,
-            signal_cond,
-            unlock_mutex,
-            wait_cond,
+            __kcall_create_thread,
+            __kcall_join_thread,
+            __kcall_lock_mutex,
+            __kcall_signal_cond,
+            __kcall_unlock_mutex,
+            __kcall_wait_cond,
         },
-        sched::sched_yield,
+        sched::__kcall_sched_yield,
     },
     pm::{
         ConditionAddress,
@@ -102,19 +102,19 @@ fn test_condition_signal() -> Result<(), Error> {
         user_stack_size: stack.size(),
         user_tda: None,
     };
-    let tid = create_thread(&mut args)?;
+    let tid = __kcall_create_thread(&mut args)?;
 
     while WAIT_STATE.load(Ordering::Acquire) == 0 {
-        sched_yield()?;
+        __kcall_sched_yield()?;
     }
 
-    lock_mutex(mutex_addr(), None)?;
-    let awakened = signal_cond(cond_addr(), false)?;
+    __kcall_lock_mutex(mutex_addr(), None)?;
+    let awakened = __kcall_signal_cond(cond_addr(), false)?;
     assert_eq!(awakened, 1, "expected to wake exactly one waiter");
-    unlock_mutex(mutex_addr())?;
+    __kcall_unlock_mutex(mutex_addr())?;
 
     let mut retval: usize = 0;
-    join_thread(tid, &mut retval)?;
+    __kcall_join_thread(tid, &mut retval)?;
     drop(stack);
     assert_eq!(retval, 0, "condition worker returned unexpected code");
     assert_eq!(WAIT_STATE.load(Ordering::Acquire), 2, "worker never completed wait");
@@ -134,10 +134,10 @@ fn test_condition_timeout() -> Result<(), Error> {
         user_stack_size: stack.size(),
         user_tda: None,
     };
-    let tid = create_thread(&mut args)?;
+    let tid = __kcall_create_thread(&mut args)?;
 
     let mut retval: usize = 0;
-    join_thread(tid, &mut retval)?;
+    __kcall_join_thread(tid, &mut retval)?;
     drop(stack);
     assert_eq!(retval, 1, "condition timeout worker returned unexpected code");
     assert_eq!(WAIT_STATE.load(Ordering::Acquire), 3, "timeout path did not run");
@@ -149,11 +149,11 @@ extern "C" fn condition_wait_worker(_arg: usize) -> usize {
 }
 
 fn condition_wait_worker_impl() -> Result<usize, Error> {
-    lock_mutex(mutex_addr(), None)?;
+    __kcall_lock_mutex(mutex_addr(), None)?;
     WAIT_STATE.store(1, Ordering::Release);
-    wait_cond(cond_addr(), mutex_addr(), None)?;
+    __kcall_wait_cond(cond_addr(), mutex_addr(), None)?;
     WAIT_STATE.store(2, Ordering::Release);
-    unlock_mutex(mutex_addr())?;
+    __kcall_unlock_mutex(mutex_addr())?;
     Ok(0)
 }
 
@@ -163,16 +163,16 @@ extern "C" fn condition_timeout_worker(_arg: usize) -> usize {
 }
 
 fn condition_timeout_worker_impl() -> Result<usize, Error> {
-    lock_mutex(mutex_addr(), None)?;
+    __kcall_lock_mutex(mutex_addr(), None)?;
     WAIT_STATE.store(1, Ordering::Release);
     let deadline = deadline_from_now(Duration::from_millis(100))?;
-    match wait_cond(cond_addr(), mutex_addr(), Some(deadline)) {
+    match __kcall_wait_cond(cond_addr(), mutex_addr(), Some(deadline)) {
         Err(err) => {
             assert_eq!(err.code, ErrorCode::OperationTimedOut, "unexpected error code");
         },
         Ok(_) => panic!("wait_cond() should time out"),
     }
     WAIT_STATE.store(3, Ordering::Release);
-    unlock_mutex(mutex_addr())?;
+    __kcall_unlock_mutex(mutex_addr())?;
     Ok(1)
 }

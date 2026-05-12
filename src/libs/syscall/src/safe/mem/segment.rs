@@ -19,9 +19,9 @@ use ::sys::{
     },
     kcall,
     kcall::mm::{
-        mmap,
-        mprotect,
-        munmap,
+        __kcall_mmap,
+        __kcall_mprotect,
+        __kcall_munmap,
     },
     mm::{
         AccessPermission,
@@ -100,7 +100,7 @@ impl MemorySegment {
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
-        let pid: ProcessIdentifier = kcall::pm::getpid()?;
+        let pid: ProcessIdentifier = kcall::pm::__kcall_getpid()?;
 
         map_range(
             pid,
@@ -256,7 +256,7 @@ fn map_range(
 
         // Attempt to map page.
         let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
-        if let Err(error) = mmap(pid, vaddr, 1, access) {
+        if let Err(error) = __kcall_mmap(pid, vaddr, 1, access) {
             // Failed to map page, attempt to rollback.
 
             ::syslog::warn!(
@@ -279,7 +279,7 @@ fn map_range(
             return Err(error);
         }
 
-        // NOTE: pages allocated with mmap() are always zeroed.
+        // NOTE: pages allocated with __kcall_mmap() are always zeroed.
     }
 
     Ok(())
@@ -305,7 +305,7 @@ fn unmap_range(
 
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
 
-        if let Err(error) = munmap(pid, vaddr) {
+        if let Err(error) = __kcall_munmap(pid, vaddr) {
             ::syslog::warn!(
                 "unmap_range(): failed to unmap page at {:X?}, skipping (error={:?})",
                 vaddr,
@@ -339,7 +339,7 @@ fn protect_range(
         debug_assert!(vaddr != end);
 
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
-        if let Err(error) = mprotect(pid, vaddr, prot) {
+        if let Err(error) = __kcall_mprotect(pid, vaddr, prot) {
             ::syslog::warn!(
                 "protect_range(): failed to change protection of page at {:X?}, skipping \
                  (error={:?})",

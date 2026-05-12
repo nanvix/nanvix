@@ -159,7 +159,7 @@ fn poll_linuxd(
     fds: &[PollFd],
     timeout: PollTimeout,
 ) -> Result<Vec<(RawFileDescriptor, PollEvents)>, Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
     let events: Vec<i16> = fds.iter().map(|fd| fd.events.0).collect();
@@ -168,7 +168,7 @@ fn poll_linuxd(
     let request: PollRequest = PollRequest::new(&poll_fds, &events, timeout)?;
     let requests: Vec<Message> = request.into_parts(tid)?;
     for request in &requests {
-        ipc::send(request)?;
+        ipc::__kcall_send(request)?;
     }
 
     // Compute maximum number of parts in the response.
@@ -176,7 +176,7 @@ fn poll_linuxd(
     let mut assembler: SystemCallLongMessage = SystemCallLongMessage::new(capacity)?;
 
     loop {
-        let response: Message = ipc::recv()?;
+        let response: Message = ipc::__kcall_recv()?;
 
         // Check if system call failed.
         if response.status != 0 {

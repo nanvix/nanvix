@@ -59,16 +59,16 @@ pub fn connect(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
         ));
     }
 
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let (sockaddr, socklen): (sockaddr, socklen_t) = From::<&SocketAddr>::from(sockaddr);
 
     // Build request and send it.
     let request: Message = ConnectSocketRequest::build(tid, sockfd, &sockaddr, socklen);
-    ::sys::kcall::ipc::send(&request)?;
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

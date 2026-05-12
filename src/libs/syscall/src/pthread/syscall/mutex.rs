@@ -20,8 +20,8 @@ use ::sys::{
         ErrorCode,
     },
     kcall::pm::{
-        lock_mutex,
-        unlock_mutex,
+        __kcall_lock_mutex,
+        __kcall_unlock_mutex,
     },
     pm::MutexAddress,
     time::SystemTime,
@@ -102,7 +102,7 @@ pub fn pthread_mutex_lock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
         }
     }
 
-    lock_mutex(MutexAddress::from(mutex as *const pthread_mutex_t as usize), None)
+    __kcall_lock_mutex(MutexAddress::from(mutex as *const pthread_mutex_t as usize), None)
 }
 
 pub fn pthread_mutex_timedlock(
@@ -124,7 +124,7 @@ pub fn pthread_mutex_timedlock(
         }
     }
 
-    lock_mutex(MutexAddress::from(mutex as *const pthread_mutex_t as usize), timeout)
+    __kcall_lock_mutex(MutexAddress::from(mutex as *const pthread_mutex_t as usize), timeout)
 }
 
 pub fn pthread_mutex_trylock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
@@ -144,7 +144,7 @@ pub fn pthread_mutex_trylock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
     }
 
     // Try to lock the mutex and parse the result.
-    match lock_mutex(
+    match __kcall_lock_mutex(
         MutexAddress::from(mutex as *const pthread_mutex_t as usize),
         Some(SystemTime::default()),
     ) {
@@ -185,5 +185,5 @@ pub fn pthread_mutex_unlock(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
         }
     }
 
-    unlock_mutex(MutexAddress::from(mutex as *const pthread_mutex_t as usize))
+    __kcall_unlock_mutex(MutexAddress::from(mutex as *const pthread_mutex_t as usize))
 }

@@ -83,14 +83,14 @@ pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, E
 /// Forwards a `readlinkat` request to linuxd via IPC.
 #[cfg(not(feature = "standalone"))]
 fn readlinkat_linuxd(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let request: ReadLinkAtRequest = ReadLinkAtRequest::new(dirfd, path.to_string(), buf.len())?;
 
     let requests: Vec<Message> = request.into_parts(tid)?;
 
     for request in &requests {
-        ::sys::kcall::ipc::send(request)?;
+        ::sys::kcall::ipc::__kcall_send(request)?;
     }
 
     let capacity: usize =
@@ -99,7 +99,7 @@ fn readlinkat_linuxd(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t
     let mut assembler: SystemCallLongMessage = SystemCallLongMessage::new(capacity)?;
 
     loop {
-        let response: Message = ::sys::kcall::ipc::recv()?;
+        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
         // Check whether system call succeeded or not.
         if response.status != 0 {

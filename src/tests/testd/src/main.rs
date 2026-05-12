@@ -59,7 +59,7 @@ pub fn main() {
     event::test();
     mm::test();
 
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
         Ok(pid) => pid,
         Err(e) => panic!("failed to get process identifier (error={:?})", e),
     };

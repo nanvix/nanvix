@@ -88,9 +88,9 @@ pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
 /// Forwards a `fstat` request to linuxd via IPC.
 #[cfg(not(feature = "standalone"))]
 fn fstat_linuxd(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
     let message: Message = FileStatRequest::build(tid, fd);
-    ::sys::kcall::ipc::send(&message)?;
+    ::sys::kcall::ipc::__kcall_send(&message)?;
 
     *buf = crate::sys::stat::syscall::fstatat_response()?;
 

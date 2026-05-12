@@ -83,15 +83,15 @@ pub fn select(
         ));
     }
 
-    let tid: ThreadIdentifier = pm::gettid()?;
+    let tid: ThreadIdentifier = pm::__kcall_gettid()?;
 
     // Build request and send it.
     let request: Message =
         SelectRequest::build(tid, nfds, &readfds, &writefds, &errorfds, timeout)?;
-    ::sys::kcall::ipc::send(&request)?;
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

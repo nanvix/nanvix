@@ -7,8 +7,8 @@
 
 use super::common::StressError;
 use ::sys::kcall::{
-    debug::debug as kernel_debug,
-    sched::sched_yield,
+    debug::__kcall_debug as kernel_debug,
+    sched::__kcall_sched_yield,
 };
 
 //==================================================================================================
@@ -44,7 +44,7 @@ pub fn run() -> Result<(), StressError> {
         kernel_debug(payload.as_ptr(), payload.len())?;
 
         if round & 0x7 == 0 {
-            sched_yield()?;
+            __kcall_sched_yield()?;
         }
     }
     Ok(())

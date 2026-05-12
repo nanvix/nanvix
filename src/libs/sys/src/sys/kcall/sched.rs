@@ -17,7 +17,8 @@ use crate::{
 // Scheduler Yield
 //==================================================================================================
 
-pub fn sched_yield() -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_sched_yield() -> Result<(), Error> {
     let result: i64 = kcall0!(KcallNumber::SchedulerYield.into());
 
     if result == 0 {

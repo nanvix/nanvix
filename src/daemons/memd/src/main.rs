@@ -43,12 +43,12 @@ use ::sys::{
 fn handle_page_fault(info: EventInformation) {
     // Terminate process.
     ::syslog::info!("terminating process (pid={:?})", info.pid);
-    if let Err(e) = ::sys::kcall::pm::terminate(info.pid) {
+    if let Err(e) = ::sys::kcall::pm::__kcall_terminate(info.pid) {
         panic!("failed to terminate test daemon (error={:?})", e);
     }
 
     // Acknowledge exception event.
-    if let Err(e) = ::sys::kcall::event::resume(info.id) {
+    if let Err(e) = ::sys::kcall::event::__kcall_resume(info.id) {
         panic!("failed to resume exception event (error={:?})", e);
     }
 }
@@ -89,7 +89,7 @@ fn handle_ipc_request(message: Message) -> Result<bool, Error> {
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
         Ok(pid) => pid,
         Err(e) => panic!("failed to get pid (error={:?})", e),
     };
@@ -99,7 +99,7 @@ pub fn main() {
 
     // Acquire exception management capability.
     ::syslog::info!("acquiring exception management capability...");
-    if let Err(e) = ::sys::kcall::pm::capctl(Capability::ExceptionControl, true) {
+    if let Err(e) = ::sys::kcall::pm::__kcall_capctl(Capability::ExceptionControl, true) {
         panic!("failed to acquire exception management capability (error={:?})", e);
     }
 
@@ -107,7 +107,7 @@ pub fn main() {
 
     // Subscribe to page faults.
     ::syslog::info!("subscribing to page faults...");
-    if let Err(e) = ::sys::kcall::event::evctrl(
+    if let Err(e) = ::sys::kcall::event::__kcall_evctrl(
         Event::Exception(page_fault_exception),
         EventCtrlRequest::Register,
     ) {
@@ -120,7 +120,7 @@ pub fn main() {
     }
 
     loop {
-        match ::sys::kcall::ipc::recv() {
+        match ::sys::kcall::ipc::__kcall_recv() {
             Ok(message) => match message.message_type {
                 MessageType::Exception => match EventInformation::try_from(message) {
                     Ok(info) => handle_page_fault(info),
@@ -148,7 +148,7 @@ pub fn main() {
     }
 
     // Shutdown memory management daemon.
-    let e = ::sys::kcall::pm::exit(0);
+    let e = ::sys::kcall::pm::__kcall_exit(0);
     ::syslog::error!("failed to shutdown memory management daemon (error={:?})", e);
 
     loop {
