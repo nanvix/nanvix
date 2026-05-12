@@ -106,6 +106,7 @@ expected_output = "ok"
 [[tests]]
 executor = "http"
 program = "./bin/network-rust.elf"
+extra_nanvixd_args = "-allow-host-networking"
 input = "[]"
 expected_output = "ok"
 
@@ -179,6 +180,7 @@ expected_output = "ok"
 [[tests]]
 executor = "terminal"
 program = "./bin/network-rust.elf"
+extra_nanvixd_args = "-allow-host-networking"
 expected_output = "ok"
 
 [[tests]]
