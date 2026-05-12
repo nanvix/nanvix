@@ -426,3 +426,13 @@ error: could not compile `sparse-bitmap` (lib) due to 1 previous error
 Turn 12
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | grep -B3 "exp
+[RESULT ✓] bash: Timestamp : 2026-05-12_22-00-47
+
+    Checking sparse-bitmap v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap)
+error: expected curly braces
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | grep -A2 "exp
