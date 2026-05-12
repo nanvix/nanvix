@@ -46,7 +46,8 @@ use ::core::{
 /// Upon successful completion, the process identifier of the calling process is returned. Upon
 /// failure, an error is returned instead.
 ///
-pub fn getpid() -> Result<ProcessIdentifier, Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_getpid() -> Result<ProcessIdentifier, Error> {
     let result: i64 = kcall0!(KcallNumber::GetPid.into());
 
     // NOTE: errors are unlikely because getpid() always succeeds for a valid calling process.
@@ -71,7 +72,8 @@ pub fn getpid() -> Result<ProcessIdentifier, Error> {
 /// Upon successful completion, the thread identifier of the calling thread is returned. Upon
 /// failure, an error is returned instead.
 ///
-pub fn gettid() -> Result<ThreadIdentifier, Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_gettid() -> Result<ThreadIdentifier, Error> {
     let result: i64 = kcall0!(KcallNumber::GetTid.into());
 
     // NOTE: errors are unlikely because gettid() always succeeds for a valid calling thread.
@@ -100,7 +102,8 @@ pub fn gettid() -> Result<ThreadIdentifier, Error> {
 /// Upon successful completion, this function does not return. Upon failure, an error is returned
 /// instead.
 ///
-pub fn exit(status: i32) -> Result<!, Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_exit(status: i32) -> Result<!, Error> {
     let result: i64 = kcall1!(KcallNumber::Exit.into(), status as u32);
     Err(Error::new(ErrorCode::try_from(result)?, "failed to terminate process"))
 }
@@ -123,7 +126,8 @@ pub fn exit(status: i32) -> Result<!, Error> {
 ///
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
-pub fn capctl(capability: Capability, value: bool) -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_capctl(capability: Capability, value: bool) -> Result<(), Error> {
     let result: i64 = kcall2!(KcallNumber::CapCtl.into(), capability as u32, value as u32);
 
     // NOTE: errors are unlikely because capability control typically succeeds.
@@ -151,7 +155,8 @@ pub fn capctl(capability: Capability, value: bool) -> Result<(), Error> {
 ///
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
-pub fn terminate(pid: ProcessIdentifier) -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_terminate(pid: ProcessIdentifier) -> Result<(), Error> {
     let result: i64 = kcall1!(KcallNumber::Terminate.into(), u32::try_from(pid)?);
 
     // NOTE: errors are unlikely because terminate typically succeeds for a valid process.
@@ -245,7 +250,7 @@ pub fn terminate(pid: ProcessIdentifier) -> Result<(), Error> {
 ///
 #[unsafe(no_mangle)]
 pub extern "C" fn _do_exit_thread(status: usize) -> ! {
-    let _ = exit_thread(status);
+    let _ = __kcall_exit_thread(status);
     unreachable!("failed to exit thread");
 }
 
@@ -264,7 +269,8 @@ pub extern "C" fn _do_exit_thread(status: usize) -> ! {
 /// Upon successful completion, the thread identifier of the new thread is returned. Upon failure,
 /// an error is returned instead.
 ///
-pub fn create_thread(args: &mut ThreadCreateArgs) -> Result<ThreadIdentifier, Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_create_thread(args: &mut ThreadCreateArgs) -> Result<ThreadIdentifier, Error> {
     unsafe extern "C" {
         fn _do_start_thread() -> !;
     }
@@ -307,7 +313,8 @@ pub fn create_thread(args: &mut ThreadCreateArgs) -> Result<ThreadIdentifier, Er
 /// Upon successful completion, this function does not return. Upon failure, an error is returned
 /// instead.
 ///
-pub fn exit_thread(status: usize) -> Result<!, Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_exit_thread(status: usize) -> Result<!, Error> {
     let result: i64 = kcall1!(KcallNumber::ExitThread.into(), status as u32);
 
     Err(Error::new(ErrorCode::try_from(result)?, "failed to terminate thread"))
@@ -331,7 +338,8 @@ pub fn exit_thread(status: usize) -> Result<!, Error> {
 ///
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
-pub fn join_thread(tid: ThreadIdentifier, retval: &mut usize) -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_join_thread(tid: ThreadIdentifier, retval: &mut usize) -> Result<(), Error> {
     let result: i64 =
         kcall2!(KcallNumber::JoinThread.into(), i32::from(tid) as u32, retval as *mut usize as u32);
 
@@ -361,7 +369,8 @@ pub fn join_thread(tid: ThreadIdentifier, retval: &mut usize) -> Result<(), Erro
 ///
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
-pub fn detach_thread(tid: ThreadIdentifier) -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_detach_thread(tid: ThreadIdentifier) -> Result<(), Error> {
     let result: i64 = kcall1!(KcallNumber::DetachThread.into(), i32::from(tid) as u32);
 
     if unlikely(result != 0) {
@@ -390,7 +399,11 @@ pub fn detach_thread(tid: ThreadIdentifier) -> Result<(), Error> {
 ///
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
-pub fn lock_mutex(mutex_addr: MutexAddress, timeout: Option<SystemTime>) -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_lock_mutex(
+    mutex_addr: MutexAddress,
+    timeout: Option<SystemTime>,
+) -> Result<(), Error> {
     // Attempt to convert the timeout.
     let (seconds, nanoseconds): (u32, u32) = match timeout {
         Some(timeout) => {
@@ -435,7 +448,8 @@ pub fn lock_mutex(mutex_addr: MutexAddress, timeout: Option<SystemTime>) -> Resu
 ///
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
-pub fn unlock_mutex(mutex_addr: MutexAddress) -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_unlock_mutex(mutex_addr: MutexAddress) -> Result<(), Error> {
     let result: i64 = kcall1!(KcallNumber::MutexUnlock.into(), usize::from(mutex_addr) as u32);
 
     // NOTE: errors are unlikely because unlock typically succeeds for a valid, held mutex.
@@ -465,7 +479,8 @@ pub fn unlock_mutex(mutex_addr: MutexAddress) -> Result<(), Error> {
 /// Upon successful completion, the number of threads awakened is returned. Upon failure, an error
 /// is returned instead.
 ///
-pub fn signal_cond(cond_addr: ConditionAddress, broadcast: bool) -> Result<usize, Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_signal_cond(cond_addr: ConditionAddress, broadcast: bool) -> Result<usize, Error> {
     let result: i64 = kcall4!(
         KcallNumber::CondSignal.into(),
         usize::from(cond_addr) as u32,
@@ -502,7 +517,8 @@ pub fn signal_cond(cond_addr: ConditionAddress, broadcast: bool) -> Result<usize
 ///
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
-pub fn wait_cond(
+#[unsafe(no_mangle)]
+pub fn __kcall_wait_cond(
     cond_addr: ConditionAddress,
     mutex_addr: MutexAddress,
     timeout: Option<SystemTime>,
@@ -553,7 +569,8 @@ pub fn wait_cond(
 /// Upon successful completion, `gettime()` returns empty. Upon failure, it returns an `Error` to
 /// indicate the error.
 ///
-pub fn gettime(buffer: &mut SystemTime) -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_gettime(buffer: &mut SystemTime) -> Result<(), Error> {
     let result: i64 =
         kcall1!(KcallNumber::GetTime.into(), buffer as *mut SystemTime as usize as u32);
 
@@ -582,7 +599,8 @@ pub fn gettime(buffer: &mut SystemTime) -> Result<(), Error> {
 ///
 /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
 ///
-pub fn sleep(timeout: Duration) -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_sleep(timeout: Duration) -> Result<(), Error> {
     let seconds: u32 = timeout
         .as_secs()
         .try_into()
@@ -622,7 +640,8 @@ pub fn sleep(timeout: Duration) -> Result<(), Error> {
 /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
 /// - [`ErrorCode::ResourceBusy`]: The process manager is busy and cannot handle the request.
 ///
-pub fn get_thread_data_area() -> Result<*mut u8, Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_get_thread_data_area() -> Result<*mut u8, Error> {
     let result: i64 = kcall0!(KcallNumber::GetThreadDataArea.into());
 
     // NOTE: errors are unlikely because get_thread_data_area typically succeeds.
@@ -660,7 +679,8 @@ pub fn get_thread_data_area() -> Result<*mut u8, Error> {
 /// - [`ErrorCode::ResourceBusy`]: The process manager is busy and cannot handle the request.
 ///
 ///
-pub fn set_thread_data_area(user_tda: *mut u8) -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_set_thread_data_area(user_tda: *mut u8) -> Result<(), Error> {
     let result: i64 = kcall1!(KcallNumber::SetThreadDataArea.into(), user_tda as usize as u32);
 
     // NOTE: errors are unlikely because set_thread_data_area typically succeeds.
@@ -685,7 +705,8 @@ pub fn set_thread_data_area(user_tda: *mut u8) -> Result<(), Error> {
 ///
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
-pub fn snapshot() -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_snapshot() -> Result<(), Error> {
     let result: i64 = kcall0!(KcallNumber::Snapshot.into());
 
     if unlikely(result != 0) {

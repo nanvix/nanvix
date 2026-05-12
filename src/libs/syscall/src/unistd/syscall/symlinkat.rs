@@ -70,7 +70,7 @@ pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> 
 /// Forwards a `symlinkat` request to linuxd via IPC.
 #[cfg(not(feature = "standalone"))]
 fn symlinkat_linuxd(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let request: SymbolicLinkAtRequest =
         SymbolicLinkAtRequest::new(target.to_string(), dirfd, linkpath.to_string())?;
@@ -79,11 +79,11 @@ fn symlinkat_linuxd(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Erro
 
     // Send request.
     for request in &requests {
-        ::sys::kcall::ipc::send(request)?;
+        ::sys::kcall::ipc::__kcall_send(request)?;
     }
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

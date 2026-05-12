@@ -39,7 +39,7 @@ pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<usize, Error
         ));
     }
 
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Check if count is invalid.
     if buffer.is_empty() {
@@ -55,10 +55,10 @@ pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<usize, Error
 
         // Build request and send it.
         let request: Message = ReceiveSocketRequest::build(tid, sockfd, recv_len as u32, flags);
-        ::sys::kcall::ipc::send(&request)?;
+        ::sys::kcall::ipc::__kcall_send(&request)?;
 
         // Receive response.
-        let response: Message = ::sys::kcall::ipc::recv()?;
+        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
         // Check whether system call succeeded or not.
         if response.status != 0 {

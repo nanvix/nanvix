@@ -69,10 +69,10 @@ pub fn nanosleep(req: &timespec, rem: &mut Option<&mut timespec>) -> Result<(), 
     let duration: Duration = Duration::new(secs, nanos);
 
     let mut now: SystemTime = SystemTime::default();
-    ::sys::kcall::pm::gettime(&mut now)?;
+    ::sys::kcall::pm::__kcall_gettime(&mut now)?;
 
     // Sleep for the requested time.
-    ::sys::kcall::pm::sleep(duration)?;
+    ::sys::kcall::pm::__kcall_sleep(duration)?;
 
     // Store the remaining time in the provided timespec structure.
     if let Some(rem) = rem {
@@ -91,7 +91,7 @@ pub fn nanosleep(req: &timespec, rem: &mut Option<&mut timespec>) -> Result<(), 
         };
 
         let mut now: SystemTime = SystemTime::default();
-        ::sys::kcall::pm::gettime(&mut now)?;
+        ::sys::kcall::pm::__kcall_gettime(&mut now)?;
 
         if now > later {
             rem.tv_sec = 0;

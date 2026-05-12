@@ -68,14 +68,14 @@ fn fstatat_linuxd(
     buf: &mut sys_stat::stat,
     flag: i32,
 ) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let request: FileStatAtRequest = FileStatAtRequest::new(dirfd, path.to_string(), flag)?;
 
     let requests: Vec<Message> = request.into_parts(tid)?;
 
     for request in &requests {
-        ::sys::kcall::ipc::send(request)?;
+        ::sys::kcall::ipc::__kcall_send(request)?;
     }
 
     *buf = crate::sys::stat::syscall::fstatat_response()?;

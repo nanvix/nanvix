@@ -60,17 +60,17 @@ fn write_chunk(
     // Build metadata-only request and send it via IKC message.
     let empty_buf: [u8; WriteRequest::BUFFER_SIZE] = [0u8; WriteRequest::BUFFER_SIZE];
     let request: Message = WriteRequest::build(tid, fd, chunk.len() as c_size_t, empty_buf);
-    ::sys::kcall::ipc::send(&request)?;
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Push actual data to linuxd via data chunk transfer.
-    ::sys::kcall::ipc::push(
+    ::sys::kcall::ipc::__kcall_push(
         ::sys::pm::ProcessIdentifier::KERNEL,
         ::sys::pm::ThreadIdentifier::KERNEL,
         chunk,
     )?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -160,7 +160,7 @@ fn write_standalone(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Er
 
 /// Forwards a write request via IKC, splitting the buffer into page-aligned chunks.
 fn write_via_ikc(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let mut total_written: c_size_t = 0;
     let mut offset: usize = 0;

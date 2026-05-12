@@ -86,7 +86,7 @@ fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Err
     const MESSAGE_ASSEMBLER_CAPACITY: usize =
         GetDirectoryEntriesResponse::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
 
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request message.
     let request: Message = GetDirectoryEntriesRequest::build(tid, fd, count).map_err(|error| {
@@ -96,7 +96,7 @@ fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Err
     })?;
 
     // Send request message.
-    ::sys::kcall::ipc::send(&request).map_err(|error| {
+    ::sys::kcall::ipc::__kcall_send(&request).map_err(|error| {
         let reason: &str = "failed to send message";
         warn!("posix_getdents(): {reason} (error={:?})", error);
         Error::new(error.code, reason)
@@ -112,7 +112,7 @@ fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Err
 
     loop {
         // Wait for response message.
-        let response: Message = ::sys::kcall::ipc::recv().map_err(|error| {
+        let response: Message = ::sys::kcall::ipc::__kcall_recv().map_err(|error| {
             let reason: &str = "failed to receive message";
             warn!("posix_getdents(): {reason} (error={:?})", error);
             Error::new(error.code, reason)

@@ -63,17 +63,17 @@ pub fn chdir(path: &str) -> Result<(), Error> {
 /// Forwards a `chdir` request to linuxd via IPC.
 #[cfg(not(feature = "standalone"))]
 fn chdir_linuxd(path: &str) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
     let request: ChangeDirectoryRequest = ChangeDirectoryRequest::new(path)?;
     let requests: Vec<Message> = request.into_parts(tid)?;
     for request in &requests {
-        ::sys::kcall::ipc::send(request)?;
+        ::sys::kcall::ipc::__kcall_send(request)?;
     }
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

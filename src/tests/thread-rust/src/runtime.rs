@@ -13,10 +13,10 @@ use ::sys::{
         ErrorCode,
     },
     kcall::pm::{
-        create_thread,
-        detach_thread,
-        gettime,
-        join_thread,
+        __kcall_create_thread,
+        __kcall_detach_thread,
+        __kcall_gettime,
+        __kcall_join_thread,
     },
     pm::{
         ThreadCreateArgs,
@@ -56,7 +56,7 @@ impl KernelThread {
             user_tda: None,
         };
 
-        let tid: ThreadIdentifier = create_thread(&mut args)?;
+        let tid: ThreadIdentifier = __kcall_create_thread(&mut args)?;
 
         Ok(Self {
             tid: Some(tid),
@@ -71,7 +71,7 @@ impl KernelThread {
             .tid
             .take()
             .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "thread handle missing"))?;
-        join_thread(tid, &mut retval)?;
+        __kcall_join_thread(tid, &mut retval)?;
         drop(self.stack.take());
         Ok(retval)
     }
@@ -86,7 +86,7 @@ impl KernelThread {
             .tid
             .take()
             .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "thread handle missing"))?;
-        detach_thread(tid)?;
+        __kcall_detach_thread(tid)?;
         // Intentionally leak the stack — the thread may still be using it.
         if let Some(stack) = self.stack.take() {
             core::mem::forget(stack);
@@ -110,7 +110,7 @@ impl Drop for KernelThread {
 /// Returns the current monotonic system time.
 pub fn monotonic_now() -> Result<SystemTime, Error> {
     let mut now: SystemTime = SystemTime::default();
-    gettime(&mut now)?;
+    __kcall_gettime(&mut now)?;
     Ok(now)
 }
 

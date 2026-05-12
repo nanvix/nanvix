@@ -45,14 +45,14 @@ use ::sys::{
 ///
 pub fn lookup(name: &str) -> Result<ProcessIdentifier, Error> {
     // FIXME: this should not be required.
-    let mypid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+    let mypid: ProcessIdentifier = ::sys::kcall::pm::__kcall_getpid()?;
 
     // Build lookup message and send it.
     let message: Message = message::lookup_request(name, mypid)?;
-    ::sys::kcall::ipc::send(&message)?;
+    ::sys::kcall::ipc::__kcall_send(&message)?;
 
     // Wait response from the process manager daemon.
-    let message: Message = ::sys::kcall::ipc::recv()?;
+    let message: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Parse response.
     match message.message_type {

@@ -56,17 +56,17 @@ fn read_chunk(
 ) -> Result<c_size_t, Error> {
     // Send metadata-only ReadRequest via IKC message.
     let request: Message = ReadRequest::build(tid, fd, chunk.len() as c_size_t);
-    ::sys::kcall::ipc::send(&request)?;
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Pull data from linuxd via data chunk transfer.
-    let bytes_pulled: usize = ::sys::kcall::ipc::pull(
+    let bytes_pulled: usize = ::sys::kcall::ipc::__kcall_pull(
         ::sys::pm::ProcessIdentifier::KERNEL,
         ::sys::pm::ThreadIdentifier::KERNEL,
         chunk,
     )?;
 
     // Receive response metadata (count, status). The bulk data is already in the buffer.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -184,7 +184,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
 
 /// Forwards a `read` request via IKC, splitting the buffer into page-aligned chunks.
 fn read_via_ikc(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let mut total_read: c_size_t = 0;
     let mut offset: usize = 0;
