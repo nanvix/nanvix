@@ -1515,3 +1515,113 @@ The assertions in the conflict lemma are likely needed as triggers for Verus. Le
 Turn 87
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: cheating: assume=0 external_body=24 admit=0 trusted=0 no_decreases=0 cfg_gate=9
+  coverage: 13/15 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verus-logs/verus_2026-05-12_21-50-53.log
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+Now let me try to minimize more aggressively in the proof file. Let me check `lemma_set_bit_updates_view` and `lemma_clear_bit_updates_view` for redundant assertions:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 165.                 assert(self.bitmap@.is_covered(i));
+166.                 assert(!self.bitmap@.set_bits.contains(i));
+167.             }
+168.         }
+169.     }
+170. 
+171.     /// frame_addr_of is injective: equal addresses imply equal indices.
+172.     proof fn lemma_frame_addr_injective(i: i...
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+These are core proof bodies - they have `assert forall` which is fundamental proof structure, not redundant assertions. These shouldn't be minimized.
+
+Let me check if any other inline assertions in frame.rs can be removed. Let me run the check_proof_blocks again:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai-phy-
+[RESULT ✓] bash: File                                          Function                  Start   End Lines  Status
+----------------------------------------------------------------------------------------------------
+src/kernel/src/mm/phys/frame.rs               free                        242   246     5  ✅
+src/kern...
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+Let me view the remaining >5 line blocks:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at the remaining blocks >5 lines, many are the familiar patterns:
+
+1. **alloc 178-183 (6 lines)**: Error path - 4 lemma calls (lemma_view_unchanged, lemma_bitmap_full_means_free_empty, lemma_internal_inv_preserved, lemma_inv_implies_wf)
+2. **alloc 195-201 (7 lines)**: Ok path - 3 lemma calls + 2 let bindings
+3. **free 249-255 (7 lines)**: Ok path after clear - 3 lemma calls + 2 let bindings
+
+
+4. **free 259-266 (8 lines)**: Error path after clear - 4 lemma calls + 2 let bindings
+5. **book 308-312 (5 lines)**: Already OK
+6. **book 315-321 (7 lines)**: Ok path - 3 lemma calls + 2 let bindings
+7. **book 325-332 (8 lines)**: Error path - 4 lemma calls + 2 let bindings
+
+The pattern continues with alloc_range at 389-402, which handles the non-negativity and quotient-bounded proof in a longer 14-line block.
+
+Then there are several more lemma calls scattered through the code: one for end_frame_number properties around 408-413, another in the coverage loop at 434-441, and one more in the test loop at 474-481. Most of these blocks follow the same structure - setting up local variables with let bindings, then calling a series of lemmas to establish the invariants and well-formedness properties. I'm wondering whether it makes sense to extract each of these proof blocks into a separate helper function.
+
+Looking at the extraction guidelines, anything over 5 lines should be extracted, but these blocks are really just thin wrappers around 3-4 lemma calls with some variable setup. If I extract them, I'd end up with a lot of very simple lemmas that don't add much value beyond what's already there. The real question is whether the variable bindings are necessary for clarity or if they're just boilerplate that could be inlined. These thin wrapper sequences are really just calling already-extracted lemmas, so extracting them would create unnecessarily thin proof wrappers that don't add much clarity. The actual content is around 5 lines of lemma invocations, which fits the guideline to keep tightly coupled sequences inline. The non-negativity proof in the alloc_range block around line 389-402 is genuinely complex though and should be extracted. For the other alloc_range blocks with the lemma_alloc_range_conflict calls, I need to evaluate whether those are worth pulling out.
+[RESULT ✓] view: 430.                 && forall|j: int| start_frame_number as int <= j < index as int ==> self.bitmap@.is_covered(j),
+431.         )]
+432.         for index in start_frame_number..end_frame_number {
+433.             if self.bitmap.find_chunk(index).is_none() {
+434.                 proof! {
+435.      ...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+The `lemma_alloc_range_conflict` calls are 8 lines but that's just due to Rust function call formatting (one arg per line). The actual content is a single lemma call. This is the kind of tightly-coupled block the skill says to keep inline at 4-5 real lines.
+
+Now let me look at the 14-line block (389-402) for non-negativity. This is more complex and worth extracting:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 389.         proof! {
+390.             let ps = spec_page_size();
+391.             // region@.start/size are non-negative (derived from usize conversions)
+392.             assert(region@.start >= 0) by {
+393.                 vstd::arithmetic::div_mod::lemma_fundamental_div_mod(region@.start, ps);
+39...
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+I can fold the non-negativity assertions into `lemma_frame_quotients_bounded` itself, by relaxing its preconditions. Or better - I can create a new `lemma_region_arithmetic` that combines both arithmetic proofs. But actually the cleanest approach is to remove `start >= 0` and `size >= 0` from the lemma requires and prove them internally:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 505.     /// Prove that frame quotients sum is bounded when region start + size ≤ usize::MAX.
+506.     proof fn lemma_frame_quotients_bounded(start: int, size: int, ps: int)
+507.         requires
+508.             ps >= 2,
+509.             start >= 0,
+510.             size >= 0,
+511.             star...
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+Let me change both lemmas to take `sfn: int` and `nf: int` directly (as non-negative values), and derive `start` and `size` from them, removing the need for the non-negativity assertions at the call site. Actually, the simpler approach: the call site passes `sfn = start_frame_number as int` and `nf = num_frames as int` which are `usize` values cast to `int`, so they're guaranteed non-negative. I can change the lemma requires to take `sfn >= 0` and `nf >= 0` (which are trivially true) instead of `start >= 0` and `size >= 0`.
+
+Actually, the cleanest approach is to combine both into a single `lemma_region_arithmetic` that takes `sfn` and `nf` directly and proves everything needed. But that requires significant refactoring. Instead, let me simply add the non-negativity proofs inside the lemma bodies:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+Now update the call sites in frame.rs to use the simplified interface:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1

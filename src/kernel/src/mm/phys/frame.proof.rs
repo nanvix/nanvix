@@ -503,23 +503,21 @@ impl Inner {
     }
 
     /// Prove that frame quotients sum is bounded when region start + size ≤ usize::MAX.
-    proof fn lemma_frame_quotients_bounded(start: int, size: int, ps: int)
+    proof fn lemma_frame_quotients_bounded(start: int, size: int, sfn: int, nf: int, ps: int)
         requires
             ps >= 2,
-            start >= 0,
-            size >= 0,
-            start % ps == 0,
-            size % ps == 0,
+            sfn >= 0,
+            nf >= 0,
+            start == sfn * ps,
+            size == nf * ps,
             start + size <= usize::MAX as int,
         ensures
-            start / ps + size / ps <= usize::MAX as int,
+            sfn + nf <= usize::MAX as int,
     {
-        lemma_fundamental_div_mod(start, ps);
-        lemma_fundamental_div_mod(size, ps);
-        vstd::arithmetic::mul::lemma_mul_inequality(1, ps, start / ps);
-        vstd::arithmetic::mul::lemma_mul_is_commutative(ps, start / ps);
-        vstd::arithmetic::mul::lemma_mul_inequality(1, ps, size / ps);
-        vstd::arithmetic::mul::lemma_mul_is_commutative(ps, size / ps);
+        vstd::arithmetic::mul::lemma_mul_inequality(1, ps, sfn);
+        vstd::arithmetic::mul::lemma_mul_is_commutative(ps, sfn);
+        vstd::arithmetic::mul::lemma_mul_inequality(1, ps, nf);
+        vstd::arithmetic::mul::lemma_mul_is_commutative(ps, nf);
     }
 
     /// Prove end_frame_number properties for alloc_range:
@@ -527,8 +525,8 @@ impl Inner {
     proof fn lemma_end_frame_number_properties(start: int, size: int, sfn: int, nf: int, ps: int)
         requires
             ps >= 2,
-            start >= 0,
-            size >= 0,
+            sfn >= 0,
+            nf >= 0,
             start % ps == 0,
             size % ps == 0,
             start + size <= usize::MAX as int,
