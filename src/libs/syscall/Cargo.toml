@@ -42,7 +42,7 @@ compiler_builtins = { workspace = true, optional = true }
 default = ["syscall"]
 # Enable this, if this library is to be used as a static library.
 staticlib = ["dep:libc_stdlib"]
-syscall = ["dep:sysalloc", "dep:syslog", "sys/kcall"]
+syscall = ["dep:sysalloc", "dep:syslog", "sys/kcall", "dep:libc_stdlib"]
 std = []
 dlfcn = ["dep:sysalloc", "dep:elf", "dep:goblin"]
 rustc-dep-of-std = [
