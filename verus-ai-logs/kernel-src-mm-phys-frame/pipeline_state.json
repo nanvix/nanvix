@@ -6,7 +6,7 @@
   "current_phase_idx": 5,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "19ee8461-ae9f-4cd4-8798-84f8680cb058",
   "completed": false,
   "base_branch": "verus-mm-phys",
   "verus_branch": "verus-mm-phys",

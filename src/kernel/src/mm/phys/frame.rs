@@ -176,67 +176,8 @@ impl Inner {
             Ok(index) => index,
             Err(error) => {
                 proof! {
-                    // bitmap unchanged
-                    assert(self.bitmap@.set_bits =~= old(self).bitmap@.set_bits);
-                    assert(self.bitmap@.chunks =~= old(self).bitmap@.chunks);
-
-                    // self@ == old(self)@ (view unchanged because bitmap unchanged)
-                    assert forall|addr: int|
-                        self@.allocated_frames.contains(addr)
-                        <==> old(self)@.allocated_frames.contains(addr)
-                    by {
-                        if self@.allocated_frames.contains(addr) {
-                            let i = choose|i: int|
-                                #[trigger] self.bitmap@.set_bits.contains(i)
-                                && addr == frame_addr_of(i);
-                            assert(old(self).bitmap@.set_bits.contains(i));
-                        }
-                        if old(self)@.allocated_frames.contains(addr) {
-                            let i = choose|i: int|
-                                #[trigger] old(self).bitmap@.set_bits.contains(i)
-                                && addr == frame_addr_of(i);
-                            assert(self.bitmap@.set_bits.contains(i));
-                        }
-                    }
-                    assert forall|addr: int|
-                        self@.free_frames.contains(addr)
-                        <==> old(self)@.free_frames.contains(addr)
-                    by {
-                        if self@.free_frames.contains(addr) {
-                            let i = choose|i: int|
-                                #[trigger] self.bitmap@.is_covered(i)
-                                && !self.bitmap@.set_bits.contains(i)
-                                && addr == frame_addr_of(i);
-                            assert(old(self).bitmap@.is_covered(i));
-                            assert(!old(self).bitmap@.set_bits.contains(i));
-                        }
-                        if old(self)@.free_frames.contains(addr) {
-                            let i = choose|i: int|
-                                #[trigger] old(self).bitmap@.is_covered(i)
-                                && !old(self).bitmap@.set_bits.contains(i)
-                                && addr == frame_addr_of(i);
-                            assert(self.bitmap@.is_covered(i));
-                            assert(!self.bitmap@.set_bits.contains(i));
-                        }
-                    }
-                    assert(self@.allocated_frames =~= old(self)@.allocated_frames);
-                    assert(self@.free_frames =~= old(self)@.free_frames);
-
-                    // old(self)@.free_frames.is_empty()
-                    // bitmap.is_full() means all covered bits are set
-                    assert forall|addr: int| !old(self)@.free_frames.contains(addr) by {
-                        if old(self)@.free_frames.contains(addr) {
-                            let i = choose|i: int|
-                                #[trigger] old(self).bitmap@.is_covered(i)
-                                && !old(self).bitmap@.set_bits.contains(i)
-                                && addr == frame_addr_of(i);
-                            // is_full means all covered bits are set
-                            assert(old(self).bitmap@.is_bit_set(i));
-                            // contradiction with !set_bits.contains(i)
-                        }
-                    }
-
-                    // self.inv()
+                    self.lemma_view_unchanged(old(self));
+                    old(self).lemma_bitmap_full_means_free_empty();
                     self.lemma_internal_inv_preserved(old(self));
                     self.lemma_inv_implies_wf();
                 }
@@ -245,14 +186,6 @@ impl Inner {
                 return Err(error);
             },
         };
-        proof! {
-            let ps = spec_page_size();
-            let idx = index as int;
-            // bitmap.alloc postconditions: covered(idx), !set(idx), set_bits = old_set_bits.insert(idx)
-            assert(old(self).bitmap@.is_covered(idx));
-            assert(idx >= 0);
-            assert(frame_addr_of(idx) <= usize::MAX as int);
-        }
         // VERUS DEVIATION: original had FrameNumber::from_raw_value(index) followed by
         // FrameAddress::from_frame_number(frame_number) with two error-path matches.
         // Verus cannot reason through this chain because `PageAligned<T>::Deref::deref`
@@ -261,80 +194,8 @@ impl Inner {
         let result = bitmap_index_to_frame_addr(index);
         proof! {
             let idx = index as int;
-            let ps = spec_page_size();
-            // bitmap_index_to_frame_addr returns Ok(frame) with frame@ = idx * ps
-            let frame = result.unwrap();
-            let fa = frame@;
-            assert(fa == frame_addr_of(idx));
-
-            // 1. old(self)@.free_frames.contains(fa)
-            assert(old(self).bitmap@.is_covered(idx));
-            assert(!old(self).bitmap@.set_bits.contains(idx));
-            assert(old(self)@.free_frames.contains(fa));
-
-            // 2. self@.allocated_frames =~= old(self)@.allocated_frames.insert(fa)
-            assert forall|addr: int| self@.allocated_frames.contains(addr) implies
-                old(self)@.allocated_frames.contains(addr) || addr == fa
-            by {
-                let i = choose|i: int|
-                    #[trigger] self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
-                if i == idx {
-                    assert(addr == fa);
-                } else {
-                    assert(old(self).bitmap@.set_bits.contains(i));
-                }
-            }
-            assert forall|addr: int|
-                old(self)@.allocated_frames.contains(addr) || addr == fa
-                implies self@.allocated_frames.contains(addr)
-            by {
-                if addr == fa {
-                    assert(self.bitmap@.set_bits.contains(idx));
-                } else {
-                    let i = choose|i: int|
-                        #[trigger] old(self).bitmap@.set_bits.contains(i)
-                        && addr == frame_addr_of(i);
-                    assert(self.bitmap@.set_bits.contains(i));
-                }
-            }
-            assert(self@.allocated_frames =~= old(self)@.allocated_frames.insert(fa));
-
-            // 3. self@.free_frames =~= old(self)@.free_frames.remove(fa)
-            assert forall|addr: int| self@.free_frames.contains(addr) implies
-                old(self)@.free_frames.contains(addr) && addr != fa
-            by {
-                let i = choose|i: int|
-                    #[trigger] self.bitmap@.is_covered(i)
-                    && !self.bitmap@.set_bits.contains(i)
-                    && addr == frame_addr_of(i);
-                if i == idx {
-                    assert(self.bitmap@.set_bits.contains(idx));
-                }
-                assert(i != idx);
-                assert(!old(self).bitmap@.set_bits.contains(i));
-                assert(old(self).bitmap@.is_covered(i));
-                if addr == fa {
-                    vstd::arithmetic::mul::lemma_mul_is_commutative(i, ps);
-                    vstd::arithmetic::mul::lemma_mul_is_commutative(idx, ps);
-                    vstd::arithmetic::mul::lemma_mul_equality_converse(ps, i, idx);
-                }
-            }
-            assert forall|addr: int|
-                old(self)@.free_frames.contains(addr) && addr != fa
-                implies self@.free_frames.contains(addr)
-            by {
-                let i = choose|i: int|
-                    #[trigger] old(self).bitmap@.is_covered(i)
-                    && !old(self).bitmap@.set_bits.contains(i)
-                    && addr == frame_addr_of(i);
-                if i == idx { assert(addr == fa); }
-                assert(i != idx);
-                assert(!self.bitmap@.set_bits.contains(i));
-                assert(self.bitmap@.is_covered(i));
-            }
-            assert(self@.free_frames =~= old(self)@.free_frames.remove(fa));
-
-            // 4. self.inv()
+            let fa = result.unwrap()@;
+            self.lemma_set_bit_updates_view(old(self), idx, fa);
             self.lemma_internal_inv_preserved(old(self));
             self.lemma_inv_implies_wf();
         }
@@ -379,8 +240,8 @@ impl Inner {
         // This wrapper encapsulates the same conversion chain with a spec.
         let frame_number: usize = frame_addr_to_bitmap_index(frame);
         proof! {
-            // Establish: frame@ == frame_addr_of(frame_number)
             vstd::arithmetic::div_mod::lemma_fundamental_div_mod(frame@, spec_page_size());
+            vstd::arithmetic::mul::lemma_mul_is_commutative(spec_page_size(), frame_number as int);
             assert(frame@ == frame_addr_of(frame_number as int));
         }
         match self.bitmap.clear(frame_number) {
@@ -388,79 +249,7 @@ impl Inner {
                 proof! {
                     let idx = frame_number as int;
                     let fa = frame@;
-                    let ps = spec_page_size();
-
-                    // --- 1. old(self)@.allocated_frames.contains(fa) ---
-                    // Witness: idx is in old set_bits
-                    assert(old(self).bitmap@.set_bits.contains(idx));
-                    assert(fa == frame_addr_of(idx));
-                    // Trigger the existential in the view definition
-                    assert(old(self)@.allocated_frames.contains(fa));
-
-                    // --- 2. self@.allocated_frames =~= old(self)@.allocated_frames.remove(fa) ---
-                    assert forall|addr: int| self@.allocated_frames.contains(addr) implies
-                        old(self)@.allocated_frames.contains(addr) && addr != fa
-                    by {
-                        let i = choose|i: int|
-                            #[trigger] self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
-                        // i in new set_bits = old set_bits \ {idx}
-                        assert(old(self).bitmap@.set_bits.contains(i));
-                        // i != idx (was removed)
-                        if addr == fa {
-                            // frame_addr_of(i) == frame_addr_of(idx) with i != idx
-                            vstd::arithmetic::mul::lemma_mul_is_commutative(i, ps);
-                            vstd::arithmetic::mul::lemma_mul_is_commutative(idx, ps);
-                            vstd::arithmetic::mul::lemma_mul_equality_converse(ps, i, idx);
-                        }
-                    }
-                    assert forall|addr: int|
-                        old(self)@.allocated_frames.contains(addr) && addr != fa
-                        implies self@.allocated_frames.contains(addr)
-                    by {
-                        let i = choose|i: int|
-                            #[trigger] old(self).bitmap@.set_bits.contains(i)
-                            && addr == frame_addr_of(i);
-                        // i != idx because addr != fa = frame_addr_of(idx)
-                        if i == idx { assert(addr == fa); }
-                        assert(self.bitmap@.set_bits.contains(i));
-                    }
-                    assert(self@.allocated_frames =~= old(self)@.allocated_frames.remove(fa));
-
-                    // --- 3. self@.free_frames =~= old(self)@.free_frames.insert(fa) ---
-                    assert forall|addr: int| self@.free_frames.contains(addr) implies
-                        old(self)@.free_frames.contains(addr) || addr == fa
-                    by {
-                        let i = choose|i: int|
-                            #[trigger] self.bitmap@.is_covered(i)
-                            && !self.bitmap@.set_bits.contains(i)
-                            && addr == frame_addr_of(i);
-                        if i == idx {
-                            assert(addr == fa);
-                        } else {
-                            assert(!old(self).bitmap@.set_bits.contains(i));
-                            assert(old(self).bitmap@.is_covered(i));
-                        }
-                    }
-                    assert forall|addr: int|
-                        old(self)@.free_frames.contains(addr) || addr == fa
-                        implies self@.free_frames.contains(addr)
-                    by {
-                        if addr == fa {
-                            assert(self.bitmap@.is_covered(idx));
-                            assert(!self.bitmap@.set_bits.contains(idx));
-                        } else {
-                            let i = choose|i: int|
-                                #[trigger] old(self).bitmap@.is_covered(i)
-                                && !old(self).bitmap@.set_bits.contains(i)
-                                && addr == frame_addr_of(i);
-                            if i == idx { assert(addr == fa); }
-                            assert(!self.bitmap@.set_bits.contains(i));
-                            assert(self.bitmap@.is_covered(i));
-                        }
-                    }
-                    assert(self@.free_frames =~= old(self)@.free_frames.insert(fa));
-
-                    // --- 4. self.inv() ---
+                    self.lemma_clear_bit_updates_view(old(self), idx, fa);
                     self.lemma_internal_inv_preserved(old(self));
                     self.lemma_inv_implies_wf();
                 }
@@ -470,71 +259,8 @@ impl Inner {
                 proof! {
                     let idx = frame_number as int;
                     let fa = frame@;
-                    let ps = spec_page_size();
-
-                    // bitmap unchanged
-                    assert(self.bitmap@.set_bits =~= old(self).bitmap@.set_bits);
-                    assert(self.bitmap@.chunks =~= old(self).bitmap@.chunks);
-
-                    // self@ == old(self)@ (view depends only on bitmap state)
-                    assert forall|addr: int|
-                        self@.allocated_frames.contains(addr)
-                        <==> old(self)@.allocated_frames.contains(addr)
-                    by {
-                        if self@.allocated_frames.contains(addr) {
-                            let i = choose|i: int|
-                                #[trigger] self.bitmap@.set_bits.contains(i)
-                                && addr == frame_addr_of(i);
-                            assert(old(self).bitmap@.set_bits.contains(i));
-                        }
-                        if old(self)@.allocated_frames.contains(addr) {
-                            let i = choose|i: int|
-                                #[trigger] old(self).bitmap@.set_bits.contains(i)
-                                && addr == frame_addr_of(i);
-                            assert(self.bitmap@.set_bits.contains(i));
-                        }
-                    }
-                    assert forall|addr: int|
-                        self@.free_frames.contains(addr)
-                        <==> old(self)@.free_frames.contains(addr)
-                    by {
-                        if self@.free_frames.contains(addr) {
-                            let i = choose|i: int|
-                                #[trigger] self.bitmap@.is_covered(i)
-                                && !self.bitmap@.set_bits.contains(i)
-                                && addr == frame_addr_of(i);
-                            assert(old(self).bitmap@.is_covered(i));
-                            assert(!old(self).bitmap@.set_bits.contains(i));
-                        }
-                        if old(self)@.free_frames.contains(addr) {
-                            let i = choose|i: int|
-                                #[trigger] old(self).bitmap@.is_covered(i)
-                                && !old(self).bitmap@.set_bits.contains(i)
-                                && addr == frame_addr_of(i);
-                            assert(self.bitmap@.is_covered(i));
-                            assert(!self.bitmap@.set_bits.contains(i));
-                        }
-                    }
-                    assert(self@.allocated_frames =~= old(self)@.allocated_frames);
-                    assert(self@.free_frames =~= old(self)@.free_frames);
-
-                    // !old(self)@.allocated_frames.contains(fa)
-                    // bitmap Err: !is_covered(idx) || !is_bit_set(idx)
-                    // In either case, idx not in set_bits (from bitmap wf: set_bits ⊆ covered)
-                    assert forall|i: int|
-                        old(self).bitmap@.set_bits.contains(i) && fa == frame_addr_of(i)
-                        implies false
-                    by {
-                        // By injectivity, the only candidate is i == idx
-                        if i != idx {
-                            vstd::arithmetic::mul::lemma_mul_is_commutative(i, ps);
-                            vstd::arithmetic::mul::lemma_mul_is_commutative(idx, ps);
-                            vstd::arithmetic::mul::lemma_mul_equality_converse(ps, i, idx);
-                        }
-                    }
-                    assert(!old(self)@.allocated_frames.contains(fa));
-
-                    // self.inv()
+                    self.lemma_view_unchanged(old(self));
+                    old(self).lemma_addr_not_allocated(idx, fa);
                     self.lemma_internal_inv_preserved(old(self));
                     self.lemma_inv_implies_wf();
                 }
@@ -580,14 +306,8 @@ impl Inner {
         // Same limitation as Inner::free — generic Deref chain cannot be specified.
         let frame_number: usize = page_aligned_pa_to_bitmap_index(phys_addr);
         proof! {
-            let ps = spec_page_size();
-            assert(ps > 0);
-            assert(phys_addr@ % ps == 0);
-            assert(frame_number as int == phys_addr@ / ps);
-            vstd::arithmetic::div_mod::lemma_fundamental_div_mod(phys_addr@, ps);
-            assert(phys_addr@ == ps * (phys_addr@ / ps) + phys_addr@ % ps);
-            assert(phys_addr@ == ps * (frame_number as int));
-            vstd::arithmetic::mul::lemma_mul_is_commutative(ps, frame_number as int);
+            vstd::arithmetic::div_mod::lemma_fundamental_div_mod(phys_addr@, spec_page_size());
+            vstd::arithmetic::mul::lemma_mul_is_commutative(spec_page_size(), frame_number as int);
             assert(phys_addr@ == frame_addr_of(frame_number as int));
         }
         match self.bitmap.set(frame_number) {
@@ -595,79 +315,7 @@ impl Inner {
                 proof! {
                     let idx = frame_number as int;
                     let fa = phys_addr@;
-                    let ps = spec_page_size();
-
-                    // --- 1. old(self)@.free_frames.contains(fa) ---
-                    assert(old(self).bitmap@.is_covered(idx));
-                    assert(!old(self).bitmap@.set_bits.contains(idx));
-                    assert(fa == frame_addr_of(idx));
-                    assert(old(self)@.free_frames.contains(fa));
-
-                    // --- 2. self@.allocated_frames =~= old(self)@.allocated_frames.insert(fa) ---
-                    assert forall|addr: int| self@.allocated_frames.contains(addr) implies
-                        old(self)@.allocated_frames.contains(addr) || addr == fa
-                    by {
-                        let i = choose|i: int|
-                            #[trigger] self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
-                        if i == idx {
-                            assert(addr == fa);
-                        } else {
-                            assert(old(self).bitmap@.set_bits.contains(i));
-                        }
-                    }
-                    assert forall|addr: int|
-                        old(self)@.allocated_frames.contains(addr) || addr == fa
-                        implies self@.allocated_frames.contains(addr)
-                    by {
-                        if addr == fa {
-                            assert(self.bitmap@.set_bits.contains(idx));
-                        } else {
-                            let i = choose|i: int|
-                                #[trigger] old(self).bitmap@.set_bits.contains(i)
-                                && addr == frame_addr_of(i);
-                            assert(self.bitmap@.set_bits.contains(i));
-                        }
-                    }
-                    assert(self@.allocated_frames =~= old(self)@.allocated_frames.insert(fa));
-
-                    // --- 3. self@.free_frames =~= old(self)@.free_frames.remove(fa) ---
-                    assert forall|addr: int| self@.free_frames.contains(addr) implies
-                        old(self)@.free_frames.contains(addr) && addr != fa
-                    by {
-                        let i = choose|i: int|
-                            #[trigger] self.bitmap@.is_covered(i)
-                            && !self.bitmap@.set_bits.contains(i)
-                            && addr == frame_addr_of(i);
-                        // i != idx (idx was added to set_bits)
-                        assert(!self.bitmap@.set_bits.contains(i));
-                        if i == idx {
-                            assert(self.bitmap@.set_bits.contains(idx));
-                        }
-                        assert(i != idx);
-                        assert(!old(self).bitmap@.set_bits.contains(i));
-                        assert(old(self).bitmap@.is_covered(i));
-                        if addr == fa {
-                            vstd::arithmetic::mul::lemma_mul_is_commutative(i, ps);
-                            vstd::arithmetic::mul::lemma_mul_is_commutative(idx, ps);
-                            vstd::arithmetic::mul::lemma_mul_equality_converse(ps, i, idx);
-                        }
-                    }
-                    assert forall|addr: int|
-                        old(self)@.free_frames.contains(addr) && addr != fa
-                        implies self@.free_frames.contains(addr)
-                    by {
-                        let i = choose|i: int|
-                            #[trigger] old(self).bitmap@.is_covered(i)
-                            && !old(self).bitmap@.set_bits.contains(i)
-                            && addr == frame_addr_of(i);
-                        if i == idx { assert(addr == fa); }
-                        assert(i != idx);
-                        assert(!self.bitmap@.set_bits.contains(i));
-                        assert(self.bitmap@.is_covered(i));
-                    }
-                    assert(self@.free_frames =~= old(self)@.free_frames.remove(fa));
-
-                    // --- 4. self.inv() ---
+                    self.lemma_set_bit_updates_view(old(self), idx, fa);
                     self.lemma_internal_inv_preserved(old(self));
                     self.lemma_inv_implies_wf();
                 }
@@ -677,73 +325,8 @@ impl Inner {
                 proof! {
                     let idx = frame_number as int;
                     let fa = phys_addr@;
-                    let ps = spec_page_size();
-
-                    // bitmap unchanged
-                    assert(self.bitmap@.set_bits =~= old(self).bitmap@.set_bits);
-                    assert(self.bitmap@.chunks =~= old(self).bitmap@.chunks);
-
-                    // self@ == old(self)@ (same as free Err case)
-                    assert forall|addr: int|
-                        self@.allocated_frames.contains(addr)
-                        <==> old(self)@.allocated_frames.contains(addr)
-                    by {
-                        if self@.allocated_frames.contains(addr) {
-                            let i = choose|i: int|
-                                #[trigger] self.bitmap@.set_bits.contains(i)
-                                && addr == frame_addr_of(i);
-                            assert(old(self).bitmap@.set_bits.contains(i));
-                        }
-                        if old(self)@.allocated_frames.contains(addr) {
-                            let i = choose|i: int|
-                                #[trigger] old(self).bitmap@.set_bits.contains(i)
-                                && addr == frame_addr_of(i);
-                            assert(self.bitmap@.set_bits.contains(i));
-                        }
-                    }
-                    assert forall|addr: int|
-                        self@.free_frames.contains(addr)
-                        <==> old(self)@.free_frames.contains(addr)
-                    by {
-                        if self@.free_frames.contains(addr) {
-                            let i = choose|i: int|
-                                #[trigger] self.bitmap@.is_covered(i)
-                                && !self.bitmap@.set_bits.contains(i)
-                                && addr == frame_addr_of(i);
-                            assert(old(self).bitmap@.is_covered(i));
-                            assert(!old(self).bitmap@.set_bits.contains(i));
-                        }
-                        if old(self)@.free_frames.contains(addr) {
-                            let i = choose|i: int|
-                                #[trigger] old(self).bitmap@.is_covered(i)
-                                && !old(self).bitmap@.set_bits.contains(i)
-                                && addr == frame_addr_of(i);
-                            assert(self.bitmap@.is_covered(i));
-                            assert(!self.bitmap@.set_bits.contains(i));
-                        }
-                    }
-                    assert(self@.allocated_frames =~= old(self)@.allocated_frames);
-                    assert(self@.free_frames =~= old(self)@.free_frames);
-
-                    // !old(self)@.free_frames.contains(fa)
-                    // bitmap set Err: !is_covered(idx) || is_bit_set(idx)
-                    assert forall|i: int|
-                        old(self).bitmap@.is_covered(i)
-                        && !old(self).bitmap@.set_bits.contains(i)
-                        && fa == frame_addr_of(i)
-                        implies false
-                    by {
-                        if i != idx {
-                            vstd::arithmetic::mul::lemma_mul_is_commutative(i, ps);
-                            vstd::arithmetic::mul::lemma_mul_is_commutative(idx, ps);
-                            vstd::arithmetic::mul::lemma_mul_equality_converse(ps, i, idx);
-                        }
-                        // i == idx: either !is_covered(idx) or is_bit_set(idx)
-                        // Both contradict the antecedent
-                    }
-                    assert(!old(self)@.free_frames.contains(fa));
-
-                    // self.inv()
+                    self.lemma_view_unchanged(old(self));
+                    old(self).lemma_addr_not_free(idx, fa);
                     self.lemma_internal_inv_preserved(old(self));
                     self.lemma_inv_implies_wf();
                 }
@@ -803,67 +386,22 @@ impl Inner {
         let num_frames: usize = region_size_raw(region) / mem::FRAME_SIZE;
 
         // Prove: start_frame_number + num_frames does not overflow usize.
-        // sfn <= region@.start and nf <= region@.size (since ps >= 1),
-        // and region@.start + region@.size <= usize::MAX (from requires).
         proof! {
             let ps = spec_page_size();
-            lemma_fundamental_div_mod(region@.start, ps);
-            lemma_fundamental_div_mod(region@.size, ps);
-            // region@.start == ps * sfn (since start % ps == 0)
-            // region@.size == ps * nf (since size % ps == 0)
-            // sfn <= ps * sfn = region@.start (since ps >= 1)
-            vstd::arithmetic::mul::lemma_mul_inequality(1, ps, start_frame_number as int);
-            vstd::arithmetic::mul::lemma_mul_is_commutative(ps, start_frame_number as int);
-            assert((start_frame_number as int) <= (start_frame_number as int) * ps);
-            assert((start_frame_number as int) * ps == region@.start);
-            assert((start_frame_number as int) <= region@.start);
-            // nf <= ps * nf = region@.size
-            vstd::arithmetic::mul::lemma_mul_inequality(1, ps, num_frames as int);
-            vstd::arithmetic::mul::lemma_mul_is_commutative(ps, num_frames as int);
-            assert((num_frames as int) <= (num_frames as int) * ps);
-            assert((num_frames as int) * ps == region@.size);
-            assert((num_frames as int) <= region@.size);
-            // sfn + nf <= start + size <= usize::MAX
-            assert((start_frame_number as int) + (num_frames as int) <= usize::MAX as int);
+            Self::lemma_frame_quotients_bounded(
+                region@.start, region@.size,
+                start_frame_number as int, num_frames as int, ps);
         }
 
         let end_frame_number: usize = start_frame_number + num_frames;
 
         // Prove: efn == (region@.start + region@.size) / ps,
         // and efn * ps == region@.start + region@.size <= usize::MAX.
-        // This establishes that index * FRAME_SIZE does not overflow for any
-        // index <= end_frame_number (used by both loops below).
         proof! {
             let ps = spec_page_size();
-            lemma_fundamental_div_mod(region@.start, ps);
-            lemma_fundamental_div_mod(region@.size, ps);
-            vstd::arithmetic::mul::lemma_mul_is_commutative(ps, num_frames as int);
-            assert((num_frames as int) * ps == region@.size);
-            lemma_hoist_over_denominator(region@.start, num_frames as int, ps as nat);
-            assert(end_frame_number as int == (region@.start + region@.size) / ps);
-            // efn * ps == start + size:
-            // start = sfn * ps, size = nf * ps, efn = sfn + nf
-            // so efn * ps = (sfn + nf) * ps = sfn * ps + nf * ps = start + size
-            vstd::arithmetic::mul::lemma_mul_is_commutative(ps, start_frame_number as int);
-            assert((start_frame_number as int) * ps == region@.start);
-            // Prove (sfn + nf) * ps == sfn * ps + nf * ps by rewriting
-            lemma_fundamental_div_mod(region@.start + region@.size, ps);
-            // start = sfn * ps, size = nf * ps, so start + size = (sfn + nf) * ps
-            // which is a multiple of ps.
-            assert(region@.start == (start_frame_number as int) * ps);
-            assert(region@.size == (num_frames as int) * ps);
-            // (sfn + nf) * ps == sfn * ps + nf * ps follows from integer arithmetic
-            assert(region@.start + region@.size == ((start_frame_number as int) + (num_frames as int)) * (ps as int)) by (nonlinear_arith)
-                requires
-                    region@.start == (start_frame_number as int) * ps,
-                    region@.size == (num_frames as int) * ps,
-            {}
-            assert(((start_frame_number as int) + (num_frames as int)) * (ps as int) == (end_frame_number as int) * (ps as int)) by (nonlinear_arith)
-                requires
-                    end_frame_number as int == start_frame_number as int + num_frames as int,
-            {}
-            assert((end_frame_number as int) * ps == region@.start + region@.size);
-            assert((end_frame_number as int) * ps <= usize::MAX as int);
+            Self::lemma_end_frame_number_properties(
+                region@.start, region@.size,
+                start_frame_number as int, num_frames as int, ps);
         }
 
         // When nightly-performance-optimizations is off, verify that every frame index in the
@@ -886,38 +424,12 @@ impl Inner {
         for index in start_frame_number..end_frame_number {
             if self.bitmap.find_chunk(index).is_none() {
                 proof! {
-                    let ps = spec_page_size();
-                    // Match postcondition variable definitions exactly
-                    let pc_sfn: int = region@.start / ps;
-                    let pc_efn: int = (region@.start + region@.size) / ps;
-                    let pc_fns = vstd::set_lib::set_int_range(pc_sfn, pc_efn);
-                    let pc_frames = pc_fns.map(|i: int| i * ps);
-
-                    // Connect exec variables to postcondition variables
-                    assert(pc_sfn == start_frame_number as int);
-                    assert(pc_efn == end_frame_number as int);
-
-                    // Prove self@ == old(self)@ (bitmap unchanged in read-only loop)
-                    assert(self@.allocated_frames =~= old(self)@.allocated_frames);
-                    assert(self@.free_frames =~= old(self)@.free_frames);
-                    assert(self@ =~= old(self)@);
-
-                    // Prove !frames.subset_of(old@.free_frames)
-                    let fa = frame_addr_of(index as int);
-                    assert(pc_fns.contains(index as int));
-                    assert(pc_frames.contains(fa));
-                    if old(self)@.free_frames.contains(fa) {
-                        let w = choose|i: int|
-                            old(self).bitmap@.is_covered(i)
-                            && !old(self).bitmap@.set_bits.contains(i)
-                            && fa == frame_addr_of(i);
-                        vstd::arithmetic::mul::lemma_mul_is_commutative(index as int, ps);
-                        vstd::arithmetic::mul::lemma_mul_is_commutative(w, ps);
-                        vstd::arithmetic::mul::lemma_mul_equality_converse(ps, index as int, w);
-                        assert(false);
-                    }
-                    assert(!pc_frames.subset_of(old(self)@.free_frames));
-                    self.lemma_inv_implies_wf();
+                    self.lemma_alloc_range_conflict(
+                        old(self),
+                        start_frame_number as int,
+                        end_frame_number as int,
+                        index as int,
+                    );
                 }
                 // index < end_frame_number, so index * ps < efn * ps <= usize::MAX
                 proof! {
@@ -952,38 +464,12 @@ impl Inner {
                 },
                 Ok(true) => {
                     proof! {
-                        let ps = spec_page_size();
-                        // Match postcondition variable definitions exactly
-                        let pc_sfn: int = region@.start / ps;
-                        let pc_efn: int = (region@.start + region@.size) / ps;
-                        let pc_fns = vstd::set_lib::set_int_range(pc_sfn, pc_efn);
-                        let pc_frames = pc_fns.map(|i: int| i * ps);
-
-                        // Connect exec variables to postcondition variables
-                        assert(pc_sfn == start_frame_number as int);
-                        assert(pc_efn == end_frame_number as int);
-
-                        // Prove self@ == old(self)@ (bitmap unchanged in read-only loops)
-                        assert(self@.allocated_frames =~= old(self)@.allocated_frames);
-                        assert(self@.free_frames =~= old(self)@.free_frames);
-                        assert(self@ =~= old(self)@);
-
-                        // Prove !frames.subset_of(old@.free_frames)
-                        let fa = frame_addr_of(index as int);
-                        assert(pc_fns.contains(index as int));
-                        assert(pc_frames.contains(fa));
-                        if old(self)@.free_frames.contains(fa) {
-                            let w = choose|i: int|
-                                old(self).bitmap@.is_covered(i)
-                                && !old(self).bitmap@.set_bits.contains(i)
-                                && fa == frame_addr_of(i);
-                            vstd::arithmetic::mul::lemma_mul_is_commutative(index as int, ps);
-                            vstd::arithmetic::mul::lemma_mul_is_commutative(w, ps);
-                            vstd::arithmetic::mul::lemma_mul_equality_converse(ps, index as int, w);
-                            assert(false);
-                        }
-                        assert(!pc_frames.subset_of(old(self)@.free_frames));
-                        self.lemma_inv_implies_wf();
+                        self.lemma_alloc_range_conflict(
+                            old(self),
+                            start_frame_number as int,
+                            end_frame_number as int,
+                            index as int,
+                        );
                     }
                     // index < end_frame_number, so index * ps < efn * ps <= usize::MAX
                     proof! {
@@ -1025,16 +511,7 @@ impl Inner {
         )]
         for index in start_frame_number..end_frame_number {
             proof! {
-                // Bridge coverage: chunks are equal, so is_covered transfers.
-                assert forall|jj: int|
-                    start_frame_number as int <= jj < end_frame_number as int
-                    implies self.bitmap@.is_covered(jj)
-                by {
-                    assert(old(self).bitmap@.is_covered(jj));
-                };
-                assert(self.bitmap@.is_covered(index as int));
-                assert(!old(self).bitmap@.set_bits.contains(index as int));
-                assert(!vstd::set_lib::set_int_range(start_frame_number as int, index as int).contains(index as int));
+                self.lemma_coverage_transfers(old(self), start_frame_number as int, end_frame_number as int);
                 assert(!self.bitmap@.set_bits.contains(index as int));
             }
             if let Err(error) = self.bitmap.set(index) {
@@ -1044,111 +521,15 @@ impl Inner {
                 return Err(error);
             }
             proof! {
-                assert(vstd::set_lib::set_int_range(start_frame_number as int, (index + 1) as int) =~=
-                    vstd::set_lib::set_int_range(start_frame_number as int, index as int).insert(index as int));
-                assert(self.bitmap@.set_bits =~= old(self).bitmap@.set_bits.union(
-                    vstd::set_lib::set_int_range(start_frame_number as int, (index + 1) as int)
-                ));
+                Self::lemma_range_insert_step(start_frame_number as int, index as int);
             }
         }
 
         // Post-loop: prove Ok postcondition.
         proof! {
-            let ps = spec_page_size();
             let sfn = start_frame_number as int;
             let efn = end_frame_number as int;
-            let frames = vstd::set_lib::set_int_range(sfn, efn).map(|i: int| i * ps);
-
-            // 1. frames ⊆ old@.free_frames
-            assert forall|addr: int| frames.contains(addr)
-                implies old(self)@.free_frames.contains(addr)
-            by {
-                let j = choose|j: int|
-                    vstd::set_lib::set_int_range(sfn, efn).contains(j) && addr == j * ps;
-                assert(sfn <= j && j < efn);
-                assert(old(self).bitmap@.is_covered(j));
-                assert(!old(self).bitmap@.set_bits.contains(j));
-                assert(addr == frame_addr_of(j));
-            }
-
-            // 2. allocated_frames = old.allocated ∪ frames
-            assert forall|addr: int|
-                self@.allocated_frames.contains(addr) <==>
-                old(self)@.allocated_frames.union(frames).contains(addr)
-            by {
-                if self@.allocated_frames.contains(addr) {
-                    let i = choose|i: int|
-                        self.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
-                    if old(self).bitmap@.set_bits.contains(i) {
-                        assert(old(self)@.allocated_frames.contains(addr));
-                    } else {
-                        assert(vstd::set_lib::set_int_range(sfn, efn).contains(i));
-                        assert(frames.contains(addr));
-                    }
-                }
-                if old(self)@.allocated_frames.contains(addr) {
-                    let i = choose|i: int|
-                        old(self).bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
-                    assert(self.bitmap@.set_bits.contains(i));
-                    assert(self@.allocated_frames.contains(addr));
-                }
-                if frames.contains(addr) {
-                    let j = choose|j: int|
-                        vstd::set_lib::set_int_range(sfn, efn).contains(j) && addr == j * ps;
-                    assert(self.bitmap@.set_bits.contains(j));
-                    assert(addr == frame_addr_of(j));
-                    assert(self@.allocated_frames.contains(addr));
-                }
-            }
-
-            // 3. free_frames = old.free \ frames
-            assert forall|addr: int|
-                self@.free_frames.contains(addr) <==>
-                old(self)@.free_frames.difference(frames).contains(addr)
-            by {
-                if self@.free_frames.contains(addr) {
-                    let i = choose|i: int|
-                        self.bitmap@.is_covered(i)
-                        && !self.bitmap@.set_bits.contains(i)
-                        && addr == frame_addr_of(i);
-                    assert(old(self).bitmap@.is_covered(i));
-                    assert(!old(self).bitmap@.set_bits.contains(i));
-                    assert(old(self)@.free_frames.contains(addr));
-                    assert(!vstd::set_lib::set_int_range(sfn, efn).contains(i));
-                    if frames.contains(addr) {
-                        let j = choose|j: int|
-                            vstd::set_lib::set_int_range(sfn, efn).contains(j) && addr == j * ps;
-                        vstd::arithmetic::mul::lemma_mul_is_commutative(i, ps);
-                        vstd::arithmetic::mul::lemma_mul_is_commutative(j, ps);
-                        vstd::arithmetic::mul::lemma_mul_equality_converse(ps, i, j);
-                        assert(false);
-                    }
-                    assert(!frames.contains(addr));
-                }
-                if old(self)@.free_frames.contains(addr) && !frames.contains(addr) {
-                    let i = choose|i: int|
-                        old(self).bitmap@.is_covered(i)
-                        && !old(self).bitmap@.set_bits.contains(i)
-                        && addr == frame_addr_of(i);
-                    // Bridge coverage: chunks unchanged
-                    assert(old(self).bitmap@.is_covered(i));
-                    assert(self.bitmap@.is_covered(i));
-                    if vstd::set_lib::set_int_range(sfn, efn).contains(i) {
-                        assert(frames.contains(addr));
-                        assert(false);
-                    }
-                    assert(!vstd::set_lib::set_int_range(sfn, efn).contains(i));
-                    assert(!self.bitmap@.set_bits.contains(i));
-                    assert(self@.free_frames.contains(addr));
-                }
-            }
-
-            // 4. Prove spec_alloc_range match
-            assert(self@.allocated_frames =~= old(self)@.allocated_frames.union(frames));
-            assert(self@.free_frames =~= old(self)@.free_frames.difference(frames));
-            assert(self@ =~= old(self)@.spec_alloc_range(frames));
-
-            // 5. self.inv()
+            self.lemma_alloc_range_updates_view(old(self), sfn, efn);
             self.lemma_internal_inv_preserved(old(self));
             self.lemma_inv_implies_wf();
         }
