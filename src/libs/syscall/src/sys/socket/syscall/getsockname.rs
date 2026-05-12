@@ -44,17 +44,8 @@ use ::sysapi::ffi::c_int;
 ///
 /// Upon successful completion, empty is returned. Otherwise, an error number is returned.
 ///
-#[allow(unreachable_code)]
 pub fn getsockname(sockfd: c_int, sockaddr: &mut SocketAddr) -> Result<(), Error> {
     ::syslog::trace!("getsockname(): sockfd={:?}, sockaddr={:?}", sockfd, sockaddr);
-
-    #[cfg(feature = "standalone")]
-    {
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "getsockname not available in standalone mode",
-        ));
-    }
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 

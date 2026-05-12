@@ -5,24 +5,24 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    unistd::message::{
+        CloseRequest,
+        CloseResponse,
+    },
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        unistd::message::{
-            CloseRequest,
-            CloseResponse,
-        },
-        SystemCallMessage,
-        SystemCallMessageHeader,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
     },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
+    ipc::{
+        Message,
+        MessageReceiver,
     },
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -48,21 +48,26 @@ pub fn close(fd: i32) -> Result<(), Error> {
         if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
             return Ok(());
         }
-        Err(Error::new(ErrorCode::OperationNotSupported, "close not available in standalone mode"))
+        if crate::is_socket_fd(fd) {
+            return close_ipc(fd, MessageReceiver::from(crate::NETWORK_DESTINATION));
+        }
+        // Unknown fd: no handler available.
+        ::syslog::warn!("close(): bad file descriptor fd={fd}");
+        Err(Error::new(ErrorCode::BadFile, "bad file descriptor"))
     }
 
-    // Forward to linuxd via IPC.
     #[cfg(not(feature = "standalone"))]
-    close_linuxd(fd)
+    {
+        close_ipc(fd, MessageReceiver::from(crate::LINUXD))
+    }
 }
 
-/// Forwards a `close` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn close_linuxd(fd: i32) -> Result<(), Error> {
+/// Forwards a `close` request via IPC to the given destination.
+fn close_ipc(fd: i32, destination: MessageReceiver) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = CloseRequest::build(tid, fd);
+    let request: Message = CloseRequest::build(tid, fd, destination);
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
@@ -70,27 +75,18 @@ fn close_linuxd(fd: i32) -> Result<(), Error> {
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
         ::syslog::warn!("close(): failed (error={})", error_code);
         Err(Error::new(error_code, "close() failed"))
     } else {
-        // System call succeeded, parse response.
         match SystemCallMessage::try_from_bytes(response.payload) {
-            // Response was successfully parsed.
             Ok(message) => match message.header {
-                // Response was successfully parsed.
                 SystemCallMessageHeader::CloseResponse => {
-                    // Parse response.
                     let _: CloseResponse = CloseResponse::from_bytes(message.payload);
-
-                    // Return result.
                     Ok(())
                 },
-                // Response was not successfully parsed.
                 _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
             },
-            // Response was not successfully parsed.
             _ => Err(Error::new(ErrorCode::InvalidMessage, "invalid message")),
         }
     }
