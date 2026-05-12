@@ -911,7 +911,6 @@ impl SparseBitmap {
             proof {
                 let idx = next as int - entry as int - 1;
                 lemma_seq_sum_from_unfold(phase1b_free_prefixes, idx);
-                lemma_seq_sum_from_nonneg(phase1b_free_prefixes, idx + 1);
                 assert forall|b: int| 0 <= b < take as int
                     implies !chunk_n.bitmap@.set_bits.contains(b)
                 by { assert(!old_chunks_seq[next as int].bitmap@.set_bits.contains(b)); }

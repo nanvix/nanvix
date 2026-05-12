@@ -1,0 +1,71 @@
+Timestamp: 2026-05-12_22-41-32
+Mode: cargo
+Crate: sparse-bitmap
+Directory: N/A
+Module: <all>
+Exit code: 101
+89 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking sparse-bitmap v0.12.469 (/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap)
+note: recommendation not met
+   --> src/libs/sparse-bitmap/src/lib.rs:769:35
+    |
+769 |                 chunk_e.offset == old_chunks_seq[entry as int].offset,
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/seq.rs:62:13
+    |
+ 62 |             0 <= i < self.len(),
+    |             ------------------- recommendation not met
+
+note: recommendation not met
+   --> src/libs/sparse-bitmap/src/lib.rs:770:45
+    |
+770 |                 chunk_e.bitmap@.num_bits == old_chunks_seq[entry as int].bitmap@.num_bits,
+    |                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/seq.rs:62:13
+    |
+ 62 |             0 <= i < self.len(),
+    |             ------------------- recommendation not met
+
+error: invariant not satisfied at end of loop body
+   --> src/libs/sparse-bitmap/src/lib.rs:869:17
+    |
+869 |                 remaining as int == seq_sum_from(phase1b_free_prefixes, (cur - entry) as int),
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: recommendation not met
+   --> src/libs/sparse-bitmap/src/lib.rs:924:39
+    |
+924 |                     chunk_n.offset == pre_inner_chunks[next as int].offset,
+    |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/seq.rs:62:13
+    |
+ 62 |             0 <= i < self.len(),
+    |             ------------------- recommendation not met
+
+note: recommendation not met
+   --> src/libs/sparse-bitmap/src/lib.rs:925:49
+    |
+925 |                     chunk_n.bitmap@.num_bits == pre_inner_chunks[next as int].bitmap@.num_bits,
+    |                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-04-12-0118/seq.rs:62:13
+    |
+ 62 |             0 <= i < self.len(),
+    |             ------------------- recommendation not met
+
+verification results:: 89 verified, 1 errors
+error: could not compile `sparse-bitmap` (lib) due to 1 previous error
