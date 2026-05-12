@@ -192,6 +192,7 @@ async fn async_main() -> Result<ExitCode> {
             error!("main(): {reason}");
             anyhow::anyhow!(reason)
         })?,
+        args.networking_mode(),
     );
 
     #[cfg(feature = "standalone")]
@@ -201,6 +202,7 @@ async fn async_main() -> Result<ExitCode> {
         args.console_file().clone(),
         args.snapshot_path().map(|s| s.to_string()),
         args.mount_directory().map(|s| s.to_string()),
+        args.networking_mode(),
         #[cfg(feature = "gdb")]
         args.gdb_port(),
     );
@@ -226,6 +228,7 @@ async fn async_main() -> Result<ExitCode> {
             error!("main(): {reason}");
             anyhow::anyhow!(reason)
         })?,
+        args.networking_mode(),
     );
 
     // Check for interactive mode or HTTP mode.

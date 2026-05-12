@@ -28,6 +28,8 @@ pub struct MessageSender(i32);
 impl MessageSender {
     /// The kernel process is the sender of the message.
     pub const KERNEL: Self = MessageSender(ProcessIdentifier::KERNEL_RAW);
+    /// The network daemon is the sender of the message.
+    pub const NETWORKD: Self = MessageSender(ProcessIdentifier::NETWORKD_RAW);
 }
 
 impl MessageSender {
@@ -69,6 +71,8 @@ impl MessageReceiver {
 impl MessageReceiver {
     /// The kernel process is the receiver of the message.
     pub const KERNEL: Self = MessageReceiver(ProcessIdentifier::KERNEL_RAW);
+    /// The network daemon is the receiver of the message.
+    pub const NETWORKD: Self = MessageReceiver(ProcessIdentifier::NETWORKD_RAW);
 }
 
 impl From<ProcessIdentifier> for MessageReceiver {

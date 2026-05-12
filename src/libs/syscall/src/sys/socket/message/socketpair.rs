@@ -79,7 +79,7 @@ impl CreateSocketPairRequest {
         );
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
+            MessageReceiver::from(crate::NETWORK_DESTINATION),
             MessageType::Ikc,
             None,
             message.into_bytes(),
@@ -129,7 +129,7 @@ impl CreateSocketPairResponse {
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(crate::NETWORK_SOURCE),
             MessageReceiver::from(tid),
             MessageType::Ikc,
             None,

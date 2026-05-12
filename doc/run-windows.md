@@ -51,6 +51,15 @@ You can also invoke `nanvixd.exe` directly:
 .\bin\nanvixd.exe -- .\bin\hello-rust-nostd.elf
 ```
 
+### Enabling Host Networking
+
+By default, networking system calls from the guest are blocked. To allow the guest to access the
+host network stack, pass `-allow-host-networking`:
+
+```powershell
+.\bin\nanvixd.exe -allow-host-networking -- .\bin\network-rust.elf
+```
+
 Everything after `--` is forwarded to the application as arguments:
 
 ```powershell

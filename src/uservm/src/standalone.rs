@@ -30,13 +30,22 @@ use ::log::{
     trace,
     warn,
 };
-use ::std::collections::VecDeque;
+use ::nanvix_sandbox_config::NetworkingMode;
+use ::networkd::NetworkDaemon;
+use ::std::{
+    collections::VecDeque,
+    sync::Arc,
+};
 use ::sys::{
+    error::ErrorCode,
     ipc::{
         DataChunk,
         DataChunkHeader,
         IkcFrame,
         Message,
+        MessageReceiver,
+        MessageSender,
+        MessageType,
     },
     pm::ThreadIdentifier,
 };
@@ -142,6 +151,7 @@ impl StandaloneVmHandle {
     /// A tuple containing the VM handle (for awaiting/aborting) and the I/O channels (for
     /// bridging host I/O with the guest).
     ///
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         kernel_filename: String,
         initrd_filename: Option<String>,
@@ -150,6 +160,7 @@ impl StandaloneVmHandle {
         stderr: Option<String>,
         snapshot_path: Option<String>,
         mount_directory: Option<String>,
+        networking_mode: NetworkingMode,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
     ) -> (Self, StandaloneVmIo) {
         // Create internal VM channels. In standalone mode these are wired directly without an
@@ -202,6 +213,7 @@ impl StandaloneVmHandle {
                 output_tx,
                 input_rx,
                 io_counters,
+                networking_mode,
             )
             .await;
         });
@@ -322,9 +334,22 @@ async fn standalone_io_handler(
     output_tx: mpsc::Sender<Vec<u8>>,
     mut input_rx: mpsc::Receiver<Vec<u8>>,
     counters: MessageCounters,
+    networking_mode: NetworkingMode,
 ) {
     let mut input_buffer: VecDeque<u8> = VecDeque::new();
     let mut input_closed: bool = false;
+
+    let network_daemon: Option<Arc<NetworkDaemon>> = if networking_mode.is_enabled() {
+        match NetworkDaemon::new() {
+            Ok(nd) => Some(Arc::new(nd)),
+            Err(e) => {
+                error!("standalone io_handler: failed to initialize network daemon: {e}");
+                None
+            },
+        }
+    } else {
+        None
+    };
 
     trace!("standalone io_handler: entering receive loop");
     while let Some(frame) = vm_stdout_rx.recv().await {
@@ -370,6 +395,43 @@ async fn standalone_io_handler(
                         .await;
                     },
                     header => {
+                        let destination = { msg.destination };
+                        if destination == MessageReceiver::NETWORKD {
+                            if let Some(ref nd) = network_daemon {
+                                spawn_networking_task(
+                                    nd.clone(),
+                                    vm_stdin_tx.clone(),
+                                    msg,
+                                    counters.clone(),
+                                );
+                                continue;
+                            }
+                            // Networking not allowed: send an error response.
+                            warn!(
+                                "standalone io_handler: networking not allowed, rejecting message \
+                                 with header {:?}",
+                                header
+                            );
+                            let tid: ThreadIdentifier = extract_tid(msg.source);
+                            let error_response: Message = Message::new(
+                                MessageSender::NETWORKD,
+                                MessageReceiver::from(tid),
+                                MessageType::Ikc,
+                                Some(ErrorCode::OperationNotSupported),
+                                [0u8; Message::PAYLOAD_SIZE],
+                            );
+                            if vm_stdin_tx
+                                .send(IkcFrame::Message(error_response))
+                                .await
+                                .is_err()
+                            {
+                                error!(
+                                    "standalone io_handler: failed to send error response (VM \
+                                     input channel closed)"
+                                );
+                            }
+                            continue;
+                        }
                         trace!("standalone io_handler: ignoring message with header {:?}", header);
                     },
                 }
@@ -381,6 +443,50 @@ async fn standalone_io_handler(
     }
 
     debug!("standalone: I/O handler exiting (VM stdout channel closed)");
+}
+
+///
+/// # Description
+///
+/// Spawns a blocking task to handle a networking system call message.
+///
+/// Each networking operation runs on its own thread from tokio's blocking thread pool, preventing
+/// blocking libc calls (accept, recv, connect, etc.) from stalling the main IO handler loop.
+///
+fn spawn_networking_task(
+    network_daemon: Arc<NetworkDaemon>,
+    vm_stdin_tx: mpsc::Sender<IkcFrame>,
+    msg: Message,
+    counters: MessageCounters,
+) {
+    trace!("standalone io_handler: spawning networking task");
+
+    let handle = tokio::task::spawn_blocking(move || match network_daemon.handle_message(msg) {
+        Some(responses) => {
+            for response in responses {
+                counters.increment_io_thread_messages_received();
+                if vm_stdin_tx
+                    .blocking_send(IkcFrame::Message(response))
+                    .is_err()
+                {
+                    error!(
+                        "standalone io_handler: failed to send networking response (VM input \
+                         channel closed)"
+                    );
+                    return;
+                }
+            }
+        },
+        None => {
+            warn!("standalone io_handler: networkd failed to handle message");
+        },
+    });
+
+    tokio::spawn(async move {
+        if let Err(e) = handle.await {
+            error!("standalone io_handler: networking task panicked: {e}");
+        }
+    });
 }
 
 ///

@@ -12,6 +12,7 @@ use crate::{
 use ::log::trace;
 use ::net_backend::error::NetError;
 use ::sys::{
+    error::ErrorCode,
     ipc::Message,
     pm::ThreadIdentifier,
 };
@@ -51,10 +52,12 @@ pub fn do_socket<T>(
 ) -> Result<Message, WorkerThreadError> {
     trace!("socket(): tid={tid:?}, request={request:?}");
 
-    match syscall_table
-        .net_backend
-        .socket(request.domain, request.typ, request.protocol)
-    {
+    let net_backend = match &syscall_table.net_backend {
+        Some(backend) => backend,
+        None => return Ok(crate::build_error(tid, ErrorCode::OperationNotSupported)),
+    };
+
+    match net_backend.socket(request.domain, request.typ, request.protocol) {
         Ok(sockfd) => Ok(CreateSocketResponse::build(tid, sockfd)),
         Err(NetError::Interrupted) => Err(WorkerThreadError::Interrupted),
         Err(NetError::Errno(code)) => Ok(crate::build_error(tid, code)),
@@ -72,10 +75,12 @@ pub fn do_socketpair<T>(
 ) -> Result<Message, WorkerThreadError> {
     trace!("socketpair(): tid={tid:?}, request={request:?}");
 
-    match syscall_table
-        .net_backend
-        .socketpair(request.domain, request.typ, request.protocol)
-    {
+    let net_backend = match &syscall_table.net_backend {
+        Some(backend) => backend,
+        None => return Ok(crate::build_error(tid, ErrorCode::OperationNotSupported)),
+    };
+
+    match net_backend.socketpair(request.domain, request.typ, request.protocol) {
         Ok((fd0, fd1)) => Ok(CreateSocketPairResponse::build(tid, fd0, fd1)),
         Err(NetError::Interrupted) => Err(WorkerThreadError::Interrupted),
         Err(NetError::Errno(code)) => Ok(crate::build_error(tid, code)),
@@ -93,10 +98,12 @@ pub fn do_bind<T>(
 ) -> Result<Message, WorkerThreadError> {
     trace!("bind(): tid={tid:?}, request={request:?}");
 
-    match syscall_table
-        .net_backend
-        .bind(request.sockfd, &request.sockaddr)
-    {
+    let net_backend = match &syscall_table.net_backend {
+        Some(backend) => backend,
+        None => return Ok(crate::build_error(tid, ErrorCode::OperationNotSupported)),
+    };
+
+    match net_backend.bind(request.sockfd, &request.sockaddr) {
         Ok(()) => Ok(BindSocketResponse::build(tid)),
         Err(NetError::Interrupted) => Err(WorkerThreadError::Interrupted),
         Err(NetError::Errno(code)) => Ok(crate::build_error(tid, code)),
@@ -114,10 +121,12 @@ pub fn do_connect<T>(
 ) -> Result<Message, WorkerThreadError> {
     trace!("connect(): tid={tid:?}, request={request:?}");
 
-    match syscall_table
-        .net_backend
-        .connect(request.sockfd, &request.sockaddr, request.socklen)
-    {
+    let net_backend = match &syscall_table.net_backend {
+        Some(backend) => backend,
+        None => return Ok(crate::build_error(tid, ErrorCode::OperationNotSupported)),
+    };
+
+    match net_backend.connect(request.sockfd, &request.sockaddr, request.socklen) {
         Ok(()) => Ok(ConnectSocketResponse::build(tid)),
         Err(NetError::Interrupted) => Err(WorkerThreadError::Interrupted),
         Err(NetError::Errno(code)) => Ok(crate::build_error(tid, code)),
@@ -135,10 +144,12 @@ pub fn do_listen<T>(
 ) -> Result<Message, WorkerThreadError> {
     trace!("listen(): tid={tid:?}, request={request:?}");
 
-    match syscall_table
-        .net_backend
-        .listen(request.sockfd, request.backlog)
-    {
+    let net_backend = match &syscall_table.net_backend {
+        Some(backend) => backend,
+        None => return Ok(crate::build_error(tid, ErrorCode::OperationNotSupported)),
+    };
+
+    match net_backend.listen(request.sockfd, request.backlog) {
         Ok(()) => Ok(ListenSocketResponse::build(tid)),
         Err(NetError::Interrupted) => Err(WorkerThreadError::Interrupted),
         Err(NetError::Errno(code)) => Ok(crate::build_error(tid, code)),
@@ -156,7 +167,12 @@ pub fn do_getpeername<T>(
 ) -> Result<Message, WorkerThreadError> {
     trace!("getpeername(): tid={tid:?}, request={request:?}");
 
-    match syscall_table.net_backend.getpeername(request.sockfd) {
+    let net_backend = match &syscall_table.net_backend {
+        Some(backend) => backend,
+        None => return Ok(crate::build_error(tid, ErrorCode::OperationNotSupported)),
+    };
+
+    match net_backend.getpeername(request.sockfd) {
         Ok(addr) => Ok(GetPeerNameResponse::build(tid, &addr)),
         Err(NetError::Interrupted) => Err(WorkerThreadError::Interrupted),
         Err(NetError::Errno(code)) => Ok(crate::build_error(tid, code)),
@@ -174,7 +190,12 @@ pub fn do_getsockname<T>(
 ) -> Result<Message, WorkerThreadError> {
     trace!("getsockname(): tid={tid:?}, request={request:?}");
 
-    match syscall_table.net_backend.getsockname(request.sockfd) {
+    let net_backend = match &syscall_table.net_backend {
+        Some(backend) => backend,
+        None => return Ok(crate::build_error(tid, ErrorCode::OperationNotSupported)),
+    };
+
+    match net_backend.getsockname(request.sockfd) {
         Ok(addr) => Ok(GetSockNameResponse::build(tid, &addr)),
         Err(NetError::Interrupted) => Err(WorkerThreadError::Interrupted),
         Err(NetError::Errno(code)) => Ok(crate::build_error(tid, code)),
@@ -192,7 +213,12 @@ pub fn do_accept<T>(
 ) -> Result<Message, WorkerThreadError> {
     trace!("accept(): tid={tid:?}, request={request:?}");
 
-    match syscall_table.net_backend.accept(request.sockfd) {
+    let net_backend = match &syscall_table.net_backend {
+        Some(backend) => backend,
+        None => return Ok(crate::build_error(tid, ErrorCode::OperationNotSupported)),
+    };
+
+    match net_backend.accept(request.sockfd) {
         Ok((new_sockfd, addr)) => Ok(AcceptSocketResponse::build(tid, new_sockfd, &addr)),
         Err(NetError::Interrupted) => Err(WorkerThreadError::Interrupted),
         Err(NetError::Errno(code)) => Ok(crate::build_error(tid, code)),
@@ -210,15 +236,17 @@ pub fn do_recv<T>(
 ) -> Result<Message, WorkerThreadError> {
     trace!("recv(): tid={tid:?}, request={request:?}");
 
+    let net_backend = match &syscall_table.net_backend {
+        Some(backend) => backend,
+        None => return Ok(crate::build_error(tid, ErrorCode::OperationNotSupported)),
+    };
+
     let recv_len: usize =
         core::cmp::min(ReceiveSocketResponse::BUFFER_SIZE, request.count as usize);
     let mut buffer: [u8; ReceiveSocketResponse::BUFFER_SIZE] =
         [0; ReceiveSocketResponse::BUFFER_SIZE];
 
-    match syscall_table
-        .net_backend
-        .recv(request.sockfd, &mut buffer, recv_len, request.flags)
-    {
+    match net_backend.recv(request.sockfd, &mut buffer, recv_len, request.flags) {
         Ok(count) => Ok(ReceiveSocketResponse::build(tid, count as u32, buffer)),
         Err(NetError::Interrupted) => Err(WorkerThreadError::Interrupted),
         Err(NetError::Errno(code)) => Ok(crate::build_error(tid, code)),
@@ -236,10 +264,12 @@ pub fn do_shutdown<T>(
 ) -> Result<Message, WorkerThreadError> {
     trace!("shutdown(): tid={tid:?}, request={request:?}");
 
-    match syscall_table
-        .net_backend
-        .shutdown(request.sockfd, request.how)
-    {
+    let net_backend = match &syscall_table.net_backend {
+        Some(backend) => backend,
+        None => return Ok(crate::build_error(tid, ErrorCode::OperationNotSupported)),
+    };
+
+    match net_backend.shutdown(request.sockfd, request.how) {
         Ok(()) => Ok(ShutdownSocketResponse::build(tid)),
         Err(NetError::Interrupted) => Err(WorkerThreadError::Interrupted),
         Err(NetError::Errno(code)) => Ok(crate::build_error(tid, code)),
@@ -257,12 +287,12 @@ pub fn do_send<T>(
 ) -> Result<Message, WorkerThreadError> {
     trace!("send(): tid={tid:?}, request={request:?}");
 
-    match syscall_table.net_backend.send(
-        request.sockfd,
-        &request.buffer,
-        request.count as usize,
-        request.flags,
-    ) {
+    let net_backend = match &syscall_table.net_backend {
+        Some(backend) => backend,
+        None => return Ok(crate::build_error(tid, ErrorCode::OperationNotSupported)),
+    };
+
+    match net_backend.send(request.sockfd, &request.buffer, request.count as usize, request.flags) {
         Ok(count) => Ok(SendSocketResponse::build(tid, count as i32)),
         Err(NetError::Interrupted) => Err(WorkerThreadError::Interrupted),
         Err(NetError::Errno(code)) => Ok(crate::build_error(tid, code)),

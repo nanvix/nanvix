@@ -1237,7 +1237,7 @@ impl WorkerThreadHandle {
             STDIN_FILENO | STDOUT_FILENO | STDERR_FILENO => {
                 // Perform a fake close, as standard file descriptors
                 // are shared with the current process.
-                Ok(CloseResponse::build(source, 0))
+                Ok(CloseResponse::build(source, 0, MessageSender::from(::syscall::LINUXD)))
             },
             // Closing other file descriptors.
             _ => unistd::do_close(syscall_table, source, request),

@@ -35,6 +35,8 @@ pub struct Args {
     log_directory: String,
     /// Deployed in an L2 VM?
     l2: bool,
+    /// Whether networking system calls are enabled.
+    networking_enabled: bool,
 }
 
 //==================================================================================================
@@ -60,6 +62,8 @@ impl Args {
     pub const OPT_LOGDIR: &'static str = "-log-dir";
     /// Command-line option for signaling deployment in an L2 VM.
     pub const OPT_L2: &'static str = "-l2";
+    /// Command-line option for enabling networking system calls.
+    pub const OPT_NETWORKING_ENABLED: &'static str = "-networking-enabled";
 
     // Command-line options for restoring linuxd from a snapshot using cloud-hypervisor. They are
     // only used when using linuxd as a library, so we allow dead code when building the binary.
@@ -99,6 +103,7 @@ impl Args {
         let mut log_to_file: bool = false;
         let mut log_directory: Option<String> = None;
         let mut l2: bool = false;
+        let mut networking_enabled: bool = false;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -142,6 +147,9 @@ impl Args {
                 },
                 Self::OPT_L2 => {
                     l2 = true;
+                },
+                Self::OPT_NETWORKING_ENABLED => {
+                    networking_enabled = true;
                 },
                 invalid_arg => {
                     return Err(anyhow::anyhow!("invalid argument: {invalid_arg}"));
@@ -220,6 +228,7 @@ impl Args {
             log_to_file,
             log_directory,
             l2,
+            networking_enabled,
         })
     }
 
@@ -353,5 +362,18 @@ impl Args {
     ///
     pub fn l2(&self) -> bool {
         self.l2
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether networking system calls are enabled.
+    ///
+    /// # Returns
+    ///
+    /// `true` if networking is enabled; `false` otherwise.
+    ///
+    pub fn networking_enabled(&self) -> bool {
+        self.networking_enabled
     }
 }

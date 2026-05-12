@@ -124,6 +124,7 @@ impl Terminal {
             self.config.console_file().map(|s| s.to_string()),
             self.config.snapshot_path().map(|s| s.to_string()),
             self.config.mount_directory().map(|s| s.to_string()),
+            self.config.networking_mode(),
             #[cfg(feature = "gdb")]
             self.config.gdb_port(),
         );
