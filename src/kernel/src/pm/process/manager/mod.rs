@@ -1021,17 +1021,23 @@ impl ProcessManager {
         let (join_cond, previous_context): (Condvar, *mut ContextInformation) =
             match running_process.exit_thread(status) {
                 // The calling process still has runnable threads, put it in the list of ready processes.
-                Ok((join_cond, runnable_process, previous_context)) => {
+                (Ok((join_cond, runnable_process, previous_context)), detached_dropped) => {
                     self.ready.push_back(runnable_process);
+                    if detached_dropped {
+                        self.tm.on_thread_reaped();
+                    }
                     (join_cond, previous_context)
                 },
                 // The calling process has only sleeping threads left, put it in the list of suspended processes.
-                Err(Ok((join_cond, sleeping_process, previous_context))) => {
+                (Err(Ok((join_cond, sleeping_process, previous_context))), detached_dropped) => {
                     self.suspended.push_back(sleeping_process);
+                    if detached_dropped {
+                        self.tm.on_thread_reaped();
+                    }
                     (join_cond, previous_context)
                 },
                 // The calling process has only zombie threads left, put it in the list of zombies processes.
-                Err(Err((join_cond, zombie_process, previous_context))) => {
+                (Err(Err((join_cond, zombie_process, previous_context))), _) => {
                     self.zombies.push_back(zombie_process);
                     (join_cond, previous_context)
                 },
@@ -1261,6 +1267,38 @@ impl ProcessManager {
                 error!("{reason} (pid={pid:?}, tid={tid:?})");
                 Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))
             },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Detaches a thread in the calling process. A detached thread is auto-harvested when it exits.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier of the calling process.
+    /// - `tid`: Thread identifier of the thread to detach.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns `Ok(None)` if the thread was marked detached, or `Ok(Some(zombie))` if
+    /// the thread was already a zombie and should be harvested immediately. On failure, returns an
+    /// error.
+    ///
+    fn do_detach_thread(
+        &mut self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+    ) -> Result<Option<ZombieThread>, Error> {
+        match self.find_process_mut(pid) {
+            Ok(ProcessRefMut::Running(process)) => process.detach_thread(tid),
+            Ok(_process_ref) => {
+                let reason: &str = "process is not running";
+                error!("{reason} (pid={pid:?}, tid={tid:?})");
+                Err(Error::new(ErrorCode::OperationNotPermitted, reason))
+            },
+            Err(error) => Err(error),
         }
     }
 

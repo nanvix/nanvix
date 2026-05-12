@@ -439,6 +439,49 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Detaches a thread in the calling process. A detached thread is automatically harvested when
+    /// it exits, without requiring another thread to join it.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier of the calling process.
+    /// - `tid`: Thread identifier of the thread to detach.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is safe to call if and only if the following conditions are met:
+    /// - The process manager is initialized.
+    /// - Access to the process manager is synchronized.
+    /// - The memory manager is initialized.
+    /// - Access to the memory manager is synchronized.
+    ///
+    pub unsafe fn detach_thread(
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+    ) -> Result<(), Error> {
+        trace!("pid={:?}, tid={:?}", pid, tid);
+
+        let result: Result<Option<ZombieThread>, Error> =
+            Self::get_mut().do_detach_thread(pid, tid);
+
+        match result {
+            Ok(Some(zombie_thread)) => {
+                // Thread was already a zombie — harvest it immediately.
+                Self::harvest_zombie_thread(pid, zombie_thread);
+                Ok(())
+            },
+            Ok(None) => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
     /// Suspends the execution of the calling thread until it is woken up by another thread or until
     /// the specified alarm time is reached.
     ///

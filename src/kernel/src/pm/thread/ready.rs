@@ -205,6 +205,28 @@ impl ReadyThread {
     ///
     /// # Description
     ///
+    /// Returns whether the ready thread is detached.
+    ///
+    /// # Returns
+    ///
+    /// This function returns `true` if the thread is detached, `false` otherwise.
+    ///
+    pub fn is_detached(&self) -> bool {
+        self.state.is_detached()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Marks the ready thread as detached.
+    ///
+    pub fn set_detached(&mut self) {
+        self.state.set_detached();
+    }
+
+    ///
+    /// # Description
+    ///
     /// Returns the admission time of the ready thread.
     ///
     /// # Returns
