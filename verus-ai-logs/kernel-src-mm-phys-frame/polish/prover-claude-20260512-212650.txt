@@ -1137,3 +1137,201 @@ Turn 58
 ────────────────────────────────────────────────────────────
 Good, the loop invariant ensures `start_frame_number <= index`, so `sfn <= idx` should be satisfied. Let me run verification:
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1
+[RESULT ✓] bash: Detail: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/cheating-detail.txt
+
+=== Function Coverage ===
+  13/15 exec functions have contracts.
+  Unverified functions:
+    - instance
+    - init
+
+=== Summary ===
+  verification: 23 verified, 0 errors (exit 0)
+  cheatin...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+23 verified, 0 errors! The `CHEATING_DETECTED` is just about `external_body` and `cfg_gate` which are pre-existing (not something I introduced). Now let me proceed to the minimization pass.
+
+First, let me see the current state of inline proof blocks:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && python3 /home/ruize/verus-ai-exp/verus-ai-phy-
+[RESULT ✓] bash: File                                          Function                  Start   End Lines  Status
+----------------------------------------------------------------------------------------------------
+src/kernel/src/mm/phys/frame.rs               alloc_range                 553   553     1  ✅
+src/kern...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+There are still 14 blocks >5 lines. Let me view the current state to understand which blocks remain and can be further extracted or minimized:
+[TOOL] report_intent: Minimizing proof blocks
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] There are still 14 proof blocks >5 lines. Let me look at these and see which ones can be extracted. Some of these might be the ones I already created but the checker is counting differently. Let me look at the actual content of these blocks.
+
+Let me view the current state of the file to understand what blocks remain:
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 174.     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+175.         let index: usize = match self.bitmap.alloc() {
+176.             Ok(index) => index,
+177.             Err(error) => {
+178.                 proof! {
+179.                     self.lemma_view_unchanged(old(self));
+180.           ...
+[RESULT ✓] view: 243.     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+244.         // VERUS DEVIATION: original was `frame.into_frame_number().into_raw_value()`.
+245.         // Verus cannot reason through the Deref auto-deref chain because
+246.         // `PageAligned<T>::Deref::deref` is `extern...
+[RESULT ✓] view: 486.                 Ok(false) => {
+487.                     // Frame is free — nothing to do.
+488.                 },
+489.                 Ok(true) => {
+490.                     proof! {
+491.                         let ps = spec_page_size();
+492.                         let pc_sfn: int = region@.s...
+[RESULT ✓] view: 385.     fn alloc_range(
+386.         &mut self,
+387.         region: &TruncatedMemoryRegion<PhysicalAddress>,
+388.     ) -> Result<(), Error> {
+389.         // VERUS REWRITE: region.start().into_frame_number().into_raw_value() → wrapper
+390.         let start_frame_number: usize = region_start_fram...
+[RESULT ✓] view: 310.             },
+311.     )]
+312.     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+313.         // VERUS DEVIATION: original was `phys_addr.into_frame_number().into_raw_value()`.
+314.         // Same limitation as Inner::free — generic Deref chain cannot be s...
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+I see several blocks still >5 lines. I'll extract the duplicate error path pattern from alloc_range (lines 442-457 and 490-505 are nearly identical) and try to minimize remaining assertions. Let me first create the extraction lemma for the duplicate block:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] Let me analyze what blocks remain and which can be extracted or minimized.
+
+The blocks marked as >5 lines that I should address:
+
+1. **alloc line 178-183 (6 lines)**: Error path in alloc - 4 lemma calls. This is tightly coupled to the alloc context. Could extract into a single `lemma_alloc_err` but it's just calling other lemmas.
+
+2. **alloc line 189-194 (6 lines)**: 3 assertions about `idx`. These are simple bridging assertions.
+
+3. **alloc line 201-209 (9 lines)**: Ok path lemma calls - 5 lines of setup + calls. 
+
+Looking at the remaining blocks, I can extract the ok paths for alloc, free, and book into separate lemmas since they follow the same pattern of setup followed by multiple lemma calls. The error paths and boundary cases are worth keeping inline since they're tightly coupled to their context. Continuing with the remaining blocks in the alloc_range function. I notice blocks 12 and 13 (the uncovered index error path and the Ok(true) error path) are nearly identical—both proving that `!pc_frames.subset_of(old(self)@.free_frames)`. I could consolidate this into a single lemma to eliminate the duplication. Let me think through which assertions might be redundant and focus on further extraction opportunities.
+
+I'm also noticing a pattern across the result paths in alloc, free, and book operations—the Ok and Err cases all follow similar lemma call sequences that could potentially be unified.
+
+Looking at the actual verification blocks, I'm thinking the most practical approach is to start by removing redundant assertions that the prover doesn't strictly need, rather than creating thin wrapper lemmas. Let me examine what's happening in the early blocks like the one starting at line 189 to see which assertions are actually necessary. The last few assertions might be needed as triggers for the `bitmap.set()` call, though some could be redundant. I should take a systematic approach: first extract the duplicate error path blocks into a shared lemma, then minimize the remaining assertions. I'm also wondering if I can fold the `lemma_inv_implies_wf` calls into `lemma_internal_inv_preserved` to reduce duplication.
+
+Let me start by extracting the duplicate error handling code, then work through removing redundant assertions in batches and re-verifying each time.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use vstd::arithmetic::div_mod::*;
+4. 
+5. /// Helper: convert a bitmap index to a frame (physical) address.
+6. pub open spec fn frame_addr_of(i: int) -> int {
+7.     i * spec_page_size()
+8. }
+9. 
+10. impl View for Inner {
+11.     type V = UpoolView;
+12. 
+13.     closed spec fn view...
+[RESULT ✓] view: 560. 
+561.     /// Prove that bitmap coverage transfers when chunks are unchanged.
+562.     proof fn lemma_coverage_transfers(&self, old_inner: &Inner, sfn: int, efn: int)
+563.         requires
+564.             self.bitmap@.chunks =~= old_inner.bitmap@.chunks,
+565.             forall|j: int| sfn <= ...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+Now let me create a lemma for the duplicate error-path pattern:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 300.             implies self@.allocated_frames.contains(addr)
+301.         by {
+302.             let i = choose|i: int|
+303.                 #[trigger] old_inner.bitmap@.set_bits.contains(i)
+304.                 && addr == frame_addr_of(i);
+305.             if i == idx { assert(addr == fa); }
+306. ...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+Now let me add the extraction lemma for the alloc_range conflict proof. Both duplicate blocks prove `!pc_frames.subset_of(old(self)@.free_frames)`:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+That lemma I just wrote is too complex. Let me simplify it:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] Wait, that `lemma_alloc_range_conflict` has a weird `sfn ==` in the requires. Let me reconsider the design.
+
+Actually the two duplicate blocks both do:
+1. Compute pc_sfn, pc_efn, pc_fns, pc_frames
+2. Assert pcsfn == start_frame_number and pc_efn == end_frame_number
+3. Call lemma_view_unchanged (establishing self@ == old@)
+4. Call lemma_addr_not_free on the current index
+5. Assert !pc_frames.subset_of(old(self)@.free_frames)
+
+
+6. Call lemma_inv_implies_wf
+
+The real difference between these two error paths is why the index can't be allocated: the first path fails because the index isn't covered at all, while the second fails because it's already been set in the bitmap. But `lemma_addr_not_free` actually covers both scenarios with its requires clause that checks either the index isn't covered or it's already in the set bits.
+
+In Block 1, I'm setting up the frame calculations and asserting the containment relationships, then calling `lemma_addr_not_free` to establish that the address isn't free, before finally verifying the invariant holds.
+
+Continuing the proof block...
+
+I notice these two code paths are actually identical, which means I can extract this into a separate lemma. Let me think through what that lemma needs: it should take self and a reference to the old state, along with the frame number and index parameters. The preconditions would be that the bitmap hasn't changed, the views are equal, the invariant holds, and the index isn't free. For the postcondition, I need to show that the frame set isn't a subset of the old free frames and that the invariant is maintained. The key insight is that lemma_view_unchanged establishes the view equality, so even though I'm calling lemma_addr_not_free on self, it should work since self's view matches the old state's view.
+
+Defining the lemma signature... Completing the proof by showing fa is in pc_frames but not in free_frames, which means pc_frames can't be a subset of free_frames. Then I'm verifying the invariant still holds. I'm also reconsidering whether sfn and efn need to be tied to specific region boundaries or if they can just be arbitrary integers satisfying the constraint that index falls between them. The postcondition confirms that the bitmap equivalence ensures the overall view remains unchanged, so my preconditions should work. Now I need to update the proof file accordingly.
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 574.     /// Prove set_int_range grows by one element.
+575.     proof fn lemma_range_insert_step(sfn: int, idx: int)
+576.         requires
+577.             sfn <= idx,
+578.         ensures
+579.             vstd::set_lib::set_int_range(sfn, (idx + 1) as int) =~=
+580.                 vstd::set_lib::se...
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+I see - the old content already has the broken requires. Let me fix it properly:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+Now update the two duplicate call sites in frame.rs to use the new lemma:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+Now the second duplicate:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-kernel MODULE=mm::phys::frame 2>&1

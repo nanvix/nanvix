@@ -584,6 +584,42 @@ impl Inner {
         // With hi = idx + 1, this gives exactly our goal.
         vstd::set_lib::lemma_int_range(sfn, (idx + 1) as int);
     }
+
+    /// Prove that an index that is not free (uncovered or already set) makes the
+    /// range-mapped frames NOT a subset of free_frames.
+    /// Used by both error paths in alloc_range (coverage-check and test-loop).
+    proof fn lemma_alloc_range_conflict(
+        &self,
+        old_inner: &Inner,
+        sfn: int,
+        efn: int,
+        index: int,
+    )
+        requires
+            self.bitmap@ =~= old_inner.bitmap@,
+            self.internal_inv(),
+            sfn <= index && index < efn,
+            !self.bitmap@.is_covered(index) || self.bitmap@.set_bits.contains(index),
+            spec_page_size() > 0,
+        ensures ({
+            let pc_fns = vstd::set_lib::set_int_range(sfn, efn);
+            let pc_frames = pc_fns.map(|i: int| i * spec_page_size());
+            &&& !pc_frames.subset_of(old_inner@.free_frames)
+            &&& self.inv()
+        }),
+    {
+        let ps = spec_page_size();
+        let fa = frame_addr_of(index);
+        self.lemma_view_unchanged(old_inner);
+        self.lemma_addr_not_free(index, fa);
+        let pc_fns = vstd::set_lib::set_int_range(sfn, efn);
+        let pc_frames = pc_fns.map(|i: int| i * ps);
+        assert(pc_fns.contains(index));
+        assert(pc_frames.contains(fa));
+        assert(!old_inner@.free_frames.contains(fa));
+        assert(!pc_frames.subset_of(old_inner@.free_frames));
+        self.lemma_inv_implies_wf();
+    }
 }
 
 } // verus!
