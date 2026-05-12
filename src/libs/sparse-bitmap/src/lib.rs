@@ -1354,7 +1354,6 @@ impl SparseBitmap {
                         self.next_chunk_hint = idx;
 
                         proof {
-                            lemma_seq_remove_insert_is_update(old_chunks_seq, idx as int, new_chunk);
                             lemma_single_chunk_alloc_ok(
                                 &*self, old_chunks_seq, old_view, pre_alloc_bitmap_view,
                                 idx as int, local as int, count as int);

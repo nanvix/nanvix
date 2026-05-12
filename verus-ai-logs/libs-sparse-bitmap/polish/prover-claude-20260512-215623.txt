@@ -3243,3 +3243,32 @@ Turn 157
 Turn 158
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -5
+[RESULT ✓] bash: cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17/17 exec functions have contracts
+  status: CLEAN
+
+Log written to: verus-ai-logs/verus-logs/verus_2026-05-12_22-43-38.log
+<exited with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 159
+────────────────────────────────────────────────────────────
+Now let me also try reducing the alloc_range block at ~1367 (6 lines):
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] view: 1355. 
+1356.                         proof {
+1357.                             lemma_seq_remove_insert_is_update(old_chunks_seq, idx as int, new_chunk);
+1358.                             lemma_single_chunk_alloc_ok(
+1359.                                 &*self, old_chunks_seq, old_view, pre_alloc_bi...
+
+────────────────────────────────────────────────────────────
+Turn 160
+────────────────────────────────────────────────────────────
+Try removing `lemma_seq_remove_insert_is_update` from the alloc_range Ok branch:
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 161
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -5
