@@ -91,3 +91,12 @@ Module: kpool
 [2026-05-12 21:26:15] ✅ polish: PASS (0/0)
 [2026-05-12 21:26:15] [GATE] Running build: make build
 [2026-05-12 21:26:29] [GATE] Running verify: make verify
+[2026-05-12 21:26:50] [GATE] ✅ Build + Verify passed after polish
+
+============================================================
+PIPELINE COMPLETE: kpool
+  ✅ polish                    no-review                26m12s
+  ──────────────────────────────────────────────────────────
+  Total: 26m47s
+============================================================
+[2026-05-12 21:26:50] [USAGE] Summary: 9 calls, 0 tokens, 2h27m05s total → /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/usage_summary.json

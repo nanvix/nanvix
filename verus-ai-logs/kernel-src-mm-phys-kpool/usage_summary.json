@@ -1,11 +1,11 @@
 {
   "module": "kernel-src-mm-phys-kpool",
-  "generated_at": "2026-04-24T22:12:17.383044",
-  "total_calls": 8,
-  "calls_with_usage": 8,
+  "generated_at": "2026-05-12T21:26:50.360381",
+  "total_calls": 9,
+  "calls_with_usage": 9,
   "calls_timed_out": 0,
   "calls_failed": 0,
-  "total_duration_s": 7253.5,
+  "total_duration_s": 8825.5,
   "total_input_tokens": 0,
   "total_output_tokens": 0,
   "total_tokens": 0,
@@ -21,14 +21,20 @@
       "input_tokens": 0,
       "output_tokens": 0,
       "duration_s": 1124.6999999999998
+    },
+    "polish": {
+      "calls": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 1572.0
     }
   },
   "per_role": {
     "prover": {
-      "calls": 2,
+      "calls": 3,
       "input_tokens": 0,
       "output_tokens": 0,
-      "duration_s": 4231.400000000001
+      "duration_s": 5803.400000000001
     },
     "dialogue-reviewer-t1": {
       "calls": 2,
@@ -225,6 +231,31 @@
           "linesAdded": 348,
           "linesRemoved": 0,
           "filesModified": []
+        }
+      }
+    },
+    {
+      "timestamp": "2026-05-12T21:26:14.908575",
+      "phase": "polish",
+      "role": "prover",
+      "model": "claude-opus-4.6",
+      "exit_code": 0,
+      "session_id": "4225990e-f2f1-4138-a3c8-b1340c4ef914",
+      "log_file": "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/polish/prover-claude-20260512-210002.txt",
+      "duration_s": 1572.0,
+      "usage": {
+        "premiumRequests": 3,
+        "totalApiDurationMs": 1270777,
+        "sessionDurationMs": 1570589,
+        "codeChanges": {
+          "linesAdded": 206,
+          "linesRemoved": 446,
+          "filesModified": [
+            "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs",
+            "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.proof.rs",
+            "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/kernel/src/mm/phys/kpool.rs",
+            "/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/verus-ai-logs/kernel-src-mm-phys-kpool/polish/checklist.md"
+          ]
         }
       }
     }
