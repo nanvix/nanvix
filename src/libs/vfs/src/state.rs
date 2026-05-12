@@ -154,6 +154,41 @@ pub fn is_initialized() -> bool {
     VFS_STATE.lock().is_some()
 }
 
+///
+/// # Description
+///
+/// Sets the home directory.
+///
+/// # Parameters
+///
+/// - `path`: The new home directory path. Must be absolute.
+///
+/// # Errors
+///
+/// - [`Fat32Error::NotInitialized`] if `init()` has not been called.
+/// - [`Fat32Error::InvalidPath`] if the path is not absolute.
+///
+pub fn set_home(path: &str) -> Result<(), Fat32Error> {
+    let mut state = VFS_STATE.lock();
+    let vfs: &mut Vfs = state.as_mut().ok_or(Fat32Error::NotInitialized)?;
+    vfs.set_home(path)
+}
+
+///
+/// # Description
+///
+/// Returns the current home directory.
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::NotInitialized`] if `init()` has not been called.
+///
+pub fn home() -> Result<String, Fat32Error> {
+    let state = VFS_STATE.lock();
+    let vfs: &Vfs = state.as_ref().ok_or(Fat32Error::NotInitialized)?;
+    Ok(String::from(vfs.home()))
+}
+
 /// Mounts an existing FAT image from a memory region.
 ///
 /// # Parameters
