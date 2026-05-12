@@ -698,7 +698,7 @@ impl SparseBitmap {
         count: usize,
         trailing_free: usize,
         entry_cap: usize,
-        _last_chunk: usize,
+        last_chunk: usize,
         Ghost(phase1b_free_prefixes): Ghost<Seq<int>>,
         Ghost(old_chunks_seq): Ghost<Seq<Chunk>>,
     ) -> (global_start: usize)
