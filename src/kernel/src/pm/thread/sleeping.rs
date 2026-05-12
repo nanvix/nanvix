@@ -147,6 +147,28 @@ impl SleepingThread {
     ///
     /// # Description
     ///
+    /// Returns whether the sleeping thread is detached.
+    ///
+    /// # Returns
+    ///
+    /// This function returns `true` if the thread is detached, `false` otherwise.
+    ///
+    pub fn is_detached(&self) -> bool {
+        self.state.is_detached()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Marks the sleeping thread as detached.
+    ///
+    pub fn set_detached(&mut self) {
+        self.state.set_detached();
+    }
+
+    ///
+    /// # Description
+    ///
     /// Returns the alarm time of the sleeping thread.
     ///
     /// # Returns
