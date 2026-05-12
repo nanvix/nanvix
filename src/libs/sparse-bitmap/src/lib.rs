@@ -1250,14 +1250,6 @@ impl SparseBitmap {
                 let ghost old_pfp = phase1b_free_prefixes;
                 phase1b_free_prefixes = phase1b_free_prefixes.push(take as int);
                 lemma_seq_sum_from_push(old_pfp, take as int, 0);
-                assert forall|i: int| 0 <= i < phase1b_free_prefixes.len()
-                    implies (
-                        (#[trigger] phase1b_free_prefixes[i]) == self.chunks@[(entry as int + 1 + i)].bitmap@.num_bits
-                        || seq_sum_from(phase1b_free_prefixes, i + 1) == 0
-                    )
-                by {
-                    if i < old_pfp.len() {} else {}
-                }
             }
 
             need = need - take;
