@@ -2483,3 +2483,71 @@ Try aggressive minimization — keep only the two lemma calls and key assertion:
 Turn 103
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15
+[RESULT ✓] bash: Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  ✅ All 17 exec functions have contracts.
+
+=== Summary ===
+  verification: 90 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 17...
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+28→8 lines. Now the big block at 978-1028 (51 lines). Let me view:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] view: 960.                 lemma_seq_remove_insert_is_update(pre_inner_chunks, next as int, chunk_n);
+961.                 assert forall|k: int| #![auto] 0 <= k < self.chunks@.len() && k != next as int
+962.                     implies self.chunks@[k] == pre_inner_chunks[k]
+963.                 by {}
+964. ...
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+Let me try aggressive minimization of this 51-line block. I'll remove intermediate assertions and keep only lemma calls and the ghost mutation:
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+
+[THINKING] This block has a ghost mutation at line 1000 (`committed = committed + take as int;`), which means I can't extract the whole block. Let me try aggressive minimization first.
+
+The block does several things:
+1. `lemma_seq_remove_insert_is_update` — probably needed
+2. assert forall k != next ==> chunks[k] == pre_inner_chunks[k] — might be derivable from the lemma
+3. `lemma_chunk_update_preserves_structure` — try removing
+4. assert forall offset/num_bits match old — try removing
+5. assert forall view consistency — try removing
+
+
+6. assert forall next+1..len match old — try removing
+7. remaining_prime / cur_prime_idx / sum check — might be needed for loop invariant
+8. lemma_seq_sum_from_positive_implies_in_range — conditional, might be needed
+9. assert set_bits extensional equality — try removing
+10. lemma_lifted_set_bits_alloc_range — probably needed for set_bits invariant
+11. lemma_range_set_union_contiguous — probably needed for set_bits union
+12. committed ghost mutation — must keep
+13. remaining_prime > 0 branch — might be needed for next iteration
+
+Now I'm going to experiment with stripping out a bunch of the intermediate assertions to see what's actually essential.
+[RESULT ✓] view: 956.             }
+957. 
+958.             self.chunks.insert(next, chunk_n);
+959.             proof {
+960.                 lemma_seq_remove_insert_is_update(pre_inner_chunks, next as int, chunk_n);
+961.                 assert forall|k: int| #![auto] 0 <= k < self.chunks@.len() && k != next as int
+96...
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs
+[RESULT ✓] edit: File /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix/src/libs/sparse-bitmap/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 107
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/target-systems/nanvix && make verify-sparse-bitmap 2>&1 | tail -15

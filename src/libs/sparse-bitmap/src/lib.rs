@@ -958,9 +958,6 @@ impl SparseBitmap {
             self.chunks.insert(next, chunk_n);
             proof {
                 lemma_seq_remove_insert_is_update(pre_inner_chunks, next as int, chunk_n);
-                assert forall|k: int| #![auto] 0 <= k < self.chunks@.len() && k != next as int
-                    implies self.chunks@[k] == pre_inner_chunks[k]
-                by {}
                 lemma_chunk_update_preserves_structure(
                     pre_inner_chunks, self.chunks@, next as int);
                 assert forall|k: int| #![auto] 0 <= k < self.chunks@.len() implies {
@@ -969,29 +966,14 @@ impl SparseBitmap {
                 } by {
                     if k == next as int {
                         assert(pre_inner_chunks[k].offset == old_chunks_seq[k].offset);
-                        assert(pre_inner_chunks[k].bitmap@.num_bits
-                            == old_chunks_seq[k].bitmap@.num_bits);
-                    } else {
-                        assert(self.chunks@[k] == pre_inner_chunks[k]);
                     }
                 }
-                assert forall|k: int| #![auto] 0 <= k < self.chunks@.len() implies {
-                    &&& self@.chunks[k].0 == self.chunks@[k].offset as int
-                    &&& self@.chunks[k].1 == self.chunks@[k].bitmap@.num_bits
-                } by {}
-                assert forall|k: int| #![auto] next as int + 1 <= k < self.chunks@.len() as int
-                    implies self.chunks@[k] == old_chunks_seq[k]
-                by { assert(self.chunks@[k] == pre_inner_chunks[k]); }
                 let remaining_prime = (remaining - take) as int;
                 let cur_prime_idx = (next - entry) as int;
-                assert(remaining_prime == seq_sum_from(phase1b_free_prefixes, cur_prime_idx));
                 if remaining_prime > 0 {
                     lemma_seq_sum_from_positive_implies_in_range(
                         phase1b_free_prefixes, cur_prime_idx);
                 }
-                assert(self.chunks@[next as int].bitmap@.set_bits =~=
-                    old_chunks_seq[next as int].bitmap@.set_bits.union(
-                        BitmapView::range_set(0int, take as int)));
                 lemma_lifted_set_bits_alloc_range(
                     pre_inner_chunks, self.chunks@, next as int, 0int, take as int);
                 lemma_range_set_union_contiguous(
@@ -1000,11 +982,6 @@ impl SparseBitmap {
                 committed = committed + take as int;
                 if remaining_prime > 0 {
                     let ghost _trig = old_chunks_seq[(next as int + 1)];
-                    assert(old_chunks_seq[next as int].offset as int
-                        + old_chunks_seq[next as int].bitmap@.num_bits
-                        == old_chunks_seq[(next as int + 1)].offset as int);
-                    assert(old_chunks_seq[(next as int + 1)].offset as int
-                        == gs + count as int - remaining_prime);
                 }
             }
 
