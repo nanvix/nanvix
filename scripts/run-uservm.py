@@ -50,6 +50,12 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Monitor output for this string and verify it appears.",
     )
+    parser.add_argument(
+        "--kernel-args",
+        dest="kernel_args",
+        default="",
+        help="Kernel arguments passed via -kernel-args to the UserVM.",
+    )
     return parser.parse_args()
 
 
@@ -69,9 +75,17 @@ def validate(kernel: str, uservm: str, timeout: int) -> None:
         sys.exit(1)
 
 
-def run_uservm(kernel: str, uservm: str, timeout: int, wait_for_string: str) -> None:
+def run_uservm(
+    kernel: str,
+    uservm: str,
+    timeout: int,
+    wait_for_string: str,
+    kernel_args: str,
+) -> None:
     """Boot the standalone UserVM and check results."""
     cmd = [uservm, "-standalone", "-kernel", kernel]
+    if kernel_args:
+        cmd.extend(["-kernel-args", kernel_args])
 
     print("=" * 69)
     print(f"KERNEL   = {kernel}")
@@ -122,7 +136,9 @@ def main() -> None:
     args = parse_args()
     uservm = os.environ.get("USERVM", default_uservm_path())
     validate(args.kernel, uservm, args.timeout)
-    run_uservm(args.kernel, uservm, args.timeout, args.wait_for_string)
+    run_uservm(
+        args.kernel, uservm, args.timeout, args.wait_for_string, args.kernel_args
+    )
 
 
 if __name__ == "__main__":

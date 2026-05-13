@@ -386,7 +386,55 @@ impl Guest {
     ///
     /// # Description
     ///
-    /// Resets the value of the credits control register.
+    /// Writes kernel arguments into the control register page in guest memory.
+    ///
+    /// The length (u16 LE) is written at
+    /// [`config::microvm::DEFAULT_MICROVM_CTRL_KERNEL_ARGS_LEN`] and the UTF-8 data at
+    /// [`config::microvm::DEFAULT_MICROVM_CTRL_KERNEL_ARGS_DATA`]. Both offsets reside inside
+    /// the kernel ELF `.zero` section and must therefore be written **after** `load_kernel()`.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: The guest virtual memory.
+    /// - `kernel_args`: The kernel arguments string.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn write_kernel_args(vmem: &mut VirtualMemory, kernel_args: &str) -> Result<()> {
+        trace!("write_kernel_args(): {:?}", kernel_args);
+
+        let args_bytes: &[u8] = kernel_args.as_bytes();
+
+        if args_bytes.len() > ::config::microvm::MAX_KERNEL_ARGS_LEN {
+            let reason: String = format!(
+                "kernel arguments too long (len={}, max={})",
+                args_bytes.len(),
+                ::config::microvm::MAX_KERNEL_ARGS_LEN
+            );
+            error!("write_kernel_args(): {reason}");
+            return Err(anyhow::anyhow!(reason));
+        }
+
+        // Write length as u16 LE.
+        let len_bytes: [u8; 2] = (args_bytes.len() as u16).to_le_bytes();
+        vmem.write_bytes(
+            ::config::microvm::DEFAULT_MICROVM_CTRL_KERNEL_ARGS_LEN as u64,
+            &len_bytes,
+        )?;
+
+        // Write data.
+        if !args_bytes.is_empty() {
+            vmem.write_bytes(
+                ::config::microvm::DEFAULT_MICROVM_CTRL_KERNEL_ARGS_DATA as u64,
+                args_bytes,
+            )?;
+        }
+
+        Ok(())
+    }
+
     ///
     /// # Note
     ///

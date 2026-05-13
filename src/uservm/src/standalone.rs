@@ -141,6 +141,7 @@ impl StandaloneVmHandle {
     /// - `kernel_filename`: Path to the kernel binary.
     /// - `initrd_filename`: Optional path to the initrd payload.
     /// - `initrd_args`: Optional arguments forwarded to the initrd payload.
+    /// - `kernel_args`: Optional kernel arguments written to guest control registers.
     /// - `ramfs_filename`: Optional path to a RAM filesystem image.
     /// - `stderr`: Optional path to a file used to capture the guest's stderr stream.
     /// - `snapshot_path`: Optional path to a snapshot from which to restore VM state instead of
@@ -156,6 +157,7 @@ impl StandaloneVmHandle {
         kernel_filename: String,
         initrd_filename: Option<String>,
         initrd_args: Option<String>,
+        kernel_args: Option<String>,
         ramfs_filename: Option<String>,
         stderr: Option<String>,
         snapshot_path: Option<String>,
@@ -187,6 +189,7 @@ impl StandaloneVmHandle {
         let vmm_handle: JoinHandle<Result<u16>> = UserVm::spawn(UserVmArgs {
             initrd_filename,
             initrd_args,
+            kernel_args,
             ramfs_filename,
             stderr,
             vcpu_thread_stdout_tx,
