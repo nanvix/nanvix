@@ -36,6 +36,7 @@ pub struct MicroVmArgs {
     pub kernel_filename: String,
     pub initrd_filename: Option<String>,
     pub initrd_args: Option<String>,
+    pub kernel_args: Option<String>,
     pub ramfs_filename: Option<String>,
     pub input: Box<StdinFn>,
     pub output: Box<StdoutFn>,
@@ -61,6 +62,7 @@ impl std::fmt::Debug for MicroVmArgs {
             .field("kernel_filename", &self.kernel_filename)
             .field("initrd_filename", &self.initrd_filename)
             .field("initrd_args", &self.initrd_args)
+            .field("kernel_args", &self.kernel_args)
             .field("ramfs_filename", &self.ramfs_filename)
             .field("mount_directory", &self.mount_directory)
             .finish()

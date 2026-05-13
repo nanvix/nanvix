@@ -49,7 +49,10 @@ use crate::{
     },
     kmod::KernelModule,
 };
-use ::alloc::collections::LinkedList;
+use ::alloc::{
+    collections::LinkedList,
+    vec::Vec,
+};
 use ::arch::{
     cpu::{
         idt::Idte,
@@ -526,7 +529,31 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
     let initrd_base: usize = info & !((1 << nzeros) - 1);
 
     let mut kernel_modules: LinkedList<KernelModule> = LinkedList::new();
-    let mut kernel_args: &'static str = "";
+
+    // Read kernel arguments from the dedicated control registers written by the VMM.
+    // The length (u16 LE) is at DEFAULT_MICROVM_CTRL_KERNEL_ARGS_LEN and the UTF-8
+    // data starts at DEFAULT_MICROVM_CTRL_KERNEL_ARGS_DATA.
+    let kernel_args: &'static str = unsafe {
+        let len_addr: usize = ::config::microvm::DEFAULT_MICROVM_CTRL_BASE
+            + ::config::microvm::DEFAULT_MICROVM_CTRL_KERNEL_ARGS_LEN;
+        let kernel_args_len: u16 = u16::from_le(core::ptr::read_volatile(len_addr as *const u16));
+        let len: usize = kernel_args_len as usize;
+        if len > 0 && len <= ::config::microvm::MAX_KERNEL_ARGS_LEN {
+            let data_addr: usize = ::config::microvm::DEFAULT_MICROVM_CTRL_BASE
+                + ::config::microvm::DEFAULT_MICROVM_CTRL_KERNEL_ARGS_DATA;
+            let kernel_args_bytes: &'static [u8] =
+                core::slice::from_raw_parts(data_addr as *const u8, len);
+            match core::str::from_utf8(kernel_args_bytes) {
+                Ok(s) => s,
+                Err(_) => {
+                    error!("parse_bootinfo(): invalid UTF-8 in kernel args control register");
+                    ""
+                },
+            }
+        } else {
+            ""
+        }
+    };
 
     // Register initrd as a kernel module.
     if initrd_size != 0 {
@@ -566,9 +593,8 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
             && image_data[..multibin::MAGIC.len()] == multibin::MAGIC
         {
             info!("parse_bootinfo(): multibinary initrd detected");
-            let (modules, kargs) = crate::multibin::parse(image_data, initrd_base)?;
+            let modules: Vec<KernelModule> = crate::multibin::parse(image_data, initrd_base)?;
             kernel_modules.extend(modules);
-            kernel_args = kargs;
         } else {
             // Single ELF binary with length-prefixed args after the initrd.
             info!("parse_bootinfo(): single-binary initrd detected");
@@ -625,40 +651,22 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
             }
 
             // SAFETY: the cmdline bytes reside in bootloader-provided memory that persists for the
-            // kernel's lifetime. We use a mutable reference so that `compact_semicolon_escapes`
-            // can unescape `\;` in the kernel-args tail in place.
-            let cmdline_bytes: &'static mut [u8] = unsafe {
-                core::slice::from_raw_parts_mut(
-                    initrd_cmdline_base as *mut u8,
+            // kernel's lifetime.
+            let cmdline_bytes: &'static [u8] = unsafe {
+                core::slice::from_raw_parts(
+                    initrd_cmdline_base as *const u8,
                     cmdline_len.as_usize(),
                 )
             };
 
-            // Validate UTF-8 before any mutation.
-            if core::str::from_utf8(cmdline_bytes).is_err() {
-                let reason: &str = "invalid UTF-8 in command line";
-                error!("invalid UTF-8 in command line");
-                return Err(Error::new(ErrorCode::InvalidArgument, reason));
-            }
-
-            // Find the kernel args boundary (second unescaped `;`) using a temporary view.
-            let kargs_pos: Option<usize> = {
-                let s: &str = core::str::from_utf8(cmdline_bytes).unwrap();
-                ::cmdline::find_kernel_args_start(s)
-            };
-
-            // Separate kernel arguments from the per-module command line so that kernel args are
-            // stored once in BootInfo rather than per-module. Unescape `\;` in the kernel-args
-            // tail so that escaping rules are consistent with `split_cmdline`.
-            let module_cmdline: &'static str = if let Some(pos) = kargs_pos {
-                let (module_bytes, rest) = cmdline_bytes.split_at_mut(pos);
-                // rest[0] is the `;` separator — skip it.
-                let kargs_bytes: &'static mut [u8] = &mut rest[1..];
-                kernel_args = ::cmdline::compact_semicolon_escapes(kargs_bytes);
-                core::str::from_utf8(module_bytes)
-                    .expect("cmdline: invalid UTF-8 in module cmdline")
-            } else {
-                core::str::from_utf8(cmdline_bytes).expect("cmdline: invalid UTF-8 in command line")
+            // Validate UTF-8.
+            let module_cmdline: &'static str = match core::str::from_utf8(cmdline_bytes) {
+                Ok(s) => s,
+                Err(_) => {
+                    let reason: &str = "invalid UTF-8 in command line";
+                    error!("parse_bootinfo(): {}", reason);
+                    return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                },
             };
 
             info!(

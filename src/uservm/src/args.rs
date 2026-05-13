@@ -71,6 +71,8 @@ pub struct Args {
     ramfs_filename: Option<String>,
     /// Arguments to be passed to the initrd.
     initrd_args: Option<String>,
+    /// Arguments to be passed to the kernel.
+    kernel_args: Option<String>,
     /// Standard error.
     vm_stderr: Option<String>,
     /// System VM address.
@@ -128,6 +130,8 @@ impl Args {
     pub const OPT_GATEWAY_SOCKET_TYPE: &'static str = "-gateway-bind-socket-type";
     /// Command-line option for specifying arguments to be passed to the initrd.
     pub const OPT_INITRD_ARGS: &'static str = "-initrd_args";
+    /// Command-line option for specifying arguments to be passed to the kernel.
+    pub const OPT_KERNEL_ARGS: &'static str = "-kernel-args";
     /// Command-line option for the ramfs file.
     pub const OPT_RAMFS: &'static str = "-ramfs";
     /// Log to file.
@@ -164,6 +168,7 @@ impl Args {
         let mut initrd_filename: Option<String> = None;
         let mut ramfs_filename: Option<String> = None;
         let mut initrd_args: Option<String> = None;
+        let mut kernel_args: Option<String> = None;
         let mut vm_stderr: Option<String> = None;
         let mut system_vm_addr: String = String::new();
         let mut control_plane_addr: String = String::new();
@@ -208,6 +213,11 @@ impl Args {
                 // Set initrd arguments.
                 Self::OPT_INITRD_ARGS if i + 1 < args.len() => {
                     initrd_args = Some(args[i + 1].clone());
+                    i += 1;
+                },
+                // Set kernel arguments.
+                Self::OPT_KERNEL_ARGS if i + 1 < args.len() => {
+                    kernel_args = Some(args[i + 1].clone());
                     i += 1;
                 },
                 // Set ramfs file.
@@ -406,6 +416,7 @@ impl Args {
             initrd_filename,
             ramfs_filename,
             initrd_args,
+            kernel_args,
             vm_stderr,
             system_vm_addr,
             control_plane_addr,
@@ -430,8 +441,8 @@ impl Args {
     pub fn usage() {
         eprintln!(
             "Usage: {} [{} <id>] {} <kernel> [{} <file>] [{} <file>] [{}] [{} <system-vm-addr> {} \
-             <control-plane-addr> {} <gateway-addr>] [{} [{} <dir>]] [{} <args>] [{} <file>] [{} \
-             <path>]{}",
+             <control-plane-addr> {} <gateway-addr>] [{} [{} <dir>]] [{} <args>] [{} <args>] [{} \
+             <file>] [{} <path>]{}",
             Self::PROGRAM_NAME,
             Self::OPT_USER_VM_ID,
             Self::OPT_KERNEL,
@@ -444,6 +455,7 @@ impl Args {
             Self::OPT_LOGFILE,
             Self::OPT_LOGDIR,
             Self::OPT_INITRD_ARGS,
+            Self::OPT_KERNEL_ARGS,
             Self::OPT_RAMFS,
             Self::OPT_SNAPSHOT,
             if cfg!(feature = "gdb") {
@@ -507,6 +519,20 @@ impl Args {
     ///
     pub fn initrd_args(&mut self) -> Option<String> {
         self.initrd_args.take()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the kernel arguments that were passed as a command-line argument to the program.
+    ///
+    /// # Returns
+    ///
+    /// The kernel arguments that were passed as a command-line argument to the program. If no
+    /// kernel arguments were passed, this method returns `None`.
+    ///
+    pub fn kernel_args(&mut self) -> Option<String> {
+        self.kernel_args.take()
     }
 
     ///
@@ -753,6 +779,8 @@ mod tests {
         args_vec.push(String::from("initrd.img"));
         args_vec.push(Args::OPT_INITRD_ARGS.to_string());
         args_vec.push(String::from("--flag=value"));
+        args_vec.push(Args::OPT_KERNEL_ARGS.to_string());
+        args_vec.push(String::from("feature1 feature2"));
         args_vec.push(Args::OPT_RAMFS.to_string());
         args_vec.push(String::from("ramfs.img"));
         args_vec.push(Args::OPT_STDERR.to_string());
@@ -771,6 +799,8 @@ mod tests {
         assert!(matches!(ramfs, Some(ref value) if value == "ramfs.img"));
         let initrd_args: Option<String> = parsed_args.initrd_args();
         assert!(matches!(initrd_args, Some(ref value) if value == "--flag=value"));
+        let kernel_args: Option<String> = parsed_args.kernel_args();
+        assert!(matches!(kernel_args, Some(ref value) if value == "feature1 feature2"));
         let stderr_path: Option<String> = parsed_args.take_vm_stderr();
         assert!(matches!(stderr_path, Some(ref value) if value == "stderr.log"));
         assert_eq!(parsed_args.system_vm_addr(), "127.0.0.1:7000");

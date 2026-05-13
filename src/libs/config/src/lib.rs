@@ -316,6 +316,19 @@ pub mod microvm {
     /// can use RDTSC-based LAPIC timer calibration without requiring CPUID leaf 0x16.
     pub const DEFAULT_MICROVM_CTRL_TSC_FREQ_MHZ: usize = 0x00000014;
 
+    /// Offset of the kernel arguments length field (u16, little-endian).
+    pub const DEFAULT_MICROVM_CTRL_KERNEL_ARGS_LEN: usize = 0x00000efc;
+
+    /// Offset where the kernel arguments string data begins.
+    pub const DEFAULT_MICROVM_CTRL_KERNEL_ARGS_DATA: usize = 0x00000f00;
+
+    /// Maximum length (in bytes) of the kernel arguments.
+    pub const MAX_KERNEL_ARGS_LEN: usize =
+        DEFAULT_PVCLOCK_PAGE - DEFAULT_MICROVM_CTRL_KERNEL_ARGS_DATA;
+
+    // Ensure MAX_KERNEL_ARGS_LEN fits in the u16 length field written to guest memory.
+    ::static_assert::assert_eq!(MAX_KERNEL_ARGS_LEN <= u16::MAX as usize);
+
     /// Magic value that identifies the running state in the pause-requested register.
     pub const RUNNING: u32 = 0x00000000;
 

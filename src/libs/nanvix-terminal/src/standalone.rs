@@ -120,6 +120,7 @@ impl Terminal {
             self.config.kernel_binary_path().to_string(),
             Some(guest_binary_path.to_string()),
             initrd_args,
+            None,
             self.config.ramfs_filename().map(|s| s.to_string()),
             self.config.console_file().map(|s| s.to_string()),
             self.config.snapshot_path().map(|s| s.to_string()),
