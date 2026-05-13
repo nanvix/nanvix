@@ -6,7 +6,22 @@
 //==================================================================================================
 
 use crate::hal::platform::bootinfo::BootInfo;
+use ::core::sync::atomic::{
+    AtomicPtr,
+    AtomicUsize,
+    Ordering,
+};
 use ::sys::error::Error;
+
+//==================================================================================================
+// Global State
+//==================================================================================================
+
+/// Pointer to the kernel arguments string data, set once during boot.
+static KERNEL_ARGS_PTR: AtomicPtr<u8> = AtomicPtr::new(core::ptr::null_mut());
+
+/// Length of the kernel arguments string, set once during boot.
+static KERNEL_ARGS_LEN: AtomicUsize = AtomicUsize::new(0);
 
 //==================================================================================================
 // Structures
@@ -40,6 +55,25 @@ impl KernelArguments {
     pub fn parse(&self) -> Result<BootInfo, Error> {
         crate::hal::platform::parse_bootinfo(self.boot_magic, self.boot_info)
     }
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Stores the kernel arguments string during boot.
+///
+/// # Safety
+///
+/// Must be called exactly once during boot, before any user process is started.
+/// The referenced string must have `'static` lifetime.
+///
+pub unsafe fn set_kernel_args(args: &'static str) {
+    KERNEL_ARGS_PTR.store(args.as_ptr() as *mut u8, Ordering::Release);
+    KERNEL_ARGS_LEN.store(args.len(), Ordering::Release);
 }
 
 //==================================================================================================

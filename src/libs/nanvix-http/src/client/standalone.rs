@@ -223,6 +223,7 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
             state.config.kernel_binary_path().to_string(),
             Some(message.program.clone()),
             initrd_args,
+            None,
             state.config.ramfs_filename().map(|s| s.to_string()),
             state.config.console_file().map(|s| s.to_string()),
             state.config.snapshot_path().map(|s| s.to_string()),
