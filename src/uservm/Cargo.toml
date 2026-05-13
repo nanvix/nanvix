@@ -28,6 +28,7 @@ elf = { workspace = true, features = ["std"] }
 fatfs = { workspace = true }
 gdbstub = { workspace = true, optional = true }
 gdbstub_arch = { workspace = true, optional = true }
+koptions = { workspace = true, features = ["std"] }
 log = { workspace = true }
 mkramfs = { workspace = true }
 multibin = { workspace = true, features = ["std"] }
