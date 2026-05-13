@@ -167,6 +167,8 @@ pub struct UserVmArgs {
     pub initrd_filename: Option<String>,
     /// Optional string of arguments forwarded to the initrd payload.
     pub initrd_args: Option<String>,
+    /// Optional string of kernel arguments written to guest control registers.
+    pub kernel_args: Option<String>,
     /// Optional path to a RAM filesystem image exposed to the guest.
     pub ramfs_filename: Option<String>,
     /// Optional path to a file used to capture the guest's stderr stream.
@@ -294,6 +296,7 @@ impl UserVm {
             kernel_filename: args.kernel_filename,
             initrd_filename: args.initrd_filename.clone(),
             initrd_args: args.initrd_args.clone(),
+            kernel_args: args.kernel_args.clone(),
             ramfs_filename: args.ramfs_filename.clone(),
             restoring_from_snapshot: args.snapshot_path.is_some(),
             mount_directory: args.mount_directory.clone(),

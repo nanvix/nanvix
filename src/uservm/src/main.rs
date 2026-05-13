@@ -96,6 +96,7 @@ pub async fn main() -> Result<ExitCode> {
     let kernel_filename: String = args.kernel_filename().to_string();
     let initrd_filename: Option<String> = args.initrd_filename();
     let initrd_args: Option<String> = args.initrd_args();
+    let kernel_args: Option<String> = args.kernel_args();
     let ramfs_filename: Option<String> = args.ramfs_filename();
     let stderr: Option<String> = args.take_vm_stderr();
     let user_vm_id: UserVmIdentifier = args.user_vm_id();
@@ -123,6 +124,7 @@ pub async fn main() -> Result<ExitCode> {
             kernel_filename,
             initrd_filename,
             initrd_args,
+            kernel_args,
             ramfs_filename,
             stderr,
             snapshot_path,
@@ -133,8 +135,16 @@ pub async fn main() -> Result<ExitCode> {
     } else {
         #[cfg(target_os = "linux")]
         {
-            run_managed(args, kernel_filename, initrd_filename, initrd_args, ramfs_filename, stderr)
-                .await
+            run_managed(
+                args,
+                kernel_filename,
+                initrd_filename,
+                initrd_args,
+                kernel_args,
+                ramfs_filename,
+                stderr,
+            )
+            .await
         }
         #[cfg(not(target_os = "linux"))]
         {
@@ -175,6 +185,7 @@ async fn run_standalone(
     kernel_filename: String,
     initrd_filename: Option<String>,
     initrd_args: Option<String>,
+    kernel_args: Option<String>,
     ramfs_filename: Option<String>,
     stderr: Option<String>,
     snapshot_path: Option<String>,
@@ -186,6 +197,7 @@ async fn run_standalone(
         kernel_filename,
         initrd_filename,
         initrd_args,
+        kernel_args,
         ramfs_filename,
         stderr,
         snapshot_path,
@@ -210,6 +222,7 @@ async fn run_standalone(
 /// - `kernel_filename`: Path to the kernel binary.
 /// - `initrd_filename`: Optional path to the initrd payload.
 /// - `initrd_args`: Optional arguments forwarded to the initrd payload.
+/// - `kernel_args`: Optional kernel arguments written to guest control registers.
 /// - `ramfs_filename`: Optional path to a RAM filesystem image.
 /// - `stderr`: Optional path to a file used to capture the guest's stderr stream.
 ///
@@ -229,6 +242,7 @@ async fn run_managed(
     kernel_filename: String,
     initrd_filename: Option<String>,
     initrd_args: Option<String>,
+    kernel_args: Option<String>,
     ramfs_filename: Option<String>,
     stderr: Option<String>,
 ) -> Result<ExitCode> {
@@ -371,6 +385,7 @@ async fn run_managed(
     let vmm_handle: JoinHandle<Result<u16>> = UserVm::spawn(UserVmArgs {
         initrd_filename,
         initrd_args,
+        kernel_args,
         ramfs_filename,
         stderr,
         vcpu_thread_stdout_tx,

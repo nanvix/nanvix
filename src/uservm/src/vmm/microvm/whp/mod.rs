@@ -444,6 +444,12 @@ impl Vmm {
             #[cfg(feature = "profile-time")]
             perf_timings.set_kernel_load(kernel_load_start.elapsed().as_micros() as u64);
 
+            // Write kernel arguments to guest control registers (must happen after
+            // load_kernel because the ELF .zero section overwrites this region).
+            if let Some(ref kargs) = args.kernel_args {
+                Guest::write_kernel_args(&mut vmem, kargs)?;
+            }
+
             // Phase: Initrd loading.
             #[cfg(feature = "profile-time")]
             let initrd_load_start: Instant = Instant::now();

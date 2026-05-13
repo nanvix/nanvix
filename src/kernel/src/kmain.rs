@@ -197,6 +197,49 @@ fn test() {
     }
 }
 
+/// Magic value used for in-kernel verification of the kernel arguments mechanism.
+#[cfg(feature = "test")]
+const TEST_KERNEL_ARGS_MAGIC: &str = "test_magic=0xDEADBEEF";
+
+///
+/// # Description
+///
+/// Verifies that the kernel received the expected magic kernel arguments from the command line.
+/// The test TOML configs pass `test_magic=0xDEADBEEF` as a kernel argument, so by the time this
+/// function runs the stored value must match [`TEST_KERNEL_ARGS_MAGIC`].
+///
+/// # Parameters
+///
+/// - `kernel_args`: The kernel arguments string parsed from boot info.
+///
+#[cfg(feature = "test")]
+fn test_kernel_args(kernel_args: &str) {
+    info!("testing kernel arguments...");
+
+    assert!(
+        !kernel_args.is_empty(),
+        "kernel args: expected non-empty string, got empty (was --kernel-args passed?)",
+    );
+
+    assert!(
+        kernel_args == TEST_KERNEL_ARGS_MAGIC,
+        "kernel args: expected={:?}, got={:?}",
+        TEST_KERNEL_ARGS_MAGIC,
+        kernel_args,
+    );
+
+    // Verify that the getter returns the same value that was stored.
+    let stored = kargs::get_kernel_args();
+    assert!(
+        stored == kernel_args,
+        "get_kernel_args() mismatch: expected={:?}, got={:?}",
+        kernel_args,
+        stored,
+    );
+
+    info!("kernel arguments test passed");
+}
+
 ///
 /// # Description
 ///
@@ -230,7 +273,7 @@ fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &mut LinkedList<KernelModule
             // SAFETY: module pages are mapped read-write; `iter_mut` yields exclusive access
             // so no other reference aliases the cmdline bytes.
             let cmdline_buf: &mut [u8] = unsafe { kmod.cmdline_bytes_mut() };
-            let (args, env, _): (&str, &str, &str) = ::cmdline::split_cmdline(cmdline_buf);
+            let (args, env): (&str, &str) = ::cmdline::split_cmdline(cmdline_buf);
             // Capture compacted length before create_process borrows args/env.
             let compacted_len: usize = args.len() + env.len();
 
@@ -321,6 +364,16 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     if !kernel_args.is_empty() {
         info!("kernel args: {:?}", kernel_args);
     }
+
+    // Store kernel arguments in a global so they can be queried later.
+    // SAFETY: called once during single-threaded boot, before any user process is started.
+    unsafe {
+        kargs::set_kernel_args(kernel_args);
+    }
+
+    // Verify that kernel arguments were stored and can be retrieved correctly.
+    #[cfg(feature = "test")]
+    test_kernel_args(kernel_args);
 
     info!("parsing kernel image...");
     let kimage: KernelImage = match KernelImage::new() {

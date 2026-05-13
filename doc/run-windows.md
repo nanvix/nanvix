@@ -68,17 +68,15 @@ Everything after `--` is forwarded to the application as arguments:
 .\bin\nanvixd.exe -- .\bin\echo-rust-nostd.elf arg1 arg2
 ```
 
-Arguments, environment variables, and kernel arguments are packed into a single string separated
-by `;`. The format is `<app args>;<env vars>;<kernel args>`:
+Arguments and environment variables are packed into a single string separated
+by `;`. The format is `<app args>;<env vars>`:
 
 - Everything before the first unescaped `;` becomes command-line arguments.
-- Everything between the first and second unescaped `;` becomes environment variables as
+- Everything after the first unescaped `;` becomes environment variables as
   space-separated `KEY=VALUE` pairs.
-- Everything after the second unescaped `;` becomes kernel arguments — a space-separated string
-  that the kernel uses to enable/disable internal features.
 
 Use an empty string when neither is needed. To pass only environment variables, start the string
-with `;`. To pass only kernel arguments, use `;;`:
+with `;`:
 
 ```powershell
 # Arguments and environment variables.
@@ -86,12 +84,6 @@ with `;`. To pass only kernel arguments, use `;;`:
 
 # Environment variables only.
 .\bin\nanvixd.exe -- .\bin\echo-rust-nostd.elf ";VAR1=foo"
-
-# All three components.
-.\bin\nanvixd.exe -- .\bin\echo-rust-nostd.elf "arg1 arg2;VAR1=foo;feature1 feature2"
-
-# Kernel arguments only.
-.\bin\nanvixd.exe -- .\bin\echo-rust-nostd.elf ";;feature1 feature2"
 ```
 
 To include a literal `;` in any section, escape it as `\;`:
@@ -99,8 +91,12 @@ To include a literal `;` in any section, escape it as `\;`:
 ```powershell
 # Argument containing a literal semicolon.
 .\bin\nanvixd.exe -- .\bin\echo-rust-nostd.elf "arg1 with\;semicolon arg2;VAR1=foo"
-# args: ["arg1", "with;semicolon", "arg2"]   env: ["VAR1=foo"]   kernel_args: []
+# args: ["arg1", "with;semicolon", "arg2"]   env: ["VAR1=foo"]
 ```
+
+> **Note:** Kernel arguments are passed independently via the `-kernel-args` flag on the UserVM
+> (see [Expert Mode: Standalone UserVM](#expert-mode-standalone-uservm)). They are no longer
+> embedded in the initrd arguments string.
 
 ## Logging
 
@@ -120,6 +116,25 @@ For low-level debugging, you can bypass `nanvixd` and run the UserVM directly:
 
 ```powershell
 .\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf -standalone
+```
+
+Optional flags:
+
+| Flag                        | Description                                                             |
+| --------------------------- | ----------------------------------------------------------------------- |
+| `-stderr <file>`            | Redirect guest stderr to a file instead of host stderr.                 |
+| `-initrd_args <args>`       | Arguments forwarded to the initrd payload.                              |
+| `-kernel-args <args>`       | Kernel arguments written to guest control registers.                    |
+| `-ramfs <file>`             | Path to a RAM filesystem image exposed to the guest.                    |
+| `-user-vm-id <id>`          | VM identifier (defaults to `0` in standalone mode).                     |
+| `-log-to-file`              | Write logs to files instead of stdout.                                  |
+| `-log-dir <dir>`            | Directory for log files (used with `-log-to-file`).                     |
+| `-allow-host-networking`    | Enable host networking for the guest (disabled when omitted).           |
+
+Enable verbose logging with `RUST_LOG`:
+
+```powershell
+$env:RUST_LOG="trace"; .\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf -standalone
 ```
 
 ## Benchmarking
