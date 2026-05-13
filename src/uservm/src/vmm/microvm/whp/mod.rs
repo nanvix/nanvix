@@ -365,6 +365,9 @@ struct InteriorWhpHandle {
     kernel_filename: String,
     /// When true, the next guest-initiated snapshot request is silently skipped.
     skip_next_snapshot: bool,
+    /// When true, the guest is entitled to take exactly one snapshot.
+    /// Set from the `snapshot` kernel option; consumed on the first successful request.
+    snapshot_allowed: bool,
 }
 
 //==================================================================================================
@@ -429,6 +432,11 @@ impl Vmm {
 
         #[cfg(feature = "profile-time")]
         perf_timings.set_vcpu_create(vcpu_create_start.elapsed().as_micros() as u64);
+
+        // Determine whether the snapshot kernel option is present.
+        let snapshot_allowed: bool = args.kernel_args.as_deref().is_some_and(|kargs| {
+            ::koptions::parse(kargs).contains(&::koptions::KernelOption::Snapshot)
+        });
 
         let guest: Arc<Mutex<Guest>> = if args.restoring_from_snapshot {
             Arc::new(Mutex::new(Guest::default()))
@@ -574,6 +582,7 @@ impl Vmm {
                 control_tx: args.control_tx,
                 kernel_filename: args.kernel_filename,
                 skip_next_snapshot: false,
+                snapshot_allowed,
             })),
             #[cfg(feature = "profile-time")]
             perf_timings,
@@ -1179,6 +1188,9 @@ impl Vmm {
     /// state already points past the `out` instruction. Unlike KVM, no
     /// `skip_next_snapshot` guard is needed to prevent re-triggering.
     async fn handle_snapshot(&self) -> Result<()> {
+        // Scope the lock to avoid deadlock: `create_snapshot` re-acquires `self.inner`.
+        // Safety: no concurrent snapshot requests can race here because snapshot is triggered
+        // by a single vCPU VMEXIT which is processed sequentially on the VMM run loop.
         let kernel_filename: String = {
             let mut locked_inner: MutexGuard<'_, InteriorWhpHandle> = self.inner.lock().await;
             if locked_inner.skip_next_snapshot {
@@ -1186,10 +1198,18 @@ impl Vmm {
                 locked_inner.skip_next_snapshot = false;
                 return Ok(());
             }
+            if !locked_inner.snapshot_allowed {
+                error!("handle_snapshot(): snapshot refused (not enabled or already consumed)");
+                anyhow::bail!(
+                    "snapshot refused: not enabled via kernel option or already consumed"
+                );
+            }
             locked_inner.kernel_filename.clone()
         };
         match self.create_snapshot(kernel_filename).await {
             Ok(()) => {
+                // Consume the one-shot permission only after a successful snapshot.
+                self.inner.lock().await.snapshot_allowed = false;
                 trace!("handle_snapshot(): snapshot created successfully");
                 Ok(())
             },

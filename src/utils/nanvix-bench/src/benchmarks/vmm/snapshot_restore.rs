@@ -116,7 +116,7 @@ impl Benchmark {
                 kernel_filename: kernel_filename.clone(),
                 initrd_filename: Some(snapshot_program),
                 initrd_args: None,
-                kernel_args: None,
+                kernel_args: Some(::koptions::SNAPSHOT_TOKEN.to_string()),
                 ramfs_filename: None,
                 stderr: Some(if cfg!(windows) { "NUL" } else { "/dev/null" }.to_string()),
                 vcpu_thread_stdout_tx,

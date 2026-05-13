@@ -15,6 +15,7 @@ anyhow = { workspace = true }
 build-utils = { workspace = true }
 fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
 indicatif = { workspace = true }
+koptions = { workspace = true, features = ["std"] }
 libc = { workspace = true }
 log = { workspace = true }
 nanvixd = { workspace = true }
