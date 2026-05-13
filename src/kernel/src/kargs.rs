@@ -76,6 +76,26 @@ pub unsafe fn set_kernel_args(args: &'static str) {
     KERNEL_ARGS_LEN.store(args.len(), Ordering::Release);
 }
 
+///
+/// # Description
+///
+/// Returns the kernel arguments string that was stored during boot.
+///
+/// # Returns
+///
+/// The kernel arguments string, or an empty string if none were set.
+///
+#[cfg_attr(not(feature = "test"), allow(dead_code))]
+pub fn get_kernel_args() -> &'static str {
+    let ptr = KERNEL_ARGS_PTR.load(Ordering::Acquire);
+    let len = KERNEL_ARGS_LEN.load(Ordering::Acquire);
+    if ptr.is_null() || len == 0 {
+        return "";
+    }
+    // SAFETY: the pointer and length were set from a valid `&'static str` during boot.
+    unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(ptr, len)) }
+}
+
 //==================================================================================================
 // Trait Implementations
 //==================================================================================================
