@@ -124,12 +124,28 @@ Optional flags:
 | --------------------------- | ----------------------------------------------------------------------- |
 | `-stderr <file>`            | Redirect guest stderr to a file instead of host stderr.                 |
 | `-initrd_args <args>`       | Arguments forwarded to the initrd payload.                              |
-| `-kernel-args <args>`       | Kernel arguments written to guest control registers.                    |
+| `-kernel-args <args>`       | Kernel arguments written to guest control registers (see below).        |
 | `-ramfs <file>`             | Path to a RAM filesystem image exposed to the guest.                    |
 | `-user-vm-id <id>`          | VM identifier (defaults to `0` in standalone mode).                     |
 | `-log-to-file`              | Write logs to files instead of stdout.                                  |
 | `-log-dir <dir>`            | Directory for log files (used with `-log-to-file`).                     |
 | `-allow-host-networking`    | Enable host networking for the guest (disabled when omitted).           |
+
+### Recognised Kernel Arguments
+
+The `-kernel-args` flag accepts a space-separated list of tokens:
+
+| Token      | Description                                                                              |
+| ---------- | ---------------------------------------------------------------------------------------- |
+| `snapshot` | Allow the guest to take exactly one VM snapshot via the `snapshot` kernel call.           |
+
+Example:
+
+```powershell
+.\bin\uservm.exe -kernel .\bin\kernel.elf `
+    -initrd .\bin\snapshot-rust-nostd.elf -standalone `
+    -kernel-args snapshot
+```
 
 Enable verbose logging with `RUST_LOG`:
 
