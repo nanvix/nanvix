@@ -22,6 +22,7 @@ use ::sys::error::{
 //==================================================================================================
 
 mod demand_paging;
+mod detach;
 mod direction_flag;
 mod mmio_ramfs;
 mod rendezvous;
@@ -51,6 +52,8 @@ const EXIT_CODE: i32 = 13;
 ///
 #[no_mangle]
 pub fn main() -> Result<(), Error> {
+    detach::run()?;
+
     mmio_ramfs::run()?;
 
     tls::run()?;
