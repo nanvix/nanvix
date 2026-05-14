@@ -373,9 +373,23 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
         let vm: Option<RunningVm> = state.running_vm.lock().await.take();
         match vm {
             Some(running) => {
+                // Wait for the VM to finish BEFORE aborting the
+                // gateway/sink bridge. On Unix the bridge owns the
+                // gateway Unix socket; on Windows it is the sole
+                // consumer of guest stdout/stderr (see the host-side
+                // sink set up in serve_new). Aborting first closes
+                // `output_rx` and makes every subsequent guest write
+                // return -1 -- CPython then raises BrokenPipeError
+                // at shutdown and exits 120 many seconds after KILL
+                // was issued by the shim.
+                //
+                // The bridge ends naturally when the io_handler
+                // closes `output_tx` after the VM exits. The
+                // abort() below is defensive cleanup at that point.
+                let wait_result = running.handle.wait().await;
                 running._gateway_bridge.abort();
                 let _ = ::std::fs::remove_file(&running.gateway_socket_path);
-                match running.handle.wait().await {
+                match wait_result {
                     Ok(exit_status) => {
                         debug!("serve_kill(): VM exited (exit_status={exit_status})");
                         Ok(message::KillResponse {
