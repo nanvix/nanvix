@@ -294,6 +294,26 @@ impl ProcessManager {
 
         // SAFETY: `from` and `to` point to valid context information structures, and the processor
         // is running with interrupts disabled.
+
+        // Debug-only: detect use-after-free in the detached-thread exit path. With slab
+        // poison-on-free, a freed ContextInformation block is filled with SLAB_POISON_BYTE. If
+        // `from` points to a poisoned block, the zombie thread's ContextInformation was freed
+        // before the context switch — a use-after-free bug.
+        #[cfg(debug_assertions)]
+        {
+            let from_bytes: &[u8] = unsafe {
+                core::slice::from_raw_parts(
+                    from as *const u8,
+                    core::mem::size_of::<ContextInformation>(),
+                )
+            };
+            debug_assert!(
+                !from_bytes.iter().all(|&b| b == slab::SLAB_POISON_BYTE),
+                "BUG: ContextInformation at {:p} freed before context switch (detached-thread UAF)",
+                from,
+            );
+        }
+
         PERF_SCHED_EXIT_THREAD_CONTEXT_SWITCHES.fetch_add(1, ORDER);
         Self::switch(next_pid, next_tid, from, to, user_tda);
 
