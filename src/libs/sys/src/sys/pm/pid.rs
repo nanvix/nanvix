@@ -59,6 +59,12 @@ impl ProcessIdentifier {
     /// Identifier of the network daemon process.
     pub const NETWORKD: ProcessIdentifier = ProcessIdentifier(Self::NETWORKD_RAW);
 
+    /// Raw identifier for the VFS daemon process.
+    pub const VFSD_RAW: i32 = 3;
+
+    /// Identifier of the VFS daemon process.
+    pub const VFSD: ProcessIdentifier = ProcessIdentifier(Self::VFSD_RAW);
+
     /// Error message for conversion failures.
     const PARSE_ERROR_MESSAGE: &'static str = "invalid process identifier";
 
