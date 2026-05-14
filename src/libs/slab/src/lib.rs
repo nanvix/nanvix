@@ -37,6 +37,16 @@ include!("lib.spec.rs");
 include!("lib.proof.rs");
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Slab poison byte used in debug builds to fill freed blocks and make use-after-free bugs more
+/// likely to cause a crash and easier to diagnose. This is not used in release builds to avoid
+/// the performance overhead of filling freed blocks.
+#[cfg(all(debug_assertions, not(verus_keep_ghost)))]
+pub const SLAB_POISON_BYTE: u8 = 0xDE;
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -358,6 +368,13 @@ impl Slab {
 
         // Free the block.
         self.index.clear(index)?;
+
+        // Poison the freed block so that any use-after-free dereference through a stale pointer
+        // reads a recognizable garbage pattern instead of silently reusing stale data.
+        #[cfg(all(debug_assertions, not(verus_keep_ghost)))]
+        unsafe {
+            core::ptr::write_bytes(ptr as *mut u8, SLAB_POISON_BYTE, self.block_size);
+        }
 
         proof! { self.lemma_deallocate_ok(old(self), index, ptr); }
 
