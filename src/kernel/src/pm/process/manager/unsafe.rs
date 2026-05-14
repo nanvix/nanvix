@@ -52,6 +52,7 @@ use crate::{
     PERF_SCHED_SOFT_CONTEXT_SWITCHES,
     PERF_SCHED_WAKEUP,
 };
+use ::alloc::vec::Vec;
 use ::arch::mem::PAGE_SIZE;
 use ::config::kernel::SCHEDULER_FREQ;
 use ::core::{
@@ -217,6 +218,9 @@ impl ProcessManager {
     pub unsafe fn exit(status: ExitStatus) -> Result<!, Error> {
         trace!("status={status:?}");
 
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         // Terminate the calling process and select another process to run next.
         let (next_pid, next_tid, from, to, user_tda): (
             ProcessIdentifier,
@@ -266,6 +270,9 @@ impl ProcessManager {
     /// - The processor is running in privileged mode.
     ///
     pub unsafe fn exit_thread(status: ExitStatus) -> Result<!, Error> {
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         // Terminate the calling thread and select another thread to run next.
         let (next_pid, next_tid, from, to, user_tda): (
             ProcessIdentifier,
@@ -294,6 +301,26 @@ impl ProcessManager {
 
         // SAFETY: `from` and `to` point to valid context information structures, and the processor
         // is running with interrupts disabled.
+
+        // Debug-only: detect use-after-free in the detached-thread exit path. With slab
+        // poison-on-free, a freed ContextInformation block is filled with SLAB_POISON_BYTE. If
+        // `from` points to a poisoned block, the zombie thread's ContextInformation was freed
+        // before the context switch — a use-after-free bug.
+        #[cfg(debug_assertions)]
+        {
+            let from_bytes: &[u8] = unsafe {
+                core::slice::from_raw_parts(
+                    from as *const u8,
+                    core::mem::size_of::<ContextInformation>(),
+                )
+            };
+            debug_assert!(
+                !from_bytes.iter().all(|&b| b == slab::SLAB_POISON_BYTE),
+                "BUG: ContextInformation at {:p} freed before context switch (detached-thread UAF)",
+                from,
+            );
+        }
+
         PERF_SCHED_EXIT_THREAD_CONTEXT_SWITCHES.fetch_add(1, ORDER);
         Self::switch(next_pid, next_tid, from, to, user_tda);
 
@@ -301,6 +328,30 @@ impl ProcessManager {
         // reached, it indicates a critical bug and undefined behavior. This is considered
         // unreachable by design.
         core::hint::unreachable_unchecked()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reaps any detached-thread zombies whose cleanup was deferred because
+    /// their `ContextInformation` was still needed by an in-progress context
+    /// switch. This must be called at PM entry points so that deferred zombies
+    /// are cleaned up once the context switch that produced them has completed.
+    ///
+    /// # Safety
+    ///
+    /// This function is safe to call if and only if the following conditions are met:
+    /// - The process manager is initialized.
+    /// - Access to the process manager is synchronized.
+    /// - The memory manager is initialized.
+    /// - Access to the memory manager is synchronized.
+    ///
+    unsafe fn reap_deferred() {
+        let deferred: Vec<(ProcessIdentifier, ZombieThread)> =
+            core::mem::take(&mut Self::get_mut().deferred_reap);
+        for (pid, zombie) in deferred {
+            Self::harvest_zombie_thread(pid, zombie);
+        }
     }
 
     ///
@@ -416,6 +467,9 @@ impl ProcessManager {
     ) -> Result<ExitStatus, SleepError> {
         trace!("pid={:?}, tid={:?}", pid, tid);
 
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         loop {
             let result: Result<ZombieThread, Result<Condvar, Error>> =
                 Self::get_mut().try_join_thread(pid, tid);
@@ -465,6 +519,9 @@ impl ProcessManager {
     ) -> Result<(), Error> {
         trace!("pid={:?}, tid={:?}", pid, tid);
 
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         let result: Result<Option<ZombieThread>, Error> =
             Self::get_mut().do_detach_thread(pid, tid);
 
@@ -508,6 +565,9 @@ impl ProcessManager {
     /// - The processor is running in privileged mode.
     ///
     pub unsafe fn sleep(alarm: Option<SystemTime>) -> Result<(), SleepError> {
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         // Suspend the execution of the calling thread and select another thread to run next.
         let (next_pid, next_tid, from, to, user_tda): (
             ProcessIdentifier,
@@ -597,6 +657,9 @@ impl ProcessManager {
     /// - The processor is running in privileged mode.
     ///
     pub unsafe fn giveup() -> Result<(), Error> {
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         REMAINING_QUANTUM.store(0, ORDER);
 
         // Re-schedule the calling thread and select another thread to run next.
