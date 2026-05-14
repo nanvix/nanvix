@@ -558,6 +558,21 @@ fn add_credit_fn(
 pub fn get_stderr_writer(vm_stderr: Option<String>) -> Result<Box<dyn Write + Send>> {
     // Obtain a buffered writer for the virtual machine's standard error device.
     let file_writer: Box<dyn Write + Send> = if let Some(vm_stderr) = vm_stderr {
+        // Named pipes (Windows) reject `create`/`truncate` flags with
+        // ERROR_INVALID_PARAMETER (os error 87). Detect the `\\.\pipe\` prefix
+        // and open as a client without those flags. The shim that gave us
+        // this path is responsible for creating the pipe server endpoint
+        // before we connect.
+        #[cfg(windows)]
+        {
+            if vm_stderr.starts_with(r"\\.\pipe\") || vm_stderr.starts_with(r"\\?\pipe\") {
+                let file = File::options()
+                    .read(false)
+                    .write(true)
+                    .open(&vm_stderr)?;
+                return Ok(Box::new(file));
+            }
+        }
         // Standard error was set to a file. Attempt to open file and create a writer.
         let file = File::options()
             .read(false)
