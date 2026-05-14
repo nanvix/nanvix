@@ -30,6 +30,8 @@ impl MessageSender {
     pub const KERNEL: Self = MessageSender(ProcessIdentifier::KERNEL_RAW);
     /// The network daemon is the sender of the message.
     pub const NETWORKD: Self = MessageSender(ProcessIdentifier::NETWORKD_RAW);
+    /// The VFS daemon is the sender of the message.
+    pub const VFSD: Self = MessageSender(ProcessIdentifier::VFSD_RAW);
 }
 
 impl MessageSender {
@@ -73,6 +75,8 @@ impl MessageReceiver {
     pub const KERNEL: Self = MessageReceiver(ProcessIdentifier::KERNEL_RAW);
     /// The network daemon is the receiver of the message.
     pub const NETWORKD: Self = MessageReceiver(ProcessIdentifier::NETWORKD_RAW);
+    /// The VFS daemon is the receiver of the message.
+    pub const VFSD: Self = MessageReceiver(ProcessIdentifier::VFSD_RAW);
 }
 
 impl From<ProcessIdentifier> for MessageReceiver {
