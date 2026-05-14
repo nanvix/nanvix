@@ -31,7 +31,6 @@ compile_error!("features `single-process` and `multi-process` are mutually exclu
 
 use ::anyhow::Result;
 use ::log::error;
-#[cfg(unix)]
 use ::nanvix::http::HttpServer;
 #[cfg(feature = "multi-process")]
 use ::nanvix::sandbox_config::SandboxCacheConfig;
@@ -274,7 +273,7 @@ async fn async_main() -> Result<ExitCode> {
         return Ok(ExitCode::from(clamped_exit_code));
     }
 
-    #[cfg(unix)]
+    // HTTP mode (unconditional — same on Windows and Unix)
     {
         let http_sockaddr: &str = match args.http_sockaddr() {
             None => {
@@ -291,13 +290,6 @@ async fn async_main() -> Result<ExitCode> {
         }
 
         Ok(ExitCode::SUCCESS)
-    }
-
-    #[cfg(windows)]
-    {
-        let reason: &str = "HTTP mode is not supported on Windows";
-        error!("{reason}");
-        anyhow::bail!(reason);
     }
 }
 

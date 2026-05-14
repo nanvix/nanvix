@@ -36,6 +36,7 @@ use ::hyper::{
     StatusCode,
 };
 use ::log::{
+    warn,
     debug,
     error,
     info,
@@ -48,15 +49,15 @@ use ::std::{
     pin::Pin,
     sync::Arc,
 };
-use ::tokio::{
-    io::{
-        AsyncReadExt,
-        AsyncWriteExt,
-    },
-    net::UnixListener,
-    sync::Mutex,
-    task::JoinHandle,
+#[cfg(unix)]
+use ::tokio::io::{
+    AsyncReadExt,
+    AsyncWriteExt,
 };
+#[cfg(unix)]
+use ::tokio::net::UnixListener;
+use ::tokio::sync::Mutex;
+use ::tokio::task::JoinHandle;
 use ::user_vm_api::UserVmIdentifier;
 use ::uservm::standalone::{
     StandaloneVmHandle,
@@ -236,23 +237,104 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
         // Create a Unix socket that serves as the gateway stream. The test harness (or any
         // consumer) connects to this socket to exchange I/O with the guest — exactly like the
         // multi-process gateway, but backed by IKC channels instead of a system VM.
-        let gateway_socket_path: String =
-            format!("/tmp/nvx-standalone-gw-{}.sock", std::process::id());
-        let _ = ::std::fs::remove_file(&gateway_socket_path);
-        let listener: UnixListener = match UnixListener::bind(&gateway_socket_path) {
-            Ok(l) => l,
-            Err(e) => {
-                let reason: String =
-                    format!("failed to bind gateway socket at {gateway_socket_path}: {e}");
-                error!("serve_new(): {reason}");
-                handle.abort();
-                anyhow::bail!(reason);
-            },
+        //
+        // On Windows the gateway socket is a no-op: the nanvix containerd shim does not use
+        // the gateway path, it talks to nanvixd directly via HTTP and consumes guest stdio
+        // via the named-pipe `-console-file` flag set by the shim. The HTTP `NEW` reply
+        // still carries a placeholder string so callers can inspect `gateway_sockaddr`.
+        #[cfg(unix)]
+        let (gateway_socket_path, gateway_bridge): (String, JoinHandle<()>) = {
+            let path: String = format!("/tmp/nvx-standalone-gw-{}.sock", std::process::id());
+            let _ = ::std::fs::remove_file(&path);
+            let listener: UnixListener = match UnixListener::bind(&path) {
+                Ok(l) => l,
+                Err(e) => {
+                    let reason: String =
+                        format!("failed to bind gateway socket at {path}: {e}");
+                    error!("serve_new(): {reason}");
+                    handle.abort();
+                    anyhow::bail!(reason);
+                },
+            };
+            debug!("serve_new(): gateway socket bound at {path}",);
+            let bridge: JoinHandle<()> = tokio::spawn(gateway_bridge_task(listener, io));
+            (path, bridge)
         };
-
-        debug!("serve_new(): gateway socket bound at {gateway_socket_path}",);
-
-        let gateway_bridge: JoinHandle<()> = tokio::spawn(gateway_bridge_task(listener, io));
+        #[cfg(windows)]
+        let (gateway_socket_path, gateway_bridge): (String, JoinHandle<()>) = {
+            // The shim does not connect to the gateway on Windows; it
+            // talks to nanvixd over HTTP only. But we MUST consume the
+            // IO channels -- dropping `io.output_rx` causes every guest
+            // write to stdout/stderr to fail at the io_handler with
+            // `output channel closed` and the guest sees write() return
+            // -1, which on CPython triggers BrokenPipeError at shutdown
+            // -> exit 120.
+            //
+            // Pipe guest stdout/stderr into a host file we can read.
+            let dump_path: ::std::path::PathBuf = {
+                let dir = ::std::env::var("NANVIXD_GUEST_STDIO_DIR")
+                    .ok()
+                    .map(::std::path::PathBuf::from)
+                    .unwrap_or_else(|| {
+                        let p = ::std::path::PathBuf::from(r"C:\temp\nanvixd-guest-stdio");
+                        if p.parent().map(|pp| pp.exists()).unwrap_or(false) || p.exists() {
+                            p
+                        } else {
+                            ::std::env::temp_dir()
+                        }
+                    });
+                let _ = ::std::fs::create_dir_all(&dir);
+                let ts_ms = ::std::time::SystemTime::now()
+                    .duration_since(::std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis())
+                    .unwrap_or(0);
+                dir.join(format!(
+                    "nanvixd-guest-stdio-{}-{}.log",
+                    std::process::id(),
+                    ts_ms,
+                ))
+            };
+            debug!(
+                "serve_new(): Windows guest-stdio sink at {}",
+                dump_path.display()
+            );
+            let StandaloneVmIo { mut output_rx, input_tx: _input_tx } = io;
+            let dump_path_for_task = dump_path.clone();
+            let bridge: JoinHandle<()> = tokio::spawn(async move {
+                use ::std::io::Write;
+                let mut sink: Option<::std::fs::File> = match ::std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&dump_path_for_task)
+                {
+                    Ok(f) => Some(f),
+                    Err(e) => {
+                        error!(
+                            "serve_new(): failed to open guest-stdio sink {} ({e}); writes will not be persisted",
+                            dump_path_for_task.display()
+                        );
+                        None
+                    },
+                };
+                while let Some(data) = output_rx.recv().await {
+                    if let Some(ref mut f) = sink {
+                        if let Err(e) = f.write_all(&data) {
+                            warn!("guest-stdio sink: write_all failed ({e}); will keep draining");
+                        }
+                        // sync_all so the bytes survive the bridge task
+                        // being aborted at VM teardown -- BufWriter is
+                        // intentionally avoided for the same reason.
+                        let _ = f.sync_all();
+                    }
+                }
+                if let Some(mut f) = sink.take() {
+                    let _ = f.flush();
+                    let _ = f.sync_all();
+                }
+            });
+            let path: String = dump_path.display().to_string();
+            (path, bridge)
+        };
 
         *guard = Some(RunningVm {
             handle,
@@ -436,6 +518,7 @@ impl<T: Send + Sync + Default + 'static> Service<Request<Incoming>> for HttpClie
 //==================================================================================================
 
 /// Size of the I/O buffer used by the gateway bridge for socket reads.
+#[cfg_attr(windows, allow(dead_code))]
 const GATEWAY_BRIDGE_BUFFER_SIZE: usize = 4096;
 
 ///
@@ -454,6 +537,7 @@ const GATEWAY_BRIDGE_BUFFER_SIZE: usize = 4096;
 /// - `listener`: Unix socket listener bound to the gateway path.
 /// - `io`: I/O channels connected to the guest's stdin/stdout via IKC.
 ///
+#[cfg(unix)]
 async fn gateway_bridge_task(listener: UnixListener, io: StandaloneVmIo) {
     let StandaloneVmIo {
         mut output_rx,
