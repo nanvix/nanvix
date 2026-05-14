@@ -267,7 +267,7 @@ impl RunningProcess {
                 (Condvar, ZombieProcess, *mut ContextInformation),
             >,
         >,
-        bool, // true if a detached thread was auto-dropped and needs reaping notification.
+        Option<ZombieThread>, // Detached zombie that must be reaped after the context switch.
     ) {
         let is_detached: bool = self.running.is_detached();
         let join_cond: Condvar = self.running.join_cond();
@@ -282,32 +282,33 @@ impl RunningProcess {
 
         let (zombie_thread, ctx) = self.running.exit(status);
 
-        // Determine whether other threads remain. If so, a detached zombie can be dropped
-        // immediately. If this is the last thread, keep the zombie so ZombieProcess can be
-        // constructed (it requires a non-empty zombie list).
+        // Determine whether other threads remain. If so, a detached zombie must NOT be dropped
+        // here — it owns the ContextInformation that `ctx` points to, and the context switch
+        // will write through that pointer. Instead, return it for deferred reaping after the
+        // context switch completes.
         let has_other_threads: bool =
             ready.is_some() || interrupted_threads.is_some() || sleeping_threads.is_some();
 
-        let (zombie_threads, detached_dropped): (Option<NonEmptyVecDeque<ZombieThread>>, bool) =
-            if is_detached && has_other_threads {
-                // Detached thread with other threads still alive — drop the zombie immediately.
-                // The kernel stack is freed via KernelStack::Drop. User stack pages remain mapped
-                // until the process exits and its Vmem is destroyed.
-                // The caller must call ThreadManager::on_thread_reaped() to update the live count.
-                drop(zombie_thread);
-                (existing_zombies, true)
-            } else {
-                (
-                    Some(match existing_zombies {
-                        Some(mut zombie_threads) => {
-                            zombie_threads.push_back(zombie_thread);
-                            zombie_threads
-                        },
-                        None => NonEmptyVecDeque::new(zombie_thread),
-                    }),
-                    false,
-                )
-            };
+        let (zombie_threads, deferred_zombie): (
+            Option<NonEmptyVecDeque<ZombieThread>>,
+            Option<ZombieThread>,
+        ) = if is_detached && has_other_threads {
+            // Return the zombie for deferred reaping. Do NOT drop it here — the context
+            // switch still needs the ContextInformation that lives inside the zombie's
+            // ThreadState.
+            (existing_zombies, Some(zombie_thread))
+        } else {
+            (
+                Some(match existing_zombies {
+                    Some(mut zombie_threads) => {
+                        zombie_threads.push_back(zombie_thread);
+                        zombie_threads
+                    },
+                    None => NonEmptyVecDeque::new(zombie_thread),
+                }),
+                None,
+            )
+        };
 
         if let Some(ready_threads) = ready {
             (
@@ -322,7 +323,7 @@ impl RunningProcess {
                     ),
                     ctx,
                 )),
-                detached_dropped,
+                deferred_zombie,
             )
         } else if let Some(interrupted_threads) = interrupted_threads {
             let interrupted_process: InterruptedProcess = InterruptedProcess::from_sleeping(
@@ -332,7 +333,7 @@ impl RunningProcess {
                 zombie_threads,
             );
 
-            (Ok((join_cond, interrupted_process.resume(), ctx)), detached_dropped)
+            (Ok((join_cond, interrupted_process.resume(), ctx)), deferred_zombie)
         } else if let Some(sleeping_threads) = sleeping_threads {
             (
                 Err(Ok((
@@ -340,7 +341,7 @@ impl RunningProcess {
                     SleepingProcess::new(state, sleeping_threads, zombie_threads),
                     ctx,
                 ))),
-                detached_dropped,
+                deferred_zombie,
             )
         } else {
             match zombie_threads {
@@ -355,7 +356,7 @@ impl RunningProcess {
                             ZombieProcess::new(state, zombie_threads, final_status),
                             ctx,
                         ))),
-                        detached_dropped,
+                        deferred_zombie,
                     )
                 },
                 // Unreachable: zombie_threads is None only when is_detached && has_other_threads,

@@ -149,6 +149,9 @@ pub struct ProcessManager {
     tm: ThreadManager,
     /// Number of messages buffered (not yet consumed).
     number_buffered_messages: usize,
+    /// Detached-thread zombies whose reaping was deferred because their
+    /// `ContextInformation` was still needed by an in-progress context switch.
+    deferred_reap: Vec<(ProcessIdentifier, ZombieThread)>,
 }
 
 impl ProcessManager {
@@ -180,6 +183,7 @@ impl ProcessManager {
             running: Some(kernel),
             tm,
             number_buffered_messages: 0,
+            deferred_reap: Vec::new(),
         }
     }
 
@@ -1021,18 +1025,20 @@ impl ProcessManager {
         let (join_cond, previous_context): (Condvar, *mut ContextInformation) =
             match running_process.exit_thread(status) {
                 // The calling process still has runnable threads, put it in the list of ready processes.
-                (Ok((join_cond, runnable_process, previous_context)), detached_dropped) => {
+                (Ok((join_cond, runnable_process, previous_context)), deferred_zombie) => {
+                    let pid: ProcessIdentifier = runnable_process.state().pid();
                     self.ready.push_back(runnable_process);
-                    if detached_dropped {
-                        self.tm.on_thread_reaped();
+                    if let Some(zombie) = deferred_zombie {
+                        self.deferred_reap.push((pid, zombie));
                     }
                     (join_cond, previous_context)
                 },
                 // The calling process has only sleeping threads left, put it in the list of suspended processes.
-                (Err(Ok((join_cond, sleeping_process, previous_context))), detached_dropped) => {
+                (Err(Ok((join_cond, sleeping_process, previous_context))), deferred_zombie) => {
+                    let pid: ProcessIdentifier = sleeping_process.state().pid();
                     self.suspended.push_back(sleeping_process);
-                    if detached_dropped {
-                        self.tm.on_thread_reaped();
+                    if let Some(zombie) = deferred_zombie {
+                        self.deferred_reap.push((pid, zombie));
                     }
                     (join_cond, previous_context)
                 },

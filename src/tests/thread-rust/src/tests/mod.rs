@@ -10,6 +10,7 @@ use ::sys::error::Error;
 mod attributes;
 mod cond_timedwait;
 mod condvars;
+mod detach;
 mod identity;
 mod mutex_timedlock;
 mod mutexes;
@@ -30,6 +31,7 @@ pub fn run_all() -> Result<(), Error> {
     threads::run()?;
     identity::run()?;
     attributes::run()?;
+    detach::run()?;
     mutexes::run()?;
     mutex_timedlock::run()?;
     condvars::run()?;
