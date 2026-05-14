@@ -315,8 +315,8 @@ impl<T> RawArray<T> {
             old(self).inv(),
             0 <= index < old(self)@.len(),
         ensures
-            self.inv(),
-            self@ == old(self)@.update(index as int, value),
+            final(self).inv(),
+            final(self)@ == old(self)@.update(index as int, value),
     )]
     pub fn set(&mut self, index: usize, value: T) {
         self.storage.get_mut()[index] = value;
