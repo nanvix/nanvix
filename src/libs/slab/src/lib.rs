@@ -265,13 +265,13 @@ impl Slab {
         requires
             old(self).inv(),
         ensures
-            self.inv(),
+            final(self).inv(),
             match result {
                 Ok(ptr) => {
                     let addr = ptr as usize;
                     &&& old(self)@.free_addrs.contains(addr)
-                    &&& addr % self@.block_size == 0
-                    &&& self@ == SlabView {
+                    &&& addr % final(self)@.block_size == 0
+                    &&& final(self)@ == SlabView {
                         allocated_addrs: old(self)@.allocated_addrs.insert(addr),
                         free_addrs: old(self)@.free_addrs.remove(addr),
                         ..old(self)@
@@ -279,7 +279,7 @@ impl Slab {
                 },
                 Err(_) => {
                     &&& old(self)@.free_addrs == Set::<usize>::empty()
-                    &&& self@ == old(self)@
+                    &&& final(self)@ == old(self)@
                 },
             },
     )]
@@ -317,11 +317,11 @@ impl Slab {
         requires
             old(self).inv(),
         ensures
-            self.inv(),
+            final(self).inv(),
             match result {
                 Ok(()) => {
                     &&& old(self)@.allocated_addrs.contains(ptr as usize)
-                    &&& self@ == (SlabView {
+                    &&& final(self)@ == (SlabView {
                         allocated_addrs: old(self)@.allocated_addrs.remove(ptr as usize),
                         free_addrs: old(self)@.free_addrs.insert(ptr as usize),
                         ..old(self)@
@@ -329,7 +329,7 @@ impl Slab {
                 },
                 Err(_) => {
                     &&& !old(self)@.allocated_addrs.contains(ptr as usize)
-                    &&& self@ == old(self)@
+                    &&& final(self)@ == old(self)@
                 },
             },
     )]
