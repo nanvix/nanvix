@@ -82,25 +82,46 @@ pub unsafe extern "C" fn setenv(
         },
     };
 
-    // Attempt to convert `value`.
-    let value_str: &str = match ffi::CStr::from_ptr(value).to_str() {
-        Ok(s) => s,
-        Err(_) => {
-            ::syslog::warn!("setenv(): invalid value (value={value:?})");
-            set_errno(EINVAL);
-            return -1;
-        },
-    };
+    // Attempt to convert `value` to a byte slice (no UTF-8 requirement).
+    let value_bytes: &[u8] = ffi::CStr::from_ptr(value).to_bytes();
 
     // Attempt to set the variable. The registered callback (if any) is invoked by env_table::set()
     // when the value is actually written.
     let should_overwrite: bool = overwrite != 0;
-    match env_table::set(name_str, value_str, should_overwrite) {
+    match env_table::set(name_str, value_bytes, should_overwrite) {
         Ok(_) => 0,
         Err(()) => {
-            ::syslog::warn!("setenv(): failed (name={name_str:?}, value={value_str:?})");
+            ::syslog::warn!(
+                "setenv(): failed (name={name_str:?}, value_len={})",
+                value_bytes.len()
+            );
             set_errno(EINVAL);
             -1
         },
+    }
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(all(test, feature = "std"))]
+mod test {
+    use super::*;
+    use ::core::ffi;
+    use ::sysapi::ffi::c_char;
+
+    /// Tests that `setenv()` accepts a non-UTF-8 value and that it can be retrieved intact.
+    #[test]
+    fn test_setenv_non_utf8_value() {
+        let name: &[u8] = b"FFI_BIN_KEY\0";
+        let value: &[u8] = b"\xff\xfe\xfd\0";
+        let ret: c_int =
+            unsafe { setenv(name.as_ptr().cast::<c_char>(), value.as_ptr().cast::<c_char>(), 1) };
+        assert_eq!(ret, 0);
+        let ptr: *const c_char = env_table::get("FFI_BIN_KEY");
+        assert!(!ptr.is_null());
+        let retrieved: &ffi::CStr = unsafe { ffi::CStr::from_ptr(ptr) };
+        assert_eq!(retrieved.to_bytes(), b"\xff\xfe\xfd");
     }
 }

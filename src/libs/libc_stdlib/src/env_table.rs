@@ -22,8 +22,9 @@ use ::sysapi::ffi::c_char;
 
 /// Callback invoked after `setenv()` successfully writes a variable.
 ///
-/// Parameters: `(key, value)` — both valid `&str` slices.
-pub type SetenvCallback = fn(&str, &str);
+/// Parameters: `(key, value)` — `key` is a valid UTF-8 `&str`, `value` is a raw byte slice
+/// `&[u8]` (may contain non-UTF-8 bytes, but never interior NULs).
+pub type SetenvCallback = fn(&str, &[u8]);
 
 //==================================================================================================
 // Structures
@@ -87,12 +88,13 @@ pub unsafe fn init_from_raw(envp: *const *const c_char) {
         }
 
         let c_str: &ffi::CStr = ffi::CStr::from_ptr(entry_ptr);
-        if let Ok(s) = c_str.to_str() {
-            if let Some(eq_pos) = s.find('=') {
-                let key: &str = &s[..eq_pos];
-                let value: &str = &s[eq_pos + 1..];
+        let bytes: &[u8] = c_str.to_bytes();
+        if let Some(eq_pos) = bytes.iter().position(|&b| b == b'=') {
+            let key_bytes: &[u8] = &bytes[..eq_pos];
+            let value_bytes: &[u8] = &bytes[eq_pos + 1..];
+            if let Ok(key) = ::core::str::from_utf8(key_bytes) {
                 if !key.is_empty() {
-                    upsert_entry(&mut table, key, value);
+                    upsert_entry(&mut table, key, value_bytes);
                 }
             }
         }
@@ -144,17 +146,18 @@ pub fn get(key: &str) -> *const c_char {
 /// # Parameters
 ///
 /// - `key`: The variable name. Must not be empty and must not contain `=`.
-/// - `value`: The variable value.
+/// - `value`: The variable value as raw bytes. Must not contain interior NUL bytes.
 /// - `overwrite`: If true, replace an existing variable; if false, keep the existing value.
 ///
 /// # Returns
 ///
 /// `Ok(true)` if the value was written (new variable or overwritten), `Ok(false)` if the variable
-/// already existed and `overwrite` was false, or `Err(())` if `key` is empty or contains `=`.
+/// already existed and `overwrite` was false, or `Err(())` if `key` is empty, contains `=`, or
+/// `value` contains an interior NUL.
 ///
 #[allow(clippy::result_unit_err)]
-pub fn set(key: &str, value: &str, overwrite: bool) -> Result<bool, ()> {
-    if key.is_empty() || key.contains('=') {
+pub fn set(key: &str, value: &[u8], overwrite: bool) -> Result<bool, ()> {
+    if key.is_empty() || key.contains('=') || value.contains(&0) {
         return Err(());
     }
 
@@ -213,7 +216,7 @@ pub fn register_setenv_callback(cb: SetenvCallback) {
 }
 
 /// Invokes the registered setenv callback, if any.
-fn invoke_setenv_callback(key: &str, value: &str) {
+fn invoke_setenv_callback(key: &str, value: &[u8]) {
     if let Some(cb) = { *SETENV_CALLBACK.lock() } {
         cb(key, value);
     }
@@ -224,17 +227,17 @@ fn invoke_setenv_callback(key: &str, value: &str) {
 //==================================================================================================
 
 /// Builds a null-terminated `KEY=VALUE\0` byte vector.
-fn make_raw(key: &str, value: &str) -> Vec<u8> {
+fn make_raw(key: &str, value: &[u8]) -> Vec<u8> {
     let mut raw: Vec<u8> = Vec::with_capacity(key.len() + 1 + value.len() + 1);
     raw.extend_from_slice(key.as_bytes());
     raw.push(b'=');
-    raw.extend_from_slice(value.as_bytes());
+    raw.extend_from_slice(value);
     raw.push(0);
     raw
 }
 
 /// Inserts a new entry into the table.
-fn insert_entry(table: &mut Vec<EnvEntry>, key: &str, value: &str) {
+fn insert_entry(table: &mut Vec<EnvEntry>, key: &str, value: &[u8]) {
     let raw: Vec<u8> = make_raw(key, value);
     table.push(EnvEntry {
         key: String::from(key),
@@ -243,7 +246,7 @@ fn insert_entry(table: &mut Vec<EnvEntry>, key: &str, value: &str) {
 }
 
 /// Inserts or updates an entry in the table. If `key` already exists, its value is replaced.
-fn upsert_entry(table: &mut Vec<EnvEntry>, key: &str, value: &str) {
+fn upsert_entry(table: &mut Vec<EnvEntry>, key: &str, value: &[u8]) {
     for entry in table.iter_mut() {
         if entry.key == key {
             entry.raw = make_raw(key, value);
@@ -271,7 +274,7 @@ mod test {
     #[test]
     fn test_set_and_get() {
         clear();
-        assert_eq!(set("TEST_KEY_1", "hello", true), Ok(true));
+        assert_eq!(set("TEST_KEY_1", b"hello", true), Ok(true));
         let ptr: *const c_char = get("TEST_KEY_1");
         assert!(!ptr.is_null());
         let value: &ffi::CStr = unsafe { ffi::CStr::from_ptr(ptr) };
@@ -290,8 +293,8 @@ mod test {
     #[test]
     fn test_set_no_overwrite_existing() {
         clear();
-        assert_eq!(set("TEST_KEY_2", "first", true), Ok(true));
-        assert_eq!(set("TEST_KEY_2", "second", false), Ok(false));
+        assert_eq!(set("TEST_KEY_2", b"first", true), Ok(true));
+        assert_eq!(set("TEST_KEY_2", b"second", false), Ok(false));
         let ptr: *const c_char = get("TEST_KEY_2");
         let value: &ffi::CStr = unsafe { ffi::CStr::from_ptr(ptr) };
         assert_eq!(value.to_str(), Ok("first"));
@@ -301,8 +304,8 @@ mod test {
     #[test]
     fn test_set_overwrite_existing() {
         clear();
-        assert_eq!(set("TEST_KEY_3", "first", true), Ok(true));
-        assert_eq!(set("TEST_KEY_3", "second", true), Ok(true));
+        assert_eq!(set("TEST_KEY_3", b"first", true), Ok(true));
+        assert_eq!(set("TEST_KEY_3", b"second", true), Ok(true));
         let ptr: *const c_char = get("TEST_KEY_3");
         let value: &ffi::CStr = unsafe { ffi::CStr::from_ptr(ptr) };
         assert_eq!(value.to_str(), Ok("second"));
@@ -312,7 +315,7 @@ mod test {
     #[test]
     fn test_set_new_variable_no_overwrite() {
         clear();
-        assert_eq!(set("TEST_KEY_4", "value", false), Ok(true));
+        assert_eq!(set("TEST_KEY_4", b"value", false), Ok(true));
         let ptr: *const c_char = get("TEST_KEY_4");
         assert!(!ptr.is_null());
     }
@@ -320,20 +323,20 @@ mod test {
     /// Tests that setting a variable with an empty key fails.
     #[test]
     fn test_set_empty_key() {
-        assert!(set("", "value", true).is_err());
+        assert!(set("", b"value", true).is_err());
     }
 
     /// Tests that setting a variable with '=' in the key fails.
     #[test]
     fn test_set_key_with_equals() {
-        assert!(set("BAD=KEY", "value", true).is_err());
+        assert!(set("BAD=KEY", b"value", true).is_err());
     }
 
     /// Tests that unset removes a variable.
     #[test]
     fn test_unset() {
         clear();
-        assert_eq!(set("TEST_KEY_5", "value", true), Ok(true));
+        assert_eq!(set("TEST_KEY_5", b"value", true), Ok(true));
         unset("TEST_KEY_5");
         let ptr: *const c_char = get("TEST_KEY_5");
         assert!(ptr.is_null());
@@ -350,7 +353,7 @@ mod test {
     #[test]
     fn test_value_with_equals() {
         clear();
-        assert_eq!(set("TEST_KEY_EQ", "a=b=c", true), Ok(true));
+        assert_eq!(set("TEST_KEY_EQ", b"a=b=c", true), Ok(true));
         let ptr: *const c_char = get("TEST_KEY_EQ");
         assert!(!ptr.is_null());
         let value: &ffi::CStr = unsafe { ffi::CStr::from_ptr(ptr) };
@@ -401,7 +404,7 @@ mod test {
         };
         static CALL_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-        fn counting_callback(_key: &str, _value: &str) {
+        fn counting_callback(_key: &str, _value: &[u8]) {
             CALL_COUNT.fetch_add(1, Ordering::Relaxed);
         }
 
@@ -410,15 +413,15 @@ mod test {
         register_setenv_callback(counting_callback);
 
         // New variable — callback should fire.
-        assert_eq!(set("CB_KEY", "v1", true), Ok(true));
+        assert_eq!(set("CB_KEY", b"v1", true), Ok(true));
         assert_eq!(CALL_COUNT.load(Ordering::Relaxed), 1);
 
         // Overwrite — callback should fire again.
-        assert_eq!(set("CB_KEY", "v2", true), Ok(true));
+        assert_eq!(set("CB_KEY", b"v2", true), Ok(true));
         assert_eq!(CALL_COUNT.load(Ordering::Relaxed), 2);
 
         // No overwrite on existing key — callback should NOT fire.
-        assert_eq!(set("CB_KEY", "v3", false), Ok(false));
+        assert_eq!(set("CB_KEY", b"v3", false), Ok(false));
         assert_eq!(CALL_COUNT.load(Ordering::Relaxed), 2);
 
         // Reset global state for other tests.
@@ -444,5 +447,37 @@ mod test {
         assert!(!dup.is_null());
         let dup_val: &ffi::CStr = unsafe { ffi::CStr::from_ptr(dup) };
         assert_eq!(dup_val.to_str(), Ok("second"));
+    }
+
+    /// Tests that non-UTF-8 values (e.g., 0xFF) are accepted and preserved.
+    #[test]
+    fn test_set_non_utf8_value() {
+        clear();
+        assert_eq!(set("BYTES_KEY", b"\xff", true), Ok(true));
+        let ptr: *const c_char = get("BYTES_KEY");
+        assert!(!ptr.is_null());
+        let value: &ffi::CStr = unsafe { ffi::CStr::from_ptr(ptr) };
+        assert_eq!(value.to_bytes(), b"\xff");
+    }
+
+    /// Tests that values containing interior NUL bytes are rejected.
+    #[test]
+    fn test_set_interior_nul_rejected() {
+        assert!(set("NUL_KEY", b"a\0b", true).is_err());
+    }
+
+    /// Tests that `init_from_raw` preserves non-UTF-8 values.
+    #[test]
+    fn test_init_from_raw_non_utf8_value() {
+        clear();
+        let entry: &[u8] = b"BIN=\xff\xfe\0";
+        let ptrs: [*const c_char; 2] = [entry.as_ptr().cast::<c_char>(), ::core::ptr::null()];
+        unsafe {
+            init_from_raw(ptrs.as_ptr());
+        }
+        let ptr: *const c_char = get("BIN");
+        assert!(!ptr.is_null());
+        let value: &ffi::CStr = unsafe { ffi::CStr::from_ptr(ptr) };
+        assert_eq!(value.to_bytes(), b"\xff\xfe");
     }
 }
