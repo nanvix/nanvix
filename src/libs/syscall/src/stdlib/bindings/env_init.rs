@@ -73,10 +73,17 @@ pub unsafe extern "C" fn __nanvix_env_init(envp: *const *const c_char) -> c_int 
 /// Callback invoked by `env_table::set()` after a variable is written. Synchronizes the VFS home
 /// directory when HOME is updated.
 #[cfg(feature = "standalone")]
-fn on_setenv(key: &str, value: &str) {
+fn on_setenv(key: &str, value: &[u8]) {
     if key == "HOME" {
-        if let Err(e) = ::nvx::vfs::set_home(value) {
-            ::syslog::warn!("on_setenv(): failed to set VFS home (error={e:?})");
+        match ::core::str::from_utf8(value) {
+            Ok(home_str) => {
+                if let Err(e) = ::nvx::vfs::set_home(home_str) {
+                    ::syslog::warn!("on_setenv(): failed to set VFS home (error={e:?})");
+                }
+            },
+            Err(_) => {
+                ::syslog::warn!("on_setenv(): HOME value is not valid UTF-8, skipping VFS sync");
+            },
         }
     }
 }
