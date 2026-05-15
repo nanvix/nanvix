@@ -511,6 +511,7 @@ impl Vmm {
                     initrd_end,
                     args.mount_directory.as_deref(),
                     args.ramfs_filename.as_deref(),
+                    &[],
                 )?;
 
                 match loaded {

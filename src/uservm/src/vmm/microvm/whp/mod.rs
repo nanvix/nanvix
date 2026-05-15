@@ -37,6 +37,7 @@ use crate::{
         guest::{
             Guest,
             GuestState,
+            PreparedInitrd,
         },
         microvm::{
             ramfs,
@@ -459,20 +460,53 @@ impl Vmm {
             }
 
             // Phase: Initrd loading.
+            // When a RAMFS will also be loaded, prepare the initrd for zero-copy mapping
+            // so it can be combined with the RAMFS into a single remap_files_at() call.
             #[cfg(feature = "profile-time")]
             let initrd_load_start: Instant = Instant::now();
 
-            args.initrd_filename
-                .as_ref()
-                .map(|initrd_filename| {
-                    guest.load_initrd(&mut vmem, initrd_filename, args.initrd_args)
-                })
-                .transpose()?;
+            let has_ramfs: bool = args.ramfs_filename.is_some() || args.mount_directory.is_some();
+
+            // When RAMFS is present, page-aligned initrd files can be included in the
+            // combined zero-copy remap.  Non-page-aligned files fall back to copy-based
+            // loading because `CreateFileMappingW(PAGE_WRITECOPY)` constrains the section's
+            // maximum size to the raw file size, which cannot match a page-granular
+            // placeholder required by `MapViewOfFile3(MEM_REPLACE_PLACEHOLDER)`.
+            let prepared_initrd: Option<PreparedInitrd> = if has_ramfs {
+                if let Some(ref initrd_filename) = args.initrd_filename {
+                    let file_len: u64 = std::fs::metadata(initrd_filename)
+                        .map_err(|e| anyhow::anyhow!("failed to query initrd metadata: {e}"))?
+                        .len();
+                    if (file_len as usize).is_multiple_of(::arch::mem::PAGE_SIZE) {
+                        // Page-aligned: defer to combined zero-copy remap.
+                        Some(guest.prepare_initrd(
+                            &vmem,
+                            initrd_filename,
+                            args.initrd_args.clone(),
+                        )?)
+                    } else {
+                        // Not page-aligned: fall back to copy-based loading.
+                        guest.load_initrd(&mut vmem, initrd_filename, args.initrd_args.clone())?;
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                // No RAMFS to combine with: fall back to the copy-based path.
+                args.initrd_filename
+                    .as_ref()
+                    .map(|initrd_filename| {
+                        guest.load_initrd(&mut vmem, initrd_filename, args.initrd_args)
+                    })
+                    .transpose()?;
+                None
+            };
 
             #[cfg(feature = "profile-time")]
             perf_timings.set_initrd_load(initrd_load_start.elapsed().as_micros() as u64);
 
-            // Phase: RamFS loading.
+            // Phase: RamFS loading (with optional combined initrd zero-copy remap).
             #[cfg(feature = "profile-time")]
             let ramfs_load_start: Instant = Instant::now();
 
@@ -491,11 +525,18 @@ impl Vmm {
                     None => ::config::microvm::DEFAULT_INITRD_BASE,
                 };
 
+                // Build the extra remap regions list from the prepared initrd (if any).
+                let initrd_remap: Vec<(usize, &std::fs::File)> = prepared_initrd
+                    .as_ref()
+                    .map(|pi| vec![(pi.base, &pi.file)])
+                    .unwrap_or_default();
+
                 let loaded: ramfs::LoadedRamFs = ramfs::load_ramfs(
                     &mut vmem,
                     initrd_end,
                     args.mount_directory.as_deref(),
                     args.ramfs_filename.as_deref(),
+                    &initrd_remap,
                 )?;
 
                 match loaded {
@@ -511,6 +552,21 @@ impl Vmm {
                     ramfs::LoadedRamFs::None => None,
                 }
             };
+
+            // Finalize initrd arguments: write them into the gap memory between
+            // the initrd view and the ramfs view, which was re-committed by the
+            // combined remap.
+            if let Some(ref pi) = prepared_initrd
+                && let Some(ref initrd_args_str) = pi.args
+            {
+                guest.write_args(&mut vmem, initrd_args_str)?;
+            }
+
+            // Keep the initrd file handle alive for the VM's lifetime so the
+            // file-backed mapping remains valid.
+            if let Some(pi) = prepared_initrd {
+                vmem.attach_backing_files(vec![pi.file]);
+            }
 
             RamFs::write_registers(&mut vmem, ramfs_region)?;
 
@@ -548,6 +604,14 @@ impl Vmm {
             let ept_populate_start: Instant = Instant::now();
 
             vmem.populate_ept(&guest.ept_populate_ranges()?)?;
+
+            // Pre-populate file-backed initrd pages with read-only access. This brings the
+            // pages into the working set and SLAT without triggering copy-on-write on the
+            // PAGE_WRITECOPY mapping.
+            let read_ranges: Vec<(u64, u64)> = guest.ept_populate_read_ranges();
+            if !read_ranges.is_empty() {
+                vmem.populate_ept_read(&read_ranges)?;
+            }
 
             #[cfg(feature = "profile-time")]
             perf_timings.set_ept_populate(ept_populate_start.elapsed().as_micros() as u64);

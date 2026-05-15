@@ -42,6 +42,7 @@ use ::windows::Win32::{
             WHvMapGpaRangeFlagExecute,
             WHvMapGpaRangeFlagRead,
             WHvMapGpaRangeFlagWrite,
+            WHvMemoryAccessRead,
             WHvMemoryAccessWrite,
             WHvUnmapGpaRange,
         },
@@ -179,10 +180,6 @@ const SPARSE_PAGE_INDEX_SIZE: usize = ::arch::mem::paging::PageTableEntry::SIZE;
 const GPA_RWX: WHV_MAP_GPA_RANGE_FLAGS = WHV_MAP_GPA_RANGE_FLAGS(
     WHvMapGpaRangeFlagRead.0 | WHvMapGpaRangeFlagWrite.0 | WHvMapGpaRangeFlagExecute.0,
 );
-
-/// WHP GPA mapping flags: Read | Write (no Execute).
-const GPA_RW: WHV_MAP_GPA_RANGE_FLAGS =
-    WHV_MAP_GPA_RANGE_FLAGS(WHvMapGpaRangeFlagRead.0 | WHvMapGpaRangeFlagWrite.0);
 
 /// Combined `MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER` flag used to split a committed region
 /// back into placeholders without destroying the head.
@@ -459,6 +456,12 @@ impl VirtualMemory {
     /// Creates a `PAGE_WRITECOPY` section backed by the file and maps it into the placeholder
     /// at `[start..start+len)` via `MapViewOfFile3`.
     ///
+    /// The section size is derived from the file via `CreateFileMappingW(size=0)`.  The file
+    /// **must** be page-aligned in size so that the section's footprint exactly matches the
+    /// placeholder created by `validate_remap_regions()`.  Non-page-aligned files cannot be
+    /// mapped via `MEM_REPLACE_PLACEHOLDER` because the section's maximum size (the raw file
+    /// size) would not match the page-rounded placeholder, causing `MapViewOfFile3` to fail.
+    ///
     /// Returns the section handle on success.
     fn map_file_view(
         &mut self,
@@ -468,9 +471,7 @@ impl VirtualMemory {
         current_process: HANDLE,
     ) -> Result<HANDLE> {
         // SAFETY: `file_handle` comes from a valid open `File`.  Passing size 0 lets the
-        // OS derive the section's maximum size from the file's current size.  Both the
-        // file and `len` are page-aligned (enforced by `remap_file_at()`), so the section
-        // size matches the placeholder exactly.
+        // OS derive the section's maximum size from the file's current size.
         let section: HANDLE = unsafe {
             CreateFileMappingW(file_handle, None, PAGE_WRITECOPY, 0, 0, None).map_err(|e| {
                 let reason: String = format!("failed to create file mapping section (error={e:?})");
@@ -479,6 +480,8 @@ impl VirtualMemory {
             })?
         };
 
+        // Map the view with ViewSize = len so that it exactly covers the placeholder.
+        //
         // SAFETY: `section` is a valid handle from `CreateFileMappingW`.
         // `self.ptr.add(start)` targets a placeholder of exactly `len` bytes
         // created by `prepare_placeholders()`.  `MEM_REPLACE_PLACEHOLDER` atomically
@@ -603,10 +606,19 @@ impl VirtualMemory {
             if len == 0 {
                 anyhow::bail!("validate_remap_regions(): cannot remap zero-sized file");
             }
-            if !offset.is_multiple_of(page_size) || !len.is_multiple_of(page_size) {
+            if !offset.is_multiple_of(page_size) {
                 anyhow::bail!(
-                    "validate_remap_regions(): offset ({offset:#x}) and length ({len:#x}) must be \
-                     page-aligned"
+                    "validate_remap_regions(): offset ({offset:#x}) must be page-aligned"
+                );
+            }
+            // The file must be page-aligned because `MapViewOfFile3` with
+            // `MEM_REPLACE_PLACEHOLDER` requires `ViewSize` to exactly match the placeholder
+            // and `CreateFileMappingW(PAGE_WRITECOPY, size=0)` derives the section maximum
+            // from the raw file size.  A non-page-aligned file would produce a section whose
+            // size cannot match a page-granular placeholder.
+            if !len.is_multiple_of(page_size) {
+                anyhow::bail!(
+                    "validate_remap_regions(): file size ({len:#x}) must be page-aligned"
                 );
             }
             if offset.checked_add(len).is_none_or(|end| end > self.size) {
@@ -804,7 +816,9 @@ impl VirtualMemory {
                     })?;
                 }
             }
-            // Re-map file-backed view (RW only, RAMFS data is not executable).
+            // Re-map file-backed view with RWX. The initrd region contains an executable
+            // ELF, so execute permission is required. RAMFS-only views do not need execute
+            // but granting it uniformly avoids per-region flag plumbing.
             // SAFETY: `self.ptr.add(view.offset)` points to the file-backed view.
             unsafe {
                 WHvMapGpaRange(
@@ -812,7 +826,7 @@ impl VirtualMemory {
                     self.ptr.add(view.offset) as *const std::ffi::c_void,
                     view.offset as u64,
                     view.len as u64,
-                    GPA_RW,
+                    GPA_RWX,
                 )
                 .map_err(|e| {
                     let reason: String = format!(
@@ -945,6 +959,71 @@ impl VirtualMemory {
         Ok(())
     }
 
+    /// Pre-populates EPT entries for the given GPA ranges with **read-only** access.
+    ///
+    /// This variant uses `WHvMemoryAccessRead` instead of `WHvMemoryAccessWrite`, which
+    /// is essential for `PAGE_WRITECOPY` file-backed mappings: read access brings pages into
+    /// the working set and the SLAT without triggering copy-on-write.
+    pub fn populate_ept_read(&self, ranges_in: &[(u64, u64)]) -> Result<()> {
+        let page_size: u64 = ::arch::mem::PAGE_SIZE as u64;
+        let ram_size: u64 = self.size as u64;
+        let mut ranges: Vec<WHV_MEMORY_RANGE_ENTRY> = Vec::with_capacity(ranges_in.len());
+
+        for &(gpa, size) in ranges_in {
+            if size == 0 {
+                continue;
+            }
+            if gpa % page_size != 0 || size % page_size != 0 {
+                let reason: String =
+                    format!("gpa and size must be page-aligned (gpa={gpa:#x}, size={size:#x})");
+                error!("populate_ept_read(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            }
+            if gpa.checked_add(size).is_none_or(|end| end > ram_size) {
+                let reason: String = format!(
+                    "range exceeds mapped guest RAM (gpa={gpa:#x}, size={size:#x}, \
+                     ram_size={ram_size:#x})"
+                );
+                error!("populate_ept_read(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            }
+            ranges.push(WHV_MEMORY_RANGE_ENTRY {
+                GuestAddress: gpa,
+                SizeInBytes: size,
+            });
+        }
+
+        if ranges.is_empty() {
+            return Ok(());
+        }
+
+        let populate: WHV_ADVISE_GPA_RANGE_POPULATE = WHV_ADVISE_GPA_RANGE_POPULATE {
+            Flags: WHV_ADVISE_GPA_RANGE_POPULATE_FLAGS { AsUINT32: 0 },
+            AccessType: WHvMemoryAccessRead,
+        };
+
+        // SAFETY: Same preconditions as `populate_ept`.
+        unsafe {
+            WHvAdviseGpaRange(
+                self.partition_handle,
+                &ranges,
+                WHvAdviseGpaRangeCodePopulate,
+                (&populate as *const WHV_ADVISE_GPA_RANGE_POPULATE).cast::<std::ffi::c_void>(),
+                mem::size_of::<WHV_ADVISE_GPA_RANGE_POPULATE>() as u32,
+            )
+            .map_err(|e| {
+                let reason: String = format!(
+                    "WHvAdviseGpaRange(Populate/Read) failed ({} range(s), error={e:?})",
+                    ranges.len()
+                );
+                error!("populate_ept_read(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+        }
+
+        Ok(())
+    }
+
     ///
     /// # Description
     ///
@@ -1023,7 +1102,7 @@ impl VirtualMemory {
     /// - `files`: File handles to keep alive.
     ///
     pub fn attach_backing_files(&mut self, files: Vec<File>) {
-        self.backing_files = files;
+        self.backing_files.extend(files);
     }
 
     ///
