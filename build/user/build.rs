@@ -41,7 +41,8 @@ fn main() {
         println!("cargo:rerun-if-changed=./config.json");
         let mut file: File = File::open(&config_path).expect("Failed to open file");
         let mut raw_content: String = String::new();
-        let _ = file.read_to_string(&mut raw_content);
+        file.read_to_string(&mut raw_content)
+            .expect("Failed to read config.json");
         let content = raw_content.replace("\n", "").replace(" ", "");
         println!("cargo:rustc-env=CONFIG={content}");
     }
