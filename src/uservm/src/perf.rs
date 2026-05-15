@@ -68,6 +68,22 @@ pub struct PerfTimings {
     exit_handling_us: Arc<AtomicU64>,
     /// Total time from `UserVm::run()` entry to VM exit.
     total_us: Arc<AtomicU64>,
+    /// Total number of VM exits (all reasons).
+    exit_count_total: Arc<AtomicU64>,
+    /// Number of PMIO-out exits (fast-path legacy ports).
+    exit_count_pmio_out_fast: Arc<AtomicU64>,
+    /// Number of PMIO-in exits (fast-path legacy ports).
+    exit_count_pmio_in_fast: Arc<AtomicU64>,
+    /// Number of PMIO exits dispatched to the emulator (slow-path).
+    exit_count_pmio_slow: Arc<AtomicU64>,
+    /// Number of Interrupted exits (WHvCancelRunVP).
+    exit_count_interrupted: Arc<AtomicU64>,
+    /// Number of Halt exits.
+    exit_count_halt: Arc<AtomicU64>,
+    /// Number of MMIO exits.
+    exit_count_mmio: Arc<AtomicU64>,
+    /// Number of InterruptWindow exits.
+    exit_count_intwin: Arc<AtomicU64>,
 }
 
 //==================================================================================================
@@ -101,6 +117,14 @@ impl PerfTimings {
             guest_exec_us: Arc::new(AtomicU64::new(0)),
             exit_handling_us: Arc::new(AtomicU64::new(0)),
             total_us: Arc::new(AtomicU64::new(0)),
+            exit_count_total: Arc::new(AtomicU64::new(0)),
+            exit_count_pmio_out_fast: Arc::new(AtomicU64::new(0)),
+            exit_count_pmio_in_fast: Arc::new(AtomicU64::new(0)),
+            exit_count_pmio_slow: Arc::new(AtomicU64::new(0)),
+            exit_count_interrupted: Arc::new(AtomicU64::new(0)),
+            exit_count_halt: Arc::new(AtomicU64::new(0)),
+            exit_count_mmio: Arc::new(AtomicU64::new(0)),
+            exit_count_intwin: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -169,6 +193,47 @@ impl PerfTimings {
         self.total_us.store(us, Ordering::Release);
     }
 
+    /// Records total VM exit count.
+    pub fn set_exit_count_total(&self, count: u64) {
+        self.exit_count_total.store(count, Ordering::Release);
+    }
+
+    /// Records fast-path PMIO-out exit count.
+    pub fn set_exit_count_pmio_out_fast(&self, count: u64) {
+        self.exit_count_pmio_out_fast
+            .store(count, Ordering::Release);
+    }
+
+    /// Records fast-path PMIO-in exit count.
+    pub fn set_exit_count_pmio_in_fast(&self, count: u64) {
+        self.exit_count_pmio_in_fast.store(count, Ordering::Release);
+    }
+
+    /// Records slow-path PMIO exit count (emulator dispatch).
+    pub fn set_exit_count_pmio_slow(&self, count: u64) {
+        self.exit_count_pmio_slow.store(count, Ordering::Release);
+    }
+
+    /// Records Interrupted exit count.
+    pub fn set_exit_count_interrupted(&self, count: u64) {
+        self.exit_count_interrupted.store(count, Ordering::Release);
+    }
+
+    /// Records Halt exit count.
+    pub fn set_exit_count_halt(&self, count: u64) {
+        self.exit_count_halt.store(count, Ordering::Release);
+    }
+
+    /// Records MMIO exit count.
+    pub fn set_exit_count_mmio(&self, count: u64) {
+        self.exit_count_mmio.store(count, Ordering::Release);
+    }
+
+    /// Records InterruptWindow exit count.
+    pub fn set_exit_count_intwin(&self, count: u64) {
+        self.exit_count_intwin.store(count, Ordering::Release);
+    }
+
     ///
     /// # Description
     ///
@@ -189,6 +254,16 @@ impl PerfTimings {
             "guest_exec_us": self.guest_exec_us.load(Ordering::Acquire),
             "exit_handling_us": self.exit_handling_us.load(Ordering::Acquire),
             "total_us": self.total_us.load(Ordering::Acquire),
+            "exit_counts": {
+                "total": self.exit_count_total.load(Ordering::Acquire),
+                "pmio_out_fast": self.exit_count_pmio_out_fast.load(Ordering::Acquire),
+                "pmio_in_fast": self.exit_count_pmio_in_fast.load(Ordering::Acquire),
+                "pmio_slow": self.exit_count_pmio_slow.load(Ordering::Acquire),
+                "interrupted": self.exit_count_interrupted.load(Ordering::Acquire),
+                "halt": self.exit_count_halt.load(Ordering::Acquire),
+                "mmio": self.exit_count_mmio.load(Ordering::Acquire),
+                "intwin": self.exit_count_intwin.load(Ordering::Acquire),
+            },
         })
         .to_string()
     }
