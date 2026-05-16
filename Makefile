@@ -436,7 +436,7 @@ clean: \
 	image-clean
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-test clean-test-kernel-ramfs
+clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-test clean-test-kernel-ramfs standalone-images-clean
 ifneq ($(IS_WINDOWS),yes)
 clean: clean-nanvix-shim
 endif
@@ -855,6 +855,8 @@ STANDALONE_NO_DAEMON_TESTS := test-kernel
 # List of standalone test binaries that need multibinary images with daemons.
 # Each image bundles procd, memd, vfsd, and the test binary itself.
 STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_NO_DAEMON_TESTS),$(ALL_GUEST_TESTS)) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
+
+.PHONY: standalone-images standalone-images-clean
 
 # Build standalone multibinary images for all test/benchmark/application binaries.
 # Uses .initrd extension to avoid collisions with other build artifacts (e.g., vfs-test.img).

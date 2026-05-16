@@ -45,6 +45,17 @@ use ::sysapi::sys_types::{
 ///
 pub fn fchown(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), Error> {
     ::syslog::trace!("fchown(): fd={:?}, owner={:?}, group={:?}", fd, owner, group);
+
+    // In standalone mode, only VFS file descriptors should be routed to vfsd.
+    #[cfg(feature = "standalone")]
+    if !crate::is_vfs_fd(fd) {
+        ::syslog::warn!("fchown(): bad file descriptor fd={fd} in standalone mode");
+        return Err(Error::new(
+            ErrorCode::BadFile,
+            "fchown: fd is not a VFS fd in standalone mode",
+        ));
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it

@@ -6,6 +6,8 @@
 //==================================================================================================
 
 use crate::sys::stat::message::FileStatRequest;
+#[cfg(feature = "standalone")]
+use ::sys::error::ErrorCode;
 use ::sys::{
     error::Error,
     ipc::Message,
@@ -65,6 +67,15 @@ pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
             buf.st_mtim = ts;
             buf.st_ctim = ts;
             return Ok(());
+        }
+
+        // Only VFS file descriptors should be routed to vfsd.
+        if !crate::is_vfs_fd(fd) {
+            ::syslog::warn!("fstat(): bad file descriptor fd={fd} in standalone mode");
+            return Err(Error::new(
+                ErrorCode::BadFile,
+                "fstat: fd is not a VFS fd in standalone mode",
+            ));
         }
     }
 
