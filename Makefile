@@ -166,10 +166,13 @@ export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
 # Binaries.
 KERNEL := $(BINARIES_DIR)/kernel.$(EXEC_FORMAT)
 LINUXD := $(BINARIES_DIR)/linuxd.$(HOST_BIN_EXT)
+MEMD := $(BINARIES_DIR)/memd.$(EXEC_FORMAT)
 MKIMAGE := $(BINARIES_DIR)/mkimage.$(HOST_BIN_EXT)
 MKRAMFS := $(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT)
 NANVIXD := $(BINARIES_DIR)/nanvixd.$(HOST_BIN_EXT)
+PROCD := $(BINARIES_DIR)/procd.$(EXEC_FORMAT)
 USERVM := $(BINARIES_DIR)/uservm.$(HOST_BIN_EXT)
+VFSD := $(BINARIES_DIR)/vfsd.$(EXEC_FORMAT)
 
 #===================================================================================================
 # Nanvix Variables
@@ -473,6 +476,11 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	@cp ${NANVIXD} ${SYSROOT_DIR}/bin/
 	@cp ${MKIMAGE} ${SYSROOT_DIR}/bin/
 	@cp ${MKRAMFS} ${SYSROOT_DIR}/bin/
+ifneq ($(filter standalone,$(DEPLOYMENT_MODE)),)
+	@cp ${MEMD} ${SYSROOT_DIR}/bin/
+	@cp ${PROCD} ${SYSROOT_DIR}/bin/
+	@cp ${VFSD} ${SYSROOT_DIR}/bin/
+endif
 ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
 	@cp ${LINUXD} ${SYSROOT_DIR}/bin/
 	@cp ${USERVM} ${SYSROOT_DIR}/bin/
