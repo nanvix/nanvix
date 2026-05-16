@@ -5,29 +5,26 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    message::MessagePartitioner,
+    safe::RawFileDescriptor,
+    sys::stat::message::MakeDirectoryAtRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::alloc::{
+    string::ToString,
+    vec::Vec,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::mode_t;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        message::MessagePartitioner,
-        sys::stat::message::MakeDirectoryAtRequest,
-        SystemCallMessage,
-        SystemCallMessageHeader,
-    },
-    ::alloc::{
-        string::ToString,
-        vec::Vec,
-    },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
-};
 
 //==================================================================================================
 // Standalone Functions
@@ -49,34 +46,17 @@ use {
 /// Upon successful completion, the `mkdirat()` system call returns empty. Otherwise, it returns an
 /// error.
 ///
-#[allow(unreachable_code)]
 pub fn mkdirat(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Result<(), Error> {
     ::syslog::trace!("mkdirat(): dirfd={:?}, pathname={:?}, mode={:?}", dirfd, pathname, mode);
 
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_mkdir(pathname).map_err(|e| {
-            let code: ErrorCode = e.into();
-            ::syslog::warn!("mkdirat(): VFS mkdir failed (pathname={pathname:?}, error={e})");
-            Error::new(code, "vfs mkdir failed")
-        })
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    mkdirat_linuxd(dirfd, pathname, mode)
-}
-
-/// Forwards a `mkdirat` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn mkdirat_linuxd(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Result<(), Error> {
+    let pathname: alloc::borrow::Cow<'_, str> = crate::path::expand_path(pathname);
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let request: MakeDirectoryAtRequest =
         MakeDirectoryAtRequest::new(dirfd, pathname.to_string(), mode)?;
 
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
 
     // Send request.
     for request in &requests {

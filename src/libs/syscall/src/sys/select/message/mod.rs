@@ -21,7 +21,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::sys_select::{
     fd_set,
@@ -92,6 +95,7 @@ impl SelectRequest {
     }
 
     /// Builds a kernel IPC message for a `select()` system call request.
+    #[allow(clippy::too_many_arguments)]
     pub fn build(
         tid: ThreadIdentifier,
         nfds: usize,
@@ -99,6 +103,8 @@ impl SelectRequest {
         writefds: &Option<&mut fd_set>,
         errorfds: &Option<&mut fd_set>,
         timeout: &Option<timeval>,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
         // Validate number of file descriptors.
         if nfds > FD_SETSIZE {
@@ -125,8 +131,8 @@ impl SelectRequest {
             SystemCallMessage::new(SystemCallMessageHeader::SelectRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -207,14 +213,16 @@ impl SelectResponse {
         readfds: &Option<fd_set>,
         writefds: &Option<fd_set>,
         errorfds: &Option<fd_set>,
+        source: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Message {
         let message: SelectResponse = SelectResponse::new(ready_fds, readfds, writefds, errorfds);
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::SelectResponse, message.into_bytes());
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

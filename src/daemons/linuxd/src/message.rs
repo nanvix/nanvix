@@ -156,6 +156,7 @@ mod tests {
             Instant,
         },
     };
+    use ::sys::ipc::MessageType;
     use ::syscall::{
         fcntl::message::OpenAtRequest,
         message::MessagePartitioner,
@@ -189,8 +190,11 @@ mod tests {
         let original: OpenAtRequest =
             OpenAtRequest::new(-100, "/tmp/test.txt", 0x41, 0o644).expect("valid OpenAtRequest");
 
-        let parts: Vec<SystemCallMessagePart> =
-            extract_parts(original.into_parts(source).expect("valid parts"));
+        let parts: Vec<SystemCallMessagePart> = extract_parts(
+            original
+                .into_parts(source, ::syscall::LINUXD, MessageType::Ikc)
+                .expect("valid parts"),
+        );
 
         let mut assembler: RequestAssembler = RequestAssembler::default();
 
@@ -233,14 +237,20 @@ mod tests {
         let source_a: ThreadIdentifier = ThreadIdentifier::from(1_i32);
         let request_a: OpenAtRequest =
             OpenAtRequest::new(-100, "/tmp/a.txt", 0x41, 0o644).expect("valid OpenAtRequest");
-        let parts_a: Vec<SystemCallMessagePart> =
-            extract_parts(request_a.into_parts(source_a).expect("valid parts"));
+        let parts_a: Vec<SystemCallMessagePart> = extract_parts(
+            request_a
+                .into_parts(source_a, ::syscall::LINUXD, MessageType::Ikc)
+                .expect("valid parts"),
+        );
 
         let source_b: ThreadIdentifier = ThreadIdentifier::from(2_i32);
         let request_b: OpenAtRequest =
             OpenAtRequest::new(-100, "/tmp/b.txt", 0x41, 0o644).expect("valid OpenAtRequest");
-        let parts_b: Vec<SystemCallMessagePart> =
-            extract_parts(request_b.into_parts(source_b).expect("valid parts"));
+        let parts_b: Vec<SystemCallMessagePart> = extract_parts(
+            request_b
+                .into_parts(source_b, ::syscall::LINUXD, MessageType::Ikc)
+                .expect("valid parts"),
+        );
 
         // Barrier: signal when Thread A has released the lock.
         let lock_released: Arc<tokio::sync::Notify> = Arc::new(tokio::sync::Notify::new());

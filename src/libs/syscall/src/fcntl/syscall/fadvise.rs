@@ -5,25 +5,22 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    fcntl::message::FileAdvisoryInformationRequest,
+    safe::RawFileDescriptor,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 use sysapi::sys_types::off_t;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        fcntl::message::FileAdvisoryInformationRequest,
-        SystemCallMessage,
-        SystemCallMessageHeader,
-    },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
-};
 
 //==================================================================================================
 // Standalone Functions
@@ -45,7 +42,6 @@ use {
 ///
 /// Upon success, `posix_fadvise()` empty. Otherwise, it returns an error.
 ///
-#[allow(unreachable_code)]
 pub fn posix_fadvise(
     fd: RawFileDescriptor,
     offset: off_t,
@@ -59,36 +55,18 @@ pub fn posix_fadvise(
         len,
         advice
     );
-
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return Ok(());
-        }
-        Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "fadvise not available in standalone mode",
-        ))
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    posix_fadvise_linuxd(fd, offset, len, advice)
-}
-
-/// Forwards a `posix_fadvise` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn posix_fadvise_linuxd(
-    fd: RawFileDescriptor,
-    offset: off_t,
-    len: off_t,
-    advice: c_int,
-) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = FileAdvisoryInformationRequest::build(tid, fd, offset, len, advice);
+    let request: Message = FileAdvisoryInformationRequest::build(
+        tid,
+        fd,
+        offset,
+        len,
+        advice,
+        crate::VFS_DESTINATION,
+        crate::VFS_MESSAGE_TYPE,
+    );
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.

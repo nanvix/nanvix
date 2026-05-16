@@ -5,26 +5,23 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    safe::RawFileDescriptor,
+    unistd::message::FileChownRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::{
     gid_t,
     uid_t,
-};
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        unistd::message::FileChownRequest,
-        SystemCallMessage,
-        SystemCallMessageHeader,
-    },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
 };
 
 //==================================================================================================
@@ -48,28 +45,17 @@ use {
 ///
 pub fn fchown(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), Error> {
     ::syslog::trace!("fchown(): fd={:?}, owner={:?}, group={:?}", fd, owner, group);
-
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return Ok(());
-        }
-        Err(Error::new(ErrorCode::OperationNotSupported, "fchown not available in standalone mode"))
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    fchown_linuxd(fd, owner, group)
-}
-
-/// Forwards a `fchown` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn fchown_linuxd(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it
-    let request: Message = FileChownRequest::build(tid, fd, owner, group);
+    let request: Message = FileChownRequest::build(
+        tid,
+        fd,
+        owner,
+        group,
+        crate::VFS_DESTINATION,
+        crate::VFS_MESSAGE_TYPE,
+    );
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.

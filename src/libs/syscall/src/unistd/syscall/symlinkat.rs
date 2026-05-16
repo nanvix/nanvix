@@ -5,24 +5,23 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::Error;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        message::MessagePartitioner,
-        unistd::message::SymbolicLinkAtRequest,
-        SystemCallMessage,
-        SystemCallMessageHeader,
+use crate::{
+    message::MessagePartitioner,
+    unistd::message::SymbolicLinkAtRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::alloc::{
+    string::ToString,
+    vec::Vec,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
     },
-    ::alloc::{
-        string::ToString,
-        vec::Vec,
-    },
-    ::sys::{
-        error::ErrorCode,
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -52,30 +51,15 @@ pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> 
         linkpath
     );
 
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_symlinkat(target, dirfd, linkpath).map_err(|e| {
-            let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::warn!("symlinkat(): VFS symlinkat failed (linkpath={linkpath:?}, error={e})");
-            Error::new(code, "vfs symlinkat failed")
-        })
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    symlinkat_linuxd(target, dirfd, linkpath)
-}
-
-/// Forwards a `symlinkat` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn symlinkat_linuxd(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> {
+    let target: alloc::borrow::Cow<'_, str> = crate::path::expand_path(target);
+    let linkpath: alloc::borrow::Cow<'_, str> = crate::path::expand_path(linkpath);
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let request: SymbolicLinkAtRequest =
         SymbolicLinkAtRequest::new(target.to_string(), dirfd, linkpath.to_string())?;
 
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
 
     // Send request.
     for request in &requests {

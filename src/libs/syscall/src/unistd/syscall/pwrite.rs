@@ -5,36 +5,27 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    safe::RawFileDescriptor,
+    unistd::message::{
+        PartialWriteRequest,
+        PartialWriteResponse,
+    },
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::core::cmp;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::{
     c_size_t,
     off_t,
-};
-#[cfg(feature = "standalone")]
-use ::sysapi::unistd::{
-    STDERR_FILENO,
-    STDIN_FILENO,
-    STDOUT_FILENO,
-};
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        unistd::message::{
-            PartialWriteRequest,
-            PartialWriteResponse,
-        },
-        SystemCallMessage,
-        SystemCallMessageHeader,
-    },
-    ::core::cmp,
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
 };
 
 //==================================================================================================
@@ -60,34 +51,23 @@ use {
 pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_size_t, Error> {
     ::syslog::trace!("pwrite(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
-    // In standalone mode, forward operation to virtual file system (VFS).
+    // POSIX requires pwrite on a non-seekable fd (pipe/stdio) to return ESPIPE.
     #[cfg(feature = "standalone")]
     {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return ::nvx::vfs::fd::vfs_pwrite(fd, buffer, offset).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::warn!("pwrite(): VFS pwrite failed (fd={fd}, error={e})");
-                Error::new(code, "vfs pwrite failed")
-            });
-        }
+        use ::sysapi::unistd::{
+            STDERR_FILENO,
+            STDIN_FILENO,
+            STDOUT_FILENO,
+        };
+
         if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
-            let reason: &str = "illegal seek on stdio";
-            ::syslog::warn!("pwrite(): {reason} (fd={fd})");
-            return Err(Error::new(ErrorCode::IllegalSeek, reason));
+            ::syslog::warn!(
+                "pwrite(): illegal seek on stdio (fd={fd:?}, buffer={buffer:?}, offset={offset})",
+            );
+            return Err(Error::new(ErrorCode::IllegalSeek, "illegal seek on stdio"));
         }
-        let reason: &str = "pwrite not available in standalone mode";
-        ::syslog::warn!("pwrite(): {reason} (fd={fd})");
-        Err(Error::new(ErrorCode::OperationNotSupported, reason))
     }
 
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    pwrite_linuxd(fd, buffer, offset)
-}
-
-/// Forwards a `pwrite` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_size_t, Error> {
     let mut total_written: c_size_t = 0;
     let mut buffer_offset: usize = 0;
 
@@ -107,6 +87,8 @@ fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<
             chunk_size as c_size_t,
             offset + buffer_offset as off_t,
             chunk,
+            crate::VFS_DESTINATION,
+            crate::VFS_MESSAGE_TYPE,
         );
         ::sys::kcall::ipc::__kcall_send(&request)?;
 

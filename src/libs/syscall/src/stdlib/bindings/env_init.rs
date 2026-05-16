@@ -31,6 +31,12 @@ use ::sysapi::ffi::{
 ///
 /// Always returns `0`.
 ///
+/// # Note
+///
+/// In standalone mode, tilde expansion (`~` → `$HOME`) is performed client-side by the syscall
+/// layer (see [`crate::path::expand_path`]) before paths are sent to vfsd via IPC. The `HOME`
+/// value is read from the process-local environment table populated by this function.
+///
 /// # Safety
 ///
 /// This function is unsafe because it dereferences raw pointers.
@@ -41,49 +47,6 @@ use ::sysapi::ffi::{
 ///
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn __nanvix_env_init(envp: *const *const c_char) -> c_int {
-    // Register the setenv callback for HOME synchronization.
-    #[cfg(feature = "standalone")]
-    env_table::register_setenv_callback(on_setenv);
-
-    // NOTE: `init_from_raw` uses `insert_entry` directly (not `set`), so the callback
-    // registered above is intentionally *not* invoked for each initial variable. HOME is
-    // explicitly synchronized below instead.
     env_table::init_from_raw(envp);
-
-    // If HOME is set, synchronize with VFS tilde expansion.
-    #[cfg(feature = "standalone")]
-    {
-        let home: *const c_char = env_table::get("HOME");
-        if !home.is_null() {
-            if let Ok(home_str) = ::core::ffi::CStr::from_ptr(home).to_str() {
-                if let Err(e) = ::nvx::vfs::set_home(home_str) {
-                    ::syslog::warn!("__nanvix_env_init(): failed to set VFS home (error={e:?})");
-                }
-            }
-        }
-    }
-
     0
-}
-
-//==================================================================================================
-// Callback Functions
-//==================================================================================================
-
-/// Callback invoked by `env_table::set()` after a variable is written. Synchronizes the VFS home
-/// directory when HOME is updated.
-#[cfg(feature = "standalone")]
-fn on_setenv(key: &str, value: &[u8]) {
-    if key == "HOME" {
-        match ::core::str::from_utf8(value) {
-            Ok(home_str) => {
-                if let Err(e) = ::nvx::vfs::set_home(home_str) {
-                    ::syslog::warn!("on_setenv(): failed to set VFS home (error={e:?})");
-                }
-            },
-            Err(_) => {
-                ::syslog::warn!("on_setenv(): HOME value is not valid UTF-8, skipping VFS sync");
-            },
-        }
-    }
 }

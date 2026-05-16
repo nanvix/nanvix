@@ -17,7 +17,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::sys_types::{
     c_size_t,
@@ -68,6 +71,8 @@ impl PartialWriteRequest {
         count: c_size_t,
         offset: off_t,
         buffer: [u8; Self::BUFFER_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Message {
         let message: PartialWriteRequest = PartialWriteRequest::new(fd, count, offset, buffer);
         let message: SystemCallMessage = SystemCallMessage::new(
@@ -76,8 +81,8 @@ impl PartialWriteRequest {
         );
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -115,16 +120,21 @@ impl PartialWriteResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, count: c_ssize_t) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        count: c_ssize_t,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: PartialWriteResponse = PartialWriteResponse::new(count);
         let message: SystemCallMessage = SystemCallMessage::new(
             SystemCallMessageHeader::PartialWriteResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

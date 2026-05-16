@@ -21,7 +21,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::sys_types::off_t;
 
@@ -67,6 +70,8 @@ impl FileSpaceControlRequest {
         fd: i32,
         offset: off_t,
         len: off_t,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
         let message: FileSpaceControlRequest = FileSpaceControlRequest::new(fd, offset, len);
         let message: SystemCallMessage = SystemCallMessage::new(
@@ -75,8 +80,8 @@ impl FileSpaceControlRequest {
         );
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -114,16 +119,21 @@ impl FileSpaceControlResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, ret: i32) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        ret: i32,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: FileSpaceControlResponse = FileSpaceControlResponse::new(ret);
         let message: SystemCallMessage = SystemCallMessage::new(
             SystemCallMessageHeader::FileSpaceControlResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

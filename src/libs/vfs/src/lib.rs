@@ -98,11 +98,9 @@ pub use crate::{
     },
     state::{
         create_mount,
-        home,
         init,
         is_initialized,
         mount_image,
-        set_home,
         unmount,
         MAX_FAT_SIZE,
         MIN_FAT_SIZE,

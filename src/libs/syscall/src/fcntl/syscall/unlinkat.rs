@@ -5,24 +5,23 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::Error;
-use ::sysapi::ffi::c_int;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        fcntl::message::UnlinkAtRequest,
-        message::MessagePartitioner,
-        SystemCallMessage,
-        SystemCallMessageHeader,
-    },
-    ::alloc::vec::Vec,
-    ::sys::{
-        error::ErrorCode,
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
+use crate::{
+    fcntl::message::UnlinkAtRequest,
+    message::MessagePartitioner,
+    safe::RawFileDescriptor,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
+use ::alloc::vec::Vec;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
+};
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // Standalone Functions
@@ -44,33 +43,16 @@ use {
 /// Upon successful completion, the `unlinkat()` system call returns empty. Otherwise, it returns an
 /// error.
 ///
-#[allow(unreachable_code)]
 pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Result<(), Error> {
     ::syslog::trace!("unlinkat(): dirfd={}, pathname={}, flags={}", dirfd, pathname, flags);
 
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_unlinkat(dirfd, pathname, flags).map_err(|e| {
-            let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::warn!("unlinkat(): VFS unlinkat failed (pathname={pathname:?}, error={e})");
-            Error::new(code, "vfs unlinkat failed")
-        })
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    unlinkat_linuxd(dirfd, pathname, flags)
-}
-
-/// Forwards an `unlinkat` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn unlinkat_linuxd(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Result<(), Error> {
+    let pathname: alloc::borrow::Cow<'_, str> = crate::path::expand_path(pathname);
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: UnlinkAtRequest = UnlinkAtRequest::new(dirfd, pathname, flags)?;
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let request: UnlinkAtRequest = UnlinkAtRequest::new(dirfd, &pathname, flags)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
     for request in &requests {
         ::sys::kcall::ipc::__kcall_send(request)?;
     }

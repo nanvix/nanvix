@@ -53,10 +53,26 @@ impl ProcessIdentifier {
     /// Identifier of the kernel process.
     pub const KERNEL: ProcessIdentifier = ProcessIdentifier(Self::KERNEL_RAW);
 
-    // Raw identifier for the network daemon process.
+    /// Identifier of the init daemon process.
+    pub const INITD: ProcessIdentifier = ProcessIdentifier(1);
+
+    /// Raw identifier for the memory management daemon process.
+    pub const MEMD_RAW: i32 = 2;
+
+    /// Identifier of the memory management daemon process.
+    pub const MEMD: ProcessIdentifier = ProcessIdentifier(Self::MEMD_RAW);
+
+    /// Raw identifier for the network daemon sentinel.
+    ///
+    /// NOTE: In standalone deployment mode, `networkd` does not run as a guest process. Network
+    /// messages use IKC routing and are intercepted by the host-side I/O handler. This constant
+    /// serves as a message tag for host-side dispatch and does **not** correspond to an actual
+    /// guest PID. Its value intentionally aliases [`Self::MEMD_RAW`] because both cannot coexist
+    /// in the same deployment: `memd` runs in standalone mode (guest), while `networkd` is
+    /// handled on the host.
     pub const NETWORKD_RAW: i32 = 2;
 
-    /// Identifier of the network daemon process.
+    /// Sentinel identifier for the network daemon (host-only, see [`Self::NETWORKD_RAW`]).
     pub const NETWORKD: ProcessIdentifier = ProcessIdentifier(Self::NETWORKD_RAW);
 
     /// Raw identifier for the VFS daemon process.
@@ -67,9 +83,6 @@ impl ProcessIdentifier {
 
     /// Error message for conversion failures.
     const PARSE_ERROR_MESSAGE: &'static str = "invalid process identifier";
-
-    /// Identifier of the init daemon process.
-    pub const INITD: ProcessIdentifier = ProcessIdentifier(1);
 
     pub fn to_ne_bytes(&self) -> [u8; core::mem::size_of::<i32>()] {
         self.0.to_ne_bytes()

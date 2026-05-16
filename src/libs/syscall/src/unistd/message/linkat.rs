@@ -34,7 +34,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use sysapi::limits::PATH_MAX;
 
@@ -271,6 +274,8 @@ impl MessagePartitioner for LinkAtRequest {
         part_number: u16,
         payload_size: u8,
         payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
@@ -279,6 +284,8 @@ impl MessagePartitioner for LinkAtRequest {
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }
@@ -312,14 +319,19 @@ impl LinkAtResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, ret: i32) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        ret: i32,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: LinkAtResponse = LinkAtResponse::new(ret);
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::LinkAtResponse, message.into_bytes());
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

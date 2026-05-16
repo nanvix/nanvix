@@ -78,28 +78,28 @@ runs_on = ["microvm"]
 
 [[tests]]
 executor = "terminal"
-program = "./bin/arch-rust.elf"
+program = "./bin/arch-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/echo-rust-nostd.elf"
+program = "./bin/echo-rust-nostd.initrd"
 input = '["hello"]'
 expected_output = "hello"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/thread-rust.elf"
+program = "./bin/thread-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/stress-rust.elf"
+program = "./bin/stress-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/linux-app.elf"
+program = "./bin/linux-app.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
 
@@ -116,7 +116,7 @@ expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/mount-test.elf"
+program = "./bin/mount-test.initrd"
 extra_nanvixd_args = "-mount ./bin/mount-test-data"
 input = "[]"
 expect_empty_output = true
@@ -129,6 +129,6 @@ runs_on = ["microvm"]
 
 [[tests]]
 executor = "terminal"
-program = "./bin/network-rust.elf"
+program = "./bin/network-rust.initrd"
 extra_nanvixd_args = "-allow-host-networking"
 expected_output = "ok"

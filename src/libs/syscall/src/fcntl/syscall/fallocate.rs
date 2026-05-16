@@ -5,22 +5,21 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::Error;
-use sysapi::sys_types::off_t;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        fcntl::message::FileSpaceControlRequest,
-        SystemCallMessage,
-        SystemCallMessageHeader,
-    },
-    ::sys::{
-        error::ErrorCode,
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
+use crate::{
+    fcntl::message::FileSpaceControlRequest,
+    safe::RawFileDescriptor,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
+};
+use sysapi::sys_types::off_t;
 
 //==================================================================================================
 // Standalone Functions
@@ -41,35 +40,19 @@ use {
 ///
 /// Upon success, `posix_fallocate()` empty. Otherwise, it returns an error.
 ///
-#[allow(unreachable_code)]
 pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Result<(), Error> {
     ::syslog::trace!("posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
-
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return ::nvx::vfs::fd::vfs_fallocate(fd, offset, len).map_err(|e| {
-                let code: ::sys::error::ErrorCode = e.into();
-                ::syslog::warn!("posix_fallocate(): VFS fallocate failed (fd={fd:?}, error={e})");
-                Error::new(code, "vfs fallocate failed")
-            });
-        }
-        Ok(())
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    posix_fallocate_linuxd(fd, offset, len)
-}
-
-/// Forwards a `posix_fallocate` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn posix_fallocate_linuxd(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = FileSpaceControlRequest::build(tid, fd, offset, len)?;
+    let request: Message = FileSpaceControlRequest::build(
+        tid,
+        fd,
+        offset,
+        len,
+        crate::VFS_DESTINATION,
+        crate::VFS_MESSAGE_TYPE,
+    )?;
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.

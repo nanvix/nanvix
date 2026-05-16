@@ -5,22 +5,21 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::Error;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        fcntl::message::RenameAtRequest,
-        message::MessagePartitioner,
-        SystemCallMessage,
-        SystemCallMessageHeader,
+use crate::{
+    fcntl::message::RenameAtRequest,
+    message::MessagePartitioner,
+    safe::RawFileDescriptor,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::alloc::vec::Vec;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
     },
-    ::alloc::vec::Vec,
-    ::sys::{
-        error::ErrorCode,
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -44,7 +43,6 @@ use {
 /// Upon successful completion, the `renameat()` system call returns empty. Otherwise, it returns an
 /// error.
 ///
-#[allow(unreachable_code)]
 pub fn renameat(
     olddirfd: RawFileDescriptor,
     oldpath: &str,
@@ -59,34 +57,14 @@ pub fn renameat(
         newpath
     );
 
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_renameat(olddirfd, oldpath, newdirfd, newpath).map_err(|e| {
-            let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::warn!("renameat(): VFS renameat failed (oldpath={oldpath:?}, error={e})");
-            Error::new(code, "vfs renameat failed")
-        })
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    renameat_linuxd(olddirfd, oldpath, newdirfd, newpath)
-}
-
-/// Forwards a `renameat` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn renameat_linuxd(
-    olddirfd: RawFileDescriptor,
-    oldpath: &str,
-    newdirfd: RawFileDescriptor,
-    newpath: &str,
-) -> Result<(), Error> {
+    let oldpath: alloc::borrow::Cow<'_, str> = crate::path::expand_path(oldpath);
+    let newpath: alloc::borrow::Cow<'_, str> = crate::path::expand_path(newpath);
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: RenameAtRequest = RenameAtRequest::new(olddirfd, oldpath, newdirfd, newpath)?;
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let request: RenameAtRequest = RenameAtRequest::new(olddirfd, &oldpath, newdirfd, &newpath)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
     for request in &requests {
         ::sys::kcall::ipc::__kcall_send(request)?;
     }

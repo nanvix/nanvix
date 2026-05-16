@@ -5,24 +5,21 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    safe::RawFileDescriptor,
+    sys::stat::message::FileChmodRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use sysapi::sys_types::mode_t;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        sys::stat::message::FileChmodRequest,
-        SystemCallMessage,
-        SystemCallMessageHeader,
-    },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
-};
 
 //==================================================================================================
 // Standalone Functions
@@ -42,31 +39,13 @@ use {
 ///
 /// Upon successful completion, `fchmod()` returns empty. Otherwise, it returns an error.
 ///
-#[allow(unreachable_code)]
 pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
     ::syslog::trace!("fchmod(): fd={:?}, mode={:o}", fd, mode);
-
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return Ok(());
-        }
-        Err(Error::new(ErrorCode::OperationNotSupported, "fchmod not available in standalone mode"))
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    fchmod_linuxd(fd, mode)
-}
-
-/// Forwards a `fchmod` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn fchmod_linuxd(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it
-    let request: Message = FileChmodRequest::build(tid, fd, mode);
+    let request: Message =
+        FileChmodRequest::build(tid, fd, mode, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.

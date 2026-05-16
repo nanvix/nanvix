@@ -63,7 +63,7 @@ rustc-dep-of-std = [
     "type-safe/rustc-dep-of-std",
     "spin/rustc-dep-of-std",
 ]
-standalone = ["dep:nvx", "nvx/standalone", "dep:sysalloc"]
+standalone = ["dep:sysalloc"]
 
 # TODO (#798): remove this feature flag once the signal module is stable.
 sigaction = []

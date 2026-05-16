@@ -17,7 +17,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use sysapi::sys_types::{
     gid_t,
@@ -51,14 +54,18 @@ impl GetIdsRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: GetIdsRequest = GetIdsRequest::new();
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::GetIdsRequest, message.into_bytes());
         Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         )
@@ -108,14 +115,16 @@ impl GetIdsResponse {
         gid: gid_t,
         euid: uid_t,
         egid: gid_t,
+        source: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Message {
         let message: GetIdsResponse = GetIdsResponse::new(uid, gid, euid, egid);
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::GetIdsResponse, message.into_bytes());
         Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         )
