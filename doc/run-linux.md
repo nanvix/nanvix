@@ -20,6 +20,7 @@ Run a hello-world application and see its output on the terminal:
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [Creating Multibinary Images](#creating-multibinary-images)
 - [Interactive Mode](#interactive-mode)
   - [Shim Configuration](#shim-configuration)
 - [Running Containers](#running-containers)
@@ -37,6 +38,37 @@ Run a hello-world application and see its output on the terminal:
 - [Expert Mode: Standalone User VM](#expert-mode-standalone-user-vm)
 
 ---
+
+## Creating Multibinary Images
+
+In standalone deployment mode, guest applications run alongside system daemons (`procd`, `memd`,
+and `vfsd`) inside a single VM. These components must be bundled together into a **multibinary
+image** using the `mkimage` tool before they can be launched.
+
+The `mkimage` tool takes an output path and a list of `<path>;<name>` pairs, where `<path>` is
+the path to the ELF binary and `<name>` is the logical name the kernel uses to identify it at
+boot:
+
+```bash
+./bin/mkimage.elf -o my-app.img \
+    ./bin/procd.elf\;procd \
+    ./bin/memd.elf\;memd \
+    ./bin/vfsd.elf\;vfsd \
+    ./bin/my-app.elf\;my-app
+```
+
+The three daemon binaries (`procd.elf`, `memd.elf`, `vfsd.elf`) are shipped in the release
+archive under `bin/`. Your application binary must be compiled and linked against `libposix.a`
+using the `user.ld` linker script (both also in the release archive).
+
+Once the image is created, pass it to `nanvixd` as the program argument:
+
+```bash
+./bin/nanvixd.elf -console-file /dev/stdout -- ./my-app.img
+```
+
+> **Important:** The daemon order in the `mkimage` command line matters. Daemons are started in
+> the order they appear, and `procd` must be listed first because other daemons depend on it.
 
 ## Interactive Mode
 
