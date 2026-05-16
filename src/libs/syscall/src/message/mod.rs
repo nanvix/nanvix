@@ -15,8 +15,14 @@ mod part;
 use ::alloc::vec::Vec;
 use ::sys::{
     error::Error,
-    ipc::Message,
-    pm::ThreadIdentifier,
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -96,6 +102,8 @@ where
         part_number: u16,
         payload_size: u8,
         payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error>;
 
     ///
@@ -106,13 +114,20 @@ where
     /// # Parameters
     ///
     /// - `tid`: Thread identifier.
+    /// - `destination`: Process identifier of the destination daemon.
+    /// - `message_type`: Message type to use.
     ///
     /// # Returns
     ///
     /// Upon success, a vector containing the message parts is returned. Upon failure, an error is
     /// returned instead.
     ///
-    fn into_parts(self, tid: ThreadIdentifier) -> Result<Vec<Message>, Error> {
+    fn into_parts(
+        self,
+        tid: ThreadIdentifier,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Result<Vec<Message>, Error> {
         let bytes: Vec<u8> = self.to_bytes();
         let num_parts: u16 = bytes
             .len()
@@ -138,6 +153,8 @@ where
                 part_number as u16,
                 chunk.len() as u8,
                 payload,
+                destination,
+                message_type,
             )?);
         }
 
@@ -159,7 +176,7 @@ where
     /// Upon success, a vector containing the response messages is returned. Upon failure, an error
     /// is returned instead.
     ///
-    fn from_parts(parts: &Vec<SystemCallMessagePart>) -> Result<Self, Error> {
+    fn from_parts(parts: &[SystemCallMessagePart]) -> Result<Self, Error> {
         let mut bytes: Vec<u8> =
             Vec::with_capacity(parts.len() * SystemCallMessagePart::PAYLOAD_SIZE);
 

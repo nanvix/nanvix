@@ -207,7 +207,7 @@ fn do_close(backend: &NetBackend, tid: ThreadIdentifier, request: CloseRequest) 
     let fd: i32 = to_host_fd(request.fd);
     trace!("networkd::close(): tid={tid:?}, fd={fd}");
     match backend.close(fd) {
-        Ok(()) => CloseResponse::build(tid, 0, MessageSender::from(::syscall::NETWORKD)),
+        Ok(()) => CloseResponse::build(tid, 0, ::syscall::NETWORKD, MessageType::Ikc),
         Err(NetError::Interrupted) => build_error(tid, ErrorCode::Interrupted),
         Err(NetError::Errno(code)) => build_error(tid, code),
     }

@@ -29,7 +29,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::{
     ffi::{
@@ -94,7 +97,13 @@ impl GetDirectoryEntriesRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, fd: c_int, count: usize) -> Result<Message, Error> {
+    pub fn build(
+        tid: ThreadIdentifier,
+        fd: c_int,
+        count: usize,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Result<Message, Error> {
         let message: GetDirectoryEntriesRequest = GetDirectoryEntriesRequest::new(fd, count)?;
         let message: SystemCallMessage = SystemCallMessage::new(
             SystemCallMessageHeader::GetDirectoryEntriesRequest,
@@ -102,8 +111,8 @@ impl GetDirectoryEntriesRequest {
         );
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -262,6 +271,8 @@ impl MessagePartitioner for GetDirectoryEntriesResponse {
         part_number: u16,
         payload_size: u8,
         payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_response(
             tid,
@@ -270,6 +281,8 @@ impl MessagePartitioner for GetDirectoryEntriesResponse {
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }

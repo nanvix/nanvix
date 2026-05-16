@@ -20,9 +20,12 @@ use ::sys::{
     },
     ipc::{
         Message,
-        MessageReceiver,
+        MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -30,15 +33,11 @@ use ::sys::{
 //==================================================================================================
 
 pub fn close(fd: i32) -> Result<(), Error> {
-    // In standalone mode, forward operation to virtual file system (VFS).
+    // In standalone mode, route based on fd type.
     #[cfg(feature = "standalone")]
     {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return ::nvx::vfs::fd::vfs_close(fd).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::warn!("close(): VFS close failed (fd={fd}, error={e})");
-                Error::new(code, "vfs close failed")
-            });
+        if crate::is_vfs_fd(fd) {
+            return close_ipc(fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
         }
         use ::sysapi::unistd::{
             STDERR_FILENO,
@@ -49,7 +48,7 @@ pub fn close(fd: i32) -> Result<(), Error> {
             return Ok(());
         }
         if crate::is_socket_fd(fd) {
-            return close_ipc(fd, MessageReceiver::from(crate::NETWORK_DESTINATION));
+            return close_ipc(fd, crate::NETWORK_DESTINATION, MessageType::Ikc);
         }
         // Unknown fd: no handler available.
         ::syslog::warn!("close(): bad file descriptor fd={fd}");
@@ -58,16 +57,20 @@ pub fn close(fd: i32) -> Result<(), Error> {
 
     #[cfg(not(feature = "standalone"))]
     {
-        close_ipc(fd, MessageReceiver::from(crate::LINUXD))
+        close_ipc(fd, crate::LINUXD, MessageType::Ikc)
     }
 }
 
 /// Forwards a `close` request via IPC to the given destination.
-fn close_ipc(fd: i32, destination: MessageReceiver) -> Result<(), Error> {
+fn close_ipc(
+    fd: i32,
+    destination: ProcessIdentifier,
+    message_type: MessageType,
+) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = CloseRequest::build(tid, fd, destination);
+    let request: Message = CloseRequest::build(tid, fd, destination, message_type);
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.

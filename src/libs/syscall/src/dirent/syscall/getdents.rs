@@ -5,36 +5,35 @@
 // Imports
 //==================================================================================================
 
-use crate::dirent::posix_dent;
+use crate::{
+    dirent::{
+        message::{
+            GetDirectoryEntriesRequest,
+            GetDirectoryEntriesResponse,
+        },
+        posix_dent,
+    },
+    message::{
+        MessagePartitioner,
+        SystemCallLongMessage,
+        SystemCallMessagePart,
+    },
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
 use ::alloc::vec::Vec;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
 use ::syslog::{
     trace,
     warn,
-};
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        dirent::message::{
-            GetDirectoryEntriesRequest,
-            GetDirectoryEntriesResponse,
-        },
-        message::{
-            MessagePartitioner,
-            SystemCallLongMessage,
-            SystemCallMessagePart,
-        },
-        SystemCallMessage,
-        SystemCallMessageHeader,
-    },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
 };
 
 //==================================================================================================
@@ -59,37 +58,20 @@ use {
 pub fn posix_getdents(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error> {
     trace!("posix_getdents(): fd={}, count={:?}", fd, count);
 
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return ::nvx::vfs::fd::vfs_getdents(fd, count).map_err(|e| {
-                let code: ErrorCode = e.into();
-                warn!("posix_getdents(): VFS getdents failed (fd={fd}, error={e})");
-                Error::new(code, "vfs getdents failed")
-            });
-        }
-        Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "getdents not available in standalone mode",
-        ))
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    posix_getdents_linuxd(fd, count)
-}
-
-/// Forwards a `posix_getdents` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error> {
     const MESSAGE_ASSEMBLER_CAPACITY: usize =
         GetDirectoryEntriesResponse::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request message.
-    let request: Message = GetDirectoryEntriesRequest::build(tid, fd, count).map_err(|error| {
+    let request: Message = GetDirectoryEntriesRequest::build(
+        tid,
+        fd,
+        count,
+        crate::VFS_DESTINATION,
+        crate::VFS_MESSAGE_TYPE,
+    )
+    .map_err(|error| {
         let reason: &str = "failed to build message";
         warn!("posix_getdents(): {reason} (error={:?})", error);
         Error::new(error.code, reason)

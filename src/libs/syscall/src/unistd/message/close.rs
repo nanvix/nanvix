@@ -20,7 +20,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -52,14 +55,19 @@ impl CloseRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, fd: i32, destination: MessageReceiver) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        fd: i32,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: CloseRequest = CloseRequest::new(fd);
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::CloseRequest, message.into_bytes());
         Message::new(
             MessageSender::from(tid),
-            destination,
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         )
@@ -102,14 +110,19 @@ impl CloseResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, ret: i32, sender: MessageSender) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        ret: i32,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: CloseResponse = CloseResponse::new(ret);
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::CloseResponse, message.into_bytes());
         let message: Message = Message::new(
-            sender,
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

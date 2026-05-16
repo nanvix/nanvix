@@ -20,8 +20,14 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
-    pm::ThreadIdentifier,
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::{
     sys_types::c_size_t,
@@ -53,17 +59,18 @@ fn read_chunk(
     tid: ThreadIdentifier,
     fd: RawFileDescriptor,
     chunk: &mut [u8],
+    destination: ProcessIdentifier,
+    message_type: MessageType,
+    pull_pid: ProcessIdentifier,
+    pull_tid: ThreadIdentifier,
 ) -> Result<c_size_t, Error> {
-    // Send metadata-only ReadRequest via IKC message.
-    let request: Message = ReadRequest::build(tid, fd, chunk.len() as c_size_t);
+    // Send metadata-only ReadRequest via IPC message.
+    let request: Message =
+        ReadRequest::build(tid, fd, chunk.len() as c_size_t, destination, message_type);
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
-    // Pull data from linuxd via data chunk transfer.
-    let bytes_pulled: usize = ::sys::kcall::ipc::__kcall_pull(
-        ::sys::pm::ProcessIdentifier::KERNEL,
-        ::sys::pm::ThreadIdentifier::KERNEL,
-        chunk,
-    )?;
+    // Pull data via data chunk transfer.
+    let bytes_pulled: usize = ::sys::kcall::ipc::__kcall_pull(pull_pid, pull_tid, chunk)?;
 
     // Receive response metadata (count, status). The bulk data is already in the buffer.
     let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
@@ -160,30 +167,45 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         ::syslog::trace!("read(): fd={:?}, buffer.len={:?}", fd, buffer.len());
     }
 
-    // In standalone mode, forward operation to virtual file system (VFS).
+    // Special case: stdin always goes through IKC to kernel, even in standalone mode.
     #[cfg(feature = "standalone")]
-    {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            let n: c_size_t = ::nvx::vfs::fd::vfs_read(fd, buffer).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::warn!("read(): VFS read failed (fd={fd}, error={e})");
-                Error::new(code, "vfs read failed")
-            })?;
-            return Ok(n);
-        }
-        if fd == STDIN_FILENO {
-            return read_via_ikc(fd, buffer);
-        }
-        Err(Error::new(ErrorCode::BadFile, "read: fd is not a VFS fd in standalone mode"))
+    if fd == STDIN_FILENO {
+        return read_ipc(
+            fd,
+            buffer,
+            crate::LINUXD,
+            MessageType::Ikc,
+            ProcessIdentifier::KERNEL,
+            ThreadIdentifier::KERNEL,
+        );
     }
 
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    read_via_ikc(fd, buffer)
+    // In standalone mode, only VFS file descriptors should be routed to vfsd.
+    #[cfg(feature = "standalone")]
+    if !crate::is_vfs_fd(fd) {
+        ::syslog::warn!("read(): bad file descriptor fd={fd} in standalone mode");
+        return Err(Error::new(ErrorCode::BadFile, "read: fd is not a VFS fd in standalone mode"));
+    }
+
+    read_ipc(
+        fd,
+        buffer,
+        crate::VFS_DESTINATION,
+        crate::VFS_MESSAGE_TYPE,
+        crate::VFS_PUSH_PULL_PID,
+        crate::VFS_PUSH_PULL_TID,
+    )
 }
 
-/// Forwards a `read` request via IKC, splitting the buffer into page-aligned chunks.
-fn read_via_ikc(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error> {
+/// Forwards a `read` request via IPC, splitting the buffer into page-aligned chunks.
+fn read_ipc(
+    fd: RawFileDescriptor,
+    buffer: &mut [u8],
+    destination: ProcessIdentifier,
+    message_type: MessageType,
+    pull_pid: ProcessIdentifier,
+    pull_tid: ThreadIdentifier,
+) -> Result<c_size_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let mut total_read: c_size_t = 0;
@@ -194,7 +216,8 @@ fn read_via_ikc(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Er
             page_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
         let chunk: &mut [u8] = &mut buffer[offset..offset + chunk_size];
 
-        let count: c_size_t = read_chunk(tid, fd, chunk)?;
+        let count: c_size_t =
+            read_chunk(tid, fd, chunk, destination, message_type, pull_pid, pull_tid)?;
 
         // EOF or zero-length read.
         if count == 0 {

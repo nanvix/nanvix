@@ -14,6 +14,7 @@ homepage.workspace = true
 name = "memd"
 
 [dependencies]
+config = { workspace = true }
 sys = { workspace = true }
 nvx = { workspace = true }
 proc = { workspace = true, features = ["syscall"] }

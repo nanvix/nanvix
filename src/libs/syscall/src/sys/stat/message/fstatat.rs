@@ -27,8 +27,14 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
-    pm::ThreadIdentifier,
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use sysapi::{
     limits::PATH_MAX,
@@ -192,6 +198,8 @@ impl MessagePartitioner for FileStatAtRequest {
     /// - `part_number`: Partition number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
+    /// - `destination`: Process identifier.
+    /// - `message_type`: Message type.
     ///
     /// # Returns
     ///
@@ -203,6 +211,8 @@ impl MessagePartitioner for FileStatAtRequest {
         part_number: u16,
         payload_size: u8,
         payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
@@ -211,6 +221,8 @@ impl MessagePartitioner for FileStatAtRequest {
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }
@@ -386,6 +398,8 @@ impl MessagePartitioner for FileStatAtResponse {
     /// - `part_number`: Partition number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
+    /// - `destination`: Process identifier.
+    /// - `message_type`: Message type.
     ///
     /// # Returns
     ///
@@ -397,6 +411,8 @@ impl MessagePartitioner for FileStatAtResponse {
         part_number: u16,
         payload_size: u8,
         payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_response(
             tid,
@@ -405,6 +421,8 @@ impl MessagePartitioner for FileStatAtResponse {
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }

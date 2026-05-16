@@ -1237,7 +1237,7 @@ impl WorkerThreadHandle {
             STDIN_FILENO | STDOUT_FILENO | STDERR_FILENO => {
                 // Perform a fake close, as standard file descriptors
                 // are shared with the current process.
-                Ok(CloseResponse::build(source, 0, MessageSender::from(::syscall::LINUXD)))
+                Ok(CloseResponse::build(source, 0, ::syscall::LINUXD, ::sys::ipc::MessageType::Ikc))
             },
             // Closing other file descriptors.
             _ => unistd::do_close(syscall_table, source, request),
@@ -1323,7 +1323,12 @@ impl WorkerThreadHandle {
                 match result {
                     Ok(()) => {
                         debug!("wrote {} bytes to the gateway", write_buf.len());
-                        Ok(WriteResponse::build(source, write_buf.len() as i32))
+                        Ok(WriteResponse::build(
+                            source,
+                            write_buf.len() as i32,
+                            ::syscall::LINUXD,
+                            ::sys::ipc::MessageType::Ikc,
+                        ))
                     },
                     Err(e) if e.kind() == ErrorKind::Interrupted => {
                         debug!("handle_write_request(): write interrupted");
@@ -1347,7 +1352,12 @@ impl WorkerThreadHandle {
                 )
             };
             if ret >= 0 {
-                Ok(WriteResponse::build(source, ret as i32))
+                Ok(WriteResponse::build(
+                    source,
+                    ret as i32,
+                    ::syscall::LINUXD,
+                    ::sys::ipc::MessageType::Ikc,
+                ))
             } else {
                 let errno: i32 = unsafe { *libc::__errno_location() };
                 if errno == libc::EINTR {
@@ -1473,7 +1483,7 @@ impl WorkerThreadHandle {
                 Ok(0) => {
                     debug!("handle_read_request(): eof");
                     send_bulk_response(Vec::new(), 0)?;
-                    Ok(ReadResponse::eof(source))
+                    Ok(ReadResponse::eof(source, ::syscall::LINUXD, ::sys::ipc::MessageType::Ikc))
                 },
                 Ok(n) => {
                     debug!("read {n} bytes from gateway");
@@ -1483,7 +1493,13 @@ impl WorkerThreadHandle {
                     send_bulk_response(read_buf, n as u32)?;
                     let empty_buf: [u8; ReadResponse::BUFFER_SIZE] =
                         [0u8; ReadResponse::BUFFER_SIZE];
-                    Ok(ReadResponse::build(source, n as c_ssize_t, empty_buf))
+                    Ok(ReadResponse::build(
+                        source,
+                        n as c_ssize_t,
+                        empty_buf,
+                        ::syscall::LINUXD,
+                        ::sys::ipc::MessageType::Ikc,
+                    ))
                 },
                 Err(e) if e.kind() == ErrorKind::Interrupted => {
                     debug!("handle_read_request(): read interrupted");
@@ -1499,7 +1515,7 @@ impl WorkerThreadHandle {
                 Err(e) => {
                     error!("handle_read_request(): error reading data from gateway (error={e:?})");
                     send_bulk_response(Vec::new(), 0)?;
-                    Ok(ReadResponse::eof(source))
+                    Ok(ReadResponse::eof(source, ::syscall::LINUXD, ::sys::ipc::MessageType::Ikc))
                 },
             }
         } else {
@@ -1519,10 +1535,16 @@ impl WorkerThreadHandle {
                 read_buf.truncate(n);
                 send_bulk_response(read_buf, n as u32)?;
                 let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
-                Ok(ReadResponse::build(source, n as c_ssize_t, empty_buf))
+                Ok(ReadResponse::build(
+                    source,
+                    n as c_ssize_t,
+                    empty_buf,
+                    ::syscall::LINUXD,
+                    ::sys::ipc::MessageType::Ikc,
+                ))
             } else if ret == 0 {
                 send_bulk_response(Vec::new(), 0)?;
-                Ok(ReadResponse::eof(source))
+                Ok(ReadResponse::eof(source, ::syscall::LINUXD, ::sys::ipc::MessageType::Ikc))
             } else {
                 let errno: i32 = unsafe { *libc::__errno_location() };
                 if errno == libc::EINTR {

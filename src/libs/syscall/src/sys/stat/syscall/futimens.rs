@@ -5,24 +5,21 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    safe::RawFileDescriptor,
+    sys::stat::message::UpdateFileAccessTimeRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::time::timespec;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        sys::stat::message::UpdateFileAccessTimeRequest,
-        SystemCallMessage,
-        SystemCallMessageHeader,
-    },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
-};
 
 //==================================================================================================
 // Standalone Functions
@@ -42,34 +39,18 @@ use {
 ///
 /// Upon successful completion, `futimens()` returns empty. Otherwise, it returns an error.
 ///
-#[allow(unreachable_code)]
 pub fn futimens(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), Error> {
     ::syslog::warn!("futimens(): fd={:?}, times={:?}", fd, times);
-
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return Ok(());
-        }
-        Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "futimens not available in standalone mode",
-        ))
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    futimens_linuxd(fd, times)
-}
-
-/// Forwards a `futimens` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn futimens_linuxd(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = UpdateFileAccessTimeRequest::build(tid, fd, times);
+    let request: Message = UpdateFileAccessTimeRequest::build(
+        tid,
+        fd,
+        times,
+        crate::VFS_DESTINATION,
+        crate::VFS_MESSAGE_TYPE,
+    );
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.

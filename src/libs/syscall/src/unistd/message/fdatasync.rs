@@ -20,7 +20,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -52,7 +55,12 @@ impl FileDataSyncRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, fd: i32) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        fd: i32,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: FileDataSyncRequest = FileDataSyncRequest::new(fd);
         let message: SystemCallMessage = SystemCallMessage::new(
             SystemCallMessageHeader::FileDataSyncRequest,
@@ -60,8 +68,8 @@ impl FileDataSyncRequest {
         );
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -105,16 +113,21 @@ impl FileDataSyncResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, ret: i32) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        ret: i32,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: FileDataSyncResponse = FileDataSyncResponse::new(ret);
         let message: SystemCallMessage = SystemCallMessage::new(
             SystemCallMessageHeader::FileDataSyncResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

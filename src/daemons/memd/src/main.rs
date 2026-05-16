@@ -93,7 +93,7 @@ pub fn main() {
         Ok(pid) => pid,
         Err(e) => panic!("failed to get pid (error={:?})", e),
     };
-    let myname: &str = "memd";
+    let myname: &str = ::config::daemons::MEMD_NAME;
 
     ::syslog::info!("running memory management daemon (pid={:?})...", mypid);
 

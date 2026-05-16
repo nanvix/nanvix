@@ -5,25 +5,24 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::Error;
+use crate::{
+    message::MessagePartitioner,
+    sys::stat::message::FileChmodAtRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::alloc::vec::Vec;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
+};
 use ::sysapi::{
     ffi::c_int,
     sys_types::mode_t,
-};
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        message::MessagePartitioner,
-        sys::stat::message::FileChmodAtRequest,
-        SystemCallMessage,
-        SystemCallMessageHeader,
-    },
-    ::alloc::vec::Vec,
-    ::sys::{
-        error::ErrorCode,
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
 };
 
 //==================================================================================================
@@ -47,31 +46,14 @@ use {
 /// Upon successful completion, the `fchmodat()` system call returns empty. Otherwise, it returns an
 /// error.
 ///
-#[allow(unreachable_code)]
 pub fn fchmodat(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(), Error> {
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_fchmodat(dirfd, path, mode, flag).map_err(|e| {
-            let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::warn!("fchmodat(): VFS fchmodat failed (path={path:?}, error={e})");
-            ::sys::error::Error::new(code, "vfs fchmodat failed")
-        })
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    fchmodat_linuxd(dirfd, path, mode, flag)
-}
-
-/// Forwards a `fchmodat` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn fchmodat_linuxd(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(), Error> {
+    let path: alloc::borrow::Cow<'_, str> = crate::path::expand_path(path);
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
-    let request: FileChmodAtRequest = FileChmodAtRequest::new(dirfd, mode, flag, path)?;
+    let request: FileChmodAtRequest = FileChmodAtRequest::new(dirfd, mode, flag, &path)?;
 
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
 
     for request in &requests {
         ::sys::kcall::ipc::__kcall_send(request)?;

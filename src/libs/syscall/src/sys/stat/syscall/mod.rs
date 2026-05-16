@@ -21,28 +21,25 @@ mod utimensat;
 // Imports
 //==================================================================================================
 
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        message::{
-            MessagePartitioner,
-            SystemCallLongMessage,
-            SystemCallMessagePart,
-        },
-        sys::stat::message::FileStatAtResponse,
-        SystemCallMessage,
-        SystemCallMessageHeader,
+use crate::{
+    message::{
+        MessagePartitioner,
+        SystemCallLongMessage,
+        SystemCallMessagePart,
     },
-    ::alloc::vec::Vec,
-    ::sys::{
-        error::{
-            Error,
-            ErrorCode,
-        },
-        ipc::Message,
-    },
-    sysapi::sys_stat,
+    sys::stat::message::FileStatAtResponse,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
+use ::alloc::vec::Vec;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+};
+use ::sysapi::sys_stat;
 
 //==================================================================================================
 // Exports
@@ -74,7 +71,6 @@ pub use utimensat::utimensat;
 /// Upon successful completion, the file information is returned. Upon failure, an error is returned
 /// instead.
 ///
-#[cfg(not(feature = "standalone"))]
 fn fstatat_response() -> Result<sys_stat::stat, Error> {
     let capacity: usize = sys_stat::stat::SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
 
