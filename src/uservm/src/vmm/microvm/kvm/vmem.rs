@@ -290,7 +290,7 @@ impl VirtualMemory {
     /// - `files`: File handles to keep alive.
     ///
     pub fn attach_backing_files(&mut self, files: Vec<File>) {
-        self.backing_files = files;
+        self.backing_files.extend(files);
     }
 
     ///
