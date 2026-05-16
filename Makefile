@@ -320,7 +320,7 @@ ALL_GUEST_STATIC_LIBS := posix
 ALL_GUEST_RUST_LIBS := arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe koptions nvx proc raw-array nanvix-slab sorted-vec static_assert sysapi syscall sysalloc syslog-macros syslog sys libc_stdlib libc_string mmio-tag multiimage vfs-bench-common
 ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe koptions proc raw-array nanvix-slab sorted-vec static_assert libc_string syslog-macros syslog mmio-tag
 
-ALL_GUEST_DAEMONS := memd procd
+ALL_GUEST_DAEMONS := memd procd vfsd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd snapshot-rust-nostd vfs-bench-nostd mount-bench-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
 ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust c-bindings-rust mount-test cmdline-len-rust
@@ -406,6 +406,10 @@ all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-ke
 # The containerd shim is not needed in standalone mode.
 ifneq ($(DEPLOYMENT_MODE),standalone)
 all-nanvix: all-nanvix-shim
+endif
+# Standalone mode bundles daemon binaries into per-test multibinary images.
+ifeq ($(DEPLOYMENT_MODE),standalone)
+all-nanvix: standalone-images
 endif
 endif
 
@@ -839,10 +843,33 @@ image: all-nanvix
 	$(MKIMAGE) -o $(IMAGE) \
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
 		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
+		$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT)\;vfsd \
 		$(BINARIES_DIR)/testd.$(EXEC_FORMAT)\;testd
 
 image-clean:
 	$(RM_CMD) $(IMAGE)
+
+# Standalone tests that do NOT require daemons (run as bare .elf binaries).
+STANDALONE_NO_DAEMON_TESTS := test-kernel
+
+# List of standalone test binaries that need multibinary images with daemons.
+# Each image bundles procd, memd, vfsd, and the test binary itself.
+STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_NO_DAEMON_TESTS),$(ALL_GUEST_TESTS)) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
+
+# Build standalone multibinary images for all test/benchmark/application binaries.
+# Uses .initrd extension to avoid collisions with other build artifacts (e.g., vfs-test.img).
+standalone-images: all-nanvix
+	@echo "Building standalone multibinary images..."
+	$(foreach bin,$(STANDALONE_TEST_BINARIES),\
+		$(MKIMAGE) -o $(BINARIES_DIR)/$(bin).initrd \
+			$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
+			$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
+			$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT)\;vfsd \
+			$(BINARIES_DIR)/$(bin).$(EXEC_FORMAT)\;$(bin) && ) true
+	@echo "Standalone images built successfully."
+
+standalone-images-clean:
+	$(foreach bin,$(STANDALONE_TEST_BINARIES),$(RM_CMD) $(BINARIES_DIR)/$(bin).initrd ;)
 
 #===================================================================================================
 # Build Rules for Running Tests

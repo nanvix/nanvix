@@ -24,7 +24,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -69,11 +72,14 @@ impl SystemCallMessagePart {
     /// - `part_number`: Part number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
+    /// - `destination`: Process identifier of the destination daemon.
+    /// - `message_type`: Message type to use.
     ///
     /// # Returns
     ///
     /// Upon success, the request message is returned. Upon failure, an error is returned instead.
     ///
+    #[allow(clippy::too_many_arguments)]
     pub fn build_request(
         tid: ThreadIdentifier,
         header: SystemCallMessageHeader,
@@ -81,8 +87,20 @@ impl SystemCallMessagePart {
         part_number: u16,
         payload_size: u8,
         payload: [u8; Self::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
-        Self::build(tid, header, total_parts, part_number, payload_size, payload, false)
+        Self::build(
+            tid,
+            header,
+            total_parts,
+            part_number,
+            payload_size,
+            payload,
+            false,
+            destination,
+            message_type,
+        )
     }
 
     ///
@@ -103,6 +121,7 @@ impl SystemCallMessagePart {
     ///
     /// Upon success, the response message is returned. Upon failure, an error is returned instead.
     ///
+    #[allow(clippy::too_many_arguments)]
     pub fn build_response(
         tid: ThreadIdentifier,
         header: SystemCallMessageHeader,
@@ -110,8 +129,20 @@ impl SystemCallMessagePart {
         part_number: u16,
         payload_size: u8,
         payload: [u8; Self::PAYLOAD_SIZE],
+        source: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
-        Self::build(tid, header, total_parts, part_number, payload_size, payload, true)
+        Self::build(
+            tid,
+            header,
+            total_parts,
+            part_number,
+            payload_size,
+            payload,
+            true,
+            source,
+            message_type,
+        )
     }
 
     ///
@@ -161,6 +192,7 @@ impl SystemCallMessagePart {
     /// # Returns
     ///
     /// Upon success, the message is returned. Upon failure, an error is returned instead.
+    #[allow(clippy::too_many_arguments)]
     fn build(
         tid: ThreadIdentifier,
         header: SystemCallMessageHeader,
@@ -169,6 +201,8 @@ impl SystemCallMessagePart {
         payload_size: u8,
         payload: [u8; Self::PAYLOAD_SIZE],
         is_response: bool,
+        daemon: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
         // Check if part number is valid.
         if part_number >= total_parts {
@@ -183,17 +217,17 @@ impl SystemCallMessagePart {
         let message: SystemCallMessage = SystemCallMessage::new(header, message.into_bytes());
         if is_response {
             Ok(Message::new(
-                MessageSender::from(crate::LINUXD),
+                MessageSender::from(daemon),
                 MessageReceiver::from(tid),
-                MessageType::Ikc,
+                message_type,
                 None,
                 message.into_bytes(),
             ))
         } else {
             Ok(Message::new(
                 MessageSender::from(tid),
-                MessageReceiver::from(crate::LINUXD),
-                MessageType::Ikc,
+                MessageReceiver::from(daemon),
+                message_type,
                 None,
                 message.into_bytes(),
             ))

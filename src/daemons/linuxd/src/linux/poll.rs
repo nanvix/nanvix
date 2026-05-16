@@ -20,7 +20,10 @@ use ::log::{
 };
 use ::sys::{
     error::ErrorCode,
-    ipc::Message,
+    ipc::{
+        Message,
+        MessageType,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::{
@@ -100,12 +103,14 @@ pub fn do_poll<T>(
 
                     // Build response.
                     match PollResponse::new(&ready_fds, &revents) {
-                        Ok(response) => match response.into_parts(tid) {
-                            Ok(messages) => Ok(messages),
-                            Err(error) => {
-                                error!("poll(): failed to partition response ({error:?})");
-                                Ok(vec![crate::build_error(tid, error.code)])
-                            },
+                        Ok(response) => {
+                            match response.into_parts(tid, ::syscall::LINUXD, MessageType::Ikc) {
+                                Ok(messages) => Ok(messages),
+                                Err(error) => {
+                                    error!("poll(): failed to partition response ({error:?})");
+                                    Ok(vec![crate::build_error(tid, error.code)])
+                                },
+                            }
                         },
                         Err(error) => {
                             error!("poll(): failed to build response ({error:?})");

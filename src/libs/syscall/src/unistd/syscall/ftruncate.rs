@@ -5,25 +5,22 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    unistd::message::FileTruncateRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::{
     ffi::c_int,
     sys_types::off_t,
-};
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        unistd::message::FileTruncateRequest,
-        SystemCallMessage,
-        SystemCallMessageHeader,
-    },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
 };
 
 //==================================================================================================
@@ -46,35 +43,16 @@ use {
 ///
 pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
     ::syslog::debug!("ftruncate(): fd={}, length={}", fd, length);
-
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return ::nvx::vfs::fd::vfs_ftruncate(fd, length).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::warn!("ftruncate(): VFS ftruncate failed (fd={fd}, error={e})");
-                Error::new(code, "vfs ftruncate failed")
-            });
-        }
-        Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "ftruncate not available in standalone mode",
-        ))
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    ftruncate_linuxd(fd, length)
-}
-
-/// Forwards a `ftruncate` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn ftruncate_linuxd(fd: c_int, length: off_t) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = FileTruncateRequest::build(tid, fd, length);
+    let request: Message = FileTruncateRequest::build(
+        tid,
+        fd,
+        length,
+        crate::VFS_DESTINATION,
+        crate::VFS_MESSAGE_TYPE,
+    );
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.

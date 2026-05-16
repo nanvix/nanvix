@@ -24,8 +24,12 @@ use ::nanvix::{
             DataChunkHeader,
             IkcFrame,
             Message,
+            MessageType,
         },
-        pm::ThreadIdentifier,
+        pm::{
+            ProcessIdentifier,
+            ThreadIdentifier,
+        },
     },
     syscall::{
         SystemCallMessage,
@@ -160,8 +164,13 @@ impl Benchmark {
             // Step 4: Send ReadResponse metadata.
             let warmup_empty_buf: [u8; ReadResponse::BUFFER_SIZE] =
                 [0u8; ReadResponse::BUFFER_SIZE];
-            let warmup_read_response: Message =
-                ReadResponse::build(warmup_tid, payload.len() as i32, warmup_empty_buf);
+            let warmup_read_response: Message = ReadResponse::build(
+                warmup_tid,
+                payload.len() as i32,
+                warmup_empty_buf,
+                ProcessIdentifier::KERNEL,
+                MessageType::Ikc,
+            );
             io_thread_data_tx
                 .send(IkcFrame::Message(warmup_read_response))
                 .await?;
@@ -185,8 +194,12 @@ impl Benchmark {
             };
 
             // Step 7: Send WriteResponse to acknowledge the write.
-            let warmup_write_response: Message =
-                WriteResponse::build(warmup_tid, payload.len() as i32);
+            let warmup_write_response: Message = WriteResponse::build(
+                warmup_tid,
+                payload.len() as i32,
+                ProcessIdentifier::KERNEL,
+                MessageType::Ikc,
+            );
             io_thread_data_tx
                 .send(IkcFrame::Message(warmup_write_response))
                 .await?;
@@ -269,7 +282,13 @@ impl Benchmark {
 
             // Step 4: Send ReadResponse metadata (buffer is empty; data was sent via bulk).
             let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
-            let read_response: Message = ReadResponse::build(tid, payload.len() as i32, empty_buf);
+            let read_response: Message = ReadResponse::build(
+                tid,
+                payload.len() as i32,
+                empty_buf,
+                ProcessIdentifier::KERNEL,
+                MessageType::Ikc,
+            );
             io_thread_data_tx
                 .send(IkcFrame::Message(read_response))
                 .await?;
@@ -315,7 +334,12 @@ impl Benchmark {
             latencies.push(start.elapsed().as_micros());
 
             // Step 7: Send WriteResponse to acknowledge the write.
-            let write_response: Message = WriteResponse::build(tid, payload.len() as i32);
+            let write_response: Message = WriteResponse::build(
+                tid,
+                payload.len() as i32,
+                ProcessIdentifier::KERNEL,
+                MessageType::Ikc,
+            );
             io_thread_data_tx
                 .send(IkcFrame::Message(write_response))
                 .await?;

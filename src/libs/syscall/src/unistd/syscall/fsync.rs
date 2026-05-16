@@ -5,23 +5,20 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    unistd::message::FileSyncRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        unistd::message::FileSyncRequest,
-        SystemCallMessage,
-        SystemCallMessageHeader,
-    },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
-};
 
 //==================================================================================================
 // Standalone Functions
@@ -41,31 +38,12 @@ use {
 /// Upon successful completion, empty is returned. Otherwise, an error is returned.
 ///
 pub fn fsync(fd: c_int) -> Result<(), Error> {
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return ::nvx::vfs::fd::vfs_fsync(fd).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::warn!("fsync(): VFS fsync failed (fd={fd}, error={e})");
-                Error::new(code, "vfs fsync failed")
-            });
-        }
-        Ok(())
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    fsync_linuxd(fd)
-}
-
-/// Forwards a `fsync` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn fsync_linuxd(fd: c_int) -> Result<(), Error> {
+    ::syslog::trace!("fsync(): fd={:?}", fd);
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = FileSyncRequest::build(tid, fd);
+    let request: Message =
+        FileSyncRequest::build(tid, fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.

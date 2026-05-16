@@ -146,8 +146,6 @@ pub struct Vfs {
     mounts: Vec<Mount>,
     /// Current working directory (always absolute, never ends with "/").
     cwd: String,
-    /// Home directory (always absolute). Defaults to "/".
-    home: String,
 }
 
 //==================================================================================================
@@ -160,7 +158,6 @@ impl Vfs {
         Self {
             mounts: Vec::new(),
             cwd: String::from("/"),
-            home: String::from("/"),
         }
     }
 
@@ -217,33 +214,6 @@ impl Vfs {
         &self.cwd
     }
 
-    /// Gets the home directory.
-    #[inline]
-    pub fn home(&self) -> &str {
-        &self.home
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Sets the home directory.
-    ///
-    /// # Parameters
-    ///
-    /// - `path`: The new home directory path. Must be absolute.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Fat32Error::InvalidPath`] if the path is not absolute.
-    ///
-    pub fn set_home(&mut self, path: &str) -> Result<(), Fat32Error> {
-        if !path.starts_with('/') {
-            return Err(Fat32Error::InvalidPath);
-        }
-        self.home = self.normalize_path(path)?;
-        Ok(())
-    }
-
     /// Changes the current working directory.
     ///
     /// # Parameters
@@ -285,21 +255,12 @@ impl Vfs {
             return Err(Fat32Error::InvalidPath);
         }
 
-        // Expand tilde prefix.
-        let expanded: String = if path == "~" {
-            self.home.clone()
-        } else if let Some(rest) = path.strip_prefix("~/") {
-            alloc::format!("{}/{}", self.home, rest)
-        } else {
+        let abs_path: String = if path.starts_with('/') {
             String::from(path)
-        };
-
-        let abs_path: String = if expanded.starts_with('/') {
-            expanded
         } else if self.cwd == "/" {
-            alloc::format!("/{}", expanded)
+            alloc::format!("/{}", path)
         } else {
-            alloc::format!("{}/{}", self.cwd, expanded)
+            alloc::format!("{}/{}", self.cwd, path)
         };
 
         let mut components: Vec<&str> = Vec::new();
@@ -705,7 +666,6 @@ mod tests {
     fn default_vfs() {
         let vfs: Vfs = Vfs::default();
         assert_eq!(vfs.cwd(), "/");
-        assert_eq!(vfs.home(), "/");
         assert_eq!(vfs.mount_count(), 0);
     }
 
@@ -746,121 +706,39 @@ mod tests {
         assert!(mount.readonly(), "read-only mount should return true");
     }
 
-    // -- Home directory tests ----------------------------------------------------
+    // -- Tilde is no longer expanded server-side ---------------------------------
 
-    /// Tests that the default home directory is "/".
+    /// Tests that "~" is treated as a relative path (no expansion).
     #[test]
-    fn default_home() {
-        let vfs: Vfs = Vfs::new();
-        assert_eq!(vfs.home(), "/", "default home should be /");
-    }
-
-    /// Tests set_home() and home() round-trip.
-    #[test]
-    fn set_home_roundtrip() {
-        let mut vfs: Vfs = Vfs::new();
-        vfs.set_home("/data/home").expect("set_home should succeed");
-        assert_eq!(vfs.home(), "/data/home");
-    }
-
-    /// Tests that set_home() rejects relative paths.
-    #[test]
-    fn set_home_relative_fails() {
-        let mut vfs: Vfs = Vfs::new();
-        let err: Fat32Error = vfs.set_home("relative").expect_err("should fail");
-        assert_eq!(err, Fat32Error::InvalidPath, "relative path should be rejected");
-    }
-
-    /// Tests that set_home() normalizes the path (strips trailing slashes).
-    #[test]
-    fn set_home_normalizes_trailing_slash() {
-        let mut vfs: Vfs = Vfs::new();
-        vfs.set_home("/data/home/")
-            .expect("set_home should succeed");
-        assert_eq!(vfs.home(), "/data/home");
-    }
-
-    /// Tests that set_home() normalizes dot-dot components.
-    #[test]
-    fn set_home_normalizes_dotdot() {
-        let mut vfs: Vfs = Vfs::new();
-        vfs.set_home("/data/home/../other")
-            .expect("set_home should succeed");
-        assert_eq!(vfs.home(), "/data/other");
-    }
-
-    /// Tests that set_home() rejects paths that escape root via "..".
-    #[test]
-    fn set_home_rejects_escape_root() {
-        let mut vfs: Vfs = Vfs::new();
-        let err: Fat32Error = vfs.set_home("/..").expect_err("should fail");
-        assert_eq!(err, Fat32Error::InvalidPath);
-    }
-
-    // -- Tilde expansion tests ---------------------------------------------------
-
-    /// Tests that "~" alone expands to the home directory.
-    #[test]
-    fn normalize_tilde_alone() {
-        let mut vfs: Vfs = Vfs::new();
-        vfs.set_home("/home/user").expect("set_home should succeed");
-        let result: String = vfs.normalize_path("~").expect("should succeed");
-        assert_eq!(result, "/home/user");
-    }
-
-    /// Tests that "~/foo/bar" expands correctly.
-    #[test]
-    fn normalize_tilde_subpath() {
-        let mut vfs: Vfs = Vfs::new();
-        vfs.set_home("/home/user").expect("set_home should succeed");
-        let result: String = vfs.normalize_path("~/foo/bar").expect("should succeed");
-        assert_eq!(result, "/home/user/foo/bar");
-    }
-
-    /// Tests that "~" with default home ("/") resolves to "/".
-    #[test]
-    fn normalize_tilde_default_home() {
+    fn normalize_tilde_is_relative() {
         let vfs: Vfs = Vfs::new();
         let result: String = vfs.normalize_path("~").expect("should succeed");
-        assert_eq!(result, "/");
+        assert_eq!(result, "/~", "bare ~ should be treated as relative segment");
     }
 
-    /// Tests that "~/file.txt" with default home resolves to "/file.txt".
+    /// Tests that "~/foo" is treated as a relative path (no expansion).
     #[test]
-    fn normalize_tilde_subpath_default_home() {
+    fn normalize_tilde_subpath_is_relative() {
         let vfs: Vfs = Vfs::new();
-        let result: String = vfs.normalize_path("~/file.txt").expect("should succeed");
-        assert_eq!(result, "/file.txt");
+        let result: String = vfs.normalize_path("~/foo").expect("should succeed");
+        assert_eq!(result, "/~/foo", "~/foo should be treated as relative path");
     }
 
     /// Tests that paths not starting with "~" are unaffected.
     #[test]
     fn normalize_no_tilde() {
-        let mut vfs: Vfs = Vfs::new();
-        vfs.set_home("/home/user").expect("set_home should succeed");
+        let vfs: Vfs = Vfs::new();
         let result: String = vfs
             .normalize_path("/data/file.txt")
             .expect("should succeed");
         assert_eq!(result, "/data/file.txt");
     }
 
-    /// Tests that "~user" is NOT expanded (treated as relative path).
+    /// Tests that "~user" is treated as a relative path.
     #[test]
     fn normalize_tilde_user_not_expanded() {
-        let mut vfs: Vfs = Vfs::new();
-        vfs.set_home("/home/user").expect("set_home should succeed");
+        let vfs: Vfs = Vfs::new();
         let result: String = vfs.normalize_path("~other").expect("should succeed");
         assert_eq!(result, "/~other", "~user should not be expanded");
-    }
-
-    /// Tests tilde expansion with ".." components.
-    #[test]
-    fn normalize_tilde_with_dotdot() {
-        let mut vfs: Vfs = Vfs::new();
-        vfs.set_home("/home/user").expect("set_home should succeed");
-        let result: String = vfs
-            .normalize_path("~/docs/../file.txt")
-            .expect("should succeed");
-        assert_eq!(result, "/home/user/file.txt");
     }
 }

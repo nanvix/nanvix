@@ -20,7 +20,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::ffi::c_int;
 
@@ -56,14 +59,19 @@ impl FileChdirRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, fd: c_int) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        fd: c_int,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: FileChdirRequest = FileChdirRequest::new(fd);
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::FileChdirRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -101,16 +109,20 @@ impl FileChdirResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: FileChdirResponse = FileChdirResponse::new();
         let message: SystemCallMessage = SystemCallMessage::new(
             SystemCallMessageHeader::FileChdirResponse,
             message.into_bytes(),
         );
         Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         )

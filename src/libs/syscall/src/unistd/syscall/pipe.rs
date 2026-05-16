@@ -49,7 +49,7 @@ fn pipe_linuxd() -> Result<[i32; 2], Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = PipeRequest::build(tid);
+    let request: Message = PipeRequest::build(tid, crate::LINUXD, ::sys::ipc::MessageType::Ikc);
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.

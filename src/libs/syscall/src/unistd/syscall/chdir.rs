@@ -5,23 +5,20 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    message::MessagePartitioner,
+    unistd::message::ChangeDirectoryRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        message::MessagePartitioner,
-        unistd::message::ChangeDirectoryRequest,
-        SystemCallMessage,
-        SystemCallMessageHeader,
+use ::alloc::vec::Vec;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
     },
-    ::alloc::vec::Vec,
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -45,29 +42,13 @@ use {
 pub fn chdir(path: &str) -> Result<(), Error> {
     ::syslog::trace!("chdir(): path={:?}", path);
 
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_chdir(path).map_err(|e| {
-            let code: ErrorCode = e.into();
-            ::syslog::warn!("chdir(): VFS chdir failed (path={path:?}, error={e})");
-            Error::new(code, "vfs chdir failed")
-        })
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    chdir_linuxd(path)
-}
-
-/// Forwards a `chdir` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn chdir_linuxd(path: &str) -> Result<(), Error> {
+    let path: alloc::borrow::Cow<'_, str> = crate::path::expand_path(path);
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: ChangeDirectoryRequest = ChangeDirectoryRequest::new(path)?;
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let request: ChangeDirectoryRequest = ChangeDirectoryRequest::new(&path)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
     for request in &requests {
         ::sys::kcall::ipc::__kcall_send(request)?;
     }

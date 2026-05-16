@@ -73,7 +73,7 @@ pub fn main() {
 
     // Make sure that memory daemon is running.
     loop {
-        match ::proc::lookup("memd") {
+        match ::proc::lookup(::config::daemons::MEMD_NAME) {
             Ok(_) => {
                 ::syslog::info!("memory daemon is running");
                 break;

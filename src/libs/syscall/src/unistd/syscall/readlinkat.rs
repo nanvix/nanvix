@@ -5,35 +5,32 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    message::{
+        MessagePartitioner,
+        SystemCallLongMessage,
+        SystemCallMessagePart,
+    },
+    unistd::message::{
+        ReadLinkAtRequest,
+        ReadLinkAtResponse,
+    },
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::alloc::{
+    string::ToString,
+    vec::Vec,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::c_ssize_t;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        message::{
-            MessagePartitioner,
-            SystemCallLongMessage,
-            SystemCallMessagePart,
-        },
-        unistd::message::{
-            ReadLinkAtRequest,
-            ReadLinkAtResponse,
-        },
-        SystemCallMessage,
-        SystemCallMessageHeader,
-    },
-    ::alloc::{
-        string::ToString,
-        vec::Vec,
-    },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
-};
 
 //==================================================================================================
 // Standalone Functions
@@ -58,36 +55,13 @@ use {
 pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, Error> {
     ::syslog::trace!("readlinkat(): dirfd={:?}, path={:?}, buf.len={:?}", dirfd, path, buf.len());
 
-    // In standalone mode, resolve the path via VFS and return POSIX-accurate errors.
-    // Symlinks never exist on FAT32, so an existing path yields EINVAL (not a symlink)
-    // and a missing path yields ENOENT.
-    #[cfg(feature = "standalone")]
-    {
-        match ::nvx::vfs::fd::vfs_resolve_path(dirfd, path) {
-            Some(resolved) => {
-                if ::nvx::vfs::fd::is_vfs_path(&resolved) {
-                    Err(Error::new(ErrorCode::InvalidArgument, "readlinkat: not a symbolic link"))
-                } else {
-                    Err(Error::new(ErrorCode::NoSuchEntry, "readlinkat: no such file or directory"))
-                }
-            },
-            None => Err(Error::new(ErrorCode::BadFile, "readlinkat: invalid directory fd")),
-        }
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    readlinkat_linuxd(dirfd, path, buf)
-}
-
-/// Forwards a `readlinkat` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn readlinkat_linuxd(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, Error> {
+    let path: alloc::borrow::Cow<'_, str> = crate::path::expand_path(path);
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let request: ReadLinkAtRequest = ReadLinkAtRequest::new(dirfd, path.to_string(), buf.len())?;
 
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
 
     for request in &requests {
         ::sys::kcall::ipc::__kcall_send(request)?;

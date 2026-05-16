@@ -17,7 +17,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::sys_types::off_t;
 
@@ -54,7 +57,13 @@ impl FileTruncateRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, fd: i32, length: off_t) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        fd: i32,
+        length: off_t,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: FileTruncateRequest = FileTruncateRequest::new(fd, length);
         let message: SystemCallMessage = SystemCallMessage::new(
             SystemCallMessageHeader::FileTruncateRequest,
@@ -62,8 +71,8 @@ impl FileTruncateRequest {
         );
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -101,16 +110,21 @@ impl FileTruncateResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, ret: i32) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        ret: i32,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: FileTruncateResponse = FileTruncateResponse::new(ret);
         let message: SystemCallMessage = SystemCallMessage::new(
             SystemCallMessageHeader::FileTruncateResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

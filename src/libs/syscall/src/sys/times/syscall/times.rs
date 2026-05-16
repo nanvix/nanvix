@@ -63,7 +63,7 @@ pub fn times(buffer: &mut Option<&mut tms>) -> Result<clock_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = TimesRequest::build(tid)?;
+    let request: Message = TimesRequest::build(tid, crate::LINUXD, ::sys::ipc::MessageType::Ikc)?;
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.

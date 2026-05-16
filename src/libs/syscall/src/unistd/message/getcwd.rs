@@ -33,7 +33,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use sysapi::limits::PATH_MAX;
 
@@ -63,7 +66,11 @@ impl GetCurrentWorkingDirectoryRequest {
         unsafe { core::mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: GetCurrentWorkingDirectoryRequest = GetCurrentWorkingDirectoryRequest::new();
         let message: SystemCallMessage = SystemCallMessage::new(
             crate::SystemCallMessageHeader::GetCurrentWorkingDirectoryRequest,
@@ -71,8 +78,8 @@ impl GetCurrentWorkingDirectoryRequest {
         );
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -167,6 +174,8 @@ impl MessagePartitioner for GetCurrentWorkingDirectoryResponse {
         part_number: u16,
         payload_size: u8,
         payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_response(
             tid,
@@ -175,6 +184,8 @@ impl MessagePartitioner for GetCurrentWorkingDirectoryResponse {
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }

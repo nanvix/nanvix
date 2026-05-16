@@ -18,7 +18,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::{
     sys_times::tms,
@@ -52,14 +55,18 @@ impl TimesRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier) -> Result<Message, Error> {
+    pub fn build(
+        tid: ThreadIdentifier,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Result<Message, Error> {
         let message: TimesRequest = TimesRequest::new();
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::TimesRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -100,14 +107,20 @@ impl TimesResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, elapsed: clock_t, buffer: tms) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        elapsed: clock_t,
+        buffer: tms,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: TimesResponse = TimesResponse::new(elapsed, buffer);
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::TimesResponse, message.into_bytes());
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

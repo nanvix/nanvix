@@ -28,7 +28,11 @@ pub struct MessageSender(i32);
 impl MessageSender {
     /// The kernel process is the sender of the message.
     pub const KERNEL: Self = MessageSender(ProcessIdentifier::KERNEL_RAW);
-    /// The network daemon is the sender of the message.
+    /// The memory management daemon is the sender of the message (standalone mode only).
+    /// NOTE: Aliases [`Self::NETWORKD`] — these are mutually exclusive deployment modes.
+    pub const MEMD: Self = MessageSender(ProcessIdentifier::MEMD_RAW);
+    /// The network daemon is the sender of the message (hosted mode only).
+    /// NOTE: Aliases [`Self::MEMD`] — these are mutually exclusive deployment modes.
     pub const NETWORKD: Self = MessageSender(ProcessIdentifier::NETWORKD_RAW);
     /// The VFS daemon is the sender of the message.
     pub const VFSD: Self = MessageSender(ProcessIdentifier::VFSD_RAW);
@@ -73,7 +77,11 @@ impl MessageReceiver {
 impl MessageReceiver {
     /// The kernel process is the receiver of the message.
     pub const KERNEL: Self = MessageReceiver(ProcessIdentifier::KERNEL_RAW);
-    /// The network daemon is the receiver of the message.
+    /// The memory management daemon is the receiver of the message (standalone mode only).
+    /// NOTE: Aliases [`Self::NETWORKD`] — these are mutually exclusive deployment modes.
+    pub const MEMD: Self = MessageReceiver(ProcessIdentifier::MEMD_RAW);
+    /// The network daemon is the receiver of the message (hosted mode only).
+    /// NOTE: Aliases [`Self::MEMD`] — these are mutually exclusive deployment modes.
     pub const NETWORKD: Self = MessageReceiver(ProcessIdentifier::NETWORKD_RAW);
     /// The VFS daemon is the receiver of the message.
     pub const VFSD: Self = MessageReceiver(ProcessIdentifier::VFSD_RAW);

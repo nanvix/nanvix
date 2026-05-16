@@ -21,8 +21,14 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
-    pm::ThreadIdentifier,
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::limits::OPEN_MAX;
 
@@ -230,6 +236,8 @@ impl MessagePartitioner for PollRequest {
         part_number: u16,
         payload_size: u8,
         payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
@@ -238,6 +246,8 @@ impl MessagePartitioner for PollRequest {
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }
@@ -405,6 +415,8 @@ impl MessagePartitioner for PollResponse {
         part_number: u16,
         payload_size: u8,
         payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_response(
             tid,
@@ -413,6 +425,8 @@ impl MessagePartitioner for PollResponse {
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }

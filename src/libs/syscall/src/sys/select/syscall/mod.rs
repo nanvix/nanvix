@@ -86,8 +86,16 @@ pub fn select(
     let tid: ThreadIdentifier = pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message =
-        SelectRequest::build(tid, nfds, &readfds, &writefds, &errorfds, timeout)?;
+    let request: Message = SelectRequest::build(
+        tid,
+        nfds,
+        &readfds,
+        &writefds,
+        &errorfds,
+        timeout,
+        crate::LINUXD,
+        ::sys::ipc::MessageType::Ikc,
+    )?;
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
