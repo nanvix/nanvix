@@ -852,9 +852,13 @@ image-clean:
 # Standalone tests that do NOT require daemons (run as bare .elf binaries).
 STANDALONE_NO_DAEMON_TESTS := test-kernel
 
+# Standalone binaries that manage VFS locally and must NOT include vfsd in their
+# .initrd image (vfsd would claim the RAMFS MMIO region before the benchmark).
+STANDALONE_NO_VFS_BINARIES := vfs-bench-nostd
+
 # List of standalone test binaries that need multibinary images with daemons.
 # Each image bundles procd, memd, vfsd, and the test binary itself.
-STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_NO_DAEMON_TESTS),$(ALL_GUEST_TESTS)) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
+STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_NO_DAEMON_TESTS) $(STANDALONE_NO_VFS_BINARIES),$(ALL_GUEST_TESTS)) $(filter-out $(STANDALONE_NO_VFS_BINARIES),$(ALL_GUEST_BENCHMARKS)) $(ALL_GUEST_APPLICATIONS)
 
 .PHONY: standalone-images standalone-images-clean
 
@@ -868,10 +872,16 @@ standalone-images: all-nanvix
 			$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
 			$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT)\;vfsd \
 			$(BINARIES_DIR)/$(bin).$(EXEC_FORMAT)\;$(bin) && ) true
+	$(foreach bin,$(STANDALONE_NO_VFS_BINARIES),\
+		$(MKIMAGE) -o $(BINARIES_DIR)/$(bin).initrd \
+			$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
+			$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
+			$(BINARIES_DIR)/$(bin).$(EXEC_FORMAT)\;$(bin) && ) true
 	@echo "Standalone images built successfully."
 
 standalone-images-clean:
 	$(foreach bin,$(STANDALONE_TEST_BINARIES),$(RM_CMD) $(BINARIES_DIR)/$(bin).initrd ;)
+	$(foreach bin,$(STANDALONE_NO_VFS_BINARIES),$(RM_CMD) $(BINARIES_DIR)/$(bin).initrd ;)
 
 #===================================================================================================
 # Build Rules for Running Tests
