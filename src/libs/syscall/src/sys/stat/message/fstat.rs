@@ -17,7 +17,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -60,14 +63,19 @@ impl FileStatRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, fd: i32) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        fd: i32,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: FileStatRequest = FileStatRequest::new(fd);
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::FileStatRequest, message.into_bytes());
         Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         )

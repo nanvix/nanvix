@@ -145,7 +145,9 @@ pub fn poll(
     // In standalone mode, poll is not available (no linuxd).
     #[cfg(feature = "standalone")]
     {
-        Err(Error::new(ErrorCode::OperationNotSupported, "poll not available in standalone mode"))
+        let reason: &str = "poll() is not available in standalone mode";
+        ::syslog::warn!("poll(): {reason} (fds={fds:?}, timeout={timeout:?})");
+        Err(Error::new(ErrorCode::OperationNotSupported, reason))
     }
 
     // Forward to linuxd via IPC.
@@ -166,7 +168,8 @@ fn poll_linuxd(
     let poll_fds: Vec<RawFileDescriptor> = fds.iter().map(|fd| fd.fd).collect();
     let timeout: i32 = timeout.into();
     let request: PollRequest = PollRequest::new(&poll_fds, &events, timeout)?;
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::LINUXD, ::sys::ipc::MessageType::Ikc)?;
     for request in &requests {
         ipc::__kcall_send(request)?;
     }

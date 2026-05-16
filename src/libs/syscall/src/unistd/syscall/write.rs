@@ -20,8 +20,14 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
-    pm::ThreadIdentifier,
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::{
     sys_types::c_size_t,
@@ -56,18 +62,19 @@ fn write_chunk(
     tid: ThreadIdentifier,
     fd: RawFileDescriptor,
     chunk: &[u8],
+    destination: ProcessIdentifier,
+    message_type: MessageType,
+    push_pid: ProcessIdentifier,
+    push_tid: ThreadIdentifier,
 ) -> Result<c_size_t, Error> {
-    // Build metadata-only request and send it via IKC message.
+    // Build metadata-only request and send it via IPC message.
     let empty_buf: [u8; WriteRequest::BUFFER_SIZE] = [0u8; WriteRequest::BUFFER_SIZE];
-    let request: Message = WriteRequest::build(tid, fd, chunk.len() as c_size_t, empty_buf);
+    let request: Message =
+        WriteRequest::build(tid, fd, chunk.len() as c_size_t, empty_buf, destination, message_type);
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
-    // Push actual data to linuxd via data chunk transfer.
-    ::sys::kcall::ipc::__kcall_push(
-        ::sys::pm::ProcessIdentifier::KERNEL,
-        ::sys::pm::ThreadIdentifier::KERNEL,
-        chunk,
-    )?;
+    // Push actual data via data chunk transfer.
+    ::sys::kcall::ipc::__kcall_push(push_pid, push_tid, chunk)?;
 
     // Receive response.
     let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
@@ -130,36 +137,45 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
         ::syslog::trace!("write(): fd={:?}, buffer.len={:?}", fd, buffer.len());
     }
 
-    // In standalone mode, forward operation to virtual file system (VFS).
+    // Special case: stdout/stderr always go through IKC to kernel, even in standalone mode.
     #[cfg(feature = "standalone")]
-    {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            let n: c_size_t = ::nvx::vfs::fd::vfs_write(fd, buffer).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::warn!("write(): VFS write failed (fd={fd}, error={e})");
-                Error::new(code, "vfs write failed")
-            })?;
-            return Ok(n);
-        }
-        write_standalone(fd, buffer)
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    write_via_ikc(fd, buffer)
-}
-
-/// Standalone-mode write: routes stdout/stderr through IKC to the host-side I/O handler.
-#[cfg(feature = "standalone")]
-fn write_standalone(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
     if fd == STDOUT_FILENO || fd == STDERR_FILENO {
-        return write_via_ikc(fd, buffer);
+        return write_ipc(
+            fd,
+            buffer,
+            crate::LINUXD,
+            MessageType::Ikc,
+            ProcessIdentifier::KERNEL,
+            ThreadIdentifier::KERNEL,
+        );
     }
-    Err(Error::new(ErrorCode::OperationNotSupported, "write not supported in standalone mode"))
+
+    // In standalone mode, only VFS file descriptors should be routed to vfsd.
+    #[cfg(feature = "standalone")]
+    if !crate::is_vfs_fd(fd) {
+        ::syslog::warn!("write(): bad file descriptor fd={fd} in standalone mode");
+        return Err(Error::new(ErrorCode::BadFile, "write: fd is not a VFS fd in standalone mode"));
+    }
+
+    write_ipc(
+        fd,
+        buffer,
+        crate::VFS_DESTINATION,
+        crate::VFS_MESSAGE_TYPE,
+        crate::VFS_PUSH_PULL_PID,
+        crate::VFS_PUSH_PULL_TID,
+    )
 }
 
-/// Forwards a write request via IKC, splitting the buffer into page-aligned chunks.
-fn write_via_ikc(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
+/// Forwards a write request via IPC, splitting the buffer into page-aligned chunks.
+fn write_ipc(
+    fd: RawFileDescriptor,
+    buffer: &[u8],
+    destination: ProcessIdentifier,
+    message_type: MessageType,
+    push_pid: ProcessIdentifier,
+    push_tid: ThreadIdentifier,
+) -> Result<c_size_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let mut total_written: c_size_t = 0;
@@ -170,7 +186,8 @@ fn write_via_ikc(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error
             page_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
         let chunk: &[u8] = &buffer[offset..offset + chunk_size];
 
-        let written: c_size_t = write_chunk(tid, fd, chunk)?;
+        let written: c_size_t =
+            write_chunk(tid, fd, chunk, destination, message_type, push_pid, push_tid)?;
         total_written += written;
         offset += written as usize;
 

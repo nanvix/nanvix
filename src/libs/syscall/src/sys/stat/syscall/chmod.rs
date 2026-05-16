@@ -5,12 +5,12 @@
 // Imports
 //==================================================================================================
 
-#[cfg(not(feature = "standalone"))]
 use crate::sys::stat::fchmodat;
 use ::sys::error::Error;
-#[cfg(not(feature = "standalone"))]
-use ::sysapi::fcntl::atflags::AT_FDCWD;
-use ::sysapi::sys_types::mode_t;
+use ::sysapi::{
+    fcntl::atflags::AT_FDCWD,
+    sys_types::mode_t,
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -32,14 +32,5 @@ use ::sysapi::sys_types::mode_t;
 /// error.
 ///
 pub fn chmod(path: &str, mode: mode_t) -> Result<(), Error> {
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_chmod(path, mode).map_err(|e| {
-            let code: ::sys::error::ErrorCode = e.into();
-            Error::new(code, "vfs chmod failed")
-        })
-    }
-
-    #[cfg(not(feature = "standalone"))]
     fchmodat(AT_FDCWD, path, mode, 0)
 }

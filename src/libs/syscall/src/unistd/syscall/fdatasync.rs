@@ -5,22 +5,19 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    safe::RawFileDescriptor,
+    unistd::message::FileDataSyncRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        unistd::message::FileDataSyncRequest,
-        SystemCallMessage,
-        SystemCallMessageHeader,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
     },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -42,32 +39,11 @@ use {
 ///
 pub fn fdatasync(fd: RawFileDescriptor) -> Result<(), Error> {
     ::syslog::trace!("fdatasync(): fd={:?}", fd);
-
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return ::nvx::vfs::fd::vfs_fsync(fd).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::warn!("fdatasync(): VFS fdatasync failed (fd={fd}, error={e})");
-                Error::new(code, "vfs fdatasync failed")
-            });
-        }
-        Ok(())
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    fdatasync_linuxd(fd)
-}
-
-/// Forwards a `fdatasync` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn fdatasync_linuxd(fd: RawFileDescriptor) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = FileDataSyncRequest::build(tid, fd);
+    let request: Message =
+        FileDataSyncRequest::build(tid, fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.

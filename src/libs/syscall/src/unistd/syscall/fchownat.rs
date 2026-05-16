@@ -5,27 +5,26 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::Error;
+use crate::{
+    message::MessagePartitioner,
+    unistd::message::FileChownAtRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::alloc::vec::Vec;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
+};
 use ::sysapi::{
     ffi::c_int,
     sys_types::{
         gid_t,
         uid_t,
-    },
-};
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        message::MessagePartitioner,
-        unistd::message::FileChownAtRequest,
-        SystemCallMessage,
-        SystemCallMessageHeader,
-    },
-    ::alloc::vec::Vec,
-    ::sys::{
-        error::ErrorCode,
-        ipc::Message,
-        pm::ThreadIdentifier,
     },
 };
 
@@ -66,37 +65,13 @@ pub fn fchownat(
         flag
     );
 
-    // In standalone mode, forward to VFS.
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_fchownat(dirfd, path, owner, group, flag).map_err(|e| {
-            let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::warn!(
-                "fchownat(): VFS fchownat failed (dirfd={dirfd:?}, path={path:?}, error={e})"
-            );
-            Error::new(code, "vfs fchownat failed")
-        })
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    fchownat_linuxd(dirfd, path, owner, group, flag)
-}
-
-/// Forwards a `fchownat` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn fchownat_linuxd(
-    dirfd: c_int,
-    path: &str,
-    owner: uid_t,
-    group: gid_t,
-    flag: c_int,
-) -> Result<(), Error> {
+    let path: alloc::borrow::Cow<'_, str> = crate::path::expand_path(path);
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
-    let request: FileChownAtRequest = FileChownAtRequest::new(dirfd, owner, group, flag, path)?;
+    let request: FileChownAtRequest = FileChownAtRequest::new(dirfd, owner, group, flag, &path)?;
 
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
 
     for request in &requests {
         ::sys::kcall::ipc::__kcall_send(request)?;

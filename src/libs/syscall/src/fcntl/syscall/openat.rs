@@ -5,65 +5,45 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    fcntl::message::{
+        OpenAtRequest,
+        OpenAtResponse,
+    },
+    message::MessagePartitioner,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::alloc::vec::Vec;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::{
     ffi::c_int,
     sys_types::mode_t,
-};
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        fcntl::message::{
-            OpenAtRequest,
-            OpenAtResponse,
-        },
-        message::MessagePartitioner,
-        SystemCallMessage,
-        SystemCallMessageHeader,
-    },
-    ::alloc::vec::Vec,
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-#[allow(unreachable_code)]
 pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<c_int, Error> {
     ::syslog::trace!(
         "openat(): dirfd={dirfd:?}, pathname={pathname:?}, flags={flags:?}, mode={mode:?}"
     );
 
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
-            let code: ErrorCode = e.into();
-            ::syslog::warn!("openat(): VFS open failed (pathname={pathname:?}, error={e})");
-            Error::new(code, "vfs open failed")
-        })
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    openat_linuxd(dirfd, pathname, flags, mode)
-}
-
-/// Forwards an `openat` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn openat_linuxd(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<c_int, Error> {
+    let pathname: alloc::borrow::Cow<'_, str> = crate::path::expand_path(pathname);
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: OpenAtRequest = OpenAtRequest::new(dirfd, pathname, flags, mode)?;
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let request: OpenAtRequest = OpenAtRequest::new(dirfd, &pathname, flags, mode)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
     for request in &requests {
         ::sys::kcall::ipc::__kcall_send(request)?;
     }

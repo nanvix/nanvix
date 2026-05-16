@@ -87,6 +87,10 @@ pub mod poll;
 /// Standard library functions.
 pub mod stdlib;
 
+/// Client-side path utilities (tilde expansion).
+#[cfg(feature = "syscall")]
+pub(crate) mod path;
+
 // Safe wrappers.
 #[cfg(feature = "syscall")]
 pub mod safe;
@@ -97,6 +101,7 @@ pub mod safe;
 
 pub use ::config::fds::{
     is_socket_fd,
+    is_vfs_fd,
     SOCKET_FD_BASE,
 };
 use ::core::{
@@ -116,7 +121,7 @@ use ::sys::{
 // Structures
 //==================================================================================================
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 pub enum SystemCallMessageHeader {
     OpenAtRequestPart,
@@ -377,6 +382,46 @@ pub const NETWORK_DESTINATION: ProcessIdentifier = LINUXD;
 pub const NETWORK_SOURCE: ProcessIdentifier = NETWORKD;
 #[cfg(not(feature = "standalone"))]
 pub const NETWORK_SOURCE: ProcessIdentifier = LINUXD;
+
+///
+/// # Description
+///
+/// Process identifier of the VFS daemon.
+///
+pub const VFSD: ProcessIdentifier = ProcessIdentifier::VFSD;
+
+/// Destination process for VFS/filesystem system call requests.
+///
+/// In standalone mode, requests are routed to the guest-side vfsd daemon.
+/// In non-standalone modes, requests are routed to linuxd on the host.
+#[cfg(feature = "standalone")]
+pub const VFS_DESTINATION: ProcessIdentifier = VFSD;
+#[cfg(not(feature = "standalone"))]
+pub const VFS_DESTINATION: ProcessIdentifier = LINUXD;
+
+/// Message type for VFS/filesystem system call requests.
+///
+/// In standalone mode, messages use local IPC (routed within the guest kernel).
+/// In non-standalone modes, messages use IKC (routed to the host via kernel stdio).
+#[cfg(feature = "standalone")]
+pub const VFS_MESSAGE_TYPE: ::sys::ipc::MessageType = ::sys::ipc::MessageType::Ipc;
+#[cfg(not(feature = "standalone"))]
+pub const VFS_MESSAGE_TYPE: ::sys::ipc::MessageType = ::sys::ipc::MessageType::Ikc;
+
+/// Process identifier for push/pull data transfers in VFS operations.
+///
+/// In standalone mode, data is transferred directly between the caller and vfsd via rendezvous.
+/// In non-standalone modes, data goes through kernel stdio to linuxd.
+#[cfg(feature = "standalone")]
+pub const VFS_PUSH_PULL_PID: ProcessIdentifier = ProcessIdentifier::VFSD;
+#[cfg(not(feature = "standalone"))]
+pub const VFS_PUSH_PULL_PID: ProcessIdentifier = ProcessIdentifier::KERNEL;
+
+/// Thread identifier for push/pull data transfers in VFS operations.
+#[cfg(feature = "standalone")]
+pub const VFS_PUSH_PULL_TID: ::sys::pm::ThreadIdentifier = ::sys::pm::ThreadIdentifier::VFSD;
+#[cfg(not(feature = "standalone"))]
+pub const VFS_PUSH_PULL_TID: ::sys::pm::ThreadIdentifier = ::sys::pm::ThreadIdentifier::KERNEL;
 
 //==================================================================================================
 // Implementations

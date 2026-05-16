@@ -8,6 +8,7 @@
 //==================================================================================================
 
 pub mod constants;
+pub mod daemons;
 pub mod fds;
 pub mod region_tags;
 

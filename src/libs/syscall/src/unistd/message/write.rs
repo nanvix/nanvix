@@ -17,7 +17,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::sys_types::{
     c_size_t,
@@ -58,14 +61,16 @@ impl WriteRequest {
         fd: i32,
         count: c_size_t,
         buffer: [u8; Self::BUFFER_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Message {
         let message: WriteRequest = WriteRequest::new(fd, count, buffer);
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::WriteRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -104,14 +109,19 @@ impl WriteResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, count: c_ssize_t) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        count: c_ssize_t,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: WriteResponse = WriteResponse::new(count);
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::WriteResponse, message.into_bytes());
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

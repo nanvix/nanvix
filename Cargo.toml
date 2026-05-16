@@ -14,6 +14,7 @@ members = [
         "src/daemons/memd",
         "src/daemons/networkd",
         "src/daemons/procd",
+        "src/daemons/vfsd",
         "src/kernel",
         "src/libs/arch",
         "src/libs/bitmap",
