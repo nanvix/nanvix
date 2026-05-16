@@ -51,6 +51,13 @@ pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_
         }
     }
 
+    // In standalone mode, only VFS file descriptors should be routed to vfsd.
+    #[cfg(feature = "standalone")]
+    if !crate::is_vfs_fd(fd) {
+        ::syslog::warn!("lseek(): bad file descriptor fd={fd} in standalone mode");
+        return Err(Error::new(ErrorCode::BadFile, "lseek: fd is not a VFS fd in standalone mode"));
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.

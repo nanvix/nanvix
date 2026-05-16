@@ -3622,7 +3622,7 @@ dependencies = [
 
 [[package]]
 name = "vfsd"
-version = "0.13.16"
+version = "0.13.17"
 dependencies = [
  "arch",
  "cc",

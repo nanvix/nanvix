@@ -41,6 +41,17 @@ use sysapi::sys_types::mode_t;
 ///
 pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
     ::syslog::trace!("fchmod(): fd={:?}, mode={:o}", fd, mode);
+
+    // In standalone mode, only VFS file descriptors should be routed to vfsd.
+    #[cfg(feature = "standalone")]
+    if !crate::is_vfs_fd(fd) {
+        ::syslog::warn!("fchmod(): bad file descriptor fd={fd} in standalone mode");
+        return Err(Error::new(
+            ErrorCode::BadFile,
+            "fchmod: fd is not a VFS fd in standalone mode",
+        ));
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it

@@ -100,8 +100,14 @@ pub fn main() {
                 ::syslog::info!("buffered IPC message during signup");
                 buffered_messages.push_back(message);
             } else {
-                // Non-IPC message during signup — discard immediately (cannot be handled here).
-                ::syslog::warn!("discarding non-IPC message during signup");
+                // Non-IPC messages during signup are discarded. Before signup completes, vfsd
+                // has no registered identity and cannot meaningfully process interrupts,
+                // exceptions, IKC, or termination events. If this assumption changes (e.g.,
+                // multi-phase initialization), these should be buffered and replayed.
+                ::syslog::error!(
+                    "discarding non-IPC message during signup (type={:?})",
+                    message.message_type
+                );
             }
         }
     }

@@ -68,6 +68,16 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_s
         }
     }
 
+    // In standalone mode, only VFS file descriptors should be routed to vfsd.
+    #[cfg(feature = "standalone")]
+    if !crate::is_vfs_fd(fd) {
+        ::syslog::warn!("pwrite(): bad file descriptor fd={fd} in standalone mode");
+        return Err(Error::new(
+            ErrorCode::BadFile,
+            "pwrite: fd is not a VFS fd in standalone mode",
+        ));
+    }
+
     let mut total_written: c_size_t = 0;
     let mut buffer_offset: usize = 0;
 
