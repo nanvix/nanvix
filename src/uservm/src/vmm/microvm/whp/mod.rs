@@ -37,6 +37,7 @@ use crate::{
         guest::{
             Guest,
             GuestState,
+            PreparedInitrd,
         },
         microvm::{
             ramfs,
@@ -459,20 +460,53 @@ impl Vmm {
             }
 
             // Phase: Initrd loading.
+            // When a RAMFS will also be loaded, prepare the initrd for zero-copy mapping
+            // so it can be combined with the RAMFS into a single remap_files_at() call.
             #[cfg(feature = "profile-time")]
             let initrd_load_start: Instant = Instant::now();
 
-            args.initrd_filename
-                .as_ref()
-                .map(|initrd_filename| {
-                    guest.load_initrd(&mut vmem, initrd_filename, args.initrd_args)
-                })
-                .transpose()?;
+            let has_ramfs: bool = args.ramfs_filename.is_some() || args.mount_directory.is_some();
+
+            // When RAMFS is present, page-aligned initrd files can be included in the
+            // combined zero-copy remap.  Non-page-aligned files fall back to copy-based
+            // loading because `CreateFileMappingW(PAGE_WRITECOPY)` constrains the section's
+            // maximum size to the raw file size, which cannot match a page-granular
+            // placeholder required by `MapViewOfFile3(MEM_REPLACE_PLACEHOLDER)`.
+            let prepared_initrd: Option<PreparedInitrd> = if has_ramfs {
+                if let Some(ref initrd_filename) = args.initrd_filename {
+                    let file_len: u64 = std::fs::metadata(initrd_filename)
+                        .map_err(|e| anyhow::anyhow!("failed to query initrd metadata: {e}"))?
+                        .len();
+                    if (file_len as usize).is_multiple_of(::arch::mem::PAGE_SIZE) {
+                        // Page-aligned: defer to combined zero-copy remap.
+                        Some(guest.prepare_initrd(
+                            &vmem,
+                            initrd_filename,
+                            args.initrd_args.clone(),
+                        )?)
+                    } else {
+                        // Not page-aligned: fall back to copy-based loading.
+                        guest.load_initrd(&mut vmem, initrd_filename, args.initrd_args.clone())?;
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                // No RAMFS to combine with: fall back to the copy-based path.
+                args.initrd_filename
+                    .as_ref()
+                    .map(|initrd_filename| {
+                        guest.load_initrd(&mut vmem, initrd_filename, args.initrd_args)
+                    })
+                    .transpose()?;
+                None
+            };
 
             #[cfg(feature = "profile-time")]
             perf_timings.set_initrd_load(initrd_load_start.elapsed().as_micros() as u64);
 
-            // Phase: RamFS loading.
+            // Phase: RamFS loading (with optional combined initrd zero-copy remap).
             #[cfg(feature = "profile-time")]
             let ramfs_load_start: Instant = Instant::now();
 
@@ -491,11 +525,18 @@ impl Vmm {
                     None => ::config::microvm::DEFAULT_INITRD_BASE,
                 };
 
+                // Build the extra remap regions list from the prepared initrd (if any).
+                let initrd_remap: Vec<(usize, &std::fs::File)> = prepared_initrd
+                    .as_ref()
+                    .map(|pi| vec![(pi.base, &pi.file)])
+                    .unwrap_or_default();
+
                 let loaded: ramfs::LoadedRamFs = ramfs::load_ramfs(
                     &mut vmem,
                     initrd_end,
                     args.mount_directory.as_deref(),
                     args.ramfs_filename.as_deref(),
+                    &initrd_remap,
                 )?;
 
                 match loaded {
@@ -511,6 +552,21 @@ impl Vmm {
                     ramfs::LoadedRamFs::None => None,
                 }
             };
+
+            // Finalize initrd arguments: write them into the gap memory between
+            // the initrd view and the ramfs view, which was re-committed by the
+            // combined remap.
+            if let Some(ref pi) = prepared_initrd
+                && let Some(ref initrd_args_str) = pi.args
+            {
+                guest.write_args(&mut vmem, initrd_args_str)?;
+            }
+
+            // Keep the initrd file handle alive for the VM's lifetime so the
+            // file-backed mapping remains valid.
+            if let Some(pi) = prepared_initrd {
+                vmem.attach_backing_files(vec![pi.file]);
+            }
 
             RamFs::write_registers(&mut vmem, ramfs_region)?;
 
@@ -548,6 +604,14 @@ impl Vmm {
             let ept_populate_start: Instant = Instant::now();
 
             vmem.populate_ept(&guest.ept_populate_ranges()?)?;
+
+            // Pre-populate file-backed initrd pages with read-only access. This brings the
+            // pages into the working set and SLAT without triggering copy-on-write on the
+            // PAGE_WRITECOPY mapping.
+            let read_ranges: Vec<(u64, u64)> = guest.ept_populate_read_ranges();
+            if !read_ranges.is_empty() {
+                vmem.populate_ept_read(&read_ranges)?;
+            }
 
             #[cfg(feature = "profile-time")]
             perf_timings.set_ept_populate(ept_populate_start.elapsed().as_micros() as u64);
@@ -668,6 +732,22 @@ impl Vmm {
         /// avoiding interference with the initial vCPU entry sequence.
         const PROFILER_START_DELAY_EXITS: u64 = 5;
         let mut exit_count: u64 = 0;
+
+        // Per-exit-type counters for profiling.
+        #[cfg(feature = "profile-time")]
+        let mut exit_pmio_out_fast: u64 = 0;
+        #[cfg(feature = "profile-time")]
+        let mut exit_pmio_in_fast: u64 = 0;
+        #[cfg(feature = "profile-time")]
+        let mut exit_pmio_slow: u64 = 0;
+        #[cfg(feature = "profile-time")]
+        let mut exit_interrupted: u64 = 0;
+        #[cfg(feature = "profile-time")]
+        let mut exit_halt: u64 = 0;
+        #[cfg(feature = "profile-time")]
+        let mut exit_mmio: u64 = 0;
+        #[cfg(feature = "profile-time")]
+        let mut exit_intwin: u64 = 0;
 
         // PIT channel 2 state for LAPIC timer calibration. The guest
         // programs PIT ch2 in one-shot mode and polls port 0x61 bit 5
@@ -798,16 +878,28 @@ impl Vmm {
                         match *port {
                             // PIT control register: track channel 2 programming.
                             0x43 => {
+                                #[cfg(feature = "profile-time")]
+                                {
+                                    exit_pmio_out_fast += 1;
+                                }
                                 pit_ch2.handle_ctrl_write(*data as u8);
                                 continue;
                             },
                             // PIT channel 2 data register.
                             0x42 => {
+                                #[cfg(feature = "profile-time")]
+                                {
+                                    exit_pmio_out_fast += 1;
+                                }
                                 pit_ch2.handle_data_write(*data as u8);
                                 continue;
                             },
                             // Speaker/gate control: track gate enable.
                             0x61 => {
+                                #[cfg(feature = "profile-time")]
+                                {
+                                    exit_pmio_out_fast += 1;
+                                }
                                 pit_ch2.handle_speaker_write(*data as u8);
                                 continue;
                             },
@@ -823,6 +915,10 @@ impl Vmm {
                             | 0x70
                             | 0x71
                             | 0x3F8..=0x3FF => {
+                                #[cfg(feature = "profile-time")]
+                                {
+                                    exit_pmio_out_fast += 1;
+                                }
                                 continue;
                             },
                             _ => {},
@@ -832,6 +928,10 @@ impl Vmm {
                         match *port {
                             // PIT channel 2 output: return gate/OUT2 status.
                             0x61 => {
+                                #[cfg(feature = "profile-time")]
+                                {
+                                    exit_pmio_in_fast += 1;
+                                }
                                 let value: u8 = pit_ch2.read_speaker();
                                 self.vcpu.blocking_lock().set_rip_and_rax(value as u64);
                                 continue;
@@ -849,6 +949,10 @@ impl Vmm {
                             | 0x3F8..=0x3FF
                             | 0xCF8
                             | 0xCFC..=0xCFF => {
+                                #[cfg(feature = "profile-time")]
+                                {
+                                    exit_pmio_in_fast += 1;
+                                }
                                 self.vcpu.blocking_lock().set_rip_and_rax(0);
                                 continue;
                             },
@@ -857,6 +961,10 @@ impl Vmm {
                     }
 
                     // Slow path: application-level I/O (stdout, stdin, VMM port).
+                    #[cfg(feature = "profile-time")]
+                    {
+                        exit_pmio_slow += 1;
+                    }
                     // Flush any deferred RIP advance for reads that reach the slow path.
                     self.vcpu.blocking_lock().flush_pending_rip();
 
@@ -918,6 +1026,10 @@ impl Vmm {
                 // HLT: with LAPIC emulation enabled, HLT is handled internally by the LAPIC and
                 // shouldn't cause VM exits.  If it does, log and re-enter the vCPU loop.
                 VirtualProcessorExitReasonRef::Halt => {
+                    #[cfg(feature = "profile-time")]
+                    {
+                        exit_halt += 1;
+                    }
                     warn!("VMM exit: HLT");
                     continue;
                 },
@@ -926,12 +1038,20 @@ impl Vmm {
                 // timer thread). Re-enter after pvclock update
                 // (handled at top of loop).
                 VirtualProcessorExitReasonRef::Interrupted => {
+                    #[cfg(feature = "profile-time")]
+                    {
+                        exit_interrupted += 1;
+                    }
                     continue;
                 },
 
                 // InterruptWindow: IF just became 1. With LAPIC-based
                 // delivery, interrupts are handled by the LAPIC emulator.
                 VirtualProcessorExitReasonRef::InterruptWindow => {
+                    #[cfg(feature = "profile-time")]
+                    {
+                        exit_intwin += 1;
+                    }
                     continue;
                 },
 
@@ -943,6 +1063,10 @@ impl Vmm {
 
                 // Guest accessed a memory-mapped address.
                 VirtualProcessorExitReasonRef::MmioAccess(gpa) => {
+                    #[cfg(feature = "profile-time")]
+                    {
+                        exit_mmio += 1;
+                    }
                     // Check if access falls within the LAPIC page.
                     let page_gpa: u64 = gpa & !(::arch::mem::PAGE_SIZE as u64 - 1);
                     if page_gpa == ::config::microvm::DEFAULT_LAPIC_BASE as u64 {
@@ -974,6 +1098,17 @@ impl Vmm {
             self.perf_timings.set_guest_exec(guest_time_acc_us);
             self.perf_timings
                 .set_exit_handling(loop_total_us.saturating_sub(guest_time_acc_us));
+            self.perf_timings.set_exit_count_total(exit_count);
+            self.perf_timings
+                .set_exit_count_pmio_out_fast(exit_pmio_out_fast);
+            self.perf_timings
+                .set_exit_count_pmio_in_fast(exit_pmio_in_fast);
+            self.perf_timings.set_exit_count_pmio_slow(exit_pmio_slow);
+            self.perf_timings
+                .set_exit_count_interrupted(exit_interrupted);
+            self.perf_timings.set_exit_count_halt(exit_halt);
+            self.perf_timings.set_exit_count_mmio(exit_mmio);
+            self.perf_timings.set_exit_count_intwin(exit_intwin);
         }
 
         warn!("VMM run loop finished (result={result:?}, elapsed={:?})", loop_start.elapsed());
