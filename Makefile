@@ -899,6 +899,7 @@ standalone-images-clean:
 test:
 	@$(MAKE) run-unit-tests
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	@$(MAKE) run-smoke-test
 	@$(MAKE) run-nanvix-tests
 endif
 
@@ -960,6 +961,43 @@ NANVIX_TEST_BIN := $(BINARIES_DIR)/nanvix-test.$(HOST_BIN_EXT)
 run-nanvix-tests: all-nanvix
 	@echo "Running integration tests with configuration: $(NANVIX_TEST_CONFIG)"
 	RUST_LOG=$(LOG_LEVEL) $(NANVIX_TEST_BIN) $(NANVIX_TEST_CONFIG)
+
+# Expected VM exit code for the smoke test image.
+# testd deliberately triggers a page fault as its final test; the kernel kills it
+# with ErrorCode::Interrupted (4) and procd propagates that status as the VM exit code.
+SMOKE_TEST_EXPECTED_EXIT_CODE := 4
+
+# Kernel magic string emitted at debug log level during boot.
+SMOKE_TEST_MAGIC_STRING := hello, world!
+
+# Smoke test: boot the system image and verify correct behavior.
+# Only applicable in standalone mode (the smoke image bundles guest daemons).
+# - Release mode (RELEASE=yes): validates VM exits with the expected status code.
+# - Debug mode (RELEASE=no): validates the kernel magic string appears in console output.
+.PHONY: run-smoke-test
+ifeq ($(DEPLOYMENT_MODE),standalone)
+run-smoke-test: image
+ifeq ($(RELEASE),yes)
+	@echo "Running smoke test (expected exit code=$(SMOKE_TEST_EXPECTED_EXIT_CODE))..."
+	@ACTUAL=0; \
+	bash $(SCRIPTS_DIR)/run-nanvixd.sh $(MACHINE) $(IMAGE) $(TIMEOUT) || ACTUAL=$$?; \
+	if [ "$$ACTUAL" -ne "$(SMOKE_TEST_EXPECTED_EXIT_CODE)" ]; then \
+		echo "ERROR: Smoke test failed: expected exit code $(SMOKE_TEST_EXPECTED_EXIT_CODE), got $$ACTUAL."; \
+		exit 1; \
+	fi
+else
+	@echo "Running smoke test (waiting for magic string)..."
+	@if ! bash $(SCRIPTS_DIR)/run-nanvixd.sh $(MACHINE) $(IMAGE) $(TIMEOUT) \
+			--wait-for-string "$(SMOKE_TEST_MAGIC_STRING)"; then \
+		echo "ERROR: Smoke test failed: magic string '$(SMOKE_TEST_MAGIC_STRING)' not found within $(TIMEOUT)s."; \
+		exit 1; \
+	fi
+endif
+	@echo "Smoke test passed."
+else
+run-smoke-test:
+	@echo "Skipping smoke test (DEPLOYMENT_MODE=$(DEPLOYMENT_MODE), requires standalone)."
+endif
 
 #===================================================================================================
 # Build Rules for L2 System VM Snapshot
