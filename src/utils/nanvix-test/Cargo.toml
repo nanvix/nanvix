@@ -17,6 +17,7 @@ nanvixd = { workspace = true, default-features = false }
 nanvix = { workspace = true, features = ["internal-api"] }
 no_fail = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
+tokio-util = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 toml = { workspace = true }

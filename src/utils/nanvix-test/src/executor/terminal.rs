@@ -51,6 +51,7 @@ use ::tokio::{
     },
     task::JoinHandle,
 };
+use ::tokio_util::sync::CancellationToken;
 
 //==================================================================================================
 // Constants
@@ -86,7 +87,7 @@ type StreamCollectors = (
 ///
 /// # Description
 ///
-/// Tests a program in Nanvix using the terminal executor.
+/// Tests a program in Nanvix using the terminal executor, aborting when cancellation is requested.
 ///
 /// # Parameters
 ///
@@ -95,6 +96,7 @@ type StreamCollectors = (
 /// - `workload`: Metadata that describes the workload path, arguments, and expectations.
 /// - `log_layout`: Layout that defines the target directory for stdout/stderr/program logs.
 /// - `extra_nanvixd_args`: Command-line arguments passed directly to nanvixd.
+/// - `cancellation_token`: Token to abort test execution when cancellation is requested.
 ///
 /// # Return Value
 ///
@@ -108,175 +110,180 @@ pub async fn test_with_terminal_executor(
     workload: WorkloadSpec<'_>,
     log_layout: &TestLogLayout,
     extra_nanvixd_args: &[String],
+    cancellation_token: CancellationToken,
 ) -> Result<()> {
-    if runner_config.l2_enabled {
-        let reason: String = "terminal executor does not support L2 deployment".to_string();
-        error!("test_with_terminal_executor(): {reason}");
-        return Err(::anyhow::anyhow!(reason));
-    }
-
-    let hwloc_file_path: Option<String> = runner_config.hwloc_file_path.clone();
-    let parsed_program_args: Vec<String> = match workload.program_args() {
-        Some(args) => match shell_words::split(args) {
-            Ok(values) => values,
-            Err(error) => {
-                let reason: String = format!(
-                    "failed to parse terminal executor program_args (args='{}', error={error})",
-                    args
-                );
+    tokio::select! {
+        result = async {
+            if runner_config.l2_enabled {
+                let reason: String = "terminal executor does not support L2 deployment".to_string();
                 error!("test_with_terminal_executor(): {reason}");
                 return Err(::anyhow::anyhow!(reason));
-            },
-        },
-        None => Vec::new(),
-    };
-    let log_root: &Path = Path::new(runner_config.log_directory.as_str());
-    let guest_log_tracker: GuestLogTracker = GuestLogTracker::capture(log_root)?;
+            }
 
-    for iteration in 0..iterations {
-        let RunnerLogPaths {
-            stdout: stdout_file_path,
-            stderr: stderr_file_path,
-        } = log_layout.allocate_runner_logs(Some(iteration));
+            let hwloc_file_path: Option<String> = runner_config.hwloc_file_path.clone();
+            let parsed_program_args: Vec<String> = match workload.program_args() {
+                Some(args) => match shell_words::split(args) {
+                    Ok(values) => values,
+                    Err(error) => {
+                        let reason: String = format!(
+                            "failed to parse terminal executor program_args (args='{}', error={error})",
+                            args
+                        );
+                        error!("test_with_terminal_executor(): {reason}");
+                        return Err(::anyhow::anyhow!(reason));
+                    },
+                },
+                None => Vec::new(),
+            };
+            let log_root: &Path = Path::new(runner_config.log_directory.as_str());
+            let guest_log_tracker: GuestLogTracker = GuestLogTracker::capture(log_root)?;
 
-        let nanvixd_terminal_args: NanvixdTerminalArgs = NanvixdTerminalArgs::new(
-            hwloc_file_path.clone(),
-            workload.program_path(),
-            parsed_program_args.as_slice(),
-            log_layout.test_directory(),
-            extra_nanvixd_args,
-        )?;
+            for iteration in 0..iterations {
+                let RunnerLogPaths {
+                    stdout: stdout_file_path,
+                    stderr: stderr_file_path,
+                } = log_layout.allocate_runner_logs(Some(iteration));
 
-        let collection_timeout: Duration =
-            Duration::from_millis(runner_config.stream_collection_timeout_ms);
+                let nanvixd_terminal_args: NanvixdTerminalArgs = NanvixdTerminalArgs::new(
+                    hwloc_file_path.clone(),
+                    workload.program_path(),
+                    parsed_program_args.as_slice(),
+                    log_layout.test_directory(),
+                    extra_nanvixd_args,
+                )?;
 
-        let (mut nanvixd, stream_collectors) = {
-            let mut nanvixd: NanvixdTerminal =
-                NanvixdTerminal::spawn(runner_config, &nanvixd_terminal_args).await?;
+                let collection_timeout: Duration =
+                    Duration::from_millis(runner_config.stream_collection_timeout_ms);
 
-            let stdout_pipe = nanvixd.take_stdout().ok_or_else(|| {
-                let reason: String =
-                    "interactive mode requires capturing nanvixd stdout".to_string();
-                error!("test_with_terminal_executor(): {reason}");
-                ::anyhow::anyhow!(reason)
-            })?;
+                let (mut nanvixd, stream_collectors) = {
+                    let mut nanvixd: NanvixdTerminal = NanvixdTerminal::spawn(runner_config, &nanvixd_terminal_args).await?;
+                    let stdout_pipe = nanvixd.take_stdout().ok_or_else(|| {
+                        let reason: String =
+                            "interactive mode requires capturing nanvixd stdout".to_string();
+                        error!("test_with_terminal_executor(): {reason}");
+                        ::anyhow::anyhow!(reason)
+                    })?;
 
-            let stdout_buffer: Arc<AsyncMutex<Vec<u8>>> = Arc::new(AsyncMutex::new(Vec::new()));
-            let stdout_handle: JoinHandle<::std::io::Result<()>> = ::tokio::spawn(
-                collect_stream_to_buffer(stdout_pipe, Arc::clone(&stdout_buffer), None, None),
-            );
+                    let stdout_buffer: Arc<AsyncMutex<Vec<u8>>> = Arc::new(AsyncMutex::new(Vec::new()));
+                    let stdout_handle: JoinHandle<::std::io::Result<()>> = ::tokio::spawn(
+                        collect_stream_to_buffer(stdout_pipe, Arc::clone(&stdout_buffer), None, None),
+                    );
 
-            let stderr_pipe: ChildStderr = nanvixd.take_stderr().ok_or_else(|| {
-                let reason: String =
-                    "interactive mode requires capturing nanvixd stderr".to_string();
-                error!("test_with_terminal_executor(): {reason}");
-                ::anyhow::anyhow!(reason)
-            })?;
+                    let stderr_pipe: ChildStderr = nanvixd.take_stderr().ok_or_else(|| {
+                        let reason: String =
+                            "interactive mode requires capturing nanvixd stderr".to_string();
+                        error!("test_with_terminal_executor(): {reason}");
+                        ::anyhow::anyhow!(reason)
+                    })?;
 
-            let stderr_buffer: Arc<AsyncMutex<Vec<u8>>> = Arc::new(AsyncMutex::new(Vec::new()));
-            let stderr_handle: JoinHandle<::std::io::Result<()>> = ::tokio::spawn(
-                collect_stream_to_buffer(stderr_pipe, Arc::clone(&stderr_buffer), None, None),
-            );
+                    let stderr_buffer: Arc<AsyncMutex<Vec<u8>>> = Arc::new(AsyncMutex::new(Vec::new()));
+                    let stderr_handle: JoinHandle<::std::io::Result<()>> = ::tokio::spawn(
+                        collect_stream_to_buffer(stderr_pipe, Arc::clone(&stderr_buffer), None, None),
+                    );
 
-            let stdin_pipe: ChildStdin = nanvixd.take_stdin().ok_or_else(|| {
-                let reason: String = "interactive mode does not expose stdin pipe".to_string();
-                error!("test_with_terminal_executor(): {reason}");
-                ::anyhow::anyhow!(reason)
-            })?;
+                    let stdin_pipe: ChildStdin = nanvixd.take_stdin().ok_or_else(|| {
+                        let reason: String = "interactive mode does not expose stdin pipe".to_string();
+                        error!("test_with_terminal_executor(): {reason}");
+                        ::anyhow::anyhow!(reason)
+                    })?;
 
-            send_interactive_input(stdin_pipe, workload.input()).await?;
+                    send_interactive_input(stdin_pipe, workload.input()).await?;
 
-            (nanvixd, (stdout_handle, stdout_buffer, stderr_handle, stderr_buffer))
-        };
+                    (nanvixd, (stdout_handle, stdout_buffer, stderr_handle, stderr_buffer))
+                };
 
-        let (stdout_handle, stdout_buffer, stderr_handle, stderr_buffer): StreamCollectors =
-            stream_collectors;
+                let (stdout_handle, stdout_buffer, stderr_handle, stderr_buffer): StreamCollectors =
+                    stream_collectors;
 
-        let stdout_bytes: Vec<u8> = wait_stream_collector(
-            stdout_handle,
-            Arc::clone(&stdout_buffer),
-            collection_timeout,
-            "stdout",
-            iteration,
-        )
-        .await?;
-        let stderr_bytes: Vec<u8> = wait_stream_collector(
-            stderr_handle,
-            Arc::clone(&stderr_buffer),
-            collection_timeout,
-            "stderr",
-            iteration,
-        )
-        .await?;
+                let stdout_bytes: Vec<u8> = wait_stream_collector(
+                        stdout_handle,
+                        Arc::clone(&stdout_buffer),
+                        collection_timeout,
+                        "stdout",
+                        iteration,
+                    ).await?;
+                let stderr_bytes: Vec<u8> = wait_stream_collector(
+                        stderr_handle,
+                        Arc::clone(&stderr_buffer),
+                        collection_timeout,
+                        "stderr",
+                        iteration,
+                    ).await?;
 
-        // Wait for the nanvixd process to exit and get its exit code.
-        let exit_code: i32 = nanvixd.wait_exit_code().await?;
+                // Wait for the nanvixd process to exit and get its exit code.
+                let exit_code: i32 = nanvixd.wait_exit_code().await?;
 
-        if let Err(error) = write(&stdout_file_path, &stdout_bytes) {
-            let reason: String = format!(
-                "failed to write interactive stdout log (path={}, error={error})",
-                stdout_file_path.display()
-            );
-            error!("test_with_terminal_executor(): {reason}");
-            return Err(::anyhow::anyhow!(reason));
+                if let Err(error) = write(&stdout_file_path, &stdout_bytes) {
+                    let reason: String = format!(
+                        "failed to write interactive stdout log (path={}, error={error})",
+                        stdout_file_path.display()
+                    );
+                    error!("test_with_terminal_executor(): {reason}");
+                    return Err(::anyhow::anyhow!(reason));
+                }
+
+                if let Err(error) = write(&stderr_file_path, &stderr_bytes) {
+                    let reason: String = format!(
+                        "failed to write interactive stderr log (path={}, error={error})",
+                        stderr_file_path.display()
+                    );
+                    error!("test_with_terminal_executor(): {reason}");
+                    return Err(::anyhow::anyhow!(reason));
+                }
+
+                log_layout.persist_program_output(iteration, stdout_bytes.as_slice())?;
+
+                if let Some(expected) = workload.expected_output()
+                    && !buffer_contains_pattern(stdout_bytes.as_slice(), expected.as_bytes())
+                {
+                    let reason: String = format!(
+                        "interactive output mismatch (expected='{}', log={}, iteration={iteration})",
+                        expected,
+                        stdout_file_path.display()
+                    );
+                    error!("test_with_terminal_executor(): {reason}");
+                    return Err(::anyhow::anyhow!(reason));
+                }
+
+                if workload.expect_empty_output() && !stdout_bytes.is_empty() {
+                    let reason: String = format!(
+                        "interactive output is not empty as required (bytes={:?}, iteration={iteration})",
+                        stdout_bytes
+                    );
+                    error!("test_with_terminal_executor(): {reason}");
+                    return Err(::anyhow::anyhow!(reason));
+                }
+
+                // Validate exit code.
+                 if exit_code != workload.expected_exit_code() {
+                    let expected: i32 = workload.expected_exit_code();
+                    let reason: String = format!(
+                        "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
+                        expected,
+                        exit_code,
+                        workload.program_path(),
+                        iteration
+                    );
+                    error!("test_with_terminal_executor(): {reason}");
+                    return Err(::anyhow::anyhow!(reason));
+                }
+
+                guest_log_tracker.move_new_logs(log_layout.test_directory())?;
+                log_layout.normalize_component_logs(iteration)?;
+            }
+            guest_log_tracker.move_new_logs(log_layout.test_directory())?;
+            if iterations > 0 {
+                let last_iteration: usize = iterations - 1;
+                log_layout.normalize_component_logs(last_iteration)?;
+            }
+
+            Ok(())
+        } => result,
+        _ = cancellation_token.cancelled() => {
+            error!("test_with_terminal_executor(): cancellation requested");
+            Err(::anyhow::anyhow!("cancelled"))
         }
-
-        if let Err(error) = write(&stderr_file_path, &stderr_bytes) {
-            let reason: String = format!(
-                "failed to write interactive stderr log (path={}, error={error})",
-                stderr_file_path.display()
-            );
-            error!("test_with_terminal_executor(): {reason}");
-            return Err(::anyhow::anyhow!(reason));
-        }
-
-        log_layout.persist_program_output(iteration, stdout_bytes.as_slice())?;
-
-        if let Some(expected) = workload.expected_output()
-            && !buffer_contains_pattern(stdout_bytes.as_slice(), expected.as_bytes())
-        {
-            let reason: String = format!(
-                "interactive output mismatch (expected='{}', log={}, iteration={iteration})",
-                expected,
-                stdout_file_path.display()
-            );
-            error!("test_with_terminal_executor(): {reason}");
-            return Err(::anyhow::anyhow!(reason));
-        }
-
-        if workload.expect_empty_output() && !stdout_bytes.is_empty() {
-            let reason: String = format!(
-                "interactive output is not empty as required (bytes={:?}, iteration={iteration})",
-                stdout_bytes
-            );
-            error!("test_with_terminal_executor(): {reason}");
-            return Err(::anyhow::anyhow!(reason));
-        }
-
-        // Validate exit code.
-        if exit_code != workload.expected_exit_code() {
-            let expected: i32 = workload.expected_exit_code();
-            let reason: String = format!(
-                "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
-                expected,
-                exit_code,
-                workload.program_path(),
-                iteration
-            );
-            error!("test_with_terminal_executor(): {reason}");
-            return Err(::anyhow::anyhow!(reason));
-        }
-
-        guest_log_tracker.move_new_logs(log_layout.test_directory())?;
-        log_layout.normalize_component_logs(iteration)?;
     }
-    guest_log_tracker.move_new_logs(log_layout.test_directory())?;
-    if iterations > 0 {
-        let last_iteration: usize = iterations - 1;
-        log_layout.normalize_component_logs(last_iteration)?;
-    }
-
-    Ok(())
 }
 
 ///

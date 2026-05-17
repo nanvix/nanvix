@@ -85,17 +85,38 @@ use ::log::{
 use ::std::{
     fs::create_dir_all,
     path::Path,
+    process,
+    sync::{
+        Arc,
+        atomic::{
+            AtomicI32,
+            Ordering,
+        },
+    },
 };
+#[cfg(unix)]
+use ::tokio::signal::unix::{
+    SignalKind,
+    signal,
+};
+use ::tokio_util::sync::CancellationToken;
 
 //==================================================================================================
 // Constants
 //==================================================================================================
 
+/// Base return code for test interrupts; actual exit code will be 128 + signal number.
+const BASE_RETURN_CODE: i32 = 128;
 /// Default log-level (overridden by RUST_LOG environment variable if set).
 const DEFAULT_LOG_LEVEL: &str = "error";
 /// Default tenant identifier used when creating test sandboxes.
 #[cfg(unix)]
 pub(crate) const DEFAULT_TENANT_ID: &str = "nanvix-test";
+/// Signal number for a Windows Ctrl+C event. Windows has no `SIGINT`/`SIGTERM`
+/// distinction, so we map Ctrl+C to the POSIX `SIGINT` value (2) to keep the `128 + signum`
+/// exit-code convention.
+#[cfg(not(unix))]
+const WINDOWS_CTRL_C_SIGNUM: i32 = 2;
 
 //==================================================================================================
 // Standalone Functions
@@ -122,7 +143,103 @@ fn main() -> Result<()> {
             ::anyhow::anyhow!(reason)
         })?;
 
-    runtime.block_on(run())
+    // Shared state: signal number received (0 = none).
+    let received_signal: Arc<AtomicI32> = Arc::new(AtomicI32::new(0));
+    let cancellation_token: CancellationToken = CancellationToken::new();
+    let force_exit_token: CancellationToken = CancellationToken::new();
+
+    // Spawn a background task that listens for interrupt signals.
+    // First signal: cancel the token so in-flight work drains gracefully.
+    // Second signal: cancel the force-exit token so that main() can shut down the runtime.
+    #[cfg(unix)]
+    {
+        let sig_flag: Arc<AtomicI32> = Arc::clone(&received_signal);
+        let sig_token: CancellationToken = cancellation_token.clone();
+        let sig_force_token: CancellationToken = force_exit_token.clone();
+        runtime.spawn(async move {
+            let mut sigint = match signal(SignalKind::interrupt()) {
+                Ok(stream) => stream,
+                Err(error) => {
+                    error!("signal_listener(): failed to register SIGINT handler (error={error})");
+                    return;
+                },
+            };
+            let mut sigterm = match signal(SignalKind::terminate()) {
+                Ok(stream) => stream,
+                Err(error) => {
+                    error!("signal_listener(): failed to register SIGTERM handler (error={error})");
+                    return;
+                },
+            };
+
+            // Wait for the first signal.
+            let (signum, signame): (i32, &str) = tokio::select! {
+                _ = sigint.recv() => (libc::SIGINT, "SIGINT"),
+                _ = sigterm.recv() => (libc::SIGTERM, "SIGTERM"),
+            };
+            info!("signal_listener(): received {signame}, requesting graceful shutdown...");
+            sig_flag.store(signum, Ordering::SeqCst);
+            sig_token.cancel();
+
+            // Wait for a second signal. Record it and cancel the force-exit token.
+            let (second_signum, second_signame): (i32, &str) = tokio::select! {
+                _ = sigint.recv() => (libc::SIGINT, "SIGINT"),
+                _ = sigterm.recv() => (libc::SIGTERM, "SIGTERM"),
+            };
+            error!(
+                "signal_listener(): received second signal {second_signame}, forcing immediate \
+                 exit"
+            );
+            sig_flag.store(second_signum, Ordering::SeqCst);
+            sig_force_token.cancel();
+        });
+    }
+
+    #[cfg(not(unix))]
+    {
+        let sig_flag: Arc<AtomicI32> = Arc::clone(&received_signal);
+        let sig_token: CancellationToken = cancellation_token.clone();
+        let sig_force_token: CancellationToken = force_exit_token.clone();
+        runtime.spawn(async move {
+            // First Ctrl+C: request graceful shutdown.
+            if tokio::signal::ctrl_c().await.is_err() {
+                error!("signal_listener(): failed to register Ctrl+C handler");
+                return;
+            }
+            info!("signal_listener(): received Ctrl+C, requesting graceful shutdown...");
+            sig_flag.store(WINDOWS_CTRL_C_SIGNUM, Ordering::SeqCst);
+            sig_token.cancel();
+
+            // Second Ctrl+C: force immediate exit.
+            if tokio::signal::ctrl_c().await.is_err() {
+                error!("signal_listener(): failed to register second Ctrl+C handler");
+                return;
+            }
+            error!("signal_listener(): received second Ctrl+C, forcing immediate exit");
+            sig_flag.store(WINDOWS_CTRL_C_SIGNUM, Ordering::SeqCst);
+            sig_force_token.cancel();
+        });
+    }
+
+    // Run the main test loop. Abort early if a second signal forces exit.
+    let result: Result<()> = runtime.block_on(async {
+        tokio::select! {
+            result = run(cancellation_token) => result,
+            _ = force_exit_token.cancelled() => {
+                error!("main(): forcing exit on repeat signal...");
+                Err(::anyhow::anyhow!("force exit"))
+            },
+        }
+    });
+
+    // If a signal was caught, override the exit code to 128+signum.
+    let signum: i32 = received_signal.load(Ordering::SeqCst);
+    if signum != 0 {
+        drop(runtime);
+        process::exit(BASE_RETURN_CODE.saturating_add(signum));
+    }
+
+    result
 }
 
 ///
@@ -136,7 +253,7 @@ fn main() -> Result<()> {
 /// Returns `Ok(())` once all requested tests finish successfully; returns an error if CLI parsing,
 /// configuration loading, log directory creation, or test execution fails.
 ///
-async fn run() -> Result<()> {
+async fn run(cancellation_token: CancellationToken) -> Result<()> {
     initialize_run_timestamp();
 
     let parsed_args: args::Args =
@@ -233,14 +350,19 @@ async fn run() -> Result<()> {
         return Err(::anyhow::anyhow!(reason));
     }
 
-    prepare_runner_environment(
-        runner_config.l2_enabled,
-        runner_config.port_num,
-        Path::new(runner_config.tmp_directory.as_str()),
-        runner_config.tcp_cleanup_max_wait_seconds,
-        runner_config.tcp_cleanup_poll_interval_seconds,
-    )
-    .await;
+    tokio::select! {
+        _ = prepare_runner_environment(
+            runner_config.l2_enabled,
+            runner_config.port_num,
+            Path::new(runner_config.tmp_directory.as_str()),
+            runner_config.tcp_cleanup_max_wait_seconds,
+            runner_config.tcp_cleanup_poll_interval_seconds,
+        ) => {},
+        _ = cancellation_token.cancelled() => {
+            error!("main(): cancelled during environment preparation");
+            return Err(::anyhow::anyhow!("cancelled"));
+        },
+    }
     warning::fail_if_triggered("prepare_runner_environment")?;
 
     // Machine type used for filtering tests.
@@ -259,6 +381,12 @@ async fn run() -> Result<()> {
                 test_config.runs_on
             );
             continue;
+        }
+
+        // Check whether a signal arrived between test iterations.
+        if cancellation_token.is_cancelled() {
+            error!("main(): cancellation requested, skipping remaining tests");
+            break;
         }
 
         let TestCaseConfig {
@@ -329,7 +457,14 @@ async fn run() -> Result<()> {
                     ExecutorName::Empty.to_str(),
                     executor.as_str(),
                 )?;
-                empty(&runner_config, iterations, &log_layout, &extra_nanvixd_args).await?;
+                empty(
+                    &runner_config,
+                    iterations,
+                    &log_layout,
+                    &extra_nanvixd_args,
+                    cancellation_token.clone(),
+                )
+                .await?;
                 let context: String = format!("empty executor completed (label={})", executor);
                 warning::fail_if_triggered(context.as_str())?;
             },
@@ -366,6 +501,7 @@ async fn run() -> Result<()> {
                     workload,
                     &log_layout,
                     &extra_nanvixd_args,
+                    cancellation_token.clone(),
                 )
                 .await?;
                 let context: String = format!(
@@ -419,6 +555,7 @@ async fn run() -> Result<()> {
                     workload,
                     &log_layout,
                     &extra_nanvixd_args,
+                    cancellation_token.clone(),
                 )
                 .await?;
                 let context: String = format!(

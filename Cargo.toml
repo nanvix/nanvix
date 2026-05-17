@@ -206,6 +206,7 @@ tempfile = "3"
 talc = { git = "https://github.com/nanvix/talc", rev = "12e66643796be912933a369a2d556aaac4c68771", default-features = false, package = "talc" }
 thiserror = "2"
 tokio = { version = "1.52.3", default-features = false }
+tokio-util = { version = "0.7.18", default-features = false }
 toml = { version = "1.1.2", default-features = false, features = [
         "parse",
         "serde",
