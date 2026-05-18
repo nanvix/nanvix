@@ -139,6 +139,7 @@ pub(crate) async fn test_with_http_executor(
                         app_name.as_str(),
                         program_path.as_str(),
                         workload.program_args(),
+                        workload.program_env(),
                         l2_enabled,
                     )?;
 
