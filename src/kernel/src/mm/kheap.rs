@@ -2,6 +2,17 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Verus
+//==================================================================================================
+
+use ::vstd::prelude::*;
+
+#[cfg(verus_keep_ghost)]
+include!("kheap.spec.rs");
+#[cfg(verus_keep_ghost)]
+include!("kheap.proof.rs");
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -23,9 +34,14 @@ use ::sys::error::{
 // Constants
 //==================================================================================================
 
+#[verus_verify]
 pub const NUM_OF_SLABS: usize = 7;
-const SLAB_COUNT: usize = 32;
+
+#[verus_verify]
+pub const SLAB_COUNT: usize = 32;
+#[verus_verify]
 pub const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
+#[verus_verify]
 pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 
 //==================================================================================================
@@ -34,8 +50,9 @@ pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 
 struct ArenaAllocator;
 
+#[verus_verify]
 #[derive(Copy, Clone)]
-enum SlabSize {
+pub enum SlabSize {
     Slab8 = 8,
     Slab16 = 16,
     Slab32 = 32,
@@ -45,6 +62,7 @@ enum SlabSize {
     Slab512 = 512,
 }
 
+#[verus_verify]
 struct Kheap {
     slab_8_bytes: Slab,
     slab_16_bytes: Slab,
@@ -53,6 +71,10 @@ struct Kheap {
     slab_128_bytes: Slab,
     slab_256_bytes: Slab,
     slab_512_bytes: Slab,
+    // Ghost state — alloc_map is the ground truth for abstract KheapView.
+    // Ghost<T> is zero-sized; it costs nothing at runtime.
+    #[allow(dead_code)]
+    alloc_map: Ghost<Map<int, nat>>,
 }
 
 //==================================================================================================
@@ -74,7 +96,53 @@ static mut ALLOCATOR: ArenaAllocator = ArenaAllocator;
 // Implementations
 //==================================================================================================
 
+// VERUS DEVIATION: `addr as *mut u8` is unsupported in verified bodies.
+// Keep the executable cast isolated behind a specified helper.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        result as usize == addr,
+)]
+fn usize_to_mut_ptr(addr: usize) -> *mut u8 {
+    addr as *mut u8
+}
+
+// Ghost-state constructor for the zero-sized allocation map used by the proof.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        result@ =~= Map::empty(),
+)]
+fn empty_alloc_map() -> Ghost<Map<int, nat>> {
+    Ghost::assume_new()
+}
+
+#[verus_verify]
 impl Kheap {
+    /// Constructs a Kheap over the `[addr, addr + size)` region.
+    ///
+    /// # Success
+    /// - `addr` is page-aligned and non-zero
+    /// - `size` is a positive multiple of `MIN_HEAP_SIZE`
+    /// - Every slab tier is freshly initialized with zero live allocations
+    /// - The resulting `KheapView` is empty (no live allocations).
+    ///
+    /// # Failure
+    /// Returns `InvalidArgument` on alignment or sizing violations.
+    #[verus_spec(result =>
+        requires
+            addr + size <= usize::MAX,
+            size <= isize::MAX as usize,
+            addr > 0,
+        ensures
+            match result {
+                Ok(kheap) => {
+                    &&& kheap.inv()
+                    &&& kheap@ =~= KheapView::spec_new()
+                },
+                Err(e) => e.code == ErrorCode::InvalidArgument,
+            },
+    )]
     unsafe fn from_raw_parts(addr: usize, size: usize) -> Result<Kheap, Error> {
         // Check if start address is not page aligned.
         if !addr.is_multiple_of(mem::PAGE_SIZE) {
@@ -97,9 +165,18 @@ impl Kheap {
             ));
         }
 
-        let heap_start_addr: *mut u8 = addr as *mut u8;
+        let heap_start_addr: *mut u8 = usize_to_mut_ptr(addr);
         let slab_size: usize = size / NUM_OF_SLABS;
+
+        // `size` is a multiple of `MIN_HEAP_SIZE = NUM_OF_SLABS * MIN_SLAB_SIZE`,
+        // so it's also a multiple of `NUM_OF_SLABS`, giving `slab_size * NUM == size`.
+        proof! {
+            lemma_from_raw_parts_ptr_preconditions(addr, size, slab_size, heap_start_addr);
+        }
+
+        #[cfg(not(verus_keep_ghost))]
         info!("heap size: {} MB", size / constants::MEGABYTE);
+        #[cfg(not(verus_keep_ghost))]
         info!("slab size: {} KB", slab_size / constants::KILOBYTE);
         Ok(Kheap {
             slab_8_bytes: Slab::from_raw_parts(
@@ -137,35 +214,145 @@ impl Kheap {
                 slab_size,
                 SlabSize::Slab512 as usize,
             )?,
+            alloc_map: empty_alloc_map(),
         })
     }
 
+    /// Allocates a block that fits the requested `layout`.
+    ///
+    /// # Success
+    /// - Returns a non-null, properly aligned pointer
+    /// - The returned address was not previously live
+    /// - The abstract view records the new size at the returned addr.
+    ///
+    /// # Failure
+    /// Abstract state is unchanged.
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+            layout_ok_for_kheap(layout),
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(ptr) => {
+                    &&& ptr as usize != 0
+                    &&& !old(self)@.allocations.dom().contains(ptr as int)
+                    // Caller got at least `request` bytes at `ptr`; the
+                    // actual reserved size (hidden from the caller) is
+                    // `final(self)@.allocations[ptr]`.
+                    &&& final(self)@.allocations[ptr as int] >= spec_layout_size(layout) as nat
+                    &&& final(self)@ =~= old(self)@.spec_allocate(
+                        ptr as int,
+                        final(self)@.allocations[ptr as int],
+                    )
+                    &&& (ptr as int) % (spec_layout_align(layout) as int) == 0
+                },
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& !old(self).can_allocate_layout(layout)
+                },
+            },
+    )]
     unsafe fn allocate(&mut self, layout: Layout) -> Result<*mut u8, AllocError> {
-        match Kheap::layout_to_allocator(&layout)? {
-            SlabSize::Slab8 => self.slab_8_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab16 => self.slab_16_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab32 => self.slab_32_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab64 => self.slab_64_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab128 => self.slab_128_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab256 => self.slab_256_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab512 => self.slab_512_bytes.allocate().map_err(|_| AllocError),
+        let tier = Kheap::layout_to_allocator(&layout)?;
+        let r = match tier {
+            SlabSize::Slab8 => self.slab_8_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab16 => self.slab_16_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab32 => self.slab_32_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab64 => self.slab_64_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab128 => self.slab_128_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab256 => self.slab_256_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab512 => self.slab_512_bytes.allocate().map_err(|_e| AllocError),
+        };
+        #[allow(unused_variables)]
+        let align = layout.align();
+        proof! {
+            let blk_size = spec_tier_size(tier);
+            let size = spec_layout_size(layout);
+            lemma_tier_size_bounds(tier, size);
+            match r {
+                Ok(ptr) => {
+                    *self.alloc_map = self.alloc_map@.insert(ptr as int, blk_size as nat);
+                    Kheap::lemma_alloc_preserves_internal_inv(old(self), self, tier, ptr as usize, blk_size);
+                    Kheap::lemma_alloc_overlap_with_new(old(self), tier, ptr as usize, blk_size);
+                    Kheap::lemma_alloc_preserves_view_inv(old(self), self, ptr as usize, blk_size);
+                    Kheap::lemma_pow2_le_512_supported(align);
+                    Kheap::lemma_tier_align(ptr as usize, size, align, tier);
+                },
+                Err(_) => {
+                    Kheap::lemma_alloc_err_preserves_inv(old(self), self, tier);
+                },
+            }
         }
+        r
     }
 
+    /// Deallocates the block at `ptr`, which was allocated by `allocate` with `layout`.
+    ///
+    /// # Success
+    /// Removes `ptr` from the abstract view.
+    ///
+    /// # Failure
+    /// Abstract state is unchanged.
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+            spec_layout_size(layout) > 0,
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(()) => {
+                    &&& old(self)@.allocations.dom().contains(ptr as int)
+                    &&& final(self)@ =~= old(self)@.spec_deallocate(ptr as int)
+                },
+                Err(_) => final(self)@ == old(self)@,
+            },
+    )]
     unsafe fn deallocate(&mut self, ptr: *mut u8, layout: Layout) -> Result<(), AllocError> {
-        match Kheap::layout_to_allocator(&layout)? {
-            SlabSize::Slab8 => self.slab_8_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab16 => self.slab_16_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab32 => self.slab_32_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab64 => self.slab_64_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab128 => self.slab_128_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab256 => self.slab_256_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab512 => self.slab_512_bytes.deallocate(ptr).map_err(|_| AllocError),
+        let tier = Kheap::layout_to_allocator(&layout)?;
+        let r = match tier {
+            SlabSize::Slab8 => self.slab_8_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab16 => self.slab_16_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab32 => self.slab_32_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab64 => self.slab_64_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab128 => self.slab_128_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab256 => self.slab_256_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab512 => self.slab_512_bytes.deallocate(ptr).map_err(|_e| AllocError),
+        };
+        proof! {
+            match r {
+                Ok(()) => {
+                    *self.alloc_map = self.alloc_map@.remove(ptr as int);
+                    Kheap::lemma_dealloc_preserves_internal_inv(old(self), self, tier, ptr as usize);
+                    Kheap::lemma_dealloc_preserves_view_inv(old(self), self, ptr as usize);
+                },
+                Err(_) => {
+                    Kheap::lemma_dealloc_err_preserves_inv(old(self), self);
+                },
+            }
         }
+        r
     }
 
+    /// Routes a layout to the smallest slab tier that can serve it.
+    /// Deterministic: the same size always maps to the same tier.
+    #[verus_spec(result =>
+        ensures
+            match result {
+                Ok(tier) => {
+                    let t = tier as usize;
+                    &&& is_supported_tier(t)
+                    &&& t >= spec_layout_size(*layout)
+                    &&& forall|s: usize| is_supported_tier(s) && s >= spec_layout_size(*layout) ==> t <= s
+                },
+                Err(_) => {
+                    spec_layout_size(*layout) == 0
+                        || spec_layout_size(*layout) > 512
+                },
+            },
+    )]
     pub fn layout_to_allocator(layout: &Layout) -> Result<SlabSize, AllocError> {
-        match layout.size() {
+        let r = match layout.size() {
             1..=8 => Ok(SlabSize::Slab8),
             9..=16 => Ok(SlabSize::Slab16),
             17..=32 => Ok(SlabSize::Slab32),
@@ -174,10 +361,21 @@ impl Kheap {
             129..=256 => Ok(SlabSize::Slab256),
             257..=512 => Ok(SlabSize::Slab512),
             _ => Err(AllocError),
+        };
+        proof! {
+            if let Ok(tier) = r {
+                lemma_layout_to_allocator_minimality(tier, spec_layout_size(*layout));
+            }
         }
+        r
     }
 }
 
+//==================================================================================================
+// GlobalAlloc
+//==================================================================================================
+
+#[verus_verify(external)]
 unsafe impl GlobalAlloc for ArenaAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let heap = ptr::addr_of_mut!(HEAP);
@@ -224,6 +422,7 @@ unsafe impl GlobalAlloc for ArenaAllocator {
 /// - `size`: Size of the backing buffer in bytes. Must be a multiple of [`MIN_HEAP_SIZE`].
 ///
 #[allow(dead_code)]
+#[verus_verify(external)]
 pub unsafe fn set_backing_storage(ptr: *mut u8, size: usize) -> Result<(), Error> {
     if ptr.is_null() {
         let reason: &str = "null backing storage pointer";
@@ -250,6 +449,7 @@ pub unsafe fn set_backing_storage(ptr: *mut u8, size: usize) -> Result<(), Error
     Ok(())
 }
 
+#[verus_verify(external)]
 pub unsafe fn init() -> Result<(), Error> {
     info!("initializing the kernel heap...");
 

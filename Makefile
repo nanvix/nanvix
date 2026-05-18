@@ -291,7 +291,7 @@ endif
 export VERUS_EXECUTABLE_DIR ?=
 
 # List of crates to verify with Verus.
-VERUS_CRATES := bitmap nanvix-slab
+VERUS_CRATES := bitmap nanvix-slab kernel
 
 # Platform-specific Verus binary name.
 ifeq ($(IS_WINDOWS),yes)
@@ -314,6 +314,8 @@ endif
 export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
 	PATH="$(VERUS_PATH_PREFIX):$$PATH" \
 	$(CARGO) verus verify --locked --no-default-features
+
+export VERUS_KERNEL_FEATURES := microvm trace
 
 #===================================================================================================
 # Top-Level Targets
@@ -591,13 +593,21 @@ else
 	echo "Using Verus installation at $(VERUS_EXECUTABLE_DIR)."
 endif
 
-# Pattern rule for verifying individual crates.
+# Pattern rule for verifying individual library crates.
 # Verification is skipped when VERUS_EXECUTABLE_DIR is unset.
-$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+$(filter-out verify-kernel,$(addprefix verify-,$(VERUS_CRATES))): verify-%: ensure-verus
 ifeq ($(VERUS_EXECUTABLE_DIR),)
 	@true
 else
 	$(VERUS_VERIFY_CMD) -p $* $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+endif
+
+.PHONY: verify-kernel
+verify-kernel: ensure-verus
+ifeq ($(VERUS_EXECUTABLE_DIR),)
+	@true
+else
+	$(VERUS_VERIFY_CMD) --features "$(VERUS_KERNEL_FEATURES)" -p kernel $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 endif
 
 # Fixes code linting issues.
