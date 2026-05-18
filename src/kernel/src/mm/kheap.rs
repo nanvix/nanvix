@@ -25,15 +25,15 @@ use ::type_safe::usize_to_mut_ptr;
 //==================================================================================================
 
 /// Number of slabs in the heap. Each slab is responsible for allocating blocks of a specific size.
-const NUM_OF_SLABS: usize = 7;
+pub const NUM_OF_SLABS: usize = 7;
 /// Number of slabs per slab size. Each slab size is allocated a fixed number of slabs.
-pub(super) const SLAB_COUNT: usize = 32;
+pub const SLAB_COUNT: usize = 32;
 /// Minimum size of a single slab in bytes. It is calculated as the number of slabs per slab size
 /// multiplied by the page size.
-const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
+pub const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
 /// Minimum heap size in bytes. This is the minimum size of the backing storage that must be
 /// provided to initialize the heap.
-pub(crate) const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
+pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 
 //==================================================================================================
 //  Structures
@@ -80,6 +80,11 @@ static mut ALLOCATOR: ArenaAllocator = ArenaAllocator;
 //==================================================================================================
 // Implementations
 //==================================================================================================
+
+#[inline]
+fn usize_to_mut_ptr(addr: usize) -> *mut u8 {
+    addr as *mut u8
+}
 
 impl Kheap {
     unsafe fn from_raw_parts(addr: usize, size: usize) -> Result<Kheap, Error> {

@@ -45,6 +45,7 @@ pub const PAGE_SHIFT: usize = 12;
 /// Number of bytes in a page.
 ///
 pub const PAGE_SIZE: usize = 4096;
+// Compile-time check that the literal matches the shift-based definition.
 ::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
 
 ///
