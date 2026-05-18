@@ -98,14 +98,20 @@ Matrix coverage in GitHub Actions:
 # nanvix-<ver>-<target>-<machine>-<deploy>-<mode>-<log>-<memory>mb.tar.bz2
 ```
 
-Minor releases can be created with:
+Releases can be created with:
 
 ```bash
-# Linux / macOS
-python3 scripts/create-minor-release.py
+# Patch release (X.Y.Z -> X.Y.(Z+1))
+python3 scripts/create-release.py --patch   # Linux / macOS
+python scripts/create-release.py --patch    # Windows
 
-# Windows
-python scripts/create-minor-release.py
+# Minor release (X.Y.Z -> X.(Y+1).0)
+python3 scripts/create-release.py --minor   # Linux / macOS
+python scripts/create-release.py --minor    # Windows
+
+# Major release (X.Y.Z -> (X+1).0.0)
+python3 scripts/create-release.py --major   # Linux / macOS
+python scripts/create-release.py --major    # Windows
 ```
 
 ## Pipeline Output
