@@ -17,7 +17,7 @@ all-host-binaries-$(1): init
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/$(1)$(CARGO_EXE_SUFFIX) $(BINARIES_DIR)/$(1).$(HOST_BIN_EXT)
 
 check-host-binaries-$(1):
-	$(HOST_CARGO_CHECK_CMD) $(call host_cargo_features,$(call host_binary_features,$(1))) -p $(1)
+	@$(HOST_CARGO_CHECK_CMD) $(call host_cargo_features,$(call host_binary_features,$(1))) -p $(1)
 
 format-host-binaries-$(1):
 	$(HOST_CARGO_FMT_CMD) -p $(1)
@@ -61,7 +61,7 @@ endif
 
 check-host-binaries: $(foreach pkg,$(_HOST_BINS_WITH_FEATURES),check-host-binaries-$(pkg))
 ifneq ($(_HOST_BINS_PLAIN_PKGS),)
-	$(HOST_CARGO_CHECK_CMD) $(_HOST_BINS_PLAIN_PKGS)
+	@$(HOST_CARGO_CHECK_CMD) $(_HOST_BINS_PLAIN_PKGS)
 endif
 
 # Batched format: single cargo invocation for all host binaries.

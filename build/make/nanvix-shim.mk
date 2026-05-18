@@ -15,7 +15,7 @@ all-nanvix-shim: init
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/containerd-shim-nanvix-v1 $(BINARIES_DIR)/containerd-shim-nanvix-v1
 
 check-nanvix-shim:
-	$(HOST_CARGO_CHECK_CMD) $(SHIM_CARGO_PACKAGES)
+	@$(HOST_CARGO_CHECK_CMD) $(SHIM_CARGO_PACKAGES)
 
 format-nanvix-shim:
 	$(HOST_CARGO_FMT_CMD) -p nanvix-oci
