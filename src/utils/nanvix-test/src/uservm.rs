@@ -103,7 +103,7 @@ impl UserVm {
             tenant_id: uservm_args.tenant_id.clone(),
             app_name: uservm_args.app_name.clone(),
             program: uservm_args.program_path.clone(),
-            program_args: uservm_args.program_args.clone().unwrap_or_default(),
+            program_args: uservm_args.combined_program_args(),
         };
 
         let mut request_headers: HeaderMap = uservm_args.headers();
@@ -536,6 +536,9 @@ pub struct UserVmArgs {
     program_path: String,
     /// Optional command-line arguments forwarded to the workload.
     program_args: Option<String>,
+    /// Optional environment variables forwarded to the workload (combined into program_args
+    /// using the documented `<args>;<env>` format before sending to nanvixd).
+    program_env: Option<String>,
     /// Indicates whether the Nanvix Daemon should provision L2 networking.
     l2_enabled: bool,
 }
@@ -553,6 +556,7 @@ impl UserVmArgs {
     /// - `app_name`: Human-readable application workload name.
     /// - `program_path`: Absolute path to the executable launched inside the User VM.
     /// - `program_args`: Optional command-line arguments forwarded to the executable.
+    /// - `program_env`: Optional environment variables forwarded to the executable.
     /// - `l2_enabled`: Flag indicating whether the request should enable L2 networking mode.
     ///
     /// # Return Value
@@ -565,6 +569,7 @@ impl UserVmArgs {
         app_name: &str,
         program_path: &str,
         program_args: Option<&str>,
+        program_env: Option<&str>,
         l2_enabled: bool,
     ) -> Result<Self> {
         let mut headers: HeaderMap = HeaderMap::new();
@@ -588,6 +593,7 @@ impl UserVmArgs {
             app_name: app_name.to_string(),
             program_path: program_path.to_string(),
             program_args: program_args.map(|value| value.to_string()),
+            program_env: program_env.map(|value| value.to_string()),
             l2_enabled,
         })
     }
@@ -618,5 +624,126 @@ impl UserVmArgs {
     ///
     pub fn l2_enabled(&self) -> bool {
         self.l2_enabled
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Builds the combined `program_args` string using the documented `<args>;<env>` format.
+    ///
+    /// When environment variables are present, they are appended after a `;` separator so that
+    /// the kernel's `split_cmdline()` can split them. When only one of args or env is present,
+    /// the appropriate prefix or suffix is used.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the combined string ready to be sent as the `program_args` field in the HTTP
+    /// `New` message.
+    ///
+    fn combined_program_args(&self) -> String {
+        crate::executor::combine_args_env(self.program_args.as_deref(), self.program_env.as_deref())
+    }
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::executor::combine_args_env;
+
+    /// Helper that builds a `UserVmArgs` with the given program_args and program_env, then
+    /// calls `combined_program_args()`.
+    fn combine(args: Option<&str>, env: Option<&str>) -> String {
+        let uva: UserVmArgs =
+            UserVmArgs::new("t", "a", "p", args, env, false).expect("UserVmArgs::new failed");
+        uva.combined_program_args()
+    }
+
+    #[test]
+    fn combined_no_args_no_env() {
+        assert_eq!(combine(None, None), "");
+    }
+
+    #[test]
+    fn combined_args_only() {
+        assert_eq!(combine(Some("arg1 arg2"), None), "arg1 arg2");
+    }
+
+    #[test]
+    fn combined_env_only() {
+        assert_eq!(combine(None, Some("VAR=x")), ";VAR=x");
+    }
+
+    #[test]
+    fn combined_args_and_env() {
+        assert_eq!(combine(Some("arg1"), Some("VAR=x")), "arg1;VAR=x");
+    }
+
+    #[test]
+    fn combined_escapes_semicolons_in_args() {
+        // A literal `;` in args must be escaped to `\;` so split_cmdline() treats it as data.
+        assert_eq!(combine(Some("a;b"), Some("VAR=x")), "a\\;b;VAR=x");
+    }
+
+    #[test]
+    fn combined_escapes_semicolons_in_env() {
+        // A literal `;` in env must be escaped to `\;` so split_cmdline() treats it as data.
+        assert_eq!(combine(Some("arg1"), Some("PATH=a;b")), "arg1;PATH=a\\;b");
+    }
+
+    #[test]
+    fn combined_escapes_semicolons_even_without_env() {
+        // Semicolons in args are always escaped so split_cmdline() treats them as data.
+        assert_eq!(combine(Some("a;b"), None), "a\\;b");
+    }
+
+    #[test]
+    fn combined_roundtrip_with_split_cmdline() {
+        // Verify the combined string round-trips through the kernel's split_cmdline().
+        let combined: String = combine(Some("path/to;file arg2"), Some("FOO=bar BAZ=qux"));
+        let mut buf: Vec<u8> = combined.into_bytes();
+        let (args, env) = ::cmdline::split_cmdline(&mut buf);
+        assert_eq!(args, "path/to;file arg2");
+        assert_eq!(env, "FOO=bar BAZ=qux");
+    }
+
+    #[test]
+    fn combined_roundtrip_semicolon_in_env_value() {
+        // Verify that a literal `;` inside an env value survives the round-trip
+        // because it is escaped to `\;` and split_cmdline() unescapes it.
+        let combined: String = combine(Some("hello"), Some("PATH=a;b"));
+        let mut buf: Vec<u8> = combined.into_bytes();
+        let (args, env) = ::cmdline::split_cmdline(&mut buf);
+        assert_eq!(args, "hello");
+        assert_eq!(env, "PATH=a;b");
+    }
+
+    #[test]
+    fn combined_empty_env_string_treated_as_absent() {
+        // `Some("")` must behave the same as `None` — no trailing `;`.
+        assert_eq!(combine(Some("arg1"), Some("")), "arg1");
+    }
+
+    #[test]
+    fn combined_empty_args_string_treated_as_absent() {
+        // `Some("")` must behave the same as `None` — no leading `;` when only env is set.
+        assert_eq!(combine(Some(""), Some("VAR=x")), ";VAR=x");
+    }
+
+    #[test]
+    fn combined_program_args_matches_free_function() {
+        // The free function should produce identical results to the UserVmArgs method.
+        assert_eq!(
+            combine_args_env(Some("arg1"), Some("VAR=x")),
+            combine(Some("arg1"), Some("VAR=x"))
+        );
+        assert_eq!(combine_args_env(None, None), combine(None, None));
+        assert_eq!(
+            combine_args_env(Some("a;b"), Some("PATH=a;b")),
+            combine(Some("a;b"), Some("PATH=a;b"))
+        );
     }
 }

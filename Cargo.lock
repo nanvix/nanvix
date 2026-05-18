@@ -1988,6 +1988,7 @@ version = "0.14.7"
 dependencies = [
  "anyhow",
  "chrono",
+ "cmdline",
  "globset",
  "libc",
  "log",
