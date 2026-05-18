@@ -98,9 +98,30 @@ execution_mode = "standalone"
 extra_args = ["-console-file", "/dev/null"]
 ```
 
-> **Note:** When containerd provides a stdout path (e.g., via `ctr run`), the shim
-> automatically overrides `-console-file` from `extra_args` to redirect guest console
-> output to containerd's stdout pipe.
+> **Note:** When the nanvix containerd shim spawns nanvixd, it always sets
+> `-console-file` and `-container-io` itself; any `-console-file` value in
+> `extra_args` is stripped with a warning. See "Per-sandbox log files"
+> below for what each flag carries.
+
+## Per-sandbox log files
+
+Inside the nanvix containerd shim, three byte streams are kept physically
+separate end-to-end:
+
+| Stream | Where it goes | Flag |
+| --- | --- | --- |
+| Guest **application stdio** (container fd 1 / fd 2 — IKC `WriteRequest` data) | Cross-platform endpoint the shim connects to and forwards into containerd's `log_path` (binary log driver pipe → `crictl logs`) | `-container-io <path>` (UDS on Unix, named pipe on Windows) |
+| Guest **kernel console** (PMIO port 0x1CF — kernel printks) | `<bundle>/kernel-console.log` | `-console-file <path>` |
+| **nanvixd's own logrus output** (host process trace/debug) | `<bundle>/nanvixd-<UTC-ts>-<shim-pid>.log` via the shim's `daemon_log` tee of nanvixd's stdout. Also written to a `nanvixd_<ts>.log` next to other flexi_logger files in nanvixd's default log directory. | (automatic, via `nanvix::log::init` with `duplicate_to_stdout`) |
+
+`<bundle>` is the per-sandbox shim state directory
+(`<containerd state>/io.containerd.runtime.v2.task/<namespace>/<container_id>/`).
+containerd cleans it on Delete, so the per-sandbox log files are GC'd
+with the sandbox automatically.
+
+The per-spawn timestamp + shim PID in the nanvixd log filename means a
+retried `prepare()` (e.g. after `wait_for_server` failure) does not
+overwrite the previous attempt's log.
 
 ## Running Containers
 
