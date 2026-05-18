@@ -7,6 +7,7 @@
 
 use ::flexi_logger::{
     DeferredNow,
+    Duplicate,
     FileSpec,
     Logger,
 };
@@ -117,8 +118,16 @@ pub fn init(
             if let Some(disc) = discriminator {
                 file_spec = file_spec.discriminant(disc);
             }
+            // Also mirror records to stdout. Callers that pipe the process's
+            // stdout (notably the containerd shim, which tees nanvixd's
+            // stdout+stderr into <bundle>/nanvixd.log) rely on this to make
+            // logrus output visible without scraping the file logger's
+            // separate output. Falling back to file-only is undesirable
+            // because the file path is process-internal and the operator
+            // typically doesn't know where to look.
             logger
                 .log_to_file(file_spec)
+                .duplicate_to_stdout(Duplicate::All)
                 .start()
                 .expect("failed to initialize logger");
         } else {
