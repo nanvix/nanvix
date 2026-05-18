@@ -38,6 +38,16 @@ use ::core::sync::atomic::{
 use ::alloc::vec::Vec;
 
 //==================================================================================================
+// External Functions
+//==================================================================================================
+
+#[cfg(feature = "staticlib")]
+unsafe extern "C" {
+    /// Initializes the environment table from a null-terminated array of "KEY=VALUE" C strings.
+    fn __nanvix_env_init(envp: *const *const core::ffi::c_char);
+}
+
+//==================================================================================================
 // Global Variables
 //==================================================================================================
 
@@ -162,6 +172,14 @@ pub unsafe extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
     let mut env: Vec<*mut i8> = unsafe { parse_envp(envp) };
     unsafe {
         environ = env.as_mut_ptr();
+    }
+
+    // Populate the environment table used by getenv()/setenv()/unsetenv().
+    // The `environ` pointer is a null-terminated array of "KEY=VALUE" C strings,
+    // which is exactly the format expected by __nanvix_env_init().
+    #[cfg(feature = "staticlib")]
+    unsafe {
+        __nanvix_env_init(environ as *const *const core::ffi::c_char);
     }
 
     cfg_if::cfg_if! {
