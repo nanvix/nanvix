@@ -306,7 +306,7 @@ impl ProcessManager {
         // poison-on-free, a freed ContextInformation block is filled with SLAB_POISON_BYTE. If
         // `from` points to a poisoned block, the zombie thread's ContextInformation was freed
         // before the context switch — a use-after-free bug.
-        #[cfg(debug_assertions)]
+        #[cfg(all(debug_assertions, not(verus_keep_ghost)))]
         {
             let from_bytes: &[u8] = unsafe {
                 core::slice::from_raw_parts(
