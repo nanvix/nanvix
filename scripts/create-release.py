@@ -4,9 +4,9 @@
 # Licensed under the MIT License.
 
 """
-Utility for creating a minor release of Nanvix.
+Utility for creating a release of Nanvix.
 
-Run 'python create-minor-release.py --help' for usage information.
+Run 'python create-release.py --help' for usage information.
 """
 
 # ======================================================================
@@ -90,14 +90,28 @@ def get_cargo_toml_version(cargo_toml: str) -> str:
     return match.group(3)
 
 
-def increment_version(version: str) -> str:
-    """Increment the patch component of a MAJOR.MINOR.PATCH version string."""
+def increment_version(version: str, bump: str) -> str:
+    """Increment a version component of a MAJOR.MINOR.PATCH version string.
+
+    Args:
+        version: Current version string in MAJOR.MINOR.PATCH format.
+        bump: One of 'patch', 'minor', or 'major'.
+    """
     parts = version.split(".")
     if len(parts) != 3 or not all(p.isdigit() for p in parts):
         print_error(f"Invalid version format '{version}'")
         sys.exit(1)
-    parts[2] = str(int(parts[2]) + 1)
-    return ".".join(parts)
+    major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
+    if bump == "major":
+        major += 1
+        minor = 0
+        patch = 0
+    elif bump == "minor":
+        minor += 1
+        patch = 0
+    else:
+        patch += 1
+    return f"{major}.{minor}.{patch}"
 
 
 def update_cargo_toml(cargo_toml: str, new_version: str) -> None:
@@ -222,7 +236,7 @@ def git_commit(cargo_toml: str, cargo_lock: str, new_version: str) -> None:
         if result.returncode != 0:
             print_error("Failed to commit version bump.")
             sys.exit(1)
-        print_success(f"Successfully created minor release: {new_version}")
+        print_success(f"Successfully created release: {new_version}")
     else:
         print_info("No changes to commit")
 
@@ -252,7 +266,29 @@ def git_push() -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Utility for creating a minor release of Nanvix.",
+        description="Utility for creating a release of Nanvix.",
+    )
+    bump_group = parser.add_mutually_exclusive_group(required=True)
+    bump_group.add_argument(
+        "--patch",
+        action="store_const",
+        const="patch",
+        dest="bump",
+        help="Bump patch version: X.Y.Z -> X.Y.(Z+1)",
+    )
+    bump_group.add_argument(
+        "--minor",
+        action="store_const",
+        const="minor",
+        dest="bump",
+        help="Bump minor version: X.Y.Z -> X.(Y+1).0",
+    )
+    bump_group.add_argument(
+        "--major",
+        action="store_const",
+        const="major",
+        dest="bump",
+        help="Bump major version: X.Y.Z -> (X+1).0.0",
     )
     parser.add_argument(
         "--push",
@@ -280,12 +316,12 @@ def main() -> None:
     cargo_toml = os.path.join(repo_root, "Cargo.toml")
     cargo_lock = os.path.join(repo_root, "Cargo.lock")
 
-    print_info("Creating minor release...")
+    print_info(f"Creating {args.bump} release...")
 
     current_version = get_cargo_toml_version(cargo_toml)
     print_info(f"Current version: {current_version}")
 
-    new_version = increment_version(current_version)
+    new_version = increment_version(current_version, args.bump)
     print_info(f"Incrementing version: {current_version} -> {new_version}")
 
     update_cargo_toml(cargo_toml, new_version)

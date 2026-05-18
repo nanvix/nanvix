@@ -1150,7 +1150,7 @@ jobs:
         with:
           # Use the deploy SSH key so that benchmark-persist can push results
           # to the dev branch (the deploy key is a bypass actor for branch
-          # protection rules, matching the approach in create-minor-release).
+          # protection rules, matching the approach in create-release).
           ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
 
       - name: "Download Benchmark Results"
