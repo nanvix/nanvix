@@ -576,6 +576,9 @@ pub struct TestCaseConfig {
     pub expected_exit_code: Option<i32>,
     /// Optional list of machine types on which this test should run.
     pub runs_on: Option<Vec<String>>,
+    /// Optional environment variables forwarded to the workload under test.
+    /// Formatted as space-separated `KEY=VALUE` pairs (e.g., `"FOO=bar BAZ=qux"`).
+    pub program_env: Option<String>,
     /// Optional padding length used to generate a synthetic `program_args` string at runtime.
     /// When set, the runner creates a repeated-character string of exactly this many bytes and
     /// uses it as `program_args`. Mutually exclusive with `program_args`.
@@ -612,6 +615,7 @@ impl TestCaseConfig {
         let extra_nanvixd_args_field: String = format!("{entry_prefix}.extra_nanvixd_args");
         let expected_exit_code_field: String = format!("{entry_prefix}.expected_exit_code");
         let runs_on_field: String = format!("{entry_prefix}.runs_on");
+        let program_env_field: String = format!("{entry_prefix}.program_env");
         let program_args_padding_len_field: String =
             format!("{entry_prefix}.program_args_padding_len");
 
@@ -649,6 +653,7 @@ impl TestCaseConfig {
                 expected_exit_code_field.as_str(),
             )?,
             runs_on: read_optional_string_array(table, "runs_on", runs_on_field.as_str())?,
+            program_env: read_optional_string(table, "program_env", program_env_field.as_str())?,
             program_args_padding_len: read_optional_usize(
                 table,
                 "program_args_padding_len",
@@ -1862,6 +1867,7 @@ mod tests {
             extra_nanvixd_args: None,
             expected_exit_code: Some(0),
             runs_on: None,
+            program_env: None,
             program_args_padding_len: None,
         };
         config.validate(0)?;
@@ -1882,6 +1888,7 @@ mod tests {
             extra_nanvixd_args: None,
             expected_exit_code: None,
             runs_on: None,
+            program_env: None,
             program_args_padding_len: None,
         };
         config.validate(0)?;
@@ -1976,6 +1983,7 @@ mod tests {
             extra_nanvixd_args: None,
             expected_exit_code: None,
             runs_on: None,
+            program_env: None,
             program_args_padding_len: Some(100),
         };
         let result = config.validate(0);

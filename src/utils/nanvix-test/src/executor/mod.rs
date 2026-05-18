@@ -42,6 +42,13 @@ pub struct WorkloadSpec<'a> {
     ///
     /// # Description
     ///
+    /// Optional environment variable string forwarded to the workload.
+    /// Formatted as space-separated `KEY=VALUE` pairs.
+    ///
+    program_env: Option<&'a str>,
+    ///
+    /// # Description
+    ///
     /// Optional payload injected into the workload stdin or HTTP stream.
     ///
     input: Option<&'a str>,
@@ -75,6 +82,7 @@ impl<'a> WorkloadSpec<'a> {
     ///
     /// - `program_path`: Path to the workload binary executed by an executor.
     /// - `program_args`: Optional argument string forwarded to the workload entry point.
+    /// - `program_env`: Optional environment variable string forwarded to the workload.
     /// - `input`: Optional payload injected into the workload stdin or HTTP stream.
     /// - `expected_output`: Optional substring that must appear in the collected stdout payload.
     /// - `expect_empty_output`: Indicates whether the workload should produce an empty stdout
@@ -87,6 +95,7 @@ impl<'a> WorkloadSpec<'a> {
     pub const fn new(
         program_path: &'a str,
         program_args: Option<&'a str>,
+        program_env: Option<&'a str>,
         input: Option<&'a str>,
         expected_output: Option<&'a str>,
         expect_empty_output: bool,
@@ -95,6 +104,7 @@ impl<'a> WorkloadSpec<'a> {
         Self {
             program_path,
             program_args,
+            program_env,
             input,
             expected_output,
             expect_empty_output,
@@ -124,6 +134,18 @@ impl<'a> WorkloadSpec<'a> {
     /// Returns the optional argument string, when provided.
     pub const fn program_args(&self) -> Option<&'a str> {
         self.program_args
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Retrieves the optional environment variable string forwarded to the workload.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the optional environment variable string, when provided.
+    pub const fn program_env(&self) -> Option<&'a str> {
+        self.program_env
     }
 
     ///
@@ -236,6 +258,63 @@ impl ExecutorName {
 }
 
 //==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Builds a combined argument string using the documented `<args>;<env>` format.
+///
+/// When environment variables are present, they are appended after a `;` separator so that
+/// the kernel's `split_cmdline()` can split them. When only one of args or env is present,
+/// the appropriate prefix or suffix is used. Any literal `;` in either field is escaped to
+/// `\;` so that `split_cmdline()` treats it as data rather than the separator.
+///
+/// Empty strings are normalised to absent (`None`) so that `Some("")` behaves identically
+/// to `None`.
+///
+/// # Contract
+///
+/// Both `args` and `env` must be raw (unescaped) strings. The function performs all necessary
+/// escaping for the `split_cmdline()` wire format. Do not pre-escape `;` in the input — a
+/// literal `\;` in the input represents a raw backslash followed by a raw semicolon, and the
+/// round-trip through `split_cmdline()` will preserve both characters.
+///
+/// # Parameters
+///
+/// - `args`: Optional command-line argument string.
+/// - `env`: Optional environment variable string (space-separated `KEY=VALUE` pairs).
+///
+/// # Return Value
+///
+/// Returns the combined string ready to be passed as `program_args`.
+///
+pub fn combine_args_env(args: Option<&str>, env: Option<&str>) -> String {
+    // Normalise empty strings to absent so that `Some("")` and `None` behave identically.
+    let args: &str = args.unwrap_or("");
+    let env: &str = env.unwrap_or("");
+
+    // Always escape literal `;` in args and env so that split_cmdline()
+    // never mistakes them for the args/env separator.
+    //
+    // A raw `\;` in the input becomes `\\;` after escaping. split_cmdline()
+    // interprets `\\;` as: literal `\` (next char is `\`, not `;`) followed
+    // by `\;` escape → `;`, yielding the original `\;`. This is correct
+    // because the input is always raw (unescaped).
+    let escaped_args: String = args.replace(';', "\\;");
+    let escaped_env: String = env.replace(';', "\\;");
+
+    if escaped_env.is_empty() {
+        escaped_args
+    } else if escaped_args.is_empty() {
+        format!(";{escaped_env}")
+    } else {
+        format!("{escaped_args};{escaped_env}")
+    }
+}
+
+//==================================================================================================
 // Unit Tests
 //==================================================================================================
 
@@ -246,27 +325,82 @@ mod tests {
     #[test]
     fn workload_spec_expected_exit_code_some() {
         let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(0));
+            WorkloadSpec::new("./bin/test.elf", None, None, None, None, true, Some(0));
         assert_eq!(spec.expected_exit_code(), 0);
     }
 
     #[test]
     fn workload_spec_expected_exit_code_none() {
-        let spec: WorkloadSpec = WorkloadSpec::new("./bin/test.elf", None, None, None, false, None);
+        let spec: WorkloadSpec =
+            WorkloadSpec::new("./bin/test.elf", None, None, None, None, false, None);
         assert_eq!(spec.expected_exit_code(), 0);
     }
 
     #[test]
     fn workload_spec_expected_exit_code_nonzero() {
         let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(13));
+            WorkloadSpec::new("./bin/test.elf", None, None, None, None, true, Some(13));
         assert_eq!(spec.expected_exit_code(), 13);
     }
 
     #[test]
     fn workload_spec_expected_exit_code_negative() {
         let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, false, Some(-1));
+            WorkloadSpec::new("./bin/test.elf", None, None, None, None, false, Some(-1));
         assert_eq!(spec.expected_exit_code(), -1);
+    }
+
+    #[test]
+    fn combine_args_env_no_args_no_env() {
+        assert_eq!(combine_args_env(None, None), "");
+    }
+
+    #[test]
+    fn combine_args_env_args_only() {
+        assert_eq!(combine_args_env(Some("arg1 arg2"), None), "arg1 arg2");
+    }
+
+    #[test]
+    fn combine_args_env_env_only() {
+        assert_eq!(combine_args_env(None, Some("VAR=x")), ";VAR=x");
+    }
+
+    #[test]
+    fn combine_args_env_args_and_env() {
+        assert_eq!(combine_args_env(Some("arg1"), Some("VAR=x")), "arg1;VAR=x");
+    }
+
+    #[test]
+    fn combine_args_env_escapes_semicolons_in_args() {
+        assert_eq!(combine_args_env(Some("a;b"), Some("VAR=x")), "a\\;b;VAR=x");
+    }
+
+    #[test]
+    fn combine_args_env_escapes_semicolons_in_env() {
+        assert_eq!(combine_args_env(Some("arg1"), Some("PATH=a;b")), "arg1;PATH=a\\;b");
+    }
+
+    #[test]
+    fn combine_args_env_escapes_semicolons_even_without_env() {
+        assert_eq!(combine_args_env(Some("a;b"), None), "a\\;b");
+    }
+
+    #[test]
+    fn combine_args_env_empty_env_string_treated_as_absent() {
+        assert_eq!(combine_args_env(Some("arg1"), Some("")), "arg1");
+    }
+
+    #[test]
+    fn combine_args_env_empty_args_string_treated_as_absent() {
+        assert_eq!(combine_args_env(Some(""), Some("VAR=x")), ";VAR=x");
+    }
+
+    #[test]
+    fn combine_args_env_preserves_backslash_semicolon_in_raw_input() {
+        // Raw input `\;` (literal backslash + literal semicolon) must be preserved.
+        // The `;` is escaped to `\;`, producing `\\;` in the encoded output.
+        // split_cmdline() interprets `\\;` as: literal `\` (next char is `\`, not `;`)
+        // followed by `\;` escape → `;`. Round-trip result: `\;` — original preserved.
+        assert_eq!(combine_args_env(Some("a\\;b"), None), "a\\\\;b");
     }
 }

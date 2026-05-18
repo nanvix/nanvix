@@ -7,7 +7,10 @@
 
 use crate::{
     config::RunnerConfig,
-    executor::WorkloadSpec,
+    executor::{
+        WorkloadSpec,
+        combine_args_env,
+    },
     log_layout::{
         GuestLogTracker,
         RunnerLogPaths,
@@ -144,10 +147,24 @@ pub async fn test_with_terminal_executor(
                     stderr: stderr_file_path,
                 } = log_layout.allocate_runner_logs(Some(iteration));
 
+                // Build a single combined argument string using the shared
+                // `combine_args_env()` helper, which implements the documented
+                // `<args>;<env>` format with proper `;` escaping.
+                let joined_args: String = parsed_program_args.join(" ");
+                let combined: String = combine_args_env(
+                    if joined_args.is_empty() { None } else { Some(joined_args.as_str()) },
+                    workload.program_env(),
+                );
+                let combined_program_args: Vec<String> = if combined.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![combined]
+                };
+
                 let nanvixd_terminal_args: NanvixdTerminalArgs = NanvixdTerminalArgs::new(
                     hwloc_file_path.clone(),
                     workload.program_path(),
-                    parsed_program_args.as_slice(),
+                    combined_program_args.as_slice(),
                     log_layout.test_directory(),
                     extra_nanvixd_args,
                 )?;

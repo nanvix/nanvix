@@ -28,6 +28,9 @@ globset = { workspace = true }
 libc = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 
+[dev-dependencies]
+cmdline = { workspace = true, features = ["std"] }
+
 [features]
 default = ["microvm", "multi-process"]
 single-process = ["nanvix/single-process", "nanvixd/single-process"]
