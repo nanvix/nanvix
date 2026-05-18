@@ -52,7 +52,7 @@ endif
 endif
 
 check-nanvixd:
-	$(HOST_CARGO_CHECK_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
+	@$(HOST_CARGO_CHECK_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
 
 format-nanvixd:
 	$(HOST_CARGO_FMT_CMD) -p nanvixd

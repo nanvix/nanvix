@@ -15,7 +15,7 @@ all-nanvix-test: init
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/nanvix-test$(CARGO_EXE_SUFFIX) $(BINARIES_DIR)/nanvix-test.$(HOST_BIN_EXT)
 
 check-nanvix-test:
-	$(HOST_CARGO_CHECK_CMD) $(NANVIX_TEST_CARGO_FEATURES) -p nanvix-test
+	@$(HOST_CARGO_CHECK_CMD) $(NANVIX_TEST_CARGO_FEATURES) -p nanvix-test
 
 format-nanvix-test:
 	$(HOST_CARGO_FMT_CMD) -p nanvix-test

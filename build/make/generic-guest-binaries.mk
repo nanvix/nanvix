@@ -35,7 +35,7 @@ all-guest-binaries-$(1): init all-guest-staticlibs
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$(1).elf $(BINARIES_DIR)/$(1).elf
 
 check-guest-binaries-$(1):
-	$(GUEST_CARGO_CHECK_CMD) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1))
+	@$(GUEST_CARGO_CHECK_CMD) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1))
 
 format-guest-binaries-$(1):
 	$(GUEST_CARGO_FMT_CMD) -p $(1)
@@ -117,16 +117,16 @@ endif
 
 check-guest-binaries:
 ifneq ($(_GUEST_BINS_REGULAR_PKGS),)
-	$(GUEST_CARGO_CHECK_CMD) $(_GUEST_BINS_REGULAR_PKGS) $(GUEST_BINARY_CARGO_FEATURES)
+	@$(GUEST_CARGO_CHECK_CMD) $(_GUEST_BINS_REGULAR_PKGS) $(GUEST_BINARY_CARGO_FEATURES)
 endif
 ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
-	$(GUEST_CARGO_CHECK_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES)
+	@$(GUEST_CARGO_CHECK_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES)
 endif
 ifneq ($(filter test-kernel,$(ALL_GUEST_BINARIES)),)
-	$(GUEST_CARGO_CHECK_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES)
+	@$(GUEST_CARGO_CHECK_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES)
 endif
 ifneq ($(filter c-bindings-rust,$(ALL_GUEST_BINARIES)),)
-	$(GUEST_CARGO_CHECK_CMD) -p c-bindings-rust $(GUEST_BINARY_CARGO_FEATURES)
+	@$(GUEST_CARGO_CHECK_CMD) -p c-bindings-rust $(GUEST_BINARY_CARGO_FEATURES)
 endif
 
 # Batched format: single cargo invocation for all guest binaries.
