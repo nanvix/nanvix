@@ -44,21 +44,23 @@ pub struct StandaloneConfig {
     /// Optional GDB server port for debugging the guest.
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
-    /// Optional path at which to expose the guest **application stdio**
-    /// endpoint (container fd 1 / fd 2 — IKC `WriteRequest` data).
+    /// Optional path at which to expose the **gateway endpoint** — a
+    /// cross-platform consumer interface for the guest's stdin/stdout
+    /// (container fd 1 / fd 2 — IKC `WriteRequest` data).
     ///
     /// Cross-platform:
-    /// - Unix: Unix-domain socket path, e.g. `<state>/container-io.sock`.
-    /// - Windows: named pipe path, e.g. `\\.\pipe\nanvix-container-io-<id>`.
+    /// - Unix: Unix-domain socket path, e.g. `/tmp/nvx-standalone-gw-<pid>.sock`.
+    /// - Windows: named pipe path, e.g. `\\.\pipe\nanvix-standalone-gw-<pid>`.
     ///
     /// When set, nanvix-http's standalone server binds (or creates) this
-    /// endpoint and accepts a single client (the containerd shim). The
-    /// client receives guest stdout/stderr and may write guest stdin.
+    /// endpoint and accepts a single client (the containerd shim or a
+    /// test harness). The client receives guest stdout/stderr and may
+    /// write guest stdin.
     ///
-    /// When unset, nanvix-http falls back to its earlier behavior: on Unix
-    /// a temp UDS, on Windows a host file sink — kept so nanvix-bench and
-    /// nanvix-terminal continue to work without setting the flag.
-    container_io_endpoint: Option<String>,
+    /// When unset, nanvix-http falls back to a per-process default path
+    /// so nanvix-bench and nanvix-terminal continue to work without a
+    /// flag.
+    gateway_sockaddr: Option<String>,
 }
 
 //==================================================================================================
@@ -91,7 +93,7 @@ impl StandaloneConfig {
         kernel_args: Option<String>,
         networking_mode: NetworkingMode,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
-        container_io_endpoint: Option<String>,
+        gateway_sockaddr: Option<String>,
     ) -> Self {
         Self {
             kernel_binary_path,
@@ -103,7 +105,7 @@ impl StandaloneConfig {
             networking_mode,
             #[cfg(feature = "gdb")]
             gdb_port,
-            container_io_endpoint,
+            gateway_sockaddr,
         }
     }
 
@@ -148,10 +150,10 @@ impl StandaloneConfig {
         self.gdb_port
     }
 
-    /// Returns the optional container application stdio endpoint path
-    /// (UDS on Unix, named pipe on Windows). See the field doc on
-    /// [`StandaloneConfig`] for details.
-    pub fn container_io_endpoint(&self) -> Option<&str> {
-        self.container_io_endpoint.as_deref()
+    /// Returns the optional gateway endpoint path (UDS on Unix, named
+    /// pipe on Windows). See the field doc on [`StandaloneConfig`] for
+    /// details.
+    pub fn gateway_sockaddr(&self) -> Option<&str> {
+        self.gateway_sockaddr.as_deref()
     }
 }

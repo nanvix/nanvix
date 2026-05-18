@@ -89,12 +89,12 @@ pub struct Args {
     gdb_port: Option<u16>,
     /// Networking mode (applies to all deployment modes).
     networking_mode: NetworkingMode,
-    /// Optional cross-platform endpoint where standalone mode exposes
-    /// **guest application stdio** (container fd 1 / fd 2). UDS path on
-    /// Unix, named pipe path on Windows. When set, the standalone HTTP
-    /// server binds (or creates) this endpoint and accepts a single client
-    /// (typically the containerd shim) for the lifetime of one VM.
-    container_io_endpoint: Option<String>,
+    /// Optional cross-platform gateway endpoint where standalone mode
+    /// exposes the guest's stdin/stdout (container fd 1 / fd 2). UDS
+    /// path on Unix, named pipe path on Windows. When set, the standalone
+    /// HTTP server binds (or creates) this endpoint and accepts a single
+    /// client (typically the containerd shim) for the lifetime of one VM.
+    gateway_sockaddr: Option<String>,
 }
 
 //==================================================================================================
@@ -147,9 +147,9 @@ impl Args {
     pub const OPT_GDB_PORT: &'static str = "-gdb-port";
     /// Command-line flag that enables host networking for the guest.
     pub const OPT_ALLOW_HOST_NETWORKING: &'static str = "-allow-host-networking";
-    /// Command-line option for the guest application stdio endpoint
-    /// (standalone mode). UDS path on Unix, named pipe path on Windows.
-    pub const OPT_CONTAINER_IO: &'static str = "-container-io";
+    /// Command-line option for the standalone gateway endpoint (UDS
+    /// path on Unix, named pipe path on Windows).
+    pub const OPT_GATEWAY_SOCKADDR: &'static str = "-gateway-sockaddr";
 
     ///
     /// # Description
@@ -200,7 +200,7 @@ impl Args {
         #[cfg(feature = "gdb")]
         let mut gdb_port: Option<u16> = None;
         let mut networking_mode: NetworkingMode = NetworkingMode::Disabled;
-        let mut container_io_endpoint: Option<String> = None;
+        let mut gateway_sockaddr: Option<String> = None;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -241,16 +241,16 @@ impl Args {
                     i += 1;
                     console_file = Some(args[i].clone());
                 },
-                Self::OPT_CONTAINER_IO => {
+                Self::OPT_GATEWAY_SOCKADDR => {
                     i += 1;
                     if i >= args.len() {
                         Self::usage(args[0].as_str());
                         return Err(anyhow::anyhow!(
                             "missing value for: {}",
-                            Self::OPT_CONTAINER_IO
+                            Self::OPT_GATEWAY_SOCKADDR
                         ));
                     }
-                    container_io_endpoint = Some(args[i].clone());
+                    gateway_sockaddr = Some(args[i].clone());
                 },
                 Self::OPT_HWLOC => {
                     i += 1;
@@ -470,7 +470,7 @@ impl Args {
             #[cfg(feature = "gdb")]
             gdb_port,
             networking_mode,
-            container_io_endpoint,
+            gateway_sockaddr,
         })
     }
 
@@ -525,7 +525,7 @@ Options:
              (standalone mode only).
   {allow_host_networking}                   Enable host networking for the guest (disabled when \
              omitted).
-  {container_io} <path>                     (Standalone) Expose guest application stdio at \
+  {gateway_sockaddr} <path>                 (Standalone) Expose the gateway endpoint at \
              <path>. UDS on Unix, named pipe on Windows.{gdb_port_line}
 ",
             http_usage = http_usage,
@@ -549,7 +549,7 @@ Options:
             mount = Self::OPT_MOUNT_DIRECTORY,
             kernel_args = Self::OPT_KERNEL_ARGS,
             allow_host_networking = Self::OPT_ALLOW_HOST_NETWORKING,
-            container_io = Self::OPT_CONTAINER_IO,
+            gateway_sockaddr = Self::OPT_GATEWAY_SOCKADDR,
             gdb_port_line = if cfg!(feature = "gdb") {
                 "\n  -gdb-port <port>                         GDB server port (standalone mode \
                  only)."
@@ -624,11 +624,10 @@ Options:
         self.console_file.clone()
     }
 
-    /// Returns the optional path at which standalone mode exposes guest
-    /// application stdio (UDS on Unix, named pipe on Windows). See
-    /// [`Self::OPT_CONTAINER_IO`].
-    pub fn container_io_endpoint(&self) -> Option<&str> {
-        self.container_io_endpoint.as_deref()
+    /// Returns the optional standalone gateway endpoint path (UDS on
+    /// Unix, named pipe on Windows). See [`Self::OPT_GATEWAY_SOCKADDR`].
+    pub fn gateway_sockaddr(&self) -> Option<&str> {
+        self.gateway_sockaddr.as_deref()
     }
 
     ///

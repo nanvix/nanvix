@@ -99,7 +99,7 @@ extra_args = ["-console-file", "/dev/null"]
 ```
 
 > **Note:** When the nanvix containerd shim spawns nanvixd, it always sets
-> `-console-file` and `-container-io` itself; any `-console-file` value in
+> `-console-file` and `-gateway-sockaddr` itself; any `-console-file` value in
 > `extra_args` is stripped with a warning. See "Per-sandbox log files"
 > below for what each flag carries.
 
@@ -110,7 +110,7 @@ separate end-to-end:
 
 | Stream | Where it goes | Flag |
 | --- | --- | --- |
-| Guest **application stdio** (container fd 1 / fd 2 — IKC `WriteRequest` data) | Cross-platform endpoint the shim connects to and forwards into containerd's `log_path` (binary log driver pipe → `crictl logs`) | `-container-io <path>` (UDS on Unix, named pipe on Windows) |
+| Guest **application stdio** (container fd 1 / fd 2 — IKC `WriteRequest` data) | Cross-platform gateway endpoint the shim connects to and forwards into containerd's `log_path` (binary log driver pipe → `crictl logs`) | `-gateway-sockaddr <path>` (UDS on Unix, named pipe on Windows) |
 | Guest **kernel console** (PMIO port 0x1CF — kernel printks) | `<bundle>/kernel-console.log` | `-console-file <path>` |
 | **nanvixd's own logrus output** (host process trace/debug) | `<bundle>/nanvixd-<UTC-ts>-<shim-pid>.log` via the shim's `daemon_log` tee of nanvixd's stdout. Also written to a `nanvixd_<ts>.log` next to other flexi_logger files in nanvixd's default log directory. | (automatic, via `nanvix::log::init` with `duplicate_to_stdout`) |
 

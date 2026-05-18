@@ -60,16 +60,15 @@ pub struct New {
 pub struct NewResponse {
     /// Unique identifier assigned to the User VM instance.
     pub user_vm_id: UserVmIdentifier,
-    /// Cross-platform endpoint that carries the guest **application stdio**
-    /// (container fd 1 / fd 2 — IKC `WriteRequest` data from the user
-    /// process inside the guest).
+    /// Cross-platform gateway endpoint where standalone-mode clients
+    /// connect to exchange the guest's stdin/stdout (container fd 1 /
+    /// fd 2 — IKC `WriteRequest` data from the user process inside
+    /// the guest).
     ///
     /// - Unix: Unix-domain socket path
-    /// - Windows: Named pipe path (e.g. `\\.\pipe\nanvix-container-io-<pid>`)
+    /// - Windows: Named pipe path (e.g. `\\.\pipe\nanvix-standalone-gw-<pid>`)
     ///
-    /// The field name is kept for wire compatibility with prior clients
-    /// that consume it as `gateway_sockaddr`. In standalone mode this is
-    /// always populated with the `container_io` endpoint regardless of OS.
+    /// In standalone mode this is always populated regardless of OS.
     /// Guest kernel printks and nanvixd's own logrus output flow through
     /// separate channels and never touch this stream.
     pub gateway_sockaddr: String,
