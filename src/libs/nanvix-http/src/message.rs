@@ -44,7 +44,7 @@ pub struct New {
     pub app_name: String,
     /// Path to the program binary to execute inside the User VM.
     pub program: String,
-    /// Command-line arguments to pass to the program.
+    /// Command-line arguments and environment variables to pass to the program.
     pub program_args: String,
 }
 
