@@ -36,7 +36,6 @@ use ::hyper::{
     StatusCode,
 };
 use ::log::{
-    warn,
     debug,
     error,
     info,
@@ -49,13 +48,17 @@ use ::std::{
     pin::Pin,
     sync::Arc,
 };
-#[cfg(unix)]
 use ::tokio::io::{
     AsyncReadExt,
     AsyncWriteExt,
 };
 #[cfg(unix)]
 use ::tokio::net::UnixListener;
+#[cfg(windows)]
+use ::tokio::net::windows::named_pipe::{
+    NamedPipeServer,
+    ServerOptions,
+};
 use ::tokio::sync::Mutex;
 use ::tokio::task::JoinHandle;
 use ::user_vm_api::UserVmIdentifier;
@@ -71,15 +74,17 @@ use ::uservm::standalone::{
 ///
 /// # Description
 ///
-/// Bundles a running VM instance with its gateway bridge task and socket path.
+/// Bundles a running VM instance with its container-IO bridge task and endpoint path.
 ///
 struct RunningVm {
     /// Handle for the running VM.
     handle: StandaloneVmHandle,
-    /// Task bridging the gateway Unix socket with the guest's IKC I/O channels.
-    _gateway_bridge: JoinHandle<()>,
-    /// Filesystem path of the gateway Unix socket (cleaned up on kill).
-    gateway_socket_path: String,
+    /// Task bridging the cross-platform container-IO endpoint with the
+    /// guest's IKC I/O channels.
+    _container_io_bridge: JoinHandle<()>,
+    /// Filesystem path of the container-IO endpoint (UDS path on Unix,
+    /// named pipe path on Windows). Cleaned up on kill where applicable.
+    container_io_endpoint_path: String,
 }
 
 ///
@@ -129,9 +134,12 @@ impl StandaloneState {
     pub async fn cleanup(&self) {
         if let Some(vm) = self.running_vm.lock().await.take() {
             info!("cleanup(): aborting VM");
-            vm._gateway_bridge.abort();
+            vm._container_io_bridge.abort();
             vm.handle.abort_and_wait().await;
-            let _ = ::std::fs::remove_file(&vm.gateway_socket_path);
+            #[cfg(unix)]
+            let _ = ::std::fs::remove_file(&vm.container_io_endpoint_path);
+            #[cfg(windows)]
+            let _ = &vm.container_io_endpoint_path;
             debug!("cleanup(): VM cleaned up");
         }
     }
@@ -234,117 +242,46 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
             state.config.gdb_port(),
         );
 
-        // Create a Unix socket that serves as the gateway stream. The test harness (or any
-        // consumer) connects to this socket to exchange I/O with the guest — exactly like the
-        // multi-process gateway, but backed by IKC channels instead of a system VM.
+        // Cross-platform container-IO endpoint: a single point at which a
+        // host-side consumer (typically the containerd shim) connects to
+        // exchange guest application stdio.
         //
-        // On Windows the gateway socket is a no-op: the nanvix containerd shim does not use
-        // the gateway path, it talks to nanvixd directly via HTTP and consumes guest stdio
-        // via the named-pipe `-console-file` flag set by the shim. The HTTP `NEW` reply
-        // still carries a placeholder string so callers can inspect `gateway_sockaddr`.
-        #[cfg(unix)]
-        let (gateway_socket_path, gateway_bridge): (String, JoinHandle<()>) = {
-            let path: String = format!("/tmp/nvx-standalone-gw-{}.sock", std::process::id());
-            let _ = ::std::fs::remove_file(&path);
-            let listener: UnixListener = match UnixListener::bind(&path) {
-                Ok(l) => l,
-                Err(e) => {
-                    let reason: String =
-                        format!("failed to bind gateway socket at {path}: {e}");
-                    error!("serve_new(): {reason}");
-                    handle.abort();
-                    anyhow::bail!(reason);
-                },
-            };
-            debug!("serve_new(): gateway socket bound at {path}",);
-            let bridge: JoinHandle<()> = tokio::spawn(gateway_bridge_task(listener, io));
-            (path, bridge)
+        //   - Unix    : Unix-domain socket
+        //   - Windows : Named pipe (`\\.\pipe\...`)
+        //
+        // The same `container_io_bridge_task` runs on both OSes; only the
+        // binding primitive differs (see `bind_container_io_endpoint`).
+        //
+        // If the operator did not configure a path via `-container-io`, we
+        // fall back to a per-process auto path so legacy consumers (nanvix-
+        // bench / nanvix-terminal / integration tests) keep working without
+        // any flag.
+        let endpoint_path: String = match state.config.container_io_endpoint() {
+            Some(p) => p.to_string(),
+            None => default_container_io_path(),
         };
-        #[cfg(windows)]
-        let (gateway_socket_path, gateway_bridge): (String, JoinHandle<()>) = {
-            // The shim does not connect to the gateway on Windows; it
-            // talks to nanvixd over HTTP only. But we MUST consume the
-            // IO channels -- dropping `io.output_rx` causes every guest
-            // write to stdout/stderr to fail at the io_handler with
-            // `output channel closed` and the guest sees write() return
-            // -1, which on CPython triggers BrokenPipeError at shutdown
-            // -> exit 120.
-            //
-            // Pipe guest stdout/stderr into a host file we can read.
-            let dump_path: ::std::path::PathBuf = {
-                let dir = ::std::env::var("NANVIXD_GUEST_STDIO_DIR")
-                    .ok()
-                    .map(::std::path::PathBuf::from)
-                    .unwrap_or_else(|| {
-                        let p = ::std::path::PathBuf::from(r"C:\temp\nanvixd-guest-stdio");
-                        if p.parent().map(|pp| pp.exists()).unwrap_or(false) || p.exists() {
-                            p
-                        } else {
-                            ::std::env::temp_dir()
-                        }
-                    });
-                let _ = ::std::fs::create_dir_all(&dir);
-                let ts_ms = ::std::time::SystemTime::now()
-                    .duration_since(::std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis())
-                    .unwrap_or(0);
-                dir.join(format!(
-                    "nanvixd-guest-stdio-{}-{}.log",
-                    std::process::id(),
-                    ts_ms,
-                ))
-            };
-            debug!(
-                "serve_new(): Windows guest-stdio sink at {}",
-                dump_path.display()
-            );
-            let StandaloneVmIo { mut output_rx, input_tx: _input_tx } = io;
-            let dump_path_for_task = dump_path.clone();
-            let bridge: JoinHandle<()> = tokio::spawn(async move {
-                use ::std::io::Write;
-                let mut sink: Option<::std::fs::File> = match ::std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&dump_path_for_task)
-                {
-                    Ok(f) => Some(f),
-                    Err(e) => {
-                        error!(
-                            "serve_new(): failed to open guest-stdio sink {} ({e}); writes will not be persisted",
-                            dump_path_for_task.display()
-                        );
-                        None
-                    },
-                };
-                while let Some(data) = output_rx.recv().await {
-                    if let Some(ref mut f) = sink {
-                        if let Err(e) = f.write_all(&data) {
-                            warn!("guest-stdio sink: write_all failed ({e}); will keep draining");
-                        }
-                        // sync_all so the bytes survive the bridge task
-                        // being aborted at VM teardown -- BufWriter is
-                        // intentionally avoided for the same reason.
-                        let _ = f.sync_all();
-                    }
-                }
-                if let Some(mut f) = sink.take() {
-                    let _ = f.flush();
-                    let _ = f.sync_all();
-                }
-            });
-            let path: String = dump_path.display().to_string();
-            (path, bridge)
+        let endpoint: ContainerIoEndpoint = match bind_container_io_endpoint(&endpoint_path).await {
+            Ok(ep) => ep,
+            Err(e) => {
+                let reason: String =
+                    format!("failed to bind container_io endpoint at {endpoint_path}: {e}");
+                error!("serve_new(): {reason}");
+                handle.abort();
+                anyhow::bail!(reason);
+            },
         };
+        debug!("serve_new(): container_io endpoint bound at {endpoint_path}");
+        let bridge: JoinHandle<()> = tokio::spawn(container_io_bridge_task(endpoint, io));
 
         *guard = Some(RunningVm {
             handle,
-            _gateway_bridge: gateway_bridge,
-            gateway_socket_path: gateway_socket_path.clone(),
+            _container_io_bridge: bridge,
+            container_io_endpoint_path: endpoint_path.clone(),
         });
 
         Ok(message::NewResponse {
             user_vm_id: STANDALONE_VM_ID,
-            gateway_sockaddr: gateway_socket_path,
+            gateway_sockaddr: endpoint_path,
         })
     }
 
@@ -387,8 +324,16 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
                 // closes `output_tx` after the VM exits. The
                 // abort() below is defensive cleanup at that point.
                 let wait_result = running.handle.wait().await;
-                running._gateway_bridge.abort();
-                let _ = ::std::fs::remove_file(&running.gateway_socket_path);
+                running._container_io_bridge.abort();
+                #[cfg(unix)]
+                let _ = ::std::fs::remove_file(&running.container_io_endpoint_path);
+                #[cfg(windows)]
+                {
+                    // Named pipes vanish when the server handle is closed
+                    // (which happens implicitly when the bridge task is
+                    // dropped). Nothing on disk to unlink.
+                    let _ = &running.container_io_endpoint_path;
+                }
                 match wait_result {
                     Ok(exit_status) => {
                         debug!("serve_kill(): VM exited (exit_status={exit_status})");
@@ -531,83 +476,162 @@ impl<T: Send + Sync + Default + 'static> Service<Request<Incoming>> for HttpClie
 // Standalone Functions
 //==================================================================================================
 
-/// Size of the I/O buffer used by the gateway bridge for socket reads.
-#[cfg_attr(windows, allow(dead_code))]
-const GATEWAY_BRIDGE_BUFFER_SIZE: usize = 4096;
+/// Size of the I/O buffer used by the container-IO bridge for reads from the
+/// connected consumer.
+const BRIDGE_READ_BUFFER_SIZE: usize = 4096;
 
 ///
 /// # Description
 ///
-/// Bridges a Unix socket connection with the guest's IKC-based I/O channels.
+/// Cross-platform listening primitive for the container-IO endpoint. The
+/// path determines the protocol: a `\\.\pipe\...` path on Windows yields
+/// a named pipe server, any other path on Unix yields a UDS listener.
 ///
-/// Accepts exactly one connection on the listener, then runs a bidirectional relay:
-/// - Socket reads → guest stdin (via `input_tx`)
-/// - Guest stdout (via `output_rx`) → socket writes
+/// Wrapped in an enum so [`container_io_bridge_task`] is a single async
+/// function on both OSes; only the accept step differs.
 ///
-/// The task exits when either the socket or the guest I/O channel closes.
-///
-/// # Parameters
-///
-/// - `listener`: Unix socket listener bound to the gateway path.
-/// - `io`: I/O channels connected to the guest's stdin/stdout via IKC.
-///
+enum ContainerIoEndpoint {
+    #[cfg(unix)]
+    Unix(UnixListener),
+    #[cfg(windows)]
+    Pipe { server: NamedPipeServer },
+}
+
 #[cfg(unix)]
-async fn gateway_bridge_task(listener: UnixListener, io: StandaloneVmIo) {
+fn default_container_io_path() -> String {
+    format!("/tmp/nvx-standalone-gw-{}.sock", std::process::id())
+}
+
+#[cfg(windows)]
+fn default_container_io_path() -> String {
+    format!(r"\\.\pipe\nanvix-container-io-{}", std::process::id())
+}
+
+#[cfg(unix)]
+async fn bind_container_io_endpoint(path: &str) -> ::anyhow::Result<ContainerIoEndpoint> {
+    // Ensure parent directory exists (operator-supplied paths may point
+    // into a per-sandbox state dir that we created earlier).
+    if let Some(parent) = ::std::path::Path::new(path).parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = ::std::fs::create_dir_all(parent);
+        }
+    }
+    let _ = ::std::fs::remove_file(path);
+    let listener = UnixListener::bind(path)?;
+    Ok(ContainerIoEndpoint::Unix(listener))
+}
+
+#[cfg(windows)]
+async fn bind_container_io_endpoint(path: &str) -> ::anyhow::Result<ContainerIoEndpoint> {
+    let server = ServerOptions::new()
+        .first_pipe_instance(true)
+        .create(path)?;
+    Ok(ContainerIoEndpoint::Pipe { server })
+}
+
+///
+/// # Description
+///
+/// Bridges the container-IO endpoint with the guest's IKC-based I/O
+/// channels. Accepts exactly one connection (the containerd shim, or a
+/// test harness), then runs a bidirectional relay:
+/// - Connection reads → guest stdin (via `input_tx`)
+/// - Guest stdout/stderr (via `output_rx`) → connection writes
+///
+/// The task exits when either the connection or the guest I/O channel
+/// closes. The implementation is identical on Unix and Windows; only the
+/// accept primitive differs (UDS accept vs named pipe connect).
+///
+async fn container_io_bridge_task(endpoint: ContainerIoEndpoint, io: StandaloneVmIo) {
     let StandaloneVmIo {
         mut output_rx,
         input_tx,
     } = io;
 
-    // Accept exactly one connection (the test harness or gateway consumer).
-    let stream = match listener.accept().await {
-        Ok((stream, _addr)) => {
-            debug!("gateway_bridge_task(): accepted connection");
-            stream
+    // Accept exactly one connection. On Unix this is a UDS accept; on
+    // Windows we await the client connect on the pre-created pipe server.
+    match endpoint {
+        #[cfg(unix)]
+        ContainerIoEndpoint::Unix(listener) => {
+            let stream = match listener.accept().await {
+                Ok((stream, _addr)) => {
+                    debug!("container_io_bridge_task(): accepted UDS connection");
+                    stream
+                },
+                Err(e) => {
+                    error!(
+                        "container_io_bridge_task(): failed to accept UDS connection: {e}"
+                    );
+                    return;
+                },
+            };
+            let (reader, writer) = stream.into_split();
+            run_bridge(reader, writer, output_rx, input_tx).await;
         },
-        Err(e) => {
-            error!("gateway_bridge_task(): failed to accept connection: {e}");
-            return;
+        #[cfg(windows)]
+        ContainerIoEndpoint::Pipe { server } => {
+            if let Err(e) = server.connect().await {
+                error!(
+                    "container_io_bridge_task(): named pipe connect failed: {e}"
+                );
+                // Drain output_rx so the guest doesn't see write() = -1.
+                while output_rx.recv().await.is_some() {}
+                drop(input_tx);
+                return;
+            }
+            debug!("container_io_bridge_task(): named pipe client connected");
+            let (reader, writer) = tokio::io::split(server);
+            run_bridge(reader, writer, output_rx, input_tx).await;
         },
-    };
+    }
 
-    let (mut reader, mut writer) = stream.into_split();
+    debug!("container_io_bridge_task(): bridge closed");
+}
 
-    // Spawn a task that reads from the socket and forwards to guest stdin.
+/// Generic bidirectional pump used by both the Unix and Windows accept
+/// paths. Reads from `reader` go to `input_tx` (guest stdin); writes to
+/// `writer` come from `output_rx` (guest stdout/stderr).
+async fn run_bridge<R, W>(
+    mut reader: R,
+    mut writer: W,
+    mut output_rx: ::tokio::sync::mpsc::Receiver<Vec<u8>>,
+    input_tx: ::tokio::sync::mpsc::Sender<Vec<u8>>,
+)
+where
+    R: ::tokio::io::AsyncRead + Unpin + Send + 'static,
+    W: ::tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    // Spawn a task that reads from the connection and forwards to guest
+    // stdin. This runs concurrently with the output direction below.
     let input_handle: JoinHandle<()> = tokio::spawn(async move {
-        let mut buffer: [u8; GATEWAY_BRIDGE_BUFFER_SIZE] = [0u8; GATEWAY_BRIDGE_BUFFER_SIZE];
+        let mut buffer: [u8; BRIDGE_READ_BUFFER_SIZE] = [0u8; BRIDGE_READ_BUFFER_SIZE];
         loop {
             match reader.read(&mut buffer).await {
-                Ok(0) => {
-                    // EOF — consumer closed the write half.
-                    break;
-                },
+                Ok(0) => break,
                 Ok(n) => {
                     if input_tx.send(buffer[..n].to_vec()).await.is_err() {
                         break;
                     }
                 },
                 Err(e) => {
-                    trace!("gateway_bridge_task(): socket read error: {e}");
+                    trace!("container_io_bridge_task(): read error: {e}");
                     break;
                 },
             }
         }
     });
 
-    // Forward guest output to the socket writer.
+    // Forward guest output to the connection.
     while let Some(data) = output_rx.recv().await {
         if let Err(e) = writer.write_all(&data).await {
-            trace!("gateway_bridge_task(): socket write error: {e}");
+            trace!("container_io_bridge_task(): write error: {e}");
             break;
         }
     }
 
-    // Guest output channel closed — shut down the socket write half so the consumer sees EOF.
+    // Guest output channel closed — shut down the connection write half
+    // so the consumer sees EOF, then unwind the input relay.
     let _ = writer.shutdown().await;
-
-    // Wait for the input relay to finish.
     input_handle.abort();
     let _ = input_handle.await;
-
-    debug!("gateway_bridge_task(): bridge closed");
 }

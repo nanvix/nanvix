@@ -205,6 +205,7 @@ async fn async_main() -> Result<ExitCode> {
         args.networking_mode(),
         #[cfg(feature = "gdb")]
         args.gdb_port(),
+        args.container_io_endpoint().map(|s| s.to_string()),
     );
 
     #[cfg(feature = "multi-process")]

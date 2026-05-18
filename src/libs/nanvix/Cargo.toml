@@ -16,7 +16,6 @@ config = { workspace = true }
 hwloc = { workspace = true }
 linuxd = { workspace = true, optional = true }
 nanvix-http = { workspace = true }
-nanvix-registry = { workspace = true }
 nanvix-sandbox = { workspace = true }
 nanvix-sandbox-cache = { workspace = true, optional = true }
 nanvix-terminal = { workspace = true }

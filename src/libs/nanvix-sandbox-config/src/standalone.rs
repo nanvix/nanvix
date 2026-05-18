@@ -44,6 +44,21 @@ pub struct StandaloneConfig {
     /// Optional GDB server port for debugging the guest.
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
+    /// Optional path at which to expose the guest **application stdio**
+    /// endpoint (container fd 1 / fd 2 — IKC `WriteRequest` data).
+    ///
+    /// Cross-platform:
+    /// - Unix: Unix-domain socket path, e.g. `<state>/container-io.sock`.
+    /// - Windows: named pipe path, e.g. `\\.\pipe\nanvix-container-io-<id>`.
+    ///
+    /// When set, nanvix-http's standalone server binds (or creates) this
+    /// endpoint and accepts a single client (the containerd shim). The
+    /// client receives guest stdout/stderr and may write guest stdin.
+    ///
+    /// When unset, nanvix-http falls back to its earlier behavior: on Unix
+    /// a temp UDS, on Windows a host file sink — kept so nanvix-bench and
+    /// nanvix-terminal continue to work without setting the flag.
+    container_io_endpoint: Option<String>,
 }
 
 //==================================================================================================
@@ -76,6 +91,7 @@ impl StandaloneConfig {
         kernel_args: Option<String>,
         networking_mode: NetworkingMode,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
+        container_io_endpoint: Option<String>,
     ) -> Self {
         Self {
             kernel_binary_path,
@@ -87,6 +103,7 @@ impl StandaloneConfig {
             networking_mode,
             #[cfg(feature = "gdb")]
             gdb_port,
+            container_io_endpoint,
         }
     }
 
@@ -129,5 +146,12 @@ impl StandaloneConfig {
     #[cfg(feature = "gdb")]
     pub fn gdb_port(&self) -> Option<u16> {
         self.gdb_port
+    }
+
+    /// Returns the optional container application stdio endpoint path
+    /// (UDS on Unix, named pipe on Windows). See the field doc on
+    /// [`StandaloneConfig`] for details.
+    pub fn container_io_endpoint(&self) -> Option<&str> {
+        self.container_io_endpoint.as_deref()
     }
 }
