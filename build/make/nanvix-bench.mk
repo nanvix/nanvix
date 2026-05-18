@@ -18,7 +18,7 @@ all-nanvix-bench: init
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/nanvix-bench$(CARGO_EXE_SUFFIX) $(BINARIES_DIR)/nanvix-bench.$(HOST_BIN_EXT)
 
 check-nanvix-bench:
-	$(HOST_CARGO_CHECK_CMD) $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench
+	@$(HOST_CARGO_CHECK_CMD) $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench
 
 format-nanvix-bench:
 	$(HOST_CARGO_FMT_CMD) -p nanvix-bench

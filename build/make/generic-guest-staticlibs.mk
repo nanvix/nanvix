@@ -17,8 +17,8 @@ all-guest-staticlib-$(1): init
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/lib$(1).a $(LIBRARIES_DIR)/lib$(1).a
 
 check-guest-staticlib-$(1):
-	$(GUEST_CARGO_CHECK_CMD) -p $(1)
-	$(GUEST_CARGO_CHECK_CMD) -p $(1) $(GUEST_STATICLIB_CARGO_FEATURES)
+	@$(GUEST_CARGO_CHECK_CMD) -p $(1)
+	@$(GUEST_CARGO_CHECK_CMD) -p $(1) $(GUEST_STATICLIB_CARGO_FEATURES)
 
 format-guest-staticlib-$(1):
 	$(GUEST_CARGO_FMT_CMD) -p $(1)
@@ -49,8 +49,8 @@ all-guest-staticlibs: init
 	done
 
 check-guest-staticlibs:
-	$(GUEST_CARGO_CHECK_CMD) $(_GUEST_STATICLIB_PKGS)
-	$(GUEST_CARGO_CHECK_CMD) $(_GUEST_STATICLIB_PKGS) $(GUEST_STATICLIB_CARGO_FEATURES)
+	@$(GUEST_CARGO_CHECK_CMD) $(_GUEST_STATICLIB_PKGS)
+	@$(GUEST_CARGO_CHECK_CMD) $(_GUEST_STATICLIB_PKGS) $(GUEST_STATICLIB_CARGO_FEATURES)
 
 format-guest-staticlibs:
 	$(GUEST_CARGO_FMT_CMD) $(_GUEST_STATICLIB_PKGS)

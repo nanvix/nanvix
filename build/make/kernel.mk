@@ -24,7 +24,7 @@ ifeq ($(PROFILER),yes)
 endif
 
 check-kernel:
-	$(KERNEL_CARGO_CHECK_CMD) $(KERNEL_CARGO_FEATURES) -p kernel
+	@$(KERNEL_CARGO_CHECK_CMD) $(KERNEL_CARGO_FEATURES) -p kernel
 
 format-kernel:
 	$(KERNEL_CARGO_FMT_CMD) -p kernel
@@ -65,7 +65,7 @@ run-kernel-tests: all-test-kernel all-uservm
 		--kernel-args "test_magic=0xDEADBEEF"
 
 check-test-kernel:
-	$(KERNEL_CARGO_CHECK_CMD) $(KERNEL_TEST_CARGO_FEATURES) -p kernel
+	@$(KERNEL_CARGO_CHECK_CMD) $(KERNEL_TEST_CARGO_FEATURES) -p kernel
 
 clean-test-kernel:
 	$(RM_CMD) $(BINARIES_DIR)/kernel-test.elf
