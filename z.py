@@ -93,7 +93,7 @@ def _supports_color() -> bool:
     if sys.platform == "win32":
         # Windows Terminal and modern consoles support ANSI.
         return True
-    return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+    return hasattr(sys.stderr, "isatty") and sys.stderr.isatty()
 
 
 _COLOR = _supports_color()
@@ -109,13 +109,13 @@ def print_error(msg: str) -> None:
 
 
 def print_success(msg: str) -> None:
-    """Print success message to stdout."""
-    print(f"{_c(_GREEN, '[OK]')}    {msg}")
+    """Print success message to stderr."""
+    print(f"{_c(_GREEN, '[OK]')}    {msg}", file=sys.stderr)
 
 
 def print_info(msg: str) -> None:
-    """Print info message to stdout."""
-    print(f"{_c(_CYAN, '[INFO]')}  {msg}")
+    """Print info message to stderr."""
+    print(f"{_c(_CYAN, '[INFO]')}  {msg}", file=sys.stderr)
 
 
 def print_warning(msg: str) -> None:
