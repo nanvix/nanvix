@@ -14,7 +14,7 @@ all-uservm: init
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/uservm$(CARGO_EXE_SUFFIX) $(BINARIES_DIR)/uservm.$(HOST_BIN_EXT)
 
 check-uservm:
-	$(HOST_CARGO_CHECK_CMD) $(USERVM_CARGO_FEATURES) -p uservm
+	@$(HOST_CARGO_CHECK_CMD) $(USERVM_CARGO_FEATURES) -p uservm
 
 format-uservm:
 	$(HOST_CARGO_FMT_CMD) -p uservm
