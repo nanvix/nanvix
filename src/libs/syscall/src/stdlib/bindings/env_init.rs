@@ -6,10 +6,7 @@
 //==================================================================================================
 
 use ::libc_stdlib::env_table;
-use ::sysapi::ffi::{
-    c_char,
-    c_int,
-};
+use ::sysapi::ffi::c_char;
 
 //==================================================================================================
 // Standalone Functions
@@ -27,10 +24,6 @@ use ::sysapi::ffi::{
 /// - `envp`: A pointer to a null-terminated array of null-terminated `KEY=VALUE` C strings. If
 ///   null, the environment table is left empty.
 ///
-/// # Returns
-///
-/// Always returns `0`.
-///
 /// # Note
 ///
 /// In standalone mode, tilde expansion (`~` → `$HOME`) is performed client-side by the syscall
@@ -46,7 +39,6 @@ use ::sysapi::ffi::{
 /// - Each string in the array remains valid for the duration of this call.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn __nanvix_env_init(envp: *const *const c_char) -> c_int {
+pub unsafe extern "C" fn __nanvix_env_init(envp: *const *const c_char) {
     env_table::init_from_raw(envp);
-    0
 }
