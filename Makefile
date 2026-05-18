@@ -100,14 +100,6 @@ export SYSROOT_LINK  := $(ROOT_DIR)/sysroot
 export TARGETS_DIR   := $(BUILD_DIR)/targets
 export OBJECTS_DIR   := $(ROOT_DIR)/target
 
-# Python interpreter used by helper scripts invoked from the Makefile.
-# Override by passing PYTHON=... on the make command line.
-ifeq ($(IS_WINDOWS),yes)
-export PYTHON ?= python
-else
-export PYTHON ?= python3
-endif
-
 # Targets that do not produce reusable compilation artifacts.
 # Disable sccache unconditionally for these targets to avoid intermittent
 # sccache server crashes inside Docker BuildKit containers (see #1395).
@@ -280,13 +272,15 @@ export RM_CMD := rm -f
 export FORCE_RM_CMD := rm -rf
 export MKDIR_CMD := mkdir -p
 ifeq ($(IS_WINDOWS),yes)
-export CP_CMD := cp -f --preserve=timestamps
+export CP_CMD := cp -f
 export SUDO_CMD :=
 export SETCAP_CMD :=
+export PYTHON := python
 else
 export CP_CMD := cp -f --preserve
 export SUDO_CMD := sudo
 export SETCAP_CMD := setcap
+export PYTHON := python3
 endif
 
 #===================================================================================================
@@ -297,7 +291,7 @@ endif
 export VERUS_EXECUTABLE_DIR ?=
 
 # List of crates to verify with Verus.
-VERUS_CRATES := bitmap nanvix-slab
+VERUS_CRATES := bitmap nanvix-slab kernel
 
 # Platform-specific Verus binary name.
 ifeq ($(IS_WINDOWS),yes)
@@ -321,6 +315,8 @@ export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
 	PATH="$(VERUS_PATH_PREFIX):$$PATH" \
 	$(CARGO) verus verify --locked --no-default-features
 
+export VERUS_KERNEL_FEATURES := microvm trace
+
 #===================================================================================================
 # Top-Level Targets
 #===================================================================================================
@@ -332,7 +328,7 @@ ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap bump-allocator cache cmdline config
 ALL_GUEST_DAEMONS := memd procd vfsd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd snapshot-rust-nostd vfs-bench-nostd mount-bench-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
-ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust c-bindings-rust mount-test mount-multipart-test cmdline-len-rust env-rust-nostd cmdline-env-rust-nostd
+ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust c-bindings-rust mount-test cmdline-len-rust env-rust-nostd cmdline-env-rust-nostd
 # dlfcn-rust requires PIE linking for dlopen/dlsym; the x86_64 static
 # relocation model produces R_X86_64_32 relocations incompatible with PIE.
 ifneq ($(TARGET),x86_64)
@@ -597,13 +593,21 @@ else
 	echo "Using Verus installation at $(VERUS_EXECUTABLE_DIR)."
 endif
 
-# Pattern rule for verifying individual crates.
+# Pattern rule for verifying individual library crates.
 # Verification is skipped when VERUS_EXECUTABLE_DIR is unset.
-$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+$(filter-out verify-kernel,$(addprefix verify-,$(VERUS_CRATES))): verify-%: ensure-verus
 ifeq ($(VERUS_EXECUTABLE_DIR),)
 	@true
 else
 	$(VERUS_VERIFY_CMD) -p $* $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+endif
+
+.PHONY: verify-kernel
+verify-kernel: ensure-verus
+ifeq ($(VERUS_EXECUTABLE_DIR),)
+	@true
+else
+	$(VERUS_VERIFY_CMD) --features "$(VERUS_KERNEL_FEATURES)" -p kernel $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 endif
 
 # Fixes code linting issues.
@@ -876,68 +880,21 @@ STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_NO_DAEMON_TESTS) $(STANDAL
 
 .PHONY: standalone-images standalone-images-clean
 
-# Resolved .initrd target paths.
-#
-# These are emitted as one-recipe-per-image rules so that each mkimage invocation is its own
-# command line. The chained form blows past the Windows command-line length limit (8191 chars
-# under cmd.exe-style argument passing) when absolute paths are long, truncating arguments
-# mid-path and producing 'invalid entry' errors from mkimage.
-STANDALONE_WITH_VFS_INITRDS := $(STANDALONE_TEST_BINARIES:%=$(BINARIES_DIR)/%.initrd)
-STANDALONE_NO_VFS_INITRDS   := $(STANDALONE_NO_VFS_BINARIES:%=$(BINARIES_DIR)/%.initrd)
-
-# Bridge from the side-effect-producing build targets to the actual ELF/mkimage files they
-# leave in $(BINARIES_DIR). These rules have an empty recipe (the trailing `;`) and a normal
-# prerequisite on the underlying build target.
-#
-# For guest ELFs we depend on the batched `all-guest-binaries` target rather than on the
-# per-package `all-guest-binaries-<pkg>` ones: requesting many .initrd outputs at once would
-# otherwise spawn one `cargo build -p <pkg>` per bundled binary, which adds significant
-# overhead (especially on Windows) even when each invocation is a cargo no-op. Depending on the
-# batched target collapses this to a single cargo invocation per build.
-#
-# The build targets are pseudo-targets (they never produce a file matching their own name) and
-# are therefore always considered out of date by Make. The recipes inside them invoke cargo,
-# which handles source-level incrementality and only touches the ELF/mkimage binary when its
-# Rust sources actually changed (CP_CMD preserves timestamps, see above). Downstream consumers
-# (the per-image rules below) key off that mtime via normal prerequisites, giving us both
-# correct rebuilds when sources change and minimal mkimage work when they don't.
-$(BINARIES_DIR)/%.$(EXEC_FORMAT): all-guest-binaries ;
-$(MKIMAGE): all-host-binaries-mkimage ;
-
-# Per-image rules.
-#
-# Each .initrd lists the actual files it bundles (the daemons, the guest ELF, and mkimage
-# itself) as normal prerequisites, so an incremental `make standalone-images` only re-runs
-# mkimage for images whose inputs have actually changed.
-#
-# Note: we intentionally do NOT depend on all-nanvix here, because in standalone mode all-nanvix
-# itself depends on standalone-images (see DEPLOYMENT_MODE handling above), which would create a
-# circular dependency.
-$(STANDALONE_WITH_VFS_INITRDS): $(BINARIES_DIR)/%.initrd: \
-		$(BINARIES_DIR)/%.$(EXEC_FORMAT) \
-		$(BINARIES_DIR)/procd.$(EXEC_FORMAT) \
-		$(BINARIES_DIR)/memd.$(EXEC_FORMAT) \
-		$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT) \
-		$(MKIMAGE)
-	$(MKIMAGE) -o $@ \
-		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
-		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
-		$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT)\;vfsd \
-		$(BINARIES_DIR)/$*.$(EXEC_FORMAT)\;$*
-
-$(STANDALONE_NO_VFS_INITRDS): $(BINARIES_DIR)/%.initrd: \
-		$(BINARIES_DIR)/%.$(EXEC_FORMAT) \
-		$(BINARIES_DIR)/procd.$(EXEC_FORMAT) \
-		$(BINARIES_DIR)/memd.$(EXEC_FORMAT) \
-		$(MKIMAGE)
-	$(MKIMAGE) -o $@ \
-		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
-		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
-		$(BINARIES_DIR)/$*.$(EXEC_FORMAT)\;$*
-
-# Build standalone multibinary images for all test/benchmark/application binaries. Uses .initrd
-# extension to avoid collisions with other build artifacts (e.g., vfs-test.img).
-standalone-images: $(STANDALONE_WITH_VFS_INITRDS) $(STANDALONE_NO_VFS_INITRDS)
+# Build standalone multibinary images for all test/benchmark/application binaries.
+# Uses .initrd extension to avoid collisions with other build artifacts (e.g., vfs-test.img).
+standalone-images: all-nanvix
+	@echo "Building standalone multibinary images..."
+	$(foreach bin,$(STANDALONE_TEST_BINARIES),\
+		$(MKIMAGE) -o $(BINARIES_DIR)/$(bin).initrd \
+			$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
+			$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
+			$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT)\;vfsd \
+			$(BINARIES_DIR)/$(bin).$(EXEC_FORMAT)\;$(bin) && ) true
+	$(foreach bin,$(STANDALONE_NO_VFS_BINARIES),\
+		$(MKIMAGE) -o $(BINARIES_DIR)/$(bin).initrd \
+			$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
+			$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
+			$(BINARIES_DIR)/$(bin).$(EXEC_FORMAT)\;$(bin) && ) true
 	@echo "Standalone images built successfully."
 
 standalone-images-clean:
@@ -1027,28 +984,26 @@ SMOKE_TEST_MAGIC_STRING := hello, world!
 # Only applicable in standalone mode (the smoke image bundles guest daemons).
 # - Release mode (RELEASE=yes): validates VM exits with the expected status code.
 # - Debug mode (RELEASE=no): validates the kernel magic string appears in console output.
-#
-# Driven by a single cross-platform Python helper (scripts/run-smoke-test.py)
-# that auto-detects the host OS: on Linux it launches nanvixd against
-# cloud-hypervisor; on Windows it launches nanvixd.exe directly under WHP.
 .PHONY: run-smoke-test
 ifeq ($(DEPLOYMENT_MODE),standalone)
-SMOKE_TEST_CMD := $(PYTHON) $(SCRIPTS_DIR)/run-smoke-test.py \
-	$(MACHINE) $(IMAGE) \
-	--timeout $(TIMEOUT) \
-	--magic-string "$(SMOKE_TEST_MAGIC_STRING)" \
-	--expected-exit-code $(SMOKE_TEST_EXPECTED_EXIT_CODE) \
-	--clh-bin-path $(CLH_DIR)/bin \
-	--log-dir $(LOGS_DIR)
-
 run-smoke-test: image
 ifeq ($(RELEASE),yes)
 	@echo "Running smoke test (expected exit code=$(SMOKE_TEST_EXPECTED_EXIT_CODE))..."
-	@$(SMOKE_TEST_CMD) --release
+	@ACTUAL=0; \
+	bash $(SCRIPTS_DIR)/run-nanvixd.sh $(MACHINE) $(IMAGE) $(TIMEOUT) || ACTUAL=$$?; \
+	if [ "$$ACTUAL" -ne "$(SMOKE_TEST_EXPECTED_EXIT_CODE)" ]; then \
+		echo "ERROR: Smoke test failed: expected exit code $(SMOKE_TEST_EXPECTED_EXIT_CODE), got $$ACTUAL."; \
+		exit 1; \
+	fi
 else
 	@echo "Running smoke test (waiting for magic string)..."
-	@$(SMOKE_TEST_CMD)
+	@if ! bash $(SCRIPTS_DIR)/run-nanvixd.sh $(MACHINE) $(IMAGE) $(TIMEOUT) \
+			--wait-for-string "$(SMOKE_TEST_MAGIC_STRING)"; then \
+		echo "ERROR: Smoke test failed: magic string '$(SMOKE_TEST_MAGIC_STRING)' not found within $(TIMEOUT)s."; \
+		exit 1; \
+	fi
 endif
+	@echo "Smoke test passed."
 else
 run-smoke-test:
 	@echo "Skipping smoke test (DEPLOYMENT_MODE=$(DEPLOYMENT_MODE), requires standalone)."
