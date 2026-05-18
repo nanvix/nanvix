@@ -401,6 +401,7 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
             extra_nanvixd_args,
             expected_exit_code,
             runs_on: _,
+            program_env,
             program_args_padding_len,
         } = test_config;
 
@@ -435,13 +436,14 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
 
         debug!(
             "main(): running test (executor={}, name={}, iterations={}, program={:?}, \
-             program_args={:?}, expected_output={:?}, expect_empty_output={}, \
+             program_args={:?}, program_env={:?}, expected_output={:?}, expect_empty_output={}, \
              expected_exit_code={:?}, extra_nanvixd_args={:?})",
             executor,
             name,
             iterations,
             program,
             program_args,
+            program_env,
             expected_output,
             expect_empty_output,
             expected_exit_code,
@@ -489,6 +491,7 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
                 let workload: WorkloadSpec = WorkloadSpec::new(
                     program_path.as_str(),
                     program_args.as_deref(),
+                    program_env.as_deref(),
                     input.as_deref(),
                     expected_output.as_deref(),
                     expect_empty_output,
@@ -543,6 +546,7 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
                 let workload: WorkloadSpec = WorkloadSpec::new(
                     program_path.as_str(),
                     program_args.as_deref(),
+                    program_env.as_deref(),
                     input.as_deref(),
                     expected_output.as_deref(),
                     expect_empty_output,
