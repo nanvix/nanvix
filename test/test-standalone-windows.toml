@@ -117,9 +117,9 @@ expected_output = "ok"
 [[tests]]
 executor = "terminal"
 program = "./bin/mount-test.initrd"
-extra_nanvixd_args = "-mount ./bin/mount-test-data"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img -mount ./bin/mount-test-data"
 input = "[]"
-expect_empty_output = true
+expected_output = "ok"
 expected_exit_code = 0
 runs_on = ["microvm"]
 
