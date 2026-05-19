@@ -26,6 +26,9 @@ Run a hello-world application and see its output on the terminal:
 - [Running Containers](#running-containers)
   - [Building a Nanvix OCI image](#building-a-nanvix-oci-image)
   - [Importing and running with `ctr`](#importing-and-running-with-ctr)
+  - [Enabling Host Networking](#enabling-host-networking)
+  - [Mounting a Host Directory](#mounting-a-host-directory)
+  - [Passing Kernel Arguments](#passing-kernel-arguments)
 - [HTTP Mode](#http-mode)
   - [Starting the Server](#starting-the-server)
   - [Spawning an Application (NEW)](#spawning-an-application-new)
@@ -36,6 +39,7 @@ Run a hello-world application and see its output on the terminal:
   - [HTTP Error Codes](#http-error-codes)
 - [Logging](#logging)
 - [Expert Mode: Standalone User VM](#expert-mode-standalone-user-vm)
+  - [Recognised Kernel Arguments](#recognised-kernel-arguments)
 
 ---
 
@@ -140,6 +144,16 @@ To make a host directory accessible to the guest at `/mnt`, use the `-mount` fla
 The guest can then read and write files under `/mnt/` which map to the host directory.
 See [host-mount.md](host-mount.md) for the design and protocol details.
 
+### Passing Kernel Arguments
+
+To pass kernel arguments (written to guest control registers), use the `-kernel-args` flag:
+
+```bash
+./bin/nanvixd.elf -kernel-args snapshot -console-file /dev/stdout -- ./bin/snapshot-rust-nostd.elf
+```
+
+See [Recognised Kernel Arguments](#recognised-kernel-arguments) below for available tokens.
+
 Everything after `--` is forwarded to the application as arguments:
 
 ```bash
@@ -172,9 +186,10 @@ To include a literal `;` in any section, escape it as `\;`:
 # args: ["arg1", "with;semicolon", "arg2"]   env: ["VAR1=foo"]
 ```
 
-> **Note:** Kernel arguments are passed independently via the `-kernel-args` flag on the UserVM
-> (see [Expert Mode: Standalone User VM](#expert-mode-standalone-user-vm)). They are no longer
-> embedded in the initrd arguments string.
+> **Note:** Kernel arguments can be passed via `-kernel-args` on `nanvixd` (see
+> [Passing Kernel Arguments](#passing-kernel-arguments)) or directly on the UserVM (see
+> [Expert Mode: Standalone User VM](#expert-mode-standalone-user-vm)). They are not embedded in
+> the initrd arguments string.
 
 ## HTTP Mode
 
