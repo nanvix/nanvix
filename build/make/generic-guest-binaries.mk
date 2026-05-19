@@ -105,7 +105,7 @@ endif
 	@newest=$$(ls -t $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/build/vfs-bench-nostd-*/out/$(VFS_BENCH_IMG) 2>/dev/null | head -n1); \
 		if [ -n "$$newest" ]; then $(CP_CMD) "$$newest" $(BINARIES_DIR)/$(VFS_BENCH_IMG); fi
 # Reset mount-test-data so that subsequent test runs always start with pristine input.
-# A previous test execution may have overwritten files via the copyback mechanism.
+# A previous test execution may have modified files directly via hostfsd.
 	@$(RM_CMD) -rf $(BINARIES_DIR)/mount-test-data
 	@mkdir -p $(BINARIES_DIR)/mount-test-data/subdir
 	@printf 'mount-test-input\n' > $(BINARIES_DIR)/mount-test-data/input.txt
