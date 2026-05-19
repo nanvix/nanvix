@@ -1,8 +1,14 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-name: "Create Patch Release"
-description: "Create a patch release tag on merge commits to dev"
+name: "Create Release"
+description: "Create a release tag on merge commits to dev"
+
+inputs:
+  bump-type:
+    description: "Version bump type: patch, minor, or major"
+    required: true
+    default: "patch"
 
 runs:
   using: "composite"
@@ -15,11 +21,11 @@ runs:
         PARENT_COUNT=$(git rev-list --parents -n 1 HEAD | wc -w)
         # A merge commit has at least 3 words: commit_hash parent1 parent2
         if [ "$PARENT_COUNT" -lt 3 ]; then
-          echo "Not a merge commit, skipping patch release creation."
+          echo "Not a merge commit, skipping release creation."
           echo "is_merge=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-        echo "Merge commit detected, proceeding with patch release creation."
+        echo "Merge commit detected, proceeding with release creation."
         echo "is_merge=true" >> "$GITHUB_OUTPUT"
 
     - name: "Configure Git"
@@ -30,13 +36,13 @@ runs:
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git remote set-url origin git@github.com:${{ github.repository }}.git
 
-    - name: "Create patch release"
+    - name: "Create release"
       if: steps.verify-merge.outputs.is_merge == 'true'
       shell: bash
       # This step runs the release script, which:
-      # - Increments the patch version in Cargo.toml and regenerates Cargo.lock.
+      # - Increments the version in Cargo.toml and regenerates Cargo.lock.
       # - Commits the version bump with a standardized message.
       # - Requires the following secret to be available in the workflow:
       #   - DEPLOY_PRIVATE_SSH_KEY: used in the checkout step for SSH-based operations.
       run: |
-        python3 scripts/create-release.py --patch --push
+        python3 scripts/create-release.py --${{ inputs.bump-type }} --push

@@ -1565,8 +1565,8 @@ jobs:
   # This job runs independently of the CI pipeline because the pipeline skips
   # merge commits while this job specifically targets them.
   # Artifact publishing is handled separately by the schedule-triggered jobs.
-  create-minor-release:
-    name: "Create Minor Release"
+  create-release:
+    name: "Create Release"
     # Only run on push-to-dev merge commits.
     # Guard against infinite loops by excluding github-actions[bot] commits.
     if: >-
@@ -1583,5 +1583,7 @@ jobs:
           ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
           fetch-depth: 0
 
-      - name: "Create Minor Release"
-        uses: ./.github/actions/create-minor-release
+      - name: "Create Release"
+        uses: ./.github/actions/create-release
+        with:
+          bump-type: "patch"
