@@ -95,6 +95,11 @@ pub struct Args {
     /// HTTP server binds (or creates) this endpoint and accepts a single
     /// client (typically the containerd shim) for the lifetime of one VM.
     gateway_sockaddr: Option<String>,
+    /// When `true`, route nanvixd's logrus output to stdout instead of a
+    /// file inside `log_directory`. Default is `false` (preserve existing
+    /// file-based behavior). The containerd shim sets this so its child
+    /// process pipe captures the logs into a per-sandbox file.
+    log_to_stdout: bool,
 }
 
 //==================================================================================================
@@ -147,6 +152,12 @@ impl Args {
     pub const OPT_GDB_PORT: &'static str = "-gdb-port";
     /// Command-line flag that enables host networking for the guest.
     pub const OPT_ALLOW_HOST_NETWORKING: &'static str = "-allow-host-networking";
+    /// Command-line flag that routes nanvixd's own logrus output to stdout
+    /// instead of the auto-named file logger. Used by the containerd shim,
+    /// which captures the child process's stdout and tees it into a
+    /// per-sandbox log file. Defaults to off (file-based logging) to
+    /// preserve standalone / interactive behavior.
+    pub const OPT_LOG_TO_STDOUT: &'static str = "-log-to-stdout";
     /// Command-line option for the standalone gateway endpoint (UDS
     /// path on Unix, named pipe path on Windows).
     pub const OPT_GATEWAY_SOCKADDR: &'static str = "-gateway-sockaddr";
@@ -201,6 +212,7 @@ impl Args {
         let mut gdb_port: Option<u16> = None;
         let mut networking_mode: NetworkingMode = NetworkingMode::Disabled;
         let mut gateway_sockaddr: Option<String> = None;
+        let mut log_to_stdout: bool = false;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -363,6 +375,9 @@ impl Args {
                 Self::OPT_ALLOW_HOST_NETWORKING => {
                     networking_mode = NetworkingMode::Enabled;
                 },
+                Self::OPT_LOG_TO_STDOUT => {
+                    log_to_stdout = true;
+                },
                 arg => {
                     return Err(anyhow::anyhow!("invalid argument: {arg}"));
                 },
@@ -471,6 +486,7 @@ impl Args {
             gdb_port,
             networking_mode,
             gateway_sockaddr,
+            log_to_stdout,
         })
     }
 
@@ -526,7 +542,9 @@ Options:
   {allow_host_networking}                   Enable host networking for the guest (disabled when \
              omitted).
   {gateway_sockaddr} <path>                 (Standalone) Expose the gateway endpoint at \
-             <path>. UDS on Unix, named pipe on Windows.{gdb_port_line}
+             <path>. UDS on Unix, named pipe on Windows.
+  {log_to_stdout}                          Route nanvixd's own logrus output to stdout \
+             instead of a file in {log_dir} (file logger is otherwise the default).{gdb_port_line}
 ",
             http_usage = http_usage,
             program_name = program_name,
@@ -550,6 +568,7 @@ Options:
             kernel_args = Self::OPT_KERNEL_ARGS,
             allow_host_networking = Self::OPT_ALLOW_HOST_NETWORKING,
             gateway_sockaddr = Self::OPT_GATEWAY_SOCKADDR,
+            log_to_stdout = Self::OPT_LOG_TO_STDOUT,
             gdb_port_line = if cfg!(feature = "gdb") {
                 "\n  -gdb-port <port>                         GDB server port (standalone mode \
                  only)."
@@ -628,6 +647,12 @@ Options:
     /// Unix, named pipe on Windows). See [`Self::OPT_GATEWAY_SOCKADDR`].
     pub fn gateway_sockaddr(&self) -> Option<&str> {
         self.gateway_sockaddr.as_deref()
+    }
+
+    /// When `true`, nanvixd should route its logrus output to stdout
+    /// instead of the file logger. See [`Self::OPT_LOG_TO_STDOUT`].
+    pub fn log_to_stdout(&self) -> bool {
+        self.log_to_stdout
     }
 
     ///

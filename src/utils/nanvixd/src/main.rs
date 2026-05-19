@@ -153,7 +153,16 @@ async fn async_main() -> Result<ExitCode> {
     let args: Arc<Args> =
         Arc::new(Args::parse(std::env::args().filter(|s| !s.trim().is_empty()).collect())?);
 
-    ::nanvix::log::init(true, DEFAULT_LOG_LEVEL, args.log_directory().to_string(), None);
+    // log_to_file = !log_to_stdout: file-based logging is the historical
+    // default; the containerd shim sets -log-to-stdout so its child-pipe
+    // capture sees the logrus records directly without the file logger
+    // writing to an operator-invisible path.
+    ::nanvix::log::init(
+        !args.log_to_stdout(),
+        DEFAULT_LOG_LEVEL,
+        args.log_directory().to_string(),
+        None,
+    );
 
     // Set the global INTERACTIVE_MODE flag.
     let _: Result<(), bool> = INTERACTIVE_MODE.set(args.interactive_mode());
