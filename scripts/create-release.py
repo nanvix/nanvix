@@ -295,6 +295,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Push the release commit to the remote origin.",
     )
+    parser.add_argument(
+        "--skip-merge-check",
+        action="store_true",
+        help="Skip the merge commit requirement (for manual releases).",
+    )
     return parser.parse_args()
 
 
@@ -306,11 +311,12 @@ def main() -> None:
         print_error("This script must be run on the default branch.")
         sys.exit(1)
 
-    # HEAD must be a merge commit.
-    head = _git("rev-parse", "HEAD", capture=True).stdout.strip()
-    if not is_merge_commit(head):
-        print_error("The HEAD commit is not a merge commit.")
-        sys.exit(1)
+    # HEAD must be a merge commit (unless skipped for manual releases).
+    if not args.skip_merge_check:
+        head = _git("rev-parse", "HEAD", capture=True).stdout.strip()
+        if not is_merge_commit(head):
+            print_error("The HEAD commit is not a merge commit.")
+            sys.exit(1)
 
     repo_root = _git("rev-parse", "--show-toplevel", capture=True).stdout.strip()
     cargo_toml = os.path.join(repo_root, "Cargo.toml")
