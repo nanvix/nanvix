@@ -24,6 +24,7 @@ use crate::{
     },
 };
 use ::anyhow::Result;
+use ::hostfsd::HostFsHandler;
 use ::log::{
     debug,
     error,
@@ -34,6 +35,7 @@ use ::nanvix_sandbox_config::NetworkingMode;
 use ::networkd::NetworkDaemon;
 use ::std::{
     collections::VecDeque,
+    path::PathBuf,
     sync::Arc,
 };
 use ::sys::{
@@ -69,6 +71,14 @@ use ::tokio::{
 
 #[cfg(feature = "profile-time")]
 use crate::perf::PerfTimings;
+
+//==================================================================================================
+// Type Aliases
+//==================================================================================================
+
+/// Payload sent to the hostfsd worker thread: the IKC message, a channel for the
+/// response, and the shared message counters.
+type HostFsRequest = (Message, mpsc::Sender<IkcFrame>, MessageCounters);
 
 //==================================================================================================
 // Constants
@@ -202,7 +212,6 @@ impl StandaloneVmHandle {
             kernel_filename,
             counters,
             snapshot_path,
-            mount_directory,
             #[cfg(feature = "gdb")]
             gdb_port,
             #[cfg(feature = "profile-time")]
@@ -220,6 +229,7 @@ impl StandaloneVmHandle {
                 input_rx,
                 io_counters,
                 networking_mode,
+                mount_directory,
             )
             .await;
         });
@@ -341,6 +351,7 @@ async fn standalone_io_handler(
     mut input_rx: mpsc::Receiver<Vec<u8>>,
     counters: MessageCounters,
     networking_mode: NetworkingMode,
+    mount_directory: Option<String>,
 ) {
     let mut input_buffer: VecDeque<u8> = VecDeque::new();
     let mut input_closed: bool = false;
@@ -357,6 +368,103 @@ async fn standalone_io_handler(
         None
     };
 
+    // Initialize the host filesystem daemon handler when a mount directory is specified.
+    // A dedicated worker thread serializes request processing to avoid concurrent host
+    // filesystem mutation and because the handler state (`HostFsHandler`) is not `Send`/`Sync`.
+    //
+    // The mount directory is validated eagerly (before spawning the worker) so that
+    // invalid paths surface an error at VM startup rather than silently queuing
+    // requests into a channel that drains into error responses.
+    //
+    // NOTE: `_hostfs_worker_handle` is currently unused. The worker thread terminates
+    // when the channel sender (`hostfs_tx`) is dropped at the end of this function, which
+    // causes `rx.recv()` to return `Err` and the loop to exit. Explicit join is not
+    // performed because this function is async and `JoinHandle::join` is blocking.
+    // TODO(#hostfs-shutdown): consider joining via `tokio::task::spawn_blocking` on
+    // graceful shutdown or converting the worker to a tokio task.
+    let (hostfs_tx, _hostfs_worker_handle): (
+        Option<std::sync::mpsc::SyncSender<HostFsRequest>>,
+        Option<std::thread::JoinHandle<()>>,
+    ) = match mount_directory.as_ref() {
+        Some(dir) => {
+            let path: PathBuf = PathBuf::from(dir);
+            // Validate the mount directory before spawning the worker thread.
+            if !path.is_dir() {
+                error!(
+                    "standalone io_handler: mount directory does not exist or is not a directory: \
+                     {dir:?}"
+                );
+                (None, None)
+            } else {
+                debug!("standalone io_handler: initializing hostfsd (root={dir:?})");
+                let (tx, rx) = std::sync::mpsc::sync_channel::<HostFsRequest>(64);
+                // Use a oneshot channel to confirm handler initialization before accepting
+                // requests. This prevents messages from piling up in the channel if the
+                // HostFsHandler fails to initialize inside the spawned thread.
+                let (init_tx, init_rx) = std::sync::mpsc::sync_channel::<bool>(1);
+                match std::thread::Builder::new()
+                    .name("hostfsd-worker".into())
+                    .spawn(move || {
+                        let mut handler = match HostFsHandler::new(path) {
+                            Ok(h) => {
+                                let _ = init_tx.send(true);
+                                h
+                            },
+                            Err(e) => {
+                                error!("hostfsd-worker: failed to initialize handler: {e}");
+                                let _ = init_tx.send(false);
+                                return;
+                            },
+                        };
+                        while let Ok((msg, response_tx, counters)) = rx.recv() {
+                            let response_payload = handler.handle_request(&msg.payload);
+                            let response: Message = Message::new(
+                                MessageSender::from(ProcessIdentifier::KERNEL),
+                                MessageReceiver::from(ProcessIdentifier::VFSD),
+                                MessageType::Ikc,
+                                None,
+                                response_payload,
+                            );
+                            // NOTE: `increment_io_thread_messages_received()` counts
+                            // messages flowing from the IO thread back into the VM,
+                            // not messages the IO thread receives. The name is a
+                            // project-wide convention; renaming is out of scope here.
+                            counters.increment_io_thread_messages_received();
+                            if response_tx
+                                .blocking_send(IkcFrame::Message(response))
+                                .is_err()
+                            {
+                                error!(
+                                    "hostfsd-worker: failed to send response (VM input channel \
+                                     closed)"
+                                );
+                                break;
+                            }
+                        }
+                        debug!("hostfsd-worker: exiting");
+                    }) {
+                    Ok(handle) => {
+                        // Wait for the worker to confirm handler initialization.
+                        match init_rx.recv() {
+                            Ok(true) => (Some(tx), Some(handle)),
+                            _ => {
+                                error!(
+                                    "standalone io_handler: hostfsd worker failed to initialize"
+                                );
+                                (None, Some(handle))
+                            },
+                        }
+                    },
+                    Err(e) => {
+                        error!("standalone io_handler: failed to spawn hostfsd worker thread: {e}");
+                        (None, None)
+                    },
+                }
+            }
+        },
+        None => (None, None),
+    };
+
     trace!("standalone io_handler: entering receive loop");
     while let Some(frame) = vm_stdout_rx.recv().await {
         trace!("standalone io_handler: received frame (type={})", frame.frame_type_byte());
@@ -371,7 +479,8 @@ async fn standalone_io_handler(
                         },
                     };
 
-                match syscall_msg.header {
+                let header = syscall_msg.header;
+                match header {
                     SystemCallMessageHeader::WriteRequest => {
                         let tid: ThreadIdentifier = extract_tid(msg.source);
                         let req: WriteRequest = WriteRequest::from_bytes(syscall_msg.payload);
@@ -399,6 +508,35 @@ async fn standalone_io_handler(
                             &counters,
                         )
                         .await;
+                    },
+                    header if header.is_hostfs() => {
+                        if let Some(ref tx) = hostfs_tx {
+                            // Capture the op_id from the request payload BEFORE try_send
+                            // consumes the message, so the error path can echo it back.
+                            let request_op_id: ::hostfs_api::OperationId =
+                                ::hostfs_api::get_op_id(&msg.payload);
+                            if tx
+                                .try_send((msg, vm_stdin_tx.clone(), counters.clone()))
+                                .is_err()
+                            {
+                                error!(
+                                    "standalone io_handler: hostfs worker channel full or closed"
+                                );
+                                send_hostfs_error(header, request_op_id, &vm_stdin_tx, &counters)
+                                    .await;
+                            }
+                            continue;
+                        }
+                        // No mount directory configured: send an error response so
+                        // vfsd can drain its pending queue and report the error to
+                        // the caller instead of leaving them blocked.
+                        warn!(
+                            "standalone io_handler: hostfs message received but no mount \
+                             configured; sending error response"
+                        );
+                        let request_op_id: ::hostfs_api::OperationId =
+                            ::hostfs_api::get_op_id(&msg.payload);
+                        send_hostfs_error(header, request_op_id, &vm_stdin_tx, &counters).await;
                     },
                     header => {
                         let destination = { msg.destination };
@@ -449,6 +587,78 @@ async fn standalone_io_handler(
     }
 
     debug!("standalone: I/O handler exiting (VM stdout channel closed)");
+}
+
+///
+/// # Description
+///
+/// Sends an IKC error response for a hostfs request header back to vfsd.
+///
+/// Constructs a response message with a negative error indicator and sends it over `vm_stdin_tx`.
+/// Used when the hostfs worker channel is full/closed or when no mount directory is configured.
+///
+/// Builds a per-operation error payload so that each vfsd completion handler detects the
+/// failure correctly. Most operations check a leading i32 field for negative values; lseek
+/// checks an i64 offset; stat uses all-zeros as its error sentinel; readdir uses name_len==0
+/// as end-of-directory. Using 0xFF indiscriminately would produce bogus metadata for stat
+/// (whose `size` field is `u64`).
+///
+/// The `op_id` from the original request is echoed into the response so that vfsd's
+/// `PendingQueue::remove` can match it to the correct pending operation.
+///
+async fn send_hostfs_error(
+    header: SystemCallMessageHeader,
+    op_id: ::hostfs_api::OperationId,
+    vm_stdin_tx: &mpsc::Sender<IkcFrame>,
+    counters: &MessageCounters,
+) {
+    let resp_header: SystemCallMessageHeader = match header.hostfs_response_header() {
+        Some(resp) => resp,
+        None => {
+            error!("standalone io_handler: no response header for {header:?}");
+            return;
+        },
+    };
+    // Zero-initialize and write the appropriate error indicator per response type.
+    let mut err_payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
+    err_payload[0..2].copy_from_slice(&(resp_header as u16).to_ne_bytes());
+    // Echo the original request's op_id so vfsd can match this error to the pending op.
+    ::hostfs_api::set_op_id(&mut err_payload, op_id);
+
+    let ds: usize = ::hostfs_api::HOSTFS_DATA_START;
+    match resp_header {
+        SystemCallMessageHeader::HostFsLseekResponse => {
+            // Lseek completion checks offset as i64 < 0.
+            err_payload[ds..ds + 8]
+                .copy_from_slice(&(::hostfs_api::HOSTFS_ERR_IO as i64).to_le_bytes());
+        },
+        SystemCallMessageHeader::HostFsStatResponse
+        | SystemCallMessageHeader::HostFsReadDirResponse => {
+            // Stat uses all-zeros (size==0 && mode==0 && is_dir==0) as error sentinel.
+            // Readdir uses name_len==0 as end-of-directory signal.
+            // Zeros are already in place from the initialization above.
+        },
+        _ => {
+            // All other operations check a leading i32 for negative values.
+            err_payload[ds..ds + 4].copy_from_slice(&::hostfs_api::HOSTFS_ERR_IO.to_le_bytes());
+        },
+    }
+
+    let err_response: Message = Message::new(
+        MessageSender::from(ProcessIdentifier::KERNEL),
+        MessageReceiver::from(ProcessIdentifier::VFSD),
+        MessageType::Ikc,
+        None,
+        err_payload,
+    );
+    counters.increment_io_thread_messages_received();
+    if vm_stdin_tx
+        .send(IkcFrame::Message(err_response))
+        .await
+        .is_err()
+    {
+        error!("standalone io_handler: failed to send hostfs error response");
+    }
 }
 
 ///
