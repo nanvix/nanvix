@@ -541,7 +541,7 @@ fn add_credit_fn(
 ///
 /// # Description
 ///
-/// Obtains a buffered writer for the virtual machine's standard error device.
+/// Obtains a writer for the virtual machine's standard error device.
 ///
 /// When a file path is provided the writer targets the specified file, creating or truncating it
 /// as needed. Otherwise the host process' standard error stream is used.
@@ -552,12 +552,21 @@ fn add_credit_fn(
 ///
 /// # Returns
 ///
-/// On success, the function returns a buffered writer for the virtual machine's standard error
+/// On success, the function returns a writer for the virtual machine's standard error
 /// stream. An error is returned when the target file cannot be created.
 ///
 pub fn get_stderr_writer(vm_stderr: Option<String>) -> Result<Box<dyn Write + Send>> {
-    // Obtain a buffered writer for the virtual machine's standard error device.
+    // Obtain a writer for the virtual machine's standard error device.
     let file_writer: Box<dyn Write + Send> = if let Some(vm_stderr) = vm_stderr {
+        // On Windows the path is first inspected via `is_windows_named_pipe`: if it points at a
+        // named pipe (`\\.\pipe\…` or `\\?\pipe\…`) the file is opened in write-only mode
+        // without `create`/`truncate`, because Windows' `CreateFile` rejects those flags on a
+        // named pipe with `ERROR_INVALID_PARAMETER` (os error 87).
+        #[cfg(windows)]
+        if is_windows_named_pipe(&vm_stderr) {
+            let file: File = File::options().read(false).write(true).open(&vm_stderr)?;
+            return Ok(Box::new(file));
+        }
         // Standard error was set to a file. Attempt to open file and create a writer.
         let file = File::options()
             .read(false)
@@ -571,6 +580,49 @@ pub fn get_stderr_writer(vm_stderr: Option<String>) -> Result<Box<dyn Write + Se
         Box::new(std::io::stderr())
     };
     Ok(file_writer)
+}
+
+///
+/// # Description
+///
+/// Returns whether the given path points at a Windows named pipe.
+///
+/// Recognises both the canonical `\\.\pipe\` prefix and the rarer long-path `\\?\pipe\` form.
+/// Matching is case-insensitive on the prefix only -- Windows accepts pipe paths like
+/// `\\.\PIPE\foo`, `\\.\Pipe\foo`, etc. as equivalent to the lower-case form -- but the pipe name
+/// itself is forwarded verbatim to `CreateFile`.
+///
+/// # Out of scope
+///
+/// Remote UNC pipe paths (`\\<server>\pipe\<name>`) and forward-slash variants (`//./pipe/<name>`)
+/// are intentionally not recognised: the in-tree callers (the containerd shim and friends) always
+/// supply local-machine, backslash- canonical paths. If a future caller needs remote pipes, the
+/// helper should be extended together with the test suite below.
+///
+/// # Parameters
+///
+/// - `path`: Path to inspect.
+///
+/// # Returns
+///
+/// `true` if the path begins with a Windows named-pipe prefix, `false` otherwise.
+///
+#[cfg(windows)]
+fn is_windows_named_pipe(path: &str) -> bool {
+    // Only inspect the prefix bytes: pipe names themselves should be passed verbatim to
+    // `CreateFile`, and large paths should not allocate just to be classified.
+    const PREFIX: &[u8] = br"\\.\pipe\";
+    const LONG_PREFIX: &[u8] = br"\\?\pipe\";
+    // Both recognised prefixes must have the same length so the single `head` slice below can be
+    // compared against either of them.
+    ::static_assert::assert_eq!(PREFIX.len() == LONG_PREFIX.len());
+    const PREFIX_LEN: usize = PREFIX.len();
+    let bytes: &[u8] = path.as_bytes();
+    if bytes.len() < PREFIX_LEN {
+        return false;
+    }
+    let head: &[u8] = &bytes[..PREFIX_LEN];
+    head.eq_ignore_ascii_case(PREFIX) || head.eq_ignore_ascii_case(LONG_PREFIX)
 }
 
 ///
@@ -935,5 +987,75 @@ mod tests {
         let result: AnyResult<Box<dyn Write + Send>> =
             get_stderr_writer(Some(file_path.to_string_lossy().into_owned()));
         assert!(result.is_err(), "expected failure when parent directory does not exist");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_windows_named_pipe_recognises_canonical_prefix() {
+        use super::is_windows_named_pipe;
+        assert!(is_windows_named_pipe(r"\\.\pipe\foo"));
+        assert!(is_windows_named_pipe(r"\\.\pipe\containerd-shim-abc"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_windows_named_pipe_recognises_long_path_prefix() {
+        use super::is_windows_named_pipe;
+        assert!(is_windows_named_pipe(r"\\?\pipe\foo"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_windows_named_pipe_rejects_regular_paths() {
+        use super::is_windows_named_pipe;
+        assert!(!is_windows_named_pipe(r"C:\temp\foo.log"));
+        assert!(!is_windows_named_pipe(r"foo.log"));
+        assert!(!is_windows_named_pipe(r"\\server\share\foo"));
+        assert!(!is_windows_named_pipe(""));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_windows_named_pipe_requires_trailing_separator() {
+        use super::is_windows_named_pipe;
+        // The prefix must include the trailing backslash; "\\.\pipefoo" is not a pipe path.
+        assert!(!is_windows_named_pipe(r"\\.\pipefoo"));
+        assert!(!is_windows_named_pipe(r"\\?\pipefoo"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_windows_named_pipe_recognises_case_variants() {
+        use super::is_windows_named_pipe;
+        // Windows treats pipe paths as case-insensitive: callers may legitimately
+        // pass mixed-case prefixes.
+        assert!(is_windows_named_pipe(r"\\.\PIPE\foo"));
+        assert!(is_windows_named_pipe(r"\\.\Pipe\containerd-shim"));
+        assert!(is_windows_named_pipe(r"\\?\PIPE\foo"));
+        assert!(is_windows_named_pipe(r"\\?\PiPe\foo"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_windows_named_pipe_handles_short_inputs() {
+        use super::is_windows_named_pipe;
+        // Inputs shorter than the prefix must not panic.
+        assert!(!is_windows_named_pipe(r"\\.\pipe"));
+        assert!(!is_windows_named_pipe(r"\\.\"));
+        assert!(!is_windows_named_pipe(r"\"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_windows_named_pipe_rejects_out_of_scope_variants() {
+        use super::is_windows_named_pipe;
+        // Remote UNC pipe paths (\\<server>\pipe\<name>) and forward-slash
+        // variants are intentionally out of scope: in-tree callers always
+        // supply local-machine, backslash-canonical paths. These tests pin
+        // the current behavior so a future contributor extending the helper
+        // to cover them also updates this test.
+        assert!(!is_windows_named_pipe(r"\\myserver\pipe\foo"));
+        assert!(!is_windows_named_pipe("//./pipe/foo"));
+        assert!(!is_windows_named_pipe("//?/pipe/foo"));
     }
 }
