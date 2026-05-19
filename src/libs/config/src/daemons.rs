@@ -1,6 +1,9 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+/// Name of the host filesystem daemon.
+pub const HOSTFSD_NAME: &str = "hostfsd";
+
 /// Name of the memory daemon.
 pub const MEMD_NAME: &str = "memd";
 
