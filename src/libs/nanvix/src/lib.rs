@@ -80,7 +80,6 @@
 
 pub use config;
 pub use hwloc;
-#[cfg(unix)]
 pub use nanvix_http as http;
 pub use nanvix_sandbox as sandbox;
 #[cfg(feature = "single-process")]
