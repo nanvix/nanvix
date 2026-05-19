@@ -9,6 +9,16 @@ on:
     - cron: "0 0 * * *"
 
   workflow_dispatch:
+    inputs:
+      release-type:
+        description: "Release bump type (only used for manual releases)"
+        required: false
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
   pull_request:
     types:
@@ -1587,3 +1597,27 @@ jobs:
         uses: ./.github/actions/create-release
         with:
           bump-type: "patch"
+
+  # Manual release via workflow_dispatch.
+  # Allows selecting patch/minor/major bump type from the GitHub Actions UI.
+  # No `needs:` gate — the caller is responsible for ensuring dev is green.
+  create-release-manual:
+    name: "Create Release (Manual)"
+    # Only run on manual dispatch; exclude bot to prevent loops.
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v6
+        with:
+          ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
+          fetch-depth: 0
+
+      - name: "Create Release"
+        uses: ./.github/actions/create-release
+        with:
+          bump-type: ${{ github.event.inputs.release-type }}
+          skip-merge-check: "true"
