@@ -23,9 +23,6 @@ pub const RAMFS_MMIO_TAG: MmioTag = MmioTag::new(*b"RAMFS   ");
 /// Tag used to identify the root filesystem image.
 pub const ROOTFS_MMIO_TAG: MmioTag = MmioTag::new(*b"ROOTFS  ");
 
-/// Tag used to identify a host-mounted filesystem image.
-pub const MOUNTFS_MMIO_TAG: MmioTag = MmioTag::new(*b"MOUNTFS ");
-
 //==================================================================================================
 // MicroVM
 //==================================================================================================
