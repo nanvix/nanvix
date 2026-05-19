@@ -129,6 +129,17 @@ host network stack, pass `-allow-host-networking`:
 ./bin/nanvixd.elf -allow-host-networking -console-file /dev/stdout -- ./bin/network-rust.elf
 ```
 
+### Mounting a Host Directory
+
+To make a host directory accessible to the guest at `/mnt`, use the `-mount` flag:
+
+```bash
+./bin/nanvixd.elf -mount /path/to/shared/dir -console-file /dev/stdout -- ./bin/file-rust.elf
+```
+
+The guest can then read and write files under `/mnt/` which map to the host directory.
+See [host-mount.md](host-mount.md) for the design and protocol details.
+
 Everything after `--` is forwarded to the application as arguments:
 
 ```bash

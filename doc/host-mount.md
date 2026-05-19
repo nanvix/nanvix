@@ -47,144 +47,220 @@ operations.
 
 ---
 
-## 3. Design — Snapshot-Based Mounting
+## 3. Design — Live Host Filesystem Forwarding (hostfsd)
 
-This is an initial, straightforward implementation that requires minimal changes to the existing
-system architecture. It works by packaging the host directory into an in-memory disk image before
-the guest boots and extracting modifications after the guest exits.
+The host directory is accessed live through the `hostfsd` daemon using IKC (Inter-Kernel
+Communication). Guest file operations on `/mnt` are forwarded in real-time to the host process,
+which performs the actual I/O on the host filesystem. There is no boot-time image packaging or
+shutdown-time extraction step.
 
 ### 3.1 High-Level Design
 
 ```text
 ┌─ Launch ─────────────────────────────────────────────────────────┐
 │                                                                  │
-│  Host directory ──► FAT32 image ──► Multi-image container        │
-│                     (mkramfs)       (ROOTFS + MOUNTFS)           │
-│                                            │                     │
-│                                            ▼                     │
-│                                     Guest memory (MMIO)          │
-│                                            │                     │
-│                                            ▼                     │
-│                                   Guest VFS mounts:              │
-│                                     /     ← ROOTFS               │
-│                                     /mnt  ← MOUNTFS              │
+│  nanvixd -mount <host-dir> -- <guest.initrd>                     │
+│       │                                                          │
+│       ├─► UserVM spawns with hostfsd worker thread               │
+│       │     (worker holds a reference to <host-dir>)             │
+│       │                                                          │
+│       └─► Guest boots, vfsd waits for explicit mount() syscall   │
+│                                                                  │
+├─ Runtime ────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Guest app calls: mount("", "/mnt", "hostfs", 0)                 │
+│       │                                                          │
+│       ▼                                                          │
+│  vfsd enables hostfs path routing for /mnt                       │
+│       │                                                          │
+│       ▼                                                          │
+│  Guest file ops on /mnt ──► vfsd ──► IKC ──► hostfsd worker      │
+│                                                ──► host std::fs  │
 │                                                                  │
 ├─ Shutdown ───────────────────────────────────────────────────────┤
 │                                                                  │
-│  Guest memory (MOUNTFS region) ──► FAT32 extraction ──► Host dir │
+│  Guest calls: umount("/mnt")                                     │
+│  (or VM exits — no extraction needed, host dir already updated)  │
 │                                                                  │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-The flow has three phases:
+### 3.2 Components
 
-1. **Launch.** The host builds a FAT32 image from `<host-dir>`, packs it (along with an optional
-   `-ramfs` image) into a multi-image container, and maps the container into guest memory via the
-   existing RamFs/MMIO infrastructure.
-2. **Runtime.** The guest runtime detects the multi-image format, parses the header, and mounts each
-   sub-image as a separate VFS mount point. Guest applications read and write files in-memory
-   through the FAT32 backend.
-3. **Shutdown.** The host reads the MOUNTFS region back from guest memory,
-   opens it as a FAT filesystem, and recursively extracts all files to
-   `<host-dir>`, overwriting originals.
+| Component | Location | Role |
+| --- | --- | --- |
+| `mount()` / `umount()` syscalls | `src/libs/syscall/src/sys/mount/` | User-space API for mounting/unmounting hostfs |
+| vfsd mount handler | `src/daemons/vfsd/src/handler/mount_handler.rs` | Validates mount requests and enables/disables hostfs routing |
+| vfsd hostfs module | `src/daemons/vfsd/src/hostfs.rs` | Routes `/mnt` paths to IKC messages for hostfsd |
+| vfsd hostfs handlers | `src/daemons/vfsd/src/handler/hostfs_handlers.rs` | Intercepts FD-based operations on hostfs-backed descriptors and forwards them via IKC |
+| hostfs-api wire format | `src/libs/hostfs-api/` | Defines the binary protocol between vfsd and hostfsd (request/response encoding) |
+| hostfsd daemon | `src/daemons/hostfsd/` | Host-side daemon that processes IKC requests using the host filesystem |
+| hostfsd worker | `src/uservm/src/standalone.rs` | Host-side thread that runs the hostfsd event loop |
 
-### 3.2 Multi-Image Binary Format
+### 3.3 Architecture
 
-To support multiple filesystem images in a single MMIO region, a lightweight container format is
-used:
+#### Wire Protocol (`hostfs-api`)
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│ HEAD Page (4096 bytes)                                          │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │ magic:       u32 = 0x4D494D47 ("MIMG")                     │ │
-│  │ version:     u32 = 1                                       │ │
-│  │ num_images:  u32                                           │ │
-│  │ _pad0:       u32                                           │ │
-│  │ total_size:  u64 (including HEAD page)                     │ │
-│  │ reserved:    [u8; 16] (zero-padded, future use)            │ │
-│  ├────────────────────────────────────────────────────────────┤ │
-│  │ ImageEntry[0]: tag[8] | offset: u64 | size: u64 | flags    │ │
-│  │ ImageEntry[1]: tag[8] | offset: u64 | size: u64 | flags    │ │
-│  │ ...                                                        │ │
-│  │ (padding to 4096 bytes)                                    │ │
-│  └────────────────────────────────────────────────────────────┘ │
-├─────────────────────────────────────────────────────────────────┤
-│ Sub-image 0 (page-aligned)                                      │
-├─────────────────────────────────────────────────────────────────┤
-│ Sub-image 1 (page-aligned)                                      │
-└─────────────────────────────────────────────────────────────────┘
+All communication between vfsd (guest) and hostfsd (host) uses the `hostfs-api` wire format
+encoded into the fixed-size IPC message payload. Each message carries:
+
+- A 2-byte `SystemCallMessageHeader` discriminant identifying the operation (request or response).
+- A 4-byte operation identifier (`op_id`) assigned by vfsd and echoed by hostfsd to correlate
+  asynchronous responses with pending operations.
+- 42 bytes of operation-specific data.
+
+#### Asynchronous Request/Response Model
+
+vfsd uses a non-blocking send model:
+
+1. vfsd encodes the request, assigns an `op_id`, and sends an IKC message to hostfsd.
+2. A `PendingOp` record is pushed onto a pending queue keyed by `op_id`.
+3. vfsd continues processing other events.
+4. When the IKC response arrives in the main event loop, vfsd matches it to the pending operation
+   via `op_id` and completes the original guest syscall.
+
+#### Path Routing
+
+vfsd routes file operations to hostfsd based on path prefix:
+
+- Paths matching `/mnt` or `/mnt/...` are forwarded to hostfsd when hostfs is enabled.
+- FD-based operations (read, write, close, seek, stat, truncate, flush) check whether the FD
+  is hostfs-backed and forward accordingly; non-hostfs FDs delegate to the standard FAT32 handlers.
+
+#### Security — Path Sandbox
+
+hostfsd constrains all guest-requested paths to a configured root directory (the host directory
+passed via `-mount`). The sandbox:
+
+- Canonicalizes paths to resolve `.` and `..` components.
+- Rejects any resolved path that escapes the root directory (path traversal protection).
+- Rejects symlinks that point outside the root.
+
+#### File Descriptor Management
+
+hostfsd maintains a remote file descriptor table that maps guest-visible FDs to host-side file
+handles. The table:
+
+- Allocates integer FDs starting at 1 (0 is reserved).
+- Enforces a maximum number of simultaneously open descriptors per guest.
+- Tracks whether each FD refers to a file or directory.
+- Caches directory listings for readdir operations (populated on first access).
+- Invalidates directory caches when mutating operations (mkdir, rmdir, unlink, rename) occur.
+
+### 3.4 Mount Lifecycle
+
+1. **Guest boot:** vfsd initializes but does NOT enable hostfs forwarding.
+2. **Explicit mount:** Guest application calls `mount("", "/mnt", "hostfs", 0)` which sends an
+   IPC message to vfsd. The mount handler validates the request (only "hostfs" type at "/mnt" is
+   accepted) and enables the hostfs path routing.
+3. **File operations:** Any VFS operation on paths under `/mnt` is intercepted by vfsd and
+   forwarded via IKC to the hostfsd worker on the host, which performs the operation on the actual
+   host directory.
+4. **Unmount:** Guest calls `umount("/mnt")` to disable hostfs forwarding. All changes are
+   already persisted on the host filesystem (no extraction needed).
+
+### 3.5 Advantages Over Snapshot-Based Approach
+
+| Property | hostfsd (current) | Snapshot-based (removed) |
+| --- | --- | --- |
+| Boot latency | Constant (no image packing) | O(n) proportional to dir size |
+| Size limit | Unbounded (host filesystem) | Limited by guest memory (16 MiB) |
+| Host→guest sync | Live (reads see latest host state) | Stale after boot |
+| Guest→host sync | Immediate (writes go to host) | Only on shutdown |
+| Guest memory usage | Zero (no in-memory copy) | Full directory size |
+
+### 3.6 Supported Operations
+
+The following file operations are supported on hostfs-mounted paths (`/mnt/...`):
+
+| Operation | Syscall | Notes |
+| --- | --- | --- |
+| Open/Create | `openat()` | Supports `O_RDONLY`, `O_WRONLY`, `O_RDWR`, `O_CREAT`, `O_TRUNC`, `O_DIRECTORY`, `O_APPEND` |
+| Close | `close()` | Releases local and remote FD |
+| Read | `read()` / `pread()` | Positional reads supported; data clamped per IKC round-trip; caller handles short reads |
+| Write | `write()` / `pwrite()` | Positional writes supported; data clamped per IKC round-trip; caller handles short writes |
+| Seek | `lseek()` | `SEEK_SET`, `SEEK_CUR`, `SEEK_END` |
+| Stat | `fstat()` | Returns size, mode (POSIX permissions on Unix, synthetic on Windows), and type |
+| Truncate | `ftruncate()` | Truncates to specified length; rejected on directories |
+| Sync | `fsync()` | Flushes host-side file buffers |
+| Read Directory | `getdents()` | Offset-based iteration via cached directory listing |
+| Mkdir | `mkdirat()` | Creates directory on host |
+| Rmdir | `unlinkat(AT_REMOVEDIR)` | Removes empty directory on host |
+| Unlink | `unlinkat()` | Removes file on host |
+| Rename | `renameat()` | Both paths must resolve within the sandbox |
+
+#### Not Supported
+
+| Operation | Reason |
+| --- | --- |
+| `fstatat()` on `/mnt` paths | Requires path-based stat without pre-opened FD |
+| `link()` / `symlink()` | Not applicable to hostfs |
+| `chmod()` / `fchmod()` | Host permissions are those of the `nanvixd` process |
+| `fallocate()` | Not forwarded to hostfsd |
+
+### 3.7 C Bindings
+
+C-compatible bindings are provided for `mount()` and `umount()`:
+
+```c
+int mount(const char *source, const char *target, const char *fstype, unsigned long flags);
+int umount(const char *target);
 ```
 
-#### Header Fields
+These are defined in `src/libs/syscall/src/sys/mount/bindings/` and follow the same pattern as
+other syscall C bindings (validate pointers, convert to Rust strings, call safe implementation,
+set errno on error, return -1 on failure / 0 on success).
 
-| Field       | Type     | Description                              |
-|-------------|----------|------------------------------------------|
-| magic       | u32      | `0x4D494D47` ("MIMG" in LE)              |
-| version     | u32      | Format version (currently `1`)           |
-| num_images  | u32      | Number of sub-images                     |
-| _pad0       | u32      | Alignment padding                        |
-| total_size  | u64      | Total container size including HEAD page |
-| reserved    | [u8; 16] | Reserved for future use                  |
+### 3.8 Edge Cases
 
-#### Entry Fields (32 bytes each)
+1. **No `-mount` flag** — No hostfsd worker is spawned. Guest `mount("hostfs")` still succeeds
+   (vfsd enables path routing unconditionally), but subsequent file operations on `/mnt` paths will
+   fail because the host-side handler is absent and the IKC channel has no receiver.
+2. **Mount before calling `mount()`** — File operations on `/mnt` fail with an error since
+   hostfs routing is not enabled.
+3. **Double mount** — Rejected with `ResourceBusy` error.
+4. **Umount without mount** — Rejected with `InvalidArgument` error.
+5. **VM exit without umount** — No data loss; all writes were already committed to the host.
+6. **Path traversal** — Paths resolving outside the sandbox root are rejected with a permission
+   error.
+7. **FD table exhaustion** — Opening more files than the maximum limit returns an I/O error.
 
-| Field  | Type    | Description                           |
-|--------|---------|---------------------------------------|
-| tag    | [u8; 8] | Identifies the sub-image              |
-| offset | u64     | Byte offset from container start      |
-| size   | u64     | Sub-image size in bytes               |
-| flags  | u32     | Bitfield (bit 0 = FLAG_READONLY)      |
-| _pad   | u32     | Alignment padding                     |
+---
 
-#### Tags
+## 4. Testing
 
-- `TAG_ROOTFS  = b"ROOTFS  "` — Root filesystem (mounted at `/`)
-- `TAG_MOUNTFS = b"MOUNTFS "` — Host-mounted directory (mounted at `/mnt`)
+### Integration Test: `mount-test`
 
-#### Limits
+The `mount-test` binary (`src/tests/mount-test/`) is a comprehensive guest-side integration test
+that exercises the full hostfs feature set in standalone mode. It is structured into phases:
 
-- Maximum entries: `(4096 - 40) / 32 = 126`
-- Sub-images are page-aligned (4096 bytes)
+1. **Mount lifecycle** — mount, double-mount rejection, umount, double-umount rejection, re-mount.
+2. **Filesystem operations** — mkdir/rmdir, create/unlink, rename on `/mnt` paths.
+3. **File operations** — write/read, seek (from start/end), fstat (size verification),
+   ftruncate, fsync on `/mnt` paths.
+4. **Cross-filesystem consistency** — performs identical operations on both RAMFS and hostfs,
+   verifying that results and error codes are consistent.
 
-### 3.3 Size Constraints
+The test is run via:
 
-| Constraint | Value | Source |
-| --- | --- | --- |
-| `MEMORY_SIZE` | 128 MiB | `kernel_config.toml` |
-| Max mount image | 16 MiB | `MEMORY_SIZE / 8` |
-| `MIN_IMAGE_SIZE` | 1 MiB | `mkramfs` constant |
-| `HEADROOM_FACTOR` | 1.5x | `mkramfs` constant |
-| `HEAD_PAGE_SIZE` | 4096 bytes | `multiimage` constant |
-| `MAX_ENTRIES` | 126 | `(4096 - 40) / 32` |
-| `RAMFS_MIN_SLACK_BYTES` | 4 MiB | Between initrd end and RAMFS start |
+```bash
+nanvixd -mount ./bin/mount-test-data -- mount-test.initrd
+```
 
-### 3.4 Edge Cases
+The `mount-test-data/` directory is reset to pristine state before each test run by the build
+system.
 
-1. **Empty host directory** — Creates a minimal 1 MiB formatted (empty) FAT image.
-2. **No `-ramfs` with `-mount`** — Container holds only MOUNTFS (no ROOTFS).
-3. **No `-mount` flag** — Existing behavior preserved (single-image path).
-4. **Host directory too large** — Error with clear message when content exceeds 16 MiB.
-5. **Non-existent directory** — Rejected at CLI parse time with descriptive error.
-6. **Legacy guest binary** — Magic-byte check returns false; guest mounts the entire region at `/`
-   as before (backward compatible).
+### Test Configuration
 
-### 3.5 Backward Compatibility
+The test entry in `test/test-standalone-windows.toml`:
 
-When only `-ramfs` is provided (no `-mount`), the existing single-image code path is preserved
-unchanged. Guest detection uses magic-byte checking: old single images don't match the MIMG magic,
-so the legacy mount-at-root path is taken. No changes to kernel MMIO infrastructure, control
-register layout, or the `"RAMFS   "` tag mechanism.
-
-### 3.6 Limitations
-
-This approach is intentionally simple but has fundamental constraints that limit the workloads it
-can support:
-
-| Limitation | Impact |
-| --- | --- |
-| Boot/shutdown copy overhead | O(n) latency proportional to host directory size |
-| 16 MiB size ceiling | Cannot mount directories larger than guest memory budget |
-| No live host→guest sync | Host changes after launch are invisible to guest |
-| No live guest→host sync | Guest changes invisible to host until shutdown |
-| Full memory copy of host dir | Wastes guest memory on data that may never be accessed |
+```toml
+[[tests]]
+executor = "terminal"
+program = "./bin/mount-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img -mount ./bin/mount-test-data"
+input = "[]"
+expected_output = "ok"
+expected_exit_code = 0
+runs_on = ["microvm"]
+```
