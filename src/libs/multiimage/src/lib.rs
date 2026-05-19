@@ -55,10 +55,7 @@ use std::{
 //==================================================================================================
 
 // Re-export well-known image tags from the config crate.
-pub use ::config::region_tags::{
-    MOUNTFS_MMIO_TAG,
-    ROOTFS_MMIO_TAG,
-};
+pub use ::config::region_tags::ROOTFS_MMIO_TAG;
 use ::mmio_tag::{
     MmioTag,
     TAG_LENGTH,
@@ -607,7 +604,7 @@ mod tests {
                 flags: 0,
             },
             ImageDescriptor {
-                tag: MOUNTFS_MMIO_TAG,
+                tag: MmioTag::new(*b"TESTIMG "),
                 path: &img2_path,
                 flags: FLAG_READONLY,
             },
@@ -638,15 +635,15 @@ mod tests {
             &data[rootfs.offset as usize..rootfs.offset as usize + rootfs.size as usize];
         assert!(rootfs_data.iter().all(|&b| b == 0xAA));
 
-        // Validate MOUNTFS entry.
-        let mountfs: &ImageEntry =
-            find_entry_by_tag(entries, &MOUNTFS_MMIO_TAG).expect("MOUNTFS not found");
-        assert_eq!(mountfs.offset as usize, HEAD_PAGE_SIZE + page_align(5000));
-        assert_eq!(mountfs.size as usize, 4096);
-        assert_eq!(mountfs.flags, FLAG_READONLY);
-        let mountfs_data: &[u8] =
-            &data[mountfs.offset as usize..mountfs.offset as usize + mountfs.size as usize];
-        assert!(mountfs_data.iter().all(|&b| b == 0xBB));
+        // Validate TESTIMG entry.
+        let testimg: &ImageEntry =
+            find_entry_by_tag(entries, &MmioTag::new(*b"TESTIMG ")).expect("TESTIMG not found");
+        assert_eq!(testimg.offset as usize, HEAD_PAGE_SIZE + page_align(5000));
+        assert_eq!(testimg.size as usize, 4096);
+        assert_eq!(testimg.flags, FLAG_READONLY);
+        let testimg_data: &[u8] =
+            &data[testimg.offset as usize..testimg.offset as usize + testimg.size as usize];
+        assert!(testimg_data.iter().all(|&b| b == 0xBB));
 
         // Validate entries.
         validate_entries(entries, header.total_size).expect("validate_entries");
@@ -661,7 +658,7 @@ mod tests {
             flags: 0,
             _pad: 0,
         }];
-        assert!(find_entry_by_tag(&entries, &MOUNTFS_MMIO_TAG).is_none());
+        assert!(find_entry_by_tag(&entries, &MmioTag::new(*b"MISSING ")).is_none());
     }
 
     #[test]
