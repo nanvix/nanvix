@@ -103,6 +103,13 @@ pub fn main() {
         panic!("failed to acquire exception management capability (error={:?})", e);
     }
 
+    // Signup to the process manager daemon.
+    // NOTE: this must happen before subscribing to page faults so that no
+    // exception messages arrive during the synchronous signup handshake.
+    if let Err(e) = ::proc::signup(&mypid, myname) {
+        panic!("failed to signup to process manager daemon (error={:?})", e);
+    }
+
     let page_fault_exception: ExceptionEvent = ExceptionEvent::Exception14;
 
     // Subscribe to page faults.
@@ -112,11 +119,6 @@ pub fn main() {
         EventCtrlRequest::Register,
     ) {
         panic!("failed to subscribe to page faults (error={:?})", e);
-    }
-
-    // Signup to the process manager daemon.
-    if let Err(e) = ::proc::signup(&mypid, myname) {
-        panic!("failed to signup to process manager daemon (error={:?})", e);
     }
 
     loop {
