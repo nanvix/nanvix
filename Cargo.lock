@@ -1125,6 +1125,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hostfs-api"
+version = "0.14.8"
+dependencies = [
+ "sys",
+]
+
+[[package]]
 name = "http"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
