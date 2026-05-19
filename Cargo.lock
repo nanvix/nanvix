@@ -1132,6 +1132,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "hostfsd"
+version = "0.14.8"
+dependencies = [
+ "anyhow",
+ "hostfs-api",
+ "log",
+ "sys",
+ "sysapi",
+ "syscall",
+ "syslog",
+ "tempfile",
+]
+
+[[package]]
 name = "http"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
