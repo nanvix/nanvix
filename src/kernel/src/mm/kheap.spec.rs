@@ -8,10 +8,6 @@ use ::vstd::layout::valid_layout;
 //
 // Abstract view of the kernel heap allocator as seen by its callers:
 //   KheapView { allocations: Map<base_addr, size> }
-//
-// External items Verus cannot see directly (types/methods from `core::alloc`,
-// `sys::error`) are declared via `external_type_specification` /
-// `assume_specification`. No cfg-gated duplication of exec code.
 // ==================================================================================================
 
 verus! {
