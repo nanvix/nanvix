@@ -465,7 +465,7 @@ impl Vmm {
             #[cfg(feature = "profile-time")]
             let initrd_load_start: Instant = Instant::now();
 
-            let has_ramfs: bool = args.ramfs_filename.is_some() || args.mount_directory.is_some();
+            let has_ramfs: bool = args.ramfs_filename.is_some();
 
             // When RAMFS is present, page-aligned initrd files can be included in the
             // combined zero-copy remap.  Non-page-aligned files fall back to copy-based
@@ -534,20 +534,11 @@ impl Vmm {
                 let loaded: ramfs::LoadedRamFs = ramfs::load_ramfs(
                     &mut vmem,
                     initrd_end,
-                    args.mount_directory.as_deref(),
                     args.ramfs_filename.as_deref(),
                     &initrd_remap,
                 )?;
 
                 match loaded {
-                    ramfs::LoadedRamFs::Multi {
-                        backing_files,
-                        base,
-                        size,
-                    } => {
-                        vmem.attach_backing_files(backing_files);
-                        Some((base, size))
-                    },
                     ramfs::LoadedRamFs::Single { base, size, .. } => Some((base, size)),
                     ramfs::LoadedRamFs::None => None,
                 }

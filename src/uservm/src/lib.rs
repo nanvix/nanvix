@@ -185,8 +185,6 @@ pub struct UserVmArgs {
     pub counters: MessageCounters,
     /// Optional snapshot path: when set, restore VM state from this snapshot before running.
     pub snapshot_path: Option<String>,
-    /// Optional host directory to mount on the guest (standalone mode only).
-    pub mount_directory: Option<String>,
     /// Optional GDB server port (standalone mode only).
     #[cfg(feature = "gdb")]
     pub gdb_port: Option<u16>,
@@ -299,7 +297,6 @@ impl UserVm {
             kernel_args: args.kernel_args.clone(),
             ramfs_filename: args.ramfs_filename.clone(),
             restoring_from_snapshot: args.snapshot_path.is_some(),
-            mount_directory: args.mount_directory.clone(),
             ikc_pending: ikc_pending.clone(),
             #[cfg(feature = "gdb")]
             gdb_port: args.gdb_port,
@@ -421,49 +418,6 @@ impl UserVm {
         if let Err(error) = memory_thread.await {
             error!("spawn(): error joining memory thread (error={error:?})");
             // Don't bail, in order to cleanup the other the other tasks properly.
-        }
-
-        // Mount directory copyback: extract modified files from guest memory after VM shutdown.
-        #[cfg(feature = "microvm")]
-        if let Some(ref mount_dir) = args.mount_directory {
-            use crate::vmm::mount;
-            let vmem_guard = vmem.lock().await;
-
-            // Read the ramfs base and size from the guest control registers.
-            let mut base_bytes: [u8; 4] = [0u8; 4];
-            let mut size_bytes: [u8; 4] = [0u8; 4];
-            if let (Ok(()), Ok(())) = (
-                vmem_guard.read_bytes(
-                    ::config::microvm::DEFAULT_MICROVM_CTRL_RAMFS_BASE as u64,
-                    &mut base_bytes,
-                ),
-                vmem_guard.read_bytes(
-                    ::config::microvm::DEFAULT_MICROVM_CTRL_RAMFS_SIZE as u64,
-                    &mut size_bytes,
-                ),
-            ) {
-                let ramfs_base: usize = u32::from_le_bytes(base_bytes) as usize;
-                let ramfs_size: usize = u32::from_le_bytes(size_bytes) as usize;
-
-                if ramfs_base > 0 && ramfs_size > 0 {
-                    let mut ramfs_data: Vec<u8> = vec![0u8; ramfs_size];
-                    if let Ok(()) = vmem_guard.read_bytes(ramfs_base as u64, &mut ramfs_data) {
-                        if let Err(e) = mount::copyback_mount_image(
-                            &ramfs_data,
-                            std::path::Path::new(mount_dir),
-                        ) {
-                            error!(
-                                "spawn(): mount copyback failed (dir={mount_dir:?}, error={e:?})"
-                            );
-                        }
-                    } else {
-                        error!(
-                            "spawn(): failed to read ramfs region from guest memory \
-                             (base={ramfs_base:#x}, size={ramfs_size:#x})"
-                        );
-                    }
-                }
-            }
         }
 
         #[cfg(feature = "profile-time")]
