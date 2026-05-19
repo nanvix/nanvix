@@ -15,6 +15,7 @@ use crate::{
         send_response,
     },
     handler,
+    pending::PendingQueue,
 };
 use ::proc::{
     ProcessManagementMessage,
@@ -107,6 +108,7 @@ fn handle_system_message(message: Message) -> Result<bool, Error> {
 pub(crate) fn handle_ipc_message(
     message: Message,
     assemblers: &mut BTreeMap<(i32, u16), AssemblerEntry>,
+    pending: &mut PendingQueue,
 ) -> Result<bool, Error> {
     let msg_source = message.source;
     let source_tid: ThreadIdentifier = caller_tid(&message);
@@ -135,24 +137,36 @@ pub(crate) fn handle_ipc_message(
         // Short requests: single message request, single message response.
         //==========================================================================================
         SystemCallMessageHeader::CloseRequest => {
-            let response: Message = handler::handle_close(source_tid, syscall_msg);
-            send_response(&response);
+            if let Some(response) =
+                handler::handle_close_with_hostfs(source_tid, syscall_msg, pending)
+            {
+                send_response(&response);
+            }
         },
         SystemCallMessageHeader::SeekRequest => {
-            let response: Message = handler::handle_seek(source_tid, syscall_msg);
-            send_response(&response);
+            if let Some(response) =
+                handler::handle_seek_with_hostfs(source_tid, syscall_msg, pending)
+            {
+                send_response(&response);
+            }
         },
         SystemCallMessageHeader::FileSyncRequest => {
-            let response: Message = handler::handle_fsync(source_tid, syscall_msg);
-            send_response(&response);
+            if let Some(response) =
+                handler::handle_fsync_with_hostfs(source_tid, syscall_msg, pending)
+            {
+                send_response(&response);
+            }
         },
         SystemCallMessageHeader::FileDataSyncRequest => {
             let response: Message = handler::handle_fdatasync(source_tid, syscall_msg);
             send_response(&response);
         },
         SystemCallMessageHeader::FileTruncateRequest => {
-            let response: Message = handler::handle_ftruncate(source_tid, syscall_msg);
-            send_response(&response);
+            if let Some(response) =
+                handler::handle_ftruncate_with_hostfs(source_tid, syscall_msg, pending)
+            {
+                send_response(&response);
+            }
         },
         SystemCallMessageHeader::FileSpaceControlRequest => {
             let response: Message = handler::handle_fallocate(source_tid, syscall_msg);
@@ -187,12 +201,18 @@ pub(crate) fn handle_ipc_message(
         // Read/Write: single message request + bulk data via push/pull.
         //==========================================================================================
         SystemCallMessageHeader::ReadRequest => {
-            let response: Message = handler::handle_read(source_pid, source_tid, syscall_msg);
-            send_response(&response);
+            if let Some(response) =
+                handler::handle_read_with_hostfs(source_pid, source_tid, syscall_msg, pending)
+            {
+                send_response(&response);
+            }
         },
         SystemCallMessageHeader::WriteRequest => {
-            let response: Message = handler::handle_write(source_pid, source_tid, syscall_msg);
-            send_response(&response);
+            if let Some(response) =
+                handler::handle_write_with_hostfs(source_pid, source_tid, syscall_msg, pending)
+            {
+                send_response(&response);
+            }
         },
 
         //==========================================================================================
@@ -211,9 +231,12 @@ pub(crate) fn handle_ipc_message(
         // Long responses: single request, multi-part response.
         //==========================================================================================
         SystemCallMessageHeader::FileStatRequest => {
-            let responses: Vec<Message> = handler::handle_fstat(source_tid, syscall_msg);
-            for response in responses {
-                send_response(&response);
+            if let Some(responses) =
+                handler::handle_fstat_with_hostfs(source_tid, syscall_msg, pending)
+            {
+                for response in responses {
+                    send_response(&response);
+                }
             }
         },
         SystemCallMessageHeader::GetCurrentWorkingDirectoryRequest => {
@@ -223,7 +246,8 @@ pub(crate) fn handle_ipc_message(
             }
         },
         SystemCallMessageHeader::GetDirectoryEntriesRequest => {
-            let responses: Vec<Message> = handler::handle_getdents(source_tid, syscall_msg);
+            let responses: Vec<Message> =
+                handler::handle_getdents_with_hostfs(source_tid, syscall_msg);
             for response in responses {
                 send_response(&response);
             }
@@ -244,11 +268,13 @@ pub(crate) fn handle_ipc_message(
         | SystemCallMessageHeader::ReadLinkAtRequestPart
         | SystemCallMessageHeader::UpdateFileAccessTimeAtRequestPart
         | SystemCallMessageHeader::FileChownAtRequestPart
-        | SystemCallMessageHeader::FileChmodAtRequestPart => {
+        | SystemCallMessageHeader::FileChmodAtRequestPart
+        | SystemCallMessageHeader::HostMountRequestPart
+        | SystemCallMessageHeader::HostUmountRequestPart => {
             let part: SystemCallMessagePart =
                 SystemCallMessagePart::from_bytes(syscall_msg.payload);
             if let Some(responses) =
-                assemble_and_dispatch(source_tid, syscall_msg.header, part, assemblers)
+                assemble_and_dispatch(source_tid, syscall_msg.header, part, assemblers, pending)
             {
                 for response in responses {
                     send_response(&response);
