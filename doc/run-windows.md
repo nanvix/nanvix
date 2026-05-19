@@ -20,8 +20,12 @@ Run a guest application via `nanvixd` in standalone interactive mode:
 - [Creating Multibinary Images](#creating-multibinary-images)
 - [Using `z.ps1 run`](#using-zps1-run)
 - [Running nanvixd Directly](#running-nanvixd-directly)
+  - [Enabling Host Networking](#enabling-host-networking)
+  - [Mounting a Host Directory](#mounting-a-host-directory)
+  - [Passing Kernel Arguments](#passing-kernel-arguments)
 - [Logging](#logging)
 - [Expert Mode: Standalone UserVM](#expert-mode-standalone-uservm)
+  - [Recognised Kernel Arguments](#recognised-kernel-arguments)
 - [Benchmarking](#benchmarking)
   - [Quick Start](#quick-start-1)
 
@@ -105,6 +109,16 @@ To make a host directory accessible to the guest at `/mnt`, use the `-mount` fla
 The guest can then read and write files under `/mnt/` which map to the host directory.
 See [host-mount.md](host-mount.md) for the design and protocol details.
 
+### Passing Kernel Arguments
+
+To pass kernel arguments (written to guest control registers), use the `-kernel-args` flag:
+
+```powershell
+.\bin\nanvixd.exe -kernel-args snapshot -- .\bin\snapshot-rust-nostd.elf
+```
+
+See [Recognised Kernel Arguments](#recognised-kernel-arguments) below for available tokens.
+
 Everything after `--` is forwarded to the application as arguments:
 
 ```powershell
@@ -137,9 +151,10 @@ To include a literal `;` in any section, escape it as `\;`:
 # args: ["arg1", "with;semicolon", "arg2"]   env: ["VAR1=foo"]
 ```
 
-> **Note:** Kernel arguments are passed independently via the `-kernel-args` flag on the UserVM
-> (see [Expert Mode: Standalone UserVM](#expert-mode-standalone-uservm)). They are no longer
-> embedded in the initrd arguments string.
+> **Note:** Kernel arguments can be passed via `-kernel-args` on `nanvixd` (see
+> [Passing Kernel Arguments](#passing-kernel-arguments)) or directly on the UserVM (see
+> [Expert Mode: Standalone UserVM](#expert-mode-standalone-uservm)). They are not embedded in
+> the initrd arguments string.
 
 ## Logging
 
