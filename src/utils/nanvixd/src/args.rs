@@ -90,6 +90,8 @@ pub struct Args {
     gdb_port: Option<u16>,
     /// Networking mode (applies to all deployment modes).
     networking_mode: NetworkingMode,
+    /// When `true`, route nanvixd's logs to stdout instead of a auto-named file.
+    log_to_stdout: bool,
 }
 
 //==================================================================================================
@@ -143,6 +145,8 @@ impl Args {
     pub const OPT_GDB_PORT: &'static str = "-gdb-port";
     /// Command-line flag that enables host networking for the guest.
     pub const OPT_ALLOW_HOST_NETWORKING: &'static str = "-allow-host-networking";
+    /// Command-line flag that routes nanvixd's logs to stdout instead of the auto-named file.
+    pub const OPT_LOG_TO_STDOUT: &'static str = "-log-to-stdout";
 
     ///
     /// # Description
@@ -180,6 +184,7 @@ impl Args {
         let mut hwloc: Option<HwLoc> = None;
         let mut netns_pool_size: usize = Self::DEFAULT_NETNS_POOL_SIZE;
         let mut log_directory: String = DEFAULT_LOG_DIRECTORY.to_string();
+        let mut log_directory_set: bool = false;
         let mut l2: bool = false;
         let mut l2_snapshot_path: String = String::new();
         let mut control_plane_socket_type: Option<SocketType> = None;
@@ -194,6 +199,7 @@ impl Args {
         #[cfg(feature = "gdb")]
         let mut gdb_port: Option<u16> = None;
         let mut networking_mode: NetworkingMode = NetworkingMode::Disabled;
+        let mut log_to_stdout: bool = false;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -268,6 +274,7 @@ impl Args {
                 Self::OPT_LOG_DIRECTORY => {
                     i += 1;
                     log_directory = args[i].clone();
+                    log_directory_set = true;
                 },
                 Self::OPT_NETNS_POOL_SIZE => {
                     i += 1;
@@ -345,12 +352,25 @@ impl Args {
                 Self::OPT_ALLOW_HOST_NETWORKING => {
                     networking_mode = NetworkingMode::Enabled;
                 },
+                Self::OPT_LOG_TO_STDOUT => {
+                    log_to_stdout = true;
+                },
                 arg => {
                     return Err(anyhow::anyhow!("invalid argument: {arg}"));
                 },
             }
 
             i += 1;
+        }
+
+        // -log-to-stdout and -log-dir are mutually exclusive: -log-to-stdout routes nanvixd's
+        // logs to stdout, making an explicit log directory meaningless.
+        if log_to_stdout && log_directory_set {
+            anyhow::bail!(
+                "{} and {} are mutually exclusive",
+                Self::OPT_LOG_TO_STDOUT,
+                Self::OPT_LOG_DIRECTORY,
+            );
         }
 
         // If we set the l2 snapshot path, but do not enable l2, we have an invalid configuration.
@@ -466,6 +486,7 @@ impl Args {
             #[cfg(feature = "gdb")]
             gdb_port,
             networking_mode,
+            log_to_stdout,
         })
     }
 
@@ -522,7 +543,9 @@ Options:
   {kernel_args} <args>                      Pass kernel arguments to guest control registers \
              (standalone mode only).
   {allow_host_networking}                   Enable host networking for the guest (disabled when \
-             omitted).{gdb_port_line}
+             omitted).
+  {log_to_stdout}                          Route nanvixd's own logrus output to stdout instead of \
+             a file in {log_dir} (file logger is otherwise the default).{gdb_port_line}
 ",
             http_usage = http_usage,
             program_name = program_name,
@@ -545,6 +568,7 @@ Options:
             mount = Self::OPT_MOUNT_DIRECTORY,
             kernel_args = Self::OPT_KERNEL_ARGS,
             allow_host_networking = Self::OPT_ALLOW_HOST_NETWORKING,
+            log_to_stdout = Self::OPT_LOG_TO_STDOUT,
             gdb_port_line = if cfg!(feature = "gdb") {
                 "\n  -gdb-port <port>                         GDB server port (standalone mode \
                  only)."
@@ -832,5 +856,71 @@ Options:
     /// Returns the networking mode.
     pub fn networking_mode(&self) -> NetworkingMode {
         self.networking_mode
+    }
+
+    /// When `true`, nanvixd should route its logrus output to stdout
+    /// instead of the file logger. See [`Self::OPT_LOG_TO_STDOUT`].
+    pub fn log_to_stdout(&self) -> bool {
+        self.log_to_stdout
+    }
+}
+
+//==================================================================================================
+// Unit tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn argv(extras: &[&str]) -> Vec<String> {
+        let mut v: Vec<String> = vec!["nanvixd".to_string()];
+        for s in extras {
+            v.push((*s).to_string());
+        }
+        v
+    }
+
+    #[test]
+    fn log_to_stdout_defaults_to_false() {
+        let args = Args::parse(argv(&["--", "/bin/foo"])).expect("parse");
+        assert!(!args.log_to_stdout());
+    }
+
+    #[test]
+    fn log_to_stdout_flag_sets_true() {
+        let args = Args::parse(argv(&["-log-to-stdout", "--", "/bin/foo"])).expect("parse");
+        assert!(args.log_to_stdout());
+    }
+
+    #[test]
+    fn log_to_stdout_composes_with_interactive_mode() {
+        let args = Args::parse(argv(&["-log-to-stdout", "--", "/bin/foo", "arg1"])).expect("parse");
+        assert!(args.log_to_stdout());
+        assert!(args.interactive_mode());
+        assert_eq!(args.program_name(), Some("/bin/foo"));
+    }
+
+    #[test]
+    fn log_to_stdout_and_log_dir_are_mutually_exclusive() {
+        let err = Args::parse(argv(&[
+            "-log-to-stdout",
+            "-log-dir",
+            "/tmp/somewhere",
+            "--",
+            "/bin/foo",
+        ]))
+        .expect_err("parse should fail when both -log-to-stdout and -log-dir are provided");
+        let msg = format!("{err}");
+        assert!(msg.contains(Args::OPT_LOG_TO_STDOUT), "unexpected error: {msg}");
+        assert!(msg.contains(Args::OPT_LOG_DIRECTORY), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn log_dir_alone_is_accepted() {
+        let args =
+            Args::parse(argv(&["-log-dir", "/tmp/somewhere", "--", "/bin/foo"])).expect("parse");
+        assert!(!args.log_to_stdout());
+        assert_eq!(args.log_directory(), "/tmp/somewhere");
     }
 }

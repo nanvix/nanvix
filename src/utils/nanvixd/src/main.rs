@@ -122,7 +122,12 @@ async fn async_main() -> Result<ExitCode> {
     let args: Arc<Args> =
         Arc::new(Args::parse(std::env::args().filter(|s| !s.trim().is_empty()).collect())?);
 
-    ::nanvix::log::init(true, DEFAULT_LOG_LEVEL, args.log_directory().to_string(), None);
+    ::nanvix::log::init(
+        !args.log_to_stdout(),
+        DEFAULT_LOG_LEVEL,
+        args.log_directory().to_string(),
+        None,
+    );
 
     print_startup_info(&args);
 
