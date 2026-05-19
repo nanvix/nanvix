@@ -222,6 +222,36 @@ pub enum SystemCallMessageHeader {
     PollResponsePart,
     SelectRequest,
     SelectResponse,
+    HostFsOpenRequest,
+    HostFsOpenResponse,
+    HostFsCloseRequest,
+    HostFsCloseResponse,
+    HostFsReadRequest,
+    HostFsReadResponse,
+    HostFsWriteRequest,
+    HostFsWriteResponse,
+    HostFsStatRequest,
+    HostFsStatResponse,
+    HostFsReadDirRequest,
+    HostFsReadDirResponse,
+    HostFsMkdirRequest,
+    HostFsMkdirResponse,
+    HostFsRmdirRequest,
+    HostFsRmdirResponse,
+    HostFsUnlinkRequest,
+    HostFsUnlinkResponse,
+    HostFsRenameRequest,
+    HostFsRenameResponse,
+    HostFsLseekRequest,
+    HostFsLseekResponse,
+    HostFsTruncateRequest,
+    HostFsTruncateResponse,
+    HostFsFlushRequest,
+    HostFsFlushResponse,
+    HostMountRequestPart,
+    HostMountResponse,
+    HostUmountRequestPart,
+    HostUmountResponse,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageHeader
 impl TryFrom<u16> for SystemCallMessageHeader {
@@ -336,8 +366,116 @@ impl TryFrom<u16> for SystemCallMessageHeader {
             x if x == PollResponsePart as u16 => Ok(PollResponsePart),
             x if x == SelectRequest as u16 => Ok(SelectRequest),
             x if x == SelectResponse as u16 => Ok(SelectResponse),
+            x if x == HostMountRequestPart as u16 => Ok(HostMountRequestPart),
+            x if x == HostMountResponse as u16 => Ok(HostMountResponse),
+            x if x == HostUmountRequestPart as u16 => Ok(HostUmountRequestPart),
+            x if x == HostUmountResponse as u16 => Ok(HostUmountResponse),
+            x if x == HostFsOpenRequest as u16 => Ok(HostFsOpenRequest),
+            x if x == HostFsOpenResponse as u16 => Ok(HostFsOpenResponse),
+            x if x == HostFsCloseRequest as u16 => Ok(HostFsCloseRequest),
+            x if x == HostFsCloseResponse as u16 => Ok(HostFsCloseResponse),
+            x if x == HostFsReadRequest as u16 => Ok(HostFsReadRequest),
+            x if x == HostFsReadResponse as u16 => Ok(HostFsReadResponse),
+            x if x == HostFsWriteRequest as u16 => Ok(HostFsWriteRequest),
+            x if x == HostFsWriteResponse as u16 => Ok(HostFsWriteResponse),
+            x if x == HostFsStatRequest as u16 => Ok(HostFsStatRequest),
+            x if x == HostFsStatResponse as u16 => Ok(HostFsStatResponse),
+            x if x == HostFsReadDirRequest as u16 => Ok(HostFsReadDirRequest),
+            x if x == HostFsReadDirResponse as u16 => Ok(HostFsReadDirResponse),
+            x if x == HostFsMkdirRequest as u16 => Ok(HostFsMkdirRequest),
+            x if x == HostFsMkdirResponse as u16 => Ok(HostFsMkdirResponse),
+            x if x == HostFsRmdirRequest as u16 => Ok(HostFsRmdirRequest),
+            x if x == HostFsRmdirResponse as u16 => Ok(HostFsRmdirResponse),
+            x if x == HostFsUnlinkRequest as u16 => Ok(HostFsUnlinkRequest),
+            x if x == HostFsUnlinkResponse as u16 => Ok(HostFsUnlinkResponse),
+            x if x == HostFsRenameRequest as u16 => Ok(HostFsRenameRequest),
+            x if x == HostFsRenameResponse as u16 => Ok(HostFsRenameResponse),
+            x if x == HostFsLseekRequest as u16 => Ok(HostFsLseekRequest),
+            x if x == HostFsLseekResponse as u16 => Ok(HostFsLseekResponse),
+            x if x == HostFsTruncateRequest as u16 => Ok(HostFsTruncateRequest),
+            x if x == HostFsTruncateResponse as u16 => Ok(HostFsTruncateResponse),
+            x if x == HostFsFlushRequest as u16 => Ok(HostFsFlushRequest),
+            x if x == HostFsFlushResponse as u16 => Ok(HostFsFlushResponse),
             _ => Err(()),
         }
+    }
+}
+
+impl SystemCallMessageHeader {
+    /// Returns `true` if this header identifies a host filesystem operation.
+    pub fn is_hostfs(&self) -> bool {
+        matches!(
+            self,
+            Self::HostFsOpenRequest
+                | Self::HostFsOpenResponse
+                | Self::HostFsCloseRequest
+                | Self::HostFsCloseResponse
+                | Self::HostFsReadRequest
+                | Self::HostFsReadResponse
+                | Self::HostFsWriteRequest
+                | Self::HostFsWriteResponse
+                | Self::HostFsStatRequest
+                | Self::HostFsStatResponse
+                | Self::HostFsReadDirRequest
+                | Self::HostFsReadDirResponse
+                | Self::HostFsMkdirRequest
+                | Self::HostFsMkdirResponse
+                | Self::HostFsRmdirRequest
+                | Self::HostFsRmdirResponse
+                | Self::HostFsUnlinkRequest
+                | Self::HostFsUnlinkResponse
+                | Self::HostFsRenameRequest
+                | Self::HostFsRenameResponse
+                | Self::HostFsLseekRequest
+                | Self::HostFsLseekResponse
+                | Self::HostFsTruncateRequest
+                | Self::HostFsTruncateResponse
+                | Self::HostFsFlushRequest
+                | Self::HostFsFlushResponse
+        )
+    }
+
+    /// Returns the corresponding response header for a hostfs request header.
+    ///
+    /// This provides an explicit mapping instead of relying on enum discriminant arithmetic.
+    /// Returns `None` if the header is not a hostfs request.
+    pub fn hostfs_response_header(&self) -> Option<Self> {
+        match self {
+            Self::HostFsOpenRequest => Some(Self::HostFsOpenResponse),
+            Self::HostFsCloseRequest => Some(Self::HostFsCloseResponse),
+            Self::HostFsReadRequest => Some(Self::HostFsReadResponse),
+            Self::HostFsWriteRequest => Some(Self::HostFsWriteResponse),
+            Self::HostFsStatRequest => Some(Self::HostFsStatResponse),
+            Self::HostFsReadDirRequest => Some(Self::HostFsReadDirResponse),
+            Self::HostFsMkdirRequest => Some(Self::HostFsMkdirResponse),
+            Self::HostFsRmdirRequest => Some(Self::HostFsRmdirResponse),
+            Self::HostFsUnlinkRequest => Some(Self::HostFsUnlinkResponse),
+            Self::HostFsRenameRequest => Some(Self::HostFsRenameResponse),
+            Self::HostFsLseekRequest => Some(Self::HostFsLseekResponse),
+            Self::HostFsTruncateRequest => Some(Self::HostFsTruncateResponse),
+            Self::HostFsFlushRequest => Some(Self::HostFsFlushResponse),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if this header is a hostfs response variant.
+    pub fn is_hostfs_response(&self) -> bool {
+        matches!(
+            self,
+            Self::HostFsOpenResponse
+                | Self::HostFsCloseResponse
+                | Self::HostFsReadResponse
+                | Self::HostFsWriteResponse
+                | Self::HostFsStatResponse
+                | Self::HostFsReadDirResponse
+                | Self::HostFsMkdirResponse
+                | Self::HostFsRmdirResponse
+                | Self::HostFsUnlinkResponse
+                | Self::HostFsRenameResponse
+                | Self::HostFsLseekResponse
+                | Self::HostFsTruncateResponse
+                | Self::HostFsFlushResponse
+        )
     }
 }
 

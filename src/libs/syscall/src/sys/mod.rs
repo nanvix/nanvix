@@ -25,6 +25,9 @@ pub use crate::{
 /// Memory management operations.
 pub mod mman;
 
+/// Mount/umount operations (standalone mode).
+pub mod mount;
+
 /// Synchronous I/O multiplexing.
 pub mod select;
 
