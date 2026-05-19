@@ -26,8 +26,8 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
     // Create a test directory with sample files that the test runner will pass to `-mount`.
-    // Always regenerate from scratch because a previous test run may have overwritten
-    // its contents via the copyback mechanism.
+    // Always regenerate from scratch because a previous test run may have modified
+    // the contents directly via hostfsd.
     let manifest_dir: String = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     let workspace_root = Path::new(&manifest_dir)
         .parent()
@@ -38,7 +38,7 @@ fn main() {
         .expect("no parent: root");
     let mount_dir = workspace_root.join("bin").join("mount-test-data");
 
-    // Remove any stale data from a previous copyback, then recreate.
+    // Remove any stale data from a previous run, then recreate.
     let _ = std::fs::remove_dir_all(&mount_dir);
     std::fs::create_dir_all(&mount_dir).expect("failed to create mount-test-data directory");
 

@@ -10,6 +10,7 @@ members = [
         "src/benchmarks/noop-rust-nostd",
         "src/benchmarks/snapshot-rust-nostd",
         "src/benchmarks/vfs-bench-nostd",
+        "src/daemons/hostfsd",
         "src/daemons/linuxd",
         "src/daemons/memd",
         "src/daemons/networkd",
@@ -25,6 +26,7 @@ members = [
         "src/libs/elf",
         "src/libs/error",
         "src/libs/fat32",
+        "src/libs/hostfs-api",
         "src/libs/hwloc",
         "src/libs/nanvix",
         "src/libs/nanvix-http",
@@ -141,6 +143,8 @@ http = "1.4.0"
 http-body-util = "0.1.3"
 hyper = { version = "1.9.0", default-features = false }
 hyper-util = { version = "0.1.20", default-features = false }
+hostfs-api = { path = "src/libs/hostfs-api", default-features = false }
+hostfsd = { path = "src/daemons/hostfsd", default-features = false }
 hwloc = { path = "src/libs/hwloc", default-features = false }
 kvm-bindings = "0.14.0"
 kvm-ioctls = "0.24.0"

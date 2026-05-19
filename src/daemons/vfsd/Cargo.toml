@@ -16,6 +16,7 @@ name = "vfsd"
 [dependencies]
 arch = { workspace = true }
 config = { workspace = true }
+hostfs-api = { workspace = true }
 sys = { workspace = true }
 nvx = { workspace = true }
 proc = { workspace = true, features = ["syscall"] }

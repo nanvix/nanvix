@@ -94,6 +94,17 @@ host network stack, pass `-allow-host-networking`:
 .\bin\nanvixd.exe -allow-host-networking -- .\bin\network-rust.elf
 ```
 
+### Mounting a Host Directory
+
+To make a host directory accessible to the guest at `/mnt`, use the `-mount` flag:
+
+```powershell
+.\bin\nanvixd.exe -mount C:\path\to\shared\dir -- .\bin\file-rust.elf
+```
+
+The guest can then read and write files under `/mnt/` which map to the host directory.
+See [host-mount.md](host-mount.md) for the design and protocol details.
+
 Everything after `--` is forwarded to the application as arguments:
 
 ```powershell

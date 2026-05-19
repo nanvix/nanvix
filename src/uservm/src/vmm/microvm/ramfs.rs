@@ -712,7 +712,7 @@ impl MultiRamFs {
 /// Result of [`load_ramfs`]: describes which RAMFS variant was loaded into guest memory so
 /// that the caller can keep the appropriate file handles alive for the VM's lifetime.
 pub enum LoadedRamFs {
-    /// No RAMFS was loaded (neither `-ramfs` nor `-mount` was specified).
+    /// No RAMFS was loaded (`-ramfs` was not specified).
     None,
     /// A single-image RAMFS was loaded via the legacy path.
     Single {
@@ -723,15 +723,6 @@ pub enum LoadedRamFs {
         /// Size in bytes.
         size: usize,
     },
-    /// A multi-image RAMFS was loaded (mount path, possibly combined with a root RAMFS).
-    Multi {
-        /// Backing file handles that must stay alive for the memory mappings.
-        backing_files: std::vec::Vec<File>,
-        /// Guest-physical base address of the multi-image container.
-        base: usize,
-        /// Total size in bytes.
-        size: usize,
-    },
 }
 
 impl LoadedRamFs {
@@ -739,9 +730,7 @@ impl LoadedRamFs {
     pub fn region(&self) -> Option<(usize, usize)> {
         match self {
             Self::None => None,
-            Self::Single { base, size, .. } | Self::Multi { base, size, .. } => {
-                Some((*base, *size))
-            },
+            Self::Single { base, size, .. } => Some((*base, *size)),
         }
     }
 }
@@ -749,23 +738,19 @@ impl LoadedRamFs {
 ///
 /// # Description
 ///
-/// Loads the appropriate RAMFS variant into guest memory based on the provided mount directory
-/// and ramfs filename arguments. This shared helper eliminates duplication between the KVM and
-/// WHP backends.
+/// Loads a RAMFS image into guest memory. This shared helper eliminates duplication between the
+/// KVM and WHP backends.
 ///
-/// When `mount_directory` is `Some`, builds a FAT32 image from the host directory, computes a
-/// multi-image layout (optionally combined with a root RAMFS from `ramfs_filename`), and maps
-/// the sub-images into guest memory. When only `ramfs_filename` is `Some`, takes the legacy
-/// single-image path. When both are `None`, returns [`LoadedRamFs::None`].
+/// When `ramfs_filename` is `Some`, opens the image and maps it into guest memory.
+/// When `None`, returns [`LoadedRamFs::None`].
 ///
 /// The caller is responsible for keeping the returned file handles alive for the VM's lifetime
-/// (e.g., via `VirtualMemory::attach_ramfs` or `VirtualMemory::attach_backing_files`).
+/// (e.g., via `VirtualMemory::attach_ramfs`).
 ///
 /// # Parameters
 ///
 /// - `vmem`: Guest virtual memory to load the RAMFS into.
 /// - `initrd_end`: First byte after the initrd in guest memory.
-/// - `mount_directory`: Optional host directory path to mount.
 /// - `ramfs_filename`: Optional path to a single RAMFS image.
 /// - `extra_remap_regions`: Additional file-backed regions (e.g. initrd) to include in the
 ///   combined zero-copy remap. Pass `&[]` when no extra regions are needed.
@@ -778,38 +763,10 @@ impl LoadedRamFs {
 pub fn load_ramfs(
     vmem: &mut VirtualMemory,
     initrd_end: usize,
-    mount_directory: Option<&str>,
     ramfs_filename: Option<&str>,
     extra_remap_regions: &[(usize, &File)],
 ) -> Result<LoadedRamFs> {
-    use crate::vmm::microvm::mount;
-
-    if let Some(mount_dir) = mount_directory {
-        // Build a FAT image from the host directory.
-        // The TempPath ensures the file is cleaned up on all paths (including errors).
-        let (mountfs_temp, _mountfs_size) = mount::build_mount_image(Path::new(mount_dir))?;
-        let mountfs_path: &Path = mountfs_temp.as_ref();
-
-        // Compute the multi-image layout (zero-copy: no concatenated file).
-        let rootfs_path: Option<PathBuf> = ramfs_filename.map(PathBuf::from);
-        let layout: ::multiimage::MultiImageLayout =
-            mount::compute_unified_layout(rootfs_path.as_deref(), mountfs_path)?;
-
-        // Open all sub-image files and map them directly into guest memory.
-        let multi_ramfs: MultiRamFs = MultiRamFs::open(layout)?;
-        let (ramfs_base, ramfs_size) =
-            multi_ramfs.load_into_virtual_memory(vmem, initrd_end, extra_remap_regions)?;
-        let backing_files: std::vec::Vec<File> = multi_ramfs.into_files();
-
-        // TempPath drops here (or on error), removing the temporary file.
-        drop(mountfs_temp);
-        Ok(LoadedRamFs::Multi {
-            backing_files,
-            base: ramfs_base,
-            size: ramfs_size,
-        })
-    } else if let Some(ramfs_filename) = ramfs_filename {
-        // Legacy single-image path.
+    if let Some(ramfs_filename) = ramfs_filename {
         let ramfs: RamFs = RamFs::open(Path::new(ramfs_filename))?;
         let (ramfs_base, ramfs_size) =
             ramfs.load_into_virtual_memory(vmem, initrd_end, extra_remap_regions)?;

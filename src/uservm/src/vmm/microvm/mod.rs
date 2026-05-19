@@ -13,7 +13,6 @@
 
 pub mod emulator;
 pub mod guest;
-pub mod mount;
 pub mod ramfs;
 
 cfg_if::cfg_if! {
@@ -506,23 +505,10 @@ impl Vmm {
                     None => ::config::microvm::DEFAULT_INITRD_BASE,
                 };
 
-                let loaded: ramfs::LoadedRamFs = ramfs::load_ramfs(
-                    &mut vmem,
-                    initrd_end,
-                    args.mount_directory.as_deref(),
-                    args.ramfs_filename.as_deref(),
-                    &[],
-                )?;
+                let loaded: ramfs::LoadedRamFs =
+                    ramfs::load_ramfs(&mut vmem, initrd_end, args.ramfs_filename.as_deref(), &[])?;
 
                 match loaded {
-                    ramfs::LoadedRamFs::Multi {
-                        backing_files,
-                        base,
-                        size,
-                    } => {
-                        vmem.attach_backing_files(backing_files);
-                        Some((base, size))
-                    },
                     ramfs::LoadedRamFs::Single { ramfs, base, size } => {
                         vmem.attach_ramfs(ramfs);
                         Some((base, size))

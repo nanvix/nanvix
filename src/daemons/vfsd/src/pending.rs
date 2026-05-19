@@ -1,0 +1,532 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//! Pending hostfs operation tracking.
+//!
+//! When vfsd forwards a request to hostfsd via IKC, it cannot block waiting for
+//! the response without stalling the entire daemon. Instead, the request is sent
+//! non-blocking and a [`PendingOp`] record is stored. When the IKC response arrives
+//! in the main event loop, the pending operation is completed and the result is
+//! sent back to the original guest caller.
+//!
+//! # Preconditions
+//!
+//! Pending entries have no timeout. If `hostfs::enable()` is called without a
+//! hostfsd worker actively servicing IKC requests, entries will accumulate
+//! indefinitely and callers will deadlock waiting for responses. The mount handler
+//! documents this precondition; see [`super::handler::mount_handler::handle_mount`].
+
+extern crate alloc;
+
+use crate::error::{
+    build_error,
+    send_response,
+};
+use ::alloc::collections::BTreeMap;
+use ::hostfs_api::{
+    OperationId,
+    OperationIdAllocator,
+};
+use ::sys::{
+    error::ErrorCode,
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
+};
+
+//==================================================================================================
+// Pending Operation Descriptor
+//==================================================================================================
+
+/// Describes a hostfs operation that is waiting for an IKC response from hostfsd.
+pub(crate) struct PendingOp {
+    /// Thread that initiated the request (to send the response back).
+    pub source_tid: ThreadIdentifier,
+    /// Process that initiated the request (needed for push/pull in read).
+    /// `None` for operations that do not transfer data buffers (close, seek, etc.),
+    /// since those handlers only have a `ThreadIdentifier` and constructing a
+    /// `ProcessIdentifier` from a TID is incorrect.
+    pub source_pid: Option<ProcessIdentifier>,
+    /// The kind of operation, which determines how to interpret the IKC response.
+    pub kind: PendingOpKind,
+}
+
+/// The specific hostfs operation being awaited.
+pub(crate) enum PendingOpKind {
+    /// open() — response contains a remote FD; we allocate a local hostfs FD.
+    Open,
+    /// close() — response is a status code; local FD has already been released.
+    Close,
+    /// read() — response contains inline data; push it to the caller.
+    Read {
+        /// Number of bytes the caller requested.
+        count: usize,
+    },
+    /// write() — response contains bytes_written count.
+    Write,
+    /// lseek() — response contains the new offset.
+    Seek,
+    /// fsync/flush — response is a status code.
+    Flush,
+    /// ftruncate — response is a status code.
+    Truncate,
+    /// mkdir — response is a status code.
+    Mkdir,
+    /// rmdir — response is a status code.
+    Rmdir,
+    /// unlink — response is a status code.
+    Unlink,
+    /// rename — response is a status code.
+    Rename,
+    /// stat/fstat — response contains size, mode, is_dir.
+    Stat,
+}
+
+//==================================================================================================
+// Pending Operation Queue
+//==================================================================================================
+
+/// Maximum number of pending operations before new requests are rejected.
+///
+/// This prevents unbounded growth if hostfsd is unavailable or unresponsive.
+const MAX_PENDING_OPS: usize = 64;
+
+/// Map of pending hostfs operations keyed by operation identifier.
+///
+/// Each outgoing IKC request carries a unique `op_id` (assigned by [`alloc_op_id`])
+/// that hostfsd echoes back in its response. The main event loop extracts the `op_id`
+/// from the response and looks up the corresponding [`PendingOp`] to complete it.
+///
+/// # Limitations
+///
+/// There is currently no timeout mechanism for pending operations. If the hostfsd worker
+/// crashes or the IKC channel is severed, callers will remain blocked indefinitely.
+/// TODO(#hostfs-timeout): implement a tick-based watchdog that drains stale entries after
+/// a configurable deadline (e.g., 5 seconds without a response).
+pub(crate) struct PendingQueue {
+    ops: BTreeMap<OperationId, PendingOp>,
+    id_alloc: OperationIdAllocator,
+}
+
+impl PendingQueue {
+    /// Creates an empty pending queue.
+    pub fn new() -> Self {
+        Self {
+            ops: BTreeMap::new(),
+            id_alloc: OperationIdAllocator::new(),
+        }
+    }
+
+    /// Allocates the next unique operation identifier.
+    ///
+    /// The returned ID is guaranteed not to collide with any currently pending operation.
+    /// Callers should use this ID when sending the IKC request so that the response can
+    /// be matched back via [`remove`](Self::remove).
+    pub fn alloc_op_id(&mut self) -> OperationId {
+        self.id_alloc.alloc(|id| self.ops.contains_key(id))
+    }
+
+    /// Inserts a pending operation under the given operation identifier.
+    ///
+    /// Returns `Err(ErrorCode::ResourceBusy)` if the queue is full, so the caller
+    /// can propagate the error without crashing vfsd.
+    pub fn insert(&mut self, op_id: OperationId, op: PendingOp) -> Result<(), ErrorCode> {
+        if self.ops.len() >= MAX_PENDING_OPS {
+            return Err(ErrorCode::ResourceBusy);
+        }
+        self.ops.insert(op_id, op);
+        Ok(())
+    }
+
+    /// Returns `true` if the queue has capacity for at least one more operation.
+    ///
+    /// Callers should check this BEFORE sending an IKC request to avoid orphaned
+    /// responses when the queue is full.
+    pub fn has_capacity(&self) -> bool {
+        self.ops.len() < MAX_PENDING_OPS
+    }
+
+    /// Removes and returns the pending operation associated with the given `op_id`.
+    pub fn remove(&mut self, op_id: OperationId) -> Option<PendingOp> {
+        self.ops.remove(&op_id)
+    }
+
+    /// Returns true if there are no pending operations.
+    #[allow(dead_code)]
+    pub fn is_empty(&self) -> bool {
+        self.ops.is_empty()
+    }
+
+    /// Drains all pending operations, sending an error response to each waiting caller.
+    ///
+    /// This is used for recovery scenarios (e.g., channel loss) where all pending
+    /// callers must be unblocked with an error.
+    #[allow(dead_code)]
+    pub fn drain_with_error(&mut self) {
+        for (_, op) in core::mem::take(&mut self.ops) {
+            ::syslog::error!(
+                "hostfs pending queue drain: failing pending op for tid={:?}",
+                op.source_tid
+            );
+            send_response(&build_error(op.source_tid, ErrorCode::IoErr));
+        }
+    }
+}
+
+//==================================================================================================
+// Response Completion
+//==================================================================================================
+
+/// Completes a pending hostfs operation given the IKC response payload.
+///
+/// Builds and sends the appropriate response message to the guest caller.
+/// Validates that the response header matches the expected operation to detect
+/// protocol violations. On mismatch, fails only the affected operation.
+pub(crate) fn complete_pending_op(
+    pending: PendingOp,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+) {
+    // Validate that the response header matches the expected operation kind.
+    if !validate_response_header(&pending.kind, response_payload) {
+        ::syslog::error!("hostfs pending op: response header does not match expected operation");
+        // For Read operations, the caller is blocked waiting for a push before consuming
+        // the IPC response. Send an empty push so the caller can proceed and see the error.
+        if let PendingOpKind::Read { .. } = &pending.kind {
+            if let Some(pid) = pending.source_pid {
+                if let Err(e) = ::sys::kcall::ipc::__kcall_push(pid, pending.source_tid, &[]) {
+                    ::syslog::error!(
+                        "hostfs pending op: failed to push empty response for desync case \
+                         (error={:?})",
+                        e
+                    );
+                }
+            }
+        }
+        send_response(&build_error(pending.source_tid, ErrorCode::IoErr));
+        return;
+    }
+
+    match pending.kind {
+        PendingOpKind::Open => complete_open(pending.source_tid, response_payload),
+        PendingOpKind::Close => complete_close(pending.source_tid, response_payload),
+        PendingOpKind::Read { count } => {
+            let pid: ProcessIdentifier = pending.source_pid.unwrap_or(ProcessIdentifier::KERNEL);
+            complete_read(pid, pending.source_tid, count, response_payload)
+        },
+        PendingOpKind::Write => complete_write(pending.source_tid, response_payload),
+        PendingOpKind::Seek => complete_seek(pending.source_tid, response_payload),
+        PendingOpKind::Flush => {
+            complete_status(pending.source_tid, response_payload, OpGroup::Flush)
+        },
+        PendingOpKind::Truncate => {
+            complete_status(pending.source_tid, response_payload, OpGroup::Truncate)
+        },
+        PendingOpKind::Mkdir => {
+            complete_status(pending.source_tid, response_payload, OpGroup::Mkdir)
+        },
+        PendingOpKind::Rmdir => {
+            complete_status(pending.source_tid, response_payload, OpGroup::Rmdir)
+        },
+        PendingOpKind::Unlink => {
+            complete_status(pending.source_tid, response_payload, OpGroup::Unlink)
+        },
+        PendingOpKind::Rename => {
+            complete_status(pending.source_tid, response_payload, OpGroup::Rename)
+        },
+        PendingOpKind::Stat => complete_stat(pending.source_tid, response_payload),
+    }
+}
+
+/// Checks that the response payload header matches the expected operation kind.
+///
+/// Returns `true` if the header is valid for this operation, `false` if desync is detected.
+fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOAD_SIZE]) -> bool {
+    use ::syscall::SystemCallMessageHeader;
+
+    let header_raw: u16 = u16::from_ne_bytes([payload[0], payload[1]]);
+    let header: SystemCallMessageHeader = match SystemCallMessageHeader::try_from(header_raw) {
+        Ok(h) => h,
+        Err(_) => return false,
+    };
+
+    matches!(
+        (kind, header),
+        (PendingOpKind::Open, SystemCallMessageHeader::HostFsOpenResponse)
+            | (PendingOpKind::Close, SystemCallMessageHeader::HostFsCloseResponse)
+            | (PendingOpKind::Read { .. }, SystemCallMessageHeader::HostFsReadResponse)
+            | (PendingOpKind::Write, SystemCallMessageHeader::HostFsWriteResponse)
+            | (PendingOpKind::Seek, SystemCallMessageHeader::HostFsLseekResponse)
+            | (PendingOpKind::Flush, SystemCallMessageHeader::HostFsFlushResponse)
+            | (PendingOpKind::Truncate, SystemCallMessageHeader::HostFsTruncateResponse)
+            | (PendingOpKind::Mkdir, SystemCallMessageHeader::HostFsMkdirResponse)
+            | (PendingOpKind::Rmdir, SystemCallMessageHeader::HostFsRmdirResponse)
+            | (PendingOpKind::Unlink, SystemCallMessageHeader::HostFsUnlinkResponse)
+            | (PendingOpKind::Rename, SystemCallMessageHeader::HostFsRenameResponse)
+            | (PendingOpKind::Stat, SystemCallMessageHeader::HostFsStatResponse)
+    )
+}
+
+//==================================================================================================
+// Completion Helpers
+//==================================================================================================
+
+fn complete_open(source_tid: ThreadIdentifier, response_payload: &[u8; Message::PAYLOAD_SIZE]) {
+    use ::syscall::fcntl::message::OpenAtResponse;
+
+    let resp: ::hostfs_api::OpenResponse = ::hostfs_api::OpenResponse::decode(response_payload);
+    if resp.fd < 0 {
+        let code: ErrorCode = hostfs_error_to_code(resp.fd);
+        send_response(&build_error(source_tid, code));
+        return;
+    }
+    let is_dir: bool = resp.is_dir != 0;
+    match ::vfs::fd::vfs_alloc_hostfs(resp.fd, is_dir) {
+        Ok(local_fd) => {
+            let msg: Message = OpenAtResponse::build(
+                source_tid,
+                local_fd,
+                ProcessIdentifier::VFSD,
+                MessageType::Ipc,
+            );
+            send_response(&msg);
+        },
+        Err(_) => {
+            // Issue a best-effort close to hostfsd so the remote FD does not leak.
+            // We use a dummy op_id (obtained from a zeroed payload) and do not register
+            // a pending op — the response (if any) will be silently dropped by the main
+            // loop since no pending entry exists.
+            let zeroed: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
+            let dummy_op_id: ::hostfs_api::OperationId = ::hostfs_api::get_op_id(&zeroed);
+            let _ = crate::hostfs::send_close_request(resp.fd, dummy_op_id);
+            send_response(&build_error(source_tid, ErrorCode::TooManyOpenFiles));
+        },
+    }
+}
+
+fn complete_close(source_tid: ThreadIdentifier, response_payload: &[u8; Message::PAYLOAD_SIZE]) {
+    use ::syscall::unistd::message::CloseResponse;
+
+    // Check if hostfsd reported an error (status in the data portion).
+    let ds: usize = ::hostfs_api::HOSTFS_DATA_START;
+    let status: i32 = i32::from_le_bytes(response_payload[ds..ds + 4].try_into().unwrap_or([0; 4]));
+    if status < 0 {
+        send_response(&build_error(source_tid, hostfs_error_to_code(status)));
+        return;
+    }
+    let msg: Message =
+        CloseResponse::build(source_tid, 0, ProcessIdentifier::VFSD, MessageType::Ipc);
+    send_response(&msg);
+}
+
+fn complete_read(
+    source_pid: ProcessIdentifier,
+    source_tid: ThreadIdentifier,
+    count: usize,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+) {
+    use ::syscall::unistd::message::ReadResponse as SyscallReadResponse;
+
+    let resp: ::hostfs_api::ReadResponse = ::hostfs_api::ReadResponse::decode(response_payload);
+    if resp.bytes_read < 0 {
+        let _ = ::sys::kcall::ipc::__kcall_push(source_pid, source_tid, &[]);
+        send_response(&build_error(source_tid, hostfs_error_to_code(resp.bytes_read)));
+        return;
+    }
+    let n: usize = (resp.bytes_read as usize).min(count);
+    if let Err(e) = ::sys::kcall::ipc::__kcall_push(source_pid, source_tid, &resp.data[..n]) {
+        ::syslog::error!("hostfs read complete: push failed (error={:?})", e);
+        send_response(&build_error(source_tid, ErrorCode::IoErr));
+        return;
+    }
+    let msg: Message = SyscallReadResponse::build(
+        source_tid,
+        n as i32,
+        [0u8; SyscallReadResponse::BUFFER_SIZE],
+        ProcessIdentifier::VFSD,
+        MessageType::Ipc,
+    );
+    send_response(&msg);
+}
+
+fn complete_write(source_tid: ThreadIdentifier, response_payload: &[u8; Message::PAYLOAD_SIZE]) {
+    use ::syscall::unistd::message::WriteResponse as SyscallWriteResponse;
+
+    let resp: ::hostfs_api::WriteResponse = ::hostfs_api::WriteResponse::decode(response_payload);
+    if resp.bytes_written < 0 {
+        send_response(&build_error(source_tid, hostfs_error_to_code(resp.bytes_written)));
+        return;
+    }
+    let msg: Message = SyscallWriteResponse::build(
+        source_tid,
+        resp.bytes_written,
+        ProcessIdentifier::VFSD,
+        MessageType::Ipc,
+    );
+    send_response(&msg);
+}
+
+fn complete_seek(source_tid: ThreadIdentifier, response_payload: &[u8; Message::PAYLOAD_SIZE]) {
+    use ::syscall::unistd::message::SeekResponse;
+
+    let resp: ::hostfs_api::LseekResponse = ::hostfs_api::LseekResponse::decode(response_payload);
+    if resp.offset < 0 {
+        send_response(&build_error(source_tid, hostfs_error_to_code(resp.offset as i32)));
+        return;
+    }
+    let msg: Message =
+        SeekResponse::build(source_tid, resp.offset, ProcessIdentifier::VFSD, MessageType::Ipc);
+    send_response(&msg);
+}
+
+/// Groups of operations that share the same "decode status code, send success/error" pattern.
+enum OpGroup {
+    Flush,
+    Truncate,
+    Mkdir,
+    Rmdir,
+    Unlink,
+    Rename,
+}
+
+fn complete_status(
+    source_tid: ThreadIdentifier,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+    group: OpGroup,
+) {
+    let ds: usize = ::hostfs_api::HOSTFS_DATA_START;
+    let status: i32 = i32::from_le_bytes(response_payload[ds..ds + 4].try_into().unwrap_or([0; 4]));
+    if status < 0 {
+        send_response(&build_error(source_tid, hostfs_error_to_code(status)));
+        return;
+    }
+    let msg: Message = match group {
+        OpGroup::Flush => {
+            use ::syscall::unistd::message::FileSyncResponse;
+            FileSyncResponse::build(source_tid, 0, ProcessIdentifier::VFSD, MessageType::Ipc)
+        },
+        OpGroup::Truncate => {
+            use ::syscall::unistd::message::FileTruncateResponse;
+            FileTruncateResponse::build(source_tid, 0, ProcessIdentifier::VFSD, MessageType::Ipc)
+        },
+        OpGroup::Mkdir => {
+            use ::syscall::sys::stat::message::MakeDirectoryAtResponse;
+            MakeDirectoryAtResponse::build(source_tid, 0, ProcessIdentifier::VFSD, MessageType::Ipc)
+        },
+        OpGroup::Rmdir | OpGroup::Unlink => {
+            use ::syscall::fcntl::message::UnlinkAtResponse;
+            UnlinkAtResponse::build(source_tid, 0, ProcessIdentifier::VFSD, MessageType::Ipc)
+        },
+        OpGroup::Rename => {
+            use ::syscall::fcntl::message::RenameAtResponse;
+            RenameAtResponse::build(source_tid, 0, ProcessIdentifier::VFSD, MessageType::Ipc)
+        },
+    };
+    send_response(&msg);
+}
+
+/// Maps a negative hostfsd error code back to an [`ErrorCode`].
+///
+/// These codes are defined in the `hostfs-api` crate as `HOSTFS_ERR_*` constants.
+fn hostfs_error_to_code(code: i32) -> ErrorCode {
+    match code {
+        ::hostfs_api::HOSTFS_ERR_NOT_FOUND => ErrorCode::NoSuchEntry,
+        ::hostfs_api::HOSTFS_ERR_PERMISSION => ErrorCode::PermissionDenied,
+        ::hostfs_api::HOSTFS_ERR_EXISTS => ErrorCode::EntryExists,
+        ::hostfs_api::HOSTFS_ERR_NOT_DIR => ErrorCode::InvalidDirectory,
+        ::hostfs_api::HOSTFS_ERR_IS_DIR => ErrorCode::IsDirectory,
+        ::hostfs_api::HOSTFS_ERR_INVALID => ErrorCode::InvalidArgument,
+        ::hostfs_api::HOSTFS_ERR_NOT_EMPTY => ErrorCode::DirectoryNotEmpty,
+        _ => ErrorCode::IoErr,
+    }
+}
+
+fn complete_stat(source_tid: ThreadIdentifier, response_payload: &[u8; Message::PAYLOAD_SIZE]) {
+    use ::sysapi::{
+        sys_stat::{
+            file_mode,
+            file_type,
+            stat,
+        },
+        sys_types::off_t,
+        time::timespec,
+    };
+    use ::syscall::{
+        message::MessagePartitioner,
+        sys::stat::message::FileStatAtResponse,
+    };
+
+    let resp: ::hostfs_api::StatResponse = ::hostfs_api::StatResponse::decode(response_payload);
+
+    // Check the explicit status field for errors.
+    if resp.status < 0 {
+        let code: ErrorCode = hostfs_error_to_code(resp.status);
+        send_response(&build_error(source_tid, code));
+        return;
+    }
+
+    // Fixed epoch timestamp: 2024-01-01T00:00:00Z (1704067200).
+    const FIXED_EPOCH: i64 = 1_704_067_200;
+    const STAT_BLOCK_SIZE: i64 = 4096;
+    const STAT_SECTOR_SIZE: u64 = 512;
+
+    let is_dir: bool = resp.is_dir != 0;
+    let mode: u32 = if resp.mode != 0 {
+        // Use host-provided mode, adding file type bits.
+        let type_bits: u32 = if is_dir {
+            file_type::S_IFDIR
+        } else {
+            file_type::S_IFREG
+        };
+        type_bits | (resp.mode & 0o7777)
+    } else {
+        // Fallback: synthesize mode like local VFS does.
+        if is_dir {
+            file_type::S_IFDIR | file_mode::S_IRWXU
+        } else {
+            file_type::S_IFREG | file_mode::S_IRUSR | file_mode::S_IWUSR
+        }
+    };
+
+    let st = stat {
+        st_dev: 2, // Synthetic device ID for hostfs (distinct from ramfs=1).
+        st_ino: 1,
+        st_mode: mode,
+        st_nlink: if is_dir { 2 } else { 1 },
+        st_uid: 0,
+        st_gid: 0,
+        st_rdev: 0,
+        st_size: resp.size as off_t,
+        st_atim: timespec {
+            tv_sec: FIXED_EPOCH,
+            tv_nsec: 0,
+        },
+        st_mtim: timespec {
+            tv_sec: FIXED_EPOCH,
+            tv_nsec: 0,
+        },
+        st_ctim: timespec {
+            tv_sec: FIXED_EPOCH,
+            tv_nsec: 0,
+        },
+        st_blksize: STAT_BLOCK_SIZE,
+        st_blocks: resp.size.div_ceil(STAT_SECTOR_SIZE) as off_t,
+    };
+
+    let response: FileStatAtResponse = FileStatAtResponse::new(st);
+    match response.into_parts(source_tid, ProcessIdentifier::VFSD, MessageType::Ipc) {
+        Ok(parts) => {
+            for part in parts {
+                send_response(&part);
+            }
+        },
+        Err(e) => {
+            ::syslog::error!("complete_stat: into_parts failed (error={:?})", e);
+            send_response(&build_error(source_tid, ErrorCode::IoErr));
+        },
+    }
+}
