@@ -5,7 +5,9 @@
 // Submodules
 //==================================================================================================
 
+mod hostfs_handlers;
 mod long;
+mod mount_handler;
 mod readwrite;
 mod short;
 
@@ -13,6 +15,8 @@ mod short;
 // Re-exports
 //==================================================================================================
 
+pub(crate) use hostfs_handlers::*;
 pub(crate) use long::*;
+pub(crate) use mount_handler::*;
 pub(crate) use readwrite::*;
 pub(crate) use short::*;

@@ -3679,6 +3679,7 @@ dependencies = [
  "cc",
  "cfg-if",
  "config",
+ "hostfs-api",
  "libc_string",
  "multiimage",
  "nvx",

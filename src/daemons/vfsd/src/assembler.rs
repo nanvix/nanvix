@@ -8,6 +8,7 @@
 use crate::{
     error::build_error,
     handler,
+    pending::PendingQueue,
 };
 use ::sys::{
     error::ErrorCode,
@@ -25,11 +26,17 @@ use ::syscall::{
         SystemCallLongMessage,
         SystemCallMessagePart,
     },
-    sys::stat::message::{
-        FileChmodAtRequest,
-        FileStatAtRequest,
-        MakeDirectoryAtRequest,
-        UpdateFileAccessTimeAtRequest,
+    sys::{
+        mount::message::{
+            MountRequest,
+            UmountRequest,
+        },
+        stat::message::{
+            FileChmodAtRequest,
+            FileStatAtRequest,
+            MakeDirectoryAtRequest,
+            UpdateFileAccessTimeAtRequest,
+        },
     },
     unistd::message::{
         ChangeDirectoryRequest,
@@ -66,6 +73,7 @@ pub(crate) fn assemble_and_dispatch(
     header: SystemCallMessageHeader,
     part: SystemCallMessagePart,
     assemblers: &mut BTreeMap<(i32, u16), AssemblerEntry>,
+    pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
     let key: (i32, u16) = (i32::from(source), header as u16);
 
@@ -96,7 +104,7 @@ pub(crate) fn assemble_and_dispatch(
     let parts: Vec<SystemCallMessagePart> = completed.assembler.take_parts();
 
     // Dispatch based on the header type.
-    Some(dispatch_assembled_request(source, completed.header, &parts))
+    Some(dispatch_assembled_request(source, completed.header, &parts, pending))
 }
 
 fn max_capacity_for_header(header: SystemCallMessageHeader) -> usize {
@@ -140,6 +148,12 @@ fn max_capacity_for_header(header: SystemCallMessageHeader) -> usize {
         SystemCallMessageHeader::FileChmodAtRequestPart => {
             FileChmodAtRequest::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE)
         },
+        SystemCallMessageHeader::HostMountRequestPart => {
+            MountRequest::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE)
+        },
+        SystemCallMessageHeader::HostUmountRequestPart => {
+            UmountRequest::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE)
+        },
         // Fallback: generous capacity.
         _ => 64,
     }
@@ -149,24 +163,34 @@ fn dispatch_assembled_request(
     source: ThreadIdentifier,
     header: SystemCallMessageHeader,
     parts: &[SystemCallMessagePart],
+    pending: &mut PendingQueue,
 ) -> Vec<Message> {
     match header {
         SystemCallMessageHeader::OpenAtRequestPart => match OpenAtRequest::from_parts(parts) {
-            Ok(req) => handler::handle_openat(source, req),
+            Ok(req) => {
+                // Returns `None` when forwarded to hostfsd (response deferred to IKC completion).
+                handler::handle_openat_with_hostfs(source, req, pending).unwrap_or_default()
+            },
             Err(e) => {
                 ::syslog::error!("dispatch: openat from_parts failed (error={:?})", e);
                 vec![build_error(source, ErrorCode::InvalidMessage)]
             },
         },
         SystemCallMessageHeader::RenameAtRequestPart => match RenameAtRequest::from_parts(parts) {
-            Ok(req) => handler::handle_renameat(source, req),
+            Ok(req) => {
+                // Returns `None` when forwarded to hostfsd (response deferred to IKC completion).
+                handler::handle_renameat_with_hostfs(source, req, pending).unwrap_or_default()
+            },
             Err(e) => {
                 ::syslog::error!("dispatch: renameat from_parts failed (error={:?})", e);
                 vec![build_error(source, ErrorCode::InvalidMessage)]
             },
         },
         SystemCallMessageHeader::UnlinkAtRequestPart => match UnlinkAtRequest::from_parts(parts) {
-            Ok(req) => handler::handle_unlinkat(source, req),
+            Ok(req) => {
+                // Returns `None` when forwarded to hostfsd (response deferred to IKC completion).
+                handler::handle_unlinkat_with_hostfs(source, req, pending).unwrap_or_default()
+            },
             Err(e) => {
                 ::syslog::error!("dispatch: unlinkat from_parts failed (error={:?})", e);
                 vec![build_error(source, ErrorCode::InvalidMessage)]
@@ -174,7 +198,9 @@ fn dispatch_assembled_request(
         },
         SystemCallMessageHeader::FileStatAtRequestPart => {
             match FileStatAtRequest::from_parts(parts) {
-                Ok(req) => handler::handle_fstatat(source, req),
+                Ok(req) => {
+                    handler::handle_fstatat_with_hostfs(source, req, pending).unwrap_or_default()
+                },
                 Err(e) => {
                     ::syslog::error!("dispatch: fstatat from_parts failed (error={:?})", e);
                     vec![build_error(source, ErrorCode::InvalidMessage)]
@@ -183,7 +209,10 @@ fn dispatch_assembled_request(
         },
         SystemCallMessageHeader::MakeDirectoryAtRequestPart => {
             match MakeDirectoryAtRequest::from_parts(parts) {
-                Ok(req) => handler::handle_mkdirat(source, req),
+                Ok(req) => {
+                    // Returns `None` when forwarded to hostfsd (response deferred to IKC completion).
+                    handler::handle_mkdirat_with_hostfs(source, req, pending).unwrap_or_default()
+                },
                 Err(e) => {
                     ::syslog::error!("dispatch: mkdirat from_parts failed (error={:?})", e);
                     vec![build_error(source, ErrorCode::InvalidMessage)]
@@ -259,6 +288,20 @@ fn dispatch_assembled_request(
                     vec![build_error(source, ErrorCode::InvalidMessage)]
                 },
             }
+        },
+        SystemCallMessageHeader::HostMountRequestPart => match MountRequest::from_parts(parts) {
+            Ok(req) => handler::handle_mount(source, req),
+            Err(e) => {
+                ::syslog::error!("dispatch: mount from_parts failed (error={:?})", e);
+                vec![build_error(source, ErrorCode::InvalidMessage)]
+            },
+        },
+        SystemCallMessageHeader::HostUmountRequestPart => match UmountRequest::from_parts(parts) {
+            Ok(req) => handler::handle_umount(source, req),
+            Err(e) => {
+                ::syslog::error!("dispatch: umount from_parts failed (error={:?})", e);
+                vec![build_error(source, ErrorCode::InvalidMessage)]
+            },
         },
         _ => {
             ::syslog::warn!("dispatch_assembled_request(): unknown header {:?}", header);

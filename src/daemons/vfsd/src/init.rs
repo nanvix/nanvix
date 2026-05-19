@@ -104,18 +104,6 @@ pub(crate) fn vfs_init_ramfs() {
                     ::syslog::warn!("vfs_init_ramfs(): failed to mount ROOTFS at /");
                 }
             }
-
-            // Mount MOUNTFS at "/mnt".
-            if let Some(mountfs) =
-                ::multiimage::find_entry_by_tag(entries, &::multiimage::MOUNTFS_MMIO_TAG)
-            {
-                let sub_ptr: *mut u8 = unsafe { base_ptr.add(mountfs.offset as usize) };
-                let sub_size: usize = mountfs.size as usize;
-                if unsafe { ::vfs::mount_image(MOUNT_DIR_PATH, sub_ptr, sub_size, false) }.is_err()
-                {
-                    ::syslog::warn!("vfs_init_ramfs(): failed to mount MOUNTFS at /mnt");
-                }
-            }
         } else {
             // Legacy single-image path.
             if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, base_ptr, total_size, false) }.is_err()
@@ -135,4 +123,12 @@ pub(crate) fn vfs_init_ramfs() {
     if mounted {
         ::syslog::info!("vfs_init_ramfs(): mounted RAMFS at {}", RAMFS_MOUNT_PATH);
     }
+
+    // NOTE: hostfs is no longer enabled unconditionally at init. User processes must
+    // explicitly call mount("", "/mnt", "hostfs", 0) to enable hostfs forwarding.
+    // This ensures that hostfsd is only activated when a mount() system call is issued.
+    ::syslog::info!(
+        "vfs_init_ramfs(): hostfs available at {} (requires explicit mount)",
+        MOUNT_DIR_PATH
+    );
 }
