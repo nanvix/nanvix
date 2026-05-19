@@ -83,6 +83,8 @@ pub struct Args {
     snapshot_path: Option<String>,
     /// Optional host directory to mount on the guest (standalone mode only).
     mount_directory: Option<String>,
+    /// Optional kernel arguments written to guest control registers (standalone mode only).
+    kernel_args: Option<String>,
     /// Optional GDB server port: when set, the uservm starts a GDB RSP server on this TCP port.
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
@@ -134,6 +136,8 @@ impl Args {
     pub const OPT_SNAPSHOT: &'static str = "-snapshot";
     /// Command-line option for host directory to mount on the guest (standalone mode only).
     pub const OPT_MOUNT_DIRECTORY: &'static str = "-mount";
+    /// Command-line option for kernel arguments (standalone mode only).
+    pub const OPT_KERNEL_ARGS: &'static str = "-kernel-args";
     /// Command-line option for GDB server port (standalone mode only).
     #[cfg(feature = "gdb")]
     pub const OPT_GDB_PORT: &'static str = "-gdb-port";
@@ -186,6 +190,7 @@ impl Args {
         let mut tmp_directory: String = DEFAULT_TMP_DIRECTORY.to_string();
         let mut snapshot_path: Option<String> = None;
         let mut mount_directory: Option<String> = None;
+        let mut kernel_args: Option<String> = None;
         #[cfg(feature = "gdb")]
         let mut gdb_port: Option<u16> = None;
         let mut networking_mode: NetworkingMode = NetworkingMode::Disabled;
@@ -314,6 +319,17 @@ impl Args {
                     }
                     mount_directory = Some(args[i].clone());
                 },
+                Self::OPT_KERNEL_ARGS => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!(
+                            "missing value for: {}",
+                            Self::OPT_KERNEL_ARGS
+                        ));
+                    }
+                    kernel_args = Some(args[i].clone());
+                },
                 // Set GDB server port (standalone mode only).
                 #[cfg(feature = "gdb")]
                 Self::OPT_GDB_PORT => {
@@ -384,6 +400,12 @@ impl Args {
             anyhow::bail!("{} is only supported in standalone builds", Self::OPT_MOUNT_DIRECTORY);
         }
 
+        // Reject -kernel-args in non-standalone builds.
+        #[cfg(not(feature = "standalone"))]
+        if kernel_args.is_some() {
+            anyhow::bail!("{} is only supported in standalone builds", Self::OPT_KERNEL_ARGS);
+        }
+
         // Determine operation mode: HTTP mode is active if -http-addr is provided,
         // interactive mode is active if `--` separator with program name is provided.
         #[cfg(unix)]
@@ -440,6 +462,7 @@ impl Args {
             tmp_directory,
             snapshot_path,
             mount_directory,
+            kernel_args,
             #[cfg(feature = "gdb")]
             gdb_port,
             networking_mode,
@@ -496,6 +519,8 @@ Options:
              (standalone mode only).
   {mount} <host-dir>                       Mount a host directory on the guest at /mnt (standalone \
              mode only).
+  {kernel_args} <args>                      Pass kernel arguments to guest control registers \
+             (standalone mode only).
   {allow_host_networking}                   Enable host networking for the guest (disabled when \
              omitted).{gdb_port_line}
 ",
@@ -518,6 +543,7 @@ Options:
             tmp_dir = Self::OPT_TMP_DIRECTORY,
             snapshot = Self::OPT_SNAPSHOT,
             mount = Self::OPT_MOUNT_DIRECTORY,
+            kernel_args = Self::OPT_KERNEL_ARGS,
             allow_host_networking = Self::OPT_ALLOW_HOST_NETWORKING,
             gdb_port_line = if cfg!(feature = "gdb") {
                 "\n  -gdb-port <port>                         GDB server port (standalone mode \
@@ -631,6 +657,19 @@ Options:
     ///
     pub fn mount_directory(&self) -> Option<&str> {
         self.mount_directory.as_deref()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the optional kernel arguments string.
+    ///
+    /// # Returns
+    ///
+    /// The kernel arguments string, if present.
+    ///
+    pub fn kernel_args(&self) -> Option<&str> {
+        self.kernel_args.as_deref()
     }
 
     ///

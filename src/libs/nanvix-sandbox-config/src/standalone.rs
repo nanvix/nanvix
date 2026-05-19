@@ -37,6 +37,8 @@ pub struct StandaloneConfig {
     snapshot_path: Option<String>,
     /// Optional host directory to mount on the guest.
     mount_directory: Option<String>,
+    /// Optional kernel arguments written to guest control registers.
+    kernel_args: Option<String>,
     /// Networking mode (disabled or enabled).
     networking_mode: NetworkingMode,
     /// Optional GDB server port for debugging the guest.
@@ -61,6 +63,7 @@ impl StandaloneConfig {
     /// - `console_file`: Optional file path for guest stderr capture.
     /// - `snapshot_path`: Optional snapshot path for restoring VM state instead of cold-booting.
     /// - `mount_directory`: Optional host directory to mount on the guest.
+    /// - `kernel_args`: Optional kernel arguments written to guest control registers.
     /// - `networking_mode`: Networking mode for host networking.
     /// - `gdb_port`: Optional GDB server port.
     ///
@@ -70,6 +73,7 @@ impl StandaloneConfig {
         console_file: Option<String>,
         snapshot_path: Option<String>,
         mount_directory: Option<String>,
+        kernel_args: Option<String>,
         networking_mode: NetworkingMode,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
     ) -> Self {
@@ -79,6 +83,7 @@ impl StandaloneConfig {
             console_file,
             snapshot_path,
             mount_directory,
+            kernel_args,
             networking_mode,
             #[cfg(feature = "gdb")]
             gdb_port,
@@ -108,6 +113,11 @@ impl StandaloneConfig {
     /// Returns the optional host directory to mount on the guest.
     pub fn mount_directory(&self) -> Option<&str> {
         self.mount_directory.as_deref()
+    }
+
+    /// Returns the optional kernel arguments string.
+    pub fn kernel_args(&self) -> Option<&str> {
+        self.kernel_args.as_deref()
     }
 
     /// Returns the networking mode.
