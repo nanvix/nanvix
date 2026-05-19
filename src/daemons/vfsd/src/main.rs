@@ -15,8 +15,10 @@
 mod assembler;
 mod error;
 mod handler;
+mod hostfs;
 mod init;
 mod ipc;
+mod pending;
 
 //==================================================================================================
 // Imports
@@ -40,6 +42,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+use ::syscall::SystemCallMessageHeader;
 use alloc::collections::{
     BTreeMap,
     VecDeque,
@@ -100,10 +103,7 @@ pub fn main() {
                 ::syslog::info!("buffered IPC message during signup");
                 buffered_messages.push_back(message);
             } else {
-                // Non-IPC messages during signup are discarded. Before signup completes, vfsd
-                // has no registered identity and cannot meaningfully process interrupts,
-                // exceptions, IKC, or termination events. If this assumption changes (e.g.,
-                // multi-phase initialization), these should be buffered and replayed.
+                // Non-IPC messages during signup are discarded.
                 ::syslog::error!(
                     "discarding non-IPC message during signup (type={:?})",
                     message.message_type
@@ -116,9 +116,12 @@ pub fn main() {
     // TODO: add eviction/timeout for incomplete entries to prevent memory leaks from crashed clients.
     let mut assemblers: BTreeMap<(i32, u16), assembler::AssemblerEntry> = BTreeMap::new();
 
+    // Pending hostfs operations awaiting IKC responses.
+    let mut pending: pending::PendingQueue = pending::PendingQueue::new();
+
     // Process any messages that were buffered during the signup phase.
     while let Some(message) = buffered_messages.pop_front() {
-        match ipc::handle_ipc_message(message, &mut assemblers) {
+        match ipc::handle_ipc_message(message, &mut assemblers, &mut pending) {
             Ok(true) => {
                 let e = ::sys::kcall::pm::__kcall_exit(0);
                 ::syslog::error!("failed to shutdown vfsd (error={:?})", e);
@@ -131,22 +134,48 @@ pub fn main() {
         }
     }
 
+    // Single event loop: processes both IPC messages from guest apps and IKC responses
+    // from hostfsd without nesting or blocking waits.
     loop {
         match ::sys::kcall::ipc::__kcall_recv() {
             Ok(message) => match message.message_type {
-                MessageType::Ipc => match ipc::handle_ipc_message(message, &mut assemblers) {
-                    Ok(true) => break,
-                    Ok(false) => continue,
-                    Err(e) => ::syslog::error!("failed to handle ipc request (error={:?})", e),
+                MessageType::Ipc => {
+                    match ipc::handle_ipc_message(message, &mut assemblers, &mut pending) {
+                        Ok(true) => break,
+                        Ok(false) => {},
+                        Err(e) => {
+                            ::syslog::error!("failed to handle ipc request (error={:?})", e)
+                        },
+                    }
+                },
+                MessageType::Ikc => {
+                    // Check if this is a hostfs response for a pending operation.
+                    if let Ok(syscall_msg) =
+                        ::syscall::SystemCallMessage::try_from_bytes(message.payload)
+                    {
+                        let header: SystemCallMessageHeader = syscall_msg.header;
+                        if header.is_hostfs_response() {
+                            let op_id: ::hostfs_api::OperationId =
+                                ::hostfs_api::get_op_id(&message.payload);
+                            if let Some(op) = pending.remove(op_id) {
+                                pending::complete_pending_op(op, &message.payload);
+                            } else {
+                                ::syslog::warn!(
+                                    "hostfs response with no pending op (header={:?}, op_id={})",
+                                    header,
+                                    op_id,
+                                );
+                            }
+                            continue;
+                        }
+                    }
+                    ::syslog::warn!("received unexpected ikc message, ignoring");
                 },
                 MessageType::Interrupt => {
                     ::syslog::warn!("received unexpected interrupt, ignoring");
                 },
                 MessageType::Exception => {
                     ::syslog::warn!("received unexpected exception, ignoring");
-                },
-                MessageType::Ikc => {
-                    ::syslog::warn!("received unexpected ikc message, ignoring");
                 },
                 MessageType::ProcessTerminationEvent => {
                     ::syslog::warn!("received unexpected process termination event, ignoring");
