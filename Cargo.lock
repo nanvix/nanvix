@@ -1126,14 +1126,14 @@ dependencies = [
 
 [[package]]
 name = "hostfs-api"
-version = "0.14.8"
+version = "0.14.11"
 dependencies = [
  "sys",
 ]
 
 [[package]]
 name = "hostfsd"
-version = "0.14.8"
+version = "0.14.11"
 dependencies = [
  "anyhow",
  "hostfs-api",
