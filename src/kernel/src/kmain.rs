@@ -11,6 +11,7 @@
 #![allow(static_mut_refs)] // https://github.com/nanvix/kernel/issues/454
 #![allow(internal_features)]
 #![feature(allocator_api)] // kheap uses this.
+#![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
 #![feature(linked_list_cursors)] // vmem uses this.
 #![feature(linked_list_remove)] // vmem uses this.
 #![feature(linked_list_retain)] // vmem uses this.
