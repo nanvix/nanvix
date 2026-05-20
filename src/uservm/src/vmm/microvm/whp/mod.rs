@@ -306,6 +306,10 @@ struct WhpSnapshot {
     guest_state: GuestState,
     /// Full vCPU register and LAPIC state.
     vcpu_state: vcpu::VcpuState,
+    /// Pvclock `system_time` value (nanoseconds) at the moment the snapshot was taken.
+    /// On restore, this becomes the time base so the guest sees monotonically advancing time.
+    #[serde(default)]
+    pvclock_time_ns: u64,
 }
 
 //==================================================================================================
@@ -340,6 +344,13 @@ pub struct Vmm {
     shutdown_flag: Arc<AtomicBool>,
     /// Wraps fields that don't require individual `Arc<Mutex<_>>`s.
     inner: Arc<Mutex<InteriorWhpHandle>>,
+    /// Pvclock time base in nanoseconds. When restoring from a snapshot, this is set to
+    /// the `system_time` value at snapshot time so that the guest sees monotonically
+    /// increasing time (base + run-loop elapsed).
+    pvclock_time_base_ns: Arc<std::sync::atomic::AtomicU64>,
+    /// Last pvclock `system_time` value (nanoseconds) written to the guest. Used by
+    /// `create_snapshot` to persist the current time without needing access to `loop_start`.
+    pvclock_last_written_ns: Arc<std::sync::atomic::AtomicU64>,
     /// Performance timings collector for fine-grained startup breakdown.
     #[cfg(feature = "profile-time")]
     perf_timings: PerfTimings,
@@ -639,6 +650,8 @@ impl Vmm {
                 skip_next_snapshot: false,
                 snapshot_allowed,
             })),
+            pvclock_time_base_ns: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            pvclock_last_written_ns: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             #[cfg(feature = "profile-time")]
             perf_timings,
             guest_profiler: None,
@@ -763,11 +776,17 @@ impl Vmm {
             // exits. The guest kernel tolerates stale system_time values
             // within a few milliseconds.
             if last_pvclock_update.elapsed() >= PVCLOCK_UPDATE_INTERVAL {
+                let pvclock_base: u64 = self
+                    .pvclock_time_base_ns
+                    .load(std::sync::atomic::Ordering::Relaxed);
+                let system_time_ns: u64 = pvclock_base + loop_start.elapsed().as_nanos() as u64;
                 Self::update_pvclock(
                     &mut self.vmem.blocking_lock(),
                     &mut pvclock_version,
-                    loop_start.elapsed().as_nanos() as u64,
+                    system_time_ns,
                 );
+                self.pvclock_last_written_ns
+                    .store(system_time_ns, std::sync::atomic::Ordering::Relaxed);
                 last_pvclock_update = Instant::now();
             }
 
@@ -1191,17 +1210,28 @@ impl Vmm {
             anyhow::bail!(reason)
         }
 
-        // Save vCPU and guest state.
+        // Capture the last pvclock system_time written to the guest so restore can
+        // use it as the time base, ensuring monotonically advancing guest time.
+        let pvclock_time_ns: u64 = self
+            .pvclock_last_written_ns
+            .load(std::sync::atomic::Ordering::Relaxed);
+
+        // Save vCPU, guest state, and pvclock time.
         let whp_snapshot = WhpSnapshot {
             guest_state: self.guest.lock().await.save_state()?,
             vcpu_state: self.vcpu.lock().await.save_state()?,
+            pvclock_time_ns,
         };
 
         let mut file: File = File::create(&whp_filepath)?;
         match ::serde_cbor::to_vec(&whp_snapshot) {
             Ok(buffer) => {
                 file.write_all(&buffer)?;
-                trace!("create_snapshot(): wrote {} bytes to WHP snapshot file", buffer.len());
+                trace!(
+                    "create_snapshot(): wrote {} bytes to WHP snapshot file \
+                     (pvclock_ns={pvclock_time_ns})",
+                    buffer.len()
+                );
                 Ok(())
             },
             Err(e) => {
@@ -1266,6 +1296,15 @@ impl Vmm {
             .lock()
             .await
             .load_state(&whp_snapshot.vcpu_state)?;
+
+        // Restore pvclock time base so the run loop resumes with monotonically advancing
+        // time: system_time = snapshot_time + new_loop_elapsed.
+        let restored_time_ns: u64 = whp_snapshot.pvclock_time_ns;
+        self.pvclock_time_base_ns
+            .store(restored_time_ns, std::sync::atomic::Ordering::Relaxed);
+        self.pvclock_last_written_ns
+            .store(restored_time_ns, std::sync::atomic::Ordering::Relaxed);
+        trace!("load_snapshot(): restored pvclock_time_base_ns={restored_time_ns}");
 
         Ok(())
     }
