@@ -113,6 +113,9 @@ impl Slab {
                      &&& slab@.start_addr >= addr as usize
                      &&& slab@.end_addr <= addr as usize + len
                      &&& slab@.allocated_addrs == Set::<usize>::empty()
+                     &&& forall|i: int| 0 <= i < (slab@.end_addr - slab@.start_addr) / block_size as int
+                         ==> #[trigger] slab@.free_addrs.contains(
+                             (slab@.start_addr + i * block_size as int) as usize)
                  },
                  Err(e) => {
                      &&& e.code == ErrorCode::InvalidArgument

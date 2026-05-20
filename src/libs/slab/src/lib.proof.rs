@@ -223,6 +223,9 @@ impl Slab {
                 &&& slab@.end_addr <= addr as usize + len
                 &&& slab@.allocated_addrs == Set::<usize>::empty()
                 &&& slab.inv()
+                &&& forall|i: int| 0 <= i < (slab@.end_addr - slab@.start_addr) / block_size as int
+                    ==> #[trigger] slab@.free_addrs.contains(
+                        (slab@.start_addr + i * block_size as int) as usize)
             })
     {
         assert(size_of::<u8>() == 1);
@@ -343,6 +346,15 @@ impl Slab {
         }
 
         assert(slab@.allocated_addrs.disjoint(slab@.free_addrs));
+
+        // Prove that every valid block index maps to a free address.
+        assert forall|i: int| 0 <= i < (slab@.end_addr - slab@.start_addr) / block_size as int
+            implies #[trigger] slab@.free_addrs.contains(
+                (slab@.start_addr + i * block_size as int) as usize) by {
+            assert(!slab.index@.is_bit_set(i));
+            let free_bits = Set::<int>::new(|j: int| 0 <= j < slab.num_data_blocks() && !slab.index@.is_bit_set(j));
+            assert(free_bits.contains(i));
+        }
     }
 
     /// Proves that the address mapping is injective: distinct block indices
