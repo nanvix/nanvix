@@ -705,13 +705,31 @@ pub fn __kcall_set_thread_data_area(user_tda: *mut u8) -> Result<(), Error> {
 ///
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
-#[unsafe(no_mangle)]
-pub fn __kcall_snapshot() -> Result<(), Error> {
+pub fn snapshot() -> Result<(), Error> {
     let result: i64 = kcall0!(KcallNumber::Snapshot.into());
 
+    // NOTE: errors are unlikely because snapshot typically succeeds.
     if unlikely(result != 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to snapshot()"))
     } else {
         Ok(())
+    }
+}
+
+///
+/// # Description
+///
+/// Creates a snapshot of the virtual machine. The snapshot captures all guest memory and
+/// processor state into files managed by the VMM.
+///
+/// # Returns
+///
+/// Returns 0 on success, or a negative error code on failure.
+///
+#[unsafe(no_mangle)]
+pub extern "C" fn __kcall_snapshot() -> i32 {
+    match snapshot() {
+        Ok(()) => 0,
+        Err(e) => -(e.code as i32),
     }
 }
