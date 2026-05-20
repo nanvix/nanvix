@@ -27,6 +27,7 @@ use ::std::{
 use ::windows::Win32::{
     Foundation::{
         CloseHandle,
+        E_HANDLE,
         HANDLE,
     },
     System::{
@@ -1642,11 +1643,21 @@ impl VirtualMemory {
 
 impl Drop for VirtualMemory {
     fn drop(&mut self) {
-        // Unmap the entire GPA range from the WHP partition before releasing host memory.
-        // SAFETY: `self.partition_handle` is a valid WHP handle from `new()`. The GPA range
+        // Unmap the entire GPA range from the WHP partition before releasing host memory. If the
+        // partition was already destroyed (drop ordering between `Arc<VirtualMemory>` and
+        // `Arc<WhpPartition>`), `WHvUnmapGpaRange` returns `E_HANDLE`. That outcome is benign
+        // because `WHvDeletePartition` implicitly tears down all GPA mappings, so we silently
+        // ignore it. Any other failure is unexpected and is logged as an error so it remains
+        // visible without aborting teardown.
+        // SAFETY: `self.partition_handle` was a valid WHP handle when `new()` returned. By
+        // the time `drop` runs the partition may already have been destroyed, in which case
+        // the handle is stale; `WHvUnmapGpaRange` detects that and returns `E_HANDLE`
+        // without dereferencing host memory, so the call is sound either way. The GPA range
         // [0..size) was mapped during construction and has not been freed.
         unsafe {
-            if let Err(e) = WHvUnmapGpaRange(self.partition_handle, 0, self.size as u64) {
+            if let Err(e) = WHvUnmapGpaRange(self.partition_handle, 0, self.size as u64)
+                && e.code() != E_HANDLE
+            {
                 error!("WHvUnmapGpaRange() failed in Drop (error={e:?})");
             }
         }
