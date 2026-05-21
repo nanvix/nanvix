@@ -59,7 +59,10 @@ pub(crate) struct PendingOp {
 /// The specific hostfs operation being awaited.
 pub(crate) enum PendingOpKind {
     /// open() — response contains a remote FD; we allocate a local hostfs FD.
-    Open,
+    Open {
+        /// Absolute path that was opened (stored so `HostFsHandle` can resolve relative paths).
+        path: alloc::string::String,
+    },
     /// close() — response is a status code; local FD has already been released.
     Close,
     /// read() — response contains inline data; push it to the caller.
@@ -212,7 +215,7 @@ pub(crate) fn complete_pending_op(
     }
 
     match pending.kind {
-        PendingOpKind::Open => complete_open(pending.source_tid, response_payload),
+        PendingOpKind::Open { path } => complete_open(pending.source_tid, response_payload, path),
         PendingOpKind::Close => complete_close(pending.source_tid, response_payload),
         PendingOpKind::Read { count } => {
             let pid: ProcessIdentifier = pending.source_pid.unwrap_or(ProcessIdentifier::KERNEL);
@@ -256,7 +259,7 @@ fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOA
 
     matches!(
         (kind, header),
-        (PendingOpKind::Open, SystemCallMessageHeader::HostFsOpenResponse)
+        (PendingOpKind::Open { .. }, SystemCallMessageHeader::HostFsOpenResponse)
             | (PendingOpKind::Close, SystemCallMessageHeader::HostFsCloseResponse)
             | (PendingOpKind::Read { .. }, SystemCallMessageHeader::HostFsReadResponse)
             | (PendingOpKind::Write, SystemCallMessageHeader::HostFsWriteResponse)
@@ -275,7 +278,11 @@ fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOA
 // Completion Helpers
 //==================================================================================================
 
-fn complete_open(source_tid: ThreadIdentifier, response_payload: &[u8; Message::PAYLOAD_SIZE]) {
+fn complete_open(
+    source_tid: ThreadIdentifier,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+    path: alloc::string::String,
+) {
     use ::syscall::fcntl::message::OpenAtResponse;
 
     let resp: ::hostfs_api::OpenResponse = ::hostfs_api::OpenResponse::decode(response_payload);
@@ -285,7 +292,7 @@ fn complete_open(source_tid: ThreadIdentifier, response_payload: &[u8; Message::
         return;
     }
     let is_dir: bool = resp.is_dir != 0;
-    match ::vfs::fd::vfs_alloc_hostfs(resp.fd, is_dir) {
+    match ::vfs::fd::vfs_alloc_hostfs(resp.fd, is_dir, if is_dir { Some(path) } else { None }) {
         Ok(local_fd) => {
             let msg: Message = OpenAtResponse::build(
                 source_tid,

@@ -4,9 +4,28 @@
 //! Filesystem operation tests over hostfs: mkdir, rmdir, unlink, rename.
 
 use ::sys::error::Error;
-use ::sysapi::fcntl::atflags::{
-    AT_FDCWD,
-    AT_REMOVEDIR,
+use ::sysapi::{
+    fcntl::{
+        atflags::{
+            AT_FDCWD,
+            AT_REMOVEDIR,
+        },
+        file_access_mode::{
+            O_RDONLY,
+            O_WRONLY,
+        },
+        file_creation_flags::{
+            O_CREAT,
+            O_DIRECTORY,
+            O_TRUNC,
+        },
+    },
+    ffi::c_int,
+    sys_stat::file_mode::{
+        S_IRUSR,
+        S_IRWXU,
+        S_IWUSR,
+    },
 };
 use ::syscall::safe::{
     FileSystem,
@@ -20,6 +39,9 @@ pub fn test() -> Result<(), Error> {
     test_mkdir_rmdir()?;
     test_create_unlink()?;
     test_rename()?;
+    test_unlink_dir_fd()?;
+    test_rename_dir_fd()?;
+    test_open_close_long_path()?;
     Ok(())
 }
 
@@ -138,6 +160,110 @@ fn test_rename() -> Result<(), Error> {
 
     // Cleanup.
     ::syscall::safe::fs::unlink(&new_path)?;
+
+    Ok(())
+}
+
+/// Tests `unlinkat()` with a directory file descriptor over hostfs.
+fn test_unlink_dir_fd() -> Result<(), Error> {
+    let dir: &str = "/mnt/test-unlinkat-dir";
+    let file: &str = "dirfd-target.txt";
+    let mode: c_int = (S_IRUSR | S_IWUSR) as c_int;
+
+    // Create directory and file inside it.
+    ::syscall::sys::stat::mkdir(dir, S_IRWXU)?;
+    let full_path: &str = "/mnt/test-unlinkat-dir/dirfd-target.txt";
+    let fd: c_int =
+        ::syscall::fcntl::openat(AT_FDCWD, full_path, O_CREAT | O_WRONLY | O_TRUNC, mode as u32)?;
+    ::syscall::unistd::close(fd)?;
+
+    // Open directory as dirfd.
+    let dirfd: c_int = ::syscall::fcntl::openat(AT_FDCWD, dir, O_RDONLY | O_DIRECTORY, 0)?;
+
+    // Unlink using dirfd.
+    ::syscall::fcntl::unlinkat(dirfd, file, 0)?;
+    ::syslog::info!("mount-test: [PASS] unlinkat with dirfd");
+
+    // Verify file is gone.
+    let result = ::syscall::fcntl::openat(dirfd, file, O_RDONLY, 0);
+    if let Ok(fd) = result {
+        // Close the unexpectedly-opened fd before panicking to avoid leaking it
+        // (and exhausting the FD table for subsequent tests).
+        let _ = ::syscall::unistd::close(fd);
+        panic!("file should not exist after unlinkat with dirfd");
+    }
+
+    // Clean up.
+    ::syscall::unistd::close(dirfd)?;
+    ::syscall::fcntl::unlinkat(AT_FDCWD, dir, AT_REMOVEDIR)?;
+
+    Ok(())
+}
+
+/// Tests `renameat()` with directory file descriptors over hostfs.
+fn test_rename_dir_fd() -> Result<(), Error> {
+    let dir: &str = "/mnt/test-renameat-dir";
+    let src: &str = "source.txt";
+    let dst: &str = "destination.txt";
+    let mode: c_int = (S_IRUSR | S_IWUSR) as c_int;
+
+    // Create directory and file inside it.
+    ::syscall::sys::stat::mkdir(dir, S_IRWXU)?;
+    let full_path: &str = "/mnt/test-renameat-dir/source.txt";
+    let fd: c_int =
+        ::syscall::fcntl::openat(AT_FDCWD, full_path, O_CREAT | O_WRONLY | O_TRUNC, mode as u32)?;
+    ::syscall::unistd::close(fd)?;
+
+    // Open directory as dirfd.
+    let dirfd: c_int = ::syscall::fcntl::openat(AT_FDCWD, dir, O_RDONLY | O_DIRECTORY, 0)?;
+
+    // Rename using dirfd.
+    ::syscall::fcntl::renameat(dirfd, src, dirfd, dst)?;
+    ::syslog::info!("mount-test: [PASS] renameat with dirfd");
+
+    // Verify old name is gone, new name exists.
+    let result = ::syscall::fcntl::openat(dirfd, src, O_RDONLY, 0);
+    if let Ok(fd) = result {
+        // Close the unexpectedly-opened fd before panicking to avoid leaking it
+        // (and exhausting the FD table for subsequent tests).
+        let _ = ::syscall::unistd::close(fd);
+        panic!("old file should not exist after renameat with dirfd");
+    }
+    let new_fd: c_int = ::syscall::fcntl::openat(dirfd, dst, O_RDONLY, 0)?;
+    ::syscall::unistd::close(new_fd)?;
+
+    // Clean up.
+    ::syscall::fcntl::unlinkat(dirfd, dst, 0)?;
+    ::syscall::unistd::close(dirfd)?;
+    ::syscall::fcntl::unlinkat(AT_FDCWD, dir, AT_REMOVEDIR)?;
+
+    Ok(())
+}
+
+/// Tests open/close with paths exceeding the old 36-byte inline message limit over hostfs.
+fn test_open_close_long_path() -> Result<(), Error> {
+    // Directory + file path totals ~70 bytes — well beyond the old 36-byte inline limit.
+    let long_dir: &str = "/mnt/test-open-close-long-path-directory";
+    let long_path: &str = "/mnt/test-open-close-long-path-directory/a-file-with-long-name.txt";
+    let mode: c_int = (S_IRUSR | S_IWUSR) as c_int;
+
+    // Create directory.
+    ::syscall::sys::stat::mkdir(long_dir, S_IRWXU)?;
+
+    // Create file with long path.
+    let fd: c_int =
+        ::syscall::fcntl::openat(AT_FDCWD, long_path, O_CREAT | O_WRONLY | O_TRUNC, mode as u32)?;
+    ::syscall::unistd::close(fd)?;
+    ::syslog::info!("mount-test: [PASS] open long path (create)");
+
+    // Re-open to verify persistence.
+    let fd: c_int = ::syscall::fcntl::openat(AT_FDCWD, long_path, O_RDONLY, 0)?;
+    ::syscall::unistd::close(fd)?;
+    ::syslog::info!("mount-test: [PASS] open long path (re-open)");
+
+    // Clean up.
+    ::syscall::fcntl::unlinkat(AT_FDCWD, long_path, 0)?;
+    ::syscall::fcntl::unlinkat(AT_FDCWD, long_dir, AT_REMOVEDIR)?;
 
     Ok(())
 }

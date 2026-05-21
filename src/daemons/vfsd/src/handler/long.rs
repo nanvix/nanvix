@@ -158,25 +158,11 @@ pub(crate) fn handle_openat(source: ThreadIdentifier, request: OpenAtRequest) ->
 }
 
 pub(crate) fn handle_renameat(source: ThreadIdentifier, request: RenameAtRequest) -> Vec<Message> {
-    let old_resolved: Option<alloc::string::String> =
-        ::vfs::fd::vfs_resolve_path(request.olddirfd, &request.oldpath);
-    let new_resolved: Option<alloc::string::String> =
-        ::vfs::fd::vfs_resolve_path(request.newdirfd, &request.newpath);
-    let old_final: &str = match &old_resolved {
-        Some(p) => p.as_str(),
-        None => &request.oldpath,
-    };
-    let new_final: &str = match &new_resolved {
-        Some(p) => p.as_str(),
-        None => &request.newpath,
-    };
-
-    // Always pass AT_FDCWD since we already resolved the paths.
     match ::vfs::fd::vfs_renameat(
-        ::sysapi::fcntl::atflags::AT_FDCWD,
-        old_final,
-        ::sysapi::fcntl::atflags::AT_FDCWD,
-        new_final,
+        request.olddirfd,
+        &request.oldpath,
+        request.newdirfd,
+        &request.newpath,
     ) {
         Ok(()) => {
             vec![RenameAtResponse::build(
@@ -191,15 +177,7 @@ pub(crate) fn handle_renameat(source: ThreadIdentifier, request: RenameAtRequest
 }
 
 pub(crate) fn handle_unlinkat(source: ThreadIdentifier, request: UnlinkAtRequest) -> Vec<Message> {
-    let resolved: Option<alloc::string::String> =
-        ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname);
-    let final_path: &str = match &resolved {
-        Some(p) => p.as_str(),
-        None => &request.pathname,
-    };
-
-    // Always pass AT_FDCWD since we already resolved the path.
-    match ::vfs::fd::vfs_unlinkat(::sysapi::fcntl::atflags::AT_FDCWD, final_path, request.flags) {
+    match ::vfs::fd::vfs_unlinkat(request.dirfd, &request.pathname, request.flags) {
         Ok(()) => {
             vec![UnlinkAtResponse::build(
                 source,
