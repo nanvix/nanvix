@@ -628,4 +628,36 @@ mod tests {
 
         Ok(())
     }
+
+    /// Verifies that `load_snapshot` rejects a snapshot file that is smaller than the guest
+    /// memory mapping it must back. This guards against MAP_FIXED-on-short-file successes that
+    /// would otherwise cause SIGBUS on later guest accesses past EOF. The boundary case
+    /// (`required_size - 1`) is exercised to pin the strict `<` comparison in the size check.
+    #[test]
+    fn load_snapshot_rejects_undersized_file() -> AnyResult<()> {
+        let (_kvm, _vm, mut vmem): (Kvm, VmFd, VirtualMemory) = create_test_vmem()?;
+        let required_size: usize = SNAPSHOT_DATA_OFFSET + TEST_MEM_SIZE;
+
+        // Case 1: file containing only the data-offset padding, no memory contents.
+        let path_empty: PathBuf = unique_snapshot_path("undersized-empty");
+        let truncated_empty: Vec<u8> = vec![0u8; SNAPSHOT_DATA_OFFSET];
+        fs::write(&path_empty, &truncated_empty).expect("failed to write undersized snapshot file");
+        let result_empty: AnyResult<()> = vmem.load_snapshot(&path_empty);
+        fs::remove_file(&path_empty).ok();
+        assert!(result_empty.is_err(), "load_snapshot should fail for an empty-data file");
+
+        // Case 2: boundary — exactly one byte short of the required size.
+        let path_boundary: PathBuf = unique_snapshot_path("undersized-boundary");
+        let truncated_boundary: Vec<u8> = vec![0u8; required_size - 1];
+        fs::write(&path_boundary, &truncated_boundary)
+            .expect("failed to write boundary-sized snapshot file");
+        let result_boundary: AnyResult<()> = vmem.load_snapshot(&path_boundary);
+        fs::remove_file(&path_boundary).ok();
+        assert!(
+            result_boundary.is_err(),
+            "load_snapshot should fail for a file one byte short of required size"
+        );
+
+        Ok(())
+    }
 }
