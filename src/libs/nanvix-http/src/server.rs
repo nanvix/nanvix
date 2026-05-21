@@ -46,19 +46,18 @@ use ::nanvix_sandbox_config::SimpleSandboxCacheConfig;
 #[cfg(feature = "standalone")]
 use ::nanvix_sandbox_config::StandaloneConfig;
 use ::std::sync::Arc;
+use ::tokio::net::{
+    TcpListener,
+    TcpStream,
+};
+#[cfg(unix)]
+use ::tokio::signal::unix::{
+    signal,
+    Signal,
+    SignalKind,
+};
 #[cfg(feature = "single-process")]
 use ::tokio::sync::Mutex;
-use ::tokio::{
-    net::{
-        TcpListener,
-        TcpStream,
-    },
-    signal::unix::{
-        signal,
-        Signal,
-        SignalKind,
-    },
-};
 
 //==================================================================================================
 // Structures
@@ -174,8 +173,8 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
     /// them to HTTP client handlers. In single-process mode, connections are handled sequentially.
     /// In multi-process mode, each connection is handled in a separate tokio task.
     ///
-    /// The server runs until an interrupt signal (SIGINT) is received, at which point it performs
-    /// graceful shutdown by cleaning up all active sandboxes.
+    /// The server runs until a shutdown signal is received (SIGINT on Unix, Ctrl-C on Windows),
+    /// at which point it performs graceful shutdown by cleaning up all active sandboxes.
     ///
     /// # Returns
     ///
@@ -194,8 +193,20 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
             Arc::new(StandaloneState::new(self.config.clone()));
         #[cfg(not(any(feature = "single-process", feature = "standalone")))]
         let sandbox_cache: Arc<SandboxCache<T>> = SandboxCache::new(self.config.clone()).await?;
+        #[cfg(unix)]
         let mut signals: Signal = signal(SignalKind::interrupt())?;
         let http_listener: TcpListener = TcpListener::bind(&self.sockaddr).await?;
+
+        // Cross-platform shutdown signal: SIGINT on Unix, Ctrl-C on Windows.
+        #[cfg(unix)]
+        let shutdown_signal = async move {
+            signals.recv().await;
+        };
+        #[cfg(windows)]
+        let shutdown_signal = async {
+            let _ = ::tokio::signal::ctrl_c().await;
+        };
+        ::tokio::pin!(shutdown_signal);
 
         loop {
             tokio::select! {
@@ -243,7 +254,7 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
                         },
                     }
                 },
-                _ = signals.recv() => {
+                _ = &mut shutdown_signal => {
                     info!("received exit signal, stopping...");
                     #[cfg(feature = "single-process")]
                     {

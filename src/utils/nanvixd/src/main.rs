@@ -34,8 +34,6 @@ use ::log::{
     error,
     info,
 };
-#[cfg(unix)]
-use ::nanvix::http::HttpServer;
 #[cfg(feature = "multi-process")]
 use ::nanvix::sandbox_config::SandboxCacheConfig;
 #[cfg(feature = "single-process")]
@@ -44,6 +42,7 @@ use ::nanvix::sandbox_config::SimpleSandboxCacheConfig;
 use ::nanvix::sandbox_config::StandaloneConfig;
 use ::nanvix::{
     config::system::DEFAULT_MACHINE_NAME,
+    http::HttpServer,
     sandbox::NAMED_RESOURCE_PREFIX,
     terminal::Terminal,
 };
@@ -176,6 +175,7 @@ async fn async_main() -> Result<ExitCode> {
         args.networking_mode(),
         #[cfg(feature = "gdb")]
         args.gdb_port(),
+        args.gateway_sockaddr().map(|s| s.to_string()),
     );
 
     #[cfg(feature = "multi-process")]
@@ -241,11 +241,10 @@ async fn async_main() -> Result<ExitCode> {
             exit_code as u8
         };
 
-        return Ok(ExitCode::from(clamped_exit_code));
-    }
+        Ok(ExitCode::from(clamped_exit_code))
+    } else {
+        // HTTP mode.
 
-    #[cfg(unix)]
-    {
         let http_sockaddr: &str = match args.http_sockaddr() {
             None => {
                 let reason: &str = "no HTTP socket address specified in HTTP mode";
@@ -258,16 +257,10 @@ async fn async_main() -> Result<ExitCode> {
         let mut http_server: HttpServer<()> = HttpServer::new(http_sockaddr, config);
         if let Err(error) = http_server.run().await {
             error!("http server failed: {error}");
+            return Ok(ExitCode::FAILURE);
         }
 
         Ok(ExitCode::SUCCESS)
-    }
-
-    #[cfg(windows)]
-    {
-        let reason: &str = "HTTP mode is not supported on Windows";
-        error!("{reason}");
-        anyhow::bail!(reason);
     }
 }
 
