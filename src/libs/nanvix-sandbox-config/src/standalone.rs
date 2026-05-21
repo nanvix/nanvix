@@ -44,6 +44,17 @@ pub struct StandaloneConfig {
     /// Optional GDB server port for debugging the guest.
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
+    /// Optional path at which standalone mode should expose the gateway
+    /// endpoint where a host-side consumer (typically the containerd
+    /// shim) exchanges the guest's stdin/stdout.
+    ///
+    /// - Unix: Unix-domain socket path, e.g. `/tmp/nvx-standalone-gw-<pid>.sock`.
+    /// - Windows: named pipe path, e.g. `\\.\pipe\nanvix-standalone-gw-<pid>`.
+    ///
+    /// When unset, standalone mode falls back to a per-process default
+    /// path so legacy consumers (`nanvix-bench`, `nanvix-terminal`)
+    /// continue to work without any flag.
+    gateway_sockaddr: Option<String>,
 }
 
 //==================================================================================================
@@ -67,6 +78,7 @@ impl StandaloneConfig {
     /// - `networking_mode`: Networking mode for host networking.
     /// - `gdb_port`: Optional GDB server port.
     ///
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         kernel_binary_path: String,
         ramfs_filename: Option<String>,
@@ -76,6 +88,7 @@ impl StandaloneConfig {
         kernel_args: Option<String>,
         networking_mode: NetworkingMode,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
+        gateway_sockaddr: Option<String>,
     ) -> Self {
         Self {
             kernel_binary_path,
@@ -87,6 +100,7 @@ impl StandaloneConfig {
             networking_mode,
             #[cfg(feature = "gdb")]
             gdb_port,
+            gateway_sockaddr,
         }
     }
 
@@ -129,5 +143,12 @@ impl StandaloneConfig {
     #[cfg(feature = "gdb")]
     pub fn gdb_port(&self) -> Option<u16> {
         self.gdb_port
+    }
+
+    /// Returns the optional gateway endpoint path (UDS on Unix, named
+    /// pipe on Windows). See the field doc on [`StandaloneConfig`] for
+    /// details.
+    pub fn gateway_sockaddr(&self) -> Option<&str> {
+        self.gateway_sockaddr.as_deref()
     }
 }

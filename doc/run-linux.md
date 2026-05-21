@@ -98,9 +98,10 @@ execution_mode = "standalone"
 extra_args = ["-console-file", "/dev/null"]
 ```
 
-> **Note:** When containerd provides a stdout path (e.g., via `ctr run`), the shim
-> automatically overrides `-console-file` from `extra_args` to redirect guest console
-> output to containerd's stdout pipe.
+> **Note:** When the nanvix containerd shim spawns nanvixd, it always sets
+> `-console-file` and `-gateway-sockaddr` itself; any `-console-file` or
+> `-gateway-sockaddr` value passed in `extra_args` is stripped with a
+> warning.
 
 ## Running Containers
 
