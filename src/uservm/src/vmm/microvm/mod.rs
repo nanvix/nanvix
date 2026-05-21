@@ -1296,16 +1296,6 @@ impl Vmm {
                 },
             };
 
-        // Validate snapshot against host KVM capabilities before restoring.
-        {
-            let locked_inner: MutexGuard<'_, InteriorMicroVmHandle> = self.inner.lock().await;
-            if let Err(e) = kvm_snapshot.validate(&locked_inner.kvm) {
-                let reason: String = format!("decoded kvm snapshot is invalid (error={e:?})");
-                error!("load_snapshot(): {reason}");
-                anyhow::bail!(reason)
-            }
-        }
-
         // Load the snapshot.
         if let Err(e) = self
             .guest
