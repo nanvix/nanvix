@@ -347,6 +347,18 @@ RUST_LOG=debug ./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/hello-rust-n
 RUST_LOG=trace ./bin/nanvixd.elf -http-addr 127.0.0.1:8080
 ```
 
+By default, `nanvixd`'s own structured (`logrus`) records are written to an auto-named file
+(`nanvixd_<timestamp>.log`) inside the log directory (overridable via `-log-dir <dir>`). Pass
+`-log-to-stdout` to route those records to stdout instead:
+
+```bash
+./bin/nanvixd.elf -log-to-stdout -- ./bin/hello-rust-nostd.elf
+```
+
+This is useful when a parent process (for example, the Nanvix containerd shim) captures
+`nanvixd`'s stdout and forwards it to its own log sink. `-log-to-stdout` and `-log-dir` are
+mutually exclusive.
+
 ## Expert Mode: Standalone User VM
 
 > **Warning:** This is an expert-level feature intended for low-level debugging and kernel
