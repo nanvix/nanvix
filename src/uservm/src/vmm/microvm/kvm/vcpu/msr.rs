@@ -366,6 +366,17 @@ impl Msrs {
             state.bytes[3],
         ]) as usize;
 
+        // Reject snapshots whose declared MSR count exceeds the allowlist size. Snapshots produced
+        // by `save_state()` can never exceed `EXPANDED_MSR_COUNT`, so a larger value indicates
+        // corruption or tampering. This bound also prevents `Vec::with_capacity` below from
+        // attempting an attacker-controlled allocation that could OOM-abort the process.
+        if nmsrs > EXPANDED_MSR_COUNT {
+            let reason: String =
+                format!("msrs nmsrs={nmsrs} exceeds allowlist size {EXPANDED_MSR_COUNT}");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
         let expected_size: usize = nmsrs
             .checked_mul(entry_size)
             .and_then(|v| v.checked_add(header_size))
@@ -564,6 +575,30 @@ mod tests {
         let bad_state: MsrsState = MsrsState { bytes: data };
         let result: Result<()> = msrs.load_state(&vcpu_fd, &bad_state);
         assert!(result.is_err(), "load_state should reject data with insufficient entries");
+
+        Ok(())
+    }
+
+    /// Verifies that `load_state` rejects a header whose `nmsrs` field exceeds the
+    /// compile-time allowlist size, preventing attacker-controlled `Vec::with_capacity`
+    /// allocations that could OOM-abort the process.
+    #[test]
+    fn load_state_rejects_nmsrs_exceeding_allowlist() -> AnyResult<()> {
+        let (_kvm, _vm, vcpu_fd): (Kvm, VmFd, VcpuFd) = create_test_vcpu()?;
+        let msrs: Msrs = Msrs;
+
+        let header_size: usize = std::mem::size_of::<::kvm_bindings::kvm_msrs>();
+        let mut data: Vec<u8> = vec![0u8; header_size];
+        let oversized: u32 = u32::try_from(EXPANDED_MSR_COUNT)?.saturating_add(1);
+        data[..4].copy_from_slice(&oversized.to_ne_bytes());
+
+        let bad_state: MsrsState = MsrsState { bytes: data };
+        let result: Result<()> = msrs.load_state(&vcpu_fd, &bad_state);
+        let err: String = result
+            .err()
+            .ok_or_else(|| anyhow::anyhow!("load_state should reject oversized nmsrs"))?
+            .to_string();
+        assert!(err.contains("exceeds allowlist size"), "unexpected error: {err}");
 
         Ok(())
     }
