@@ -165,6 +165,17 @@ $env:RUST_LOG = "debug"
 .\bin\nanvixd.exe -- .\bin\hello-rust-nostd.elf
 ```
 
+By default, `nanvixd`'s own structured (`logrus`) records are written to an auto-named file
+(`nanvixd_<timestamp>.log`) inside the log directory (overridable via `-log-dir <dir>`). Pass
+`-log-to-stdout` to route those records to stdout instead:
+
+```powershell
+.\bin\nanvixd.exe -log-to-stdout -- .\bin\hello-rust-nostd.elf
+```
+
+This is useful when a parent process captures `nanvixd`'s stdout and forwards it to its own
+log sink. `-log-to-stdout` and `-log-dir` are mutually exclusive.
+
 ## Expert Mode: Standalone UserVM
 
 > **Warning:** This is an expert-level feature intended for low-level debugging and kernel
