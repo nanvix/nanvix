@@ -35,6 +35,7 @@ use ::sys::ipc::Message;
 mod close;
 mod error;
 mod flush;
+pub mod long_msg;
 mod lseek;
 mod mkdir;
 mod open;
@@ -96,6 +97,13 @@ pub use self::{
 pub struct OperationId(u32);
 
 impl OperationId {
+    /// Sentinel value used in error responses when the real operation identifier
+    /// cannot be recovered (e.g., the assembled buffer is too short to contain one).
+    ///
+    /// The allocator never issues `u32::MAX`, so this value is guaranteed not to
+    /// collide with any live operation.
+    pub const INVALID: Self = Self(u32::MAX);
+
     /// Creates a new operation identifier from a raw `u32` value.
     ///
     /// This is crate-internal: only [`get_op_id`] and [`OperationIdAllocator`] should
@@ -110,6 +118,20 @@ impl OperationId {
     /// wire serialization.
     pub(crate) const fn raw(self) -> u32 {
         self.0
+    }
+
+    /// Returns the little-endian byte representation of the operation identifier.
+    ///
+    /// Used by vfsd to serialize the identifier into multi-part request buffers.
+    pub const fn to_le_bytes(self) -> [u8; 4] {
+        self.0.to_le_bytes()
+    }
+
+    /// Reconstructs an operation identifier from its little-endian byte representation.
+    ///
+    /// Used by hostfsd to extract the identifier from assembled multi-part request bytes.
+    pub const fn from_le_bytes(bytes: [u8; 4]) -> Self {
+        Self(u32::from_le_bytes(bytes))
     }
 }
 
@@ -164,10 +186,11 @@ impl OperationIdAllocator {
     ///
     /// The `in_use` predicate is called to skip identifiers that are currently active
     /// (e.g., present in a pending-operation map). This guarantees the returned ID does
-    /// not collide with any live operation.
+    /// not collide with any live operation. The allocator also skips [`OperationId::INVALID`]
+    /// (`u32::MAX`) which is reserved as a sentinel for error responses.
     pub fn alloc(&mut self, in_use: impl Fn(&OperationId) -> bool) -> OperationId {
         let mut id: u32 = self.next_id;
-        while in_use(&OperationId(id)) {
+        while id == u32::MAX || in_use(&OperationId(id)) {
             id = id.wrapping_add(1);
         }
         self.next_id = id.wrapping_add(1);

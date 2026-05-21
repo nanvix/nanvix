@@ -51,13 +51,19 @@ pub fn test() {
     // `lseek()`.
     file::pwrite_pread::test();
 
+    // The following tests depend on `openat()`, `unlinkat()`, `renameat()` and `mkdir()`.
+    fs::unlinkat_dirfd::test();
+    fs::renameat_dirfd::test();
+
+    // The following test exercises open/close with long relative paths through the VFS.
+    // Hostfs multi-part messaging is tested in mount-test with /mnt-prefixed paths.
+    fs::open_close_long_path::test();
+
     // TODO: Add unsafe test mirrors for the following C test files:
     // - chmod.c, fchmod.c, fchmodat.c (permission changes)
     // - chown.c, fchown.c, fchownat.c, lchown.c (ownership changes)
     // - link.c, linkat.c (hard links)
     // - symlinkat.c, readlink.c, readlinkat.c (symbolic links)
-    // - renameat.c (file renaming)
-    // - unlinkat.c (file removal via unlinkat)
     // - access.c, faccessat.c (access permission checks)
     // - mkdir.c, mkdirat.c (directory creation)
     // - futimens.c, utimensat.c (timestamp updates)

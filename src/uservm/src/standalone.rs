@@ -417,7 +417,13 @@ async fn standalone_io_handler(
                             },
                         };
                         while let Ok((msg, response_tx, counters)) = rx.recv() {
-                            let response_payload = handler.handle_request(&msg.payload);
+                            let response_payload = match handler.handle_request(&msg.payload) {
+                                Some(payload) => payload,
+                                None => {
+                                    // Intermediate multi-part message; no response yet.
+                                    continue;
+                                },
+                            };
                             let response: Message = Message::new(
                                 MessageSender::from(ProcessIdentifier::KERNEL),
                                 MessageReceiver::from(ProcessIdentifier::VFSD),
