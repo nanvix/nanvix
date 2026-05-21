@@ -30,7 +30,10 @@ compile_error!("features `single-process` and `multi-process` are mutually exclu
 //==================================================================================================
 
 use ::anyhow::Result;
-use ::log::error;
+use ::log::{
+    error,
+    info,
+};
 #[cfg(unix)]
 use ::nanvix::http::HttpServer;
 #[cfg(feature = "multi-process")]
@@ -51,10 +54,7 @@ use ::nanvixd::{
 use ::std::{
     path::PathBuf,
     process::ExitCode,
-    sync::{
-        Arc,
-        OnceLock,
-    },
+    sync::Arc,
     time::{
         SystemTime,
         UNIX_EPOCH,
@@ -81,38 +81,6 @@ const LINUXD_BINARY_NAME: &str = "linuxd.elf";
 /// Binary name for User VM.
 #[cfg(feature = "multi-process")]
 const USERVM_BINARY_NAME: &str = "uservm.elf";
-
-//==================================================================================================
-// Global Variables
-//==================================================================================================
-
-/// Global flag indicating whether the daemon is running in interactive mode. This flag is set
-/// exactly once during initialization and remains immutable thereafter.
-static INTERACTIVE_MODE: OnceLock<bool> = OnceLock::new();
-
-//==================================================================================================
-// Macros
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Logs a message using either `info!()` or `eprintln!()` depending on the mode.
-///
-/// # Parameters
-///
-/// - `fmt`: The format string.
-/// - `args`: The format arguments.
-///
-macro_rules! log_info {
-    ($fmt:expr $(, $($args:tt)*)?) => {
-        if let Some(true) = $crate::INTERACTIVE_MODE.get().copied() {
-            eprintln!($fmt $(, $($args)*)?);
-        } else {
-            ::log::info!($fmt $(, $($args)*)?);
-        }
-    };
-}
 
 //==================================================================================================
 // Standalone Functions
@@ -155,9 +123,6 @@ async fn async_main() -> Result<ExitCode> {
         Arc::new(Args::parse(std::env::args().filter(|s| !s.trim().is_empty()).collect())?);
 
     ::nanvix::log::init(true, DEFAULT_LOG_LEVEL, args.log_directory().to_string(), None);
-
-    // Set the global INTERACTIVE_MODE flag.
-    let _: Result<(), bool> = INTERACTIVE_MODE.set(args.interactive_mode());
 
     print_startup_info(&args);
 
@@ -233,7 +198,7 @@ async fn async_main() -> Result<ExitCode> {
     );
 
     // Check for interactive mode or HTTP mode.
-    if let Some(true) = INTERACTIVE_MODE.get().copied() {
+    if args.interactive_mode() {
         let guest_binary_path: String = match args.program_name() {
             None => {
                 let reason: &str = "no program name specified in interactive mode";
@@ -342,12 +307,12 @@ async fn ensure_all_binaries_available(args: &Args) -> Result<(String, String, S
 
     // If all binaries are available locally, use them.
     if all_available {
-        log_info!("using local binary {}: {}", KERNEL_BINARY_NAME, kernel_binary_path);
+        info!("using local binary {}: {}", KERNEL_BINARY_NAME, kernel_binary_path);
 
         #[cfg(feature = "multi-process")]
         {
-            log_info!("using local binary {}: {}", LINUXD_BINARY_NAME, linuxd_binary_path);
-            log_info!("using local binary {}: {}", USERVM_BINARY_NAME, uservm_binary_path);
+            info!("using local binary {}: {}", LINUXD_BINARY_NAME, linuxd_binary_path);
+            info!("using local binary {}: {}", USERVM_BINARY_NAME, uservm_binary_path);
         }
 
         #[cfg(any(feature = "single-process", feature = "standalone"))]
@@ -415,7 +380,7 @@ fn print_startup_info(args: &Args) {
     };
 
     #[cfg(feature = "single-process")]
-    log_info!(
+    info!(
         "nanvixd {}, single-process deployment, {} mode, machine {}",
         env!("CARGO_PKG_VERSION"),
         mode,
@@ -423,7 +388,7 @@ fn print_startup_info(args: &Args) {
     );
 
     #[cfg(feature = "standalone")]
-    log_info!(
+    info!(
         "nanvixd {}, standalone deployment, {} mode, machine {}",
         env!("CARGO_PKG_VERSION"),
         mode,
@@ -432,11 +397,11 @@ fn print_startup_info(args: &Args) {
 
     #[cfg(feature = "standalone")]
     if let Some(snapshot) = args.snapshot_path() {
-        log_info!("snapshot restore from: {}", snapshot);
+        info!("snapshot restore from: {}", snapshot);
     }
 
     #[cfg(feature = "multi-process")]
-    log_info!(
+    info!(
         "nanvixd {}, multi-process deployment, {} mode, l2 {}, machine {}",
         env!("CARGO_PKG_VERSION"),
         mode,
