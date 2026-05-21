@@ -159,9 +159,6 @@ const fn count_expanded(msrs: &[MsrIndex]) -> usize {
 /// Total number of individual MSR indices in the expanded allowlist.
 const EXPANDED_MSR_COUNT: usize = count_expanded(REGULAR_MSRS) + count_expanded(DEFERRED_MSRS);
 
-/// Maximum number of MSR entries accepted in a serialized snapshot.
-const MAX_MSR_ENTRIES: usize = 4096;
-
 ///
 /// # Description
 ///
@@ -247,65 +244,6 @@ pub struct MsrsState {
 //==================================================================================================
 // Implementations
 //==================================================================================================
-
-impl MsrsState {
-    ///
-    /// # Description
-    ///
-    /// Validates the structural integrity of a serialized MSR snapshot.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, this function returns empty. Otherwise, it returns an error
-    /// describing the structural problem.
-    ///
-    pub(crate) fn validate(&self) -> Result<()> {
-        trace!("MsrsState::validate()");
-
-        let header_size: usize = ::std::mem::size_of::<::kvm_bindings::kvm_msrs>();
-        let entry_size: usize = ::std::mem::size_of::<kvm_msr_entry>();
-
-        if self.bytes.len() < header_size {
-            let reason: String = format!(
-                "snapshot MSR data too short for header: expected at least {}, got {}",
-                header_size,
-                self.bytes.len()
-            );
-            error!("validate(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        let nmsrs: usize =
-            u32::from_ne_bytes([self.bytes[0], self.bytes[1], self.bytes[2], self.bytes[3]])
-                as usize;
-
-        // Cap nmsrs to prevent pathological allocations from malformed snapshots.
-        if nmsrs > MAX_MSR_ENTRIES {
-            let reason: String =
-                format!("snapshot MSR entry count {} exceeds maximum ({})", nmsrs, MAX_MSR_ENTRIES);
-            error!("validate(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        let expected_size: usize = nmsrs
-            .checked_mul(entry_size)
-            .and_then(|v| v.checked_add(header_size))
-            .ok_or_else(|| {
-                anyhow::anyhow!("MSR data size computation overflowed (nmsrs={nmsrs})")
-            })?;
-        if self.bytes.len() < expected_size {
-            let reason: String = format!(
-                "snapshot MSR data size mismatch: expected at least {}, got {}",
-                expected_size,
-                self.bytes.len()
-            );
-            error!("validate(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        Ok(())
-    }
-}
 
 impl Msrs {
     ///
@@ -714,45 +652,6 @@ mod tests {
             EXPANDED_MSR_INDICES.last().copied(),
             Some(MsrIndex::Ia32TscDeadline.as_u32()),
             "Ia32TscDeadline must be the last entry in EXPANDED_MSR_INDICES"
-        );
-    }
-
-    /// Verifies that `validate` accepts a well-formed MSR snapshot.
-    #[test]
-    fn validate_accepts_valid_snapshot() -> AnyResult<()> {
-        let (kvm, _vm, vcpu_fd): (Kvm, VmFd, VcpuFd) = create_test_vcpu()?;
-        let msrs: Msrs = Msrs;
-
-        let state: MsrsState = msrs.save_state(&kvm, &vcpu_fd).expect("save_state failed");
-        state
-            .validate()
-            .expect("validate should accept a valid MSR snapshot");
-
-        Ok(())
-    }
-
-    /// Verifies that `validate` rejects a truncated MSR header.
-    #[test]
-    fn validate_rejects_truncated_header() {
-        let bad_state: MsrsState = MsrsState {
-            bytes: vec![0u8; 4],
-        };
-        assert!(bad_state.validate().is_err(), "validate should reject truncated header");
-    }
-
-    /// Verifies that `validate` rejects a header whose `nmsrs` field implies more entries
-    /// than the byte vector contains.
-    #[test]
-    fn validate_rejects_truncated_entries() {
-        let header_size: usize = std::mem::size_of::<::kvm_bindings::kvm_msrs>();
-        let mut data: Vec<u8> = vec![0u8; header_size];
-        let nmsrs_bytes: [u8; 4] = 100u32.to_ne_bytes();
-        data[..4].copy_from_slice(&nmsrs_bytes);
-
-        let bad_state: MsrsState = MsrsState { bytes: data };
-        assert!(
-            bad_state.validate().is_err(),
-            "validate should reject data with insufficient entries"
         );
     }
 }
