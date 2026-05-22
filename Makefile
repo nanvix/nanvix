@@ -976,6 +976,30 @@ SMOKE_TEST_MAGIC_STRING := hello, world!
 # - Debug mode (RELEASE=no): validates the kernel magic string appears in console output.
 .PHONY: run-smoke-test
 ifeq ($(DEPLOYMENT_MODE),standalone)
+ifeq ($(IS_WINDOWS),yes)
+# On Windows, drive nanvixd.exe directly via a PowerShell helper that mirrors
+# the WHP-probe pattern used in the upstream nanvix CI workflow (Start-Process
+# + Wait-Process + Stop-Process). Standalone mode uses WHP and does not need
+# cloud-hypervisor, so the Linux-only run-nanvixd.sh helper is not used.
+run-smoke-test: image
+ifeq ($(RELEASE),yes)
+	@echo "Running smoke test (Windows, expected exit code=$(SMOKE_TEST_EXPECTED_EXIT_CODE))..."
+	@pwsh -NoProfile -ExecutionPolicy Bypass \
+		-File $(SCRIPTS_DIR)/run-smoke-test.ps1 \
+		-Image $(IMAGE) \
+		-MagicString "$(SMOKE_TEST_MAGIC_STRING)" \
+		-ExpectedExitCode $(SMOKE_TEST_EXPECTED_EXIT_CODE) \
+		-Timeout $(TIMEOUT) \
+		-Release
+else
+	@echo "Running smoke test (Windows, waiting for magic string)..."
+	@pwsh -NoProfile -ExecutionPolicy Bypass \
+		-File $(SCRIPTS_DIR)/run-smoke-test.ps1 \
+		-Image $(IMAGE) \
+		-MagicString "$(SMOKE_TEST_MAGIC_STRING)" \
+		-Timeout $(TIMEOUT)
+endif
+else
 run-smoke-test: image
 ifeq ($(RELEASE),yes)
 	@echo "Running smoke test (expected exit code=$(SMOKE_TEST_EXPECTED_EXIT_CODE))..."
@@ -994,6 +1018,7 @@ else
 	fi
 endif
 	@echo "Smoke test passed."
+endif
 else
 run-smoke-test:
 	@echo "Skipping smoke test (DEPLOYMENT_MODE=$(DEPLOYMENT_MODE), requires standalone)."
