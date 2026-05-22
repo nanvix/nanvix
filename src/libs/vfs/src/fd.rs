@@ -195,12 +195,21 @@ pub struct HostFsHandle {
     remote_fd: i32,
     /// Whether this is a directory.
     is_dir: bool,
+    /// Absolute path used to open this handle (stored only for directories to support dirfd).
+    path: Option<String>,
 }
 
 impl HostFsHandle {
     /// Creates a new HostFs handle with the given remote file descriptor.
-    pub fn new(remote_fd: i32, is_dir: bool) -> Self {
-        Self { remote_fd, is_dir }
+    ///
+    /// The `path` argument is only meaningful for directory handles (used by dirfd resolution).
+    /// Pass `None` for regular file handles to avoid unnecessary allocations.
+    pub fn new(remote_fd: i32, is_dir: bool, path: Option<String>) -> Self {
+        Self {
+            remote_fd,
+            is_dir,
+            path: if is_dir { path } else { None },
+        }
     }
 
     /// Returns the remote file descriptor.
@@ -211,6 +220,11 @@ impl HostFsHandle {
     /// Returns whether this is a directory handle.
     pub fn is_dir(&self) -> bool {
         self.is_dir
+    }
+
+    /// Returns the path used to open this handle (only available for directories).
+    pub fn path(&self) -> Option<&str> {
+        self.path.as_deref()
     }
 }
 
@@ -416,8 +430,12 @@ static FD_TABLE: VfsFdTable = VfsFdTable::new();
 ///
 /// This is called by vfsd after receiving a successful OPEN response from hostfsd.
 /// The returned FD is handed back to the user process.
-pub fn vfs_alloc_hostfs(remote_fd: i32, is_dir: bool) -> Result<c_int, Fat32Error> {
-    let handle: VfsFileHandle = VfsFileHandle::HostFs(HostFsHandle::new(remote_fd, is_dir));
+pub fn vfs_alloc_hostfs(
+    remote_fd: i32,
+    is_dir: bool,
+    path: Option<String>,
+) -> Result<c_int, Fat32Error> {
+    let handle: VfsFileHandle = VfsFileHandle::HostFs(HostFsHandle::new(remote_fd, is_dir, path));
     FD_TABLE.alloc(handle)
 }
 
@@ -457,6 +475,14 @@ pub fn is_vfs_fd(fd: c_int) -> bool {
 ///
 /// Returns `None` if `dirfd` is not a VFS fd and not `AT_FDCWD`, indicating
 /// that VFS cannot handle this request.
+///
+/// # Limitations
+///
+/// For hostfs directory fds, resolution uses the path stored at open time.
+/// If the directory is renamed after being opened, subsequent `*at()` calls
+/// using this dirfd will resolve against the stale path. A future protocol
+/// extension could support `*at()` operations relative to a remote directory
+/// FD on the host side to provide stable POSIX-like dirfd semantics.
 pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Option<String> {
     use ::sysapi::fcntl::atflags::AT_FDCWD;
 
@@ -484,6 +510,7 @@ pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Option<String> {
     let entry: &VfsEntry = slot.as_ref()?;
     let dir_path: &str = match &entry.handle {
         VfsFileHandle::Directory(dh) => &dh.path,
+        VfsFileHandle::HostFs(hh) if hh.is_dir() => hh.path()?,
         _ => return None, // fd is not a directory
     };
 
@@ -990,7 +1017,7 @@ pub fn vfs_getdents(
 ///
 /// # Errors
 ///
-/// Returns [`Fat32Error::InvalidArgument`] if either dirfd is not `AT_FDCWD`.
+/// Returns [`Fat32Error::InvalidArgument`] if a dirfd cannot be resolved.
 /// Returns a [`Fat32Error`] if the paths are on different mounts, the old path does not exist,
 /// or the new path already exists.
 pub fn vfs_renameat(
@@ -999,11 +1026,9 @@ pub fn vfs_renameat(
     newdirfd: c_int,
     newpath: &str,
 ) -> Result<(), Fat32Error> {
-    use ::sysapi::fcntl::atflags::AT_FDCWD;
-    if olddirfd != AT_FDCWD || newdirfd != AT_FDCWD {
-        return Err(Fat32Error::InvalidArgument);
-    }
-    crate::rename(oldpath, newpath)
+    let old_resolved: String = vfs_resolve_path(olddirfd, oldpath).ok_or(Fat32Error::InvalidArgument)?;
+    let new_resolved: String = vfs_resolve_path(newdirfd, newpath).ok_or(Fat32Error::InvalidArgument)?;
+    crate::rename(&old_resolved, &new_resolved)
 }
 
 /// Unlinks a file or removes a directory relative to a directory file descriptor through the VFS.
@@ -1019,21 +1044,16 @@ pub fn vfs_renameat(
 ///
 /// # Errors
 ///
-/// Returns [`Fat32Error::InvalidArgument`] if `dirfd` is not `AT_FDCWD`.
+/// Returns [`Fat32Error::InvalidArgument`] if `dirfd` cannot be resolved.
 /// Returns a [`Fat32Error`] if the path does not exist, the directory is not empty (when removing
 /// a directory), or the path refers to a directory but `AT_REMOVEDIR` is not set.
 pub fn vfs_unlinkat(dirfd: c_int, path: &str, flags: c_int) -> Result<(), Fat32Error> {
-    use ::sysapi::fcntl::atflags::{
-        AT_FDCWD,
-        AT_REMOVEDIR,
-    };
-    if dirfd != AT_FDCWD {
-        return Err(Fat32Error::InvalidArgument);
-    }
+    use ::sysapi::fcntl::atflags::AT_REMOVEDIR;
+    let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
     if flags & AT_REMOVEDIR != 0 {
-        crate::rmdir(path)
+        crate::rmdir(&resolved)
     } else {
-        crate::unlink(path)
+        crate::unlink(&resolved)
     }
 }
 

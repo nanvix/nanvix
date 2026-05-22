@@ -248,6 +248,11 @@ pub enum SystemCallMessageHeader {
     HostFsTruncateResponse,
     HostFsFlushRequest,
     HostFsFlushResponse,
+    HostFsOpenRequestPart,
+    HostFsRenameRequestPart,
+    HostFsUnlinkRequestPart,
+    HostFsMkdirRequestPart,
+    HostFsRmdirRequestPart,
     HostMountRequestPart,
     HostMountResponse,
     HostUmountRequestPart,
@@ -396,6 +401,11 @@ impl TryFrom<u16> for SystemCallMessageHeader {
             x if x == HostFsTruncateResponse as u16 => Ok(HostFsTruncateResponse),
             x if x == HostFsFlushRequest as u16 => Ok(HostFsFlushRequest),
             x if x == HostFsFlushResponse as u16 => Ok(HostFsFlushResponse),
+            x if x == HostFsOpenRequestPart as u16 => Ok(HostFsOpenRequestPart),
+            x if x == HostFsRenameRequestPart as u16 => Ok(HostFsRenameRequestPart),
+            x if x == HostFsUnlinkRequestPart as u16 => Ok(HostFsUnlinkRequestPart),
+            x if x == HostFsMkdirRequestPart as u16 => Ok(HostFsMkdirRequestPart),
+            x if x == HostFsRmdirRequestPart as u16 => Ok(HostFsRmdirRequestPart),
             _ => Err(()),
         }
     }
@@ -432,6 +442,11 @@ impl SystemCallMessageHeader {
                 | Self::HostFsTruncateResponse
                 | Self::HostFsFlushRequest
                 | Self::HostFsFlushResponse
+                | Self::HostFsOpenRequestPart
+                | Self::HostFsRenameRequestPart
+                | Self::HostFsUnlinkRequestPart
+                | Self::HostFsMkdirRequestPart
+                | Self::HostFsRmdirRequestPart
         )
     }
 
@@ -441,16 +456,24 @@ impl SystemCallMessageHeader {
     /// Returns `None` if the header is not a hostfs request.
     pub fn hostfs_response_header(&self) -> Option<Self> {
         match self {
-            Self::HostFsOpenRequest => Some(Self::HostFsOpenResponse),
+            Self::HostFsOpenRequest | Self::HostFsOpenRequestPart => Some(Self::HostFsOpenResponse),
             Self::HostFsCloseRequest => Some(Self::HostFsCloseResponse),
             Self::HostFsReadRequest => Some(Self::HostFsReadResponse),
             Self::HostFsWriteRequest => Some(Self::HostFsWriteResponse),
             Self::HostFsStatRequest => Some(Self::HostFsStatResponse),
             Self::HostFsReadDirRequest => Some(Self::HostFsReadDirResponse),
-            Self::HostFsMkdirRequest => Some(Self::HostFsMkdirResponse),
-            Self::HostFsRmdirRequest => Some(Self::HostFsRmdirResponse),
-            Self::HostFsUnlinkRequest => Some(Self::HostFsUnlinkResponse),
-            Self::HostFsRenameRequest => Some(Self::HostFsRenameResponse),
+            Self::HostFsMkdirRequest | Self::HostFsMkdirRequestPart => {
+                Some(Self::HostFsMkdirResponse)
+            },
+            Self::HostFsRmdirRequest | Self::HostFsRmdirRequestPart => {
+                Some(Self::HostFsRmdirResponse)
+            },
+            Self::HostFsUnlinkRequest | Self::HostFsUnlinkRequestPart => {
+                Some(Self::HostFsUnlinkResponse)
+            },
+            Self::HostFsRenameRequest | Self::HostFsRenameRequestPart => {
+                Some(Self::HostFsRenameResponse)
+            },
             Self::HostFsLseekRequest => Some(Self::HostFsLseekResponse),
             Self::HostFsTruncateRequest => Some(Self::HostFsTruncateResponse),
             Self::HostFsFlushRequest => Some(Self::HostFsFlushResponse),
