@@ -25,9 +25,18 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
-use ::syscall::SystemCallMessageHeader;
+use ::syscall::{
+    message::SystemCallMessagePart,
+    SystemCallMessageHeader,
+};
+
+extern crate alloc;
+
 use core::sync::atomic::{
     AtomicBool,
     Ordering,
@@ -121,11 +130,57 @@ pub fn send_request(payload: &[u8; Message::PAYLOAD_SIZE]) -> bool {
     true
 }
 
+/// Sends a multi-part hostfs IKC request to the host.
+///
+/// The serialized request bytes are split into `SystemCallMessagePart::PAYLOAD_SIZE`
+/// chunks and each chunk is sent as a separate IKC message with the given header.
+/// The hostfsd assembler on the host side collects the parts and reconstructs the
+/// full request.
+fn send_long_request(
+    data: &[u8],
+    header: SystemCallMessageHeader,
+) -> Result<(), ::sys::error::ErrorCode> {
+    let num_parts: u16 = data
+        .len()
+        .div_ceil(SystemCallMessagePart::PAYLOAD_SIZE)
+        .try_into()
+        .map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
+
+    for (part_number, chunk) in data.chunks(SystemCallMessagePart::PAYLOAD_SIZE).enumerate() {
+        let mut payload = [0u8; SystemCallMessagePart::PAYLOAD_SIZE];
+        payload[..chunk.len()].copy_from_slice(chunk);
+
+        let message: Message = SystemCallMessagePart::build_request(
+            ThreadIdentifier::VFSD,
+            header,
+            num_parts,
+            part_number as u16,
+            chunk.len() as u8,
+            payload,
+            ProcessIdentifier::KERNEL,
+            MessageType::Ikc,
+        )
+        .map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
+
+        if let Err(e) = ::sys::kcall::ipc::__kcall_send(&message) {
+            ::syslog::error!(
+                "hostfs: failed to send long IKC request part {}/{} (error={:?})",
+                part_number + 1,
+                num_parts,
+                e
+            );
+            return Err(::sys::error::ErrorCode::IoErr);
+        }
+    }
+
+    Ok(())
+}
+
 //==================================================================================================
 // High-Level Operation Forwarding (non-blocking send)
 //==================================================================================================
 
-/// Sends an OPEN request to hostfsd.
+/// Sends an OPEN request to hostfsd as a multi-part IKC message.
 pub fn send_open_request(
     path: &str,
     flags: i32,
@@ -134,30 +189,17 @@ pub fn send_open_request(
     let relative: &str = strip_mount_prefix(path);
     let path_bytes: &[u8] = relative.as_bytes();
 
-    if path_bytes.len() > MAX_INLINE_PATH_LEN {
-        ::syslog::error!("hostfs: path too long for inline message: {}", path);
-        return Err(::sys::error::ErrorCode::InvalidArgument);
-    }
+    // Serialize: [op_id:4][flags:4][path_len:2][path:N]
+    let path_len: u16 =
+        u16::try_from(path_bytes.len()).map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
+    let total_len: usize = long_msg::OPEN_HEADER_SIZE + path_bytes.len();
+    let mut buf: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(total_len);
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&flags.to_le_bytes());
+    buf.extend_from_slice(&path_len.to_le_bytes());
+    buf.extend_from_slice(path_bytes);
 
-    let mut req_path: [u8; MAX_INLINE_PATH_LEN] = [0u8; MAX_INLINE_PATH_LEN];
-    req_path[..path_bytes.len()].copy_from_slice(path_bytes);
-
-    let req: OpenRequest = OpenRequest {
-        flags,
-        path_len: path_bytes.len() as u16,
-        path: req_path,
-    };
-
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    set_header(&mut payload, SystemCallMessageHeader::HostFsOpenRequest as u16);
-    set_op_id(&mut payload, op_id);
-    req.encode(&mut payload);
-
-    if send_request(&payload) {
-        Ok(())
-    } else {
-        Err(::sys::error::ErrorCode::IoErr)
-    }
+    send_long_request(&buf, SystemCallMessageHeader::HostFsOpenRequestPart)
 }
 
 /// Sends a CLOSE request to hostfsd.
@@ -300,7 +342,7 @@ pub fn send_flush_request(
     }
 }
 
-/// Sends a MKDIR request to hostfsd.
+/// Sends a MKDIR request to hostfsd as a multi-part IKC message.
 pub fn send_mkdir_request(
     path: &str,
     mode: u32,
@@ -309,87 +351,51 @@ pub fn send_mkdir_request(
     let relative: &str = strip_mount_prefix(path);
     let path_bytes: &[u8] = relative.as_bytes();
 
-    if path_bytes.len() > MAX_INLINE_PATH_LEN {
-        return Err(::sys::error::ErrorCode::InvalidArgument);
-    }
+    // Serialize: [op_id:4][mode:4][path_len:2][path:N]
+    let path_len: u16 =
+        u16::try_from(path_bytes.len()).map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
+    let total_len: usize = long_msg::MKDIR_HEADER_SIZE + path_bytes.len();
+    let mut buf: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(total_len);
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&mode.to_le_bytes());
+    buf.extend_from_slice(&path_len.to_le_bytes());
+    buf.extend_from_slice(path_bytes);
 
-    let mut req_path: [u8; MAX_INLINE_PATH_LEN] = [0u8; MAX_INLINE_PATH_LEN];
-    req_path[..path_bytes.len()].copy_from_slice(path_bytes);
-
-    let req: MkdirRequest = MkdirRequest {
-        mode,
-        path_len: path_bytes.len() as u16,
-        path: req_path,
-    };
-
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    set_header(&mut payload, SystemCallMessageHeader::HostFsMkdirRequest as u16);
-    set_op_id(&mut payload, op_id);
-    req.encode(&mut payload);
-
-    if send_request(&payload) {
-        Ok(())
-    } else {
-        Err(::sys::error::ErrorCode::IoErr)
-    }
+    send_long_request(&buf, SystemCallMessageHeader::HostFsMkdirRequestPart)
 }
 
-/// Sends an RMDIR request to hostfsd.
+/// Sends an RMDIR request to hostfsd as a multi-part IKC message.
 pub fn send_rmdir_request(path: &str, op_id: OperationId) -> Result<(), ::sys::error::ErrorCode> {
     let relative: &str = strip_mount_prefix(path);
     let path_bytes: &[u8] = relative.as_bytes();
 
-    if path_bytes.len() > MAX_INLINE_PATH_LEN {
-        return Err(::sys::error::ErrorCode::InvalidArgument);
-    }
+    // Serialize: [op_id:4][path_len:2][path:N]
+    let path_len: u16 =
+        u16::try_from(path_bytes.len()).map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
+    let total_len: usize = long_msg::RMDIR_HEADER_SIZE + path_bytes.len();
+    let mut buf: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(total_len);
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&path_len.to_le_bytes());
+    buf.extend_from_slice(path_bytes);
 
-    let mut req_path: [u8; MAX_INLINE_PATH_LEN] = [0u8; MAX_INLINE_PATH_LEN];
-    req_path[..path_bytes.len()].copy_from_slice(path_bytes);
-
-    let req: RmdirRequest = RmdirRequest {
-        path_len: path_bytes.len() as u16,
-        path: req_path,
-    };
-
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    set_header(&mut payload, SystemCallMessageHeader::HostFsRmdirRequest as u16);
-    set_op_id(&mut payload, op_id);
-    req.encode(&mut payload);
-
-    if send_request(&payload) {
-        Ok(())
-    } else {
-        Err(::sys::error::ErrorCode::IoErr)
-    }
+    send_long_request(&buf, SystemCallMessageHeader::HostFsRmdirRequestPart)
 }
 
-/// Sends an UNLINK request to hostfsd.
+/// Sends an UNLINK request to hostfsd as a multi-part IKC message.
 pub fn send_unlink_request(path: &str, op_id: OperationId) -> Result<(), ::sys::error::ErrorCode> {
     let relative: &str = strip_mount_prefix(path);
     let path_bytes: &[u8] = relative.as_bytes();
 
-    if path_bytes.len() > MAX_INLINE_PATH_LEN {
-        return Err(::sys::error::ErrorCode::InvalidArgument);
-    }
+    // Serialize: [op_id:4][path_len:2][path:N]
+    let path_len: u16 =
+        u16::try_from(path_bytes.len()).map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
+    let total_len: usize = long_msg::UNLINK_HEADER_SIZE + path_bytes.len();
+    let mut buf: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(total_len);
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&path_len.to_le_bytes());
+    buf.extend_from_slice(path_bytes);
 
-    let mut req_path: [u8; MAX_INLINE_PATH_LEN] = [0u8; MAX_INLINE_PATH_LEN];
-    req_path[..path_bytes.len()].copy_from_slice(path_bytes);
-
-    let req: UnlinkRequest = UnlinkRequest {
-        path_len: path_bytes.len() as u16,
-        path: req_path,
-    };
-
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    set_header(&mut payload, SystemCallMessageHeader::HostFsUnlinkRequest as u16);
-    set_op_id(&mut payload, op_id);
-    req.encode(&mut payload);
-
-    if send_request(&payload) {
-        Ok(())
-    } else {
-        Err(::sys::error::ErrorCode::IoErr)
-    }
+    send_long_request(&buf, SystemCallMessageHeader::HostFsUnlinkRequestPart)
 }
 
 /// Sends a STAT request to hostfsd (by remote FD).
@@ -411,7 +417,7 @@ pub fn send_stat_request(
     }
 }
 
-/// Sends a RENAME request to hostfsd.
+/// Sends a RENAME request to hostfsd as a multi-part IKC message.
 pub fn send_rename_request(
     old_path: &str,
     new_path: &str,
@@ -422,28 +428,18 @@ pub fn send_rename_request(
     let old_bytes: &[u8] = old_relative.as_bytes();
     let new_bytes: &[u8] = new_relative.as_bytes();
 
-    if old_bytes.len() + new_bytes.len() > MAX_INLINE_PATH_LEN {
-        return Err(::sys::error::ErrorCode::InvalidArgument);
-    }
+    // Serialize: [op_id:4][old_path_len:2][new_path_len:2][old_path:N][new_path:M]
+    let old_path_len: u16 =
+        u16::try_from(old_bytes.len()).map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
+    let new_path_len: u16 =
+        u16::try_from(new_bytes.len()).map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
+    let total_len: usize = long_msg::RENAME_HEADER_SIZE + old_bytes.len() + new_bytes.len();
+    let mut buf: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(total_len);
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&old_path_len.to_le_bytes());
+    buf.extend_from_slice(&new_path_len.to_le_bytes());
+    buf.extend_from_slice(old_bytes);
+    buf.extend_from_slice(new_bytes);
 
-    let mut paths: [u8; MAX_INLINE_PATH_LEN] = [0u8; MAX_INLINE_PATH_LEN];
-    paths[..old_bytes.len()].copy_from_slice(old_bytes);
-    paths[old_bytes.len()..old_bytes.len() + new_bytes.len()].copy_from_slice(new_bytes);
-
-    let req: RenameRequest = RenameRequest {
-        old_path_len: old_bytes.len() as u16,
-        new_path_len: new_bytes.len() as u16,
-        paths,
-    };
-
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    set_header(&mut payload, SystemCallMessageHeader::HostFsRenameRequest as u16);
-    set_op_id(&mut payload, op_id);
-    req.encode(&mut payload);
-
-    if send_request(&payload) {
-        Ok(())
-    } else {
-        Err(::sys::error::ErrorCode::IoErr)
-    }
+    send_long_request(&buf, SystemCallMessageHeader::HostFsRenameRequestPart)
 }

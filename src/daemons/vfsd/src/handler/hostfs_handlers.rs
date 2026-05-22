@@ -457,6 +457,7 @@ pub(crate) fn handle_openat_with_hostfs(
             return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
         }
         let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
+        let open_path: alloc::string::String = alloc::string::String::from(final_path);
         match hostfs::send_open_request(final_path, request.flags, op_id) {
             Ok(()) => {
                 if pending
@@ -465,7 +466,7 @@ pub(crate) fn handle_openat_with_hostfs(
                         PendingOp {
                             source_tid: source,
                             source_pid: None,
-                            kind: PendingOpKind::Open,
+                            kind: PendingOpKind::Open { path: open_path },
                         },
                     )
                     .is_err()
@@ -486,18 +487,18 @@ pub(crate) fn handle_renameat_with_hostfs(
     request: RenameAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let old_resolved: Option<alloc::string::String> =
-        ::vfs::fd::vfs_resolve_path(request.olddirfd, &request.oldpath);
-    let new_resolved: Option<alloc::string::String> =
-        ::vfs::fd::vfs_resolve_path(request.newdirfd, &request.newpath);
-    let old_final: &str = match &old_resolved {
-        Some(p) => p.as_str(),
-        None => &request.oldpath,
-    };
-    let new_final: &str = match &new_resolved {
-        Some(p) => p.as_str(),
-        None => &request.newpath,
-    };
+    let old_resolved: alloc::string::String =
+        match ::vfs::fd::vfs_resolve_path(request.olddirfd, &request.oldpath) {
+            Some(p) => p,
+            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
+        };
+    let new_resolved: alloc::string::String =
+        match ::vfs::fd::vfs_resolve_path(request.newdirfd, &request.newpath) {
+            Some(p) => p,
+            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
+        };
+    let old_final: &str = &old_resolved;
+    let new_final: &str = &new_resolved;
 
     let old_is_hostfs: bool = hostfs::is_hostfs_path(old_final);
     let new_is_hostfs: bool = hostfs::is_hostfs_path(new_final);
@@ -541,12 +542,12 @@ pub(crate) fn handle_unlinkat_with_hostfs(
     request: UnlinkAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let resolved: Option<alloc::string::String> =
-        ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname);
-    let final_path: &str = match &resolved {
-        Some(p) => p.as_str(),
-        None => &request.pathname,
-    };
+    let resolved: alloc::string::String =
+        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname) {
+            Some(p) => p,
+            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
+        };
+    let final_path: &str = &resolved;
 
     if hostfs::is_hostfs_path(final_path) {
         if !pending.has_capacity() {

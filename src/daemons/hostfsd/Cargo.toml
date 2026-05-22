@@ -16,7 +16,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-hostfs-api = { workspace = true }
+hostfs-api = { workspace = true, features = ["std"] }
 log = { workspace = true }
 sys = { workspace = true, features = ["std"] }
 sysapi = { workspace = true, features = ["std"] }
