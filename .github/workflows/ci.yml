@@ -85,6 +85,7 @@ jobs:
           github-token: ${{ secrets.RUNNER_ADMIN_TOKEN || secrets.GITHUB_TOKEN }}
           os: "Linux"
           runner-name-prefix: "prometheus"
+          runner-group: "Benchmark"
 
       - name: "Check Windows Runners"
         id: check-windows
@@ -93,6 +94,118 @@ jobs:
           github-token: ${{ secrets.RUNNER_ADMIN_TOKEN || secrets.GITHUB_TOKEN }}
           os: "Windows"
           runner-name-prefix: "WIN"
+          runner-group: "Benchmark"
+
+  # ==========================================================================================
+  # Benchmark Eligibility Gates
+  # ==========================================================================================
+  #
+  # Aggregate every condition that determines whether a benchmark pipeline
+  # (build → finalize → release) should run for a given platform into a single
+  # boolean output (`should-run`). Downstream jobs depend on the relevant gate
+  # and consume `needs.<gate>.outputs.should-run == 'true'` instead of
+  # re-evaluating the same conditions in each `if:` expression. This guarantees
+  # that benchmark, benchmark-finalize, and release-archive jobs are skipped
+  # consistently when no self-hosted runners are available.
+
+  benchmark-gate-linux:
+    name: "Benchmark Gate (Linux)"
+    needs: [ precheck, check-runners ]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      should-run: ${{ steps.gate.outputs.should-run }}
+    steps:
+      - id: gate
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          RUNNERS_AVAILABLE: ${{ needs.check-runners.outputs.benchmark-linux }}
+          UP_TO_DATE: ${{ needs.precheck.outputs.up_to_date }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+          HEAD_COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          should_run=false
+          if [[ "${REPO}" != "nanvix/nanvix" ]]; then
+            echo "Skip: repository is not nanvix/nanvix"
+          elif [[ "${RUNNERS_AVAILABLE}" != "true" ]]; then
+            # Fail closed: treat empty / unknown values (e.g. check-runners
+            # was skipped or failed) as unavailable to prevent benchmark jobs
+            # from queuing indefinitely.
+            echo "Skip: Linux self-hosted benchmark runners unavailable (status='${RUNNERS_AVAILABLE}')"
+          elif [[ "${EVENT_NAME}" == "merge_group" || "${EVENT_NAME}" == "schedule" ]]; then
+            should_run=true
+          elif [[ "${UP_TO_DATE}" == "true" ]]; then
+            if [[ "${EVENT_NAME}" == "push" && "${HEAD_COMMIT_MSG}" == "Merge "* ]]; then
+              echo "Skip: push event on a merge commit"
+            elif [[ "${EVENT_NAME}" == "pull_request" && "${IS_DRAFT}" == "true" ]]; then
+              echo "Skip: draft pull request"
+            else
+              should_run=true
+            fi
+          else
+            echo "Skip: branch is not up to date with dev"
+          fi
+          echo "Decision: should-run=${should_run}"
+          echo "should-run=${should_run}" >> "${GITHUB_OUTPUT}"
+
+  benchmark-gate-windows:
+    name: "Benchmark Gate (Windows)"
+    needs: [ precheck, check-runners ]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      should-run: ${{ steps.gate.outputs.should-run }}
+    steps:
+      - id: gate
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          RUNNERS_AVAILABLE: ${{ needs.check-runners.outputs.benchmark-windows }}
+          UP_TO_DATE: ${{ needs.precheck.outputs.up_to_date }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+          HEAD_COMMIT_MSG: ${{ github.event.head_commit.message }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          set -euo pipefail
+          should_run=false
+          if [[ "${REPO}" != "nanvix/nanvix" ]]; then
+            echo "Skip: repository is not nanvix/nanvix"
+          elif [[ "${RUNNERS_AVAILABLE}" != "true" ]]; then
+            # Fail closed: treat empty / unknown values (e.g. check-runners
+            # was skipped or failed) as unavailable to prevent benchmark jobs
+            # from queuing indefinitely.
+            echo "Skip: Windows self-hosted benchmark runners unavailable (status='${RUNNERS_AVAILABLE}')"
+          elif [[ "${EVENT_NAME}" == "merge_group" || "${EVENT_NAME}" == "schedule" ]]; then
+            should_run=true
+          elif [[ "${UP_TO_DATE}" == "true" ]]; then
+            if [[ "${EVENT_NAME}" == "push" && "${HEAD_COMMIT_MSG}" == "Merge "* ]]; then
+              echo "Skip: push event on a merge commit"
+            elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
+              if [[ "${IS_DRAFT}" == "true" ]]; then
+                echo "Skip: draft pull request"
+              elif [[ "${PR_HEAD_REPO}" != "${REPO}" ]]; then
+                # Fork PRs are excluded from Windows benchmarks to prevent
+                # untrusted code from running on self-hosted runners.
+                echo "Skip: pull request from a fork"
+              else
+                should_run=true
+              fi
+            else
+              should_run=true
+            fi
+          else
+            echo "Skip: branch is not up to date with dev"
+          fi
+          echo "Decision: should-run=${should_run}"
+          echo "should-run=${should_run}" >> "${GITHUB_OUTPUT}"
 
   # ==========================================================================================
   # Stage 1: Source Checks (GitHub-Hosted Runners)
@@ -799,7 +912,7 @@ jobs:
   # A finalize job aggregates results after the benchmark completes.
   benchmark:
     name: "Benchmark (${{ matrix.machine-type }})"
-    needs: [ precheck, check-runners ]
+    needs: [ benchmark-gate-linux ]
     timeout-minutes: 240
     strategy:
       fail-fast: false
@@ -819,23 +932,11 @@ jobs:
     permissions:
       contents: read
 
-    # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
-    # Skips gracefully when check-runners reports no Linux self-hosted runners.
-    if: |
-      !cancelled() &&
-      needs.check-runners.outputs.benchmark-linux != 'false' &&
-      github.repository == 'nanvix/nanvix' && (
-        github.event_name == 'merge_group' || github.event_name == 'schedule' || (
-          needs.precheck.outputs.up_to_date == 'true' && (
-            github.event_name != 'push' ||
-            github.event.head_commit == null ||
-            !startsWith(github.event.head_commit.message, 'Merge ')
-          ) && (
-            github.event_name != 'pull_request' ||
-            !github.event.pull_request.draft
-          )
-        )
-      )
+    # Eligibility (repo, event, precheck, draft, runner availability) is
+    # consolidated in the benchmark-gate-linux job. Skip gracefully when the
+    # gate reports the benchmark pipeline should not run (e.g. no Linux
+    # self-hosted runners are online).
+    if: ${{ needs.benchmark-gate-linux.outputs.should-run == 'true' }}
 
     steps:
       - name: "Pre-Checkout Cleanup"
@@ -960,7 +1061,7 @@ jobs:
   # exclusion steps are omitted.
   windows-benchmark:
     name: "Windows Benchmark (${{ matrix.machine-type }})"
-    needs: [ precheck, check-runners ]
+    needs: [ benchmark-gate-windows ]
     timeout-minutes: 240
     strategy:
       fail-fast: false
@@ -976,28 +1077,11 @@ jobs:
     permissions:
       contents: read
 
-    # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
-    # Skips gracefully when check-runners reports no Windows self-hosted runners.
-    # Fork PRs are excluded to prevent untrusted code from running on
-    # self-hosted runners.
-    if: |
-      !cancelled() &&
-      needs.check-runners.outputs.benchmark-windows != 'false' &&
-      github.repository == 'nanvix/nanvix' && (
-        github.event_name == 'merge_group' || github.event_name == 'schedule' || (
-          needs.precheck.outputs.up_to_date == 'true' && (
-            github.event_name != 'push' ||
-            github.event.head_commit == null ||
-            !startsWith(github.event.head_commit.message, 'Merge ')
-          ) && (
-            github.event_name != 'pull_request' ||
-            (
-              !github.event.pull_request.draft &&
-              github.event.pull_request.head.repo.full_name == github.repository
-            )
-          )
-        )
-      )
+    # Eligibility (repo, event, precheck, draft, fork PR, runner availability)
+    # is consolidated in the benchmark-gate-windows job. Skip gracefully when
+    # the gate reports the benchmark pipeline should not run (e.g. no Windows
+    # self-hosted runners are online).
+    if: ${{ needs.benchmark-gate-windows.outputs.should-run == 'true' }}
 
     steps:
       - uses: actions/checkout@v6
@@ -1144,10 +1228,13 @@ jobs:
   # baselines on dev.
   benchmark-finalize:
     name: "Benchmark Finalize"
-    needs: [ benchmark ]
-    # NOTE: needs.benchmark.result is the aggregate result across all matrix
-    # legs. It is 'success' only when every leg succeeds.
-    if: ${{ !cancelled() && needs.benchmark.result == 'success' }}
+    needs: [ benchmark-gate-linux, benchmark ]
+    # Run only when the Linux benchmark gate enabled the pipeline AND every
+    # benchmark matrix leg succeeded. If the gate skipped the pipeline (e.g.
+    # no runners online), finalize is skipped as well.
+    if: ${{ !cancelled() &&
+      needs.benchmark-gate-linux.outputs.should-run == 'true' &&
+      needs.benchmark.result == 'success' }}
     timeout-minutes: 30
     runs-on: ubuntu-24.04
     permissions:
@@ -1228,14 +1315,17 @@ jobs:
   # from the Linux and GitHub-hosted baselines.
   windows-benchmark-finalize:
     name: "Windows Benchmark Finalize"
-    needs: [ windows-benchmark, benchmark-finalize ]
-    # NOTE: needs.windows-benchmark.result is the aggregate result across all
-    # matrix legs. It is 'success' only when every leg succeeds.
+    needs: [ benchmark-gate-windows, windows-benchmark, benchmark-finalize ]
+    # Run only when the Windows benchmark gate enabled the pipeline AND every
+    # windows-benchmark matrix leg succeeded. If the gate skipped the pipeline
+    # (e.g. no runners online), finalize is skipped as well.
     # Depends on benchmark-finalize to serialize pushes to dev and avoid
     # rebase conflicts on append-only CSV files within the same pipeline run.
     # Uses always() so this job is not skipped when benchmark-finalize is
     # skipped or fails (e.g., a Linux benchmark leg fails).
-    if: ${{ always() && !cancelled() && needs.windows-benchmark.result == 'success' }}
+    if: ${{ always() && !cancelled() &&
+      needs.benchmark-gate-windows.outputs.should-run == 'true' &&
+      needs.windows-benchmark.result == 'success' }}
     timeout-minutes: 30
     runs-on: ubuntu-24.04
     permissions:
@@ -1318,10 +1408,16 @@ jobs:
   release-archive:
     name: "Release Archive (${{ matrix.target-arch }}, ${{ matrix.machine-type }},
       ${{ matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
-    needs: [ ci-test, benchmark-finalize, windows-benchmark-finalize, check-runners ]
+    needs:
+      - ci-test
+      - benchmark-gate-linux
+      - benchmark-gate-windows
+      - benchmark-finalize
+      - windows-benchmark-finalize
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     # Benchmark finalize may be skipped when self-hosted runners are offline;
-    # release proceeds if check-runners confirmed no runners were available.
+    # release proceeds if the corresponding gate reported the benchmark
+    # pipeline should not run.
     if: |
       !cancelled() &&
       github.repository == 'nanvix/nanvix' &&
@@ -1329,11 +1425,9 @@ jobs:
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       needs.ci-test.result == 'success' &&
       (needs.benchmark-finalize.result == 'success' ||
-        (needs.benchmark-finalize.result == 'skipped' &&
-          needs.check-runners.outputs.benchmark-linux == 'false')) &&
+        needs.benchmark-gate-linux.outputs.should-run != 'true') &&
       (needs.windows-benchmark-finalize.result == 'success' ||
-        (needs.windows-benchmark-finalize.result == 'skipped' &&
-          needs.check-runners.outputs.benchmark-windows == 'false'))
+        needs.benchmark-gate-windows.outputs.should-run != 'true')
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -1379,16 +1473,16 @@ jobs:
     name: "Windows Release Archive (${{ matrix.target-arch }}, ${{
       matrix.machine-type }}, ${{ matrix.memory-size }}mb)"
     needs:
-      [
-        windows-integration-test,
-        ci-test,
-        benchmark-finalize,
-        windows-benchmark-finalize,
-        check-runners,
-      ]
+      - windows-integration-test
+      - ci-test
+      - benchmark-gate-linux
+      - benchmark-gate-windows
+      - benchmark-finalize
+      - windows-benchmark-finalize
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     # Benchmark finalize may be skipped when self-hosted runners are offline;
-    # release proceeds if check-runners confirmed no runners were available.
+    # release proceeds if the corresponding gate reported the benchmark
+    # pipeline should not run.
     if: |
       !cancelled() &&
       github.repository == 'nanvix/nanvix' &&
@@ -1396,11 +1490,9 @@ jobs:
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       needs.ci-test.result == 'success' &&
       (needs.benchmark-finalize.result == 'success' ||
-        (needs.benchmark-finalize.result == 'skipped' &&
-          needs.check-runners.outputs.benchmark-linux == 'false')) &&
+        needs.benchmark-gate-linux.outputs.should-run != 'true') &&
       (needs.windows-benchmark-finalize.result == 'success' ||
-        (needs.windows-benchmark-finalize.result == 'skipped' &&
-          needs.check-runners.outputs.benchmark-windows == 'false')) &&
+        needs.benchmark-gate-windows.outputs.should-run != 'true') &&
       needs.windows-integration-test.result == 'success'
     timeout-minutes: 60
     strategy:
@@ -1481,6 +1573,8 @@ jobs:
         verify,
         ci-build,
         ci-test,
+        benchmark-gate-linux,
+        benchmark-gate-windows,
         benchmark,
         benchmark-finalize,
         windows-benchmark,
