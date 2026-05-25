@@ -100,6 +100,14 @@ export SYSROOT_LINK  := $(ROOT_DIR)/sysroot
 export TARGETS_DIR   := $(BUILD_DIR)/targets
 export OBJECTS_DIR   := $(ROOT_DIR)/target
 
+# Python interpreter used by helper scripts invoked from the Makefile.
+# Override by passing PYTHON=... on the make command line.
+ifeq ($(OS),Windows_NT)
+export PYTHON ?= python
+else
+export PYTHON ?= python3
+endif
+
 # Targets that do not produce reusable compilation artifacts.
 # Disable sccache unconditionally for these targets to avoid intermittent
 # sccache server crashes inside Docker BuildKit containers (see #1395).
@@ -1021,26 +1029,26 @@ SMOKE_TEST_MAGIC_STRING := hello, world!
 # Only applicable in standalone mode (the smoke image bundles guest daemons).
 # - Release mode (RELEASE=yes): validates VM exits with the expected status code.
 # - Debug mode (RELEASE=no): validates the kernel magic string appears in console output.
+#
+# Driven by a single cross-platform Python helper (scripts/run-smoke-test.py)
+# that auto-detects the host OS: on Linux it launches nanvixd against
+# cloud-hypervisor; on Windows it launches nanvixd.exe directly under WHP.
 .PHONY: run-smoke-test
 ifeq ($(DEPLOYMENT_MODE),standalone)
+SMOKE_TEST_CMD := $(PYTHON) $(SCRIPTS_DIR)/run-smoke-test.py \
+	$(MACHINE) $(IMAGE) \
+	--timeout $(TIMEOUT) \
+	--magic-string "$(SMOKE_TEST_MAGIC_STRING)" \
+	--expected-exit-code $(SMOKE_TEST_EXPECTED_EXIT_CODE)
+
 run-smoke-test: image
 ifeq ($(RELEASE),yes)
 	@echo "Running smoke test (expected exit code=$(SMOKE_TEST_EXPECTED_EXIT_CODE))..."
-	@ACTUAL=0; \
-	bash $(SCRIPTS_DIR)/run-nanvixd.sh $(MACHINE) $(IMAGE) $(TIMEOUT) || ACTUAL=$$?; \
-	if [ "$$ACTUAL" -ne "$(SMOKE_TEST_EXPECTED_EXIT_CODE)" ]; then \
-		echo "ERROR: Smoke test failed: expected exit code $(SMOKE_TEST_EXPECTED_EXIT_CODE), got $$ACTUAL."; \
-		exit 1; \
-	fi
+	@$(SMOKE_TEST_CMD) --release
 else
 	@echo "Running smoke test (waiting for magic string)..."
-	@if ! bash $(SCRIPTS_DIR)/run-nanvixd.sh $(MACHINE) $(IMAGE) $(TIMEOUT) \
-			--wait-for-string "$(SMOKE_TEST_MAGIC_STRING)"; then \
-		echo "ERROR: Smoke test failed: magic string '$(SMOKE_TEST_MAGIC_STRING)' not found within $(TIMEOUT)s."; \
-		exit 1; \
-	fi
+	@$(SMOKE_TEST_CMD)
 endif
-	@echo "Smoke test passed."
 else
 run-smoke-test:
 	@echo "Skipping smoke test (DEPLOYMENT_MODE=$(DEPLOYMENT_MODE), requires standalone)."
