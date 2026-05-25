@@ -57,6 +57,7 @@ use ::sys::{
 use ::syscall::{
     SystemCallMessage,
     SystemCallMessageHeader,
+    message::SystemCallMessagePart,
     unistd::message::{
         ReadRequest,
         ReadResponse,
@@ -356,6 +357,17 @@ async fn standalone_io_handler(
     let mut input_buffer: VecDeque<u8> = VecDeque::new();
     let mut input_closed: bool = false;
 
+    // Tracks the logical op_id of the long-request multi-part stream currently
+    // being forwarded to the hostfsd worker. Captured on part 0 and cleared once
+    // the last part is forwarded (or as soon as an enqueue failure causes us to
+    // emit a synthetic error response). Parts of distinct long requests do not
+    // interleave on the IKC channel (vfsd sends them sequentially), so a single
+    // slot is sufficient. Used only on the worker-channel-full recovery path:
+    // if part 0 enqueues successfully but a later part fails, we can still echo
+    // the logical op_id back so vfsd's pending-op table is drained instead of
+    // leaving the originating syscall stuck.
+    let mut worker_long_op_id: Option<::hostfs_api::OperationId> = None;
+
     let network_daemon: Option<Arc<NetworkDaemon>> = if networking_mode.is_enabled() {
         match NetworkDaemon::new() {
             Ok(nd) => Some(Arc::new(nd)),
@@ -516,11 +528,33 @@ async fn standalone_io_handler(
                         .await;
                     },
                     header if header.is_hostfs() => {
+                        // For multi-part long requests, vfsd allocates a single pending
+                        // entry keyed on the logical op_id but emits N SystemCallMessagePart
+                        // frames. If we naively responded once per fragment using the op_id
+                        // field read from Message.payload[2..6] (which for a part frame is
+                        // total_parts | (part_number << 16)), vfsd would never match any of
+                        // those responses and the originating syscall would block forever.
+                        //
+                        // Resolve the logical op_id and decide whether this frame should
+                        // produce an error response on the no-worker / channel-full paths.
+                        // Long-request parts: only respond once (on part 0) using the
+                        // logical op_id embedded in the assembled wire payload.
+                        let error_target: Option<::hostfs_api::OperationId> =
+                            hostfs_error_target(header, &msg.payload, &syscall_msg.payload);
+
+                        // Capture part metadata when this is a request-part header so the
+                        // worker path can track multi-part progress.
+                        let part_info: Option<(u16, u16)> =
+                            hostfs_part_info(header, &syscall_msg.payload);
+
+                        // On part 0 of a long request, remember the logical op_id so we
+                        // can still emit a matching error response if a later part of the
+                        // same stream fails to enqueue into the worker channel.
+                        if let Some((0, _)) = part_info {
+                            worker_long_op_id = error_target;
+                        }
+
                         if let Some(ref tx) = hostfs_tx {
-                            // Capture the op_id from the request payload BEFORE try_send
-                            // consumes the message, so the error path can echo it back.
-                            let request_op_id: ::hostfs_api::OperationId =
-                                ::hostfs_api::get_op_id(&msg.payload);
                             if tx
                                 .try_send((msg, vm_stdin_tx.clone(), counters.clone()))
                                 .is_err()
@@ -528,21 +562,53 @@ async fn standalone_io_handler(
                                 error!(
                                     "standalone io_handler: hostfs worker channel full or closed"
                                 );
-                                send_hostfs_error(header, request_op_id, &vm_stdin_tx, &counters)
-                                    .await;
+                                // For single-message requests and part 0 of long requests,
+                                // `error_target` carries the logical op_id. For non-first
+                                // parts of a long request whose part 0 already entered the
+                                // worker, fall back to the cached `worker_long_op_id` so
+                                // vfsd's pending entry is still drained.
+                                let effective_target: Option<::hostfs_api::OperationId> =
+                                    error_target.or(worker_long_op_id);
+                                if let Some(op_id) = effective_target {
+                                    send_hostfs_error(header, op_id, &vm_stdin_tx, &counters).await;
+                                }
+                                // Drop tracking after emitting the error so subsequent
+                                // parts of this stranded stream are silently dropped and
+                                // do not interfere with the next long request.
+                                worker_long_op_id = None;
+                            } else if let Some((part_number, total_parts)) = part_info {
+                                // Stream forwarded cleanly: clear tracking once the last
+                                // part has been handed off to the worker. Use checked
+                                // arithmetic because `part_number` and `total_parts` come
+                                // from a guest-controlled frame: an attacker (or a
+                                // malformed frame) could set `part_number == u16::MAX`,
+                                // which would panic on overflow in debug builds with a
+                                // plain `+ 1`. A frame with `total_parts == 0` or with
+                                // `part_number + 1` overflowing simply fails the equality
+                                // and leaves tracking in place; the next valid part 0
+                                // overwrites it, and any genuinely stranded entry is
+                                // cleared by the channel-full error path above.
+                                if part_number.checked_add(1) == Some(total_parts) {
+                                    worker_long_op_id = None;
+                                }
                             }
                             continue;
                         }
                         // No mount directory configured: send an error response so
                         // vfsd can drain its pending queue and report the error to
                         // the caller instead of leaving them blocked.
-                        warn!(
-                            "standalone io_handler: hostfs message received but no mount \
-                             configured; sending error response"
-                        );
-                        let request_op_id: ::hostfs_api::OperationId =
-                            ::hostfs_api::get_op_id(&msg.payload);
-                        send_hostfs_error(header, request_op_id, &vm_stdin_tx, &counters).await;
+                        if let Some(op_id) = error_target {
+                            warn!(
+                                "standalone io_handler: hostfs message received but no mount \
+                                 configured; sending error response"
+                            );
+                            send_hostfs_error(header, op_id, &vm_stdin_tx, &counters).await;
+                        } else {
+                            trace!(
+                                "standalone io_handler: dropping non-first hostfs request part \
+                                 (no mount configured); error response already emitted on part 0"
+                            );
+                        }
                     },
                     header => {
                         let destination = { msg.destination };
@@ -593,6 +659,104 @@ async fn standalone_io_handler(
     }
 
     debug!("standalone: I/O handler exiting (VM stdout channel closed)");
+}
+
+///
+/// # Description
+///
+/// Determines whether a hostfs request should produce an error response on the
+/// no-host-worker / channel-full paths, and returns the logical [`OperationId`]
+/// to echo back.
+///
+/// For single-message hostfs requests, the op_id is encoded at bytes `2..6` of
+/// the `Message` payload (which is `syscall_msg.payload[0..4]`) and a response
+/// is always emitted.
+///
+/// For multi-part long requests (`HostFs*RequestPart`), vfsd emits one
+/// `SystemCallMessagePart` frame per chunk but allocates only a single pending
+/// entry keyed on the logical op_id of the assembled request. Responding once
+/// per fragment using the per-part header bytes as the op_id would orphan every
+/// response (vfsd's recv loop matches none of them) and hang the caller. To
+/// avoid this, only part 0 produces an error response, carrying the logical
+/// op_id read from the first 4 bytes of the assembled long-message wire payload
+/// (which live at the start of part 0's chunk). Subsequent parts are dropped.
+///
+/// Returns `Some(op_id)` if an error response should be emitted, or `None` if
+/// the frame should be silently dropped (non-first long-request part).
+///
+fn hostfs_error_target(
+    header: SystemCallMessageHeader,
+    message_payload: &[u8; Message::PAYLOAD_SIZE],
+    syscall_payload: &[u8; SystemCallMessage::PAYLOAD_SIZE],
+) -> Option<::hostfs_api::OperationId> {
+    let is_request_part: bool = matches!(
+        header,
+        SystemCallMessageHeader::HostFsOpenRequestPart
+            | SystemCallMessageHeader::HostFsRenameRequestPart
+            | SystemCallMessageHeader::HostFsUnlinkRequestPart
+            | SystemCallMessageHeader::HostFsMkdirRequestPart
+            | SystemCallMessageHeader::HostFsRmdirRequestPart
+    );
+
+    if is_request_part {
+        let part: SystemCallMessagePart = SystemCallMessagePart::from_bytes(*syscall_payload);
+        // Only the first fragment of a long request produces an error response.
+        // The logical op_id of the assembled wire payload sits in the first 4
+        // bytes of part 0's chunk (all long-message wire formats start with
+        // `[op_id:4]`, little-endian).
+        if { part.part_number } != 0 {
+            return None;
+        }
+        // Defensively validate the declared payload size before reading the
+        // logical op_id. `part.payload` is a fixed-size array so indexing
+        // `[0..4]` cannot panic, but a malformed frame with `payload_size < 4`
+        // would expose trailing zero bytes (or stale buffer contents) as if
+        // they were the op_id. In that case fall back to `OperationId::INVALID`
+        // so vfsd's `PendingQueue::remove` simply drops the response instead of
+        // matching the wrong pending entry.
+        let declared: usize = { part.payload_size } as usize;
+        if declared < ::core::mem::size_of::<::hostfs_api::OperationId>() {
+            warn!(
+                "standalone io_handler: malformed hostfs request part (payload_size={declared} < \
+                 4); using OperationId::INVALID for error response"
+            );
+            return Some(::hostfs_api::OperationId::INVALID);
+        }
+        let chunk: &[u8] = &part.payload;
+        Some(::hostfs_api::OperationId::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+    } else {
+        // Single-message hostfs request: the op_id is at Message.payload[2..6].
+        Some(::hostfs_api::get_op_id(message_payload))
+    }
+}
+
+///
+/// # Description
+///
+/// Returns `(part_number, total_parts)` if `header` is a long-request part frame,
+/// or `None` otherwise.
+///
+/// Used by the worker-channel-full recovery path to track multi-part progress so
+/// that a later-part enqueue failure can still emit a matching error response
+/// using the op_id cached from part 0.
+///
+fn hostfs_part_info(
+    header: SystemCallMessageHeader,
+    syscall_payload: &[u8; SystemCallMessage::PAYLOAD_SIZE],
+) -> Option<(u16, u16)> {
+    let is_request_part: bool = matches!(
+        header,
+        SystemCallMessageHeader::HostFsOpenRequestPart
+            | SystemCallMessageHeader::HostFsRenameRequestPart
+            | SystemCallMessageHeader::HostFsUnlinkRequestPart
+            | SystemCallMessageHeader::HostFsMkdirRequestPart
+            | SystemCallMessageHeader::HostFsRmdirRequestPart
+    );
+    if !is_request_part {
+        return None;
+    }
+    let part: SystemCallMessagePart = SystemCallMessagePart::from_bytes(*syscall_payload);
+    Some(({ part.part_number }, { part.total_parts }))
 }
 
 ///
