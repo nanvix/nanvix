@@ -460,20 +460,26 @@ def validate_git_context() -> Path:
             text=True,
             check=True,
         )
-        repo_root = Path(result.stdout.strip()).resolve()
+        git_root = Path(result.stdout.strip())
     except subprocess.CalledProcessError:
         die("Failed to determine repository root.")
 
-    cwd = Path.cwd().resolve()
+    cwd = Path.cwd()
     try:
-        same_location = cwd.samefile(repo_root)
+        same_location = cwd.samefile(git_root)
     except (OSError, NotImplementedError):
-        same_location = str(cwd).casefold() == str(repo_root).casefold()
+        same_location = (
+            str(cwd.resolve()).casefold() == str(git_root.resolve()).casefold()
+        )
 
     if not same_location:
-        die(f"Must run from repo root ({repo_root}), not {cwd}.")
+        die(f"Must run from repo root ({git_root.resolve()}), not {cwd.resolve()}.")
 
-    return repo_root
+    # Return the caller's cwd (not the canonicalized git path) so that
+    # substituted drives on Windows (e.g. `subst N: C:\path`) are preserved.
+    # Resolving would expand the alias and cause Make's CURDIR to become a
+    # long path, which can blow past cmd.exe's 8191-char command-line limit.
+    return cwd
 
 
 def check_filesystem_support(directory: str) -> bool:
