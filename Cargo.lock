@@ -3573,9 +3573,9 @@ checksum = "cab9266bfb5cf45a080f425c560b0e0be2bf81194f0e80258990c49c1829d8b9"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-05-10-0145"
+version = "0.0.0-2026-05-24-0157"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ef946d78c84f284991d59035ca252f29cd8071526003e794be80f0beee18f2d"
+checksum = "d9b5028291963009f075fd4fbfa883d176ad108afbeef54e950bc74cef4e1f9e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3587,9 +3587,9 @@ dependencies = [
 
 [[package]]
 name = "verus_prettyplease"
-version = "0.0.0-2026-05-10-0145"
+version = "0.0.0-2026-05-24-0157"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a227e7eaa03f51ac4d659641192bc1b9fe4eda0a509a6734752cf72f5d7daaf"
+checksum = "ed6977d81af3e0f2454f24833f2e82f50a0650254190584399d5476587083e51"
 dependencies = [
  "proc-macro2",
  "verus_syn",
@@ -3597,9 +3597,9 @@ dependencies = [
 
 [[package]]
 name = "verus_state_machines_macros"
-version = "0.0.0-2026-05-10-0145"
+version = "0.0.0-2026-05-24-0157"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ff46046bffd2d55757503feef0b72a74a60ead2b58aa211861267485b955136"
+checksum = "23036d788cacd25c4279130ef422124912bc199f351ef5f695d81009622a5458"
 dependencies = [
  "indexmap 1.9.3",
  "proc-macro2",
@@ -3609,9 +3609,9 @@ dependencies = [
 
 [[package]]
 name = "verus_syn"
-version = "0.0.0-2026-05-10-0145"
+version = "0.0.0-2026-05-24-0157"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a82174e474e1f06418dd304f714785ae1c3e4d2fbff415a0d0c05a02cd995819"
+checksum = "0adef4208f95cd6cd0f27404afd9ffbbe3e09677b619a52d3f505ca43fa8f0a2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3712,9 +3712,9 @@ dependencies = [
 
 [[package]]
 name = "vstd"
-version = "0.0.0-2026-05-17-0151"
+version = "0.0.0-2026-05-24-0157"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "584ee1a64e0dea893387007e9b78423a830edace47e6bfe1c7ebe9893ffc3a40"
+checksum = "eef08139d238dfe8c1081513849f76136280c5699af0f88ad18dd95b3f72cfe0"
 dependencies = [
  "verus_builtin",
  "verus_builtin_macros",
