@@ -73,6 +73,7 @@ members = [
         "src/tests/memory-rust",
         "src/tests/misc-rust",
         "src/tests/mount-test",
+        "src/tests/mount-multipart-test",
         "src/tests/network-rust",
         "src/tests/stress-rust",
         "src/tests/test-kernel",
