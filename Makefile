@@ -283,12 +283,10 @@ ifeq ($(IS_WINDOWS),yes)
 export CP_CMD := cp -f --preserve=timestamps
 export SUDO_CMD :=
 export SETCAP_CMD :=
-export PYTHON := python
 else
 export CP_CMD := cp -f --preserve
 export SUDO_CMD := sudo
 export SETCAP_CMD := setcap
-export PYTHON := python3
 endif
 
 #===================================================================================================
