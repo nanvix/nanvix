@@ -272,7 +272,7 @@ export RM_CMD := rm -f
 export FORCE_RM_CMD := rm -rf
 export MKDIR_CMD := mkdir -p
 ifeq ($(IS_WINDOWS),yes)
-export CP_CMD := cp -f
+export CP_CMD := cp -f --preserve=timestamps
 export SUDO_CMD :=
 export SETCAP_CMD :=
 export PYTHON := python
@@ -870,21 +870,68 @@ STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_NO_DAEMON_TESTS) $(STANDAL
 
 .PHONY: standalone-images standalone-images-clean
 
-# Build standalone multibinary images for all test/benchmark/application binaries.
-# Uses .initrd extension to avoid collisions with other build artifacts (e.g., vfs-test.img).
-standalone-images: all-nanvix
-	@echo "Building standalone multibinary images..."
-	$(foreach bin,$(STANDALONE_TEST_BINARIES),\
-		$(MKIMAGE) -o $(BINARIES_DIR)/$(bin).initrd \
-			$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
-			$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
-			$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT)\;vfsd \
-			$(BINARIES_DIR)/$(bin).$(EXEC_FORMAT)\;$(bin) && ) true
-	$(foreach bin,$(STANDALONE_NO_VFS_BINARIES),\
-		$(MKIMAGE) -o $(BINARIES_DIR)/$(bin).initrd \
-			$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
-			$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
-			$(BINARIES_DIR)/$(bin).$(EXEC_FORMAT)\;$(bin) && ) true
+# Resolved .initrd target paths.
+#
+# These are emitted as one-recipe-per-image rules so that each mkimage invocation is its own
+# command line. The chained form blows past the Windows command-line length limit (8191 chars
+# under cmd.exe-style argument passing) when absolute paths are long, truncating arguments
+# mid-path and producing 'invalid entry' errors from mkimage.
+STANDALONE_WITH_VFS_INITRDS := $(STANDALONE_TEST_BINARIES:%=$(BINARIES_DIR)/%.initrd)
+STANDALONE_NO_VFS_INITRDS   := $(STANDALONE_NO_VFS_BINARIES:%=$(BINARIES_DIR)/%.initrd)
+
+# Bridge from the side-effect-producing build targets to the actual ELF/mkimage files they
+# leave in $(BINARIES_DIR). These rules have an empty recipe (the trailing `;`) and a normal
+# prerequisite on the underlying build target.
+#
+# For guest ELFs we depend on the batched `all-guest-binaries` target rather than on the
+# per-package `all-guest-binaries-<pkg>` ones: requesting many .initrd outputs at once would
+# otherwise spawn one `cargo build -p <pkg>` per bundled binary, which adds significant
+# overhead (especially on Windows) even when each invocation is a cargo no-op. Depending on the
+# batched target collapses this to a single cargo invocation per build.
+#
+# The build targets are pseudo-targets (they never produce a file matching their own name) and
+# are therefore always considered out of date by Make. The recipes inside them invoke cargo,
+# which handles source-level incrementality and only touches the ELF/mkimage binary when its
+# Rust sources actually changed (CP_CMD preserves timestamps, see above). Downstream consumers
+# (the per-image rules below) key off that mtime via normal prerequisites, giving us both
+# correct rebuilds when sources change and minimal mkimage work when they don't.
+$(BINARIES_DIR)/%.$(EXEC_FORMAT): all-guest-binaries ;
+$(MKIMAGE): all-host-binaries-mkimage ;
+
+# Per-image rules.
+#
+# Each .initrd lists the actual files it bundles (the daemons, the guest ELF, and mkimage
+# itself) as normal prerequisites, so an incremental `make standalone-images` only re-runs
+# mkimage for images whose inputs have actually changed.
+#
+# Note: we intentionally do NOT depend on all-nanvix here, because in standalone mode all-nanvix
+# itself depends on standalone-images (see DEPLOYMENT_MODE handling above), which would create a
+# circular dependency.
+$(STANDALONE_WITH_VFS_INITRDS): $(BINARIES_DIR)/%.initrd: \
+		$(BINARIES_DIR)/%.$(EXEC_FORMAT) \
+		$(BINARIES_DIR)/procd.$(EXEC_FORMAT) \
+		$(BINARIES_DIR)/memd.$(EXEC_FORMAT) \
+		$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT) \
+		$(MKIMAGE)
+	$(MKIMAGE) -o $@ \
+		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
+		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
+		$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT)\;vfsd \
+		$(BINARIES_DIR)/$*.$(EXEC_FORMAT)\;$*
+
+$(STANDALONE_NO_VFS_INITRDS): $(BINARIES_DIR)/%.initrd: \
+		$(BINARIES_DIR)/%.$(EXEC_FORMAT) \
+		$(BINARIES_DIR)/procd.$(EXEC_FORMAT) \
+		$(BINARIES_DIR)/memd.$(EXEC_FORMAT) \
+		$(MKIMAGE)
+	$(MKIMAGE) -o $@ \
+		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
+		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
+		$(BINARIES_DIR)/$*.$(EXEC_FORMAT)\;$*
+
+# Build standalone multibinary images for all test/benchmark/application binaries. Uses .initrd
+# extension to avoid collisions with other build artifacts (e.g., vfs-test.img).
+standalone-images: $(STANDALONE_WITH_VFS_INITRDS) $(STANDALONE_NO_VFS_INITRDS)
 	@echo "Standalone images built successfully."
 
 standalone-images-clean:
