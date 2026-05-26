@@ -1229,6 +1229,9 @@ impl Vmm {
     /// Upon success, returns empty. Otherwise, returns an error.
     ///
     pub async fn create_snapshot(&self, filepath: String) -> Result<()> {
+        #[cfg(feature = "profile-time")]
+        let snapshot_creation_start: Instant = Instant::now();
+
         let (vmem_filepath, kvm_filepath) = Self::make_snapshot_paths(&filepath);
 
         if let Err(e) = self.vmem.lock().await.save_snapshot(&vmem_filepath) {
@@ -1255,6 +1258,12 @@ impl Vmm {
                     anyhow::bail!(reason)
                 }
                 trace!("wrote {} bytes to the snapshot file", buffer.len());
+                #[cfg(feature = "profile-time")]
+                {
+                    #![allow(clippy::cast_possible_truncation)]
+                    let elapsed_us: u64 = snapshot_creation_start.elapsed().as_micros() as u64;
+                    self.perf_timings.set_snapshot_creation(elapsed_us);
+                }
                 Ok(())
             },
             Err(e) => {

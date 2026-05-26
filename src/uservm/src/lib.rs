@@ -307,7 +307,14 @@ impl UserVm {
 
         // If a snapshot path is provided, restore VM state from the snapshot.
         if let Some(snapshot_path) = args.snapshot_path {
+            #[cfg(feature = "profile-time")]
+            let snapshot_restore_start: Instant = Instant::now();
+
             microvm.load_snapshot(snapshot_path).await?;
+
+            #[cfg(feature = "profile-time")]
+            #[allow(clippy::cast_possible_truncation)]
+            perf_timings.set_snapshot_restore(snapshot_restore_start.elapsed().as_micros() as u64);
         }
 
         // Enable guest profiler if requested.
