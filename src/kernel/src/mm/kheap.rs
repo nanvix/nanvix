@@ -25,16 +25,16 @@ use ::type_safe::usize_to_mut_ptr;
 //==================================================================================================
 
 /// Number of slabs in the heap. Each slab is responsible for allocating blocks of a specific size.
-pub const NUM_OF_SLABS: usize = 7;
+const NUM_OF_SLABS: usize = 7;
 /// Number of slabs per slab size. Each slab size is allocated a fixed number of slabs.
-pub const SLAB_COUNT: usize = 32;
+pub(super) const SLAB_COUNT: usize = 32;
 /// Minimum heap size in bytes. This is the minimum size of the backing storage that must be
 /// provided to initialize the heap. It is calculated as the number of slabs multiplied by the size
 /// of each slab, which is determined by the number of slabs per slab size and the page size.
-pub const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
+const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
 /// Minimum heap size in bytes. This is the minimum size of the backing storage that must be
 /// provided to initialize the heap.
-pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
+pub(crate) const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 
 //==================================================================================================
 //  Structures
@@ -43,7 +43,7 @@ pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 struct ArenaAllocator;
 
 #[derive(Copy, Clone)]
-pub enum SlabSize {
+pub(super) enum SlabSize {
     Slab8 = 8,
     Slab16 = 16,
     Slab32 = 32,
