@@ -1793,6 +1793,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "mount-multipart-test"
+version = "0.15.17"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_string",
+ "nvx",
+ "sys",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
 name = "mount-test"
 version = "0.15.17"
 dependencies = [

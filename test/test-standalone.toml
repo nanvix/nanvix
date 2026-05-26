@@ -177,6 +177,14 @@ expected_output = "ok"
 expected_exit_code = 0
 runs_on = ["microvm"]
 
+[[tests]]
+executor = "terminal"
+program = "./bin/mount-multipart-test.initrd"
+input = "[]"
+expected_output = "ok"
+expected_exit_code = 0
+runs_on = ["microvm"]
+
 #===================================================================================================
 # Networking Tests
 #===================================================================================================
