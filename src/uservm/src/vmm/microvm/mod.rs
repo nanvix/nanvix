@@ -426,6 +426,7 @@ impl Vmm {
         let timer: Timer = Timer::new(&mut kvm, &mut vm)?;
 
         #[cfg(feature = "profile-time")]
+        #[allow(clippy::cast_possible_truncation)]
         perf_timings.set_partition_create(partition_create_start.elapsed().as_micros() as u64);
 
         #[cfg(feature = "profile-time")]
@@ -434,6 +435,7 @@ impl Vmm {
         let mut vcpu: VirtualProcessor = VirtualProcessor::new(&mut kvm, &mut vm, 0)?;
 
         #[cfg(feature = "profile-time")]
+        #[allow(clippy::cast_possible_truncation)]
         perf_timings.set_vcpu_create(vcpu_create_start.elapsed().as_micros() as u64);
 
         #[cfg(feature = "profile-time")]
@@ -443,6 +445,7 @@ impl Vmm {
             VirtualMemory::new(&mut kvm, &mut vm, ::config::kernel::MEMORY_SIZE)?;
 
         #[cfg(feature = "profile-time")]
+        #[allow(clippy::cast_possible_truncation)]
         perf_timings.set_vmem_create(vmem_create_start.elapsed().as_micros() as u64);
 
         // Determine whether the snapshot kernel option is present.
@@ -464,6 +467,7 @@ impl Vmm {
             guest.load_kernel(&mut vmem, &args.kernel_filename)?;
 
             #[cfg(feature = "profile-time")]
+            #[allow(clippy::cast_possible_truncation)]
             perf_timings.set_kernel_load(kernel_load_start.elapsed().as_micros() as u64);
 
             // Write kernel arguments to guest control registers (must happen after
@@ -484,6 +488,7 @@ impl Vmm {
                 .transpose()?;
 
             #[cfg(feature = "profile-time")]
+            #[allow(clippy::cast_possible_truncation)]
             perf_timings.set_initrd_load(initrd_load_start.elapsed().as_micros() as u64);
 
             // Phase: RamFS loading.
@@ -529,6 +534,7 @@ impl Vmm {
             trace!("ctrl: tsc_freq_mhz={tsc_freq_mhz}");
 
             #[cfg(feature = "profile-time")]
+            #[allow(clippy::cast_possible_truncation)]
             perf_timings.set_ramfs_load(ramfs_load_start.elapsed().as_micros() as u64);
 
             // Phase: vCPU reset and pvclock setup.
@@ -565,6 +571,7 @@ impl Vmm {
             trace!("pvclock: boot_time_ns={boot_time_ns}, page_gpa={pvclock_gpa:#010x}");
 
             #[cfg(feature = "profile-time")]
+            #[allow(clippy::cast_possible_truncation)]
             perf_timings.set_vcpu_reset(vcpu_reset_start.elapsed().as_micros() as u64);
 
             // Phase: EPT pre-population.
@@ -577,6 +584,7 @@ impl Vmm {
             vmem.populate_ept(&guest.ept_populate_ranges()?)?;
 
             #[cfg(feature = "profile-time")]
+            #[allow(clippy::cast_possible_truncation)]
             perf_timings.set_ept_populate(ept_populate_start.elapsed().as_micros() as u64);
 
             Arc::new(Mutex::new(guest))
@@ -830,6 +838,7 @@ impl Vmm {
 
                 #[cfg(feature = "profile-time")]
                 {
+                    #![allow(clippy::cast_possible_truncation)]
                     guest_time_acc_us += run_start.elapsed().as_micros() as u64;
                 }
 
@@ -949,6 +958,7 @@ impl Vmm {
         // Record guest vs exit-handling time breakdown.
         #[cfg(feature = "profile-time")]
         {
+            #[allow(clippy::cast_possible_truncation)]
             let loop_total_us: u64 = loop_start.elapsed().as_micros() as u64;
             self.perf_timings.set_guest_exec(guest_time_acc_us);
             self.perf_timings

@@ -283,6 +283,7 @@ impl UserVm {
             build_input_fn(vcpu_thread_stdin_rx, args.counters.clone(), ikc_pending.clone());
 
         #[cfg(feature = "profile-time")]
+        #[allow(clippy::cast_possible_truncation)]
         perf_timings.set_channel_setup(channel_setup_start.elapsed().as_micros() as u64);
 
         let mut microvm: Vmm = Vmm::new(MicroVmArgs {
@@ -399,6 +400,7 @@ impl UserVm {
         let orchestrator_thread_handle: JoinHandle<Result<()>> = orchestrator_thread.spawn();
 
         #[cfg(feature = "profile-time")]
+        #[allow(clippy::cast_possible_truncation)]
         perf_timings.set_thread_spawn(thread_spawn_start.elapsed().as_micros() as u64);
 
         let exit_code: Result<u16> = match vmm_thread.await {
@@ -421,6 +423,7 @@ impl UserVm {
         }
 
         #[cfg(feature = "profile-time")]
+        #[allow(clippy::cast_possible_truncation)]
         perf_timings.set_total(run_start.elapsed().as_micros() as u64);
 
         // Stop host kernel trace session before post-processing so the
