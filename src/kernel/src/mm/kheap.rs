@@ -18,14 +18,22 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+use ::type_safe::usize_to_mut_ptr;
 
 //==================================================================================================
 // Constants
 //==================================================================================================
 
+/// Number of slabs in the heap. Each slab is responsible for allocating blocks of a specific size.
 pub const NUM_OF_SLABS: usize = 7;
-const SLAB_COUNT: usize = 32;
+/// Number of slabs per slab size. Each slab size is allocated a fixed number of slabs.
+pub const SLAB_COUNT: usize = 32;
+/// Minimum heap size in bytes. This is the minimum size of the backing storage that must be
+/// provided to initialize the heap. It is calculated as the number of slabs multiplied by the size
+/// of each slab, which is determined by the number of slabs per slab size and the page size.
 pub const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
+/// Minimum heap size in bytes. This is the minimum size of the backing storage that must be
+/// provided to initialize the heap.
 pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 
 //==================================================================================================
@@ -35,7 +43,7 @@ pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 struct ArenaAllocator;
 
 #[derive(Copy, Clone)]
-enum SlabSize {
+pub enum SlabSize {
     Slab8 = 8,
     Slab16 = 16,
     Slab32 = 32,
@@ -97,7 +105,7 @@ impl Kheap {
             ));
         }
 
-        let heap_start_addr: *mut u8 = addr as *mut u8;
+        let heap_start_addr: *mut u8 = usize_to_mut_ptr(addr);
         let slab_size: usize = size / NUM_OF_SLABS;
         info!("heap size: {} MB", size / constants::MEGABYTE);
         info!("slab size: {} KB", slab_size / constants::KILOBYTE);
@@ -141,31 +149,39 @@ impl Kheap {
     }
 
     unsafe fn allocate(&mut self, layout: Layout) -> Result<*mut u8, AllocError> {
-        match Kheap::layout_to_allocator(&layout)? {
-            SlabSize::Slab8 => self.slab_8_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab16 => self.slab_16_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab32 => self.slab_32_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab64 => self.slab_64_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab128 => self.slab_128_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab256 => self.slab_256_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab512 => self.slab_512_bytes.allocate().map_err(|_| AllocError),
-        }
+        let tier: SlabSize = Kheap::layout_to_allocator(&layout)?;
+        let r: Result<*mut u8, AllocError> = match tier {
+            SlabSize::Slab8 => self.slab_8_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab16 => self.slab_16_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab32 => self.slab_32_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab64 => self.slab_64_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab128 => self.slab_128_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab256 => self.slab_256_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab512 => self.slab_512_bytes.allocate().map_err(|_e| AllocError),
+        };
+        #[allow(unused_variables)]
+        let align = layout.align();
+        r
     }
 
+    #[allow(clippy::let_and_return)]
     unsafe fn deallocate(&mut self, ptr: *mut u8, layout: Layout) -> Result<(), AllocError> {
-        match Kheap::layout_to_allocator(&layout)? {
-            SlabSize::Slab8 => self.slab_8_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab16 => self.slab_16_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab32 => self.slab_32_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab64 => self.slab_64_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab128 => self.slab_128_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab256 => self.slab_256_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab512 => self.slab_512_bytes.deallocate(ptr).map_err(|_| AllocError),
-        }
+        let tier: SlabSize = Kheap::layout_to_allocator(&layout)?;
+        let r: Result<(), AllocError> = match tier {
+            SlabSize::Slab8 => self.slab_8_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab16 => self.slab_16_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab32 => self.slab_32_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab64 => self.slab_64_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab128 => self.slab_128_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab256 => self.slab_256_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab512 => self.slab_512_bytes.deallocate(ptr).map_err(|_e| AllocError),
+        };
+        r
     }
 
+    #[allow(clippy::let_and_return)]
     pub fn layout_to_allocator(layout: &Layout) -> Result<SlabSize, AllocError> {
-        match layout.size() {
+        let r: Result<SlabSize, AllocError> = match layout.size() {
             1..=8 => Ok(SlabSize::Slab8),
             9..=16 => Ok(SlabSize::Slab16),
             17..=32 => Ok(SlabSize::Slab32),
@@ -174,7 +190,8 @@ impl Kheap {
             129..=256 => Ok(SlabSize::Slab256),
             257..=512 => Ok(SlabSize::Slab512),
             _ => Err(AllocError),
-        }
+        };
+        r
     }
 }
 
