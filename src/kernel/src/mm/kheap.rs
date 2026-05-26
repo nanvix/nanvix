@@ -28,9 +28,8 @@ use ::type_safe::usize_to_mut_ptr;
 const NUM_OF_SLABS: usize = 7;
 /// Number of slabs per slab size. Each slab size is allocated a fixed number of slabs.
 pub(super) const SLAB_COUNT: usize = 32;
-/// Minimum heap size in bytes. This is the minimum size of the backing storage that must be
-/// provided to initialize the heap. It is calculated as the number of slabs multiplied by the size
-/// of each slab, which is determined by the number of slabs per slab size and the page size.
+/// Minimum size of a single slab in bytes. It is calculated as the number of slabs per slab size
+/// multiplied by the page size.
 const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
 /// Minimum heap size in bytes. This is the minimum size of the backing storage that must be
 /// provided to initialize the heap.
