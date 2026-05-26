@@ -2880,6 +2880,7 @@ version = "0.15.23"
 dependencies = [
  "cc",
  "cfg-if",
+ "config",
  "libc_string",
  "nvx",
  "sys",
