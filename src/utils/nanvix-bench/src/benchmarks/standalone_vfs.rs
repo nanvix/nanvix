@@ -347,10 +347,10 @@ impl Benchmark {
 
             let _teardown_timings = Self::teardown_nanvixd(&mut child, stdin).await?;
             #[cfg(feature = "profile-time")]
-            if let Some(timings) = _teardown_timings {
-                if let Some(v) = timings.get("ramfs_load_us").and_then(|v| v.as_u64()) {
-                    ramfs_load_samples.push(v);
-                }
+            if let Some(timings) = _teardown_timings
+                && let Some(v) = timings.get("ramfs_load_us").and_then(|v| v.as_u64())
+            {
+                ramfs_load_samples.push(v);
             }
         }
 
@@ -386,10 +386,10 @@ impl Benchmark {
 
             let _teardown_timings = Self::teardown_nanvixd(&mut child, stdin).await?;
             #[cfg(feature = "profile-time")]
-            if let Some(timings) = _teardown_timings {
-                if let Some(v) = timings.get("ramfs_load_us").and_then(|v| v.as_u64()) {
-                    ramfs_load_samples.push(v);
-                }
+            if let Some(timings) = _teardown_timings
+                && let Some(v) = timings.get("ramfs_load_us").and_then(|v| v.as_u64())
+            {
+                ramfs_load_samples.push(v);
             }
         }
 
