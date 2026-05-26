@@ -29,7 +29,7 @@ tokio = { workspace = true, features = ["full"] }
 vfs-bench-common = { workspace = true }
 
 [features]
-default = ["microvm", "multi-process"]
+default = ["microvm", "multi-process", "profile-time"]
 timestamp-messages = ["profiler/timestamp-messages"]
 single-process = ["nanvix/single-process"]
 multi-process = ["nanvix/multi-process"]

@@ -165,12 +165,11 @@ impl Benchmark {
                     );
                 });
                 for name in PHASE_NAMES {
-                    if let Some(value) = timings.get(*name) {
-                        if let Some(samples) = phase_samples.get_mut(*name) {
-                            if let Some(v) = value.as_u64() {
-                                samples.push(v);
-                            }
-                        }
+                    if let Some(value) = timings.get(*name)
+                        && let Some(samples) = phase_samples.get_mut(*name)
+                        && let Some(v) = value.as_u64()
+                    {
+                        samples.push(v);
                     }
                 }
             }
@@ -313,10 +312,10 @@ impl Benchmark {
 fn parse_perf_timings(stderr_bytes: &[u8]) -> Option<serde_json::Map<String, serde_json::Value>> {
     let stderr_str: &str = std::str::from_utf8(stderr_bytes).ok()?;
     for line in stderr_str.lines() {
-        if let Some(json_str) = line.strip_prefix(PERF_TIMINGS_PREFIX) {
-            if let Ok(serde_json::Value::Object(map)) = serde_json::from_str(json_str) {
-                return Some(map);
-            }
+        if let Some(json_str) = line.strip_prefix(PERF_TIMINGS_PREFIX)
+            && let Ok(serde_json::Value::Object(map)) = serde_json::from_str(json_str)
+        {
+            return Some(map);
         }
     }
     None
