@@ -1037,7 +1037,9 @@ SMOKE_TEST_CMD := $(PYTHON) $(SCRIPTS_DIR)/run-smoke-test.py \
 	$(MACHINE) $(IMAGE) \
 	--timeout $(TIMEOUT) \
 	--magic-string "$(SMOKE_TEST_MAGIC_STRING)" \
-	--expected-exit-code $(SMOKE_TEST_EXPECTED_EXIT_CODE)
+	--expected-exit-code $(SMOKE_TEST_EXPECTED_EXIT_CODE) \
+	--clh-bin-path $(CLH_DIR)/bin \
+	--log-dir $(LOGS_DIR)
 
 run-smoke-test: image
 ifeq ($(RELEASE),yes)
