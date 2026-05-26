@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 NANVIX_BENCH_FEATURES :=
+NANVIX_BENCH_FEATURES += profile-time
 NANVIX_BENCH_FEATURES += $(if $(filter standalone,$(DEPLOYMENT_MODE)),standalone,)
 NANVIX_BENCH_FEATURES += $(if $(filter single-process,$(DEPLOYMENT_MODE)),single-process,)
 NANVIX_BENCH_FEATURES += $(if $(filter multi-process,$(DEPLOYMENT_MODE)),multi-process,)
@@ -9,7 +10,6 @@ NANVIX_BENCH_FEATURES += $(if $(filter l2,$(DEPLOYMENT_MODE)),l2,)
 NANVIX_BENCH_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIX_BENCH_FEATURES += $(if $(filter yes,$(WHP)),whp,)
 NANVIX_BENCH_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),timestamp-messages,)
-NANVIX_BENCH_FEATURES += $(if $(filter yes,$(PROFILER)),profile-time,)
 NANVIX_BENCH_FEATURES := $(strip $(NANVIX_BENCH_FEATURES))
 NANVIX_BENCH_CARGO_FEATURES := $(if $(NANVIX_BENCH_FEATURES),--features "$(NANVIX_BENCH_FEATURES)")
 
