@@ -53,6 +53,7 @@ __pycache__/
 *.vscode/
 snapshots/*.vmem
 snapshots/*.kvm.json
+snapshots/*.whp.cbor
 
 # Third-party tools (cloned locally)
 tools/

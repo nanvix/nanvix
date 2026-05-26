@@ -1196,6 +1196,9 @@ impl Vmm {
     /// Upon successful completion, an empty result is returned. Otherwise, it returns an error.
     ///
     pub async fn create_snapshot(&self, filepath: String) -> Result<()> {
+        #[cfg(feature = "profile-time")]
+        let snapshot_creation_start: Instant = Instant::now();
+
         let (vmem_filepath, whp_filepath) = Self::make_snapshot_paths(&filepath);
 
         // Ensure snapshots directory exists.
@@ -1232,6 +1235,12 @@ impl Vmm {
                      (pvclock_ns={pvclock_time_ns})",
                     buffer.len()
                 );
+                #[cfg(feature = "profile-time")]
+                {
+                    #![allow(clippy::cast_possible_truncation)]
+                    let elapsed_us: u64 = snapshot_creation_start.elapsed().as_micros() as u64;
+                    self.perf_timings.set_snapshot_creation(elapsed_us);
+                }
                 Ok(())
             },
             Err(e) => {
