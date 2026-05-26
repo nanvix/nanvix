@@ -102,7 +102,7 @@ export OBJECTS_DIR   := $(ROOT_DIR)/target
 
 # Python interpreter used by helper scripts invoked from the Makefile.
 # Override by passing PYTHON=... on the make command line.
-ifeq ($(OS),Windows_NT)
+ifeq ($(IS_WINDOWS),yes)
 export PYTHON ?= python
 else
 export PYTHON ?= python3
