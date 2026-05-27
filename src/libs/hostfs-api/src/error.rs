@@ -17,5 +17,13 @@ pub const HOSTFS_ERR_NOT_DIR: i32 = -20;
 pub const HOSTFS_ERR_IS_DIR: i32 = -21;
 /// Error code: invalid argument.
 pub const HOSTFS_ERR_INVALID: i32 = -22;
+/// Error code: too many levels of symbolic links (ELOOP).
+pub const HOSTFS_ERR_LOOP: i32 = -40;
 /// Error code: directory not empty.
 pub const HOSTFS_ERR_NOT_EMPTY: i32 = -90;
+/// Error code: operation not supported on this host platform (EOPNOTSUPP).
+///
+/// Currently used by the symlink operation on Windows when the process lacks the
+/// privilege to create symbolic links (no Developer Mode and no
+/// `SeCreateSymbolicLinkPrivilege`).
+pub const HOSTFS_ERR_NOT_SUPPORTED: i32 = -95;

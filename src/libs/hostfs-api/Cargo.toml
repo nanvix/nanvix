@@ -15,6 +15,7 @@ crate-type = ["lib"]
 
 [dependencies]
 sys = { workspace = true }
+sysapi = { workspace = true }
 
 [features]
 default = []
