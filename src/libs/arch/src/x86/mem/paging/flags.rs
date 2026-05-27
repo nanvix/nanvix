@@ -116,6 +116,22 @@ pub enum PageSizeFlag {
     Large = (1 << Self::SHIFT),
 }
 
+///
+/// # Description
+///
+/// A type that represents the copy-on-write flag of a page table entry. This is an
+/// OS-defined flag that lives in one of the architecturally-available bits (AVL,
+/// bit 9 of the x86 PTE). When set, the page is shared with another address space
+/// and writes to it must trigger a copy on the page-fault path.
+///
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CopyOnWriteFlag {
+    /// The page is not shared via copy-on-write.
+    NotCopyOnWrite = 0,
+    /// The page is shared via copy-on-write.
+    CopyOnWrite = (1 << Self::SHIFT),
+}
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
@@ -262,6 +278,25 @@ impl PageSizeFlag {
         match value & Self::MASK {
             0 => PageSizeFlag::Standard,
             _ => PageSizeFlag::Large,
+        }
+    }
+
+    pub fn into_raw_value(self) -> PteWord {
+        self as PteWord
+    }
+}
+
+impl CopyOnWriteFlag {
+    /// Bit shift of the copy-on-write flag in the page table entry. This lives in one of
+    /// the OS-available (AVL) bits (9..=11) of the x86 PTE.
+    const SHIFT: PteWord = 9;
+    /// Bit mask of the copy-on-write flag in the page table entry.
+    const MASK: PteWord = (1 << Self::SHIFT);
+
+    pub fn from_raw_value(value: PteWord) -> Self {
+        match value & Self::MASK {
+            0 => CopyOnWriteFlag::NotCopyOnWrite,
+            _ => CopyOnWriteFlag::CopyOnWrite,
         }
     }
 
