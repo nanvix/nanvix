@@ -38,6 +38,8 @@ extern crate core;
 
 mod unaligned_pointer;
 
+mod utils;
+
 mod vec_deque;
 
 //==================================================================================================
@@ -45,4 +47,5 @@ mod vec_deque;
 //==================================================================================================
 
 pub use unaligned_pointer::*;
+pub use utils::*;
 pub use vec_deque::*;
