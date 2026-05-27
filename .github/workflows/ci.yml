@@ -917,6 +917,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # An explicit top-level axis is required so the matrix expands into a
+        # concrete job. With `include:` alone GitHub Actions occasionally
+        # collapses the matrix to zero combinations and reports the job as
+        # skipped even when its `if:` guard would have passed.
+        machine-type: [ microvm ]
         include:
           - machine-type: microvm
             standard-benchmarks: "boot-time cold-start cold-start-uvm concurrent
@@ -1066,6 +1071,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # An explicit top-level axis is required so the matrix expands into a
+        # concrete job. With `include:` alone GitHub Actions occasionally
+        # collapses the matrix to zero combinations and reports the job as
+        # skipped even when its `if:` guard would have passed.
+        machine-type: [ microvm ]
         include:
           - machine-type: microvm
             standard-benchmarks: "boot-time cold-start snapshot-restore vfs-bench warm-start-vmm"
