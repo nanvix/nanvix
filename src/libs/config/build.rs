@@ -181,6 +181,12 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
         parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "max_threads"), "max_threads");
     constants.push_str(&format!("pub const MAX_THREADS: usize = {val};\n"));
 
+    let val: usize = parse_hex_or_decimal_usize(
+        required_key(&kernel_config_toml, "max_processes"),
+        "max_processes",
+    );
+    constants.push_str(&format!("pub const MAX_PROCESSES: usize = {val};\n"));
+
     constants.push_str("}\n");
 
     //==============================================================================================
@@ -244,6 +250,19 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
     let max_threads: usize =
         parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "max_threads"), "max_threads");
     assert!(max_threads >= 1, "max_threads must be at least 1");
+
+    // max_processes must fit in a u8 so per-frame reference counts can be stored in a single byte.
+    let max_processes: usize = parse_hex_or_decimal_usize(
+        required_key(&kernel_config_toml, "max_processes"),
+        "max_processes",
+    );
+    assert!(max_processes >= 1, "max_processes must be at least 1");
+    assert!(
+        max_processes <= u8::MAX as usize,
+        "max_processes ({}) must not exceed u8::MAX ({})",
+        max_processes,
+        u8::MAX,
+    );
 
     // Write the generated file.
     fs::write(kernel_config_output_path, constants).expect("Failed to write kernel_config.rs");
