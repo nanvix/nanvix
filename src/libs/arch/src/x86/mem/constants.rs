@@ -44,7 +44,8 @@ pub const PAGE_SHIFT: usize = 12;
 ///
 /// Number of bytes in a page.
 ///
-pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
+pub const PAGE_SIZE: usize = 4096;
+::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
 
 ///
 /// # Description
