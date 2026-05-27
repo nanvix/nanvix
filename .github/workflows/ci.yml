@@ -1415,9 +1415,11 @@ jobs:
       - benchmark-finalize
       - windows-benchmark-finalize
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
-    # Benchmark finalize may be skipped when self-hosted runners are offline;
-    # release proceeds if the corresponding gate reported the benchmark
-    # pipeline should not run.
+    # Benchmark finalize may be skipped when self-hosted runners are offline,
+    # when the gate reports the benchmark pipeline should not run, or when the
+    # matrix expansion silently elides the benchmark jobs (see #2415). Treat
+    # a skipped finalize as non-blocking for the release pipeline; only a
+    # genuine benchmark failure should block publishing.
     if: |
       !cancelled() &&
       github.repository == 'nanvix/nanvix' &&
@@ -1425,9 +1427,9 @@ jobs:
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       needs.ci-test.result == 'success' &&
       (needs.benchmark-finalize.result == 'success' ||
-        needs.benchmark-gate-linux.outputs.should-run != 'true') &&
+        needs.benchmark-finalize.result == 'skipped') &&
       (needs.windows-benchmark-finalize.result == 'success' ||
-        needs.benchmark-gate-windows.outputs.should-run != 'true')
+        needs.windows-benchmark-finalize.result == 'skipped')
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -1480,9 +1482,11 @@ jobs:
       - benchmark-finalize
       - windows-benchmark-finalize
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
-    # Benchmark finalize may be skipped when self-hosted runners are offline;
-    # release proceeds if the corresponding gate reported the benchmark
-    # pipeline should not run.
+    # Benchmark finalize may be skipped when self-hosted runners are offline,
+    # when the gate reports the benchmark pipeline should not run, or when the
+    # matrix expansion silently elides the benchmark jobs (see #2415). Treat
+    # a skipped finalize as non-blocking for the release pipeline; only a
+    # genuine benchmark failure should block publishing.
     if: |
       !cancelled() &&
       github.repository == 'nanvix/nanvix' &&
@@ -1490,9 +1494,9 @@ jobs:
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       needs.ci-test.result == 'success' &&
       (needs.benchmark-finalize.result == 'success' ||
-        needs.benchmark-gate-linux.outputs.should-run != 'true') &&
+        needs.benchmark-finalize.result == 'skipped') &&
       (needs.windows-benchmark-finalize.result == 'success' ||
-        needs.benchmark-gate-windows.outputs.should-run != 'true') &&
+        needs.windows-benchmark-finalize.result == 'skipped') &&
       needs.windows-integration-test.result == 'success'
     timeout-minutes: 60
     strategy:
