@@ -4417,3 +4417,18 @@ c3f947e5c1e0489769c798fd38e35a02aaa45d55,Read-only mount,open+close,100,149,180,
 c3f947e5c1e0489769c798fd38e35a02aaa45d55,Read-only mount,readdir,100,159,183,199
 c3f947e5c1e0489769c798fd38e35a02aaa45d55,Read-only mount,seq_read,100,6,40,1174
 >>>>>>> Stashed changes
+7f24b202cb5c06e56eaff14e4421f9d3c92ef9e6,Writable mount,protocol,100,213,231,245
+7f24b202cb5c06e56eaff14e4421f9d3c92ef9e6,Writable mount,stat,100,158,190,202
+7f24b202cb5c06e56eaff14e4421f9d3c92ef9e6,Writable mount,open+close,100,158,182,190
+7f24b202cb5c06e56eaff14e4421f9d3c92ef9e6,Writable mount,readdir,100,161,186,201
+7f24b202cb5c06e56eaff14e4421f9d3c92ef9e6,Writable mount,create_scratch,100,151,177,486
+7f24b202cb5c06e56eaff14e4421f9d3c92ef9e6,Writable mount,seq_read,100,6,44,1136
+7f24b202cb5c06e56eaff14e4421f9d3c92ef9e6,Writable mount,create+close+unlink,100,12,31,60
+7f24b202cb5c06e56eaff14e4421f9d3c92ef9e6,Writable mount,mkdir+rmdir,100,12,34,43
+7f24b202cb5c06e56eaff14e4421f9d3c92ef9e6,Writable mount,create+close+rename,100,13,33,35
+7f24b202cb5c06e56eaff14e4421f9d3c92ef9e6,Writable mount,write+flush,100,125,154,605
+7f24b202cb5c06e56eaff14e4421f9d3c92ef9e6,Read-only mount,protocol,100,212,228,236
+7f24b202cb5c06e56eaff14e4421f9d3c92ef9e6,Read-only mount,stat,100,154,175,187
+7f24b202cb5c06e56eaff14e4421f9d3c92ef9e6,Read-only mount,open+close,100,157,181,191
+7f24b202cb5c06e56eaff14e4421f9d3c92ef9e6,Read-only mount,readdir,100,159,182,190
+7f24b202cb5c06e56eaff14e4421f9d3c92ef9e6,Read-only mount,seq_read,100,7,37,1140
