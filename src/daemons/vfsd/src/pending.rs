@@ -88,6 +88,15 @@ pub(crate) enum PendingOpKind {
     Rename,
     /// stat/fstat — response contains size, mode, is_dir.
     Stat,
+    /// symlink — response is a status code.
+    Symlink,
+    /// readlink — response contains the link target bytes.
+    Readlink {
+        /// Caller-supplied buffer size; response will be truncated to this length.
+        bufsiz: usize,
+    },
+    /// lstat — path-based stat that does not follow the final symbolic link.
+    Lstat,
 }
 
 //==================================================================================================
@@ -98,6 +107,48 @@ pub(crate) enum PendingOpKind {
 ///
 /// This prevents unbounded growth if hostfsd is unavailable or unresponsive.
 const MAX_PENDING_OPS: usize = 64;
+
+//==================================================================================================
+// Synthetic stat(2) Constants
+//==================================================================================================
+//
+// Hostfsd does not forward several `stat`/`lstat` fields from the host (timestamps,
+// device id, inode, link count). The constants below are the synthetic values used
+// to populate those fields so both completion paths report identical, deterministic
+// metadata.
+
+/// Fixed timestamp (2024-01-01T00:00:00Z) used for `st_atim`/`st_mtim`/`st_ctim`.
+///
+/// Keeps stat output stable across runs and hosts; tooling that only cares about
+/// ordering or equality continues to work.
+const STAT_FIXED_EPOCH: i64 = 1_704_067_200;
+
+/// Conventional Unix block size reported as `st_blksize`.
+///
+/// Matches what guest userland and libc helpers (e.g., `st_blksize`-based I/O sizing)
+/// expect from a regular filesystem.
+const STAT_BLOCK_SIZE: i64 = 4096;
+
+/// POSIX-defined unit (in bytes) used to convert `st_size` into `st_blocks`.
+const STAT_SECTOR_SIZE: u64 = 512;
+
+/// Synthetic device id reported as `st_dev` for hostfs entries.
+///
+/// Distinct from ramfs (`1`) so guest tooling can tell the two filesystems apart;
+/// hostfsd does not expose the host's real `st_dev`.
+const STAT_HOSTFS_DEV: u64 = 2;
+
+/// Synthetic inode number reported as `st_ino`.
+///
+/// Inode numbers are not tracked by hostfsd; a constant keeps the field valid
+/// without implying any cross-call identity (callers must not key caches on it).
+const STAT_SYNTHETIC_INO: u64 = 1;
+
+/// `st_nlink` value for directories (self + `.`).
+const STAT_NLINK_DIR: u64 = 2;
+
+/// `st_nlink` value for non-directory entries (hostfsd does not track hardlinks).
+const STAT_NLINK_FILE: u64 = 1;
 
 /// Map of pending hostfs operations keyed by operation identifier.
 ///
@@ -181,6 +232,13 @@ impl PendingQueue {
     }
 }
 
+/// Sends an error response to a pending op's caller without consulting any IKC
+/// payload. Intended for recovery paths (e.g., a long-response stream is discarded
+/// due to assembler desync) where the op must be cancelled rather than completed.
+pub(crate) fn cancel_pending_op(op: PendingOp, code: ErrorCode) {
+    send_response(&build_error(op.source_tid, code));
+}
+
 //==================================================================================================
 // Response Completion
 //==================================================================================================
@@ -242,6 +300,13 @@ pub(crate) fn complete_pending_op(
             complete_status(pending.source_tid, response_payload, OpGroup::Rename)
         },
         PendingOpKind::Stat => complete_stat(pending.source_tid, response_payload),
+        PendingOpKind::Symlink => {
+            complete_status(pending.source_tid, response_payload, OpGroup::Symlink)
+        },
+        PendingOpKind::Readlink { bufsiz } => {
+            complete_readlink(pending.source_tid, response_payload, bufsiz)
+        },
+        PendingOpKind::Lstat => complete_lstat(pending.source_tid, response_payload),
     }
 }
 
@@ -271,6 +336,9 @@ fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOA
             | (PendingOpKind::Unlink, SystemCallMessageHeader::HostFsUnlinkResponse)
             | (PendingOpKind::Rename, SystemCallMessageHeader::HostFsRenameResponse)
             | (PendingOpKind::Stat, SystemCallMessageHeader::HostFsStatResponse)
+            | (PendingOpKind::Symlink, SystemCallMessageHeader::HostFsSymlinkResponse)
+            | (PendingOpKind::Readlink { .. }, SystemCallMessageHeader::HostFsReadlinkResponse)
+            | (PendingOpKind::Lstat, SystemCallMessageHeader::HostFsLstatResponse)
     )
 }
 
@@ -398,6 +466,7 @@ enum OpGroup {
     Rmdir,
     Unlink,
     Rename,
+    Symlink,
 }
 
 fn complete_status(
@@ -432,6 +501,10 @@ fn complete_status(
             use ::syscall::fcntl::message::RenameAtResponse;
             RenameAtResponse::build(source_tid, 0, ProcessIdentifier::VFSD, MessageType::Ipc)
         },
+        OpGroup::Symlink => {
+            use ::syscall::unistd::message::SymbolicLinkAtResponse;
+            SymbolicLinkAtResponse::build(source_tid, 0, ProcessIdentifier::VFSD, MessageType::Ipc)
+        },
     };
     send_response(&msg);
 }
@@ -448,6 +521,8 @@ fn hostfs_error_to_code(code: i32) -> ErrorCode {
         ::hostfs_api::HOSTFS_ERR_IS_DIR => ErrorCode::IsDirectory,
         ::hostfs_api::HOSTFS_ERR_INVALID => ErrorCode::InvalidArgument,
         ::hostfs_api::HOSTFS_ERR_NOT_EMPTY => ErrorCode::DirectoryNotEmpty,
+        ::hostfs_api::HOSTFS_ERR_LOOP => ErrorCode::SymbolicLinkLoop,
+        ::hostfs_api::HOSTFS_ERR_NOT_SUPPORTED => ErrorCode::OperationNotSupported,
         _ => ErrorCode::IoErr,
     }
 }
@@ -476,11 +551,6 @@ fn complete_stat(source_tid: ThreadIdentifier, response_payload: &[u8; Message::
         return;
     }
 
-    // Fixed epoch timestamp: 2024-01-01T00:00:00Z (1704067200).
-    const FIXED_EPOCH: i64 = 1_704_067_200;
-    const STAT_BLOCK_SIZE: i64 = 4096;
-    const STAT_SECTOR_SIZE: u64 = 512;
-
     let is_dir: bool = resp.is_dir != 0;
     let mode: u32 = if resp.mode != 0 {
         // Use host-provided mode, adding file type bits.
@@ -500,24 +570,28 @@ fn complete_stat(source_tid: ThreadIdentifier, response_payload: &[u8; Message::
     };
 
     let st = stat {
-        st_dev: 2, // Synthetic device ID for hostfs (distinct from ramfs=1).
-        st_ino: 1,
+        st_dev: STAT_HOSTFS_DEV,
+        st_ino: STAT_SYNTHETIC_INO,
         st_mode: mode,
-        st_nlink: if is_dir { 2 } else { 1 },
+        st_nlink: if is_dir {
+            STAT_NLINK_DIR
+        } else {
+            STAT_NLINK_FILE
+        },
         st_uid: 0,
         st_gid: 0,
         st_rdev: 0,
         st_size: resp.size as off_t,
         st_atim: timespec {
-            tv_sec: FIXED_EPOCH,
+            tv_sec: STAT_FIXED_EPOCH,
             tv_nsec: 0,
         },
         st_mtim: timespec {
-            tv_sec: FIXED_EPOCH,
+            tv_sec: STAT_FIXED_EPOCH,
             tv_nsec: 0,
         },
         st_ctim: timespec {
-            tv_sec: FIXED_EPOCH,
+            tv_sec: STAT_FIXED_EPOCH,
             tv_nsec: 0,
         },
         st_blksize: STAT_BLOCK_SIZE,
@@ -533,6 +607,216 @@ fn complete_stat(source_tid: ThreadIdentifier, response_payload: &[u8; Message::
         },
         Err(e) => {
             ::syslog::error!("complete_stat: into_parts failed (error={:?})", e);
+            send_response(&build_error(source_tid, ErrorCode::IoErr));
+        },
+    }
+}
+
+/// Completes a long-form (multi-part) readlink response.
+///
+/// `body` is the assembled response body in the wire format
+/// `[op_id:4][status:4][target_len:2][target:N]`. The op_id has already been
+/// consumed by the caller to look up the pending op, but it remains in `body` and
+/// is skipped here.
+pub(crate) fn complete_readlink_long(pending: PendingOp, body: &[u8]) {
+    use ::syscall::{
+        message::MessagePartitioner,
+        unistd::message::ReadLinkAtResponse,
+    };
+
+    // Caller is responsible for routing only `Readlink` ops here; main.rs dispatches
+    // long readlink responses via the dedicated assembler, and no other pending kind
+    // produces a multi-part response in the current protocol.
+    let PendingOpKind::Readlink { bufsiz } = pending.kind else {
+        unreachable!("complete_readlink_long invoked with non-Readlink pending op");
+    };
+
+    let resp: ::hostfs_api::long_msg::LongReadlinkResponse<'_> =
+        match ::hostfs_api::long_msg::deserialize_long_readlink_response(body) {
+            Some(r) => r,
+            None => {
+                ::syslog::error!(
+                    "complete_readlink_long: failed to deserialize response body (len={})",
+                    body.len()
+                );
+                send_response(&build_error(pending.source_tid, ErrorCode::IoErr));
+                return;
+            },
+        };
+
+    if resp.status < 0 {
+        send_response(&build_error(pending.source_tid, hostfs_error_to_code(resp.status)));
+        return;
+    }
+
+    // Truncate to the caller's buffer size, matching POSIX readlink semantics.
+    let copy_len: usize = resp.target.len().min(bufsiz);
+    let buffer: alloc::vec::Vec<u8> = resp.target[..copy_len].to_vec();
+
+    let response: ReadLinkAtResponse = match ReadLinkAtResponse::new(buffer) {
+        Ok(r) => r,
+        Err(e) => {
+            ::syslog::error!("complete_readlink_long: build response failed (error={:?})", e);
+            send_response(&build_error(pending.source_tid, ErrorCode::IoErr));
+            return;
+        },
+    };
+    match response.into_parts(pending.source_tid, ProcessIdentifier::VFSD, MessageType::Ipc) {
+        Ok(parts) => {
+            for part in parts {
+                send_response(&part);
+            }
+        },
+        Err(e) => {
+            ::syslog::error!("complete_readlink_long: into_parts failed (error={:?})", e);
+            send_response(&build_error(pending.source_tid, ErrorCode::IoErr));
+        },
+    }
+}
+
+fn complete_readlink(
+    source_tid: ThreadIdentifier,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+    bufsiz: usize,
+) {
+    use ::syscall::{
+        message::MessagePartitioner,
+        unistd::message::ReadLinkAtResponse,
+    };
+
+    let resp: ::hostfs_api::ReadlinkResponse =
+        match ::hostfs_api::ReadlinkResponse::decode(response_payload) {
+            Some(r) => r,
+            None => {
+                ::syslog::error!("complete_readlink: failed to decode response");
+                send_response(&build_error(source_tid, ErrorCode::IoErr));
+                return;
+            },
+        };
+
+    if resp.status < 0 {
+        send_response(&build_error(source_tid, hostfs_error_to_code(resp.status)));
+        return;
+    }
+
+    let target_len: usize = resp.target_len as usize;
+    let max: usize = target_len.min(resp.target.len()).min(bufsiz);
+    let buffer: alloc::vec::Vec<u8> = resp.target[..max].to_vec();
+
+    let response: ReadLinkAtResponse = match ReadLinkAtResponse::new(buffer) {
+        Ok(r) => r,
+        Err(e) => {
+            ::syslog::error!("complete_readlink: build response failed (error={:?})", e);
+            send_response(&build_error(source_tid, ErrorCode::IoErr));
+            return;
+        },
+    };
+    match response.into_parts(source_tid, ProcessIdentifier::VFSD, MessageType::Ipc) {
+        Ok(parts) => {
+            for part in parts {
+                send_response(&part);
+            }
+        },
+        Err(e) => {
+            ::syslog::error!("complete_readlink: into_parts failed (error={:?})", e);
+            send_response(&build_error(source_tid, ErrorCode::IoErr));
+        },
+    }
+}
+
+fn complete_lstat(source_tid: ThreadIdentifier, response_payload: &[u8; Message::PAYLOAD_SIZE]) {
+    use ::sysapi::{
+        sys_stat::{
+            file_mode,
+            file_type,
+            stat,
+        },
+        sys_types::off_t,
+        time::timespec,
+    };
+    use ::syscall::{
+        message::MessagePartitioner,
+        sys::stat::message::FileStatAtResponse,
+    };
+
+    let resp: ::hostfs_api::LstatResponse =
+        match ::hostfs_api::LstatResponse::decode(response_payload) {
+            Some(r) => r,
+            None => {
+                ::syslog::error!("complete_lstat: failed to decode response");
+                send_response(&build_error(source_tid, ErrorCode::IoErr));
+                return;
+            },
+        };
+
+    if resp.status < 0 {
+        send_response(&build_error(source_tid, hostfs_error_to_code(resp.status)));
+        return;
+    }
+
+    let type_bits: u32 = match resp.kind {
+        ::hostfs_api::file_kind::DIRECTORY => file_type::S_IFDIR,
+        ::hostfs_api::file_kind::SYMLINK => file_type::S_IFLNK,
+        ::hostfs_api::file_kind::REGULAR => file_type::S_IFREG,
+        _ => file_type::S_IFREG,
+    };
+    // Mask `resp.mode` down to permission bits before OR-ing with our canonical
+    // `type_bits`. On Unix hosts `resp.mode` is the raw `st_mode` (already includes
+    // type bits); on Windows it is a synthetic value built by hostfsd that also
+    // includes synthetic type bits. The mask strips those in both cases so the
+    // file-type bits are unambiguously driven by `resp.kind` (the authoritative
+    // discriminant on the wire).
+    let mode: u32 = if resp.mode != 0 {
+        type_bits | (resp.mode & 0o7777)
+    } else {
+        match resp.kind {
+            ::hostfs_api::file_kind::DIRECTORY => file_type::S_IFDIR | file_mode::S_IRWXU,
+            ::hostfs_api::file_kind::SYMLINK => {
+                file_type::S_IFLNK | file_mode::S_IRUSR | file_mode::S_IWUSR
+            },
+            _ => file_type::S_IFREG | file_mode::S_IRUSR | file_mode::S_IWUSR,
+        }
+    };
+    let is_dir: bool = resp.kind == ::hostfs_api::file_kind::DIRECTORY;
+
+    let st = stat {
+        st_dev: STAT_HOSTFS_DEV,
+        st_ino: STAT_SYNTHETIC_INO,
+        st_mode: mode,
+        st_nlink: if is_dir {
+            STAT_NLINK_DIR
+        } else {
+            STAT_NLINK_FILE
+        },
+        st_uid: 0,
+        st_gid: 0,
+        st_rdev: 0,
+        st_size: resp.size as off_t,
+        st_atim: timespec {
+            tv_sec: STAT_FIXED_EPOCH,
+            tv_nsec: 0,
+        },
+        st_mtim: timespec {
+            tv_sec: STAT_FIXED_EPOCH,
+            tv_nsec: 0,
+        },
+        st_ctim: timespec {
+            tv_sec: STAT_FIXED_EPOCH,
+            tv_nsec: 0,
+        },
+        st_blksize: STAT_BLOCK_SIZE,
+        st_blocks: resp.size.div_ceil(STAT_SECTOR_SIZE) as off_t,
+    };
+
+    let response: FileStatAtResponse = FileStatAtResponse::new(st);
+    match response.into_parts(source_tid, ProcessIdentifier::VFSD, MessageType::Ipc) {
+        Ok(parts) => {
+            for part in parts {
+                send_response(&part);
+            }
+        },
+        Err(e) => {
+            ::syslog::error!("complete_lstat: into_parts failed (error={:?})", e);
             send_response(&build_error(source_tid, ErrorCode::IoErr));
         },
     }

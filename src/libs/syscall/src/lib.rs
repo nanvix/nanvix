@@ -517,11 +517,13 @@ impl SystemCallMessageHeader {
 
     /// Returns `true` if this header is a hostfs response variant.
     ///
-    /// Note: `HostFsReadlinkResponsePart` is intentionally excluded. The multi-part
-    /// response framing places `total_parts`/`part_number` in bytes `[2..6]`, where
-    /// `get_op_id` expects the logical op_id, so treating it as a regular hostfs
-    /// response on the vfsd side would remove the wrong entry from the pending
-    /// queue. Re-add it only once vfsd implements a multi-part response assembler.
+    /// Note: `HostFsReadlinkResponsePart` is intentionally excluded because of its
+    /// framing, not because vfsd lacks a multi-part assembler (it now has one). For
+    /// these parts, bytes `[2..6]` carry `total_parts`/`part_number`, while the
+    /// logical op_id lives in the first 4 bytes of the assembled body. Treating
+    /// them as regular hostfs responses would make `get_op_id` read the framing
+    /// bytes and remove the wrong entry from the pending queue. They are dispatched
+    /// through `is_hostfs_multipart_response` and the dedicated assembler in vfsd.
     pub fn is_hostfs_response(&self) -> bool {
         matches!(
             self,
