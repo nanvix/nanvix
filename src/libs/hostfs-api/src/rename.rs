@@ -4,6 +4,9 @@
 //! Rename request wire format.
 
 use crate::{
+    set_header,
+    set_op_id,
+    OperationId,
     HOSTFS_DATA_START,
     MAX_INLINE_PATH_LEN,
 };
@@ -21,12 +24,39 @@ pub struct RenameRequest {
 }
 
 impl RenameRequest {
-    /// Encodes this request into the message payload.
+    /// Builds an inline [`RenameRequest`] from two path slices.
+    ///
+    /// Returns `None` if the combined length of `old_path` and `new_path` exceeds
+    /// [`MAX_INLINE_PATH_LEN`]. Callers must fall back to the multi-part request form
+    /// in [`long_msg`](crate::long_msg) when this returns `None`.
+    pub fn from_paths(old_path: &[u8], new_path: &[u8]) -> Option<Self> {
+        let total: usize = old_path.len().checked_add(new_path.len())?;
+        if total > MAX_INLINE_PATH_LEN {
+            return None;
+        }
+        let mut paths: [u8; MAX_INLINE_PATH_LEN] = [0u8; MAX_INLINE_PATH_LEN];
+        paths[..old_path.len()].copy_from_slice(old_path);
+        paths[old_path.len()..old_path.len() + new_path.len()].copy_from_slice(new_path);
+        Some(Self {
+            old_path_len: old_path.len() as u16,
+            new_path_len: new_path.len() as u16,
+            paths,
+        })
+    }
+
+    /// Serializes this request into a complete message payload (header + op_id + data).
     ///
     /// If the combined path lengths exceed [`MAX_INLINE_PATH_LEN`], the recorded
     /// `old_path_len` and `new_path_len` are saturated to match the number of bytes
     /// actually written, preventing inconsistency between header fields and data.
-    pub fn encode(&self, payload: &mut [u8; Message::PAYLOAD_SIZE]) {
+    pub fn serialize(
+        &self,
+        header_value: u16,
+        op_id: OperationId,
+    ) -> [u8; Message::PAYLOAD_SIZE] {
+        let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
+        set_header(&mut payload, header_value);
+        set_op_id(&mut payload, op_id);
         let data_start: usize = HOSTFS_DATA_START;
         // Widen to usize before adding to avoid u16 overflow.
         let total_len: usize =
@@ -38,6 +68,7 @@ impl RenameRequest {
         payload[data_start + 2..data_start + 4].copy_from_slice(&(new_len as u16).to_le_bytes());
         payload[data_start + 4..data_start + 4 + total_len]
             .copy_from_slice(&self.paths[..total_len]);
+        payload
     }
 
     /// Decodes a RenameRequest from the message payload.

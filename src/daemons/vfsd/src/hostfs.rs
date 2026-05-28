@@ -187,17 +187,9 @@ pub fn send_open_request(
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
     let relative: &str = strip_mount_prefix(path);
-    let path_bytes: &[u8] = relative.as_bytes();
-
-    // Serialize: [op_id:4][flags:4][path_len:2][path:N]
-    let path_len: u16 =
-        u16::try_from(path_bytes.len()).map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
-    let total_len: usize = long_msg::OPEN_HEADER_SIZE + path_bytes.len();
-    let mut buf: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(total_len);
-    buf.extend_from_slice(&op_id.to_le_bytes());
-    buf.extend_from_slice(&flags.to_le_bytes());
-    buf.extend_from_slice(&path_len.to_le_bytes());
-    buf.extend_from_slice(path_bytes);
+    let buf: alloc::vec::Vec<u8> =
+        long_msg::serialize_long_open_request(op_id, flags, relative.as_bytes())
+            .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageHeader::HostFsOpenRequestPart)
 }
@@ -207,11 +199,8 @@ pub fn send_close_request(
     remote_fd: i32,
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
-    let req: CloseRequest = CloseRequest { fd: remote_fd };
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    set_header(&mut payload, SystemCallMessageHeader::HostFsCloseRequest as u16);
-    set_op_id(&mut payload, op_id);
-    req.encode(&mut payload);
+    let payload: [u8; Message::PAYLOAD_SIZE] = CloseRequest { fd: remote_fd }
+        .serialize(SystemCallMessageHeader::HostFsCloseRequest as u16, op_id);
 
     if send_request(&payload) {
         Ok(())
@@ -227,16 +216,12 @@ pub fn send_read_request(
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
     let count: u32 = count.min(MAX_INLINE_READ_DATA) as u32;
-    let req: ReadRequest = ReadRequest {
+    let payload: [u8; Message::PAYLOAD_SIZE] = ReadRequest {
         fd: remote_fd,
         count,
         offset: -1, // Use current position.
-    };
-
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    set_header(&mut payload, SystemCallMessageHeader::HostFsReadRequest as u16);
-    set_op_id(&mut payload, op_id);
-    req.encode(&mut payload);
+    }
+    .serialize(SystemCallMessageHeader::HostFsReadRequest as u16, op_id);
 
     if send_request(&payload) {
         Ok(())
@@ -251,22 +236,9 @@ pub fn send_write_request(
     buf: &[u8],
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
-    let write_len: usize = buf.len().min(MAX_INLINE_WRITE_DATA);
-    let mut data: [u8; MAX_INLINE_WRITE_DATA] = [0u8; MAX_INLINE_WRITE_DATA];
-    data[..write_len].copy_from_slice(&buf[..write_len]);
-
-    let req: WriteRequest = WriteRequest {
-        fd: remote_fd,
-        count: write_len as u32,
-        offset: -1, // Use current position.
-        data_len: write_len as u16,
-        data,
-    };
-
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    set_header(&mut payload, SystemCallMessageHeader::HostFsWriteRequest as u16);
-    set_op_id(&mut payload, op_id);
-    req.encode(&mut payload);
+    // Offset -1 means use current file position.
+    let payload: [u8; Message::PAYLOAD_SIZE] = WriteRequest::from_slice(remote_fd, -1, buf)
+        .serialize(SystemCallMessageHeader::HostFsWriteRequest as u16, op_id);
 
     if send_request(&payload) {
         Ok(())
@@ -282,16 +254,12 @@ pub fn send_lseek_request(
     whence: i32,
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
-    let req: LseekRequest = LseekRequest {
+    let payload: [u8; Message::PAYLOAD_SIZE] = LseekRequest {
         fd: remote_fd,
         offset,
         whence,
-    };
-
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    set_header(&mut payload, SystemCallMessageHeader::HostFsLseekRequest as u16);
-    set_op_id(&mut payload, op_id);
-    req.encode(&mut payload);
+    }
+    .serialize(SystemCallMessageHeader::HostFsLseekRequest as u16, op_id);
 
     if send_request(&payload) {
         Ok(())
@@ -306,15 +274,11 @@ pub fn send_truncate_request(
     length: i64,
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
-    let req: TruncateRequest = TruncateRequest {
+    let payload: [u8; Message::PAYLOAD_SIZE] = TruncateRequest {
         fd: remote_fd,
         length,
-    };
-
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    set_header(&mut payload, SystemCallMessageHeader::HostFsTruncateRequest as u16);
-    set_op_id(&mut payload, op_id);
-    req.encode(&mut payload);
+    }
+    .serialize(SystemCallMessageHeader::HostFsTruncateRequest as u16, op_id);
 
     if send_request(&payload) {
         Ok(())
@@ -328,12 +292,8 @@ pub fn send_flush_request(
     remote_fd: i32,
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
-    let req: FlushRequest = FlushRequest { fd: remote_fd };
-
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    set_header(&mut payload, SystemCallMessageHeader::HostFsFlushRequest as u16);
-    set_op_id(&mut payload, op_id);
-    req.encode(&mut payload);
+    let payload: [u8; Message::PAYLOAD_SIZE] = FlushRequest { fd: remote_fd }
+        .serialize(SystemCallMessageHeader::HostFsFlushRequest as u16, op_id);
 
     if send_request(&payload) {
         Ok(())
@@ -349,17 +309,9 @@ pub fn send_mkdir_request(
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
     let relative: &str = strip_mount_prefix(path);
-    let path_bytes: &[u8] = relative.as_bytes();
-
-    // Serialize: [op_id:4][mode:4][path_len:2][path:N]
-    let path_len: u16 =
-        u16::try_from(path_bytes.len()).map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
-    let total_len: usize = long_msg::MKDIR_HEADER_SIZE + path_bytes.len();
-    let mut buf: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(total_len);
-    buf.extend_from_slice(&op_id.to_le_bytes());
-    buf.extend_from_slice(&mode.to_le_bytes());
-    buf.extend_from_slice(&path_len.to_le_bytes());
-    buf.extend_from_slice(path_bytes);
+    let buf: alloc::vec::Vec<u8> =
+        long_msg::serialize_long_mkdir_request(op_id, mode, relative.as_bytes())
+            .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageHeader::HostFsMkdirRequestPart)
 }
@@ -367,16 +319,9 @@ pub fn send_mkdir_request(
 /// Sends an RMDIR request to hostfsd as a multi-part IKC message.
 pub fn send_rmdir_request(path: &str, op_id: OperationId) -> Result<(), ::sys::error::ErrorCode> {
     let relative: &str = strip_mount_prefix(path);
-    let path_bytes: &[u8] = relative.as_bytes();
-
-    // Serialize: [op_id:4][path_len:2][path:N]
-    let path_len: u16 =
-        u16::try_from(path_bytes.len()).map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
-    let total_len: usize = long_msg::RMDIR_HEADER_SIZE + path_bytes.len();
-    let mut buf: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(total_len);
-    buf.extend_from_slice(&op_id.to_le_bytes());
-    buf.extend_from_slice(&path_len.to_le_bytes());
-    buf.extend_from_slice(path_bytes);
+    let buf: alloc::vec::Vec<u8> =
+        long_msg::serialize_long_rmdir_request(op_id, relative.as_bytes())
+            .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageHeader::HostFsRmdirRequestPart)
 }
@@ -384,16 +329,9 @@ pub fn send_rmdir_request(path: &str, op_id: OperationId) -> Result<(), ::sys::e
 /// Sends an UNLINK request to hostfsd as a multi-part IKC message.
 pub fn send_unlink_request(path: &str, op_id: OperationId) -> Result<(), ::sys::error::ErrorCode> {
     let relative: &str = strip_mount_prefix(path);
-    let path_bytes: &[u8] = relative.as_bytes();
-
-    // Serialize: [op_id:4][path_len:2][path:N]
-    let path_len: u16 =
-        u16::try_from(path_bytes.len()).map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
-    let total_len: usize = long_msg::UNLINK_HEADER_SIZE + path_bytes.len();
-    let mut buf: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(total_len);
-    buf.extend_from_slice(&op_id.to_le_bytes());
-    buf.extend_from_slice(&path_len.to_le_bytes());
-    buf.extend_from_slice(path_bytes);
+    let buf: alloc::vec::Vec<u8> =
+        long_msg::serialize_long_unlink_request(op_id, relative.as_bytes())
+            .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageHeader::HostFsUnlinkRequestPart)
 }
@@ -403,12 +341,8 @@ pub fn send_stat_request(
     remote_fd: i32,
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
-    let req: StatRequest = StatRequest { fd: remote_fd };
-
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    set_header(&mut payload, SystemCallMessageHeader::HostFsStatRequest as u16);
-    set_op_id(&mut payload, op_id);
-    req.encode(&mut payload);
+    let payload: [u8; Message::PAYLOAD_SIZE] = StatRequest { fd: remote_fd }
+        .serialize(SystemCallMessageHeader::HostFsStatRequest as u16, op_id);
 
     if send_request(&payload) {
         Ok(())
@@ -425,21 +359,12 @@ pub fn send_rename_request(
 ) -> Result<(), ::sys::error::ErrorCode> {
     let old_relative: &str = strip_mount_prefix(old_path);
     let new_relative: &str = strip_mount_prefix(new_path);
-    let old_bytes: &[u8] = old_relative.as_bytes();
-    let new_bytes: &[u8] = new_relative.as_bytes();
-
-    // Serialize: [op_id:4][old_path_len:2][new_path_len:2][old_path:N][new_path:M]
-    let old_path_len: u16 =
-        u16::try_from(old_bytes.len()).map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
-    let new_path_len: u16 =
-        u16::try_from(new_bytes.len()).map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
-    let total_len: usize = long_msg::RENAME_HEADER_SIZE + old_bytes.len() + new_bytes.len();
-    let mut buf: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(total_len);
-    buf.extend_from_slice(&op_id.to_le_bytes());
-    buf.extend_from_slice(&old_path_len.to_le_bytes());
-    buf.extend_from_slice(&new_path_len.to_le_bytes());
-    buf.extend_from_slice(old_bytes);
-    buf.extend_from_slice(new_bytes);
+    let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_rename_request(
+        op_id,
+        old_relative.as_bytes(),
+        new_relative.as_bytes(),
+    )
+    .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageHeader::HostFsRenameRequestPart)
 }
