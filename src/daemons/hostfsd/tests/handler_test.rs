@@ -1154,6 +1154,41 @@ fn test_long_unlink_multi_part() {
     assert!(!tmp.path().join(&path).exists());
 }
 
+/// Ensures that unlinking a symbolic link via the multi-part long-request path
+/// removes the link itself and leaves the target intact. Exercises the long-unlink
+/// decoding code path, which is distinct from the inline one covered by
+/// `test_unlink_removes_symlink_not_target`.
+#[test]
+fn test_long_unlink_symlink_removes_link_not_target() {
+    let (mut handler, tmp) = setup();
+    // Use a long parent dir so the encoded path exceeds the inline limit and the
+    // request must be split across multiple parts.
+    let long_dir: String = "u".repeat(60);
+    fs::create_dir(tmp.path().join(&long_dir)).unwrap();
+    let target_rel: String = format!("{}/target.txt", long_dir);
+    let link_rel: String = format!("{}/link", long_dir);
+    fs::write(tmp.path().join(&target_rel), b"keep me").unwrap();
+    // Use a relative target so the link is portable within the sandbox.
+    if let Err(e) = host_symlink(std::path::Path::new("target.txt"), &tmp.path().join(&link_rel)) {
+        if is_privilege_error(&e) {
+            println!("skipping: host cannot create symlinks ({})", e);
+            return;
+        }
+        panic!("host_symlink failed: {}", e);
+    }
+
+    let parts = make_long_unlink_parts(&link_rel, OperationId::from_raw(13));
+    assert!(parts.len() >= 2, "long unlink should require multiple parts, got {}", parts.len());
+
+    let response = feed_parts(&mut handler, &parts);
+    assert_eq!(get_op_id(&response), OperationId::from_raw(13));
+    let ds: usize = HOSTFS_DATA_START;
+    let status: i32 = i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap());
+    assert_eq!(status, 0, "long unlink of symlink should succeed");
+    assert!(tmp.path().join(&link_rel).symlink_metadata().is_err(), "symlink should be removed");
+    assert!(tmp.path().join(&target_rel).exists(), "symlink target must not be removed");
+}
+
 #[test]
 fn test_long_rmdir_multi_part() {
     let (mut handler, tmp) = setup();
