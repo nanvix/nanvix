@@ -137,7 +137,7 @@ flexi_logger = "0.31.9"
 globset = { version = "0.4.18", default-features = false }
 gdbstub = { version = "0.7", default-features = false, features = ["std"] }
 gdbstub_arch = { version = "0.3", default-features = false }
-goblin = { version = "0.10.6", default-features = false }
+goblin = { version = "0.10.7", default-features = false }
 indexmap = "2.14.0"
 indicatif = "0.18.4"
 http = "1.4.1"
