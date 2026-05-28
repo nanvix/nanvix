@@ -253,6 +253,15 @@ pub enum SystemCallMessageHeader {
     HostFsUnlinkRequestPart,
     HostFsMkdirRequestPart,
     HostFsRmdirRequestPart,
+    HostFsSymlinkRequestPart,
+    HostFsSymlinkResponse,
+    HostFsReadlinkRequest,
+    HostFsReadlinkRequestPart,
+    HostFsReadlinkResponse,
+    HostFsReadlinkResponsePart,
+    HostFsLstatRequest,
+    HostFsLstatRequestPart,
+    HostFsLstatResponse,
     HostMountRequestPart,
     HostMountResponse,
     HostUmountRequestPart,
@@ -406,6 +415,15 @@ impl TryFrom<u16> for SystemCallMessageHeader {
             x if x == HostFsUnlinkRequestPart as u16 => Ok(HostFsUnlinkRequestPart),
             x if x == HostFsMkdirRequestPart as u16 => Ok(HostFsMkdirRequestPart),
             x if x == HostFsRmdirRequestPart as u16 => Ok(HostFsRmdirRequestPart),
+            x if x == HostFsSymlinkRequestPart as u16 => Ok(HostFsSymlinkRequestPart),
+            x if x == HostFsSymlinkResponse as u16 => Ok(HostFsSymlinkResponse),
+            x if x == HostFsReadlinkRequest as u16 => Ok(HostFsReadlinkRequest),
+            x if x == HostFsReadlinkRequestPart as u16 => Ok(HostFsReadlinkRequestPart),
+            x if x == HostFsReadlinkResponse as u16 => Ok(HostFsReadlinkResponse),
+            x if x == HostFsReadlinkResponsePart as u16 => Ok(HostFsReadlinkResponsePart),
+            x if x == HostFsLstatRequest as u16 => Ok(HostFsLstatRequest),
+            x if x == HostFsLstatRequestPart as u16 => Ok(HostFsLstatRequestPart),
+            x if x == HostFsLstatResponse as u16 => Ok(HostFsLstatResponse),
             _ => Err(()),
         }
     }
@@ -447,6 +465,15 @@ impl SystemCallMessageHeader {
                 | Self::HostFsUnlinkRequestPart
                 | Self::HostFsMkdirRequestPart
                 | Self::HostFsRmdirRequestPart
+                | Self::HostFsSymlinkRequestPart
+                | Self::HostFsSymlinkResponse
+                | Self::HostFsReadlinkRequest
+                | Self::HostFsReadlinkRequestPart
+                | Self::HostFsReadlinkResponse
+                | Self::HostFsReadlinkResponsePart
+                | Self::HostFsLstatRequest
+                | Self::HostFsLstatRequestPart
+                | Self::HostFsLstatResponse
         )
     }
 
@@ -477,11 +504,24 @@ impl SystemCallMessageHeader {
             Self::HostFsLseekRequest => Some(Self::HostFsLseekResponse),
             Self::HostFsTruncateRequest => Some(Self::HostFsTruncateResponse),
             Self::HostFsFlushRequest => Some(Self::HostFsFlushResponse),
+            Self::HostFsSymlinkRequestPart => Some(Self::HostFsSymlinkResponse),
+            Self::HostFsReadlinkRequest | Self::HostFsReadlinkRequestPart => {
+                Some(Self::HostFsReadlinkResponse)
+            },
+            Self::HostFsLstatRequest | Self::HostFsLstatRequestPart => {
+                Some(Self::HostFsLstatResponse)
+            },
             _ => None,
         }
     }
 
     /// Returns `true` if this header is a hostfs response variant.
+    ///
+    /// Note: `HostFsReadlinkResponsePart` is intentionally excluded. The multi-part
+    /// response framing places `total_parts`/`part_number` in bytes `[2..6]`, where
+    /// `get_op_id` expects the logical op_id, so treating it as a regular hostfs
+    /// response on the vfsd side would remove the wrong entry from the pending
+    /// queue. Re-add it only once vfsd implements a multi-part response assembler.
     pub fn is_hostfs_response(&self) -> bool {
         matches!(
             self,
@@ -498,7 +538,15 @@ impl SystemCallMessageHeader {
                 | Self::HostFsLseekResponse
                 | Self::HostFsTruncateResponse
                 | Self::HostFsFlushResponse
+                | Self::HostFsSymlinkResponse
+                | Self::HostFsReadlinkResponse
+                | Self::HostFsLstatResponse
         )
+    }
+
+    /// Returns `true` if this header represents a *part* of a multi-part hostfs *response* stream.
+    pub fn is_hostfs_multipart_response(&self) -> bool {
+        matches!(self, Self::HostFsReadlinkResponsePart)
     }
 }
 
