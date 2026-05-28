@@ -440,7 +440,7 @@ impl HostFsHandler {
         req: long_msg::LongUnlinkRequest,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
-        let host_path: PathBuf = match self.sandbox.resolve(&req.path) {
+        let host_path: PathBuf = match self.sandbox.resolve_nofollow(&req.path) {
             Some(p) => p,
             None => {
                 set_header(response, SystemCallMessageHeader::HostFsUnlinkResponse as u16);
@@ -1004,7 +1004,7 @@ impl HostFsHandler {
             },
         };
 
-        let host_path: PathBuf = match self.sandbox.resolve(path_str) {
+        let host_path: PathBuf = match self.sandbox.resolve_nofollow(path_str) {
             Some(p) => p,
             None => {
                 set_header(response, SystemCallMessageHeader::HostFsUnlinkResponse as u16);
