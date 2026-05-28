@@ -436,26 +436,47 @@ async fn standalone_io_handler(
                                     continue;
                                 },
                             };
-                            let response: Message = Message::new(
-                                MessageSender::from(ProcessIdentifier::KERNEL),
-                                MessageReceiver::from(ProcessIdentifier::VFSD),
-                                MessageType::Ikc,
-                                None,
-                                response_payload,
-                            );
-                            // NOTE: `increment_io_thread_messages_received()` counts
-                            // messages flowing from the IO thread back into the VM,
-                            // not messages the IO thread receives. The name is a
-                            // project-wide convention; renaming is out of scope here.
-                            counters.increment_io_thread_messages_received();
-                            if response_tx
-                                .blocking_send(IkcFrame::Message(response))
-                                .is_err()
-                            {
-                                error!(
-                                    "hostfsd-worker: failed to send response (VM input channel \
-                                     closed)"
+                            // Build the first response message and any queued
+                            // multi-part follow-ups together so the entire response
+                            // stream is delivered before the next request is
+                            // processed. Hostfs multi-part responses (currently the
+                            // long-target `readlink` form) leave additional payloads
+                            // in the handler's queue that must be drained via
+                            // `take_next_response_part` immediately after the head.
+                            let mut response_payloads: std::vec::Vec<[u8; Message::PAYLOAD_SIZE]> =
+                                std::vec::Vec::new();
+                            response_payloads.push(response_payload);
+                            while let Some(extra) = handler.take_next_response_part() {
+                                response_payloads.push(extra);
+                            }
+                            let mut send_failed = false;
+                            for payload in response_payloads {
+                                let response: Message = Message::new(
+                                    MessageSender::from(ProcessIdentifier::KERNEL),
+                                    MessageReceiver::from(ProcessIdentifier::VFSD),
+                                    MessageType::Ikc,
+                                    None,
+                                    payload,
                                 );
+                                // NOTE: `increment_io_thread_messages_received()`
+                                // counts messages flowing from the IO thread back
+                                // into the VM, not messages the IO thread receives.
+                                // The name is a project-wide convention; renaming is
+                                // out of scope here.
+                                counters.increment_io_thread_messages_received();
+                                if response_tx
+                                    .blocking_send(IkcFrame::Message(response))
+                                    .is_err()
+                                {
+                                    error!(
+                                        "hostfsd-worker: failed to send response (VM input \
+                                         channel closed)"
+                                    );
+                                    send_failed = true;
+                                    break;
+                                }
+                            }
+                            if send_failed {
                                 break;
                             }
                         }
@@ -696,6 +717,9 @@ fn hostfs_error_target(
             | SystemCallMessageHeader::HostFsUnlinkRequestPart
             | SystemCallMessageHeader::HostFsMkdirRequestPart
             | SystemCallMessageHeader::HostFsRmdirRequestPart
+            | SystemCallMessageHeader::HostFsSymlinkRequestPart
+            | SystemCallMessageHeader::HostFsReadlinkRequestPart
+            | SystemCallMessageHeader::HostFsLstatRequestPart
     );
 
     if is_request_part {
@@ -751,6 +775,9 @@ fn hostfs_part_info(
             | SystemCallMessageHeader::HostFsUnlinkRequestPart
             | SystemCallMessageHeader::HostFsMkdirRequestPart
             | SystemCallMessageHeader::HostFsRmdirRequestPart
+            | SystemCallMessageHeader::HostFsSymlinkRequestPart
+            | SystemCallMessageHeader::HostFsReadlinkRequestPart
+            | SystemCallMessageHeader::HostFsLstatRequestPart
     );
     if !is_request_part {
         return None;
