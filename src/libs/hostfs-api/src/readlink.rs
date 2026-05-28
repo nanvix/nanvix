@@ -22,6 +22,9 @@
 //==================================================================================================
 
 use crate::{
+    set_header,
+    set_op_id,
+    OperationId,
     HOSTFS_DATA_START,
     MAX_INLINE_PATH_LEN,
 };
@@ -79,14 +82,39 @@ impl ReadlinkRequest {
     /// Offset of `path` field (relative to data section start).
     const OFFSET_OF_PATH: usize = Self::OFFSET_OF_PATH_LEN + Self::SIZE_OF_PATH_LEN;
 
-    /// Encodes this request into the message payload.
-    pub fn encode(&self, payload: &mut [u8; Message::PAYLOAD_SIZE]) {
+    /// Builds an inline [`ReadlinkRequest`] from a path slice.
+    ///
+    /// Returns `None` if `path` is longer than [`MAX_INLINE_PATH_LEN`]. Callers must
+    /// fall back to the multi-part request form in [`long_msg`](crate::long_msg) when
+    /// this returns `None`.
+    pub fn from_path(path: &[u8]) -> Option<Self> {
+        if path.len() > MAX_INLINE_PATH_LEN {
+            return None;
+        }
+        let mut buf: [u8; MAX_INLINE_PATH_LEN] = [0u8; MAX_INLINE_PATH_LEN];
+        buf[..path.len()].copy_from_slice(path);
+        Some(Self {
+            path_len: path.len() as u16,
+            path: buf,
+        })
+    }
+
+    /// Serializes this request into a complete message payload (header + op_id + data).
+    pub fn serialize(
+        &self,
+        header_value: u16,
+        op_id: OperationId,
+    ) -> [u8; Message::PAYLOAD_SIZE] {
+        let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
+        set_header(&mut payload, header_value);
+        set_op_id(&mut payload, op_id);
         let path_len_off: usize = HOSTFS_DATA_START + Self::OFFSET_OF_PATH_LEN;
         let path_off: usize = HOSTFS_DATA_START + Self::OFFSET_OF_PATH;
         payload[path_len_off..path_len_off + Self::SIZE_OF_PATH_LEN]
             .copy_from_slice(&self.path_len.to_le_bytes());
         let copy_len: usize = (self.path_len as usize).min(MAX_INLINE_PATH_LEN);
         payload[path_off..path_off + copy_len].copy_from_slice(&self.path[..copy_len]);
+        payload
     }
 
     ///

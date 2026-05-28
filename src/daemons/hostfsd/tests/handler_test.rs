@@ -53,43 +53,34 @@ fn setup() -> (HostFsHandler, TempDir) {
 
 /// Builds an Open request payload for the given path and flags.
 fn make_open_request(path: &str, flags: i32) -> [u8; Message::PAYLOAD_SIZE] {
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    let path_bytes: &[u8] = path.as_bytes();
-    let path_len: u16 = path_bytes.len().min(MAX_INLINE_PATH_LEN) as u16;
-    let mut path_arr: [u8; MAX_INLINE_PATH_LEN] = [0u8; MAX_INLINE_PATH_LEN];
-    path_arr[..path_len as usize].copy_from_slice(&path_bytes[..path_len as usize]);
-
-    let req: OpenRequest = OpenRequest {
-        flags,
-        path_len,
-        path: path_arr,
-    };
-    set_header(&mut payload, SystemCallMessageHeader::HostFsOpenRequest as u16);
-    req.encode(&mut payload);
-    payload
+    let req: OpenRequest = OpenRequest::from_path(flags, path.as_bytes())
+        .expect("test path fits in MAX_INLINE_PATH_LEN");
+    req.serialize(
+        SystemCallMessageHeader::HostFsOpenRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
 }
 
 /// Builds a Close request payload.
 fn make_close_request(fd: i32) -> [u8; Message::PAYLOAD_SIZE] {
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
     let req: CloseRequest = CloseRequest { fd };
-    set_header(&mut payload, SystemCallMessageHeader::HostFsCloseRequest as u16);
-    req.encode(&mut payload);
-    payload
+    req.serialize(
+        SystemCallMessageHeader::HostFsCloseRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
 }
 
 /// Builds a Read request payload.
 fn make_read_request(fd: i32, count: u32, offset: i64) -> [u8; Message::PAYLOAD_SIZE] {
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
     let req: ReadRequest = ReadRequest { fd, count, offset };
-    set_header(&mut payload, SystemCallMessageHeader::HostFsReadRequest as u16);
-    req.encode(&mut payload);
-    payload
+    req.serialize(
+        SystemCallMessageHeader::HostFsReadRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
 }
 
 /// Builds a Write request payload.
 fn make_write_request(fd: i32, data: &[u8], offset: i64) -> [u8; Message::PAYLOAD_SIZE] {
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
     let data_len: u16 = data.len().min(MAX_INLINE_WRITE_DATA) as u16;
     let mut data_arr: [u8; MAX_INLINE_WRITE_DATA] = [0u8; MAX_INLINE_WRITE_DATA];
     data_arr[..data_len as usize].copy_from_slice(&data[..data_len as usize]);
@@ -101,120 +92,86 @@ fn make_write_request(fd: i32, data: &[u8], offset: i64) -> [u8; Message::PAYLOA
         data_len,
         data: data_arr,
     };
-    set_header(&mut payload, SystemCallMessageHeader::HostFsWriteRequest as u16);
-    req.encode(&mut payload);
-    payload
+    req.serialize(
+        SystemCallMessageHeader::HostFsWriteRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
 }
 
 /// Builds a Stat request payload.
 fn make_stat_request(fd: i32) -> [u8; Message::PAYLOAD_SIZE] {
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
     let req: StatRequest = StatRequest { fd };
-    set_header(&mut payload, SystemCallMessageHeader::HostFsStatRequest as u16);
-    req.encode(&mut payload);
-    payload
+    req.serialize(
+        SystemCallMessageHeader::HostFsStatRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
 }
 
 /// Builds a Mkdir request payload.
 fn make_mkdir_request(path: &str, mode: u32) -> [u8; Message::PAYLOAD_SIZE] {
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    let path_bytes: &[u8] = path.as_bytes();
-    let path_len: u16 = path_bytes.len().min(MAX_INLINE_PATH_LEN) as u16;
-    let mut path_arr: [u8; MAX_INLINE_PATH_LEN] = [0u8; MAX_INLINE_PATH_LEN];
-    path_arr[..path_len as usize].copy_from_slice(&path_bytes[..path_len as usize]);
-
-    let req: MkdirRequest = MkdirRequest {
-        mode,
-        path_len,
-        path: path_arr,
-    };
-    set_header(&mut payload, SystemCallMessageHeader::HostFsMkdirRequest as u16);
-    req.encode(&mut payload);
-    payload
+    let req: MkdirRequest = MkdirRequest::from_path(mode, path.as_bytes())
+        .expect("test path fits in MAX_INLINE_PATH_LEN");
+    req.serialize(
+        SystemCallMessageHeader::HostFsMkdirRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
 }
 
 /// Builds an Unlink request payload.
 fn make_unlink_request(path: &str) -> [u8; Message::PAYLOAD_SIZE] {
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    let path_bytes: &[u8] = path.as_bytes();
-    let path_len: u16 = path_bytes.len().min(MAX_INLINE_PATH_LEN) as u16;
-    let mut path_arr: [u8; MAX_INLINE_PATH_LEN] = [0u8; MAX_INLINE_PATH_LEN];
-    path_arr[..path_len as usize].copy_from_slice(&path_bytes[..path_len as usize]);
-
-    let req: UnlinkRequest = UnlinkRequest {
-        path_len,
-        path: path_arr,
-    };
-    set_header(&mut payload, SystemCallMessageHeader::HostFsUnlinkRequest as u16);
-    req.encode(&mut payload);
-    payload
+    let req: UnlinkRequest =
+        UnlinkRequest::from_path(path.as_bytes()).expect("test path fits in MAX_INLINE_PATH_LEN");
+    req.serialize(
+        SystemCallMessageHeader::HostFsUnlinkRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
 }
 
 /// Builds a Rmdir request payload.
 fn make_rmdir_request(path: &str) -> [u8; Message::PAYLOAD_SIZE] {
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    let path_bytes: &[u8] = path.as_bytes();
-    let path_len: u16 = path_bytes.len().min(MAX_INLINE_PATH_LEN) as u16;
-    let mut path_arr: [u8; MAX_INLINE_PATH_LEN] = [0u8; MAX_INLINE_PATH_LEN];
-    path_arr[..path_len as usize].copy_from_slice(&path_bytes[..path_len as usize]);
-
-    let req: RmdirRequest = RmdirRequest {
-        path_len,
-        path: path_arr,
-    };
-    set_header(&mut payload, SystemCallMessageHeader::HostFsRmdirRequest as u16);
-    req.encode(&mut payload);
-    payload
+    let req: RmdirRequest =
+        RmdirRequest::from_path(path.as_bytes()).expect("test path fits in MAX_INLINE_PATH_LEN");
+    req.serialize(
+        SystemCallMessageHeader::HostFsRmdirRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
 }
 
 /// Builds a Rename request payload.
 fn make_rename_request(old_path: &str, new_path: &str) -> [u8; Message::PAYLOAD_SIZE] {
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-    let old_bytes: &[u8] = old_path.as_bytes();
-    let new_bytes: &[u8] = new_path.as_bytes();
-    let old_len: u16 = old_bytes.len().min(MAX_INLINE_PATH_LEN) as u16;
-    let new_len: u16 = new_bytes.len().min(MAX_INLINE_PATH_LEN - old_len as usize) as u16;
-
-    let mut paths: [u8; MAX_INLINE_PATH_LEN] = [0u8; MAX_INLINE_PATH_LEN];
-    paths[..old_len as usize].copy_from_slice(&old_bytes[..old_len as usize]);
-    paths[old_len as usize..old_len as usize + new_len as usize]
-        .copy_from_slice(&new_bytes[..new_len as usize]);
-
-    let req: RenameRequest = RenameRequest {
-        old_path_len: old_len,
-        new_path_len: new_len,
-        paths,
-    };
-    set_header(&mut payload, SystemCallMessageHeader::HostFsRenameRequest as u16);
-    req.encode(&mut payload);
-    payload
+    let req: RenameRequest = RenameRequest::from_paths(old_path.as_bytes(), new_path.as_bytes())
+        .expect("test paths fit in MAX_INLINE_PATH_LEN");
+    req.serialize(
+        SystemCallMessageHeader::HostFsRenameRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
 }
 
 /// Builds an Lseek request payload.
 fn make_lseek_request(fd: i32, offset: i64, whence: i32) -> [u8; Message::PAYLOAD_SIZE] {
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
     let req: LseekRequest = LseekRequest { fd, offset, whence };
-    set_header(&mut payload, SystemCallMessageHeader::HostFsLseekRequest as u16);
-    req.encode(&mut payload);
-    payload
+    req.serialize(
+        SystemCallMessageHeader::HostFsLseekRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
 }
 
 /// Builds a Truncate request payload.
 fn make_truncate_request(fd: i32, length: i64) -> [u8; Message::PAYLOAD_SIZE] {
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
     let req: TruncateRequest = TruncateRequest { fd, length };
-    set_header(&mut payload, SystemCallMessageHeader::HostFsTruncateRequest as u16);
-    req.encode(&mut payload);
-    payload
+    req.serialize(
+        SystemCallMessageHeader::HostFsTruncateRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
 }
 
 /// Builds a Flush request payload.
 fn make_flush_request(fd: i32) -> [u8; Message::PAYLOAD_SIZE] {
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
     let req: FlushRequest = FlushRequest { fd };
-    set_header(&mut payload, SystemCallMessageHeader::HostFsFlushRequest as u16);
-    req.encode(&mut payload);
-    payload
+    req.serialize(
+        SystemCallMessageHeader::HostFsFlushRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
 }
 
 /// Builds a ReadDir request payload.
@@ -224,15 +181,15 @@ fn make_readdir_request(fd: i32) -> [u8; Message::PAYLOAD_SIZE] {
 
 /// Builds a ReadDir request payload with a specified offset.
 fn make_readdir_request_at(fd: i32, offset: u32) -> [u8; Message::PAYLOAD_SIZE] {
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
     let req: ReadDirRequest = ReadDirRequest {
         fd,
         _reserved: 0,
         offset,
     };
-    set_header(&mut payload, SystemCallMessageHeader::HostFsReadDirRequest as u16);
-    req.encode(&mut payload);
-    payload
+    req.serialize(
+        SystemCallMessageHeader::HostFsReadDirRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
 }
 
 /// Opens a file via the handler and returns the remote FD.

@@ -3,7 +3,12 @@
 
 //! Close request wire format.
 
-use crate::HOSTFS_DATA_START;
+use crate::{
+    set_header,
+    set_op_id,
+    OperationId,
+    HOSTFS_DATA_START,
+};
 use ::sys::ipc::Message;
 
 /// Close request: close a remote file descriptor.
@@ -14,10 +19,14 @@ pub struct CloseRequest {
 }
 
 impl CloseRequest {
-    /// Encodes this request into the message payload.
-    pub fn encode(&self, payload: &mut [u8; Message::PAYLOAD_SIZE]) {
+    /// Serializes this request into a complete message payload (header + op_id + data).
+    pub fn serialize(&self, header_value: u16, op_id: OperationId) -> [u8; Message::PAYLOAD_SIZE] {
+        let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
+        set_header(&mut payload, header_value);
+        set_op_id(&mut payload, op_id);
         let data_start: usize = HOSTFS_DATA_START;
         payload[data_start..data_start + 4].copy_from_slice(&self.fd.to_le_bytes());
+        payload
     }
 
     /// Decodes a CloseRequest from the message payload.
