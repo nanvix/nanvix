@@ -73,6 +73,14 @@ pub struct HostFsHandler {
     fd_table: FdTable,
     /// Assembler for multi-part request messages.
     assembler: HostFsAssembler,
+    /// Queue of additional response payloads that a single request may produce.
+    ///
+    /// Most hostfs operations reply with a single message, but a few (currently the
+    /// long-target variant of `readlink`) emit a multi-part response. The first part
+    /// is returned directly from [`Self::handle_request`]; the remaining parts are
+    /// queued here and must be drained by the caller via
+    /// [`Self::take_next_response_part`] before submitting the next request.
+    extra_responses: std::collections::VecDeque<[u8; Message::PAYLOAD_SIZE]>,
 }
 
 impl HostFsHandler {
@@ -84,7 +92,20 @@ impl HostFsHandler {
             sandbox: Sandbox::new(root)?,
             fd_table: FdTable::new(),
             assembler: HostFsAssembler::new(),
+            extra_responses: std::collections::VecDeque::new(),
         })
+    }
+
+    /// Pops and returns the next queued response part, if any.
+    ///
+    /// After a call to [`Self::handle_request`] returns `Some(payload)`, callers must
+    /// repeatedly invoke this method (sending each returned payload as its own IKC
+    /// message) until it returns `None`. Only then is the next request safe to feed
+    /// in. This contract preserves the strict in-order arrival of response parts on
+    /// the vfsd side, which is required for the multi-part response assembler to
+    /// keep a single in-flight stream.
+    pub fn take_next_response_part(&mut self) -> Option<[u8; Message::PAYLOAD_SIZE]> {
+        self.extra_responses.pop_front()
     }
 
     /// Dispatches a hostfs request message and returns the response payload.
@@ -119,13 +140,24 @@ impl HostFsHandler {
         };
 
         // Helper: run a single-message handler, echo op_id, and wrap the result.
+        //
+        // The op_id stamp at bytes [2..6] is skipped when the handler produced a
+        // multi-part response, because those bytes belong to the
+        // `SystemCallMessagePart` framing (`total_parts` + `part_number`) and the
+        // op_id is embedded in the assembled response body instead.
         let run =
             |this: &mut Self,
              f: fn(&mut Self, &[u8; Message::PAYLOAD_SIZE], &mut [u8; Message::PAYLOAD_SIZE])|
              -> Option<[u8; Message::PAYLOAD_SIZE]> {
                 let mut response = [0u8; Message::PAYLOAD_SIZE];
                 f(this, payload, &mut response);
-                set_op_id(&mut response, get_op_id(payload));
+                let resp_header_raw: u16 = u16::from_ne_bytes([response[0], response[1]]);
+                let is_multipart: bool = SystemCallMessageHeader::try_from(resp_header_raw)
+                    .map(|h| h.is_hostfs_multipart_response())
+                    .unwrap_or(false);
+                if !is_multipart {
+                    set_op_id(&mut response, get_op_id(payload));
+                }
                 Some(response)
             };
 
@@ -135,7 +167,10 @@ impl HostFsHandler {
             | SystemCallMessageHeader::HostFsRenameRequestPart
             | SystemCallMessageHeader::HostFsUnlinkRequestPart
             | SystemCallMessageHeader::HostFsMkdirRequestPart
-            | SystemCallMessageHeader::HostFsRmdirRequestPart => {
+            | SystemCallMessageHeader::HostFsRmdirRequestPart
+            | SystemCallMessageHeader::HostFsSymlinkRequestPart
+            | SystemCallMessageHeader::HostFsReadlinkRequestPart
+            | SystemCallMessageHeader::HostFsLstatRequestPart => {
                 self.handle_long_part(syscall_msg.header, &syscall_msg.payload)
             },
             // Single-message requests: dispatch inline.
@@ -159,6 +194,8 @@ impl HostFsHandler {
             SystemCallMessageHeader::HostFsLseekRequest => run(self, Self::handle_lseek),
             SystemCallMessageHeader::HostFsTruncateRequest => run(self, Self::handle_truncate),
             SystemCallMessageHeader::HostFsFlushRequest => run(self, Self::handle_flush),
+            SystemCallMessageHeader::HostFsReadlinkRequest => run(self, Self::handle_readlink),
+            SystemCallMessageHeader::HostFsLstatRequest => run(self, Self::handle_lstat),
             other => {
                 log::error!("hostfsd: unexpected message header: {:?}", other);
                 let mut response = [0u8; Message::PAYLOAD_SIZE];
@@ -277,6 +314,39 @@ impl HostFsHandler {
                 } else {
                     log::error!("hostfsd: failed to deserialize long rmdir request");
                     set_header(&mut response, SystemCallMessageHeader::HostFsRmdirResponse as u16);
+                    set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
+                }
+            },
+            SystemCallMessageHeader::HostFsSymlinkRequestPart => {
+                if let Some(req) = long_msg::deserialize_long_symlink(&assembled) {
+                    self.handle_long_symlink(req, &mut response);
+                } else {
+                    log::error!("hostfsd: failed to deserialize long symlink request");
+                    set_header(
+                        &mut response,
+                        SystemCallMessageHeader::HostFsSymlinkResponse as u16,
+                    );
+                    set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
+                }
+            },
+            SystemCallMessageHeader::HostFsReadlinkRequestPart => {
+                if let Some(req) = long_msg::deserialize_long_readlink(&assembled) {
+                    self.handle_long_readlink(req, &mut response);
+                } else {
+                    log::error!("hostfsd: failed to deserialize long readlink request");
+                    set_header(
+                        &mut response,
+                        SystemCallMessageHeader::HostFsReadlinkResponse as u16,
+                    );
+                    set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
+                }
+            },
+            SystemCallMessageHeader::HostFsLstatRequestPart => {
+                if let Some(req) = long_msg::deserialize_long_lstat(&assembled) {
+                    self.handle_long_lstat(req, &mut response);
+                } else {
+                    log::error!("hostfsd: failed to deserialize long lstat request");
+                    set_header(&mut response, SystemCallMessageHeader::HostFsLstatResponse as u16);
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
@@ -519,6 +589,364 @@ impl HostFsHandler {
             Err(e) => {
                 set_header(response, SystemCallMessageHeader::HostFsRmdirResponse as u16);
                 set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
+            },
+        }
+    }
+
+    /// Handles a fully assembled long SYMLINK request.
+    ///
+    /// Creates a symbolic link at `linkpath` pointing to the verbatim `target` string.
+    /// The `target` is not sandbox-validated at creation time (POSIX semantics: a link's
+    /// target is stored as-is and only resolved on dereference). However, when the link
+    /// is later opened/stat'd through hostfsd, [`Sandbox::resolve`] will reject any
+    /// access that escapes the mount root, so an out-of-sandbox target simply produces
+    /// an unusable link rather than a security hole.
+    ///
+    /// The `linkpath` is resolved with [`Sandbox::resolve_nofollow`] so an existing
+    /// link at that name is not followed.
+    fn handle_long_symlink(
+        &mut self,
+        req: long_msg::LongSymlinkRequest,
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        set_header(response, SystemCallMessageHeader::HostFsSymlinkResponse as u16);
+
+        // Reject empty target and embedded NUL bytes — these are invalid as POSIX
+        // pathnames and would silently corrupt the link.
+        if req.target.is_empty() || req.target.as_bytes().contains(&0) {
+            set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
+            return;
+        }
+
+        let link_path: PathBuf = match self.sandbox.resolve_nofollow(&req.linkpath) {
+            Some(p) => p,
+            None => {
+                log::warn!("hostfsd: symlink linkpath escapes sandbox: {:?}", req.linkpath);
+                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                return;
+            },
+        };
+
+        match create_symlink(&req.target, &link_path) {
+            Ok(()) => {
+                self.fd_table.invalidate_dir_caches();
+                set_payload_data(response, &0i32.to_le_bytes());
+            },
+            Err(e) => {
+                set_payload_data(response, &symlink_error_to_code(&e).to_le_bytes());
+            },
+        }
+    }
+
+    /// Handles a fully assembled long READLINK request.
+    fn handle_long_readlink(
+        &mut self,
+        req: long_msg::LongReadlinkRequest,
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        self.do_readlink(req.op_id, &req.path, response);
+    }
+
+    /// Handles a fully assembled long LSTAT request.
+    fn handle_long_lstat(
+        &mut self,
+        req: long_msg::LongLstatRequest,
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        self.do_lstat(&req.path, response);
+    }
+
+    /// Handles an inline single-message READLINK request.
+    fn handle_readlink(
+        &mut self,
+        payload: &[u8; Message::PAYLOAD_SIZE],
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        let req: ReadlinkRequest = match ReadlinkRequest::decode(payload) {
+            Some(r) => r,
+            None => {
+                set_header(response, SystemCallMessageHeader::HostFsReadlinkResponse as u16);
+                let err = ReadlinkResponse {
+                    status: HOSTFS_ERR_INVALID,
+                    target_len: 0,
+                    target: [0u8; MAX_INLINE_READLINK_TARGET],
+                };
+                err.encode(response);
+                return;
+            },
+        };
+        let path_len: usize = (req.path_len as usize).min(MAX_INLINE_PATH_LEN);
+        let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
+            Ok(s) => s,
+            Err(_) => {
+                set_header(response, SystemCallMessageHeader::HostFsReadlinkResponse as u16);
+                let err = ReadlinkResponse {
+                    status: HOSTFS_ERR_INVALID,
+                    target_len: 0,
+                    target: [0u8; MAX_INLINE_READLINK_TARGET],
+                };
+                err.encode(response);
+                return;
+            },
+        };
+        self.do_readlink(get_op_id(payload), path_str, response);
+    }
+
+    /// Handles an inline single-message LSTAT request.
+    fn handle_lstat(
+        &mut self,
+        payload: &[u8; Message::PAYLOAD_SIZE],
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        let req: LstatRequest = match LstatRequest::decode(payload) {
+            Some(r) => r,
+            None => {
+                set_header(response, SystemCallMessageHeader::HostFsLstatResponse as u16);
+                let err = LstatResponse {
+                    status: HOSTFS_ERR_INVALID,
+                    size: 0,
+                    mode: 0,
+                    kind: file_kind::OTHER,
+                };
+                err.encode(response);
+                return;
+            },
+        };
+        let path_len: usize = (req.path_len as usize).min(MAX_INLINE_PATH_LEN);
+        let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
+            Ok(s) => s,
+            Err(_) => {
+                set_header(response, SystemCallMessageHeader::HostFsLstatResponse as u16);
+                let err = LstatResponse {
+                    status: HOSTFS_ERR_INVALID,
+                    size: 0,
+                    mode: 0,
+                    kind: file_kind::OTHER,
+                };
+                err.encode(response);
+                return;
+            },
+        };
+        self.do_lstat(path_str, response);
+    }
+
+    /// Shared `readlink` implementation used by both the inline and multi-part
+    /// request handlers.
+    ///
+    /// `op_id` is the request's operation identifier. It is required because a
+    /// successful read of a long target produces a multi-part response whose body
+    /// embeds the op_id at a fixed offset for vfsd-side routing — callers (inline or
+    /// long path) cannot rely on `set_op_id` having been applied to `response` yet.
+    fn do_readlink(
+        &mut self,
+        op_id: OperationId,
+        path_str: &str,
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        set_header(response, SystemCallMessageHeader::HostFsReadlinkResponse as u16);
+
+        let host_path: PathBuf = match self.sandbox.resolve_nofollow(path_str) {
+            Some(p) => p,
+            None => {
+                let err = ReadlinkResponse {
+                    status: HOSTFS_ERR_PERMISSION,
+                    target_len: 0,
+                    target: [0u8; MAX_INLINE_READLINK_TARGET],
+                };
+                err.encode(response);
+                return;
+            },
+        };
+
+        // Refuse to follow any symlink before reading: `read_link` itself never follows
+        // the final component, but `symlink_metadata` lets us produce ENOENT for missing
+        // paths and EINVAL for non-symlinks (matching POSIX readlink semantics).
+        let meta = match fs::symlink_metadata(&host_path) {
+            Ok(m) => m,
+            Err(e) => {
+                let err = ReadlinkResponse {
+                    status: io_error_to_code(&e),
+                    target_len: 0,
+                    target: [0u8; MAX_INLINE_READLINK_TARGET],
+                };
+                err.encode(response);
+                return;
+            },
+        };
+        if !meta.file_type().is_symlink() {
+            let err = ReadlinkResponse {
+                status: HOSTFS_ERR_INVALID,
+                target_len: 0,
+                target: [0u8; MAX_INLINE_READLINK_TARGET],
+            };
+            err.encode(response);
+            return;
+        }
+
+        match fs::read_link(&host_path) {
+            Ok(target_path) => {
+                // Preserve the verbatim target bytes on Unix: `to_string_lossy` would
+                // replace invalid UTF-8 sequences with U+FFFD, silently corrupting
+                // non-UTF-8 link targets. On Windows, paths are natively UTF-16 and the
+                // hostfs wire format is byte-oriented, so a lossy UTF-8 conversion is
+                // the closest faithful representation available.
+                #[cfg(unix)]
+                let target_owned: Vec<u8> = {
+                    use std::os::unix::ffi::OsStrExt;
+                    target_path.as_os_str().as_bytes().to_vec()
+                };
+                #[cfg(not(unix))]
+                let target_owned: Vec<u8> = target_path.to_string_lossy().into_owned().into_bytes();
+                let target_bytes: &[u8] = &target_owned;
+                // Targets exceeding the per-response cap are rejected outright rather
+                // than truncated so callers get a deterministic, clear error.
+                if target_bytes.len() > ::sysapi::limits::PATH_MAX {
+                    log::warn!(
+                        "hostfsd: readlink target exceeds PATH_MAX ({} > {})",
+                        target_bytes.len(),
+                        ::sysapi::limits::PATH_MAX
+                    );
+                    let err = ReadlinkResponse {
+                        status: HOSTFS_ERR_INVALID,
+                        target_len: 0,
+                        target: [0u8; MAX_INLINE_READLINK_TARGET],
+                    };
+                    err.encode(response);
+                    return;
+                }
+                if target_bytes.len() <= MAX_INLINE_READLINK_TARGET {
+                    // Inline fast path: target fits in a single response message.
+                    let mut target_buf: [u8; MAX_INLINE_READLINK_TARGET] =
+                        [0u8; MAX_INLINE_READLINK_TARGET];
+                    target_buf[..target_bytes.len()].copy_from_slice(target_bytes);
+                    let resp = ReadlinkResponse {
+                        status: 0,
+                        target_len: target_bytes.len() as u16,
+                        target: target_buf,
+                    };
+                    resp.encode(response);
+                    return;
+                }
+                // Multi-part response: emit a stream of `HostFsReadlinkResponsePart`
+                // messages. The first part is written into `response` (and returned
+                // by `handle_request`); the rest are queued in `extra_responses` for
+                // the caller to drain.
+                self.emit_long_readlink_response(response, op_id, 0, target_bytes);
+            },
+            Err(e) => {
+                let err = ReadlinkResponse {
+                    status: io_error_to_code(&e),
+                    target_len: 0,
+                    target: [0u8; MAX_INLINE_READLINK_TARGET],
+                };
+                err.encode(response);
+            },
+        }
+    }
+
+    /// Builds a multi-part `HostFsReadlinkResponsePart` stream for a successful
+    /// `readlink` whose target exceeds the inline capacity.
+    ///
+    /// Wire-format details (body layout, per-part framing, chunk size) live in
+    /// [`long_msg::serialize_long_readlink_response`] and
+    /// [`long_msg::chunk_long_response`]. This method only encodes the policy that
+    /// is local to the daemon: the first chunk is written into `first_response`,
+    /// and the remaining chunks are queued in `extra_responses` for the caller to
+    /// drain via [`Self::take_next_response_part`].
+    ///
+    /// Note: `op_id` is recorded *only* in the first 4 bytes of the assembled body.
+    /// The outer-frame bytes `[2..6]` belong to the `SystemCallMessagePart` framing
+    /// (`total_parts` + `part_number`), so `set_op_id` is intentionally not applied
+    /// to multi-part responses (see `is_hostfs_multipart_response` in `handle_request`).
+    fn emit_long_readlink_response(
+        &mut self,
+        first_response: &mut [u8; Message::PAYLOAD_SIZE],
+        op_id: OperationId,
+        status: i32,
+        target_bytes: &[u8],
+    ) {
+        // `target_bytes.len()` is bounded above by `PATH_MAX` at the call site, which
+        // is well below `MAX_PATH_LEN` (u16::MAX), so the serializer cannot return
+        // `None` here. Use a debug-only assert and fall through with an empty body
+        // in release builds rather than panic on a malformed input.
+        let body: Vec<u8> = long_msg::serialize_long_readlink_response(op_id, status, target_bytes)
+            .unwrap_or_default();
+        debug_assert!(
+            !body.is_empty(),
+            "serialize_long_readlink_response failed: target len {} exceeds wire limit",
+            target_bytes.len()
+        );
+
+        // `target_bytes.len()` is bounded above by `PATH_MAX` at the call site,
+        // which keeps the chunked stream well below `MAX_LONG_RESPONSE_PARTS`. The
+        // chunker can therefore not return `None` in practice, but guard with a
+        // debug assert and drop the response in release builds rather than emit a
+        // wrapped/malformed stream.
+        let parts_vec: Vec<[u8; Message::PAYLOAD_SIZE]> = match long_msg::chunk_long_response(
+            SystemCallMessageHeader::HostFsReadlinkResponsePart as u16,
+            &body,
+        ) {
+            Some(v) => v,
+            None => {
+                debug_assert!(
+                    false,
+                    "chunk_long_response rejected body of {} bytes (exceeds wire-format limit)",
+                    body.len()
+                );
+                log::error!(
+                    "hostfsd: dropping readlink response body ({} bytes) that exceeds the \
+                     long-response part limit",
+                    body.len()
+                );
+                return;
+            },
+        };
+        let mut parts: std::vec::IntoIter<[u8; Message::PAYLOAD_SIZE]> = parts_vec.into_iter();
+        if let Some(first) = parts.next() {
+            *first_response = first;
+        }
+        self.extra_responses.extend(parts);
+    }
+
+    /// Shared `lstat` implementation used by both the inline and multi-part
+    /// request handlers.
+    fn do_lstat(&mut self, path_str: &str, response: &mut [u8; Message::PAYLOAD_SIZE]) {
+        set_header(response, SystemCallMessageHeader::HostFsLstatResponse as u16);
+
+        let host_path: PathBuf = match self.sandbox.resolve_nofollow(path_str) {
+            Some(p) => p,
+            None => {
+                let err = LstatResponse {
+                    status: HOSTFS_ERR_PERMISSION,
+                    size: 0,
+                    mode: 0,
+                    kind: file_kind::OTHER,
+                };
+                err.encode(response);
+                return;
+            },
+        };
+
+        match fs::symlink_metadata(&host_path) {
+            Ok(meta) => {
+                let kind: u8 = metadata_kind(&meta);
+                let mode: u32 = metadata_mode(&meta, kind);
+                let resp = LstatResponse {
+                    status: 0,
+                    size: meta.len(),
+                    mode,
+                    kind,
+                };
+                resp.encode(response);
+            },
+            Err(e) => {
+                let err = LstatResponse {
+                    status: io_error_to_code(&e),
+                    size: 0,
+                    mode: 0,
+                    kind: file_kind::OTHER,
+                };
+                err.encode(response);
             },
         }
     }
@@ -1219,7 +1647,30 @@ impl HostFsHandler {
 /// Converts an `io::Error` to a simple integer error code.
 ///
 /// These codes are defined in the `hostfs-api` crate as `HOSTFS_ERR_*` constants.
+///
+/// `ELOOP` (too many levels of symbolic links) is detected via the raw OS error code
+/// because `std::io::ErrorKind::FilesystemLoop` is unstable. The Linux/macOS code is
+/// `40`/`62`; on Windows the closest equivalent reported by `CreateFileW` when a
+/// reparse-point chain cannot be resolved is `ERROR_CANT_RESOLVE_FILENAME` (1921).
 fn io_error_to_code(e: &io::Error) -> i32 {
+    // ELOOP-style errors do not have a stable `ErrorKind`, so probe the raw OS code.
+    if let Some(raw) = e.raw_os_error() {
+        #[cfg(target_os = "linux")]
+        const ELOOP_RAW: i32 = 40;
+        #[cfg(target_os = "macos")]
+        const ELOOP_RAW: i32 = 62;
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        const ELOOP_RAW: i32 = i32::MIN; // sentinel: no match on this platform
+        #[cfg(windows)]
+        const ERROR_CANT_RESOLVE_FILENAME: i32 = 1921;
+        if raw == ELOOP_RAW {
+            return HOSTFS_ERR_LOOP;
+        }
+        #[cfg(windows)]
+        if raw == ERROR_CANT_RESOLVE_FILENAME {
+            return HOSTFS_ERR_LOOP;
+        }
+    }
     match e.kind() {
         io::ErrorKind::NotFound => HOSTFS_ERR_NOT_FOUND,
         io::ErrorKind::PermissionDenied => HOSTFS_ERR_PERMISSION,
@@ -1254,6 +1705,138 @@ fn open_dir_handle(path: &std::path::Path) -> io::Result<File> {
     #[cfg(not(windows))]
     {
         File::open(path)
+    }
+}
+
+/// Creates a symbolic link at `linkpath` pointing to the verbatim `target` string.
+///
+/// On Unix, [`std::os::unix::fs::symlink`] is used directly: the resulting link is
+/// type-agnostic, matching POSIX `symlink(2)` semantics.
+///
+/// On Windows, symbolic links are typed at creation time (file vs. directory). The
+/// best-effort policy is:
+/// 1. If the target resolves (relative to the link's parent) to an existing directory,
+///    use [`std::os::windows::fs::symlink_dir`].
+/// 2. Otherwise — including the common case of a target that does not yet exist or is a
+///    file — use [`std::os::windows::fs::symlink_file`].
+///
+/// On Windows, creating a symbolic link requires either administrative privileges or
+/// Developer Mode (which grants `SeCreateSymbolicLinkPrivilege` to standard users).
+/// Without those, the call fails with `ERROR_PRIVILEGE_NOT_HELD`, which is mapped to
+/// [`HOSTFS_ERR_NOT_SUPPORTED`] by [`symlink_error_to_code`].
+///
+/// Note: the Windows file-vs-directory probe uses `fs::metadata`, which *follows*
+/// symbolic links. If `target` itself resolves through another link to a directory,
+/// the directory variant is selected; if it resolves to a file or does not exist,
+/// the file variant is used. This is best-effort classification at creation time and
+/// does not affect the verbatim storage of the link target.
+fn create_symlink(target: &str, linkpath: &std::path::Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(target, linkpath)
+    }
+    #[cfg(windows)]
+    {
+        // Resolve `target` relative to the link's parent to decide which variant of the
+        // Windows symlink API to use. If the target's type cannot be determined (e.g.,
+        // it does not exist yet), default to the file variant — this matches the most
+        // common case and lets the link become valid once the target is created.
+        let parent: &std::path::Path = linkpath
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let absolute_target: std::path::PathBuf = parent.join(target);
+        let is_dir: bool = fs::metadata(&absolute_target)
+            .map(|m| m.is_dir())
+            .unwrap_or(false);
+        if is_dir {
+            std::os::windows::fs::symlink_dir(target, linkpath)
+        } else {
+            std::os::windows::fs::symlink_file(target, linkpath)
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (target, linkpath);
+        Err(io::Error::new(io::ErrorKind::Unsupported, "symlink not supported on this platform"))
+    }
+}
+
+/// Translates an `io::Error` from a symlink creation attempt into a hostfs error code.
+///
+/// Has the same behaviour as [`io_error_to_code`] for the cases it can handle, plus a
+/// Windows-specific mapping of `ERROR_PRIVILEGE_NOT_HELD` (raw OS code 1314) to
+/// [`HOSTFS_ERR_NOT_SUPPORTED`]. That error appears when the daemon is run without
+/// Developer Mode and without the symlink privilege, and surfacing it as a distinct
+/// code lets the guest report a clearer diagnostic.
+fn symlink_error_to_code(e: &io::Error) -> i32 {
+    #[cfg(windows)]
+    {
+        // ERROR_PRIVILEGE_NOT_HELD: returned by CreateSymbolicLinkW when the caller
+        // lacks SeCreateSymbolicLinkPrivilege (e.g., no Developer Mode).
+        const ERROR_PRIVILEGE_NOT_HELD: i32 = 1314;
+        if e.raw_os_error() == Some(ERROR_PRIVILEGE_NOT_HELD) {
+            return HOSTFS_ERR_NOT_SUPPORTED;
+        }
+    }
+    io_error_to_code(e)
+}
+
+/// Derives a hostfs [`file_kind`] discriminant from host [`fs::Metadata`].
+///
+/// Symbolic links take precedence over the regular/dir classification because the
+/// metadata is expected to come from [`fs::symlink_metadata`] (an `lstat`), and the
+/// caller wants to know that the path resolves to a link rather than what the link
+/// points to.
+fn metadata_kind(meta: &fs::Metadata) -> u8 {
+    let ft = meta.file_type();
+    if ft.is_symlink() {
+        file_kind::SYMLINK
+    } else if ft.is_dir() {
+        file_kind::DIRECTORY
+    } else if ft.is_file() {
+        file_kind::REGULAR
+    } else {
+        file_kind::OTHER
+    }
+}
+
+/// Reports a `st_mode`-style value for an `lstat` response.
+///
+/// On Unix, the host kernel already supplies a `st_mode` that includes both the
+/// permission bits and the type bits. On Windows, the Rust standard library exposes a
+/// permission *boolean* (read-only) and no file-type bits, so a synthetic value is
+/// built from POSIX-style constants. The guest must treat the value as informational
+/// — the authoritative file kind is the separate [`LstatResponse::kind`] field.
+fn metadata_mode(meta: &fs::Metadata, kind: u8) -> u32 {
+    #[cfg(unix)]
+    {
+        let _ = kind;
+        meta.permissions().mode()
+    }
+    #[cfg(not(unix))]
+    {
+        // POSIX file-type constants. Defined locally to avoid pulling sysapi into this
+        // host-side crate just for two integer literals.
+        const S_IFREG: u32 = 0o100_000;
+        const S_IFDIR: u32 = 0o040_000;
+        const S_IFLNK: u32 = 0o120_000;
+        const PERM_RW: u32 = 0o666;
+        const PERM_RO: u32 = 0o444;
+        const PERM_DIR: u32 = 0o755;
+        let type_bits: u32 = match kind {
+            file_kind::SYMLINK => S_IFLNK,
+            file_kind::DIRECTORY => S_IFDIR,
+            file_kind::REGULAR => S_IFREG,
+            _ => 0,
+        };
+        let perm_bits: u32 = if kind == file_kind::DIRECTORY {
+            PERM_DIR
+        } else if meta.permissions().readonly() {
+            PERM_RO
+        } else {
+            PERM_RW
+        };
+        type_bits | perm_bits
     }
 }
 
