@@ -368,3 +368,87 @@ pub fn send_rename_request(
 
     send_long_request(&buf, SystemCallMessageHeader::HostFsRenameRequestPart)
 }
+
+/// Sends a SYMLINK request to hostfsd as a multi-part IKC message.
+///
+/// `target` is the symlink target string (stored verbatim by the host) and `linkpath`
+/// is the absolute guest path (under `/mnt`) where the symlink is to be created.
+///
+/// Unlike [`send_readlink_request`] and [`send_lstat_request`], this always uses the
+/// multi-part wire format even for short payloads. Symlink has no inline single-message
+/// request variant: the wire format carries two variable-length strings, which does
+/// not fit cleanly in the inline payload budget. The cost of an extra IKC roundtrip is
+/// acceptable since symlink creation is rare relative to readlink/lstat.
+pub fn send_symlink_request(
+    target: &str,
+    linkpath: &str,
+    op_id: OperationId,
+) -> Result<(), ::sys::error::ErrorCode> {
+    // The target is opaque to vfsd and stored verbatim by the host; do not strip /mnt.
+    let link_relative: &str = strip_mount_prefix(linkpath);
+    let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_symlink_request(
+        op_id,
+        target.as_bytes(),
+        link_relative.as_bytes(),
+    )
+    .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+
+    send_long_request(&buf, SystemCallMessageHeader::HostFsSymlinkRequestPart)
+}
+
+/// Sends a READLINK request to hostfsd.
+///
+/// Uses the single-message inline form when the path fits within
+/// [`MAX_INLINE_PATH_LEN`], and falls back to a multi-part request otherwise.
+pub fn send_readlink_request(
+    path: &str,
+    op_id: OperationId,
+) -> Result<(), ::sys::error::ErrorCode> {
+    let relative: &str = strip_mount_prefix(path);
+    let path_bytes: &[u8] = relative.as_bytes();
+
+    // Inline fast path: avoids the multi-part assembler when the path fits.
+    if let Some(req) = ReadlinkRequest::from_path(path_bytes) {
+        let payload: [u8; Message::PAYLOAD_SIZE] =
+            req.serialize(SystemCallMessageHeader::HostFsReadlinkRequest as u16, op_id);
+        return if send_request(&payload) {
+            Ok(())
+        } else {
+            Err(::sys::error::ErrorCode::IoErr)
+        };
+    }
+
+    // Serialize the multi-part body via hostfs-api.
+    let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_readlink_request(op_id, path_bytes)
+        .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+
+    send_long_request(&buf, SystemCallMessageHeader::HostFsReadlinkRequestPart)
+}
+
+/// Sends an LSTAT request to hostfsd.
+///
+/// Unlike [`send_stat_request`] (which takes a remote FD), this is a path-based
+/// stat that does not follow the final symbolic link component. Uses the
+/// single-message inline form when the path fits within [`MAX_INLINE_PATH_LEN`],
+/// and falls back to a multi-part request otherwise.
+pub fn send_lstat_request(path: &str, op_id: OperationId) -> Result<(), ::sys::error::ErrorCode> {
+    let relative: &str = strip_mount_prefix(path);
+    let path_bytes: &[u8] = relative.as_bytes();
+
+    // Inline fast path: avoids the multi-part assembler when the path fits.
+    if let Some(req) = LstatRequest::from_path(path_bytes) {
+        let payload: [u8; Message::PAYLOAD_SIZE] =
+            req.serialize(SystemCallMessageHeader::HostFsLstatRequest as u16, op_id);
+        return if send_request(&payload) {
+            Ok(())
+        } else {
+            Err(::sys::error::ErrorCode::IoErr)
+        };
+    }
+
+    // Serialize the multi-part body via hostfs-api.
+    let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_lstat_request(op_id, path_bytes)
+        .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+
+    send_long_request(&buf, SystemCallMessageHeader::HostFsLstatRequestPart)
+}
