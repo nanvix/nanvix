@@ -32,6 +32,7 @@ mod cross_fs;
 mod file_ops;
 mod fs_ops;
 mod mount_lifecycle;
+mod symlink_ops;
 
 //==================================================================================================
 // Imports
@@ -57,6 +58,9 @@ pub fn main() -> Result<(), Error> {
 
     // Phase 3: File operations (write/read, seek, fstat, truncate, fsync).
     file_ops::test()?;
+
+    // Phase 3.5: Symbolic link operations (symlink, readlink, lstat).
+    symlink_ops::test()?;
 
     // Phase 4: Cross-filesystem consistency tests (RAMFS vs HostFS).
     cross_fs::test()?;
