@@ -343,7 +343,7 @@ ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
-ALL_HOST_RUST_LIBS := control-plane-api hwloc multibin multiimage net-backend profiler nanvix nanvix-http nanvix-sandbox nanvix-sandbox-cache nanvix-sandbox-config nanvix-terminal syscomm user-vm-api
+ALL_HOST_RUST_LIBS := control-plane-api hostfsd hwloc multibin multiimage net-backend profiler nanvix nanvix-http nanvix-sandbox nanvix-sandbox-cache nanvix-sandbox-config nanvix-terminal syscomm user-vm-api
 # Host rlibs excluded on Windows:
 #  - nanvix-http, nanvix-sandbox-cache: depend on Unix-only APIs.
 #  - syscomm: test code references cfg(unix)-gated SocketAddr::Unix variant.
