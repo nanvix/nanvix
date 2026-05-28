@@ -129,6 +129,7 @@ impl Slab {
             num_index_blocks * block_size < total_num_blocks * block_size <= len,
             (addr as usize) + (total_num_blocks * block_size) * size_of::<u8>()
                 + vstd::layout::align_of::<u8>() - 1 <= usize::MAX,
+            (total_num_blocks * block_size) * size_of::<u8>() <= isize::MAX,
             (num_index_blocks * block_size) * size_of::<u8>() <= isize::MAX,
             (addr as usize) + len * size_of::<u8>() <= usize::MAX,
     {
@@ -149,6 +150,12 @@ impl Slab {
                 ((addr as usize) + len) % (usize::MAX + 1) >= addr as usize,
         ;
         assert((addr as usize) + (total_num_blocks * block_size) * size_of::<u8>() <= usize::MAX);
+        assert((total_num_blocks * block_size) * size_of::<u8>() <= isize::MAX) by (nonlinear_arith)
+            requires
+                total_num_blocks * block_size <= len,
+                len <= isize::MAX,
+                size_of::<u8>() == 1,
+        ;
     }
 
     proof fn lemma_can_create_raw_array(
@@ -223,6 +230,9 @@ impl Slab {
                 &&& slab@.end_addr <= addr as usize + len
                 &&& slab@.allocated_addrs == Set::<usize>::empty()
                 &&& slab.inv()
+                &&& forall|i: int| 0 <= i < (slab@.end_addr - slab@.start_addr) / block_size as int
+                    ==> #[trigger] slab@.free_addrs.contains(
+                        (slab@.start_addr + i * block_size as int) as usize)
             })
     {
         assert(size_of::<u8>() == 1);
@@ -343,6 +353,15 @@ impl Slab {
         }
 
         assert(slab@.allocated_addrs.disjoint(slab@.free_addrs));
+
+        // Prove that every valid block index maps to a free address.
+        assert forall|i: int| 0 <= i < (slab@.end_addr - slab@.start_addr) / block_size as int
+            implies #[trigger] slab@.free_addrs.contains(
+                (slab@.start_addr + i * block_size as int) as usize) by {
+            assert(!slab.index@.is_bit_set(i));
+            let free_bits = Set::<int>::new(|j: int| 0 <= j < slab.num_data_blocks() && !slab.index@.is_bit_set(j));
+            assert(free_bits.contains(i));
+        }
 
         // Completeness: every block-aligned address in [start_addr, end_addr) is in free_addrs.
         // (After construction allocated_addrs is empty, so they must all be free.)
