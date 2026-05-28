@@ -4,6 +4,9 @@
 //! Open request and response wire format.
 
 use crate::{
+    set_header,
+    set_op_id,
+    OperationId,
     HOSTFS_DATA_START,
     MAX_INLINE_PATH_LEN,
 };
@@ -30,8 +33,29 @@ pub struct OpenResponse {
 }
 
 impl OpenRequest {
-    /// Encodes this request into the operation data portion of a message payload.
-    pub fn encode(&self, payload: &mut [u8; Message::PAYLOAD_SIZE]) {
+    /// Builds an inline [`OpenRequest`] from a path slice and POSIX `flags`.
+    ///
+    /// Returns `None` if `path` is longer than [`MAX_INLINE_PATH_LEN`]. Callers must
+    /// fall back to the multi-part request form in [`long_msg`](crate::long_msg) when
+    /// this returns `None`.
+    pub fn from_path(flags: i32, path: &[u8]) -> Option<Self> {
+        if path.len() > MAX_INLINE_PATH_LEN {
+            return None;
+        }
+        let mut buf: [u8; MAX_INLINE_PATH_LEN] = [0u8; MAX_INLINE_PATH_LEN];
+        buf[..path.len()].copy_from_slice(path);
+        Some(Self {
+            flags,
+            path_len: path.len() as u16,
+            path: buf,
+        })
+    }
+
+    /// Serializes this request into a complete message payload (header + op_id + data).
+    pub fn serialize(&self, header_value: u16, op_id: OperationId) -> [u8; Message::PAYLOAD_SIZE] {
+        let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
+        set_header(&mut payload, header_value);
+        set_op_id(&mut payload, op_id);
         let data_start: usize = HOSTFS_DATA_START;
         let flags_bytes: [u8; 4] = self.flags.to_le_bytes();
         let path_len_bytes: [u8; 2] = self.path_len.to_le_bytes();
@@ -40,6 +64,7 @@ impl OpenRequest {
         let path_copy_len: usize = (self.path_len as usize).min(MAX_INLINE_PATH_LEN);
         payload[data_start + 6..data_start + 6 + path_copy_len]
             .copy_from_slice(&self.path[..path_copy_len]);
+        payload
     }
 
     /// Decodes an OpenRequest from the operation data portion of a message payload.

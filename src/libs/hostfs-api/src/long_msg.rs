@@ -34,7 +34,10 @@
 //!   `HostFsReadlinkResponse` form; the multi-part response is only emitted for a
 //!   successful `readlink` whose target does not fit inline.
 
-#[cfg(feature = "std")]
+extern crate alloc;
+
+use alloc::vec::Vec;
+
 use crate::OperationId;
 
 //==================================================================================================
@@ -71,6 +74,49 @@ pub const LSTAT_HEADER_SIZE: usize = 6;
 /// Header size for the long Readlink *response* body:
 /// `op_id(4) + status(4) + target_len(2) = 10`.
 pub const READLINK_RESPONSE_HEADER_SIZE: usize = 10;
+
+//==================================================================================================
+// Long-response Deserialization (no_std-friendly)
+//==================================================================================================
+
+/// Result of deserializing the body of a long READLINK *response*.
+///
+/// The `target` field borrows directly from the input buffer; no allocation is
+/// performed. This makes the helper usable from `no_std` callers (e.g., vfsd).
+pub struct LongReadlinkResponse<'a> {
+    /// Operation identifier echoed by hostfsd. Matches the request's `op_id`.
+    pub op_id: crate::OperationId,
+    /// Status code (`0` on success, negative `HOSTFS_ERR_*` value on failure).
+    pub status: i32,
+    /// Symbolic-link target bytes, exactly `target_len` long.
+    pub target: &'a [u8],
+}
+
+/// Deserializes the body of a long READLINK response.
+///
+/// `bytes` is the assembled body in wire format
+/// `[op_id:4][status:4][target_len:2][target:N]`. Returns `None` if the buffer is
+/// shorter than the declared header, or if the declared `target_len` exceeds the
+/// remainder of the buffer.
+pub fn deserialize_long_readlink_response(bytes: &[u8]) -> Option<LongReadlinkResponse<'_>> {
+    if bytes.len() < READLINK_RESPONSE_HEADER_SIZE {
+        return None;
+    }
+    let op_id: crate::OperationId =
+        crate::OperationId::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    let status: i32 = i32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+    let target_len: usize = u16::from_le_bytes([bytes[8], bytes[9]]) as usize;
+    let target_start: usize = READLINK_RESPONSE_HEADER_SIZE;
+    let target_end: usize = target_start.checked_add(target_len)?;
+    if bytes.len() < target_end {
+        return None;
+    }
+    Some(LongReadlinkResponse {
+        op_id,
+        status,
+        target: &bytes[target_start..target_end],
+    })
+}
 
 //==================================================================================================
 // Deserialization (hostfsd, std)
@@ -301,4 +347,138 @@ pub fn deserialize_long_lstat(bytes: &[u8]) -> Option<LongLstatRequest> {
     )
     .ok()?;
     Some(LongLstatRequest { op_id, path })
+}
+
+//==================================================================================================
+// Serialization (vfsd, no_std + alloc)
+//==================================================================================================
+
+/// Serializes the body of a long OPEN request.
+///
+/// Wire format: `[op_id:4][flags:4][path_len:2][path:N]`. Returns `None` if `path`
+/// is longer than [`MAX_PATH_LEN`].
+pub fn serialize_long_open_request(
+    op_id: OperationId,
+    flags: i32,
+    path: &[u8],
+) -> Option<Vec<u8>> {
+    let path_len: u16 = u16::try_from(path.len()).ok()?;
+    let mut buf: Vec<u8> = Vec::with_capacity(OPEN_HEADER_SIZE + path.len());
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&flags.to_le_bytes());
+    buf.extend_from_slice(&path_len.to_le_bytes());
+    buf.extend_from_slice(path);
+    Some(buf)
+}
+
+/// Serializes the body of a long UNLINK request.
+///
+/// Wire format: `[op_id:4][path_len:2][path:N]`. Returns `None` if `path` is
+/// longer than [`MAX_PATH_LEN`].
+pub fn serialize_long_unlink_request(op_id: OperationId, path: &[u8]) -> Option<Vec<u8>> {
+    let path_len: u16 = u16::try_from(path.len()).ok()?;
+    let mut buf: Vec<u8> = Vec::with_capacity(UNLINK_HEADER_SIZE + path.len());
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&path_len.to_le_bytes());
+    buf.extend_from_slice(path);
+    Some(buf)
+}
+
+/// Serializes the body of a long RMDIR request.
+///
+/// Wire format: `[op_id:4][path_len:2][path:N]`. Returns `None` if `path` is
+/// longer than [`MAX_PATH_LEN`].
+pub fn serialize_long_rmdir_request(op_id: OperationId, path: &[u8]) -> Option<Vec<u8>> {
+    let path_len: u16 = u16::try_from(path.len()).ok()?;
+    let mut buf: Vec<u8> = Vec::with_capacity(RMDIR_HEADER_SIZE + path.len());
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&path_len.to_le_bytes());
+    buf.extend_from_slice(path);
+    Some(buf)
+}
+
+/// Serializes the body of a long MKDIR request.
+///
+/// Wire format: `[op_id:4][mode:4][path_len:2][path:N]`. Returns `None` if `path`
+/// is longer than [`MAX_PATH_LEN`].
+pub fn serialize_long_mkdir_request(
+    op_id: OperationId,
+    mode: u32,
+    path: &[u8],
+) -> Option<Vec<u8>> {
+    let path_len: u16 = u16::try_from(path.len()).ok()?;
+    let mut buf: Vec<u8> = Vec::with_capacity(MKDIR_HEADER_SIZE + path.len());
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&mode.to_le_bytes());
+    buf.extend_from_slice(&path_len.to_le_bytes());
+    buf.extend_from_slice(path);
+    Some(buf)
+}
+
+/// Serializes the body of a long RENAME request.
+///
+/// Wire format: `[op_id:4][old_path_len:2][new_path_len:2][old_path:N][new_path:M]`.
+/// Returns `None` if either path is longer than [`MAX_PATH_LEN`].
+pub fn serialize_long_rename_request(
+    op_id: OperationId,
+    old_path: &[u8],
+    new_path: &[u8],
+) -> Option<Vec<u8>> {
+    let old_path_len: u16 = u16::try_from(old_path.len()).ok()?;
+    let new_path_len: u16 = u16::try_from(new_path.len()).ok()?;
+    let mut buf: Vec<u8> =
+        Vec::with_capacity(RENAME_HEADER_SIZE + old_path.len() + new_path.len());
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&old_path_len.to_le_bytes());
+    buf.extend_from_slice(&new_path_len.to_le_bytes());
+    buf.extend_from_slice(old_path);
+    buf.extend_from_slice(new_path);
+    Some(buf)
+}
+
+/// Serializes the body of a long SYMLINK request.
+///
+/// Wire format: `[op_id:4][target_len:2][linkpath_len:2][target:N][linkpath:M]`.
+/// Returns `None` if either string is longer than [`MAX_PATH_LEN`].
+pub fn serialize_long_symlink_request(
+    op_id: OperationId,
+    target: &[u8],
+    linkpath: &[u8],
+) -> Option<Vec<u8>> {
+    let target_len: u16 = u16::try_from(target.len()).ok()?;
+    let link_len: u16 = u16::try_from(linkpath.len()).ok()?;
+    let mut buf: Vec<u8> =
+        Vec::with_capacity(SYMLINK_HEADER_SIZE + target.len() + linkpath.len());
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&target_len.to_le_bytes());
+    buf.extend_from_slice(&link_len.to_le_bytes());
+    buf.extend_from_slice(target);
+    buf.extend_from_slice(linkpath);
+    Some(buf)
+}
+
+/// Serializes the body of a long READLINK request.
+///
+/// Wire format: `[op_id:4][path_len:2][path:N]`. Returns `None` if `path` is
+/// longer than [`MAX_PATH_LEN`].
+pub fn serialize_long_readlink_request(op_id: OperationId, path: &[u8]) -> Option<Vec<u8>> {
+    let path_len: u16 = u16::try_from(path.len()).ok()?;
+    let mut buf: Vec<u8> = Vec::with_capacity(READLINK_HEADER_SIZE + path.len());
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&path_len.to_le_bytes());
+    buf.extend_from_slice(path);
+    Some(buf)
+}
+
+/// Serializes the body of a long LSTAT request.
+///
+/// Wire format: `[op_id:4][path_len:2][path:N]`. Returns `None` if `path` is
+/// longer than [`MAX_PATH_LEN`].
+pub fn serialize_long_lstat_request(op_id: OperationId, path: &[u8]) -> Option<Vec<u8>> {
+    let path_len: u16 = u16::try_from(path.len()).ok()?;
+    let mut buf: Vec<u8> = Vec::with_capacity(LSTAT_HEADER_SIZE + path.len());
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&path_len.to_le_bytes());
+    buf.extend_from_slice(path);
+    Some(buf)
 }
