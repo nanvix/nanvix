@@ -8,6 +8,8 @@
 pub mod empty;
 #[cfg(unix)]
 pub mod http;
+#[cfg(feature = "standalone")]
+pub mod snapshot_restore;
 pub mod terminal;
 
 //==================================================================================================
@@ -212,6 +214,9 @@ pub enum ExecutorName {
     Empty,
     /// HTTP executor.
     Http,
+    /// Snapshot save / restore executor.
+    #[cfg(feature = "standalone")]
+    SnapshotRestore,
     /// Terminal executor.
     Terminal,
 }
@@ -234,6 +239,8 @@ impl ExecutorName {
         match identifier {
             "empty" => Ok(Self::Empty),
             "http" => Ok(Self::Http),
+            #[cfg(feature = "standalone")]
+            "snapshot-restore" => Ok(Self::SnapshotRestore),
             "terminal" => Ok(Self::Terminal),
             _ => Err(::anyhow::anyhow!(format!("invalid executor name '{identifier}'"))),
         }
@@ -246,12 +253,15 @@ impl ExecutorName {
     ///
     /// # Return Value
     ///
-    /// Returns one of `empty`, `http`, or `terminal` for use when organizing logs.
+    /// Returns one of `empty`, `http`, `terminal`, or (under the `standalone` feature)
+    /// `snapshot-restore` for use when organizing logs.
     ///
     pub const fn to_str(self) -> &'static str {
         match self {
             Self::Empty => "empty",
             Self::Http => "http",
+            #[cfg(feature = "standalone")]
+            Self::SnapshotRestore => "snapshot-restore",
             Self::Terminal => "terminal",
         }
     }
