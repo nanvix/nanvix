@@ -1129,6 +1129,7 @@ name = "hostfs-api"
 version = "0.15.30"
 dependencies = [
  "sys",
+ "sysapi",
 ]
 
 [[package]]
