@@ -88,4 +88,54 @@ impl Sandbox {
     pub fn root(&self) -> &Path {
         &self.root
     }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves a guest-relative path to an absolute host path *without* following the
+    /// final path component.
+    ///
+    /// Behaves like [`Self::resolve`] for every component except the last: the parent
+    /// directory is canonicalized (and must exist and lie within the sandbox), and the
+    /// unmodified final component is appended. This is the correct resolution mode for
+    /// operations that must act on a symbolic link itself rather than on its target —
+    /// `lstat`, `readlink`, `unlink` on a link, and `symlink` (creating a link must not
+    /// follow any pre-existing link at the destination path).
+    ///
+    /// Bare names (no parent separator) resolve against the sandbox root.
+    ///
+    /// # Parameters
+    ///
+    /// - `relative_path`: The guest-relative path to resolve, which must not be absolute.
+    ///
+    /// # Symlink TOCTOU
+    ///
+    /// The same TOCTOU caveat as [`Self::resolve`] applies: after the parent is
+    /// canonicalized, an attacker swapping a symlink under the parent could still
+    /// influence subsequent operations on the returned path. Closing that gap requires
+    /// `openat()`-based dirfd operations.
+    ///
+    pub fn resolve_nofollow(&self, relative_path: &str) -> Option<PathBuf> {
+        let cleaned: &str = relative_path.trim_start_matches('/');
+        if cleaned.is_empty() {
+            // Refers to the sandbox root itself; resolve normally.
+            return Some(self.root.clone());
+        }
+        let candidate: PathBuf = self.root.join(cleaned);
+
+        // Reject `.` or `..` as the final component: these would let the resolved path step outside
+        // the sandbox after the parent-only containment check (e.g. `resolve_nofollow("..")` would
+        // otherwise yield `<root>/..`).
+        let last_component: ::std::path::Component<'_> = candidate.components().next_back()?;
+        if !matches!(last_component, ::std::path::Component::Normal(_)) {
+            return None;
+        }
+        let file_name: &std::ffi::OsStr = candidate.file_name()?;
+        let parent: &Path = candidate.parent()?;
+        let parent_resolved: PathBuf = parent.canonicalize().ok()?;
+        if !parent_resolved.starts_with(&self.root) {
+            return None;
+        }
+        Some(parent_resolved.join(file_name))
+    }
 }
