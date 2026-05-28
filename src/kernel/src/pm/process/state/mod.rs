@@ -281,6 +281,44 @@ impl ProcessState {
         &mut self.vmem
     }
 
+    ///
+    /// # Description
+    ///
+    /// Checks whether the process owns any "special" resources that prevent it from being
+    /// safely duplicated. A process is considered to own special resources when it holds any
+    /// of the following:
+    ///
+    /// - One or more allocated memory-mapped I/O regions.
+    /// - One or more allocated port-mapped I/O ports.
+    /// - One or more event ownerships.
+    /// - One or more in-flight (buffered) inter-process messages in its mailbox.
+    ///
+    /// Mutexes and condition variables are intentionally excluded because their addresses
+    /// alias user-space objects and are recreated lazily on access from the cloned address
+    /// space. Resources covered above, by contrast, are uniquely owned by the parent and
+    /// cannot be safely transferred to a child via address-space cloning alone.
+    ///
+    /// # Scope
+    ///
+    /// This predicate only inspects per-process state. It does **not** inspect global state
+    /// such as the rendezvous lists used by `push`/`pull`; threads belonging to this process
+    /// that are currently sleeping on a rendezvous are not tracked here. Such pending
+    /// rendezvous reference user buffers in the parent's address space only, so they remain
+    /// correct after duplication: copy-on-write resolution on the kernel-side write paths
+    /// (`vmcopy_user_to_user`, `copy_to_user_unaligned`) ensures wake-up writes hit the
+    /// parent's private frames, not the child's.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the process owns any of the resources listed above, otherwise `false`.
+    ///
+    pub fn has_special_resources(&self) -> bool {
+        !self.mmio.is_empty()
+            || !self.pmio.is_empty()
+            || !self.events.is_empty()
+            || !self.mailbox.is_empty()
+    }
+
     pub fn copy_from_user_unaligned(
         &self,
         dst: VirtualAddress,
