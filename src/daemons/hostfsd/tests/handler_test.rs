@@ -1247,3 +1247,318 @@ fn test_long_rename_multi_part() {
     assert!(!tmp.path().join(&old_path).exists());
     assert_eq!(fs::read(tmp.path().join(&new_path)).unwrap(), b"payload");
 }
+
+//==================================================================================================
+// Symlink Tests (lstat / readlink / symlink)
+//==================================================================================================
+
+/// Builds an inline Lstat request payload.
+fn make_lstat_request(path: &str) -> [u8; Message::PAYLOAD_SIZE] {
+    let req: LstatRequest =
+        LstatRequest::from_path(path.as_bytes()).expect("test path fits in MAX_INLINE_PATH_LEN");
+    req.serialize(
+        SystemCallMessageHeader::HostFsLstatRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
+}
+
+/// Builds an inline Readlink request payload.
+fn make_readlink_request(path: &str) -> [u8; Message::PAYLOAD_SIZE] {
+    let req: ReadlinkRequest =
+        ReadlinkRequest::from_path(path.as_bytes()).expect("test path fits in MAX_INLINE_PATH_LEN");
+    req.serialize(
+        SystemCallMessageHeader::HostFsReadlinkRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
+}
+
+/// Serializes a long Symlink request:
+/// `[op_id:4][target_len:2][linkpath_len:2][target:N][linkpath:M]`.
+fn make_long_symlink_parts(
+    target: &str,
+    linkpath: &str,
+    op_id: OperationId,
+) -> Vec<[u8; Message::PAYLOAD_SIZE]> {
+    let t: &[u8] = target.as_bytes();
+    let l: &[u8] = linkpath.as_bytes();
+    let mut data: Vec<u8> = Vec::new();
+    data.extend_from_slice(&op_id.to_le_bytes());
+    data.extend_from_slice(&(t.len() as u16).to_le_bytes());
+    data.extend_from_slice(&(l.len() as u16).to_le_bytes());
+    data.extend_from_slice(t);
+    data.extend_from_slice(l);
+    split_into_parts(SystemCallMessageHeader::HostFsSymlinkRequestPart, &data)
+}
+
+/// Creates a symbolic link on the host. Returns `Ok(())` on success or an error.
+///
+/// On Windows this requires Developer Mode (or admin); if not enabled, returns
+/// `Err(_)` with `ErrorKind::PermissionDenied`. Tests that depend on host symlink
+/// creation should skip gracefully in that case.
+fn host_symlink(target: &std::path::Path, link: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(target, link)
+    }
+    #[cfg(windows)]
+    {
+        // Use symlink_file by default; tests that need dir links create them explicitly.
+        std::os::windows::fs::symlink_file(target, link)
+    }
+}
+
+/// Returns true if the OS refused to create the symlink due to insufficient privileges.
+/// On Windows non-Developer-Mode setups, symlink creation fails with
+/// `ERROR_PRIVILEGE_NOT_HELD` (1314); tests should skip in that case. On Unix, host
+/// `symlink(2)` does not require special privileges, so this always returns `false`.
+fn is_privilege_error(err: &std::io::Error) -> bool {
+    #[cfg(windows)]
+    {
+        // ERROR_PRIVILEGE_NOT_HELD = 1314
+        err.raw_os_error() == Some(1314)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = err;
+        false
+    }
+}
+
+#[test]
+fn test_lstat_regular_file() {
+    let (mut handler, tmp) = setup();
+    fs::write(tmp.path().join("file.txt"), b"hello").unwrap();
+    let req = make_lstat_request("file.txt");
+    let resp = handler.handle_request(&req).expect("response expected");
+    let r = LstatResponse::decode(&resp).expect("decode");
+    assert_eq!(r.status, 0, "lstat should succeed");
+    assert_eq!(r.kind, file_kind::REGULAR);
+    assert_eq!(r.size, 5);
+}
+
+#[test]
+fn test_lstat_directory() {
+    let (mut handler, tmp) = setup();
+    fs::create_dir(tmp.path().join("dir")).unwrap();
+    let req = make_lstat_request("dir");
+    let resp = handler.handle_request(&req).expect("response expected");
+    let r = LstatResponse::decode(&resp).expect("decode");
+    assert_eq!(r.status, 0, "lstat should succeed");
+    assert_eq!(r.kind, file_kind::DIRECTORY);
+}
+
+#[test]
+fn test_lstat_nonexistent_fails() {
+    let (mut handler, _tmp) = setup();
+    let req = make_lstat_request("missing");
+    let resp = handler.handle_request(&req).expect("response expected");
+    let r = LstatResponse::decode(&resp).expect("decode");
+    assert_eq!(r.status, HOSTFS_ERR_NOT_FOUND);
+}
+
+#[test]
+fn test_lstat_symlink_does_not_follow() {
+    let (mut handler, tmp) = setup();
+    fs::write(tmp.path().join("target.txt"), b"contents").unwrap();
+    if let Err(e) = host_symlink(std::path::Path::new("target.txt"), &tmp.path().join("link")) {
+        if is_privilege_error(&e) {
+            println!("skipping: host cannot create symlinks ({})", e);
+            return;
+        }
+        panic!("host_symlink failed: {}", e);
+    }
+    let req = make_lstat_request("link");
+    let resp = handler.handle_request(&req).expect("response expected");
+    let r = LstatResponse::decode(&resp).expect("decode");
+    assert_eq!(r.status, 0, "lstat should succeed");
+    assert_eq!(r.kind, file_kind::SYMLINK, "lstat must NOT follow the symlink");
+}
+
+#[test]
+fn test_readlink_returns_target() {
+    let (mut handler, tmp) = setup();
+    fs::write(tmp.path().join("target.txt"), b"x").unwrap();
+    let target_str = "target.txt";
+    if let Err(e) = host_symlink(std::path::Path::new(target_str), &tmp.path().join("link")) {
+        if is_privilege_error(&e) {
+            println!("skipping: host cannot create symlinks ({})", e);
+            return;
+        }
+        panic!("host_symlink failed: {}", e);
+    }
+    let req = make_readlink_request("link");
+    let resp = handler.handle_request(&req).expect("response expected");
+    let r = ReadlinkResponse::decode(&resp).expect("decode");
+    assert_eq!(r.status, 0, "readlink should succeed");
+    let got = &r.target[..r.target_len as usize];
+    assert_eq!(got, target_str.as_bytes());
+}
+
+#[test]
+fn test_readlink_regular_file_fails() {
+    let (mut handler, tmp) = setup();
+    fs::write(tmp.path().join("file.txt"), b"x").unwrap();
+    let req = make_readlink_request("file.txt");
+    let resp = handler.handle_request(&req).expect("response expected");
+    let r = ReadlinkResponse::decode(&resp).expect("decode");
+    assert_eq!(r.status, HOSTFS_ERR_INVALID, "readlink on non-symlink must fail with EINVAL");
+}
+
+#[test]
+fn test_readlink_nonexistent_fails() {
+    let (mut handler, _tmp) = setup();
+    let req = make_readlink_request("missing");
+    let resp = handler.handle_request(&req).expect("response expected");
+    let r = ReadlinkResponse::decode(&resp).expect("decode");
+    assert_eq!(r.status, HOSTFS_ERR_NOT_FOUND);
+}
+
+#[test]
+fn test_unlink_removes_symlink_not_target() {
+    let (mut handler, tmp) = setup();
+    fs::write(tmp.path().join("target.txt"), b"preserve me").unwrap();
+    if let Err(e) = host_symlink(std::path::Path::new("target.txt"), &tmp.path().join("link")) {
+        if is_privilege_error(&e) {
+            println!("skipping: host cannot create symlinks ({})", e);
+            return;
+        }
+        panic!("host_symlink failed: {}", e);
+    }
+    let req = make_unlink_request("link");
+    let resp = handler.handle_request(&req).expect("response expected");
+    let ds: usize = HOSTFS_DATA_START;
+    let status: i32 = i32::from_le_bytes(resp[ds..ds + 4].try_into().unwrap());
+    assert_eq!(status, 0, "unlink of symlink should succeed");
+    // Target file must survive.
+    assert_eq!(fs::read(tmp.path().join("target.txt")).unwrap(), b"preserve me");
+    // Symlink itself must be gone.
+    assert!(
+        !tmp.path().join("link").exists() && fs::symlink_metadata(tmp.path().join("link")).is_err()
+    );
+}
+
+#[test]
+fn test_symlink_creates_link() {
+    let (mut handler, tmp) = setup();
+    // Build multi-part symlink request.
+    let parts = make_long_symlink_parts("target.txt", "link", OperationId::from_raw(101));
+    let response = feed_parts(&mut handler, &parts);
+    assert_eq!(get_op_id(&response), OperationId::from_raw(101));
+    let ds: usize = HOSTFS_DATA_START;
+    let status: i32 = i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap());
+    if status == HOSTFS_ERR_NOT_SUPPORTED {
+        println!("skipping: host cannot create symlinks (ENOTSUP)");
+        return;
+    }
+    assert_eq!(status, 0, "symlink should succeed, got {}", status);
+    // Verify the link exists and points to the intended target.
+    let meta = fs::symlink_metadata(tmp.path().join("link")).expect("link should exist");
+    assert!(meta.file_type().is_symlink(), "created entry must be a symlink");
+    let target = fs::read_link(tmp.path().join("link")).expect("readlink");
+    assert_eq!(target, std::path::PathBuf::from("target.txt"));
+}
+
+#[test]
+fn test_symlink_rejects_empty_target() {
+    let (mut handler, _tmp) = setup();
+    let parts = make_long_symlink_parts("", "link", OperationId::from_raw(102));
+    let response = feed_parts(&mut handler, &parts);
+    let ds: usize = HOSTFS_DATA_START;
+    let status: i32 = i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap());
+    assert_eq!(status, HOSTFS_ERR_INVALID);
+}
+
+#[test]
+fn test_symlink_rejects_nul_in_target() {
+    let (mut handler, _tmp) = setup();
+    let parts = make_long_symlink_parts("a\0b", "link", OperationId::from_raw(103));
+    let response = feed_parts(&mut handler, &parts);
+    let ds: usize = HOSTFS_DATA_START;
+    let status: i32 = i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap());
+    assert_eq!(status, HOSTFS_ERR_INVALID);
+}
+
+#[test]
+fn test_symlink_linkpath_escapes_sandbox() {
+    let (mut handler, _tmp) = setup();
+    let parts = make_long_symlink_parts("target.txt", "../escape", OperationId::from_raw(104));
+    let response = feed_parts(&mut handler, &parts);
+    let ds: usize = HOSTFS_DATA_START;
+    let status: i32 = i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap());
+    assert_eq!(status, HOSTFS_ERR_PERMISSION);
+}
+
+/// Reassembles a sequence of multi-part response messages into the raw body.
+///
+/// Each part has the wire layout:
+/// `[header:2][total_parts:2 LE][part_number:2 LE][payload_size:1][payload:N]`
+/// (see `build_long_readlink_response_part` in handler.rs).
+fn drain_multipart_response(
+    handler: &mut HostFsHandler,
+    first: [u8; Message::PAYLOAD_SIZE],
+    expected_header: SystemCallMessageHeader,
+) -> Vec<u8> {
+    fn read_part(
+        payload: &[u8; Message::PAYLOAD_SIZE],
+        expected_header: SystemCallMessageHeader,
+    ) -> (u16, u16, Vec<u8>) {
+        let header_raw: u16 = u16::from_ne_bytes([payload[0], payload[1]]);
+        assert_eq!(header_raw, expected_header as u16, "unexpected response header");
+        let total_parts: u16 = u16::from_le_bytes([payload[2], payload[3]]);
+        let part_number: u16 = u16::from_le_bytes([payload[4], payload[5]]);
+        let payload_size: usize = payload[6] as usize;
+        let chunk: Vec<u8> = payload[7..7 + payload_size].to_vec();
+        (total_parts, part_number, chunk)
+    }
+
+    let (total_parts, part_number, chunk0) = read_part(&first, expected_header);
+    assert_eq!(part_number, 0, "first response part must have part_number == 0");
+
+    let mut body: Vec<u8> = chunk0;
+    for expected_pn in 1..total_parts {
+        let next: [u8; Message::PAYLOAD_SIZE] = handler
+            .take_next_response_part()
+            .expect("expected another response part");
+        let (tp, pn, chunk) = read_part(&next, expected_header);
+        assert_eq!(tp, total_parts, "total_parts mismatch across parts");
+        assert_eq!(pn, expected_pn, "out-of-order response part");
+        body.extend_from_slice(&chunk);
+    }
+    assert!(handler.take_next_response_part().is_none(), "unexpected extra response parts queued");
+    body
+}
+
+#[test]
+fn test_readlink_long_target_multipart_response() {
+    let (mut handler, tmp) = setup();
+    fs::write(tmp.path().join("target.txt"), b"x").unwrap();
+
+    // Construct a target longer than the inline cap so the handler is forced into
+    // the multi-part response path.
+    let target_str: String = "a/".repeat(120) + "tail.txt";
+    assert!(target_str.len() > MAX_INLINE_READLINK_TARGET, "test target must exceed inline cap");
+    assert!(target_str.len() <= ::sysapi::limits::PATH_MAX, "test target must fit long cap");
+
+    if let Err(e) = host_symlink(std::path::Path::new(&target_str), &tmp.path().join("link")) {
+        if is_privilege_error(&e) {
+            println!("skipping: host cannot create symlinks ({})", e);
+            return;
+        }
+        panic!("host_symlink failed: {}", e);
+    }
+
+    let req = make_readlink_request("link");
+    let first = handler.handle_request(&req).expect("response expected");
+
+    let body = drain_multipart_response(
+        &mut handler,
+        first,
+        SystemCallMessageHeader::HostFsReadlinkResponsePart,
+    );
+    assert!(body.len() >= hostfs_api::long_msg::READLINK_RESPONSE_HEADER_SIZE, "body too short");
+    let resp = hostfs_api::long_msg::deserialize_long_readlink_response(&body)
+        .expect("readlink long response must deserialize");
+    assert_eq!(resp.status, 0, "readlink should succeed");
+    assert_eq!(resp.target.len(), target_str.len());
+    assert_eq!(resp.target, target_str.as_bytes());
+}
