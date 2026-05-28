@@ -941,7 +941,13 @@ jobs:
     # consolidated in the benchmark-gate-linux job. Skip gracefully when the
     # gate reports the benchmark pipeline should not run (e.g. no Linux
     # self-hosted runners are online).
-    if: ${{ needs.benchmark-gate-linux.outputs.should-run == 'true' }}
+    #
+    # NOTE: !cancelled() is required so the matrix expands when an ancestor
+    # in the needs graph is skipped (e.g. precheck on schedule events).
+    # Without it, GitHub Actions applies the implicit success() guard and
+    # collapses the matrix pre-expansion, marking this job as skipped even
+    # when the gate reports should-run=true.
+    if: ${{ !cancelled() && needs.benchmark-gate-linux.outputs.should-run == 'true' }}
 
     steps:
       - name: "Pre-Checkout Cleanup"
@@ -1091,7 +1097,13 @@ jobs:
     # is consolidated in the benchmark-gate-windows job. Skip gracefully when
     # the gate reports the benchmark pipeline should not run (e.g. no Windows
     # self-hosted runners are online).
-    if: ${{ needs.benchmark-gate-windows.outputs.should-run == 'true' }}
+    #
+    # NOTE: !cancelled() is required so the matrix expands when an ancestor
+    # in the needs graph is skipped (e.g. precheck on schedule events).
+    # Without it, GitHub Actions applies the implicit success() guard and
+    # collapses the matrix pre-expansion, marking this job as skipped even
+    # when the gate reports should-run=true.
+    if: ${{ !cancelled() && needs.benchmark-gate-windows.outputs.should-run == 'true' }}
 
     steps:
       - uses: actions/checkout@v6
