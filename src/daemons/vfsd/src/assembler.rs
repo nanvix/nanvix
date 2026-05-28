@@ -239,7 +239,12 @@ fn dispatch_assembled_request(
         },
         SystemCallMessageHeader::SymbolicLinkAtRequestPart => {
             match SymbolicLinkAtRequest::from_parts(parts) {
-                Ok(req) => handler::handle_symlinkat(source, req),
+                // `None` means the request was forwarded to hostfsd and the response
+                // will be sent asynchronously when the IKC reply arrives; emit no
+                // immediate messages in that case.
+                Ok(req) => {
+                    handler::handle_symlinkat_with_hostfs(source, req, pending).unwrap_or_default()
+                },
                 Err(e) => {
                     ::syslog::error!("dispatch: symlinkat from_parts failed (error={:?})", e);
                     vec![build_error(source, ErrorCode::InvalidMessage)]
@@ -255,7 +260,9 @@ fn dispatch_assembled_request(
         },
         SystemCallMessageHeader::ReadLinkAtRequestPart => {
             match ReadLinkAtRequest::from_parts(parts) {
-                Ok(req) => handler::handle_readlinkat(source, req),
+                Ok(req) => {
+                    handler::handle_readlinkat_with_hostfs(source, req, pending).unwrap_or_default()
+                },
                 Err(e) => {
                     ::syslog::error!("dispatch: readlinkat from_parts failed (error={:?})", e);
                     vec![build_error(source, ErrorCode::InvalidMessage)]
