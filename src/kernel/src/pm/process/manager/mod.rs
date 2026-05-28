@@ -147,6 +147,10 @@ pub struct ProcessManager {
     zombies: LinkedList<ZombieProcess>,
     /// Thread manager.
     tm: ThreadManager,
+    /// Number of live processes (including the kernel process). A process slot is considered
+    /// occupied from creation until the corresponding zombie is buried (popped off the zombie
+    /// list). Used to enforce [`config::kernel::MAX_PROCESSES`].
+    live_count: usize,
     /// Number of messages buffered (not yet consumed).
     number_buffered_messages: usize,
     /// Detached-thread zombies whose reaping was deferred because their
@@ -182,6 +186,7 @@ impl ProcessManager {
             zombies: LinkedList::new(),
             running: Some(kernel),
             tm,
+            live_count: 1,
             number_buffered_messages: 0,
             deferred_reap: Vec::new(),
         }
@@ -483,6 +488,17 @@ impl ProcessManager {
 
         trace!("args={:?}, env={:?}", args, env);
 
+        // Refuse to create a new process when the system-wide live-process cap has been reached.
+        if self.live_count >= ::config::kernel::MAX_PROCESSES {
+            let reason: &str = "maximum number of processes reached";
+            error!(
+                "{reason} (live_count={}, max_processes={})",
+                self.live_count,
+                ::config::kernel::MAX_PROCESSES
+            );
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
+
         // Reserve the next process and thread identifiers early, before any resource allocation.
         let (pid, next_pid): (ProcessIdentifier, ProcessIdentifier) = self.try_next_pid()?;
         let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
@@ -620,6 +636,7 @@ impl ProcessManager {
             // Commit the next process and thread identifiers now that all fallible operations have succeeded.
             self.next_pid = next_pid;
             self.tm.commit_next_tid(next_tid);
+            self.live_count += 1;
             let process: RunnableProcess = RunnableProcess::new(pid, thread, vmem);
 
             // Add process to the queue of ready processes.
@@ -1242,6 +1259,12 @@ impl ProcessManager {
             let (mut more_zombie_threads, zombie_thread): (VecDeque<ZombieThread>, ZombieThread) =
                 zombie_threads.pop_front();
             more_zombie_threads.push_front(zombie_thread);
+
+            // The kernel process is never reaped, so live_count must stay at least 1.
+            if self.live_count <= 1 {
+                unreachable!("live_count underflow: kernel process must always remain counted");
+            }
+            self.live_count -= 1;
 
             Some((more_zombie_threads, state, status))
         } else {
