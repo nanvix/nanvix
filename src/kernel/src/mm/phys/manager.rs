@@ -166,7 +166,36 @@ impl PhysMemoryManager {
             return Ok(());
         }
 
-        // Watermark check: reject user allocations that would breach the kernel reserve.
+        Self::check_user_watermark(count)?;
+
+        for _ in 0..count {
+            match self.upool.alloc() {
+                Ok(frame) => frames.push(frame),
+                Err(error) => {
+                    frames.clear();
+                    return Err(error);
+                },
+            }
+        }
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Rejects user allocations of `count` frames that would breach the kernel
+    /// watermark, i.e. that would drop the number of free frames below
+    /// [`config::kernel::KERNEL_WATERMARK`].
+    ///
+    /// # Parameters
+    ///
+    /// - `count`: Number of user frames the caller intends to allocate.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
+    fn check_user_watermark(count: usize) -> Result<(), Error> {
         let watermark_threshold: usize = config::kernel::KERNEL_WATERMARK
             .checked_add(count)
             .ok_or_else(|| {
@@ -178,16 +207,6 @@ impl PhysMemoryManager {
             let reason: &str = "would breach kernel watermark";
             error!("{reason}");
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
-        }
-
-        for _ in 0..count {
-            match self.upool.alloc() {
-                Ok(frame) => frames.push(frame),
-                Err(error) => {
-                    frames.clear();
-                    return Err(error);
-                },
-            }
         }
         Ok(())
     }
