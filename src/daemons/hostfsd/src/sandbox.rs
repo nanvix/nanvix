@@ -106,7 +106,9 @@ impl Sandbox {
     ///
     /// # Parameters
     ///
-    /// - `relative_path`: The guest-relative path to resolve, which must not be absolute.
+    /// - `relative_path`: The guest path to resolve, relative to the sandbox root. A
+    ///   leading `/` is also accepted and treated as guest-absolute; it is normalized
+    ///   to a sandbox-relative path before resolution.
     ///
     /// # Symlink TOCTOU
     ///
