@@ -22,6 +22,17 @@
 //! - **Rmdir**: `[op_id:4][path_len:2][path:N]`
 //! - **Mkdir**: `[op_id:4][mode:4][path_len:2][path:N]`
 //! - **Rename**: `[op_id:4][old_path_len:2][new_path_len:2][old_path:N][new_path:M]`
+//! - **Symlink**: `[op_id:4][target_len:2][linkpath_len:2][target:N][linkpath:M]`
+//! - **Readlink**: `[op_id:4][path_len:2][path:N]`
+//! - **Lstat**: `[op_id:4][path_len:2][path:N]`
+//!
+//! # Long Response Format
+//!
+//! - **Readlink response**: `[op_id:4][status:4][target_len:2][target:N]`. Used by
+//!   `HostFsReadlinkResponsePart` messages when the target string exceeds the inline
+//!   response capacity. Errors are always reported via the single-message
+//!   `HostFsReadlinkResponse` form; the multi-part response is only emitted for a
+//!   successful `readlink` whose target does not fit inline.
 
 #[cfg(feature = "std")]
 use crate::OperationId;
@@ -47,6 +58,19 @@ pub const MKDIR_HEADER_SIZE: usize = 10;
 
 /// Header size for long rename: op_id(4) + old_path_len(2) + new_path_len(2) = 8
 pub const RENAME_HEADER_SIZE: usize = 8;
+
+/// Header size for long symlink: op_id(4) + target_len(2) + linkpath_len(2) = 8
+pub const SYMLINK_HEADER_SIZE: usize = 8;
+
+/// Header size for long readlink: op_id(4) + path_len(2) = 6
+pub const READLINK_HEADER_SIZE: usize = 6;
+
+/// Header size for long lstat: op_id(4) + path_len(2) = 6
+pub const LSTAT_HEADER_SIZE: usize = 6;
+
+/// Header size for the long Readlink *response* body:
+/// `op_id(4) + status(4) + target_len(2) = 10`.
+pub const READLINK_RESPONSE_HEADER_SIZE: usize = 10;
 
 //==================================================================================================
 // Deserialization (hostfsd, std)
@@ -187,4 +211,94 @@ pub fn deserialize_long_rename(bytes: &[u8]) -> Option<LongRenameRequest> {
         old_path,
         new_path,
     })
+}
+
+/// Result of deserializing a long SYMLINK request.
+///
+/// `target` is the textual target stored in the symbolic link (interpreted verbatim;
+/// it is not validated to be a sandbox-relative path). `linkpath` is the path of the
+/// link to be created.
+#[cfg(feature = "std")]
+pub struct LongSymlinkRequest {
+    pub op_id: OperationId,
+    pub target: std::string::String,
+    pub linkpath: std::string::String,
+}
+
+/// Deserializes a long SYMLINK request from assembled bytes.
+#[cfg(feature = "std")]
+pub fn deserialize_long_symlink(bytes: &[u8]) -> Option<LongSymlinkRequest> {
+    if bytes.len() < SYMLINK_HEADER_SIZE {
+        return None;
+    }
+    let op_id = OperationId::new(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]));
+    let target_len = u16::from_le_bytes([bytes[4], bytes[5]]) as usize;
+    let linkpath_len = u16::from_le_bytes([bytes[6], bytes[7]]) as usize;
+    if bytes.len() < SYMLINK_HEADER_SIZE + target_len + linkpath_len {
+        return None;
+    }
+    let target_start = SYMLINK_HEADER_SIZE;
+    let linkpath_start = target_start + target_len;
+    let target =
+        std::string::String::from_utf8(bytes[target_start..target_start + target_len].to_vec())
+            .ok()?;
+    let linkpath = std::string::String::from_utf8(
+        bytes[linkpath_start..linkpath_start + linkpath_len].to_vec(),
+    )
+    .ok()?;
+    Some(LongSymlinkRequest {
+        op_id,
+        target,
+        linkpath,
+    })
+}
+
+/// Result of deserializing a long READLINK request.
+#[cfg(feature = "std")]
+pub struct LongReadlinkRequest {
+    pub op_id: OperationId,
+    pub path: std::string::String,
+}
+
+/// Deserializes a long READLINK request from assembled bytes.
+#[cfg(feature = "std")]
+pub fn deserialize_long_readlink(bytes: &[u8]) -> Option<LongReadlinkRequest> {
+    if bytes.len() < READLINK_HEADER_SIZE {
+        return None;
+    }
+    let op_id = OperationId::new(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]));
+    let path_len = u16::from_le_bytes([bytes[4], bytes[5]]) as usize;
+    if bytes.len() < READLINK_HEADER_SIZE + path_len {
+        return None;
+    }
+    let path = std::string::String::from_utf8(
+        bytes[READLINK_HEADER_SIZE..READLINK_HEADER_SIZE + path_len].to_vec(),
+    )
+    .ok()?;
+    Some(LongReadlinkRequest { op_id, path })
+}
+
+/// Result of deserializing a long LSTAT request.
+#[cfg(feature = "std")]
+pub struct LongLstatRequest {
+    pub op_id: OperationId,
+    pub path: std::string::String,
+}
+
+/// Deserializes a long LSTAT request from assembled bytes.
+#[cfg(feature = "std")]
+pub fn deserialize_long_lstat(bytes: &[u8]) -> Option<LongLstatRequest> {
+    if bytes.len() < LSTAT_HEADER_SIZE {
+        return None;
+    }
+    let op_id = OperationId::new(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]));
+    let path_len = u16::from_le_bytes([bytes[4], bytes[5]]) as usize;
+    if bytes.len() < LSTAT_HEADER_SIZE + path_len {
+        return None;
+    }
+    let path = std::string::String::from_utf8(
+        bytes[LSTAT_HEADER_SIZE..LSTAT_HEADER_SIZE + path_len].to_vec(),
+    )
+    .ok()?;
+    Some(LongLstatRequest { op_id, path })
 }

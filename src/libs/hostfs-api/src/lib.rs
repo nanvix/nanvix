@@ -37,10 +37,12 @@ mod error;
 mod flush;
 pub mod long_msg;
 mod lseek;
+mod lstat;
 mod mkdir;
 mod open;
 mod read;
 mod readdir;
+mod readlink;
 mod rename;
 mod rmdir;
 mod stat;
@@ -55,6 +57,11 @@ pub use self::{
         LseekRequest,
         LseekResponse,
     },
+    lstat::{
+        file_kind,
+        LstatRequest,
+        LstatResponse,
+    },
     mkdir::MkdirRequest,
     open::{
         OpenRequest,
@@ -67,6 +74,11 @@ pub use self::{
     readdir::{
         ReadDirEntry,
         ReadDirRequest,
+    },
+    readlink::{
+        ReadlinkRequest,
+        ReadlinkResponse,
+        MAX_INLINE_READLINK_TARGET,
     },
     rename::RenameRequest,
     rmdir::RmdirRequest,
@@ -238,9 +250,11 @@ pub use self::error::{
     HOSTFS_ERR_INVALID,
     HOSTFS_ERR_IO,
     HOSTFS_ERR_IS_DIR,
+    HOSTFS_ERR_LOOP,
     HOSTFS_ERR_NOT_DIR,
     HOSTFS_ERR_NOT_EMPTY,
     HOSTFS_ERR_NOT_FOUND,
+    HOSTFS_ERR_NOT_SUPPORTED,
     HOSTFS_ERR_PERMISSION,
 };
 
