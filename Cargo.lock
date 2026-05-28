@@ -2890,6 +2890,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "snapshot-test"
+version = "0.15.40"
+dependencies = [
+ "libc_string",
+ "nvx",
+ "sys",
+]
+
+[[package]]
 name = "socket2"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
