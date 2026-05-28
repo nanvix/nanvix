@@ -4,6 +4,9 @@
 //! Write request and response wire format.
 
 use crate::{
+    set_header,
+    set_op_id,
+    OperationId,
     HOSTFS_DATA_START,
     MAX_INLINE_WRITE_DATA,
 };
@@ -32,8 +35,30 @@ pub struct WriteResponse {
 }
 
 impl WriteRequest {
-    /// Encodes this request into the message payload.
-    pub fn encode(&self, payload: &mut [u8; Message::PAYLOAD_SIZE]) {
+    /// Builds a [`WriteRequest`] from a byte slice, clamping `count` and `data_len`
+    /// to [`MAX_INLINE_WRITE_DATA`] and using the given `offset`.
+    pub fn from_slice(fd: i32, offset: i64, buf: &[u8]) -> Self {
+        let write_len: usize = buf.len().min(MAX_INLINE_WRITE_DATA);
+        let mut data: [u8; MAX_INLINE_WRITE_DATA] = [0u8; MAX_INLINE_WRITE_DATA];
+        data[..write_len].copy_from_slice(&buf[..write_len]);
+        Self {
+            fd,
+            count: write_len as u32,
+            offset,
+            data_len: write_len as u16,
+            data,
+        }
+    }
+
+    /// Serializes this request into a complete message payload (header + op_id + data).
+    pub fn serialize(
+        &self,
+        header_value: u16,
+        op_id: OperationId,
+    ) -> [u8; Message::PAYLOAD_SIZE] {
+        let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
+        set_header(&mut payload, header_value);
+        set_op_id(&mut payload, op_id);
         let data_start: usize = HOSTFS_DATA_START;
         payload[data_start..data_start + 4].copy_from_slice(&self.fd.to_le_bytes());
         payload[data_start + 4..data_start + 8].copy_from_slice(&self.count.to_le_bytes());
@@ -43,6 +68,7 @@ impl WriteRequest {
         let copy_len: usize = (self.data_len as usize).min(MAX_INLINE_WRITE_DATA);
         payload[data_start + 18..data_start + 18 + copy_len]
             .copy_from_slice(&self.data[..copy_len]);
+        payload
     }
 
     /// Decodes a WriteRequest from the message payload.
