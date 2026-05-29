@@ -28,7 +28,10 @@ use crate::{
         },
     },
     mm::{
-        phys::UserFrame,
+        phys::{
+            PhysMemoryManager,
+            UserFrame,
+        },
         virt::{
             kpage::KernelPage,
             page_table_allocator::PAGE_TABLE_ALLOCATOR,
@@ -45,13 +48,17 @@ use ::arch::mem::{
     self,
     paging::{
         PageDirectoryEntry,
+        PageTableEntry,
         PteWord,
     },
     PAGE_ALIGNMENT,
     PAGE_TABLE_LENGTH,
     PGTAB_ALIGNMENT,
 };
-use ::core::cell::RefCell;
+use ::core::{
+    cell::RefCell,
+    mem::ManuallyDrop,
+};
 use ::sys::{
     config,
     error::{
@@ -639,6 +646,319 @@ impl Vmem {
     ///
     /// # Description
     ///
+    /// Attempts to find the page-table entry that backs the user page at `vaddr`.
+    ///
+    /// # Parameters
+    ///
+    /// - `vaddr`: Virtual address of the target page.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Some(pte))` if the page is present, where `pte` is a decoded copy of the
+    ///   page-table entry that backs the mapping.
+    /// - `Ok(None)` if the page table or page is not present.
+    /// - `Err(_)` on unexpected failures.
+    ///
+    pub(crate) fn try_find_user_pte(
+        &self,
+        vaddr: PageAligned<VirtualAddress>,
+    ) -> Result<Option<PageTableEntry>, Error> {
+        let page_addr: PageAddress = PageAddress::new(vaddr);
+        let pgtab_addr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
+            ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+        )?);
+
+        for (lookup_pgtable_addr, page_table) in self.user_page_tables.iter() {
+            if lookup_pgtable_addr == &pgtab_addr {
+                return Ok(page_table.read_pte_at(page_addr));
+            }
+        }
+
+        Ok(None)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Invokes `f` once for each present user-space page in the target virtual memory
+    /// space, in the order they appear in the internal user page-table list.
+    ///
+    /// # Parameters
+    ///
+    /// - `f`: Callback invoked with `(vaddr, pte)` for every present user mapping. The
+    ///   virtual address is page-aligned and lies in user space; `pte` is a decoded copy
+    ///   of the page-table entry that backs the mapping. Returning an error from `f`
+    ///   short-circuits the iteration and propagates the error to the caller.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, the first error returned by `f`
+    /// is propagated.
+    ///
+    pub fn for_each_user_mapping<F>(&self, mut f: F) -> Result<(), Error>
+    where
+        F: FnMut(PageAligned<VirtualAddress>, PageTableEntry) -> Result<(), Error>,
+    {
+        for (pgtab_addr, page_table) in self.user_page_tables.iter() {
+            let base: usize = pgtab_addr.into_raw_value();
+            for (pte_idx, pte) in page_table.iter_present_ptes() {
+                let raw_vaddr: usize = base
+                    .checked_add(
+                        pte_idx.checked_mul(mem::PAGE_SIZE).ok_or_else(|| {
+                            Error::new(ErrorCode::BadAddress, "pte offset overflow")
+                        })?,
+                    )
+                    .ok_or_else(|| {
+                        Error::new(ErrorCode::BadAddress, "user mapping vaddr overflow")
+                    })?;
+                let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
+                f(vaddr, pte)?;
+            }
+        }
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Marks the user page at `vaddr` as copy-on-write: clears the writable bit
+    /// and sets the AVL copy-on-write bit on the underlying page-table entry.
+    ///
+    /// The page must be currently mapped and present. This is intended to be used
+    /// when sharing a user page between two address spaces (e.g. during fork).
+    ///
+    /// # Parameters
+    ///
+    /// - `vaddr`: Virtual address of the user page to mark.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn mark_user_page_cow(&mut self, vaddr: PageAligned<VirtualAddress>) -> Result<(), Error> {
+        if !Self::is_user_addr(vaddr.into_inner()) {
+            let reason: &str = "address is not in user space";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        let pgtab_aligned: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
+            ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+        )?;
+        let pgtable_vaddr: PageTableAddress = PageTableAddress::new(pgtab_aligned);
+        let page_table: &mut PageTable<PageTableStorage> =
+            self.lookup_user_page_table(pgtable_vaddr)?;
+        page_table.mark_cow(PageAddress::new(vaddr))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Inverse of [`Self::mark_user_page_cow`]: clears the copy-on-write mark on the user
+    /// page at `vaddr`, restoring its writable bit and clearing the AVL copy-on-write bit.
+    ///
+    /// # Parameters
+    ///
+    /// - `vaddr`: Virtual address of the user page to be unmarked.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn unmark_user_page_cow(
+        &mut self,
+        vaddr: PageAligned<VirtualAddress>,
+    ) -> Result<(), Error> {
+        if !Self::is_user_addr(vaddr.into_inner()) {
+            let reason: &str = "address is not in user space";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        let pgtab_aligned: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
+            ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+        )?;
+        let pgtable_vaddr: PageTableAddress = PageTableAddress::new(pgtab_aligned);
+        let page_table: &mut PageTable<PageTableStorage> =
+            self.lookup_user_page_table(pgtable_vaddr)?;
+        page_table.unmark_cow(PageAddress::new(vaddr))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves a copy-on-write fault on the user page at `vaddr` by repointing
+    /// its page-table entry at `new_frame`, clearing the AVL copy-on-write bit,
+    /// and restoring the writable bit.
+    ///
+    /// # Parameters
+    ///
+    /// - `vaddr`: Virtual address of the user page being resolved.
+    /// - `new_frame`: Physical frame to install in the PTE.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the previous frame address (the shared frame the PTE pointed
+    /// at) is returned. The caller is responsible for releasing that reference.
+    /// Upon failure, an error is returned instead.
+    ///
+    fn replace_user_page_cow_frame(
+        &mut self,
+        vaddr: PageAligned<VirtualAddress>,
+        new_frame: FrameAddress,
+    ) -> Result<FrameAddress, Error> {
+        if !Self::is_user_addr(vaddr.into_inner()) {
+            let reason: &str = "address is not in user space";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        let pgtab_aligned: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
+            ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+        )?;
+        let pgtable_vaddr: PageTableAddress = PageTableAddress::new(pgtab_aligned);
+        let page_table: &mut PageTable<PageTableStorage> =
+            self.lookup_user_page_table(pgtable_vaddr)?;
+        page_table.replace_cow_frame(PageAddress::new(vaddr), new_frame)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves a copy-on-write mapping at `vaddr`, if any. Allocates a private user frame,
+    /// copies the shared frame's contents into it, repoints the PTE at the new frame, and
+    /// drops the reference on the previously-shared frame.
+    ///
+    /// This is the building block used by both the page-fault handler (lazy resolution on a
+    /// user-mode write) and the kernel-side write paths (eager resolution before the kernel
+    /// writes to a user page via its physical alias, which would otherwise silently mutate
+    /// the shared frame and bypass the copy-on-write contract).
+    ///
+    /// # Parameters
+    ///
+    /// - `vaddr`: Page-aligned user virtual address to resolve.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(true)` if a copy-on-write mapping was found at `vaddr` and resolved.
+    /// - `Ok(false)` if `vaddr` is not mapped or the PTE is not marked copy-on-write.
+    /// - `Err(_)` if the resolution failed (e.g. out of frames).
+    ///
+    pub fn resolve_cow_at(&mut self, vaddr: PageAligned<VirtualAddress>) -> Result<bool, Error> {
+        if !Self::is_user_addr(vaddr.into_inner()) {
+            return Ok(false);
+        }
+
+        let pte: PageTableEntry = match self.try_find_user_pte(vaddr)? {
+            Some(pte) => pte,
+            None => return Ok(false),
+        };
+        if !pte.is_cow() {
+            return Ok(false);
+        }
+
+        // Fast path: if this address space holds the last reference to the shared frame,
+        // we can simply clear the copy-on-write mark in place — no allocation, no copy,
+        // no free. This happens when every other sharer has already resolved its own CoW
+        // mapping for this frame. Safe because the kernel is single-threaded and runs
+        // with interrupts disabled, so the refcount cannot change under us between the
+        // query and the unmark.
+        let src_frame: FrameAddress = FrameAddress::from_frame_number(pte.frame_number())?;
+        // Wrap in `ManuallyDrop` so `refcount()` (which borrows `&self`) does not free
+        // the frame when the temporary goes out of scope.
+        let probe: ManuallyDrop<UserFrame> = ManuallyDrop::new(UserFrame::new(src_frame));
+        if probe.refcount()? == 1 {
+            self.unmark_user_page_cow(vaddr)?;
+            return Ok(true);
+        }
+
+        // Allocate a fresh user frame via the single-frame helper; this keeps the kernel
+        // watermark check on this path without paying the cost of an intermediate `Vec`.
+        // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
+        // concurrent or re-entrant access to the physical memory manager is possible.
+        let new_frame: UserFrame = unsafe { PhysMemoryManager::get_mut() }.alloc_user_frame()?;
+
+        let src_paddr: usize = pte.frame_address();
+        let dst_paddr: usize = new_frame.address().into_raw_value();
+        super::memcpy(dst_paddr as *mut u8, src_paddr as *const u8, mem::PAGE_SIZE)?;
+
+        // Repoint the PTE at the new frame; the previous frame address is returned so we
+        // can drop the shared reference.
+        let new_frame_addr: FrameAddress = new_frame.address();
+        let old_frame: FrameAddress = self.replace_user_page_cow_frame(vaddr, new_frame_addr)?;
+
+        // The new frame is now owned by the page table; suppress its Drop.
+        let _ = new_frame.leak();
+
+        // Drop the shared reference: this decrements the per-frame refcount, freeing the
+        // frame only when the last sharer releases it.
+        drop(UserFrame::new(old_frame));
+
+        Ok(true)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Eagerly resolves all copy-on-write mappings overlapping the byte range `[addr, addr + size)`
+    /// in user space. Pages outside user space or not marked copy-on-write are left untouched.
+    ///
+    /// This must be called by kernel-side write paths (e.g. `copy_to_user`) before they write
+    /// to user memory via its physical alias, so that the write does not silently mutate a
+    /// frame that is still shared with another address space.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Start of the byte range (need not be page-aligned).
+    /// - `size`: Length of the byte range, in bytes. A zero-length range is a no-op.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn resolve_cow_for_region(
+        &mut self,
+        addr: VirtualAddress,
+        size: usize,
+    ) -> Result<(), Error> {
+        if size == 0 {
+            return Ok(());
+        }
+
+        let start: usize = ::sys::mm::align_down(addr.into_raw_value(), PAGE_ALIGNMENT);
+        let end_inclusive: usize =
+            addr.into_raw_value().checked_add(size - 1).ok_or_else(|| {
+                let reason: &str = "resolve_cow_for_region: overflow";
+                error!("{reason} (addr={addr:?}, size={size:?})");
+                Error::new(ErrorCode::BadAddress, reason)
+            })?;
+        let last_page: usize = ::sys::mm::align_down(end_inclusive, PAGE_ALIGNMENT);
+
+        let mut page: usize = start;
+        loop {
+            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(page)?;
+            // Only resolve pages that lie in user space; the routine is safe to call on
+            // ranges that straddle user/kernel boundaries because non-user pages return
+            // `Ok(false)`. Callers that need to enforce that the whole range is in user
+            // space do so themselves (e.g. `copy_to_user_unaligned`).
+            self.resolve_cow_at(vaddr)?;
+
+            if page == last_page {
+                break;
+            }
+            page = page.checked_add(mem::PAGE_SIZE).ok_or_else(|| {
+                let reason: &str = "resolve_cow_for_region: page overflow";
+                error!("{reason} (page={page:?})");
+                Error::new(ErrorCode::BadAddress, reason)
+            })?;
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Translates a user-space virtual address to a guest physical address by walking the page
     /// tables. The returned physical address includes the intra-page offset from the original
     /// virtual address.
@@ -799,7 +1119,7 @@ impl Vmem {
     ///  errors that occur while copying data will cause this function to panic.
     ///
     pub fn copy_to_user_unaligned_unchecked(
-        &self,
+        &mut self,
         mut dst: VirtualAddress,
         mut src: VirtualAddress,
         mut size: usize,
@@ -837,6 +1157,14 @@ impl Vmem {
                  size={size:?})",
             );
             return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        // Eagerly resolve any copy-on-write mappings in the destination range. Kernel writes
+        // below target the destination frames via their physical alias, which bypasses the
+        // page-table read-only/CoW bits, so resolution must happen up front rather than via
+        // the page-fault path. The dry-run pass is skipped because it does not write.
+        if !dry_run {
+            self.resolve_cow_for_region(dst, size)?;
         }
 
         while size > 0 {
@@ -948,7 +1276,7 @@ impl Vmem {
     ///
     ///
     pub fn copy_to_user_unaligned(
-        &self,
+        &mut self,
         dst: VirtualAddress,
         src: VirtualAddress,
         size: usize,

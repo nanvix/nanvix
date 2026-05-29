@@ -381,6 +381,42 @@ pub fn __kcall_detach_thread(tid: ThreadIdentifier) -> Result<(), Error> {
 }
 
 //==================================================================================================
+// Duplicate
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Duplicates the calling process. The child process is created with a clone of the caller's
+/// address space, and its main thread starts executing at the entry point described by `args`
+/// on the user-supplied stack.
+///
+/// The operation is refused when the calling process owns any "special" resources, namely
+/// allocated memory-mapped I/O regions, port-mapped I/O ports, event ownerships, or buffered
+/// in-flight mailbox messages.
+///
+/// # Parameters
+///
+/// - `args`: Thread creation arguments describing the child's main thread entry point and stack.
+///
+/// # Returns
+///
+/// Upon successful completion, the process identifier of the new child process is returned.
+/// Upon failure, an error is returned instead.
+///
+#[unsafe(no_mangle)]
+pub fn __kcall_duplicate(args: &ThreadCreateArgs) -> Result<ProcessIdentifier, Error> {
+    let result: i64 =
+        kcall1!(KcallNumber::Duplicate.into(), args as *const ThreadCreateArgs as usize as u32);
+
+    if unlikely(result < 0) {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to duplicate process"))
+    } else {
+        ProcessIdentifier::try_from(result)
+    }
+}
+
+//==================================================================================================
 // Lock Mutex
 //==================================================================================================
 
