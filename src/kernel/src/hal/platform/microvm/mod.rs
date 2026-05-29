@@ -91,6 +91,9 @@ pub const NUM_PAGE_TABLES: usize = config::kernel::MEMORY_SIZE / mem::PGTAB_SIZE
 #[cfg(not(feature = "whp"))]
 pub const NUM_PAGE_TABLES: usize = config::kernel::MEMORY_SIZE / mem::PGTAB_SIZE;
 
+/// Total number of physical frames covered by the configured machine memory size.
+pub const NFRAMES: usize = config::kernel::MEMORY_SIZE / mem::FRAME_SIZE;
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -109,9 +112,8 @@ pub struct Platform {
 //==================================================================================================
 
 /// Frame allocator storage.
-static mut FRAME_ALLOCATOR_STORAGE: [u8; config::kernel::MEMORY_SIZE
-    / (mem::FRAME_SIZE * u8::BITS as usize)] =
-    [0; config::kernel::MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)];
+static mut FRAME_ALLOCATOR_STORAGE: [u8; NFRAMES / u8::BITS as usize] =
+    [0; NFRAMES / u8::BITS as usize];
 
 /// GDT backing storage, allocated in BSS.
 static mut GDT_STORAGE: [Gdte; gdt::GDT_NUM_ENTRIES] = gdt::DEFAULT_ENTRIES;
