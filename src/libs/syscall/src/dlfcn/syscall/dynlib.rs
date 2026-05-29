@@ -518,28 +518,26 @@ impl DynamicLibrary {
         // Symbol is either undefined in this library or not in its dynsym at
         // all. Per POSIX, dlsym must search the full dependency tree regardless
         // of whether the root library references the symbol.
-        for (_dlname, dlfile) in self.dependencies.iter() {
-            if let Some(dlfile) = dlfile {
-                // Guard against deadlock: if the mutex is held by an ancestor
-                // in our call chain (true cycle back to a locked parent) or by
-                // a concurrent lookup, skip rather than spinning forever.
-                if dlfile.is_locked() {
-                    continue;
-                }
+        for dlfile in self.dependencies.values().flatten() {
+            // Guard against deadlock: if the mutex is held by an ancestor
+            // in our call chain (true cycle back to a locked parent) or by
+            // a concurrent lookup, skip rather than spinning forever.
+            if dlfile.is_locked() {
+                continue;
+            }
 
-                // Use the Arc's heap allocation address as a unique,
-                // lock-free identifier for this dependency. Skip if already
-                // traversed in this lookup (diamond-shaped dependency).
-                let id: usize = Arc::as_ptr(dlfile) as usize;
-                if !visited.insert(id) {
-                    continue;
-                }
+            // Use the Arc's heap allocation address as a unique,
+            // lock-free identifier for this dependency. Skip if already
+            // traversed in this lookup (diamond-shaped dependency).
+            let id: usize = Arc::as_ptr(dlfile) as usize;
+            if !visited.insert(id) {
+                continue;
+            }
 
-                let dlfile: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
+            let dlfile: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
 
-                if let Some(result) = dlfile.lookup_in_load_group(symbol_name, visited)? {
-                    return Ok(Some(result));
-                }
+            if let Some(result) = dlfile.lookup_in_load_group(symbol_name, visited)? {
+                return Ok(Some(result));
             }
         }
 
