@@ -10,6 +10,7 @@ use crate::{
     executor::{
         WorkloadSpec,
         combine_args_env,
+        drain_stream,
     },
     log_layout::{
         GuestLogTracker,
@@ -38,10 +39,6 @@ use ::std::{
     time::Duration,
 };
 use ::tokio::{
-    io::{
-        AsyncRead,
-        AsyncReadExt,
-    },
     task::JoinHandle,
     time::sleep,
 };
@@ -61,8 +58,6 @@ const BIN_DIR: &str = "bin";
 const KERNEL_ELF_FILENAME: &str = "kernel.elf";
 /// Flag passed to the guest workload to trigger snapshot capture during phase 1.
 const SNAPSHOT_WORKLOAD_FLAG: &str = "--snapshot";
-/// Buffer size used while draining the nanvixd stdout/stderr pipes.
-const DRAIN_CHUNK_SIZE: usize = 4096;
 
 //==================================================================================================
 // Standalone Functions
@@ -258,10 +253,14 @@ async fn run_iterations(
         // overwrite them. The phase token is `iteration * 2` for save.
         guest_log_tracker.move_new_logs(log_layout.test_directory())?;
         log_layout.normalize_component_logs(iteration.saturating_mul(2))?;
-        if save_exit != expected_exit_code {
+        // The save phase exits as soon as the VMM persists the snapshot artifacts (status 0):
+        // the guest never resumes past `pm::snapshot()` in this phase, so the workload's
+        // configured `expected_exit_code` only applies to the restore phase below.
+        const SAVE_PHASE_EXPECTED_EXIT_CODE: i32 = 0;
+        if save_exit != SAVE_PHASE_EXPECTED_EXIT_CODE {
             let reason: String = format!(
                 "snapshot save phase exited with status {save_exit}, expected \
-                 {expected_exit_code} (iteration={iteration})"
+                 {SAVE_PHASE_EXPECTED_EXIT_CODE} (iteration={iteration})"
             );
             error!("run_iterations(): {reason}");
             return Err(anyhow!(reason));
@@ -438,24 +437,4 @@ async fn spawn_nanvixd(
     }
 
     Ok(exit_code)
-}
-
-///
-/// # Description
-///
-/// Reads from an async stream until EOF and discards the bytes. Used to keep daemon stdio
-/// pipes from filling up while the snapshot-restore executor does not need their contents.
-///
-async fn drain_stream<R>(mut reader: R) -> ::std::io::Result<()>
-where
-    R: AsyncRead + Unpin + Send + 'static,
-{
-    let mut chunk: [u8; DRAIN_CHUNK_SIZE] = [0u8; DRAIN_CHUNK_SIZE];
-    loop {
-        let bytes_read: usize = reader.read(&mut chunk).await?;
-        if bytes_read == 0 {
-            break;
-        }
-    }
-    Ok(())
 }

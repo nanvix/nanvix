@@ -57,6 +57,8 @@ macro_rules! warn_with_policy {
 use crate::executor::http::test_with_http_executor;
 #[cfg(feature = "standalone")]
 use crate::executor::snapshot_restore::test_with_snapshot_restore_executor;
+#[cfg(feature = "standalone")]
+use crate::executor::snapshot_save_exit::test_with_snapshot_save_exit_executor;
 use crate::{
     config::{
         NanvixTestConfig,
@@ -624,6 +626,57 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
             (ExecutorName::SnapshotRestore, None) => {
                 let reason: String = "test entries with snapshot-restore executor must define the \
                                       'program' field"
+                    .to_string();
+                error!("main(): {reason}");
+                return Err(::anyhow::anyhow!(reason));
+            },
+            #[cfg(feature = "standalone")]
+            (ExecutorName::SnapshotSaveExit, Some(program_path)) => {
+                if !Path::new(program_path.as_str()).exists() {
+                    warn_with_policy!(
+                        "main(): skipping tests with snapshot-save-exit executor because program \
+                         path is missing (path={})",
+                        program_path
+                    );
+                    warning::fail_if_triggered("snapshot-save-exit executor missing program")?;
+                    continue;
+                }
+
+                let log_layout: TestLogLayout = TestLogLayout::for_program(
+                    log_root,
+                    ExecutorName::SnapshotSaveExit.to_str(),
+                    program_path.as_str(),
+                )?;
+
+                let workload: WorkloadSpec = WorkloadSpec::new(
+                    program_path.as_str(),
+                    program_args.as_deref(),
+                    program_env.as_deref(),
+                    input.as_deref(),
+                    expected_output.as_deref(),
+                    expect_empty_output,
+                    expected_exit_code,
+                );
+
+                test_with_snapshot_save_exit_executor(
+                    &runner_config,
+                    iterations,
+                    workload,
+                    &log_layout,
+                    &extra_nanvixd_args,
+                    cancellation_token.clone(),
+                )
+                .await?;
+                let context: String = format!(
+                    "snapshot-save-exit executor completed (program={}, test={})",
+                    program_path, executor
+                );
+                warning::fail_if_triggered(context.as_str())?;
+            },
+            #[cfg(feature = "standalone")]
+            (ExecutorName::SnapshotSaveExit, None) => {
+                let reason: String = "test entries with snapshot-save-exit executor must define \
+                                      the 'program' field"
                     .to_string();
                 error!("main(): {reason}");
                 return Err(::anyhow::anyhow!(reason));

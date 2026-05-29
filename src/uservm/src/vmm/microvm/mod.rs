@@ -881,7 +881,22 @@ impl Vmm {
                         if exit_status == ::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD {
                             // Kernel finished booting; no-op on KVM backend.
                         } else if exit_status == ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD {
-                            Handle::current().block_on(self.handle_snapshot())?;
+                            // Guest requested a snapshot via the `snapshot` kernel option. This is
+                            // a one-shot "save and exit" flow: once the snapshot files are
+                            // durable on disk, shut the VM down with exit code 0 so the standalone
+                            // daemon returns to its caller instead of running the guest on (which
+                            // would otherwise block forever on stdin).
+                            //
+                            // `handle_snapshot()` returns `false` for the OUT that KVM re-executes
+                            // immediately after a restore (absorbed via `skip_next_snapshot`); in
+                            // that case keep running the restored guest.
+                            let took_snapshot: bool =
+                                Handle::current().block_on(self.handle_snapshot())?;
+                            if took_snapshot {
+                                let exit_status: u16 = 0;
+                                Handle::current().block_on(self.handle_shutdown(exit_status));
+                                break Ok(exit_status);
+                            }
                         } else if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
                             Handle::current().block_on(self.handle_shutdown(exit_status));
 
@@ -1175,23 +1190,29 @@ impl Vmm {
     /// # Description
     ///
     /// Handles a guest-initiated snapshot request from the VMM run loop.
-    /// If the `skip_next_snapshot` flag is set (i.e., we are resuming from a restored snapshot),
-    /// the request is silently skipped and the flag is cleared.
+    ///
+    /// Background: after a restore, KVM re-executes the `out` instruction that originally
+    /// triggered the snapshot (its RIP was saved pointing at the OUT). `load_snapshot()` sets
+    /// `skip_next_snapshot = true` so that re-emitted OUT is swallowed here instead of producing
+    /// a second snapshot file.
     ///
     /// # Returns
     ///
-    /// Upon success, returns empty. Otherwise, returns an error.
+    /// On success, returns `Ok(true)` when a snapshot was actually written to disk (caller should
+    /// treat this as a "save and exit" event), and `Ok(false)` when the snapshot OUT was silently
+    /// absorbed via `skip_next_snapshot` (caller should continue running the restored guest).
+    /// Otherwise, returns an error.
     ///
-    async fn handle_snapshot(&self) -> Result<()> {
-        // Scope the lock to avoid deadlock: `create_snapshot` re-acquires `self.inner`.
-        // Safety: no concurrent snapshot requests can race here because snapshot is triggered
-        // by a single vCPU VMEXIT which is processed sequentially on the VMM run loop.
+    async fn handle_snapshot(&self) -> Result<bool> {
+        // Locking: the lock is scoped tightly because `create_snapshot()` re-acquires
+        // `self.inner`. No concurrent snapshot requests can race because snapshot is triggered by
+        // a single vCPU VMEXIT processed sequentially on the VMM run loop.
         let kernel_filename: String = {
             let mut locked_inner: MutexGuard<'_, InteriorMicroVmHandle> = self.inner.lock().await;
             if locked_inner.skip_next_snapshot {
                 trace!("handle_snapshot(): skipping snapshot (restored from snapshot)");
                 locked_inner.skip_next_snapshot = false;
-                return Ok(());
+                return Ok(false);
             }
             if !locked_inner.snapshot_allowed {
                 error!("handle_snapshot(): snapshot refused (not enabled or already consumed)");
@@ -1206,7 +1227,7 @@ impl Vmm {
                 // Consume the one-shot permission only after a successful snapshot.
                 self.inner.lock().await.snapshot_allowed = false;
                 trace!("handle_snapshot(): snapshot created successfully");
-                Ok(())
+                Ok(true)
             },
             Err(error) => {
                 error!("handle_snapshot(): failed to create snapshot: {error:?}");
