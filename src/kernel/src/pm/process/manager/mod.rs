@@ -1721,6 +1721,35 @@ impl ProcessManager {
         self.running.as_ref().expect("the kernel should be running")
     }
 
+    ///
+    /// # Description
+    ///
+    /// Reports whether the currently running process owns any "special" resources, as
+    /// defined by [`crate::pm::process::state::ProcessState::has_special_resources`].
+    ///
+    /// Thin test-only accessor used by in-kernel tests; it avoids widening the visibility of
+    /// [`Self::get_running`]. The `duplicate()` kernel call reaches the same predicate
+    /// directly through its internal `get_running()` view.
+    ///
+    #[cfg(feature = "test")]
+    pub fn current_has_special_resources(&self) -> bool {
+        self.get_running().state().has_special_resources()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a shared reference to the currently running process's virtual address space.
+    ///
+    /// Thin test-only accessor used by in-kernel tests that need a reference [`Vmem`] to clone
+    /// from (e.g. via [`crate::mm::VirtMemoryManager::new_vmem`]). Production code paths reach
+    /// this through the internal [`Self::get_running`] view instead.
+    ///
+    #[cfg(feature = "test")]
+    pub fn current_vmem(&self) -> &Vmem {
+        self.get_running().state().vmem()
+    }
+
     fn get_running_mut(&mut self) -> &mut RunningProcess {
         // NOTE: it is safe to call unwrap because there is always a process running.
         self.running.as_mut().expect("the kernel should be running")
