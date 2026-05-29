@@ -303,6 +303,9 @@ pub fn main() {
                 MessageType::ProcessTerminationEvent => {
                     ::syslog::warn!("received unexpected process termination event, ignoring");
                 },
+                MessageType::ProcessCreationEvent => {
+                    ::syslog::warn!("received unexpected process creation event, ignoring");
+                },
                 MessageType::PullResponse => {
                     ::syslog::warn!("received unexpected pull response, ignoring");
                 },
