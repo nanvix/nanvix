@@ -253,10 +253,14 @@ async fn run_iterations(
         // overwrite them. The phase token is `iteration * 2` for save.
         guest_log_tracker.move_new_logs(log_layout.test_directory())?;
         log_layout.normalize_component_logs(iteration.saturating_mul(2))?;
-        if save_exit != expected_exit_code {
+        // The save phase exits as soon as the VMM persists the snapshot artifacts (status 0):
+        // the guest never resumes past `pm::snapshot()` in this phase, so the workload's
+        // configured `expected_exit_code` only applies to the restore phase below.
+        const SAVE_PHASE_EXPECTED_EXIT_CODE: i32 = 0;
+        if save_exit != SAVE_PHASE_EXPECTED_EXIT_CODE {
             let reason: String = format!(
                 "snapshot save phase exited with status {save_exit}, expected \
-                 {expected_exit_code} (iteration={iteration})"
+                 {SAVE_PHASE_EXPECTED_EXIT_CODE} (iteration={iteration})"
             );
             error!("run_iterations(): {reason}");
             return Err(anyhow!(reason));
