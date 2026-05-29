@@ -183,6 +183,24 @@ impl PhysMemoryManager {
     ///
     /// # Description
     ///
+    /// Allocates a single user frame, applying the same kernel watermark check as
+    /// [`Self::alloc_many_user_frames`]. This is the single-frame fast path used on
+    /// hot paths such as copy-on-write fault resolution, where allocating an
+    /// intermediate [`Vec`] would be wasteful.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a [`UserFrame`] is returned. Upon failure, an error is returned
+    /// instead.
+    ///
+    pub fn alloc_user_frame(&mut self) -> Result<UserFrame, Error> {
+        Self::check_user_watermark(1)?;
+        self.upool.alloc()
+    }
+
+    ///
+    /// # Description
+    ///
     /// Rejects user allocations of `count` frames that would breach the kernel
     /// watermark, i.e. that would drop the number of free frames below
     /// [`config::kernel::KERNEL_WATERMARK`].

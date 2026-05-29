@@ -329,7 +329,7 @@ impl ProcessState {
     }
 
     pub fn copy_to_user_unaligned(
-        &self,
+        &mut self,
         dst: VirtualAddress,
         src: VirtualAddress,
         size: usize,

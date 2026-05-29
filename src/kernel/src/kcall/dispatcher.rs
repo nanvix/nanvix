@@ -120,6 +120,8 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         KcallNumber::CreateThread => pm::create_thread(pid, arg0),
         // Handle `detach_thread()` locally.
         KcallNumber::DetachThread => pm::detach_thread(pid, arg0),
+        // Handle `duplicate()` locally.
+        KcallNumber::Duplicate => pm::duplicate(pid, arg0),
         // Handle `send()` locally.
         KcallNumber::Send => ipc::send(pid, tid, arg0),
         // SAFETY: The calling thread is not the kernel and no resources are held.
