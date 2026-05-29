@@ -71,6 +71,41 @@ impl UserFrame {
         let this: ManuallyDrop<Self> = ManuallyDrop::new(self);
         this.addr
     }
+
+    ///
+    /// # Description
+    ///
+    /// Adds a new reference to the underlying physical frame and returns a fresh
+    /// [`UserFrame`] handle that owns that reference. The two handles share the
+    /// same physical frame, and the frame is only reclaimed once both handles are
+    /// dropped.
+    ///
+    /// This is the building block for copy-on-write sharing: the parent retains
+    /// its handle, the child receives the returned handle.
+    ///
+    /// # Returns
+    ///
+    /// On success, a new [`UserFrame`] that aliases the same physical frame as
+    /// `self`. On failure, an error is returned.
+    ///
+    pub fn share(&self) -> Result<UserFrame, Error> {
+        frame::share(self.addr)?;
+        Ok(Self { addr: self.addr })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the current reference count of the underlying physical frame.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the current reference count of the underlying physical frame is returned.
+    /// Upon failure, an error is returned instead.
+    ///
+    pub fn refcount(&self) -> Result<u8, Error> {
+        frame::refcount(self.addr)
+    }
 }
 
 impl Drop for UserFrame {
