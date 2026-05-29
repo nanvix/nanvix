@@ -10,6 +10,7 @@ use crate::{
     executor::{
         WorkloadSpec,
         combine_args_env,
+        drain_stream,
     },
     log_layout::{
         GuestLogTracker,
@@ -38,10 +39,6 @@ use ::std::{
     time::Duration,
 };
 use ::tokio::{
-    io::{
-        AsyncRead,
-        AsyncReadExt,
-    },
     task::JoinHandle,
     time::sleep,
 };
@@ -61,8 +58,6 @@ const BIN_DIR: &str = "bin";
 const KERNEL_ELF_FILENAME: &str = "kernel.elf";
 /// Flag passed to the guest workload to trigger snapshot capture during phase 1.
 const SNAPSHOT_WORKLOAD_FLAG: &str = "--snapshot";
-/// Buffer size used while draining the nanvixd stdout/stderr pipes.
-const DRAIN_CHUNK_SIZE: usize = 4096;
 
 //==================================================================================================
 // Standalone Functions
@@ -438,24 +433,4 @@ async fn spawn_nanvixd(
     }
 
     Ok(exit_code)
-}
-
-///
-/// # Description
-///
-/// Reads from an async stream until EOF and discards the bytes. Used to keep daemon stdio
-/// pipes from filling up while the snapshot-restore executor does not need their contents.
-///
-async fn drain_stream<R>(mut reader: R) -> ::std::io::Result<()>
-where
-    R: AsyncRead + Unpin + Send + 'static,
-{
-    let mut chunk: [u8; DRAIN_CHUNK_SIZE] = [0u8; DRAIN_CHUNK_SIZE];
-    loop {
-        let bytes_read: usize = reader.read(&mut chunk).await?;
-        if bytes_read == 0 {
-            break;
-        }
-    }
-    Ok(())
 }
