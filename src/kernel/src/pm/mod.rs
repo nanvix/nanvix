@@ -9,6 +9,8 @@ pub(crate) mod clock;
 mod kcall;
 mod process;
 pub mod sync;
+#[cfg(feature = "test")]
+mod test;
 pub mod thread;
 
 //==================================================================================================
@@ -133,6 +135,12 @@ pub fn init(root: Vmem) -> Result<(), Error> {
     info!("initializing the thread manager...");
     let (kernel, tm): (ReadyThread, ThreadManager) = thread::init();
     ProcessManager::init(interrupt_capable, kernel, root, tm);
+
+    #[cfg(feature = "test")]
+    {
+        let passed: bool = test::test();
+        assert!(passed, "pm in-kernel tests failed");
+    }
 
     Ok(())
 }
