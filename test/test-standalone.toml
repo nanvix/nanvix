@@ -327,3 +327,13 @@ program = "./bin/cmdline-env-rust-nostd.elf"
 program_args = "hello"
 program_env = "PATH=a;b"
 expected_output = "ARGS:hello\nENV:PATH=a;b\nok"
+
+#===================================================================================================
+# Snapshot Save / Restore Tests
+#===================================================================================================
+
+[[tests]]
+executor = "snapshot-restore"
+program = "./bin/snapshot-test.elf"
+iterations = 1
+expected_exit_code = 32
