@@ -694,7 +694,7 @@ impl Guest {
     /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
     ///
     pub fn reset(&mut self, vmem: &mut VirtualMemory, vcpu: &mut VirtualProcessor) -> Result<()> {
-        trace!("reset(): {:?}", &self);
+        trace!("reset(): {:?}", self);
         let rax: u64 = ::config::microvm::DEFAULT_BOOT_MAGIC as u64;
 
         self.reset_credits(vmem)?;
