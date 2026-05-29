@@ -1,0 +1,52 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "nvx-crt0"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Nanvix Guest Runtime Startup (C runtime 0)"
+homepage.workspace = true
+
+# Produced as a staticlib so the resulting `libnvx_crt0.a` can be link-forced
+# (`-Wl,--whole-archive libnvx_crt0.a -Wl,--no-whole-archive`) into an
+# executable's link line. The `lib` crate type is also produced so Rust no_std
+# binaries that depend on this crate via `extern crate nvx_crt0;` get the
+# startup objects through cargo's normal dependency resolution.
+[lib]
+crate-type = ["lib", "staticlib"]
+
+[dependencies]
+cfg-if = { workspace = true }
+config = { workspace = true }
+nvx = { workspace = true }
+syslog = { workspace = true, default-features = true }
+sys = { workspace = true, features = ["kcall"] }
+
+# `sysalloc` provides the memory allocator and thread-data-area (TDA) helpers
+# the startup code uses to bring up the runtime. Platform-gated to match the
+# gating in `nvx` itself.
+[target.'cfg(any(target_os = "none", target_os = "nanvix"))'.dependencies]
+sysalloc = { workspace = true }
+
+[features]
+# Default to `c-main` so a vanilla `cargo build -p nvx-crt0` succeeds without
+# forcing every caller to pass `--features ...`. Consumers that want the Rust
+# trampoline opt out via `default-features = false, features = ["rust-main"]`
+# in their own Cargo.toml.
+default = ["c-main"]
+c-main = []
+rust-main = []
+
+# Logging level pass-through to syslog (mirrors the convention used by `nvx`).
+trace = ["syslog/trace"]
+debug = ["syslog/debug"]
+info = ["syslog/info"]
+warn = ["syslog/warn"]
+error = ["syslog/error"]
+panic = ["syslog/panic"]
+
+[lints]
+workspace = true

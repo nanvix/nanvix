@@ -10,40 +10,58 @@
 #![forbid(clippy::large_stack_arrays)]
 #![no_std]
 
+//! Nanvix guest C runtime 0 (`crt0`).
+//!
+//! Owns the executable entry point (`_do_start`), the `_start` Rust function
+//! it dispatches to, the C / Rust trampolines that bridge to the
+//! application's `main` function, and the argument-vector / environment
+//! parsing logic.  This crate is intended to be linked **only into
+//! executables**.  Libraries (notably `libposix.a`) must **not** depend on
+//! it, so that those libraries can be linked into `.so` files without
+//! pulling in a strong undefined `main` reference.
+
 //==================================================================================================
-// Modules
+// Feature-set guards
 //==================================================================================================
 
-#[cfg(not(feature = "rustc-dep-of-std"))]
-mod panic;
-pub mod pie;
+// Exactly one trampoline flavour must be selected. The C variant brings in
+// `extern "C" fn main(int, char **)` (the standard C ABI entry point used by
+// CPython, hello-c, smoke, ...); the Rust variant brings in
+// `extern "Rust" fn main() -> Result<(), sys::error::Error>` (used by every
+// Rust no_std binary).
+#[cfg(all(feature = "c-main", feature = "rust-main"))]
+compile_error!(
+    "nvx-crt0: features `c-main` and `rust-main` are mutually exclusive; pick exactly one."
+);
+
+#[cfg(not(any(feature = "c-main", feature = "rust-main")))]
+compile_error!("nvx-crt0: one of the features `c-main` or `rust-main` must be enabled.");
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-// We link the `alloc` crate when building static libraries to provide heap allocation support.
-#[cfg(not(feature = "rustc-dep-of-std"))]
 extern crate alloc;
 
+use ::alloc::vec::Vec;
 use ::config::memory_layout::USER_BASE_RAW;
 
-#[cfg(not(feature = "staticlib"))]
+#[cfg(feature = "rust-main")]
 use ::core::sync::atomic::{
     AtomicI32,
     AtomicPtr,
     Ordering,
 };
 
-use ::alloc::vec::Vec;
-
 //==================================================================================================
 // External Functions
 //==================================================================================================
 
-#[cfg(feature = "staticlib")]
+#[cfg(feature = "c-main")]
 unsafe extern "C" {
-    /// Initializes the environment table from a null-terminated array of "KEY=VALUE" C strings.
+    /// Initialises the environment table from a null-terminated array of "KEY=VALUE"
+    /// C strings.  Provided by `libposix` (`src/libs/posix/src/stdlib/...`) and only
+    /// needed by C executables, which rely on `getenv` / `setenv` / `unsetenv`.
     fn __nanvix_env_init(envp: *const *const core::ffi::c_char);
 }
 
@@ -54,9 +72,9 @@ unsafe extern "C" {
 ///
 /// # Description
 ///
-/// Pointer to environment variables.
+/// Pointer to the environment-variable array installed by `_start()`.
 ///
-/// # Note
+/// # Notes
 ///
 /// - This symbol is not name-mangled so it can be referenced from foreign code (for example C).
 /// - The symbol name is lowercase because external languages expect this conventional name.
@@ -68,24 +86,33 @@ static mut environ: *mut *mut i8 = core::ptr::null_mut();
 ///
 /// # Description
 ///
-/// Pointer to command line arguments.
+/// Number of command-line arguments published by `_start()` for Rust no_std
+/// executables that wish to read them directly (for example
+/// `cmdline-len-rust` / `cmdline-env-rust-nostd`).
 ///
-#[cfg(not(feature = "staticlib"))]
-pub static ARGV: AtomicPtr<*const u8> = AtomicPtr::new(core::ptr::null_mut());
+/// Only meaningful when the `rust-main` feature is enabled. C executables
+/// receive `argc` directly through `c_trampoline`.
+///
+#[cfg(feature = "rust-main")]
+pub static ARGC: AtomicI32 = AtomicI32::new(0);
 
 ///
 /// # Description
 ///
-/// Number of command line arguments in the `argv` array.
+/// Pointer to the command-line argument array published by `_start()`. See
+/// [`ARGC`] for the matching length.
 ///
-#[cfg(not(feature = "staticlib"))]
-pub static ARGC: AtomicI32 = AtomicI32::new(0);
+#[cfg(feature = "rust-main")]
+pub static ARGV: AtomicPtr<*const u8> = AtomicPtr::new(core::ptr::null_mut());
 
 //==================================================================================================
-// Standalone Functions
+// Kernel-Entry Stub
 //==================================================================================================
 
-#[cfg(not(feature = "staticlib"))]
+// Kernel-entry stub set up by the process spawner. The trap frame the kernel
+// installs makes IRET "return" to `_do_start` with `argp` in EDX and `envp`
+// in ECX. The stub aligns the stack to the i386 SysV ABI requirement
+// (ESP = 0 mod 16 before the CALL instruction) and dispatches to `_start`.
 core::arch::global_asm!(
     r#"
     .extern _start
@@ -128,10 +155,18 @@ core::arch::global_asm!(
     "#
 );
 
+//==================================================================================================
+// Rust Entry Point
+//==================================================================================================
+
 ///
 /// # Description
 ///
-/// Entry point of the program.
+/// Rust entry point reached from `_do_start`.  Performs PIE relocation, runs
+/// `nvx`'s runtime initialisation, parses the kernel-supplied `argp` /
+/// `envp` blobs into argv / environ arrays, dispatches to the selected
+/// trampoline (C or Rust `main`), then tears the runtime down and exits via
+/// the `exit` kcall.
 ///
 /// # Parameters
 ///
@@ -144,25 +179,26 @@ core::arch::global_asm!(
 ///
 /// # Safety
 ///
-/// This function is unsafe because it dereferences raw pointers.
+/// This function is unsafe because it dereferences raw pointers supplied by
+/// the kernel trap-frame setup.
 ///
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
     // Apply PIE relocations before any global data access.
     unsafe {
-        pie::relocate_pie_binary(USER_BASE_RAW);
+        ::nvx::pie::relocate_pie_binary(USER_BASE_RAW);
     }
 
-    syslog::trace!("_start(): argv: {:?}, envp: {:?}", argp, envp);
+    ::syslog::trace!("_start(): argv: {:?}, envp: {:?}", argp, envp);
 
-    // Initializes the system runtime.
-    init();
+    // Initialise the system runtime (heap, TDA, ...).
+    ::nvx::init();
 
-    // Build vector of command line arguments.
-    let argv: Vec<*const i8> = unsafe { parse_argp(argp) };
-    let argc: i32 = argv.len() as i32 - 1;
-    let argv: *mut *const u8 = argv.as_ptr() as *mut *const u8;
-    #[cfg(not(feature = "staticlib"))]
+    // Build vector of command-line arguments.
+    let mut argv_vec: Vec<*const i8> = unsafe { parse_argp(argp) };
+    let argc: i32 = argv_vec.len() as i32 - 1;
+    let argv: *mut *const u8 = argv_vec.as_mut_ptr() as *mut *const u8;
+    #[cfg(feature = "rust-main")]
     {
         ARGC.store(argc, Ordering::SeqCst);
         ARGV.store(argv, Ordering::SeqCst);
@@ -175,34 +211,80 @@ pub unsafe extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
     }
 
     // Populate the environment table used by getenv()/setenv()/unsetenv().
-    // The `environ` pointer is a null-terminated array of "KEY=VALUE" C strings,
-    // which is exactly the format expected by __nanvix_env_init().
-    #[cfg(feature = "staticlib")]
+    // The `environ` pointer is a null-terminated array of "KEY=VALUE" C
+    // strings, which is exactly the format expected by __nanvix_env_init().
+    #[cfg(feature = "c-main")]
     unsafe {
         __nanvix_env_init(environ as *const *const core::ffi::c_char);
     }
 
     cfg_if::cfg_if! {
-        if #[cfg(feature = "staticlib")] {
+        if #[cfg(feature = "c-main")] {
             let status: i32 = c_trampoline(argc, argv);
         } else {
+            // Suppress unused-variable warnings when only the Rust trampoline
+            // is active: argc/argv are stored in ARGC/ARGV above.
+            let _ = (argc, argv);
             let status: i32 = rust_trampoline();
         }
     }
 
-    // Cleans up the system runtime.
-    cleanup();
+    // Clean up the system runtime.
+    ::nvx::cleanup();
 
-    // Exits the runtime.
+    // Exit the runtime.
     let Err(error) = ::sys::kcall::pm::__kcall_exit(status);
     panic!("failed to exit process (error={error:?})");
 }
 
+//==================================================================================================
+// Trampolines
+//==================================================================================================
+
+/// Trampoline for Rust applications.
+///
+/// Calls the `main` symbol exported by the application crate, which must
+/// have the signature `fn main() -> Result<(), sys::error::Error>`.
+#[cfg(feature = "rust-main")]
+fn rust_trampoline() -> i32 {
+    unsafe extern "Rust" {
+        fn main() -> Result<(), ::sys::error::Error>;
+    }
+
+    match unsafe { main() } {
+        Ok(()) => 0,
+        Err(e) => e.code.get(),
+    }
+}
+
+/// Trampoline for C applications.
+///
+/// Calls the standard C `main(int argc, char **argv) -> int` plus `_init`
+/// and `_fini` (the legacy GNU constructor/destructor hooks).
+#[cfg(feature = "c-main")]
+fn c_trampoline(argc: i32, argv: *const *const u8) -> i32 {
+    unsafe extern "C" {
+        fn main(argc: i32, argv: *const *const u8) -> i32;
+        fn _init();
+        fn _fini();
+    }
+
+    unsafe {
+        _init();
+        let ret: i32 = main(argc, argv);
+        _fini();
+        ret
+    }
+}
+
+//==================================================================================================
+// Argument / Environment Parsing
+//==================================================================================================
+
 ///
 /// # Description
 ///
-/// Builds a string table from a a null-terminated string.
-///
+/// Builds a string table from a null-terminated string.
 /// # Parameters
 ///
 /// - `string`: A pointer to a null-terminated string.
@@ -210,6 +292,12 @@ pub unsafe extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
 /// # Returns
 ///
 /// - A vector of pointers to null-terminated strings.
+///
+/// # Safety
+///
+/// This function dereferences `string`.  The caller must ensure that `string`
+/// points to a valid mutable buffer terminated by a single null byte and
+/// containing only ASCII characters (space-separated tokens).
 ///
 unsafe fn build_string_table(string: *mut i8) -> Vec<*mut i8> {
     use core::ptr;
@@ -250,122 +338,23 @@ unsafe fn build_string_table(string: *mut i8) -> Vec<*mut i8> {
     result
 }
 
-///
 /// Wrapper for parsing `argp`.
 ///
+/// # Safety
+///
+/// See [`build_string_table`].
 unsafe fn parse_argp(argp: *mut i8) -> Vec<*const i8> {
-    build_string_table(argp)
+    unsafe { build_string_table(argp) }
         .into_iter()
         .map(|ptr| ptr as *const i8)
         .collect()
 }
 
-///
 /// Wrapper for parsing `envp`.
 ///
+/// # Safety
+///
+/// See [`build_string_table`].
 unsafe fn parse_envp(envp: *mut i8) -> Vec<*mut i8> {
-    build_string_table(envp)
-}
-
-///
-/// Trampoline for Rust applications.
-///
-#[cfg(all(not(feature = "staticlib"), not(feature = "rustc-dep-of-std")))]
-fn rust_trampoline() -> i32 {
-    unsafe extern "Rust" {
-        fn main() -> Result<(), ::sys::error::Error>;
-    }
-
-    // Runs the main function.
-    match unsafe { main() } {
-        Ok(()) => 0,
-        Err(e) => e.code.get(),
-    }
-}
-
-///
-/// Trampoline for Rust applications.
-///
-#[cfg(all(not(feature = "staticlib"), feature = "rustc-dep-of-std"))]
-fn rust_trampoline() -> i32 {
-    unsafe extern "Rust" {
-        fn main();
-    }
-
-    // Runs the main function.
-    unsafe { main() };
-
-    0
-}
-
-///
-/// Trampoline for C applications.
-///
-#[cfg(feature = "staticlib")]
-fn c_trampoline(argc: i32, argv: *const *const u8) -> i32 {
-    unsafe extern "C" {
-        fn main(argc: i32, argv: *const *const u8) -> i32;
-        fn _init();
-        fn _fini();
-    }
-
-    unsafe {
-        _init();
-        let ret: i32 = main(argc, argv);
-        _fini();
-        ret
-    }
-}
-
-/// Initializes system runtime.
-///
-/// Brings up the heap-region reservation, the `sysalloc` allocator, and the
-/// thread-data-area (TDA) used for thread-local storage.  Public so the
-/// startup crate (`nvx-crt0`) can call it from `_start` without duplicating
-/// the logic.
-pub fn init() {
-    #[cfg(any(target_os = "none", target_os = "nanvix"))]
-    {
-        // Reserve virtual address space for the heap from the unified mmap region.
-        let heap_capacity: usize = ::config::memory_layout::USER_HEAP_CAPACITY;
-        let heap_base: ::sys::mm::VirtualAddress = match sysalloc::vaddr::reserve(heap_capacity) {
-            core::prelude::v1::Ok(base) => base,
-            Err(e) => panic!("failed to reserve virtual address space for heap: {:?}", e),
-        };
-
-        if let Err(e) = sysalloc::init(heap_base, heap_capacity) {
-            panic!("failed to initialize memory manager: {:?}", e);
-        }
-    }
-    #[cfg(any(target_os = "none", target_os = "nanvix"))]
-    match sysalloc::tda::alloc() {
-        core::prelude::v1::Ok(Some(tda_ptr)) => {
-            if let Err(error) = ::sys::kcall::pm::__kcall_set_thread_data_area(tda_ptr) {
-                panic!("init(): failed to set thread data area (error={error:?})");
-            }
-            sysalloc::tda::mark_initialized();
-        },
-        core::prelude::v1::Ok(None) => {
-            // No thread-local storage to set.
-        },
-        Err(error) => {
-            panic!("init(): create thread data area (error={error:?})");
-        },
-    }
-}
-
-/// Cleans up system runtime.
-///
-/// Tears down the thread-data-area and the `sysalloc` allocator.  Public so
-/// the startup crate (`nvx-crt0`) can call it from `_start` without
-/// duplicating the logic.
-pub fn cleanup() {
-    #[cfg(any(target_os = "none", target_os = "nanvix"))]
-    if let Err(error) = ::sysalloc::tda::cleanup() {
-        panic!("failed to cleanup thread data area ({error:?})");
-    }
-    #[cfg(any(target_os = "none", target_os = "nanvix"))]
-    if let Err(e) = sysalloc::cleanup() {
-        panic!("failed to cleanup memory manager: {:?}", e);
-    }
+    unsafe { build_string_table(envp) }
 }
