@@ -2891,7 +2891,7 @@ dependencies = [
 
 [[package]]
 name = "snapshot-test"
-version = "0.15.40"
+version = "0.15.42"
 dependencies = [
  "libc_string",
  "nvx",
