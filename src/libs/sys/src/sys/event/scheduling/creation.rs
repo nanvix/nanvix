@@ -24,6 +24,8 @@ pub struct ProcessCreationInfo {
     /// Identifier of the process that created it.
     pub parent: ProcessIdentifier,
 }
+::static_assert::assert_eq_size!(ProcessCreationInfo, 8);
+::static_assert::assert_eq_align!(ProcessCreationInfo, 4);
 
 //==================================================================================================
 // Implementations
