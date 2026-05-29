@@ -141,3 +141,13 @@ executor = "terminal"
 program = "./bin/network-rust.initrd"
 extra_nanvixd_args = "-allow-host-networking"
 expected_output = "ok"
+
+#===================================================================================================
+# Snapshot Save / Restore Tests
+#===================================================================================================
+
+[[tests]]
+executor = "snapshot-restore"
+program = "./bin/snapshot-test.elf"
+iterations = 1
+expected_exit_code = 32
