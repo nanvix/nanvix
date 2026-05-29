@@ -337,3 +337,12 @@ executor = "snapshot-restore"
 program = "./bin/snapshot-test.elf"
 iterations = 1
 expected_exit_code = 32
+
+# Asserts that the host nanvixd process exits on its own after the snapshot artifacts are
+# written to disk. The guest workload spins forever after taking the snapshot, so the only
+# path to a clean nanvixd exit is the host-side snapshot-completion tear-down.
+[[tests]]
+executor = "snapshot-save-exit"
+program = "./bin/snapshot-test.elf"
+iterations = 1
+expected_exit_code = 0
