@@ -5,12 +5,18 @@
 // Modules
 //==================================================================================================
 
+#[cfg(feature = "standalone")]
+mod common;
 pub mod empty;
 #[cfg(unix)]
 pub mod http;
 #[cfg(feature = "standalone")]
 pub mod snapshot_restore;
+#[cfg(feature = "standalone")]
+pub mod snapshot_save_exit;
 pub mod terminal;
+#[cfg(feature = "standalone")]
+pub(crate) use self::common::drain_stream;
 
 //==================================================================================================
 // Imports
@@ -217,6 +223,9 @@ pub enum ExecutorName {
     /// Snapshot save / restore executor.
     #[cfg(feature = "standalone")]
     SnapshotRestore,
+    /// Snapshot save / host-exit executor.
+    #[cfg(feature = "standalone")]
+    SnapshotSaveExit,
     /// Terminal executor.
     Terminal,
 }
@@ -241,6 +250,8 @@ impl ExecutorName {
             "http" => Ok(Self::Http),
             #[cfg(feature = "standalone")]
             "snapshot-restore" => Ok(Self::SnapshotRestore),
+            #[cfg(feature = "standalone")]
+            "snapshot-save-exit" => Ok(Self::SnapshotSaveExit),
             "terminal" => Ok(Self::Terminal),
             _ => Err(::anyhow::anyhow!(format!("invalid executor name '{identifier}'"))),
         }
@@ -262,6 +273,8 @@ impl ExecutorName {
             Self::Http => "http",
             #[cfg(feature = "standalone")]
             Self::SnapshotRestore => "snapshot-restore",
+            #[cfg(feature = "standalone")]
+            Self::SnapshotSaveExit => "snapshot-save-exit",
             Self::Terminal => "terminal",
         }
     }
