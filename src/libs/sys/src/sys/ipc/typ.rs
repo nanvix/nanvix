@@ -27,19 +27,19 @@ use ::core::{
 #[repr(u8)]
 pub enum MessageType {
     /// The message encodes information about an interrupt that occurred.
-    Interrupt,
+    Interrupt = 1,
     /// The message encodes information about an exception that occurred.
-    Exception,
+    Exception = 2,
     /// The message carries information sent by a process to another.
-    Ipc,
+    Ipc = 3,
     /// The message encodes information about a process termination event.
-    ProcessTerminationEvent,
+    ProcessTerminationEvent = 4,
     /// The message carries information sent from one kernel to another.
-    Ikc,
+    Ikc = 5,
     /// The message signals completion of a bulk pull transfer.
-    PullResponse,
+    PullResponse = 6,
     /// The message encodes information about a process creation event.
-    ProcessCreationEvent,
+    ProcessCreationEvent = 7,
 }
 ::static_assert::assert_eq_size!(MessageType, 1);
 
