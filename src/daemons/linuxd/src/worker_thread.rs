@@ -526,6 +526,12 @@ impl WorkerThreadHandle {
                     );
                     break;
                 },
+                sys::ipc::MessageType::ProcessCreationEvent => {
+                    error!(
+                        "handle_message(): received unexpected process creation event, stopping"
+                    );
+                    break;
+                },
                 sys::ipc::MessageType::PullResponse => {
                     error!("handle_message(): received unexpected pull response, stopping");
                     break;

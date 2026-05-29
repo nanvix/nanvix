@@ -140,6 +140,9 @@ pub fn main() {
                 MessageType::ProcessTerminationEvent => {
                     unreachable!("should not receive process termination events")
                 },
+                MessageType::ProcessCreationEvent => {
+                    unreachable!("should not receive process creation events")
+                },
                 MessageType::PullResponse => {
                     ::syslog::error!("received unexpected pull response, ignoring");
                     continue;
