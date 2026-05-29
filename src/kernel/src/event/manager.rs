@@ -27,6 +27,7 @@ use ::alloc::collections::{
     LinkedList,
     VecDeque,
 };
+use ::arch::cpu::excp;
 use ::core::{
     cell::{
         RefCell,
@@ -1073,12 +1074,28 @@ fn do_exception_handler(
         let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
         let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
 
-        if pm
-            .handle_stack_page_fault(
-                mm,
-                info.addr() as usize,
-                ::arch::cpu::excp::ErrorCode::new(info.code()),
-            )
+        let error_code: excp::ErrorCode = excp::ErrorCode::new(info.code());
+
+        // Dispatch by the hardware-reported P (present) bit, which strictly partitions the
+        // two handlers below:
+        //
+        //   - Copy-on-write fault: user-mode write to a *present* page with the AVL CoW bit
+        //     set (P=1, W=1, U=1). The CoW handler accepts only when `error_code.is_present()`
+        //     is true.
+        //   - Stack demand-paging:  access to an *absent* page (P=0). The stack handler only
+        //     fires when the page is not present.
+        //
+        // Routing on `is_present()` makes the disjointedness explicit and avoids relying on the
+        // order of the two handlers.
+        if error_code.is_present() {
+            if pm
+                .handle_cow_page_fault(mm, info.addr() as usize, error_code)
+                .map_err(SleepError::Generic)?
+            {
+                return Ok(());
+            }
+        } else if pm
+            .handle_stack_page_fault(mm, info.addr() as usize, error_code)
             .map_err(SleepError::Generic)?
         {
             return Ok(());

@@ -649,6 +649,134 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Duplicates the calling process. The child process is created with a clone of the
+    /// caller's address space, and its main thread starts executing the user-supplied entry
+    /// function on the user-supplied stack.
+    ///
+    /// The operation is refused when the calling process owns any "special" resources, as
+    /// reported by [`ProcessState::has_special_resources`]. This guarantees that no resource
+    /// that is uniquely owned by the parent (memory-mapped I/O regions, port-mapped I/O
+    /// ports, event ownerships, or buffered in-flight messages) is silently leaked or
+    /// duplicated into the child.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Memory manager to use.
+    /// - `pid`: Process identifier of the calling (parent) process.
+    /// - `args`: Thread creation arguments describing the child main thread's entry point
+    ///   and stack.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the process identifier of the new (child) process is
+    /// returned. Otherwise, an error is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// This function fails with the following error codes, among others:
+    ///
+    /// - [`ErrorCode::OperationNotPermitted`]: The calling process owns one or more special
+    ///   resources that prevent it from being duplicated.
+    /// - [`ErrorCode::InvalidArgument`]: The supplied entry function or stack does not lie
+    ///   within the user address space.
+    ///
+    pub fn duplicate_process(
+        &mut self,
+        mm: &mut VirtMemoryManager,
+        pid: ProcessIdentifier,
+        args: &ThreadCreateArgs,
+    ) -> Result<ProcessIdentifier, Error> {
+        trace!("pid={pid:?}, args={args:?}");
+
+        // Sanity-check the caller against the running process, mirroring create_thread().
+        debug_assert!(
+            self.get_running().state().pid() == pid,
+            "duplicate_process: pid must match the running process"
+        );
+
+        // Validate user-supplied entry point and stack range.
+        if !Vmem::is_user_addr(args.user_fn) {
+            let reason: &str = "user function does not lie within the user address space";
+            error!("{reason} (user_fn={:?})", args.user_fn);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        if !Vmem::is_user_region(args.user_stack_base, args.user_stack_size) {
+            let reason: &str = "user stack does not lie within the user address space";
+            error!(
+                "{reason} (user_stack_base={:?}, user_stack_size={})",
+                args.user_stack_base, args.user_stack_size
+            );
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        if let Some(user_tda) = args.user_tda {
+            if !Vmem::is_user_addr(user_tda) {
+                let reason: &str =
+                    "user-space thread data area does not lie within the user address space";
+                error!("{reason} (user_tda={:?})", user_tda);
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            }
+        }
+
+        // Refuse to duplicate when the caller owns special resources.
+        if self.get_running().state().has_special_resources() {
+            let reason: &str = "caller owns special resources (mmio/pmio/events/mailbox)";
+            error!("{reason} (pid={pid:?})");
+            return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+        }
+
+        // Refuse to create a new process when the system-wide live-process cap has been reached.
+        if self.live_count >= ::config::kernel::MAX_PROCESSES {
+            let reason: &str = "maximum number of processes reached";
+            error!(
+                "{reason} (live_count={}, max_processes={})",
+                self.live_count,
+                ::config::kernel::MAX_PROCESSES
+            );
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
+
+        // Reserve identifiers early, before any allocation that could fail.
+        let (child_pid, next_pid): (ProcessIdentifier, ProcessIdentifier) = self.try_next_pid()?;
+        let (child_tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
+
+        // Clone caller's address space.
+        let mut vmem: Vmem = mm.new_vmem(self.get_running().state().vmem())?;
+
+        // Share parent's user-space pages with the child using copy-on-write semantics:
+        // both address spaces transparently see the same data until either side writes,
+        // at which point the in-kernel page-fault handler allocates a private copy for
+        // the faulting side.
+        mm.link_user_pages(self.get_running_mut().state_mut().vmem_mut(), &mut vmem)?;
+
+        // Forge a kernel context that, on first dispatch, enters user mode at `user_fn` on the
+        // supplied user stack.
+        let (kernel_stack, context): (KernelStack, ContextInformation) =
+            Self::forge_user_context(mm, &mut vmem, args, self.interrupt_capable)?;
+
+        //==============================================================
+        // NOTE: if we fail beyond this point we leak page mappings.
+        //==============================================================
+
+        Ok(no_fail!(ProcessIdentifier, {
+            let thread: ReadyThread =
+                self.tm
+                    .create_thread(child_tid, Some(kernel_stack), None, args.user_tda, context);
+
+            // Commit reserved identifiers now that all fallible operations succeeded.
+            self.next_pid = next_pid;
+            self.tm.commit_next_tid(next_tid);
+            self.live_count += 1;
+
+            let process: RunnableProcess = RunnableProcess::new(child_pid, thread, vmem);
+            self.ready.push_back(process);
+
+            Ok(child_pid)
+        }))
+    }
+
+    ///
+    /// # Description
+    ///
     /// Schedule a thread to run.
     ///
     /// # Returns
@@ -1882,13 +2010,25 @@ impl ProcessManager {
     /// Upon successful completion, empty is returned. On failure, an error is returned instead.
     ///
     pub fn vmcopy_user_to_user(
-        &self,
+        &mut self,
         src_pid: ProcessIdentifier,
         src: VirtualAddress,
         dst_pid: ProcessIdentifier,
         dst: VirtualAddress,
         size: usize,
     ) -> Result<(), Error> {
+        // Eagerly resolve any copy-on-write mappings in the destination region before the
+        // copy. The byte-copy path below targets the destination frames via their physical
+        // alias, which bypasses the page-table read-only/CoW bits, so the resolution must
+        // happen here rather than on the page-fault path.
+        if size > 0 {
+            let mut dst_proc = self.find_process_mut(dst_pid)?;
+            dst_proc
+                .state_mut()
+                .vmem_mut()
+                .resolve_cow_for_region(dst, size)?;
+        }
+
         let src_proc: ProcessRef<'_> = self.find_process(src_pid)?;
         let dst_proc: ProcessRef<'_> = self.find_process(dst_pid)?;
         let src_vmem: &Vmem = src_proc.state().vmem();
@@ -2329,5 +2469,33 @@ impl ProcessManager {
         self.mmap(mm, pid, vaddr, 1, AccessPermission::RDWR)?;
 
         Ok(true)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Handles a page fault that may be caused by a copy-on-write mapping in the
+    /// running process's address space.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Virtual memory manager.
+    /// - `fault_addr`: Faulting virtual address.
+    /// - `error_code`: Typed x86 page-fault error code.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(true)` if the fault was resolved as a copy-on-write fault.
+    /// - `Ok(false)` if the fault is not a copy-on-write fault.
+    /// - `Err(...)` if resolving the fault failed.
+    ///
+    pub fn handle_cow_page_fault(
+        &mut self,
+        mm: &mut VirtMemoryManager,
+        fault_addr: usize,
+        error_code: excp::ErrorCode,
+    ) -> Result<bool, Error> {
+        let vmem: &mut Vmem = self.get_running_mut().state_mut().vmem_mut();
+        mm.try_resolve_cow_fault(vmem, fault_addr, error_code)
     }
 }

@@ -226,6 +226,84 @@ impl Inner {
     ///
     /// # Description
     ///
+    /// Adds a new reference to a frame that has already been allocated.
+    ///
+    /// This is used to implement page sharing (e.g. for copy-on-write). The matching
+    /// number of [`free`] calls must be issued to actually release the frame back to
+    /// the bitmap.
+    ///
+    /// # Parameters
+    ///
+    /// - `frame`: Address of the frame to share.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
+    fn share(&mut self, frame: FrameAddress) -> Result<(), Error> {
+        let frame_number: usize = frame.into_frame_number().into_raw_value();
+
+        if frame_number >= self.refcount.len() {
+            let reason: &str = "frame number out of bounds";
+            error!("{reason} (frame={frame:?})");
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        // The frame must currently have at least one owner. Sharing an unallocated
+        // frame is a logic error.
+        if self.refcount[frame_number] == 0 {
+            let reason: &str = "cannot share an unallocated frame";
+            error!("{reason} (frame={frame:?})");
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        self.refcount[frame_number] = match self.refcount[frame_number].checked_add(1) {
+            Some(n) => n,
+            None => {
+                let reason: &str = "frame reference count overflow";
+                error!("{reason} (frame={frame:?})");
+                return Err(Error::new(ErrorCode::OutOfMemory, reason));
+            },
+        };
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the current reference count of an already-allocated frame.
+    ///
+    /// # Parameters
+    ///
+    /// - `frame`: Address of the frame to query.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the current reference count is returned. Upon failure, an error is
+    /// returned instead (out-of-bounds address, or the frame is not currently allocated).
+    ///
+    fn refcount(&self, frame: FrameAddress) -> Result<u8, Error> {
+        let frame_number: usize = frame.into_frame_number().into_raw_value();
+
+        if frame_number >= self.refcount.len() {
+            let reason: &str = "frame number out of bounds";
+            error!("{reason} (frame={frame:?})");
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        if self.refcount[frame_number] == 0 {
+            let reason: &str = "frame is not allocated";
+            error!("{reason} (frame={frame:?})");
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        Ok(self.refcount[frame_number])
+    }
+
+    ///
+    /// # Description
+    ///
     /// Books a frame so that it will not be handed out by [`alloc`].
     ///
     /// # Parameters
@@ -467,4 +545,14 @@ pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error>
 /// Book every frame in the given physical memory region.
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
     instance().alloc_range(region)
+}
+
+/// Add a new reference to an already-allocated frame (e.g. for copy-on-write sharing).
+pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
+    instance().share(frame)
+}
+
+/// Returns the current reference count of an already-allocated frame.
+pub(super) fn refcount(frame: FrameAddress) -> Result<u8, Error> {
+    instance().refcount(frame)
 }

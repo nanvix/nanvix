@@ -15,6 +15,7 @@ use crate::hal::mem::{
 };
 use ::arch::mem::paging::{
     AccessedFlag,
+    CopyOnWriteFlag,
     DirtyFlag,
     FrameNumber,
     PageCacheDisableFlag,
@@ -333,6 +334,175 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
     ///
     /// # Description
     ///
+    /// Marks a present user page as copy-on-write: clears the writable bit and sets the AVL
+    /// copy-on-write bit.
+    ///
+    /// After this call, any user-mode write to the page faults with `P=1, W=1, U=1`,
+    /// which the in-kernel page-fault handler recognizes (via the AVL bit) as a
+    /// copy-on-write fault.
+    ///
+    /// The page must be currently writable. Pages that are already read-only must not
+    /// be marked copy-on-write: stamping the AVL copy-on-write bit on a genuinely
+    /// read-only mapping would cause a subsequent user-mode write to be silently
+    /// resolved as a copy-on-write fault instead of raising a protection fault.
+    ///
+    /// # Parameters
+    ///
+    /// - `page_address`: Page address of the entry to mark.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn mark_cow(&mut self, page_address: PageAddress) -> Result<(), Error> {
+        let mut pte: PageTableEntry = match self.read_pte(page_address) {
+            Some(pte) => pte,
+            None => {
+                let reason: &str = "failed to read page table entry";
+                error!("mark_cow(): {reason} (page_address={page_address:?})");
+                return Err(Error::new(ErrorCode::TryAgain, reason));
+            },
+        };
+
+        if !pte.is_present() {
+            let reason: &str = "page is not present";
+            error!("mark_cow(): {reason} (page_address={page_address:?})");
+            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+        }
+
+        if !pte.flags().is_writable() {
+            let reason: &str = "page is already read-only";
+            error!("mark_cow(): {reason} (page_address={page_address:?})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        pte.set_read_write(ReadWriteFlag::ReadOnly);
+        pte.set_cow(CopyOnWriteFlag::CopyOnWrite);
+        self.write_pte(page_address, pte);
+
+        // Invalidate the TLB entry so the new copy-on-write permissions take effect immediately.
+        // SAFETY: called from kernel mode after modifying a PTE.
+        unsafe { ::arch::mem::paging::invlpg(page_address.into_raw_value()) };
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Clears the copy-on-write mark on a present user page: clears the AVL copy-on-write
+    /// bit and restores the writable bit. Inverse of [`Self::mark_cow`].
+    ///
+    /// The PTE must currently be present and marked copy-on-write.
+    ///
+    /// # Parameters
+    ///
+    /// - `page_address`: Page address of the entry to unmark.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn unmark_cow(&mut self, page_address: PageAddress) -> Result<(), Error> {
+        let mut pte: PageTableEntry = match self.read_pte(page_address) {
+            Some(pte) => pte,
+            None => {
+                let reason: &str = "failed to read page table entry";
+                error!("unmark_cow(): {reason} (page_address={page_address:?})");
+                return Err(Error::new(ErrorCode::TryAgain, reason));
+            },
+        };
+
+        if !pte.is_present() {
+            let reason: &str = "page is not present";
+            error!("unmark_cow(): {reason} (page_address={page_address:?})");
+            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+        }
+
+        if !pte.is_cow() {
+            let reason: &str = "page is not copy-on-write";
+            error!("unmark_cow(): {reason} (page_address={page_address:?})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        pte.set_cow(CopyOnWriteFlag::NotCopyOnWrite);
+        pte.set_read_write(ReadWriteFlag::ReadWrite);
+        self.write_pte(page_address, pte);
+
+        // SAFETY: called from kernel mode after modifying a PTE.
+        unsafe { ::arch::mem::paging::invlpg(page_address.into_raw_value()) };
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves a copy-on-write mapping by repointing the PTE at `new_frame`,
+    /// clearing the AVL copy-on-write bit, and restoring the writable bit.
+    ///
+    /// The PTE must currently be present and marked copy-on-write.
+    ///
+    /// # Parameters
+    ///
+    /// - `page_address`: Page address of the entry to resolve.
+    /// - `new_frame`: New physical frame to install in the PTE.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the previous frame address (the one the PTE pointed at before
+    /// the swap) is returned, so the caller can release its reference. Upon failure,
+    /// an error is returned instead.
+    ///
+    pub fn replace_cow_frame(
+        &mut self,
+        page_address: PageAddress,
+        new_frame: FrameAddress,
+    ) -> Result<FrameAddress, Error> {
+        let pte: PageTableEntry = match self.read_pte(page_address) {
+            Some(pte) => pte,
+            None => {
+                let reason: &str = "failed to read page table entry";
+                error!("replace_cow_frame(): {reason} (page_address={page_address:?})");
+                return Err(Error::new(ErrorCode::TryAgain, reason));
+            },
+        };
+
+        if !pte.is_present() {
+            let reason: &str = "page is not present";
+            error!("replace_cow_frame(): {reason} (page_address={page_address:?})");
+            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+        }
+
+        if !pte.is_cow() {
+            let reason: &str = "page is not copy-on-write";
+            error!("replace_cow_frame(): {reason} (page_address={page_address:?})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        if pte.flags().is_writable() {
+            let reason: &str = "copy-on-write page is unexpectedly writable";
+            error!("replace_cow_frame(): {reason} (page_address={page_address:?})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        let old_frame: FrameAddress = FrameAddress::from_frame_number(pte.frame_number())?;
+
+        let mut new_flags: PageTableEntryFlags = pte.flags();
+        new_flags.set_read_write(ReadWriteFlag::ReadWrite);
+        new_flags.set_cow(CopyOnWriteFlag::NotCopyOnWrite);
+        let new_pte: PageTableEntry = PageTableEntry::new(new_flags, new_frame.into_frame_number());
+        self.write_pte(page_address, new_pte);
+
+        // SAFETY: called from kernel mode after modifying a PTE.
+        unsafe { ::arch::mem::paging::invlpg(page_address.into_raw_value()) };
+
+        Ok(old_frame)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Bulk-fills page table entries for contiguous identity-mapped physical memory.
     ///
     /// Each entry maps physical frame `base_frame + i` with the given PTE flags.
@@ -446,9 +616,50 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
         self.entries[pte_idx] = pte.into_raw_value();
     }
 
+    ///
+    /// # Description
+    ///
+    /// Reads the page table entry at the given page address, if it is present.
+    ///
+    /// # Parameters
+    ///
+    /// - `page_address`: Page address of the entry to read.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(pte)` if the entry is present.
+    /// - `None` if the entry is not present (or could not be decoded).
+    ///
+    pub fn read_pte_at(&self, page_address: PageAddress) -> Option<PageTableEntry> {
+        match self.read_pte(page_address) {
+            Some(pte) if pte.is_present() => Some(pte),
+            _ => None,
+        }
+    }
+
     pub fn physical_address(&self) -> Result<FrameAddress, Error> {
         let vaddr: usize = self.entries.as_ptr() as usize;
         let paddr: usize = crate::hal::platform::virt_to_phys(vaddr);
         Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(paddr)?)?))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Iterates over the present entries in the target page table.
+    ///
+    /// # Returns
+    ///
+    /// An iterator that yields, for each present entry, a tuple `(pte_index, pte)` where
+    /// `pte_index` is the index of the entry within the page table (0–1023 on x86) and
+    /// `pte` is the decoded [`PageTableEntry`].
+    ///
+    pub fn iter_present_ptes(&self) -> impl Iterator<Item = (usize, PageTableEntry)> + '_ {
+        self.entries.iter().enumerate().filter_map(
+            |(idx, raw)| match PageTableEntry::from_raw_value(*raw) {
+                Some(pte) if pte.is_present() => Some((idx, pte)),
+                _ => None,
+            },
+        )
     }
 }
