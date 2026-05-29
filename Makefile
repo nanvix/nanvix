@@ -170,6 +170,7 @@ MANIFEST_FILE := $(SYSROOT_DIR)/manifest.json
 export EXEC_FORMAT := elf
 # Libraries
 export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
+export LIBNVX_CRT0 := $(LIBRARIES_DIR)/libnvx_crt0.a
 
 # Binaries.
 KERNEL := $(BINARIES_DIR)/kernel.$(EXEC_FORMAT)
@@ -325,7 +326,7 @@ export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
 # Top-Level Targets
 #===================================================================================================
 
-ALL_GUEST_STATIC_LIBS := posix
+ALL_GUEST_STATIC_LIBS := posix nvx-crt0
 ALL_GUEST_RUST_LIBS := arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe koptions nvx proc raw-array nanvix-slab sorted-vec static_assert sysapi syscall sysalloc syslog-macros syslog sys libc_stdlib libc_string mmio-tag multiimage vfs-bench-common
 ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe koptions proc raw-array nanvix-slab sorted-vec static_assert libc_string syslog-macros syslog mmio-tag
 
@@ -493,6 +494,7 @@ ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
 endif
 endif
 	@cp ${LIBPOSIX} ${SYSROOT_DIR}/lib/
+	@cp ${LIBNVX_CRT0} ${SYSROOT_DIR}/lib/
 	@mkdir -p ${SYSROOT_DIR}/etc/scripts/common
 	@cp -r ${SCRIPTS_DIR}/common/* ${SYSROOT_DIR}/etc/scripts/common/
 	@cp -r ${BUILD_DIR}/user/linker/$(TARGET)/user.ld ${SYSROOT_DIR}/lib/
