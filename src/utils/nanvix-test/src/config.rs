@@ -1554,13 +1554,7 @@ fn read_optional_non_empty_string(
     key: &str,
     field_name: &str,
 ) -> Result<Option<String>> {
-    Ok(read_optional_string(table, key, field_name)?.and_then(|value| {
-        if value.trim().is_empty() {
-            None
-        } else {
-            Some(value)
-        }
-    }))
+    Ok(read_optional_string(table, key, field_name)?.filter(|value| !value.trim().is_empty()))
 }
 
 ///
