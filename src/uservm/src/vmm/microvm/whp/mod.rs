@@ -1012,9 +1012,24 @@ impl Vmm {
                                 }
                             }
                         } else if exit_status == ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD {
-                            if let Err(e) = Handle::current().block_on(self.handle_snapshot()) {
-                                error!("VMM exit: snapshot error (error={e:?})");
-                                break Err(e);
+                            // One-shot "save and exit" flow: once the snapshot files are
+                            // durable on disk, shut the VM down with exit code 0 so the
+                            // standalone daemon returns to its caller instead of running the
+                            // guest on. `handle_snapshot()` returns `false` for the OUT that is
+                            // absorbed via `skip_next_snapshot` after a restore; in that case
+                            // keep running the restored guest.
+                            let took_snapshot: bool =
+                                match Handle::current().block_on(self.handle_snapshot()) {
+                                    Ok(took) => took,
+                                    Err(e) => {
+                                        error!("VMM exit: snapshot error (error={e:?})");
+                                        break Err(e);
+                                    },
+                                };
+                            if took_snapshot {
+                                let exit_status: u16 = 0;
+                                Handle::current().block_on(self.handle_shutdown(exit_status));
+                                break Ok(exit_status);
                             }
                         } else if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
                             warn!(
@@ -1361,7 +1376,7 @@ impl Vmm {
     /// WHP advances RIP before delivering port-I/O exits, so the saved
     /// state already points past the `out` instruction. Unlike KVM, no
     /// `skip_next_snapshot` guard is needed to prevent re-triggering.
-    async fn handle_snapshot(&self) -> Result<()> {
+    async fn handle_snapshot(&self) -> Result<bool> {
         // Scope the lock to avoid deadlock: `create_snapshot` re-acquires `self.inner`.
         // Safety: no concurrent snapshot requests can race here because snapshot is triggered
         // by a single vCPU VMEXIT which is processed sequentially on the VMM run loop.
@@ -1370,7 +1385,7 @@ impl Vmm {
             if locked_inner.skip_next_snapshot {
                 trace!("handle_snapshot(): skipping snapshot (restored from snapshot)");
                 locked_inner.skip_next_snapshot = false;
-                return Ok(());
+                return Ok(false);
             }
             if !locked_inner.snapshot_allowed {
                 error!("handle_snapshot(): snapshot refused (not enabled or already consumed)");
@@ -1385,7 +1400,7 @@ impl Vmm {
                 // Consume the one-shot permission only after a successful snapshot.
                 self.inner.lock().await.snapshot_allowed = false;
                 trace!("handle_snapshot(): snapshot created successfully");
-                Ok(())
+                Ok(true)
             },
             Err(error) => {
                 error!("handle_snapshot(): failed to create snapshot: {error:?}");

@@ -34,6 +34,7 @@ use ::proc::{
     SignupResponseMessage,
 };
 use ::sys::{
+    error::ErrorCode,
     ipc::{
         Message,
         MessageType,
@@ -119,6 +120,25 @@ pub fn main() {
     // Pending hostfs operations awaiting IKC responses.
     let mut pending: pending::PendingQueue = pending::PendingQueue::new();
 
+    // In-flight multi-part hostfs *response* assembler, paired with the op_id
+    // extracted eagerly from part 0 so a discarded stream can be cancelled (the
+    // pending op would otherwise sit until the eviction timer fires).
+    //
+    // Long-target `readlink` returns its response as a stream of
+    // `HostFsReadlinkResponsePart` messages. Because hostfsd's worker is single-
+    // threaded and replies to one request at a time, at most one such stream is in
+    // flight at any moment, so a single slot suffices. If a fresh `part_number == 0`
+    // arrives while another stream is still being assembled, the old stream is
+    // discarded and its caller is failed with `IoErr`.
+    //
+    // TODO: if hostfsd ever becomes multi-stream (e.g., a worker pool that interleaves
+    // long responses), replace this single-slot assembler with an op_id-keyed map so
+    // concurrent response streams can be assembled independently.
+    let mut readlink_response_asm: Option<(
+        ::syscall::message::SystemCallLongMessage,
+        ::hostfs_api::OperationId,
+    )> = None;
+
     // Process any messages that were buffered during the signup phase.
     while let Some(message) = buffered_messages.pop_front() {
         match ipc::handle_ipc_message(message, &mut assemblers, &mut pending) {
@@ -154,6 +174,109 @@ pub fn main() {
                         ::syscall::SystemCallMessage::try_from_bytes(message.payload)
                     {
                         let header: SystemCallMessageHeader = syscall_msg.header;
+                        // Multi-part response stream: assemble parts before dispatch.
+                        // The op_id is *not* at the standard payload[2..6] offset for
+                        // these messages (those bytes carry SystemCallMessagePart
+                        // framing) — it lives in the first 4 bytes of the assembled
+                        // body instead.
+                        if header == SystemCallMessageHeader::HostFsReadlinkResponsePart {
+                            let part: ::syscall::message::SystemCallMessagePart =
+                                ::syscall::message::SystemCallMessagePart::from_bytes(
+                                    syscall_msg.payload,
+                                );
+                            // A fresh stream starts at part 0.
+                            if part.part_number == 0 {
+                                if part.payload_size < 4 {
+                                    ::syslog::error!(
+                                        "readlink response part 0 too short to carry op_id \
+                                         (payload_size={})",
+                                        part.payload_size
+                                    );
+                                    continue;
+                                }
+                                let op_id: ::hostfs_api::OperationId =
+                                    ::hostfs_api::OperationId::from_le_bytes([
+                                        part.payload[0],
+                                        part.payload[1],
+                                        part.payload[2],
+                                        part.payload[3],
+                                    ]);
+                                if let Some((_, stale_op_id)) = readlink_response_asm.take() {
+                                    ::syslog::warn!(
+                                        "discarding incomplete readlink response stream on new \
+                                         part-0 arrival (cancelling stale op_id={})",
+                                        stale_op_id
+                                    );
+                                    if let Some(op) = pending.remove(stale_op_id) {
+                                        pending::cancel_pending_op(op, ErrorCode::IoErr);
+                                    }
+                                }
+                                let capacity: usize = part.total_parts.max(1) as usize;
+                                match ::syscall::message::SystemCallLongMessage::new(capacity) {
+                                    Ok(asm) => {
+                                        readlink_response_asm = Some((asm, op_id));
+                                    },
+                                    Err(e) => {
+                                        // Allocation failure: cancel the caller now rather
+                                        // than letting the pending op linger until eviction.
+                                        ::syslog::error!(
+                                            "failed to allocate readlink response assembler \
+                                             (op_id={}, capacity={}, error={:?})",
+                                            op_id,
+                                            capacity,
+                                            e
+                                        );
+                                        readlink_response_asm = None;
+                                        if let Some(op) = pending.remove(op_id) {
+                                            pending::cancel_pending_op(op, ErrorCode::IoErr);
+                                        }
+                                        continue;
+                                    },
+                                }
+                            }
+                            if let Some((asm, op_id)) = readlink_response_asm.as_mut() {
+                                let op_id_copy: ::hostfs_api::OperationId = *op_id;
+                                if let Err(e) = asm.add_part(part) {
+                                    ::syslog::error!(
+                                        "failed to add readlink response part (op_id={}, \
+                                         error={:?})",
+                                        op_id_copy,
+                                        e
+                                    );
+                                    readlink_response_asm = None;
+                                    if let Some(op) = pending.remove(op_id_copy) {
+                                        pending::cancel_pending_op(op, ErrorCode::IoErr);
+                                    }
+                                    continue;
+                                }
+                                if asm.is_complete() {
+                                    let (asm_done, _) = readlink_response_asm.take().unwrap();
+                                    let mut body: alloc::vec::Vec<u8> = alloc::vec::Vec::new();
+                                    for p in asm_done.take_parts() {
+                                        let n: usize = p.payload_size as usize;
+                                        body.extend_from_slice(&p.payload[..n]);
+                                    }
+                                    // op_id is already known from part 0; the body still
+                                    // carries it in bytes [0..4] for `complete_readlink_long`.
+                                    if let Some(op) = pending.remove(op_id_copy) {
+                                        pending::complete_readlink_long(op, &body);
+                                    } else {
+                                        ::syslog::warn!(
+                                            "long readlink response with no pending op (op_id={})",
+                                            op_id_copy,
+                                        );
+                                    }
+                                }
+                            } else {
+                                let pn: u16 = part.part_number;
+                                ::syslog::warn!(
+                                    "readlink response part received without active assembler \
+                                     (part_number={})",
+                                    pn,
+                                );
+                            }
+                            continue;
+                        }
                         if header.is_hostfs_response() {
                             let op_id: ::hostfs_api::OperationId =
                                 ::hostfs_api::get_op_id(&message.payload);
@@ -179,6 +302,9 @@ pub fn main() {
                 },
                 MessageType::ProcessTerminationEvent => {
                     ::syslog::warn!("received unexpected process termination event, ignoring");
+                },
+                MessageType::ProcessCreationEvent => {
+                    ::syslog::warn!("received unexpected process creation event, ignoring");
                 },
                 MessageType::PullResponse => {
                     ::syslog::warn!("received unexpected pull response, ignoring");

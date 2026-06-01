@@ -110,6 +110,12 @@ impl ProcessDaemon {
                             ::syslog::error!("received unexpected pull response, ignoring");
                             continue;
                         },
+                        MessageType::ProcessCreationEvent => {
+                            ::syslog::error!(
+                                "received unexpected process creation event, ignoring"
+                            );
+                            continue;
+                        },
                     }
                 },
                 Err(e) => ::syslog::error!("failed to receive exception message (error={:?})", e),

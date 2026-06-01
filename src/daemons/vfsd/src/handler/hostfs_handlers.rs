@@ -250,7 +250,7 @@ pub(crate) fn handle_fstat_with_hostfs(
 pub(crate) fn handle_fstatat_with_hostfs(
     source: ThreadIdentifier,
     request: FileStatAtRequest,
-    _pending: &mut PendingQueue,
+    pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
     let resolved: Option<alloc::string::String> =
         ::vfs::fd::vfs_resolve_path(request.dirfd, &request.path);
@@ -260,38 +260,39 @@ pub(crate) fn handle_fstatat_with_hostfs(
     };
 
     if hostfs::is_hostfs_path(final_path) {
-        // For path-based stat on hostfs, we need an FD. Open + stat + close sequence
-        // would be complex. Instead, use a temporary open to get a remote FD, then stat.
-        // However, the simpler approach is to open the path first and call fstat.
-        // Since we don't have a "stat-by-path" IKC that returns without an FD open,
-        // we use the existing open + stat. But that's two async ops.
+        // Only forward when the caller explicitly requested no-follow semantics. For
+        // following stat (the default for `stat(2)`), there is no path-based stat IKC
+        // yet, so we report `OperationNotSupported` and the caller is expected to use
+        // `fstat` on an already-opened FD.
         //
-        // Alternative: the hostfsd stat handler uses the FD's stored path, so we need
-        // a valid remote FD. We can open with O_RDONLY, stat, then close.
-        // But that requires chaining three async operations, which is complex.
-        //
-        // For now, open the file to get a remote_fd, then send stat. We'll handle the
-        // response by returning stat and cleaning up the temp FD.
-        //
-        // Actually, re-reading the hostfsd code: `handle_stat` takes an FD and looks up
-        // the path from its FD table. So we DO need to open first to stat.
-        //
-        // Simpler: just open O_RDONLY, and in the open completion we'd need to stat...
-        // That's overly complex for this handler.
-        //
-        // The practical solution: for fstatat on hostfs paths, we first try to open
-        // the path. If the user already has an FD open for this path, that's ideal.
-        // But since we need a remote FD to call stat, and we don't want to chain ops,
-        // fall back to returning a synthetic stat for now.
-        //
-        // TODO(#hostfs-statat): implement path-based stat as a new hostfs operation that
-        // does not require a pre-opened FD.
-        //
-        // For now, return a minimal stat that at least allows path existence checks.
-        // We attempt to open and immediately use the resulting info.
-        // Actually, the simplest approach that works: return OperationNotSupported so
-        // the caller knows to use fstat on an already-opened FD instead.
-        return Some(vec![build_error(source, ErrorCode::OperationNotSupported)]);
+        // TODO(#hostfs-statat-follow): add a path-based following stat operation so
+        // both modes of `fstatat` are supported uniformly over hostfs.
+        if request.flag & ::sysapi::fcntl::atflags::AT_SYMLINK_NOFOLLOW == 0 {
+            return Some(vec![build_error(source, ErrorCode::OperationNotSupported)]);
+        }
+        if !pending.has_capacity() {
+            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+        }
+        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
+        match hostfs::send_lstat_request(final_path, op_id) {
+            Ok(()) => {
+                if pending
+                    .insert(
+                        op_id,
+                        PendingOp {
+                            source_tid: source,
+                            source_pid: None,
+                            kind: PendingOpKind::Lstat,
+                        },
+                    )
+                    .is_err()
+                {
+                    return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+                }
+                return None;
+            },
+            Err(e) => return Some(vec![build_error(source, e)]),
+        }
     }
 
     Some(super::long::handle_fstatat(source, request))
@@ -404,6 +405,10 @@ use ::syscall::{
         FileStatAtRequest,
         FileStatRequest,
         MakeDirectoryAtRequest,
+    },
+    unistd::message::{
+        ReadLinkAtRequest,
+        SymbolicLinkAtRequest,
     },
 };
 use alloc::{
@@ -628,4 +633,89 @@ pub(crate) fn handle_mkdirat_with_hostfs(
     }
 
     Some(super::long::handle_mkdirat(source, request))
+}
+
+pub(crate) fn handle_symlinkat_with_hostfs(
+    source: ThreadIdentifier,
+    request: SymbolicLinkAtRequest,
+    pending: &mut PendingQueue,
+) -> Option<Vec<Message>> {
+    // Routing key is `linkpath` (where the symlink will live). `target` is an opaque
+    // string stored verbatim by the host and intentionally not consulted here.
+    let resolved: Option<alloc::string::String> =
+        ::vfs::fd::vfs_resolve_path(request.dirfd, &request.linkpath);
+    let final_link: &str = match &resolved {
+        Some(p) => p.as_str(),
+        None => &request.linkpath,
+    };
+
+    if hostfs::is_hostfs_path(final_link) {
+        if !pending.has_capacity() {
+            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+        }
+        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
+        match hostfs::send_symlink_request(&request.target, final_link, op_id) {
+            Ok(()) => {
+                if pending
+                    .insert(
+                        op_id,
+                        PendingOp {
+                            source_tid: source,
+                            source_pid: None,
+                            kind: PendingOpKind::Symlink,
+                        },
+                    )
+                    .is_err()
+                {
+                    return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+                }
+                return None;
+            },
+            Err(e) => return Some(vec![build_error(source, e)]),
+        }
+    }
+
+    Some(super::long::handle_symlinkat(source, request))
+}
+
+pub(crate) fn handle_readlinkat_with_hostfs(
+    source: ThreadIdentifier,
+    request: ReadLinkAtRequest,
+    pending: &mut PendingQueue,
+) -> Option<Vec<Message>> {
+    let resolved: Option<alloc::string::String> =
+        ::vfs::fd::vfs_resolve_path(request.dirfd, &request.path);
+    let final_path: &str = match &resolved {
+        Some(p) => p.as_str(),
+        None => &request.path,
+    };
+
+    if hostfs::is_hostfs_path(final_path) {
+        if !pending.has_capacity() {
+            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+        }
+        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
+        let bufsiz: usize = request.bufsiz;
+        match hostfs::send_readlink_request(final_path, op_id) {
+            Ok(()) => {
+                if pending
+                    .insert(
+                        op_id,
+                        PendingOp {
+                            source_tid: source,
+                            source_pid: None,
+                            kind: PendingOpKind::Readlink { bufsiz },
+                        },
+                    )
+                    .is_err()
+                {
+                    return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+                }
+                return None;
+            },
+            Err(e) => return Some(vec![build_error(source, e)]),
+        }
+    }
+
+    Some(super::long::handle_readlinkat(source, request))
 }

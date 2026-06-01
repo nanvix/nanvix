@@ -81,7 +81,7 @@ impl Debug for BindSocketRequest {
             f,
             "BindSocketRequest {{ sockfd: {}, sockaddr: {:?} }}",
             { self.sockfd },
-            &self.sockaddr
+            self.sockaddr
         )
     }
 }

@@ -923,18 +923,21 @@ impl VirtualProcessor {
     /// returns an error.
     ///
     pub fn load_state(&mut self, state: &VirtualProcessorState) -> Result<()> {
-        // Ordering requirements between `kvm_set` calls:
-        // https://github.com/firecracker-microvm/firecracker/blob/f0691f8253d4bde225b9f70ecabf39b7ad796935/src/vmm/src/arch/x86_64/vcpu.rs#L556
+        // Ordering requirements between `kvm_set` calls (mirrors Firecracker — see
+        // https://github.com/firecracker-microvm/firecracker/blob/f0691f8253d4bde225b9f70ecabf39b7ad796935/src/vmm/src/arch/x86_64/vcpu.rs#L654):
+        //
+        // - SET_CPUID and SET_MP_STATE depend on kvm_vcpu_is_bsp() and must therefore run before
+        //   anything else.
+        // - SET_REGS clears pending exceptions unconditionally, so it must come before
+        //   SET_VCPU_EVENTS (which restores them).
+        // - SET_LAPIC must come after SET_SREGS (which restores the APIC base MSR) and before
+        //   SET_MSRS (the TSC deadline MSR only restores successfully when the LAPIC is
+        //   already configured). Setting MSRs before the LAPIC silently leaves the TSC
+        //   deadline at zero, firing the timer IRQ immediately on resume and
+        //   deterministically panicking the kernel.
         trace!("load_state()");
 
-        // Restore system registers first (some MSRs depend on sregs).
-        if let Err(e) = self.fd.set_sregs(&state.sregs) {
-            let reason: String = format!("failed setting sregs (error={e:?})");
-            error!("load_state(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Restore CPUID.
+        // 1. CPUID first (BSP dependency).
         let cpuid: CpuId = deserialize_cpuid(&state.cpuid)?;
         if let Err(e) = self.fd.set_cpuid2(&cpuid) {
             let reason: String = format!("failed setting cpuid (error={e:?})");
@@ -942,65 +945,72 @@ impl VirtualProcessor {
             anyhow::bail!(reason)
         }
 
-        // Restore MSRs (after sregs).
-        if let Err(e) = self.msrs.load_state(&self.fd, &state.msrs_state) {
-            let reason: String = format!("failed setting msrs (error={e:?})");
+        // 2. MP state (BSP dependency).
+        if let Err(e) = self.fd.set_mp_state(state.mp_state) {
+            let reason: String = format!("failed setting mp_state (error={e:?})");
             error!("load_state(): {reason}");
             anyhow::bail!(reason)
         }
 
-        // Restore general purpose registers.
+        // 3. General purpose registers (must precede SET_VCPU_EVENTS).
         if let Err(e) = self.fd.set_regs(&state.regs) {
             let reason: String = format!("failed setting regs (error={e:?})");
             error!("load_state(): {reason}");
             anyhow::bail!(reason)
         }
 
-        // Restore LAPIC.
-        if let Err(e) = self.fd.set_lapic(&state.lapic) {
-            let reason: String = format!("failed setting lapic (error={e:?})");
+        // 4. System registers (must precede SET_LAPIC because it restores the APIC base MSR).
+        if let Err(e) = self.fd.set_sregs(&state.sregs) {
+            let reason: String = format!("failed setting sregs (error={e:?})");
             error!("load_state(): {reason}");
             anyhow::bail!(reason)
         }
 
-        // Restore TSC frequency.
-        if let Err(e) = self.fd.set_tsc_khz(state.tsc_khz) {
-            let reason: String = format!("failed setting tsc_khz (error={e:?})");
-            error!("load_state(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Restore debug registers.
-        if let Err(e) = self.fd.set_debug_regs(&state.debugregs) {
-            let reason: String = format!("failed setting debugregs (error={e:?})");
-            error!("load_state(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Restore extended control registers.
-        if let Err(e) = self.fd.set_xcrs(&state.xcrs) {
-            let reason: String = format!("failed setting xcrs (error={e:?})");
-            error!("load_state(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Restore FPU/XSAVE state.
+        // 5. FPU/XSAVE state.
         if let Err(e) = self.fpu.load_state(&self.fd, &state.fpu_ext) {
             let reason: String = format!("failed setting fpu state (error={e:?})");
             error!("load_state(): {reason}");
             anyhow::bail!(reason)
         }
 
-        // Restore vCPU events.
-        if let Err(e) = self.fd.set_vcpu_events(&state.vcpu_events) {
-            let reason: String = format!("failed setting vcpu_events (error={e:?})");
+        // 6. Extended control registers (XCR0).
+        if let Err(e) = self.fd.set_xcrs(&state.xcrs) {
+            let reason: String = format!("failed setting xcrs (error={e:?})");
             error!("load_state(): {reason}");
             anyhow::bail!(reason)
         }
 
-        // Restore MP state last (setting it to runnable starts execution).
-        if let Err(e) = self.fd.set_mp_state(state.mp_state) {
-            let reason: String = format!("failed setting mp_state (error={e:?})");
+        // 7. Debug registers.
+        if let Err(e) = self.fd.set_debug_regs(&state.debugregs) {
+            let reason: String = format!("failed setting debugregs (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // 8. LAPIC (after sregs, before msrs).
+        if let Err(e) = self.fd.set_lapic(&state.lapic) {
+            let reason: String = format!("failed setting lapic (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // 9. TSC frequency (before msrs — IA32_TSC restore relies on the freq being set).
+        if let Err(e) = self.fd.set_tsc_khz(state.tsc_khz) {
+            let reason: String = format!("failed setting tsc_khz (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // 10. MSRs (after lapic, after tsc_khz).
+        if let Err(e) = self.msrs.load_state(&self.fd, &state.msrs_state) {
+            let reason: String = format!("failed setting msrs (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // 11. vCPU events last (after regs cleared exceptions).
+        if let Err(e) = self.fd.set_vcpu_events(&state.vcpu_events) {
+            let reason: String = format!("failed setting vcpu_events (error={e:?})");
             error!("load_state(): {reason}");
             anyhow::bail!(reason)
         }
@@ -1327,6 +1337,67 @@ mod tests {
             assert_eq!(orig.ecx, rest.ecx, "CPUID entry {i}: ecx mismatch");
             assert_eq!(orig.edx, rest.edx, "CPUID entry {i}: edx mismatch");
         }
+
+        Ok(())
+    }
+
+    /// LAPIC register array offset of the LVT timer entry.
+    const LAPIC_LVT_TIMER_OFFSET: usize = 0x320;
+
+    /// LVT timer value placing the timer in TSC-deadline mode (bits 17:18 = 0b10) with vector
+    /// `0x40` and the mask bit cleared. The mode bits in this register are the canonical signal
+    /// that `KVM_SET_LAPIC` was actually applied to the in-kernel APIC.
+    const LVT_TIMER_TSC_DEADLINE_MODE: u32 = 0x0004_0040;
+
+    /// Reads the four LVT-timer bytes back from the in-kernel LAPIC.
+    fn read_lvt_timer(fd: &::kvm_ioctls::VcpuFd) -> u32 {
+        let lapic: ::kvm_bindings::kvm_lapic_state = fd.get_lapic().expect("get_lapic failed");
+        let bytes: [u8; 4] = [
+            lapic.regs[LAPIC_LVT_TIMER_OFFSET] as u8,
+            lapic.regs[LAPIC_LVT_TIMER_OFFSET + 1] as u8,
+            lapic.regs[LAPIC_LVT_TIMER_OFFSET + 2] as u8,
+            lapic.regs[LAPIC_LVT_TIMER_OFFSET + 3] as u8,
+        ];
+        u32::from_ne_bytes(bytes)
+    }
+
+    /// Contract test: `load_state` must invoke `KVM_SET_LAPIC` as part of the restore pipeline,
+    /// and the LAPIC bytes carried by the snapshot must survive every subsequent vCPU ioctl in
+    /// the sequence. This guards against accidental removal/reordering of `set_lapic` and against
+    /// any future ioctl in `load_state` overwriting LAPIC state.
+    ///
+    /// Note: this test does NOT specifically detect a `SET_MSRS`-before-`SET_LAPIC` ordering
+    /// regression — its symptom (spurious early timer IRQ on resume) only surfaces while the
+    /// guest is executing. The integration/benchmark-level coverage in
+    /// `nanvix-bench -benchmark snapshot-restore` is the authoritative regression guard for it.
+    #[test]
+    fn load_state_applies_lapic_after_other_vcpu_ioctls() -> AnyResult<()> {
+        let (kvm, _vm, mut vcpu): (Kvm, VmFd, VirtualProcessor) = create_test_vcpu()?;
+
+        let mut state: VirtualProcessorState = vcpu.save_state(&kvm).expect("save_state failed");
+
+        // Stamp the LVT timer register with a distinctive value in the snapshot.
+        let lvt_bytes: [u8; 4] = LVT_TIMER_TSC_DEADLINE_MODE.to_ne_bytes();
+        for (i, b) in lvt_bytes.iter().enumerate() {
+            state.lapic.regs[LAPIC_LVT_TIMER_OFFSET + i] = (*b).cast_signed();
+        }
+
+        // Sanity-check: ensure the LVT is *not* already in this configuration on a fresh vCPU.
+        // Otherwise the test cannot tell whether `load_state` actually wrote the LAPIC.
+        let lvt_before: u32 = read_lvt_timer(&vcpu.fd);
+        assert_ne!(
+            lvt_before, LVT_TIMER_TSC_DEADLINE_MODE,
+            "test setup is invalid: fresh vCPU already has the fingerprint LVT value"
+        );
+
+        vcpu.load_state(&state).expect("load_state failed");
+
+        let lvt_after: u32 = read_lvt_timer(&vcpu.fd);
+        assert_eq!(
+            lvt_after, LVT_TIMER_TSC_DEADLINE_MODE,
+            "LAPIC LVT-timer fingerprint not present after load_state — KVM_SET_LAPIC was either \
+             skipped or overwritten by a subsequent ioctl"
+        );
 
         Ok(())
     }

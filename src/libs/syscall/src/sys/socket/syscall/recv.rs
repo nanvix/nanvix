@@ -53,12 +53,8 @@ pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<usize, Error
         // Check whether system call succeeded or not.
         if response.status != 0 {
             // System call failed, parse error code and return it.
-            match ErrorCode::try_from(response.status) {
-                Ok(error_code) => {
-                    return Err(Error::new(error_code, "failed to receive data on socket"))
-                },
-                Err(e) => return Err(e),
-            };
+            let error_code = ErrorCode::try_from(response.status)?;
+            return Err(Error::new(error_code, "failed to receive data on socket"));
         } else {
             // System call succeeded, parse response.
             match SystemCallMessage::try_from_bytes(response.payload) {

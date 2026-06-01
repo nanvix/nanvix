@@ -5,10 +5,18 @@
 // Modules
 //==================================================================================================
 
+#[cfg(feature = "standalone")]
+mod common;
 pub mod empty;
 #[cfg(unix)]
 pub mod http;
+#[cfg(feature = "standalone")]
+pub mod snapshot_restore;
+#[cfg(feature = "standalone")]
+pub mod snapshot_save_exit;
 pub mod terminal;
+#[cfg(feature = "standalone")]
+pub(crate) use self::common::drain_stream;
 
 //==================================================================================================
 // Imports
@@ -212,6 +220,12 @@ pub enum ExecutorName {
     Empty,
     /// HTTP executor.
     Http,
+    /// Snapshot save / restore executor.
+    #[cfg(feature = "standalone")]
+    SnapshotRestore,
+    /// Snapshot save / host-exit executor.
+    #[cfg(feature = "standalone")]
+    SnapshotSaveExit,
     /// Terminal executor.
     Terminal,
 }
@@ -234,6 +248,10 @@ impl ExecutorName {
         match identifier {
             "empty" => Ok(Self::Empty),
             "http" => Ok(Self::Http),
+            #[cfg(feature = "standalone")]
+            "snapshot-restore" => Ok(Self::SnapshotRestore),
+            #[cfg(feature = "standalone")]
+            "snapshot-save-exit" => Ok(Self::SnapshotSaveExit),
             "terminal" => Ok(Self::Terminal),
             _ => Err(::anyhow::anyhow!(format!("invalid executor name '{identifier}'"))),
         }
@@ -246,12 +264,17 @@ impl ExecutorName {
     ///
     /// # Return Value
     ///
-    /// Returns one of `empty`, `http`, or `terminal` for use when organizing logs.
+    /// Returns one of `empty`, `http`, `terminal`, or (under the `standalone` feature)
+    /// `snapshot-restore` for use when organizing logs.
     ///
     pub const fn to_str(self) -> &'static str {
         match self {
             Self::Empty => "empty",
             Self::Http => "http",
+            #[cfg(feature = "standalone")]
+            Self::SnapshotRestore => "snapshot-restore",
+            #[cfg(feature = "standalone")]
+            Self::SnapshotSaveExit => "snapshot-save-exit",
             Self::Terminal => "terminal",
         }
     }

@@ -45,7 +45,7 @@ pub fn dladdr(addr: VirtualAddress, dlinfo: &mut DlInfo) -> Result<(), Error> {
     let registry: MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>> =
         DYNAMIC_LIBRARY_REGISTRY.lock();
 
-    for (_dlname, library) in registry.iter() {
+    for library in registry.values() {
         let library = library.lock();
         if let Some((dname, fbase, sname, saddr)) = library.query(addr) {
             dlinfo.dli_fname = dname;

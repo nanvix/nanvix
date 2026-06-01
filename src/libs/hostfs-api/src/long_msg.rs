@@ -38,6 +38,8 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
+use ::sys::ipc::Message;
+
 use crate::OperationId;
 
 //==================================================================================================
@@ -74,6 +76,16 @@ pub const LSTAT_HEADER_SIZE: usize = 6;
 /// Header size for the long Readlink *response* body:
 /// `op_id(4) + status(4) + target_len(2) = 10`.
 pub const READLINK_RESPONSE_HEADER_SIZE: usize = 10;
+
+/// Maximum number of body bytes that can be carried by a single multi-part
+/// long-response message.
+///
+/// Derived from the wire layout enforced by [`build_long_response_part`]: the
+/// outer `SystemCallMessage` header (2 bytes), the inner `SystemCallMessagePart`
+/// framing (`total_parts:2 + part_number:2 + payload_size:1` = 5 bytes), and then
+/// the body chunk. Total framing overhead is 7 bytes, so the per-part chunk cap is
+/// `Message::PAYLOAD_SIZE - 7`.
+pub const LONG_RESPONSE_CHUNK_SIZE: usize = Message::PAYLOAD_SIZE - 7;
 
 //==================================================================================================
 // Long-response Deserialization (no_std-friendly)
@@ -116,6 +128,120 @@ pub fn deserialize_long_readlink_response(bytes: &[u8]) -> Option<LongReadlinkRe
         status,
         target: &bytes[target_start..target_end],
     })
+}
+
+/// Builds a single multi-part long-response message payload.
+///
+/// Wire layout (within `Message::PAYLOAD_SIZE`):
+///
+/// ```text
+/// bytes  0..2   : outer SystemCallMessageHeader discriminant (u16, native-endian)
+/// bytes  2..4   : total_parts (u16 LE)
+/// bytes  4..6   : part_number (u16 LE)
+/// byte    6     : payload_size (u8)
+/// bytes  7..    : payload chunk (`chunk.len()` bytes)
+/// ```
+///
+/// This mirrors the existing multi-part *request* wire format: the inner
+/// `SystemCallMessagePart` fields (`total_parts`, `part_number`, `payload_size`,
+/// payload) are encoded into the outer `SystemCallMessage` payload so the receiver
+/// can decode it with the standard
+/// `SystemCallMessage::try_from_bytes` → `SystemCallMessagePart::from_bytes` path.
+///
+/// `header_value` is the outer `SystemCallMessageHeader` discriminant (as a raw
+/// `u16`) of the *Part* response variant being emitted (e.g.
+/// `SystemCallMessageHeader::HostFsReadlinkResponsePart as u16`). It is taken as a
+/// raw value so this crate does not need to depend on the `syscall` crate.
+///
+/// Note: the request op_id is *not* written into bytes `2..6` here. Those bytes
+/// belong to the `SystemCallMessagePart` framing (`total_parts` + `part_number`);
+/// the op_id lives in the first four bytes of the assembled body instead, where the
+/// response assembler reads it.
+///
+/// `chunk` must fit in the inner `SystemCallMessagePart` payload (≤ 41 bytes on
+/// current builds; the byte at offset 6 encodes the chunk length, so it must also
+/// fit in a `u8`).
+pub fn build_long_response_part(
+    header_value: u16,
+    total_parts: u16,
+    part_number: u16,
+    chunk: &[u8],
+) -> [u8; Message::PAYLOAD_SIZE] {
+    // The chunk length is written into a single byte at offset 6 and must also fit
+    // within the outer Message payload after the 7-byte framing header.
+    debug_assert!(chunk.len() <= u8::MAX as usize);
+    debug_assert!(7 + chunk.len() <= Message::PAYLOAD_SIZE);
+
+    let mut out: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
+    // Outer SystemCallMessage header.
+    out[0..2].copy_from_slice(&header_value.to_ne_bytes());
+    // Inner SystemCallMessagePart fields, encoded little-endian to match
+    // `SystemCallMessagePart::from_bytes` on the receiving side. Offsets are
+    // relative to the outer Message::PAYLOAD because SystemCallMessage::PAYLOAD
+    // starts at byte 2.
+    out[2..4].copy_from_slice(&total_parts.to_le_bytes());
+    out[4..6].copy_from_slice(&part_number.to_le_bytes());
+    out[6] = chunk.len() as u8;
+    out[7..7 + chunk.len()].copy_from_slice(chunk);
+    out
+}
+
+/// Maximum number of chunks a single long response stream may contain.
+///
+/// `total_parts` and `part_number` are encoded as `u16` in the
+/// `SystemCallMessagePart` framing, so the assembled body cannot be split into
+/// more than `u16::MAX` parts without producing a malformed (wrapped) stream.
+pub const MAX_LONG_RESPONSE_PARTS: usize = u16::MAX as usize;
+
+/// Splits an assembled long-response `body` into a sequence of framed multi-part
+/// payloads, each stamped with `header_value` as the outer
+/// `SystemCallMessageHeader` discriminant.
+///
+/// `body` is chunked into [`LONG_RESPONSE_CHUNK_SIZE`]-byte slices; each slice is
+/// wrapped with [`build_long_response_part`] using `total_parts =
+/// ceil(body.len() / LONG_RESPONSE_CHUNK_SIZE)` and a sequential `part_number`.
+///
+/// Returns `None` if `body` would require more than [`MAX_LONG_RESPONSE_PARTS`]
+/// chunks (i.e. its chunk count does not fit in the `u16` wire-format field),
+/// to avoid producing a malformed stream with wrapped `total_parts`/`part_number`
+/// values. Otherwise returns a `Vec` that is non-empty for a non-empty `body`;
+/// callers are responsible for queueing/distributing the resulting parts (e.g.
+/// writing the first into a response slot and pushing the rest onto a tail queue).
+pub fn chunk_long_response(
+    header_value: u16,
+    body: &[u8],
+) -> Option<Vec<[u8; Message::PAYLOAD_SIZE]>> {
+    let chunk_size: usize = LONG_RESPONSE_CHUNK_SIZE;
+    let total_parts_usize: usize = body.len().div_ceil(chunk_size);
+    if total_parts_usize > MAX_LONG_RESPONSE_PARTS {
+        return None;
+    }
+    let total_parts: u16 = total_parts_usize as u16;
+    let mut parts: Vec<[u8; Message::PAYLOAD_SIZE]> = Vec::with_capacity(total_parts_usize);
+    for (part_number, chunk) in body.chunks(chunk_size).enumerate() {
+        parts.push(build_long_response_part(header_value, total_parts, part_number as u16, chunk));
+    }
+    Some(parts)
+}
+
+/// Serializes the body of a long READLINK *response*.
+///
+/// Wire format: `[op_id:4][status:4][target_len:2][target:N]` (see
+/// [`READLINK_RESPONSE_HEADER_SIZE`]). This is the inverse of
+/// [`deserialize_long_readlink_response`]. Returns `None` if `target` is longer
+/// than [`MAX_PATH_LEN`].
+pub fn serialize_long_readlink_response(
+    op_id: OperationId,
+    status: i32,
+    target: &[u8],
+) -> Option<Vec<u8>> {
+    let target_len: u16 = u16::try_from(target.len()).ok()?;
+    let mut buf: Vec<u8> = Vec::with_capacity(READLINK_RESPONSE_HEADER_SIZE + target.len());
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&status.to_le_bytes());
+    buf.extend_from_slice(&target_len.to_le_bytes());
+    buf.extend_from_slice(target);
+    Some(buf)
 }
 
 //==================================================================================================
@@ -357,11 +483,7 @@ pub fn deserialize_long_lstat(bytes: &[u8]) -> Option<LongLstatRequest> {
 ///
 /// Wire format: `[op_id:4][flags:4][path_len:2][path:N]`. Returns `None` if `path`
 /// is longer than [`MAX_PATH_LEN`].
-pub fn serialize_long_open_request(
-    op_id: OperationId,
-    flags: i32,
-    path: &[u8],
-) -> Option<Vec<u8>> {
+pub fn serialize_long_open_request(op_id: OperationId, flags: i32, path: &[u8]) -> Option<Vec<u8>> {
     let path_len: u16 = u16::try_from(path.len()).ok()?;
     let mut buf: Vec<u8> = Vec::with_capacity(OPEN_HEADER_SIZE + path.len());
     buf.extend_from_slice(&op_id.to_le_bytes());
@@ -401,11 +523,7 @@ pub fn serialize_long_rmdir_request(op_id: OperationId, path: &[u8]) -> Option<V
 ///
 /// Wire format: `[op_id:4][mode:4][path_len:2][path:N]`. Returns `None` if `path`
 /// is longer than [`MAX_PATH_LEN`].
-pub fn serialize_long_mkdir_request(
-    op_id: OperationId,
-    mode: u32,
-    path: &[u8],
-) -> Option<Vec<u8>> {
+pub fn serialize_long_mkdir_request(op_id: OperationId, mode: u32, path: &[u8]) -> Option<Vec<u8>> {
     let path_len: u16 = u16::try_from(path.len()).ok()?;
     let mut buf: Vec<u8> = Vec::with_capacity(MKDIR_HEADER_SIZE + path.len());
     buf.extend_from_slice(&op_id.to_le_bytes());
@@ -426,8 +544,7 @@ pub fn serialize_long_rename_request(
 ) -> Option<Vec<u8>> {
     let old_path_len: u16 = u16::try_from(old_path.len()).ok()?;
     let new_path_len: u16 = u16::try_from(new_path.len()).ok()?;
-    let mut buf: Vec<u8> =
-        Vec::with_capacity(RENAME_HEADER_SIZE + old_path.len() + new_path.len());
+    let mut buf: Vec<u8> = Vec::with_capacity(RENAME_HEADER_SIZE + old_path.len() + new_path.len());
     buf.extend_from_slice(&op_id.to_le_bytes());
     buf.extend_from_slice(&old_path_len.to_le_bytes());
     buf.extend_from_slice(&new_path_len.to_le_bytes());
@@ -447,8 +564,7 @@ pub fn serialize_long_symlink_request(
 ) -> Option<Vec<u8>> {
     let target_len: u16 = u16::try_from(target.len()).ok()?;
     let link_len: u16 = u16::try_from(linkpath.len()).ok()?;
-    let mut buf: Vec<u8> =
-        Vec::with_capacity(SYMLINK_HEADER_SIZE + target.len() + linkpath.len());
+    let mut buf: Vec<u8> = Vec::with_capacity(SYMLINK_HEADER_SIZE + target.len() + linkpath.len());
     buf.extend_from_slice(&op_id.to_le_bytes());
     buf.extend_from_slice(&target_len.to_le_bytes());
     buf.extend_from_slice(&link_len.to_le_bytes());

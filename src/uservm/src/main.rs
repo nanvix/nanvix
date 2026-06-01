@@ -113,7 +113,7 @@ pub async fn main() -> Result<ExitCode> {
         "main(): starting user VM (user_vm_id={:?}, kernel={:?}, initrd={:?}, ramfs={:?}, \
          standalone={})",
         user_vm_id,
-        &kernel_filename,
+        kernel_filename,
         initrd_filename.as_deref().unwrap_or("none"),
         ramfs_filename.as_deref().unwrap_or("none"),
         standalone
@@ -378,7 +378,7 @@ async fn run_managed(
     // Run virtual machine and check exit status code.
     debug!(
         "main(): launching uservm (kernel={:?}, initrd={:?}, ramfs={:?})",
-        &kernel_filename,
+        kernel_filename,
         initrd_filename.as_deref().unwrap_or("none"),
         ramfs_filename.as_deref().unwrap_or("none"),
     );

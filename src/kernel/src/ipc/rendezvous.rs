@@ -171,7 +171,7 @@ static PENDING: PendingLists = PendingLists::new();
 /// Upon successful completion, empty is returned. On failure, an error is returned instead.
 ///
 fn cross_process_copy(
-    pm: &ProcessManager,
+    pm: &mut ProcessManager,
     src_pid: ProcessIdentifier,
     src_buffer: usize,
     dst_pid: ProcessIdentifier,
@@ -252,7 +252,7 @@ pub fn do_push(
         if actual_len > 0 {
             // Perform cross-process copy: caller's buffer -> puller's buffer.
             // SAFETY: the process manager is initialized and access is synchronized.
-            let pm: &ProcessManager = unsafe { ProcessManager::get() };
+            let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
             if let Err(copy_error) = cross_process_copy(
                 pm,
                 caller_pid,
@@ -394,7 +394,7 @@ pub fn do_pull(
         if actual_len > 0 {
             // Perform cross-process copy: pusher's buffer -> caller's buffer.
             // SAFETY: the process manager is initialized and access is synchronized.
-            let pm: &ProcessManager = unsafe { ProcessManager::get() };
+            let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
             if let Err(copy_error) = cross_process_copy(
                 pm,
                 push_req.pid,

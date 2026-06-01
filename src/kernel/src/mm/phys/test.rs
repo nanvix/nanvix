@@ -134,6 +134,61 @@ fn test_user_frame_drop_frees_frame() -> bool {
     }
 }
 
+///
+/// # Description
+///
+/// Verifies that [`UserFrame::share`] increments the reference count on the underlying
+/// physical frame, so the frame remains allocated until all aliases are dropped.
+///
+fn test_user_frame_share_keeps_frame_alive() -> bool {
+    let addr = match frame::alloc() {
+        Ok(addr) => addr,
+        Err(e) => {
+            error!("frame allocation failed (error={e:?})");
+            return false;
+        },
+    };
+
+    let first: UserFrame = UserFrame::new(addr);
+
+    // Create a second owner via `share`. The underlying frame is now shared
+    // between `first` and `second`.
+    let second: UserFrame = match first.share() {
+        Ok(handle) => handle,
+        Err(e) => {
+            error!("share failed (error={e:?})");
+            return false;
+        },
+    };
+
+    // Dropping `first` decrements the reference count to 1; the frame must
+    // still be allocated.
+    drop(first);
+
+    // Re-sharing from `second` must succeed because the frame is still alive.
+    let third: UserFrame = match second.share() {
+        Ok(handle) => handle,
+        Err(e) => {
+            error!("share after partial drop failed (error={e:?})");
+            return false;
+        },
+    };
+
+    // Drop the remaining handles. The last drop reclaims the frame.
+    drop(second);
+    drop(third);
+
+    // After the final drop, the frame must be free; an explicit `free` of the
+    // same address must therefore fail.
+    match frame::free(addr) {
+        Ok(()) => {
+            error!("frame was not reclaimed after all shared owners dropped");
+            false
+        },
+        Err(_) => true,
+    }
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -145,6 +200,7 @@ pub fn test() -> bool {
     passed &= run_test!(test_user_frame_drop_reclaims_frames);
     passed &= run_test!(test_user_frame_leak_prevents_drop);
     passed &= run_test!(test_user_frame_drop_frees_frame);
+    passed &= run_test!(test_user_frame_share_keeps_frame_alive);
 
     passed
 }
