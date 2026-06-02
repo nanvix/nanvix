@@ -19,7 +19,7 @@ const EXPECTED_ARGV0_PREFIX: &[u8] = b"misc-rust";
 
 #[allow(clippy::as_conversions)]
 pub fn run() -> Result<(), Error> {
-    let argv: *const *const u8 = ::nvx::ARGV.load(Ordering::SeqCst) as *const *const u8;
+    let argv: *const *const u8 = ::nvx_crt0::ARGV.load(Ordering::SeqCst) as *const *const u8;
     let arg0: *const u8 = unsafe { *argv };
 
     for (i, &expected) in EXPECTED_ARGV0_PREFIX.iter().enumerate() {

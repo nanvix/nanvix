@@ -10,15 +10,34 @@
 #![forbid(clippy::large_stack_arrays)]
 #![no_std]
 
-//! Nanvix guest C runtime 0 (`crt0`).
+//! Nanvix guest C runtime 0 (`crt0`) — stateless startup shim.
 //!
-//! Owns the executable entry point (`_do_start`), the `_start` Rust function
-//! it dispatches to, the C / Rust trampolines that bridge to the
-//! application's `main` function, and the argument-vector / environment
-//! parsing logic.  This crate is intended to be linked **only into
-//! executables**.  Libraries (notably `libposix.a`) must **not** depend on
-//! it, so that those libraries can be linked into `.so` files without
-//! pulling in a strong undefined `main` reference.
+//! Owns the kernel-entry asm stub (`_do_start`), the minimal Rust `_start`
+//! function it dispatches to, the C / Rust trampolines that bridge to the
+//! application's `main` function, and the `ARGC` / `ARGV` statics that
+//! Rust no_std binaries can read.
+//!
+//! This crate is intentionally **stateless** in the sysroot staticlib build
+//! (`forwarding-allocator`): it carries no `sysalloc` objects and does not
+//! allocate; it only provides a tiny forwarding `#[global_allocator]` stub.
+//! All stateful runtime services live in `libposix`'s `start` module and are
+//! reached via the `extern "C" fn __nanvix_libc_start_main` entry point.
+//!
+//! # Architectural rationale
+//!
+//! This split mirrors the glibc / musl / newlib / picolibc convention:
+//! `crt1.o` / `crt0.o` is a tiny stateless wrapper; the libc-side function
+//! (`__libc_start_main`) carries all stateful work.  In Nanvix terms,
+//! `libnvx_crt0.a` is the wrapper and `libposix.a` is the libc.
+//!
+//! The split is what makes the design correct.  Before this layout
+//! `nvx-crt0` itself depended on `sysalloc` (via `nvx::init`) AND used a
+//! `Vec` for argv parsing, so `libnvx_crt0.a` carried a copy of
+//! `sysalloc`'s state — including `VADDR_NEXT` — that was a DISTINCT
+//! cargo compilation from the one inside `libposix.a`.  Two
+//! `VADDR_NEXT` globals meant `dlopen()` collided with the already-
+//! mapped heap pages.  See
+//! `nanvix-todo/dlopen-load-address-conflict.md`.
 
 //==================================================================================================
 // Feature-set guards
@@ -37,14 +56,45 @@ compile_error!(
 #[cfg(not(any(feature = "c-main", feature = "rust-main")))]
 compile_error!("nvx-crt0: one of the features `c-main` or `rust-main` must be enabled.");
 
+// Exactly one allocator strategy must be selected.  See the matching
+// section in `Cargo.toml` for the rationale of the split: cargo-lib
+// consumers (Rust no_std binaries) get `provides-allocator`; the
+// `cargo rustc --crate-type staticlib` build that produces
+// `libnvx_crt0.a` for cpython uses `forwarding-allocator`.
+#[cfg(all(feature = "provides-allocator", feature = "forwarding-allocator"))]
+compile_error!(
+    "nvx-crt0: features `provides-allocator` and `forwarding-allocator` are mutually exclusive; \
+     pick exactly one."
+);
+
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-extern crate alloc;
-
-use ::alloc::vec::Vec;
 use ::config::memory_layout::USER_BASE_RAW;
+use ::core::ffi::c_char;
+
+// When `provides-allocator` is enabled, force `sysalloc` into the
+// final binary's link graph so its `#[global_allocator]` is picked up
+// by rustc.  Without this `extern crate`, rustc fails the binary's
+// compile with "no global memory allocator found" because no other
+// source line references `sysalloc` (the binary depends on it as a
+// transitive cargo dep but never names it).
+//
+// This is the cargo-lib path used by the 29 Rust no_std binaries.
+// The `libnvx_crt0.a` staticlib build (cpython) goes through
+// `--no-default-features --features "c-main forwarding-allocator"`
+// instead, which leaves `provides-allocator` OFF so no `sysalloc`
+// objects end up in the cpython link via `libnvx_crt0.a`.
+#[cfg(feature = "provides-allocator")]
+extern crate sysalloc;
+
+// Pull `posix` into the binary's link graph so libposix-side
+// `__nanvix_libc_start_main` (and the C-ABI bridges it relies on)
+// resolve at link time.  Same gating reason as `extern crate sysalloc`
+// above.
+#[cfg(feature = "provides-allocator")]
+extern crate posix;
 
 #[cfg(feature = "rust-main")]
 use ::core::sync::atomic::{
@@ -57,13 +107,61 @@ use ::core::sync::atomic::{
 // External Functions
 //==================================================================================================
 
-#[cfg(feature = "c-main")]
+// `__nanvix_libc_start_main` is the libposix-side process startup driver
+// (analogous to glibc's `__libc_start_main`).  It owns runtime init
+// (heap, TDA), argv / envp parsing, environment-table population, the
+// trampoline call (via `__nanvix_main` below), runtime cleanup, and
+// process exit.  See `libposix/src/start.rs`.
 unsafe extern "C" {
-    /// Initialises the environment table from a null-terminated array of "KEY=VALUE"
-    /// C strings.  Provided by `libposix` (`src/libs/posix/src/stdlib/...`) and only
-    /// needed by C executables, which rely on `getenv` / `setenv` / `unsetenv`.
-    fn __nanvix_env_init(envp: *const *const core::ffi::c_char);
+    fn __nanvix_libc_start_main(argp: *mut c_char, envp: *mut c_char) -> !;
 }
+
+// Raw `sysalloc` C-ABI bridges exported by `libposix` (see
+// `libposix/src/start.rs`).  Used as the implementation of the
+// forwarding `#[global_allocator]` below (only built when the
+// `forwarding-allocator` feature is on); they call `sysalloc::alloc`
+// / `sysalloc::dealloc` directly so there is no recursion through
+// Rust's global-allocator slot.
+#[cfg(feature = "forwarding-allocator")]
+unsafe extern "C" {
+    fn __nanvix_rust_alloc_raw(size: usize, align: usize) -> *mut u8;
+    fn __nanvix_rust_dealloc_raw(ptr: *mut u8, size: usize, align: usize);
+}
+
+//==================================================================================================
+// Global Allocator (forwarding, staticlib only)
+//==================================================================================================
+
+// The Rust `alloc` crate (pulled in unconditionally by `-Zbuild-std=
+// core,alloc`) requires every staticlib that links it to declare a
+// `#[global_allocator]`, even when the staticlib's own code never
+// allocates.  This crate has no allocation sites of its own — all
+// allocating work happens inside `libposix.a` — so we provide a
+// minimal forwarding `#[global_allocator]` that defers to libposix's
+// `sysalloc` via the C-ABI bridges above.
+//
+// The forwarder is gated on the `forwarding-allocator` feature
+// because for Rust no_std binaries, `sysalloc` itself provides
+// `#[global_allocator]` (via `nvx`'s `runtime` feature, on by default)
+// and a second one declared here would conflict at compile time.
+
+#[cfg(feature = "forwarding-allocator")]
+struct LibposixAllocator;
+
+#[cfg(feature = "forwarding-allocator")]
+unsafe impl ::core::alloc::GlobalAlloc for LibposixAllocator {
+    unsafe fn alloc(&self, layout: ::core::alloc::Layout) -> *mut u8 {
+        unsafe { __nanvix_rust_alloc_raw(layout.size(), layout.align()) }
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: ::core::alloc::Layout) {
+        unsafe { __nanvix_rust_dealloc_raw(ptr, layout.size(), layout.align()) };
+    }
+}
+
+#[cfg(feature = "forwarding-allocator")]
+#[global_allocator]
+static ALLOCATOR: LibposixAllocator = LibposixAllocator;
 
 //==================================================================================================
 // Global Variables
@@ -72,26 +170,12 @@ unsafe extern "C" {
 ///
 /// # Description
 ///
-/// Pointer to the environment-variable array installed by `_start()`.
-///
-/// # Notes
-///
-/// - This symbol is not name-mangled so it can be referenced from foreign code (for example C).
-/// - The symbol name is lowercase because external languages expect this conventional name.
-///
-#[allow(non_upper_case_globals)]
-#[unsafe(no_mangle)]
-static mut environ: *mut *mut i8 = core::ptr::null_mut();
-
-///
-/// # Description
-///
-/// Number of command-line arguments published by `_start()` for Rust no_std
-/// executables that wish to read them directly (for example
+/// Number of command-line arguments published by `__nanvix_libc_start_main` for
+/// Rust no_std executables that wish to read them directly (for example
 /// `cmdline-len-rust` / `cmdline-env-rust-nostd`).
 ///
 /// Only meaningful when the `rust-main` feature is enabled. C executables
-/// receive `argc` directly through `c_trampoline`.
+/// receive `argc` directly through the C trampoline.
 ///
 #[cfg(feature = "rust-main")]
 pub static ARGC: AtomicI32 = AtomicI32::new(0);
@@ -99,11 +183,11 @@ pub static ARGC: AtomicI32 = AtomicI32::new(0);
 ///
 /// # Description
 ///
-/// Pointer to the command-line argument array published by `_start()`. See
-/// [`ARGC`] for the matching length.
+/// Pointer to the command-line argument array published by
+/// `__nanvix_libc_start_main`.  See [`ARGC`] for the matching length.
 ///
 #[cfg(feature = "rust-main")]
-pub static ARGV: AtomicPtr<*const u8> = AtomicPtr::new(core::ptr::null_mut());
+pub static ARGV: AtomicPtr<*const u8> = AtomicPtr::new(::core::ptr::null_mut());
 
 //==================================================================================================
 // Kernel-Entry Stub
@@ -149,8 +233,9 @@ core::arch::global_asm!(
         push ecx
         push edx
         call _start
-    # Safety net: _start() calls exit() and never returns.
-    # If it somehow does, spin forever rather than falling through.
+    # Safety net: _start() calls __nanvix_libc_start_main() which calls
+    # exit() and never returns.  If control somehow falls through, spin
+    # forever rather than running into whatever follows in memory.
     1:  jmp 1b
     "#
 );
@@ -162,11 +247,15 @@ core::arch::global_asm!(
 ///
 /// # Description
 ///
-/// Rust entry point reached from `_do_start`.  Performs PIE relocation, runs
-/// `nvx`'s runtime initialisation, parses the kernel-supplied `argp` /
-/// `envp` blobs into argv / environ arrays, dispatches to the selected
-/// trampoline (C or Rust `main`), then tears the runtime down and exits via
-/// the `exit` kcall.
+/// Rust entry point reached from `_do_start`.  Performs PIE relocation and
+/// then immediately tail-calls into libposix's `__nanvix_libc_start_main`,
+/// which owns runtime init, argv / envp parsing, trampoline dispatch,
+/// cleanup, and process exit.
+///
+/// This function intentionally does NOT allocate, log, or otherwise touch
+/// the heap — the heap is brought up by `__nanvix_libc_start_main`.  This
+/// is what keeps `libnvx_crt0.a` free of `sysalloc` state.  See the
+/// module-level doc comment.
 ///
 /// # Parameters
 ///
@@ -180,181 +269,85 @@ core::arch::global_asm!(
 /// # Safety
 ///
 /// This function is unsafe because it dereferences raw pointers supplied by
-/// the kernel trap-frame setup.
+/// the kernel trap-frame setup, and it relies on `__nanvix_libc_start_main`
+/// being provided at link time by `libposix.a`.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
-    // Apply PIE relocations before any global data access.
+pub unsafe extern "C" fn _start(argp: *mut c_char, envp: *mut c_char) -> ! {
+    // Apply PIE relocations before any global data access.  Must happen
+    // here (not in libposix) because the libposix-side `__nanvix_libc_start_main`
+    // accesses global statics (sysalloc, environ, ...) that themselves
+    // need relocation.
     unsafe {
         ::nvx::pie::relocate_pie_binary(USER_BASE_RAW);
     }
 
-    ::syslog::trace!("_start(): argv: {:?}, envp: {:?}", argp, envp);
-
-    // Initialise the system runtime (heap, TDA, ...).
-    ::nvx::init();
-
-    // Build vector of command-line arguments.
-    let mut argv_vec: Vec<*const i8> = unsafe { parse_argp(argp) };
-    let argc: i32 = argv_vec.len() as i32 - 1;
-    let argv: *mut *const u8 = argv_vec.as_mut_ptr() as *mut *const u8;
-    #[cfg(feature = "rust-main")]
-    {
-        ARGC.store(argc, Ordering::SeqCst);
-        ARGV.store(argv, Ordering::SeqCst);
-    }
-
-    // Build vector of environment variables.
-    let mut env: Vec<*mut i8> = unsafe { parse_envp(envp) };
     unsafe {
-        environ = env.as_mut_ptr();
-    }
-
-    // Populate the environment table used by getenv()/setenv()/unsetenv().
-    // The `environ` pointer is a null-terminated array of "KEY=VALUE" C
-    // strings, which is exactly the format expected by __nanvix_env_init().
-    #[cfg(feature = "c-main")]
-    unsafe {
-        __nanvix_env_init(environ as *const *const core::ffi::c_char);
-    }
-
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "c-main")] {
-            let status: i32 = c_trampoline(argc, argv);
-        } else {
-            // Suppress unused-variable warnings when only the Rust trampoline
-            // is active: argc/argv are stored in ARGC/ARGV above.
-            let _ = (argc, argv);
-            let status: i32 = rust_trampoline();
-        }
-    }
-
-    // Clean up the system runtime.
-    ::nvx::cleanup();
-
-    // Exit the runtime.
-    let Err(error) = ::sys::kcall::pm::__kcall_exit(status);
-    panic!("failed to exit process (error={error:?})");
-}
-
-//==================================================================================================
-// Trampolines
-//==================================================================================================
-
-/// Trampoline for Rust applications.
-///
-/// Calls the `main` symbol exported by the application crate, which must
-/// have the signature `fn main() -> Result<(), sys::error::Error>`.
-#[cfg(feature = "rust-main")]
-fn rust_trampoline() -> i32 {
-    unsafe extern "Rust" {
-        fn main() -> Result<(), ::sys::error::Error>;
-    }
-
-    match unsafe { main() } {
-        Ok(()) => 0,
-        Err(e) => e.code.get(),
-    }
-}
-
-/// Trampoline for C applications.
-///
-/// Calls the standard C `main(int argc, char **argv) -> int` plus `_init`
-/// and `_fini` (the legacy GNU constructor/destructor hooks).
-#[cfg(feature = "c-main")]
-fn c_trampoline(argc: i32, argv: *const *const u8) -> i32 {
-    unsafe extern "C" {
-        fn main(argc: i32, argv: *const *const u8) -> i32;
-        fn _init();
-        fn _fini();
-    }
-
-    unsafe {
-        _init();
-        let ret: i32 = main(argc, argv);
-        _fini();
-        ret
+        __nanvix_libc_start_main(argp, envp);
     }
 }
 
 //==================================================================================================
-// Argument / Environment Parsing
+// Application Trampoline
 //==================================================================================================
 
 ///
 /// # Description
 ///
-/// Builds a string table from a null-terminated string.
+/// C-ABI trampoline invoked by libposix's `__nanvix_libc_start_main` to
+/// dispatch into the application's entry point.
+///
+/// In `c-main` mode (cpython, hello-c, smoke, ...), this calls the
+/// standard `extern "C" fn main(int, char **)` plus the legacy `_init` /
+/// `_fini` constructor / destructor hooks expected by GCC-style toolchains.
+///
+/// In `rust-main` mode (every Rust no_std binary in this workspace),
+/// this publishes the parsed `argc` / `argv` into [`ARGC`] / [`ARGV`]
+/// (so application code can read them) and then calls the Rust-side
+/// `extern "Rust" fn main() -> Result<(), sys::error::Error>`.
+///
 /// # Parameters
 ///
-/// - `string`: A pointer to a null-terminated string.
+/// - `argc`: Parsed argument count, supplied by `__nanvix_libc_start_main`.
+/// - `argv`: Parsed argument vector, supplied by `__nanvix_libc_start_main`.
 ///
 /// # Returns
 ///
-/// - A vector of pointers to null-terminated strings.
+/// The exit status to be passed to `__kcall_exit`.
 ///
 /// # Safety
 ///
-/// This function dereferences `string`.  The caller must ensure that `string`
-/// points to a valid mutable buffer terminated by a single null byte and
-/// containing only ASCII characters (space-separated tokens).
+/// This function dereferences the foreign `argv` pointer and calls into
+/// foreign `main` / `_init` / `_fini` provided by the application
+/// (resolved at link time).
 ///
-unsafe fn build_string_table(string: *mut i8) -> Vec<*mut i8> {
-    use core::ptr;
-
-    let mut current = string;
-    let mut count = 0;
-
-    // Traverse `current`, replacing spaces with null characters and counting entries.
-    while *current != 0 {
-        if *current == b' ' as i8 {
-            *current = b'\0' as i8;
-            count += 1;
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn __nanvix_main(argc: i32, argv: *const *const u8) -> i32 {
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "c-main")] {
+            unsafe extern "C" {
+                fn main(argc: i32, argv: *const *const u8) -> i32;
+                fn _init();
+                fn _fini();
+            }
+            let _ = argc;
+            let _ = argv;
+            unsafe {
+                _init();
+                let ret: i32 = main(argc, argv);
+                _fini();
+                ret
+            }
+        } else {
+            unsafe extern "Rust" {
+                fn main() -> Result<(), ::sys::error::Error>;
+            }
+            ARGC.store(argc, Ordering::SeqCst);
+            ARGV.store(argv as *mut *const u8, Ordering::SeqCst);
+            match unsafe { main() } {
+                Ok(()) => 0,
+                Err(e) => e.code.get(),
+            }
         }
-        current = current.add(1);
     }
-    count += 1; // Account for the null-terminator.
-
-    // Create an array of pointers to the entries.
-    let mut result: Vec<*mut i8> = Vec::with_capacity(count as usize);
-    current = string;
-    for _ in 0..count {
-        // Print the current entry.
-        ::syslog::trace!(
-            "build_string_table(): entry[{}]: {:?}",
-            result.len(),
-            // Convert to CStr for printing.
-            ::core::ffi::CStr::from_ptr(current)
-        );
-
-        result.push(current);
-        while *current != 0 {
-            current = current.add(1);
-        }
-        current = current.add(1); // Skip the null terminator.
-    }
-    result.push(ptr::null_mut()); // Null-terminate the array.
-
-    result
-}
-
-/// Wrapper for parsing `argp`.
-///
-/// # Safety
-///
-/// See [`build_string_table`].
-unsafe fn parse_argp(argp: *mut i8) -> Vec<*const i8> {
-    unsafe { build_string_table(argp) }
-        .into_iter()
-        .map(|ptr| ptr as *const i8)
-        .collect()
-}
-
-/// Wrapper for parsing `envp`.
-///
-/// # Safety
-///
-/// See [`build_string_table`].
-unsafe fn parse_envp(envp: *mut i8) -> Vec<*mut i8> {
-    unsafe { build_string_table(envp) }
 }

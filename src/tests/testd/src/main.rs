@@ -23,6 +23,7 @@ mod mm;
 
 extern crate libc_string;
 extern crate nvx;
+extern crate nvx_crt0;
 
 use ::sys::pm::ProcessIdentifier;
 

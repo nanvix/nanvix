@@ -19,6 +19,7 @@
 extern crate alloc;
 extern crate libc_string;
 extern crate nvx;
+extern crate nvx_crt0;
 
 use ::config::system::MAX_CMDLINE_ARGS_LEN;
 use ::core::sync::atomic::Ordering;
@@ -45,8 +46,8 @@ use ::syscall::unistd;
 ///
 #[unsafe(no_mangle)]
 pub fn main() -> Result<(), Error> {
-    let argc: i32 = nvx::ARGC.load(Ordering::SeqCst);
-    let argv: *mut *const u8 = nvx::ARGV.load(Ordering::SeqCst);
+    let argc: i32 = nvx_crt0::ARGC.load(Ordering::SeqCst);
+    let argv: *mut *const u8 = nvx_crt0::ARGV.load(Ordering::SeqCst);
 
     syslog::info!("main(): argc={argc}");
 
