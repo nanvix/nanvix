@@ -19,6 +19,7 @@
 extern crate alloc;
 extern crate libc_string;
 extern crate nvx;
+extern crate nvx_crt0;
 
 use ::core::{
     ffi::CStr,
@@ -65,8 +66,8 @@ pub fn main() -> Result<(), Error> {
     // -- Print arguments --
     unistd::write(STDOUT_FILENO, b"ARGS:")?;
 
-    let argc: i32 = nvx::ARGC.load(Ordering::SeqCst);
-    let argv: *mut *const u8 = nvx::ARGV.load(Ordering::SeqCst);
+    let argc: i32 = nvx_crt0::ARGC.load(Ordering::SeqCst);
+    let argv: *mut *const u8 = nvx_crt0::ARGV.load(Ordering::SeqCst);
 
     if !argv.is_null() && argc > 1 {
         for i in 1..argc {

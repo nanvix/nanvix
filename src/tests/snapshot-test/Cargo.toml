@@ -15,12 +15,14 @@ name = "snapshot-test"
 
 [dependencies]
 nvx = { workspace = true }
+nvx-crt0 = { workspace = true, features = ["rust-main", "provides-allocator"] }
+sysalloc = { workspace = true }
 libc_string = { workspace = true }
 sys = { workspace = true, features = ["kcall"] }
 
 [features]
 default = ["panic"]
-panic = ["nvx/panic"]
+panic = ["nvx/panic", "nvx-crt0/panic"]
 
 [lints]
 workspace = true

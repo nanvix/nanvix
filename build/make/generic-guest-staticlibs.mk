@@ -1,7 +1,7 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-GUEST_STATICLIB_FEATURES := staticlib $(LOG_LEVEL)
+GUEST_STATICLIB_FEATURES := $(LOG_LEVEL)
 # Enable standalone mode: routes stdout/stderr to debug kcall,
 # file I/O to in-memory VFS, and disables IPC-based syscalls (no linuxd).
 ifeq ($(DEPLOYMENT_MODE),standalone)
@@ -14,17 +14,30 @@ GUEST_STATICLIB_CARGO_FEATURES := $(if $(GUEST_STATICLIB_FEATURES),--features "$
 # Per-package feature overrides
 #===================================================================================================
 # Some staticlib packages take a different feature set than the default
-# `staticlib + LOG_LEVEL [+ standalone]` combination above. Define the
-# overrides here as `GUEST_STATICLIB_FEATURES_<package>` and the lookup
-# helper below picks them up.
+# `$(LOG_LEVEL) [+ standalone]` combination above. Define the overrides here
+# as `GUEST_STATICLIB_FEATURES_<package>` and the lookup helper below picks
+# them up.
 #
-# nvx-crt0 is the C-executable startup crate. It is built once with the
-# `c-main` feature (so the sysroot copy of `libnvx_crt0.a` is the variant a
-# C executable like `python.elf` links against). Rust no_std binaries that
-# need the `rust-main` flavour pull `nvx-crt0` in directly via cargo as a
-# normal dependency, with the appropriate feature toggle in their own
-# `Cargo.toml`, so they do not consume the sysroot copy.
-GUEST_STATICLIB_FEATURES_nvx-crt0 := c-main $(LOG_LEVEL)
+# nvx-crt0 is the C-executable startup crate.  It is built once with the
+# `c-main` feature (so `libnvx_crt0.a` contains the C trampoline used by
+# `python.elf`, `hello-c`, `smoke`, ...).  The crate is deliberately
+# stateless — it does not depend on `sysalloc` and has no
+# `#[global_allocator]` — so `libnvx_crt0.a` carries no `sysalloc`
+# objects.  All heap state (`VADDR_NEXT`, ...) lives exclusively in
+# `libposix.a` via `__nanvix_libc_start_main`.  See
+# `nanvix-todo/dlopen-load-address-conflict.md` for the bug this
+# structurally prevents.
+#
+# Rust no_std binaries that need the `rust-main` flavour pull `nvx-crt0`
+# in directly via cargo as a normal dependency, with the appropriate
+# feature toggle in their own `Cargo.toml`.  Those binaries depend on
+# `sysalloc` explicitly (and on `nvx-crt0` with `provides-allocator`),
+# because the workspace `nvx` dependency is `default-features = false`
+# and therefore does NOT enable `nvx`'s `runtime` feature or pull
+# `sysalloc` in transitively.  Cargo unifies all of these into a single
+# compilation per binary, so they do not consume the sysroot copy and
+# do not hit the duplicate-`sysalloc` scenario.
+GUEST_STATICLIB_FEATURES_nvx-crt0 := c-main forwarding-allocator $(LOG_LEVEL)
 GUEST_STATICLIB_FEATURES_nvx-crt0 := $(strip $(GUEST_STATICLIB_FEATURES_nvx-crt0))
 
 # Returns the cargo `--features "..."` arg for the given package, falling
@@ -37,10 +50,24 @@ GUEST_STATICLIB_PKG_FEATURES = $(if $(GUEST_STATICLIB_FEATURES_$(1)),--features 
 # for `cp` / `rm` paths against the cargo target dir.
 guest_staticlib_artifact = lib$(subst -,_,$(1)).a
 
+# Per-package crate-type override. Some packages keep `crate-type = ["lib"]`
+# only in `Cargo.toml` (so they can be used as a normal cargo dep without
+# rustc's staticlib-time `#[global_allocator]` requirement) and rely on the
+# Makefile to ask `cargo rustc` to emit the `staticlib` crate type when
+# producing the sysroot artifact.  See `nvx-crt0`'s `Cargo.toml` for the
+# rationale.
+GUEST_STATICLIB_CRATE_TYPE_nvx-crt0 := staticlib
+
+# Macro returning the appropriate per-package `cargo build`/`cargo rustc`
+# command.  Packages with a `GUEST_STATICLIB_CRATE_TYPE_<pkg>` override use
+# `cargo rustc --crate-type <type>` (which can override `Cargo.toml`'s
+# `crate-type`); the rest use the regular `cargo build`.
+GUEST_STATICLIB_CARGO_BUILD = $(if $(GUEST_STATICLIB_CRATE_TYPE_$(1)),$(subst cargo build,cargo rustc,$(GUEST_CARGO_BUILD_CMD)) --lib --crate-type $(GUEST_STATICLIB_CRATE_TYPE_$(1)),$(GUEST_CARGO_BUILD_CMD))
+
 # Per-package rules retained for direct invocation (e.g., make all-guest-staticlib-<pkg>).
 define GUEST_STATICLIB_RULES
 all-guest-staticlib-$(1): init
-	$(GUEST_CARGO_BUILD_CMD) -p $(1) $(call GUEST_STATICLIB_PKG_FEATURES,$(1))
+	$(call GUEST_STATICLIB_CARGO_BUILD,$(1)) -p $(1) $(call GUEST_STATICLIB_PKG_FEATURES,$(1))
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$(call guest_staticlib_artifact,$(1)) $(LIBRARIES_DIR)/$(call guest_staticlib_artifact,$(1))
 
 check-guest-staticlib-$(1):
@@ -77,7 +104,7 @@ _GUEST_STATICLIB_PKGS_OVERRIDE := $(foreach pkg,$(ALL_GUEST_STATIC_LIBS),$(if $(
 
 # Macros that emit the per-override commands for the batched targets.
 define _OVERRIDE_BUILD_CMD
-	$(GUEST_CARGO_BUILD_CMD) -p $(1) $(call GUEST_STATICLIB_PKG_FEATURES,$(1))
+	$(call GUEST_STATICLIB_CARGO_BUILD,$(1)) -p $(1) $(call GUEST_STATICLIB_PKG_FEATURES,$(1))
 endef
 
 define _OVERRIDE_CHECK_CMDS

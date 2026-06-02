@@ -42,6 +42,7 @@
 extern crate alloc;
 extern crate libc_string;
 extern crate nvx;
+extern crate nvx_crt0;
 
 use ::sys::error::Error;
 use ::sysapi::{
