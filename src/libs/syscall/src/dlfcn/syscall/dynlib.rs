@@ -559,6 +559,29 @@ impl DynamicLibrary {
         let symbol_value: usize = match self.lookup(symbol_name)? {
             Some((base, symbol_value)) => base + symbol_value,
             None => {
+                // Per the System V ABI (gABI, chapter "Symbol Table"), an undefined
+                // symbol whose binding is `STB_WEAK` and which cannot be resolved at
+                // dynamic-link time is silently taken to have the value zero (or `NULL`
+                // for function symbols). Every mainstream ELF dynamic loader (glibc
+                // `elf/dl-lookup.c`, musl `ldso/dynlink.c`, FreeBSD `rtld-elf/rtld.c`,
+                // Android Bionic `linker/linker_relocate.cpp`) implements this rule,
+                // and we follow them here.
+                //
+                // Substituting zero is safe across the relocation types we currently
+                // handle (R_386_32, R_386_PC32, R_386_JMP_SLOT, R_386_GLOB_DAT): the
+                // resulting GOT/PLT entry or in-place 32-bit slot will be null, so any
+                // code path that actually dereferences the symbol traps deterministically
+                // — matching the contract the spec puts on the program (it must
+                // null-check before use).
+                if sym.is_undefined() && sym.is_weak() {
+                    ::syslog::debug!(
+                        "get_symbol_value(): resolving unresolved weak undefined symbol to zero \
+                         per System V ABI (symbol_name={:?})",
+                        symbol_name
+                    );
+                    return Ok(0);
+                }
+
                 let reason: &str = "symbol not found";
                 ::syslog::warn!(
                     "get_symbol_value(): {} (symbol_name={:?}, symbol={:?})",
@@ -584,6 +607,17 @@ impl DynamicLibrary {
             None;
 
         for sym in self.dynsym.iter() {
+            // Skip undefined symbols: with the STB_WEAK handling in
+            // `get_symbol_value()`, an unresolved weak undefined symbol resolves
+            // to 0 — that's the right behaviour for relocation but would cause
+            // `dladdr()` to report a ghost symbol at address 0 for every weak
+            // undefined entry in the dynsym.  Symbols that have an in-module
+            // definition (or that resolved to a real address elsewhere) are
+            // never `SHN_UNDEF` in this DSO's dynsym, so this filter only
+            // excludes references the loader had to substitute zero for.
+            if sym.is_undefined() {
+                continue;
+            }
             if let Ok(symbol_value) = self.get_symbol_value(sym) {
                 let sym_addr: VirtualAddress = VirtualAddress::from_raw_value(symbol_value);
                 if sym_addr <= symbol_addr {
@@ -743,7 +777,12 @@ impl DynamicLibrary {
     ///
     unsafe fn resolve_r_386_32(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
         let symbol_addend: i32 = storage_unit.read_unaligned() as i32;
-        let final_value: u32 = symbol_value.strict_add_signed(symbol_addend);
+        // ELF arithmetic (System V ABI): `S + A` is performed with wrapping
+        // 32-bit semantics.  Use `wrapping_add_signed` instead of
+        // `strict_add_signed` so that the loader does not panic when
+        // resolving a weak undefined symbol (`S == 0`) against a negative
+        // addend, which is legal per spec.
+        let final_value: u32 = symbol_value.wrapping_add_signed(symbol_addend);
         storage_unit.write_unaligned(final_value);
     }
 
@@ -809,7 +848,12 @@ impl DynamicLibrary {
     unsafe fn resolve_r_386_pc32(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
         let symbol_addend: i32 = storage_unit.read_unaligned() as i32;
         let relocation_offset: u32 = storage_unit.as_ptr() as u32;
-        let tmp: u32 = symbol_value.strict_add_signed(symbol_addend);
+        // ELF arithmetic (System V ABI): `S + A - P` is performed with
+        // wrapping 32-bit semantics.  Use `wrapping_add_signed` instead of
+        // `strict_add_signed` so that the loader does not panic when
+        // resolving a weak undefined symbol (`S == 0`) against a negative
+        // addend, which is legal per spec.
+        let tmp: u32 = symbol_value.wrapping_add_signed(symbol_addend);
 
         let final_value: i32 = if tmp > relocation_offset {
             (tmp - relocation_offset) as i32

@@ -357,6 +357,23 @@ pub const STT_OBJECT: u8 = 1;
 pub const STT_FUNC: u8 = 2;
 
 //==================================================================================================
+// Symbol Bindings (high 4 bits of `st_info`)
+//==================================================================================================
+
+/// Right-shift required to extract the symbol binding from `st_info`.
+pub const ST_BIND_SHIFT: u8 = 4;
+/// Local symbol — not visible outside the object file containing its definition.
+pub const STB_LOCAL: u8 = 0;
+/// Global symbol — visible to all object files being combined.
+pub const STB_GLOBAL: u8 = 1;
+/// Weak symbol — resembles a global symbol but has lower precedence. Per the System V ABI
+/// (gABI, chapter "Symbol Table"), an undefined weak symbol that cannot be resolved at
+/// dynamic-link time is taken to have address zero (or `NULL` for function symbols). This
+/// is the contract every mainstream ELF dynamic loader (glibc, musl, FreeBSD `rtld-elf`,
+/// Android Bionic) implements, and which our `dlfcn` loader honours.
+pub const STB_WEAK: u8 = 2;
+
+//==================================================================================================
 // ELF32 Section Header
 //==================================================================================================
 
@@ -436,6 +453,11 @@ impl Elf32Sym {
     /// Returns the symbol type (low 4 bits of `st_info`).
     pub fn st_type(&self) -> u8 {
         self.st_info & ST_TYPE_MASK
+    }
+
+    /// Returns the symbol binding (high 4 bits of `st_info`).
+    pub fn st_bind(&self) -> u8 {
+        self.st_info >> ST_BIND_SHIFT
     }
 }
 
