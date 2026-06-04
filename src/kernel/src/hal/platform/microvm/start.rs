@@ -32,21 +32,13 @@ global_asm!(
 
     // EAX and EBX registers store boot information.
 
-    // Save boot info (EAX) before it is clobbered by the stack-guard fill below.
-    "    movl %eax, %edx",
-
     // BSS clearing is skipped on microvm backends: the host has already zeroed guest memory
     // before the vCPU starts (`mmap(MAP_ANONYMOUS)` on Linux, `VirtualAlloc(MEM_COMMIT)` on
     // Windows both return zero-filled pages, and the ELF loader explicitly zeroes every BSS
     // region via `write_bytes()`).
 
-    // Fill the boot stack guard page with a watermark pattern.
-    "    movl $kstack_guard, %edi",
-    "    movl $({PAGE_SIZE} / 4), %ecx",
-    "    movl ${KSTACK_GUARD_PATTERN}, %eax",
-    "    rep stosl",
-
-    "    movl %edx, %eax",
+    // The boot stack guard page is pre-filled with the watermark pattern at link time (see the
+    // `.data` block below), so no runtime initialization loop is required here.
 
     // Reset stack.
     "    movl $kstack, %esp",
@@ -79,9 +71,7 @@ global_asm!(
     "1:  hlt",
     "    jmp 1b",
 
-    PAGE_SIZE = const PAGE_SIZE,
     CONTEXT_HW_SIZE = const ContextInformation::CONTEXT_HW_SIZE,
-    KSTACK_GUARD_PATTERN = const ::config::kernel::KSTACK_GUARD_PATTERN,
     options(att_syntax),
 );
 
@@ -125,27 +115,46 @@ global_asm!(
 );
 
 //==================================================================================================
-// BSS Section — Boot Stack and Kernel Red Zone
+// Data Section — Boot Stack
 //==================================================================================================
 
+// The boot stack lives in `.data` rather than `.bss` so that its guard page can be initialized
+// with the watermark pattern at link time via `.fill`. This eliminates the runtime fill loop in
+// the BSP entry path at the cost of `KSTACK_SIZE` bytes added to the kernel ELF image.
 global_asm!(
-    ".section .bss",
+    ".section .data",
 
     // Boot stack guard page + usable stack.
     ".align {PAGE_SIZE}",
     ".globl kstack_guard",
     "kstack_guard:",
-    ".space {KSTACK_SIZE}",
+    // Guard page pre-filled with the watermark pattern (4-byte little-endian dwords).
+    ".fill ({PAGE_SIZE} / 4), 4, {KSTACK_GUARD_PATTERN}",
+    // Usable stack area, zero-initialized.
+    ".fill ({KSTACK_SIZE} - {PAGE_SIZE}), 1, 0",
     ".globl kstack",
     "kstack:",
 
+    PAGE_SIZE = const PAGE_SIZE,
+    KSTACK_SIZE = const ::config::kernel::KSTACK_SIZE,
+    KSTACK_GUARD_PATTERN = const ::config::kernel::KSTACK_GUARD_PATTERN,
+    options(att_syntax),
+);
+
+//==================================================================================================
+// BSS Section — Kernel Red Zone
+//==================================================================================================
+
+global_asm!(
+    ".section .bss",
+
     // Kernel Red Zone.
+    ".align {PAGE_SIZE}",
     ".globl kredzone",
     "kredzone:",
     ".space {KREDZONE_SIZE}",
 
     PAGE_SIZE = const PAGE_SIZE,
-    KSTACK_SIZE = const ::config::kernel::KSTACK_SIZE,
     KREDZONE_SIZE = const ::config::kernel::KREDZONE_SIZE,
     options(att_syntax),
 );
