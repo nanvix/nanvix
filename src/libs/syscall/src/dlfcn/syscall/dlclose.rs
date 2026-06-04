@@ -117,10 +117,28 @@ pub fn dlclose(handle: &DlHandle) -> Result<(), Error> {
             })
             .collect();
 
+        // `extract_if` may legitimately return zero entries when this
+        // library still has live dependents elsewhere in the dependency
+        // tree. This is the diamond `DT_NEEDED` case --
+        //
+        //   libdiamond.so -> libleft.so  -> libbase.so
+        //                 -> libright.so -> libbase.so
+        //
+        // While unloading libright, BFS pushes libbase onto the work
+        // list. By the time we pop libbase, libleft has not yet unloaded
+        // and still holds an Arc to libbase, so `strong_count` is 3
+        // (registry + libleft.dependencies + our pop). We skip libbase
+        // for now; a later iteration will pop libleft, drop its
+        // dependencies (releasing the extra libbase reference), push
+        // libbase a second time, and the subsequent pop will succeed.
+        if dep_dlfile.is_empty() {
+            continue;
+        }
         assert_eq!(
             dep_dlfile.len(),
             1,
-            "dlclose(): expected to remove exactly one dynamic library file"
+            "dlclose(): expected to remove exactly one dynamic library file (the empty case is \
+             handled above)"
         );
 
         // Collect all dependencies of the dynamic library file.
