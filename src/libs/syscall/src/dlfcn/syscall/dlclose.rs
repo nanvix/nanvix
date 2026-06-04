@@ -12,6 +12,7 @@ use crate::dlfcn::syscall::{
 };
 use ::alloc::{
     collections::btree_map::BTreeMap,
+    string::String,
     sync::Arc,
     vec::Vec,
 };
@@ -70,6 +71,25 @@ pub fn dlclose(handle: &DlHandle) -> Result<(), Error> {
         // Collect all dependencies of the dynamic library file being closed.
         let mut dep_dlfiles: Vec<Arc<Mutex<DynamicLibrary>>> = Vec::new();
         if let Some((_, dep_dlfile)) = dlfile.pop() {
+            // Snapshot the `.fini_array` descriptor and name under a short
+            // per-library lock, then drop the lock and invoke destructors.
+            // Holding the per-library lock during destructor execution
+            // would deadlock any destructor that calls
+            // `dlsym(self_handle, ...)`. (The outer registry lock is still
+            // held, so destructors that call `dlopen` / `dlclose` / cross-
+            // library `dlsym` are not yet supported; see the loader docs.)
+            let (descriptor, name): (Option<(usize, usize)>, String) = {
+                let lib = dep_dlfile.lock();
+                (lib.fini_array_descriptor(), String::from(lib.name()))
+            };
+            // SAFETY: `descriptor` was produced under the per-library lock
+            // for a library still alive via `dep_dlfile`; the per-library
+            // mutex is released before invocation so destructors that call
+            // `dlsym(self_handle, ...)` do not deadlock.
+            unsafe {
+                DynamicLibrary::invoke_fini_array(descriptor, &name);
+            }
+
             let mut dep_dlfile = dep_dlfile.lock();
             dep_dlfile
                 .take_dependencies()
@@ -105,6 +125,18 @@ pub fn dlclose(handle: &DlHandle) -> Result<(), Error> {
 
         // Collect all dependencies of the dynamic library file.
         if let Some((_, dep_dlfile)) = dep_dlfile.pop() {
+            // Run `.fini_array` destructors before this dependency is
+            // dropped. See the comment above on lock handling.
+            let (descriptor, name): (Option<(usize, usize)>, String) = {
+                let lib = dep_dlfile.lock();
+                (lib.fini_array_descriptor(), String::from(lib.name()))
+            };
+            // SAFETY: see the comment on the first `invoke_fini_array`
+            // call above.
+            unsafe {
+                DynamicLibrary::invoke_fini_array(descriptor, &name);
+            }
+
             let mut dep_dlfile = dep_dlfile.lock();
             dep_dlfile
                 .take_dependencies()
