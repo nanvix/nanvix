@@ -351,6 +351,31 @@ pub fn send_stat_request(
     }
 }
 
+/// Sends a READDIR request to hostfsd for a single directory entry at `offset`.
+///
+/// hostfsd serves directory listings via offset-based iteration, returning one
+/// [`ReadDirEntry`](::hostfs_api::ReadDirEntry) per request (`name_len == 0` signals
+/// end-of-directory). vfsd drives this as an async sweep, issuing one request per
+/// entry until the caller's requested count is satisfied or the directory is exhausted.
+pub fn send_readdir_request(
+    remote_fd: i32,
+    offset: u32,
+    op_id: OperationId,
+) -> Result<(), ::sys::error::ErrorCode> {
+    let payload: [u8; Message::PAYLOAD_SIZE] = ::hostfs_api::ReadDirRequest {
+        fd: remote_fd,
+        _reserved: 0,
+        offset,
+    }
+    .serialize(SystemCallMessageHeader::HostFsReadDirRequest as u16, op_id);
+
+    if send_request(&payload) {
+        Ok(())
+    } else {
+        Err(::sys::error::ErrorCode::IoErr)
+    }
+}
+
 /// Sends a RENAME request to hostfsd as a multi-part IKC message.
 pub fn send_rename_request(
     old_path: &str,

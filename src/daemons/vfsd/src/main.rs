@@ -280,6 +280,41 @@ pub fn main() {
                         if header.is_hostfs_response() {
                             let op_id: ::hostfs_api::OperationId =
                                 ::hostfs_api::get_op_id(&message.payload);
+                            // Getdents over hostfs is an async sweep: one readdir entry
+                            // per round-trip. Keep the op buffered and re-arm another
+                            // request until the directory is exhausted or the requested
+                            // entry count is reached.
+                            if header == SystemCallMessageHeader::HostFsReadDirResponse {
+                                if let Some(op) = pending.get_mut(op_id) {
+                                    if matches!(op.kind, pending::PendingOpKind::Getdents { .. }) {
+                                        match pending::step_getdents(op, &message.payload) {
+                                            pending::GetdentsStep::Continue {
+                                                remote_fd,
+                                                offset,
+                                            } => {
+                                                if hostfs::send_readdir_request(
+                                                    remote_fd, offset, op_id,
+                                                )
+                                                .is_err()
+                                                {
+                                                    if let Some(op) = pending.remove(op_id) {
+                                                        pending::cancel_pending_op(
+                                                            op,
+                                                            ErrorCode::IoErr,
+                                                        );
+                                                    }
+                                                }
+                                            },
+                                            pending::GetdentsStep::Done => {
+                                                if let Some(op) = pending.remove(op_id) {
+                                                    pending::finish_getdents(op);
+                                                }
+                                            },
+                                        }
+                                        continue;
+                                    }
+                                }
+                            }
                             if let Some(op) = pending.remove(op_id) {
                                 pending::complete_pending_op(op, &message.payload);
                             } else {
