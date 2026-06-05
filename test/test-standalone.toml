@@ -76,6 +76,12 @@ expected_output = "ok"
 
 [[tests]]
 executor = "http"
+program = "./bin/fork-rust.initrd"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
 program = "./bin/stress-rust.initrd"
 input = "[]"
 expected_output = "ok"
@@ -130,6 +136,11 @@ expected_output = "hello world"
 [[tests]]
 executor = "terminal"
 program = "./bin/thread-rust.initrd"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/fork-rust.initrd"
 expected_output = "ok"
 
 [[tests]]

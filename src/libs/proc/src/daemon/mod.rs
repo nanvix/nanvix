@@ -8,9 +8,11 @@
 use crate::{
     identity::ProcessIdentity,
     message,
+    GetParentMessage,
     LookupMessage,
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
+    RegisterChildMessage,
     SignupMessage,
 };
 use ::alloc::{
@@ -19,11 +21,9 @@ use ::alloc::{
         String,
         ToString,
     },
+    vec::Vec,
 };
-use ::core::{
-    ffi::CStr,
-    str,
-};
+use ::core::ffi::CStr;
 use ::sys::{
     error::{
         Error,
@@ -47,12 +47,47 @@ use ::sys::{
 };
 
 //==================================================================================================
+// Structures
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Bookkeeping record for a process tracked by the process manager daemon.
+///
+struct ProcessRecord {
+    /// Process name.
+    name: String,
+    /// Process identity (credentials).
+    #[allow(dead_code)]
+    identity: Option<ProcessIdentity>,
+    /// Process identifier of the parent (`None` for daemons and the root application).
+    parent: Option<ProcessIdentifier>,
+    /// Process identifiers of the live children.
+    children: Vec<ProcessIdentifier>,
+}
+
+impl ProcessRecord {
+    /// Instantiates a new process record.
+    fn new(name: String, parent: Option<ProcessIdentifier>) -> Self {
+        Self {
+            name,
+            identity: None,
+            parent,
+            children: Vec::new(),
+        }
+    }
+}
+
+//==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
 pub struct ProcessDaemon {
     // FIXME: auto-signup process on process creation.
-    processes: BTreeMap<ProcessIdentifier, (String, Option<ProcessIdentity>)>,
+    processes: BTreeMap<ProcessIdentifier, ProcessRecord>,
+    /// Process identifier of the root application (first non-daemon process with no parent).
+    root_app: Option<ProcessIdentifier>,
 }
 
 impl ProcessDaemon {
@@ -75,6 +110,7 @@ impl ProcessDaemon {
 
         Ok(Self {
             processes: BTreeMap::new(),
+            root_app: None,
         })
     }
 
@@ -141,12 +177,15 @@ impl ProcessDaemon {
         let status: i32 = i32::from_le_bytes(message.payload[4..8].try_into().unwrap());
         ::syslog::info!("process terminated (pid={:?}, status={:?})", pid, status);
 
-        // De-register process.
-        if let Some((name, _identity)) = self.processes.remove(&pid) {
-            ::syslog::info!("deregistering process (pid={:?}, name={:?}", pid, name,);
+        // Look up the terminating process in the registry.
+        if let Some(record) = self.processes.get(&pid) {
+            let name: String = record.name.clone();
+            let is_root: bool = self.root_app == Some(pid) || record.parent.is_none();
 
             // A daemon terminated — not a shutdown trigger (unless it crashed).
             if Self::is_daemon(&name) {
+                ::syslog::info!("deregistering daemon (pid={:?}, name={:?})", pid, name);
+                self.processes.remove(&pid);
                 if status != 0 {
                     ::syslog::error!(
                         "critical daemon {:?} terminated with non-zero status {} — triggering \
@@ -158,11 +197,77 @@ impl ProcessDaemon {
                 }
                 return Ok(None);
             }
+
+            // The root application terminated — initiate shutdown and propagate its exit status.
+            if is_root {
+                ::syslog::info!("root application terminated (pid={:?}, status={:?})", pid, status);
+                self.processes.remove(&pid);
+                self.root_app = None;
+                return Ok(Some(status));
+            }
+
+            // A forked child terminated. Re-parent its surviving children to the root
+            // application (orphan adoption by init), then drop its bookkeeping. Without
+            // `waitpid()` there is no reaping step, so the record is removed immediately.
+            let parent: Option<ProcessIdentifier> = record.parent;
+
+            self.reparent_children(pid);
+
+            if let Some(parent) = parent {
+                if let Some(record) = self.processes.get_mut(&parent) {
+                    record.children.retain(|child| *child != pid);
+                }
+            }
+            self.processes.remove(&pid);
+
+            return Ok(None);
         }
 
-        // A non-daemon (or unregistered) process terminated — initiate shutdown.
-        // Return the exit status so procd can propagate it.
+        // The terminating process is unknown to the registry.
+        if self.root_app.is_some() {
+            // A forked child likely terminated before its lineage was registered (see the
+            // RegisterChild race). With no `waitpid()` to reap it, the event is ignored: the
+            // root application is still alive, so this is not a shutdown trigger.
+            ::syslog::info!(
+                "unregistered child terminated (pid={:?}, status={:?}) — ignoring",
+                pid,
+                status
+            );
+            return Ok(None);
+        }
+
+        // No root application has been registered yet — this is the root application terminating
+        // without having forked. Initiate shutdown and propagate the exit status.
         Ok(Some(status))
+    }
+
+    /// Re-parents the surviving children of `pid` to the root application.
+    fn reparent_children(&mut self, pid: ProcessIdentifier) {
+        let root: ProcessIdentifier = match self.root_app {
+            Some(root) => root,
+            None => return,
+        };
+
+        // Nothing to do if the terminating process is the root application itself.
+        if root == pid {
+            return;
+        }
+
+        let children: Vec<ProcessIdentifier> = match self.processes.get(&pid) {
+            Some(record) => record.children.clone(),
+            None => return,
+        };
+
+        for child in children {
+            if let Some(record) = self.processes.get_mut(&child) {
+                record.parent = Some(root);
+            }
+            if let Some(record) = self.processes.get_mut(&root) {
+                if !record.children.contains(&child) {
+                    record.children.push(child);
+                }
+            }
+        }
     }
 
     /// Returns `true` if `name` belongs to a system daemon that should not trigger shutdown.
@@ -200,6 +305,17 @@ impl ProcessDaemon {
                     let message: Message = self.handle_lookup(destination, message)?;
                     ::sys::kcall::ipc::__kcall_send(&message)?;
                 },
+                ProcessManagementMessageHeader::RegisterChild => {
+                    let message: RegisterChildMessage =
+                        RegisterChildMessage::from_bytes(message.payload);
+                    let message: Message = self.handle_register_child(destination, message)?;
+                    ::sys::kcall::ipc::__kcall_send(&message)?;
+                },
+                ProcessManagementMessageHeader::GetParent => {
+                    let message: GetParentMessage = GetParentMessage::from_bytes(message.payload);
+                    let message: Message = self.handle_get_parent(destination, message)?;
+                    ::sys::kcall::ipc::__kcall_send(&message)?;
+                },
                 // Ignore all other messages.
                 _ => {},
             }
@@ -227,7 +343,7 @@ impl ProcessDaemon {
                     }
 
                     ::syslog::info!("signing up process (pid={:?}, name={:?})", pid, s.as_bytes());
-                    self.processes.insert(pid, (s, None));
+                    self.processes.insert(pid, ProcessRecord::new(s, None));
                     message::signup_response(destination, pid, 0)
                 },
                 Err(_) => {
@@ -236,6 +352,81 @@ impl ProcessDaemon {
             },
             Err(_) => message::signup_response(destination, pid, ErrorCode::InvalidArgument.get()),
         }
+    }
+
+    // Handles a register-child message.
+    fn handle_register_child(
+        &mut self,
+        destination: ProcessIdentifier,
+        message: RegisterChildMessage,
+    ) -> Result<Message, Error> {
+        let child: ProcessIdentifier = message.child;
+        let parent: ProcessIdentifier = message.parent;
+
+        ::syslog::info!("registering child (child={:?}, parent={:?})", child, parent);
+
+        // Ensure that a record exists for the parent. If the parent is seen for the first time, it
+        // has no parent of its own and is therefore the root application.
+        self.processes
+            .entry(parent)
+            .or_insert_with(|| ProcessRecord::new(String::new(), None));
+
+        // Identify the root application: the first non-daemon process with no parent of its own.
+        if self.root_app.is_none() {
+            if let Some(record) = self.processes.get(&parent) {
+                if record.parent.is_none() && !Self::is_daemon(&record.name) {
+                    self.root_app = Some(parent);
+                }
+            }
+        }
+
+        // A forked child inherits the name of its parent.
+        let child_name: String = self
+            .processes
+            .get(&parent)
+            .map(|record| record.name.clone())
+            .unwrap_or_default();
+
+        // Insert or update the child record.
+        match self.processes.get_mut(&child) {
+            Some(record) => {
+                record.parent = Some(parent);
+            },
+            None => {
+                self.processes
+                    .insert(child, ProcessRecord::new(child_name, Some(parent)));
+            },
+        }
+
+        // Append the child to the parent's list of children.
+        if let Some(record) = self.processes.get_mut(&parent) {
+            if !record.children.contains(&child) {
+                record.children.push(child);
+            }
+        }
+
+        message::register_child_response(destination, 0)
+    }
+
+    // Handles a get-parent message.
+    fn handle_get_parent(
+        &mut self,
+        destination: ProcessIdentifier,
+        message: GetParentMessage,
+    ) -> Result<Message, Error> {
+        let pid: ProcessIdentifier = message.pid;
+
+        // Resolve the parent. Processes with no recorded parent (the root application) and unknown
+        // processes report the process manager daemon as their parent (init-like semantics).
+        let parent: ProcessIdentifier = self
+            .processes
+            .get(&pid)
+            .and_then(|record| record.parent)
+            .unwrap_or(crate::PROCD);
+
+        ::syslog::info!("get parent (pid={:?}, parent={:?})", pid, parent);
+
+        message::get_parent_response(destination, parent, 0)
     }
 
     // Handles a lookup message.
@@ -267,10 +458,10 @@ impl ProcessDaemon {
         };
 
         // Check if process is the memory daemon.
-        for (pid, (pname, _identity)) in self.processes.iter() {
-            ::syslog::info!("looking up process (name={:?}, pname={:?})", name, pname);
+        for (pid, record) in self.processes.iter() {
+            ::syslog::info!("looking up process (name={:?}, pname={:?})", name, record.name);
 
-            if pname == name {
+            if record.name == name {
                 let message: Message = message::lookup_response(destination, *pid, 0)?;
                 return Ok(message);
             }
@@ -287,8 +478,13 @@ impl ProcessDaemon {
     pub fn shutdown(&mut self) {
         ::syslog::info!("shutting down process manager daemon...");
 
-        for (pid, (pname, _identity)) in self.processes.iter() {
-            ::syslog::info!("shutting down process (pid={:?}, name={:?})", pid, pname);
+        // Drop bookkeeping for forked children: only live daemons need to be shut down cleanly,
+        // and dead processes will never produce further termination events.
+        self.processes
+            .retain(|_pid, record| Self::is_daemon(&record.name));
+
+        for (pid, record) in self.processes.iter() {
+            ::syslog::info!("shutting down process (pid={:?}, name={:?})", pid, record.name);
             let message: Message =
                 message::shutdown_request(*pid, 0).expect("failed to broadcast shutdown message");
             ::sys::kcall::ipc::__kcall_send(&message)
@@ -310,10 +506,10 @@ impl ProcessDaemon {
                             i32::from_le_bytes(message.payload[4..8].try_into().unwrap());
 
                         // De-register process.
-                        if let Some((name, _identity)) = self.processes.remove(&pid) {
+                        if let Some(record) = self.processes.remove(&pid) {
                             ::syslog::info!(
                                 "process terminated (name={:?}, pid={:?}, status={:?})",
-                                name,
+                                record.name,
                                 pid,
                                 status
                             );

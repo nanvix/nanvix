@@ -1,28 +1,20 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+use ::sys::error::Error;
+
 //==================================================================================================
 // Modules
 //==================================================================================================
 
-mod getegid;
-mod geteuid;
-mod getgid;
-mod getparent;
-mod getuid;
-mod lookup;
-mod register_child;
-mod signup;
+mod fork;
 
 //==================================================================================================
-// Exports
+// Standalone Functions
 //==================================================================================================
 
-pub use getegid::getegid;
-pub use geteuid::geteuid;
-pub use getgid::getgid;
-pub use getparent::get_parent;
-pub use getuid::getuid;
-pub use lookup::lookup;
-pub use register_child::register_child;
-pub use signup::signup;
+/// Runs every `fork()` test.
+pub fn run_all() -> Result<(), Error> {
+    fork::run()?;
+    Ok(())
+}

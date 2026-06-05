@@ -34,15 +34,23 @@ extern crate alloc;
 pub const PROCD: ProcessIdentifier = ProcessIdentifier::INITD;
 
 pub use message::{
+    get_parent_request,
+    get_parent_response,
     lookup_request,
     lookup_response,
+    register_child_request,
+    register_child_response,
     shutdown_request,
     signup_request,
     signup_response,
+    GetParentMessage,
+    GetParentResponseMessage,
     LookupMessage,
     LookupResponseMessage,
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
+    RegisterChildMessage,
+    RegisterChildResponseMessage,
     ShutdownMessage,
     SignupMessage,
     SignupResponseMessage,
@@ -51,11 +59,13 @@ pub use message::{
 use ::sys::pm::ProcessIdentifier;
 #[cfg(feature = "syscall")]
 pub use syscall::{
+    get_parent,
     getegid,
     geteuid,
     getgid,
     getuid,
     lookup,
+    register_child,
     signup,
 };
 

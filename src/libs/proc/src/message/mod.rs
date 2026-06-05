@@ -5,7 +5,9 @@
 // Modules
 //==================================================================================================
 
+mod getparent;
 mod lookup;
+mod register_child;
 mod shutdown;
 mod signup;
 
@@ -13,7 +15,9 @@ mod signup;
 // Exports
 //==================================================================================================
 
+pub use getparent::*;
 pub use lookup::*;
+pub use register_child::*;
 pub use shutdown::*;
 pub use signup::*;
 
@@ -52,6 +56,14 @@ pub enum ProcessManagementMessageHeader {
     Lookup = 4,
     /// Lookup response.
     LookupResponse = 5,
+    /// Register-child operation.
+    RegisterChild = 6,
+    /// Register-child response.
+    RegisterChildResponse = 7,
+    /// Get-parent operation.
+    GetParent = 8,
+    /// Get-parent response.
+    GetParentResponse = 9,
 }
 
 impl TryFrom<u8> for ProcessManagementMessageHeader {
@@ -64,6 +76,10 @@ impl TryFrom<u8> for ProcessManagementMessageHeader {
             3 => Ok(ProcessManagementMessageHeader::SignupResponse),
             4 => Ok(ProcessManagementMessageHeader::Lookup),
             5 => Ok(ProcessManagementMessageHeader::LookupResponse),
+            6 => Ok(ProcessManagementMessageHeader::RegisterChild),
+            7 => Ok(ProcessManagementMessageHeader::RegisterChildResponse),
+            8 => Ok(ProcessManagementMessageHeader::GetParent),
+            9 => Ok(ProcessManagementMessageHeader::GetParentResponse),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid process management message")),
         }
     }
@@ -77,6 +93,10 @@ impl From<&ProcessManagementMessageHeader> for u8 {
             ProcessManagementMessageHeader::SignupResponse => 3,
             ProcessManagementMessageHeader::Lookup => 4,
             ProcessManagementMessageHeader::LookupResponse => 5,
+            ProcessManagementMessageHeader::RegisterChild => 6,
+            ProcessManagementMessageHeader::RegisterChildResponse => 7,
+            ProcessManagementMessageHeader::GetParent => 8,
+            ProcessManagementMessageHeader::GetParentResponse => 9,
         }
     }
 }
