@@ -672,6 +672,46 @@ fn test_readdir_past_end_returns_empty() {
     assert_eq!(entry.name_len, 0, "expected end-of-directory signal");
 }
 
+#[test]
+fn test_readdir_reports_directory_flag_and_size() {
+    let (mut handler, tmp) = setup();
+    fs::create_dir(tmp.path().join("subdir")).unwrap();
+    fs::write(tmp.path().join("data.bin"), b"hello world").unwrap();
+
+    let fd: i32 = open_file(&mut handler, "/", O_RDONLY | O_DIRECTORY);
+    assert!(fd > 0);
+
+    // Collect every entry, recording the is_dir flag and size reported by hostfsd.
+    // vfsd's getdents conversion (step_getdents) consumes only is_dir to set d_type;
+    // size is exercised here to confirm hostfsd reports it correctly for files.
+    let mut seen: Vec<(String, bool, u64)> = Vec::new();
+    for offset in 0u32..10 {
+        let payload: [u8; Message::PAYLOAD_SIZE] = make_readdir_request_at(fd, offset);
+        let response: [u8; Message::PAYLOAD_SIZE] = handler.handle_request(&payload).unwrap();
+        let entry: ReadDirEntry = ReadDirEntry::decode(&response);
+        if entry.name_len == 0 {
+            break;
+        }
+        let name: String = core::str::from_utf8(&entry.name[..entry.name_len as usize])
+            .expect("valid utf8")
+            .to_string();
+        seen.push((name, entry.is_dir != 0, entry.size));
+    }
+
+    let subdir: &(String, bool, u64) = seen
+        .iter()
+        .find(|(n, _, _)| n == "subdir")
+        .expect("subdir listed");
+    assert!(subdir.1, "subdir should be flagged as a directory");
+
+    let data: &(String, bool, u64) = seen
+        .iter()
+        .find(|(n, _, _)| n == "data.bin")
+        .expect("data.bin listed");
+    assert!(!data.1, "data.bin should not be flagged as a directory");
+    assert_eq!(data.2, 11, "data.bin size should be reported");
+}
+
 //==================================================================================================
 // Tests: Sandbox Security
 //==================================================================================================
