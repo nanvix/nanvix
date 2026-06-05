@@ -1262,6 +1262,30 @@ fn make_lstat_request(path: &str) -> [u8; Message::PAYLOAD_SIZE] {
     )
 }
 
+/// Builds an inline path-based following-stat request payload.
+fn make_pathstat_request(path: &str) -> [u8; Message::PAYLOAD_SIZE] {
+    let req: LstatRequest =
+        LstatRequest::from_path(path.as_bytes()).expect("test path fits in MAX_INLINE_PATH_LEN");
+    req.serialize(
+        SystemCallMessageHeader::HostFsPathStatRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
+}
+
+/// Serializes a long PATHSTAT (following stat) request: `[op_id:4][path_len:2][path:N]`.
+///
+/// Reuses the lstat wire body but tags the parts with the PathStat part header so the
+/// handler dispatches to `handle_long_pathstat` (the multi-part following-stat path).
+fn make_long_pathstat_parts(path: &str, op_id: OperationId) -> Vec<[u8; Message::PAYLOAD_SIZE]> {
+    let path_bytes: &[u8] = path.as_bytes();
+    let path_len: u16 = path_bytes.len() as u16;
+    let mut data: Vec<u8> = Vec::new();
+    data.extend_from_slice(&op_id.to_le_bytes());
+    data.extend_from_slice(&path_len.to_le_bytes());
+    data.extend_from_slice(path_bytes);
+    split_into_parts(SystemCallMessageHeader::HostFsPathStatRequestPart, &data)
+}
+
 /// Builds an inline Readlink request payload.
 fn make_readlink_request(path: &str) -> [u8; Message::PAYLOAD_SIZE] {
     let req: ReadlinkRequest =
@@ -1304,6 +1328,22 @@ fn host_symlink(target: &std::path::Path, link: &std::path::Path) -> std::io::Re
     {
         // Use symlink_file by default; tests that need dir links create them explicitly.
         std::os::windows::fs::symlink_file(target, link)
+    }
+}
+
+/// Creates a symbolic link to a directory on the host.
+///
+/// On Windows, directory symlinks are a distinct object type from file symlinks
+/// (`symlink_dir` vs `symlink_file`); using the file variant for a directory target
+/// produces a link the OS will not traverse. On Unix there is a single `symlink(2)`.
+fn host_symlink_dir(target: &std::path::Path, link: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(target, link)
+    }
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::symlink_dir(target, link)
     }
 }
 
@@ -1372,6 +1412,136 @@ fn test_lstat_symlink_does_not_follow() {
     let r = LstatResponse::decode(&resp).expect("decode");
     assert_eq!(r.status, 0, "lstat should succeed");
     assert_eq!(r.kind, file_kind::SYMLINK, "lstat must NOT follow the symlink");
+}
+
+#[test]
+fn test_pathstat_regular_file() {
+    let (mut handler, tmp) = setup();
+    fs::write(tmp.path().join("file.txt"), b"hello").unwrap();
+    let req = make_pathstat_request("file.txt");
+    let resp = handler.handle_request(&req).expect("response expected");
+    let r = LstatResponse::decode(&resp).expect("decode");
+    assert_eq!(r.status, 0, "pathstat should succeed");
+    assert_eq!(r.kind, file_kind::REGULAR);
+    assert_eq!(r.size, 5);
+}
+
+#[test]
+fn test_pathstat_directory() {
+    let (mut handler, tmp) = setup();
+    fs::create_dir(tmp.path().join("dir")).unwrap();
+    let req = make_pathstat_request("dir");
+    let resp = handler.handle_request(&req).expect("response expected");
+    let r = LstatResponse::decode(&resp).expect("decode");
+    assert_eq!(r.status, 0, "pathstat should succeed");
+    assert_eq!(r.kind, file_kind::DIRECTORY);
+}
+
+#[test]
+fn test_pathstat_nonexistent_fails() {
+    let (mut handler, _tmp) = setup();
+    let req = make_pathstat_request("missing");
+    let resp = handler.handle_request(&req).expect("response expected");
+    let r = LstatResponse::decode(&resp).expect("decode");
+    assert_eq!(r.status, HOSTFS_ERR_NOT_FOUND);
+}
+
+#[test]
+fn test_pathstat_symlink_follows_to_target() {
+    let (mut handler, tmp) = setup();
+    fs::write(tmp.path().join("target.txt"), b"contents").unwrap();
+    if let Err(e) = host_symlink(std::path::Path::new("target.txt"), &tmp.path().join("link")) {
+        if is_privilege_error(&e) {
+            println!("skipping: host cannot create symlinks ({})", e);
+            return;
+        }
+        panic!("host_symlink failed: {}", e);
+    }
+    let req = make_pathstat_request("link");
+    let resp = handler.handle_request(&req).expect("response expected");
+    let r = LstatResponse::decode(&resp).expect("decode");
+    assert_eq!(r.status, 0, "pathstat should succeed");
+    assert_eq!(
+        r.kind,
+        file_kind::REGULAR,
+        "pathstat must FOLLOW the symlink and report the target's kind"
+    );
+    assert_eq!(r.size, 8, "size should be the target file's size");
+}
+
+#[test]
+fn test_pathstat_symlink_to_directory_follows() {
+    let (mut handler, tmp) = setup();
+    fs::create_dir(tmp.path().join("realdir")).unwrap();
+    if let Err(e) = host_symlink_dir(std::path::Path::new("realdir"), &tmp.path().join("dlink")) {
+        if is_privilege_error(&e) {
+            println!("skipping: host cannot create symlinks ({})", e);
+            return;
+        }
+        panic!("host_symlink failed: {}", e);
+    }
+    let req = make_pathstat_request("dlink");
+    let resp = handler.handle_request(&req).expect("response expected");
+    let r = LstatResponse::decode(&resp).expect("decode");
+    assert_eq!(r.status, 0, "pathstat should succeed");
+    assert_eq!(
+        r.kind,
+        file_kind::DIRECTORY,
+        "pathstat must follow a symlink that points at a directory"
+    );
+}
+
+#[test]
+fn test_pathstat_dangling_symlink_fails() {
+    let (mut handler, tmp) = setup();
+    if let Err(e) =
+        host_symlink(std::path::Path::new("does_not_exist"), &tmp.path().join("dangling"))
+    {
+        if is_privilege_error(&e) {
+            println!("skipping: host cannot create symlinks ({})", e);
+            return;
+        }
+        panic!("host_symlink failed: {}", e);
+    }
+    let req = make_pathstat_request("dangling");
+    let resp = handler.handle_request(&req).expect("response expected");
+    let r = LstatResponse::decode(&resp).expect("decode");
+    assert_eq!(
+        r.status, HOSTFS_ERR_NOT_FOUND,
+        "following a dangling symlink must surface the target's ENOENT"
+    );
+}
+
+#[test]
+fn test_pathstat_long_path_multipart_follows_symlink() {
+    let (mut handler, tmp) = setup();
+    // Use a link name long enough that the request body exceeds the inline limit,
+    // forcing the multi-part assembler / `handle_long_pathstat` dispatch path.
+    let link_name: &str = "long-pathstat-link-name-padding-AAAAAAAAAAAA";
+    assert!(
+        link_name.len() > MAX_INLINE_PATH_LEN,
+        "link name must exceed the inline path limit to exercise the multi-part path"
+    );
+    fs::write(tmp.path().join("target.txt"), b"contents").unwrap();
+    if let Err(e) = host_symlink(std::path::Path::new("target.txt"), &tmp.path().join(link_name)) {
+        if is_privilege_error(&e) {
+            println!("skipping: host cannot create symlinks ({})", e);
+            return;
+        }
+        panic!("host_symlink failed: {}", e);
+    }
+    let parts = make_long_pathstat_parts(link_name, OperationId::from_raw(77));
+    assert!(parts.len() >= 2, "long pathstat should require multiple parts, got {}", parts.len());
+    let response = feed_parts(&mut handler, &parts);
+    assert_eq!(get_op_id(&response), OperationId::from_raw(77));
+    let r = LstatResponse::decode(&response).expect("decode");
+    assert_eq!(r.status, 0, "long pathstat should succeed");
+    assert_eq!(
+        r.kind,
+        file_kind::REGULAR,
+        "multi-part pathstat must FOLLOW the symlink and report the target's kind"
+    );
+    assert_eq!(r.size, 8, "size should be the target file's size");
 }
 
 #[test]

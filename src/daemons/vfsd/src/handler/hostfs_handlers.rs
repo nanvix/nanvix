@@ -260,21 +260,22 @@ pub(crate) fn handle_fstatat_with_hostfs(
     };
 
     if hostfs::is_hostfs_path(final_path) {
-        // Only forward when the caller explicitly requested no-follow semantics. For
-        // following stat (the default for `stat(2)`), there is no path-based stat IKC
-        // yet, so we report `OperationNotSupported` and the caller is expected to use
-        // `fstat` on an already-opened FD.
-        //
-        // TODO(#hostfs-statat-follow): add a path-based following stat operation so
-        // both modes of `fstatat` are supported uniformly over hostfs.
-        if request.flag & ::sysapi::fcntl::atflags::AT_SYMLINK_NOFOLLOW == 0 {
-            return Some(vec![build_error(source, ErrorCode::OperationNotSupported)]);
-        }
+        // Both stat modes are supported over hostfs. No-follow (`AT_SYMLINK_NOFOLLOW`)
+        // maps to a path-based lstat; following stat (the default for `stat(2)`) maps to
+        // a path-based following stat. Both reuse the same response wire format
+        // (`LstatResponse`) and completion path (`complete_lstat`); only the host-side
+        // resolution differs (no-follow vs follow of the final component).
+        let no_follow: bool = request.flag & ::sysapi::fcntl::atflags::AT_SYMLINK_NOFOLLOW != 0;
         if !pending.has_capacity() {
             return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
         }
         let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        match hostfs::send_lstat_request(final_path, op_id) {
+        let (send_result, kind) = if no_follow {
+            (hostfs::send_lstat_request(final_path, op_id), PendingOpKind::Lstat)
+        } else {
+            (hostfs::send_pathstat_request(final_path, op_id), PendingOpKind::PathStat)
+        };
+        match send_result {
             Ok(()) => {
                 if pending
                     .insert(
@@ -282,7 +283,7 @@ pub(crate) fn handle_fstatat_with_hostfs(
                         PendingOp {
                             source_tid: source,
                             source_pid: None,
-                            kind: PendingOpKind::Lstat,
+                            kind,
                         },
                     )
                     .is_err()
