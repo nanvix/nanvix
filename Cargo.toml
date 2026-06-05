@@ -36,6 +36,7 @@ members = [
         "src/libs/nanvix-terminal",
         "src/libs/no_fail",
         "src/libs/nvx",
+        "src/libs/nvx-crt0",
         "src/libs/posix",
         "src/libs/proc",
         "src/libs/profiler",
@@ -176,6 +177,7 @@ nanvixd = { path = "src/utils/nanvixd", default-features = false }
 no_fail = { path = "src/libs/no_fail", default-features = false }
 num_enum = { version = "0.7.6", default-features = false }
 nvx = { path = "src/libs/nvx", default-features = false }
+nvx-crt0 = { path = "src/libs/nvx-crt0", default-features = false }
 oci-spec = "0.10.0"
 profiler = { path = "src/libs/profiler", default-features = false }
 protobuf = "3.7"
