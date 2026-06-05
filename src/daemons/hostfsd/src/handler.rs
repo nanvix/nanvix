@@ -170,7 +170,8 @@ impl HostFsHandler {
             | SystemCallMessageHeader::HostFsRmdirRequestPart
             | SystemCallMessageHeader::HostFsSymlinkRequestPart
             | SystemCallMessageHeader::HostFsReadlinkRequestPart
-            | SystemCallMessageHeader::HostFsLstatRequestPart => {
+            | SystemCallMessageHeader::HostFsLstatRequestPart
+            | SystemCallMessageHeader::HostFsPathStatRequestPart => {
                 self.handle_long_part(syscall_msg.header, &syscall_msg.payload)
             },
             // Single-message requests: dispatch inline.
@@ -196,6 +197,7 @@ impl HostFsHandler {
             SystemCallMessageHeader::HostFsFlushRequest => run(self, Self::handle_flush),
             SystemCallMessageHeader::HostFsReadlinkRequest => run(self, Self::handle_readlink),
             SystemCallMessageHeader::HostFsLstatRequest => run(self, Self::handle_lstat),
+            SystemCallMessageHeader::HostFsPathStatRequest => run(self, Self::handle_pathstat),
             other => {
                 log::error!("hostfsd: unexpected message header: {:?}", other);
                 let mut response = [0u8; Message::PAYLOAD_SIZE];
@@ -347,6 +349,18 @@ impl HostFsHandler {
                 } else {
                     log::error!("hostfsd: failed to deserialize long lstat request");
                     set_header(&mut response, SystemCallMessageHeader::HostFsLstatResponse as u16);
+                    set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
+                }
+            },
+            SystemCallMessageHeader::HostFsPathStatRequestPart => {
+                if let Some(req) = long_msg::deserialize_long_lstat(&assembled) {
+                    self.handle_long_pathstat(req, &mut response);
+                } else {
+                    log::error!("hostfsd: failed to deserialize long pathstat request");
+                    set_header(
+                        &mut response,
+                        SystemCallMessageHeader::HostFsPathStatResponse as u16,
+                    );
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
@@ -656,6 +670,19 @@ impl HostFsHandler {
         self.do_lstat(&req.path, response);
     }
 
+    /// Handles a fully assembled long path-based following STAT request.
+    ///
+    /// Reuses the lstat wire format ([`long_msg::LongLstatRequest`]) because the request
+    /// shape is identical (a single path). The distinguishing behavior is in
+    /// [`Self::do_pathstat`], which follows symbolic links.
+    fn handle_long_pathstat(
+        &mut self,
+        req: long_msg::LongLstatRequest,
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        self.do_pathstat(&req.path, response);
+    }
+
     /// Handles an inline single-message READLINK request.
     fn handle_readlink(
         &mut self,
@@ -728,6 +755,48 @@ impl HostFsHandler {
             },
         };
         self.do_lstat(path_str, response);
+    }
+
+    /// Handles an inline single-message path-based following STAT request.
+    ///
+    /// Reuses the [`LstatRequest`] wire format (a single inline path). Unlike
+    /// [`Self::handle_lstat`], the resolution follows symbolic links (see
+    /// [`Self::do_pathstat`]).
+    fn handle_pathstat(
+        &mut self,
+        payload: &[u8; Message::PAYLOAD_SIZE],
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        let req: LstatRequest = match LstatRequest::decode(payload) {
+            Some(r) => r,
+            None => {
+                set_header(response, SystemCallMessageHeader::HostFsPathStatResponse as u16);
+                let err = LstatResponse {
+                    status: HOSTFS_ERR_INVALID,
+                    size: 0,
+                    mode: 0,
+                    kind: file_kind::OTHER,
+                };
+                err.encode(response);
+                return;
+            },
+        };
+        let path_len: usize = (req.path_len as usize).min(MAX_INLINE_PATH_LEN);
+        let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
+            Ok(s) => s,
+            Err(_) => {
+                set_header(response, SystemCallMessageHeader::HostFsPathStatResponse as u16);
+                let err = LstatResponse {
+                    status: HOSTFS_ERR_INVALID,
+                    size: 0,
+                    mode: 0,
+                    kind: file_kind::OTHER,
+                };
+                err.encode(response);
+                return;
+            },
+        };
+        self.do_pathstat(path_str, response);
     }
 
     /// Shared `readlink` implementation used by both the inline and multi-part
@@ -928,6 +997,60 @@ impl HostFsHandler {
         };
 
         match fs::symlink_metadata(&host_path) {
+            Ok(meta) => {
+                let kind: u8 = metadata_kind(&meta);
+                let mode: u32 = metadata_mode(&meta, kind);
+                let resp = LstatResponse {
+                    status: 0,
+                    size: meta.len(),
+                    mode,
+                    kind,
+                };
+                resp.encode(response);
+            },
+            Err(e) => {
+                let err = LstatResponse {
+                    status: io_error_to_code(&e),
+                    size: 0,
+                    mode: 0,
+                    kind: file_kind::OTHER,
+                };
+                err.encode(response);
+            },
+        }
+    }
+
+    /// Shared path-based *following* stat implementation used by both the inline and
+    /// multi-part request handlers.
+    ///
+    /// This is the following counterpart to [`Self::do_lstat`]: it resolves the path
+    /// with [`Sandbox::resolve`] (which follows symbolic links within the sandbox) and
+    /// queries [`fs::metadata`] (which follows the final component). It is the host-side
+    /// implementation of a following `fstatat`/`stat(2)` over hostfs.
+    ///
+    /// The response reuses [`LstatResponse`] (identical wire shape: status, size, mode,
+    /// kind) but is tagged with the [`SystemCallMessageHeader::HostFsPathStatResponse`]
+    /// header. Because the final component is followed, [`metadata_kind`] never reports
+    /// [`file_kind::SYMLINK`]: a dangling final link surfaces as the host `ENOENT`, and a
+    /// resolved link reports the target's kind.
+    fn do_pathstat(&mut self, path_str: &str, response: &mut [u8; Message::PAYLOAD_SIZE]) {
+        set_header(response, SystemCallMessageHeader::HostFsPathStatResponse as u16);
+
+        let host_path: PathBuf = match self.sandbox.resolve(path_str) {
+            Some(p) => p,
+            None => {
+                let err = LstatResponse {
+                    status: HOSTFS_ERR_PERMISSION,
+                    size: 0,
+                    mode: 0,
+                    kind: file_kind::OTHER,
+                };
+                err.encode(response);
+                return;
+            },
+        };
+
+        match fs::metadata(&host_path) {
             Ok(meta) => {
                 let kind: u8 = metadata_kind(&meta);
                 let mode: u32 = metadata_mode(&meta, kind);

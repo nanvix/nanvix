@@ -452,3 +452,36 @@ pub fn send_lstat_request(path: &str, op_id: OperationId) -> Result<(), ::sys::e
 
     send_long_request(&buf, SystemCallMessageHeader::HostFsLstatRequestPart)
 }
+
+/// Sends a path-based *following* STAT request to hostfsd.
+///
+/// This is the following counterpart to [`send_lstat_request`]: it stats the path after
+/// following any final symbolic link (the default `stat(2)`/`fstatat` semantics). It
+/// reuses the lstat request wire format (path in, [`LstatResponse`] out) and is
+/// distinguished only by the `HostFsPathStat*` headers. Uses the single-message inline
+/// form when the path fits within [`MAX_INLINE_PATH_LEN`], and falls back to a
+/// multi-part request otherwise.
+pub fn send_pathstat_request(
+    path: &str,
+    op_id: OperationId,
+) -> Result<(), ::sys::error::ErrorCode> {
+    let relative: &str = strip_mount_prefix(path);
+    let path_bytes: &[u8] = relative.as_bytes();
+
+    // Inline fast path: avoids the multi-part assembler when the path fits.
+    if let Some(req) = LstatRequest::from_path(path_bytes) {
+        let payload: [u8; Message::PAYLOAD_SIZE] =
+            req.serialize(SystemCallMessageHeader::HostFsPathStatRequest as u16, op_id);
+        return if send_request(&payload) {
+            Ok(())
+        } else {
+            Err(::sys::error::ErrorCode::IoErr)
+        };
+    }
+
+    // Serialize the multi-part body via hostfs-api (reuses the lstat wire format).
+    let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_lstat_request(op_id, path_bytes)
+        .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+
+    send_long_request(&buf, SystemCallMessageHeader::HostFsPathStatRequestPart)
+}
