@@ -58,6 +58,7 @@ pub fn test() -> Result<(), Error> {
     // readlink/lstat take the single-message fast path.
     test_symlink_create_readlink()?;
     test_lstat_does_not_follow()?;
+    test_stat_follows_symlink()?;
     test_unlink_removes_symlink_not_target(&target_path)?;
     test_symlink_to_nonexistent_target()?;
 
@@ -107,6 +108,32 @@ fn test_lstat_does_not_follow() -> Result<(), Error> {
         panic!("lstat: expected SymbolicLink, got {:?}", attr.file_type());
     }
     ::syslog::info!("mount-test: [PASS] lstat reports SymbolicLink without following");
+
+    ::syscall::safe::fs::unlink(&link_path)?;
+    Ok(())
+}
+
+/// Tests that `stat` follows a symlink while `lstat` does not, exercising both
+/// hostfs stat paths (following pathstat vs. no-follow lstat) over the same link.
+fn test_stat_follows_symlink() -> Result<(), Error> {
+    let link_path: FileSystemPath = FileSystemPath::new("/mnt/symlink-stat.lnk")?;
+    let target: FileSystemPath = FileSystemPath::new("symlink-target.txt")?;
+    let _ = ::syscall::safe::fs::unlink(&link_path);
+
+    ::syscall::safe::fs::symlink(&target, &link_path)?;
+
+    // No-follow path: lstat reports the link itself.
+    let lattr = ::syscall::safe::fs::lstat(&link_path)?;
+    if lattr.file_type() != FileType::SymbolicLink {
+        panic!("lstat: expected SymbolicLink, got {:?}", lattr.file_type());
+    }
+
+    // Following path: stat resolves the link and reports the target's type.
+    let sattr = ::syscall::safe::fs::stat(&link_path)?;
+    if sattr.file_type() != FileType::RegularFile {
+        panic!("stat: expected RegularFile (followed target), got {:?}", sattr.file_type());
+    }
+    ::syslog::info!("mount-test: [PASS] stat follows symlink while lstat does not");
 
     ::syscall::safe::fs::unlink(&link_path)?;
     Ok(())
