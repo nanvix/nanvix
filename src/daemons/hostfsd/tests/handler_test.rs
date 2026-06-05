@@ -1272,6 +1272,20 @@ fn make_pathstat_request(path: &str) -> [u8; Message::PAYLOAD_SIZE] {
     )
 }
 
+/// Serializes a long PATHSTAT (following stat) request: `[op_id:4][path_len:2][path:N]`.
+///
+/// Reuses the lstat wire body but tags the parts with the PathStat part header so the
+/// handler dispatches to `handle_long_pathstat` (the multi-part following-stat path).
+fn make_long_pathstat_parts(path: &str, op_id: OperationId) -> Vec<[u8; Message::PAYLOAD_SIZE]> {
+    let path_bytes: &[u8] = path.as_bytes();
+    let path_len: u16 = path_bytes.len() as u16;
+    let mut data: Vec<u8> = Vec::new();
+    data.extend_from_slice(&op_id.to_le_bytes());
+    data.extend_from_slice(&path_len.to_le_bytes());
+    data.extend_from_slice(path_bytes);
+    split_into_parts(SystemCallMessageHeader::HostFsPathStatRequestPart, &data)
+}
+
 /// Builds an inline Readlink request payload.
 fn make_readlink_request(path: &str) -> [u8; Message::PAYLOAD_SIZE] {
     let req: ReadlinkRequest =
@@ -1496,6 +1510,38 @@ fn test_pathstat_dangling_symlink_fails() {
         r.status, HOSTFS_ERR_NOT_FOUND,
         "following a dangling symlink must surface the target's ENOENT"
     );
+}
+
+#[test]
+fn test_pathstat_long_path_multipart_follows_symlink() {
+    let (mut handler, tmp) = setup();
+    // Use a link name long enough that the request body exceeds the inline limit,
+    // forcing the multi-part assembler / `handle_long_pathstat` dispatch path.
+    let link_name: &str = "long-pathstat-link-name-padding-AAAAAAAAAAAA";
+    assert!(
+        link_name.len() > MAX_INLINE_PATH_LEN,
+        "link name must exceed the inline path limit to exercise the multi-part path"
+    );
+    fs::write(tmp.path().join("target.txt"), b"contents").unwrap();
+    if let Err(e) = host_symlink(std::path::Path::new("target.txt"), &tmp.path().join(link_name)) {
+        if is_privilege_error(&e) {
+            println!("skipping: host cannot create symlinks ({})", e);
+            return;
+        }
+        panic!("host_symlink failed: {}", e);
+    }
+    let parts = make_long_pathstat_parts(link_name, OperationId::from_raw(77));
+    assert!(parts.len() >= 2, "long pathstat should require multiple parts, got {}", parts.len());
+    let response = feed_parts(&mut handler, &parts);
+    assert_eq!(get_op_id(&response), OperationId::from_raw(77));
+    let r = LstatResponse::decode(&response).expect("decode");
+    assert_eq!(r.status, 0, "long pathstat should succeed");
+    assert_eq!(
+        r.kind,
+        file_kind::REGULAR,
+        "multi-part pathstat must FOLLOW the symlink and report the target's kind"
+    );
+    assert_eq!(r.size, 8, "size should be the target file's size");
 }
 
 #[test]
