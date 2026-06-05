@@ -192,11 +192,12 @@ fn test_symlink_to_nonexistent_target() -> Result<(), Error> {
     Ok(())
 }
 
-/// Tests that readlink/lstat work over the multi-part wire format.
+/// Tests that readlink/lstat/stat work over the multi-part wire format.
 ///
 /// Uses a link path whose wire form (after the `/mnt/` prefix is stripped) exceeds
 /// `hostfs_api::MAX_INLINE_PATH_LEN` (36 bytes), so vfsd sends the request through
-/// the multi-part assembler rather than the inline single-message fast path.
+/// the multi-part assembler rather than the inline single-message fast path. This
+/// covers both no-follow (`lstat`) and follow (`stat`) multi-part dispatch paths.
 fn test_long_path_multipart() -> Result<(), Error> {
     // Stripped wire path: "long-symlink-name-padding-AAAAAAAAAAAA.lnk" (42 bytes > 36).
     let link_path: FileSystemPath =
@@ -223,6 +224,17 @@ fn test_long_path_multipart() -> Result<(), Error> {
         panic!("lstat (multi-part request): expected SymbolicLink, got {:?}", attr.file_type());
     }
     ::syslog::info!("mount-test: [PASS] lstat works over multi-part request path");
+
+    // Following stat over the multi-part request path: `stat` must resolve the link
+    // and report the target's type (RegularFile), exercising `handle_long_pathstat`.
+    let sattr = ::syscall::safe::fs::stat(&link_path)?;
+    if sattr.file_type() != FileType::RegularFile {
+        panic!(
+            "stat (multi-part request): expected RegularFile (followed target), got {:?}",
+            sattr.file_type()
+        );
+    }
+    ::syslog::info!("mount-test: [PASS] stat follows symlink over multi-part request path");
 
     ::syscall::safe::fs::unlink(&link_path)?;
     Ok(())
