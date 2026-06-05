@@ -100,6 +100,24 @@ pub(crate) enum PendingOpKind {
     /// Path-based stat that follows the final symbolic link (default `stat(2)` semantics).
     /// Shares the `lstat` response wire format and completion path.
     PathStat,
+    /// getdents — directory listing over hostfs.
+    ///
+    /// hostfsd returns one entry per IKC round-trip, so a single guest `getdents`
+    /// call is served by an async sweep that issues repeated readdir requests under
+    /// the same op_id until `target_count` entries are collected or the directory is
+    /// exhausted. The accumulated entries are buffered here across round-trips.
+    Getdents {
+        /// Remote (hostfsd) directory file descriptor.
+        remote_fd: i32,
+        /// Guest-visible FD, used to persist the iteration cursor after completion.
+        guest_fd: i32,
+        /// Offset of the next directory entry to request.
+        next_offset: u32,
+        /// Number of entries the guest asked for in this `getdents` call.
+        target_count: usize,
+        /// Entries collected so far in this sweep.
+        entries: ::alloc::vec::Vec<::sysapi::dirent::posix_dent>,
+    },
 }
 
 //==================================================================================================
@@ -213,6 +231,14 @@ impl PendingQueue {
         self.ops.remove(&op_id)
     }
 
+    /// Returns a mutable reference to the pending operation for the given `op_id`.
+    ///
+    /// Used by multi-round-trip operations (e.g. getdents) that mutate buffered state
+    /// in place across IKC responses without removing the op until the sweep completes.
+    pub fn get_mut(&mut self, op_id: OperationId) -> Option<&mut PendingOp> {
+        self.ops.get_mut(&op_id)
+    }
+
     /// Returns true if there are no pending operations.
     #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
@@ -311,6 +337,141 @@ pub(crate) fn complete_pending_op(
         },
         PendingOpKind::Lstat => complete_lstat(pending.source_tid, response_payload),
         PendingOpKind::PathStat => complete_lstat(pending.source_tid, response_payload),
+        PendingOpKind::Getdents { .. } => {
+            // Getdents sweeps are driven entirely by the main event loop, which keeps
+            // the op buffered across round-trips and finalizes it via `finish_getdents`.
+            // Reaching here means a single-shot completion was attempted for a getdents
+            // op, which is a logic error.
+            ::syslog::error!("getdents pending op routed to single-shot completion");
+            send_response(&build_error(pending.source_tid, ErrorCode::IoErr));
+        },
+    }
+}
+
+/// Outcome of advancing a getdents sweep with one hostfs readdir response.
+pub(crate) enum GetdentsStep {
+    /// More entries are required; issue another readdir request for `remote_fd` at `offset`.
+    Continue {
+        /// Remote (hostfsd) directory file descriptor to query.
+        remote_fd: i32,
+        /// Offset of the next directory entry to request.
+        offset: u32,
+    },
+    /// The sweep is complete; call [`finish_getdents`] to send the response.
+    Done,
+}
+
+/// Advances a getdents sweep with a single hostfs readdir response.
+///
+/// Decodes one directory entry from `response_payload` and appends it to the op's
+/// buffer. A zero-length entry name marks end-of-directory. Returns whether another
+/// round-trip is required or the sweep is finished.
+///
+/// # Panics
+///
+/// Panics if `op` is not a [`PendingOpKind::Getdents`]; callers must route only getdents
+/// ops here.
+pub(crate) fn step_getdents(
+    op: &mut PendingOp,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+) -> GetdentsStep {
+    use ::sysapi::{
+        dirent::{
+            dirent_file_type,
+            posix_dent,
+        },
+        limits::NAME_MAX,
+    };
+
+    let PendingOpKind::Getdents {
+        remote_fd,
+        next_offset,
+        target_count,
+        entries,
+        ..
+    } = &mut op.kind
+    else {
+        unreachable!("step_getdents invoked with non-Getdents pending op");
+    };
+
+    let entry: ::hostfs_api::ReadDirEntry = ::hostfs_api::ReadDirEntry::decode(response_payload);
+
+    // A zero-length name marks the end of the directory.
+    if entry.name_len == 0 {
+        return GetdentsStep::Done;
+    }
+
+    // Inline names are bounded by the wire format; clamp to the guest NAME_MAX as well.
+    let name_len: usize = (entry.name_len as usize).min(::hostfs_api::MAX_DIR_ENTRY_NAME_LEN);
+    let copy_len: usize = name_len.min(NAME_MAX);
+
+    let mut dent: posix_dent = posix_dent {
+        // hostfs has no stable inode numbers; use a synthetic 1-based index.
+        d_ino: (*next_offset as u64) + 1,
+        d_reclen: core::mem::size_of::<posix_dent>() as u16,
+        d_type: if entry.is_dir != 0 {
+            dirent_file_type::DT_DIR
+        } else {
+            dirent_file_type::DT_REG
+        },
+        ..posix_dent::default()
+    };
+    dent.d_name[..copy_len].copy_from_slice(&entry.name[..copy_len]);
+    dent.d_name[copy_len] = 0;
+    entries.push(dent);
+
+    *next_offset += 1;
+
+    if entries.len() >= *target_count {
+        GetdentsStep::Done
+    } else {
+        GetdentsStep::Continue {
+            remote_fd: *remote_fd,
+            offset: *next_offset,
+        }
+    }
+}
+
+/// Finalizes a getdents sweep: persists the directory cursor and sends the response.
+///
+/// # Panics
+///
+/// Panics if `op` is not a [`PendingOpKind::Getdents`].
+pub(crate) fn finish_getdents(op: PendingOp) {
+    use ::syscall::{
+        dirent::message::GetDirectoryEntriesResponse,
+        message::MessagePartitioner,
+    };
+
+    let PendingOpKind::Getdents {
+        remote_fd,
+        guest_fd,
+        next_offset,
+        entries,
+        ..
+    } = op.kind
+    else {
+        unreachable!("finish_getdents invoked with non-Getdents pending op");
+    };
+
+    // Persist the iteration cursor so the next getdents call resumes where this left off.
+    // Guard against FD reuse: if the guest FD was closed and re-bound to a different host
+    // file while this sweep was in flight, do not clobber the unrelated handle's cursor.
+    if ::vfs::fd::vfs_hostfs_remote_fd(guest_fd) == Some(remote_fd) {
+        ::vfs::fd::vfs_hostfs_set_readdir_offset(guest_fd, next_offset);
+    }
+
+    let response: GetDirectoryEntriesResponse = GetDirectoryEntriesResponse::new(entries);
+    match response.into_parts(op.source_tid, ProcessIdentifier::VFSD, MessageType::Ipc) {
+        Ok(parts) => {
+            for part in parts {
+                send_response(&part);
+            }
+        },
+        Err(e) => {
+            ::syslog::error!("finish_getdents: into_parts failed (error={:?})", e);
+            send_response(&build_error(op.source_tid, ErrorCode::IoErr));
+        },
     }
 }
 
@@ -344,6 +505,7 @@ fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOA
             | (PendingOpKind::Readlink { .. }, SystemCallMessageHeader::HostFsReadlinkResponse)
             | (PendingOpKind::Lstat, SystemCallMessageHeader::HostFsLstatResponse)
             | (PendingOpKind::PathStat, SystemCallMessageHeader::HostFsPathStatResponse)
+            | (PendingOpKind::Getdents { .. }, SystemCallMessageHeader::HostFsReadDirResponse)
     )
 }
 
