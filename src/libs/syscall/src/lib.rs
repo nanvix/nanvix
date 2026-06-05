@@ -262,6 +262,9 @@ pub enum SystemCallMessageHeader {
     HostFsLstatRequest,
     HostFsLstatRequestPart,
     HostFsLstatResponse,
+    HostFsPathStatRequest,
+    HostFsPathStatRequestPart,
+    HostFsPathStatResponse,
     HostMountRequestPart,
     HostMountResponse,
     HostUmountRequestPart,
@@ -424,6 +427,9 @@ impl TryFrom<u16> for SystemCallMessageHeader {
             x if x == HostFsLstatRequest as u16 => Ok(HostFsLstatRequest),
             x if x == HostFsLstatRequestPart as u16 => Ok(HostFsLstatRequestPart),
             x if x == HostFsLstatResponse as u16 => Ok(HostFsLstatResponse),
+            x if x == HostFsPathStatRequest as u16 => Ok(HostFsPathStatRequest),
+            x if x == HostFsPathStatRequestPart as u16 => Ok(HostFsPathStatRequestPart),
+            x if x == HostFsPathStatResponse as u16 => Ok(HostFsPathStatResponse),
             _ => Err(()),
         }
     }
@@ -474,6 +480,9 @@ impl SystemCallMessageHeader {
                 | Self::HostFsLstatRequest
                 | Self::HostFsLstatRequestPart
                 | Self::HostFsLstatResponse
+                | Self::HostFsPathStatRequest
+                | Self::HostFsPathStatRequestPart
+                | Self::HostFsPathStatResponse
         )
     }
 
@@ -511,6 +520,9 @@ impl SystemCallMessageHeader {
             Self::HostFsLstatRequest | Self::HostFsLstatRequestPart => {
                 Some(Self::HostFsLstatResponse)
             },
+            Self::HostFsPathStatRequest | Self::HostFsPathStatRequestPart => {
+                Some(Self::HostFsPathStatResponse)
+            },
             _ => None,
         }
     }
@@ -543,6 +555,7 @@ impl SystemCallMessageHeader {
                 | Self::HostFsSymlinkResponse
                 | Self::HostFsReadlinkResponse
                 | Self::HostFsLstatResponse
+                | Self::HostFsPathStatResponse
         )
     }
 

@@ -97,6 +97,9 @@ pub(crate) enum PendingOpKind {
     },
     /// lstat — path-based stat that does not follow the final symbolic link.
     Lstat,
+    /// Path-based stat that follows the final symbolic link (default `stat(2)` semantics).
+    /// Shares the `lstat` response wire format and completion path.
+    PathStat,
 }
 
 //==================================================================================================
@@ -307,6 +310,7 @@ pub(crate) fn complete_pending_op(
             complete_readlink(pending.source_tid, response_payload, bufsiz)
         },
         PendingOpKind::Lstat => complete_lstat(pending.source_tid, response_payload),
+        PendingOpKind::PathStat => complete_lstat(pending.source_tid, response_payload),
     }
 }
 
@@ -339,6 +343,7 @@ fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOA
             | (PendingOpKind::Symlink, SystemCallMessageHeader::HostFsSymlinkResponse)
             | (PendingOpKind::Readlink { .. }, SystemCallMessageHeader::HostFsReadlinkResponse)
             | (PendingOpKind::Lstat, SystemCallMessageHeader::HostFsLstatResponse)
+            | (PendingOpKind::PathStat, SystemCallMessageHeader::HostFsPathStatResponse)
     )
 }
 
