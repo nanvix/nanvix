@@ -40,6 +40,8 @@ pub use message::{
     shutdown_request,
     signup_request,
     signup_response,
+    wait_request,
+    wait_response,
     ForkCloneMessage,
     ForkSyncMessage,
     LookupMessage,
@@ -50,6 +52,8 @@ pub use message::{
     ShutdownMessage,
     SignupMessage,
     SignupResponseMessage,
+    WaitMessage,
+    WaitResponseMessage,
 };
 
 #[cfg(feature = "syscall")]
@@ -60,6 +64,8 @@ pub use syscall::{
     getuid,
     lookup,
     signup,
+    wait,
+    WaitOutcome,
 };
 
 #[cfg(feature = "daemon")]

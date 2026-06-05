@@ -1,29 +1,20 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+use ::sys::error::Error;
+
 //==================================================================================================
 // Modules
 //==================================================================================================
 
-mod getegid;
-mod geteuid;
-mod getgid;
-mod getuid;
-mod lookup;
-mod signup;
-mod wait;
+mod waitpid;
 
 //==================================================================================================
-// Exports
+// Standalone Functions
 //==================================================================================================
 
-pub use getegid::getegid;
-pub use geteuid::geteuid;
-pub use getgid::getgid;
-pub use getuid::getuid;
-pub use lookup::lookup;
-pub use signup::signup;
-pub use wait::{
-    wait,
-    WaitOutcome,
-};
+/// Runs every `waitpid()` test.
+pub fn run_all() -> Result<(), Error> {
+    waitpid::run()?;
+    Ok(())
+}

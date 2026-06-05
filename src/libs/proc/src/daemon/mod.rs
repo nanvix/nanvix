@@ -13,6 +13,7 @@ use crate::{
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
     SignupMessage,
+    WaitMessage,
 };
 use ::alloc::{
     collections::btree_map::BTreeMap,
@@ -50,6 +51,10 @@ use ::sys::{
 // Structures
 //==================================================================================================
 
+/// `WNOHANG` wait option (mirrors `::sysapi::sys_wait::WNOHANG`). A `waitpid()` carrying this flag
+/// polls without blocking.
+const WNOHANG: i32 = 1;
+
 ///
 /// # Description
 ///
@@ -69,6 +74,9 @@ struct ProcessRecord {
     /// Used to acknowledge a fork-sync request regardless of whether it races ahead of the
     /// process-creation event.
     fork_clone_done: bool,
+    /// Termination status once the process has terminated and is awaiting reap by `waitpid()`.
+    /// `Some(status)` marks a zombie; `None` marks a live (or not-yet-terminated) process.
+    zombie: Option<i32>,
 }
 
 impl ProcessRecord {
@@ -80,8 +88,43 @@ impl ProcessRecord {
             parent,
             children: Vec::new(),
             fork_clone_done: false,
+            zombie: None,
         }
     }
+}
+
+///
+/// # Description
+///
+/// Selects which child(ren) a blocked waiter is waiting for.
+///
+enum WaitSelector {
+    /// Any child of the waiter.
+    Any,
+    /// A specific child of the waiter.
+    Pid(ProcessIdentifier),
+}
+
+impl WaitSelector {
+    /// Returns `true` if `child` matches this selector.
+    fn matches(&self, child: ProcessIdentifier) -> bool {
+        match self {
+            WaitSelector::Any => true,
+            WaitSelector::Pid(pid) => *pid == child,
+        }
+    }
+}
+
+///
+/// # Description
+///
+/// A parent process blocked in a `Wait` operation, awaiting a deferred reply.
+///
+struct BlockedWaiter {
+    /// Process identifier of the blocked waiter.
+    waiter: ProcessIdentifier,
+    /// Children that the waiter is waiting for.
+    selector: WaitSelector,
 }
 
 //==================================================================================================
@@ -101,6 +144,9 @@ pub struct ProcessDaemon {
     /// used rather than a map because only a handful of fork operations are ever pending
     /// concurrently, so a linear scan is cheaper than the overhead of an ordered map.
     pending_fork_syncs: Vec<(ProcessIdentifier, ProcessIdentifier)>,
+    /// Parents currently blocked in a `Wait` operation. A blocking `waitpid()` is parked here and
+    /// answered later, when a `ProcessTermination` event for a matching child arrives.
+    blocked: Vec<BlockedWaiter>,
 }
 
 impl ProcessDaemon {
@@ -129,6 +175,7 @@ impl ProcessDaemon {
             processes: BTreeMap::new(),
             init_proc: None,
             pending_fork_syncs: Vec::new(),
+            blocked: Vec::new(),
         })
     }
 
@@ -341,19 +388,24 @@ impl ProcessDaemon {
                 return Ok(Some(status));
             }
 
-            // A forked child terminated. Re-parent its surviving children to the init
-            // process (orphan adoption by init), then drop its bookkeeping. Without
-            // `waitpid()` there is no reaping step, so the record is removed immediately.
+            // A forked child terminated — transition it to a zombie awaiting reap by `waitpid()`.
+            // Re-parent its surviving children to the init process (orphan adoption by init), then
+            // retain its exit status as a zombie so a current or future `waitpid()` can collect it.
             let parent: Option<ProcessIdentifier> = record.parent;
 
             self.reparent_children(pid);
 
-            if let Some(parent) = parent {
-                if let Some(record) = self.processes.get_mut(&parent) {
-                    record.children.retain(|child| *child != pid);
-                }
+            // Mark the process as a zombie, clearing its (now re-parented) children list.
+            if let Some(record) = self.processes.get_mut(&pid) {
+                record.children.clear();
+                record.zombie = Some(status);
             }
-            self.processes.remove(&pid);
+
+            // Wake a parent blocked in `waitpid()` (if any), which reaps the zombie immediately. If
+            // no parent is currently blocked, the zombie is retained until a future `waitpid()`.
+            if let Some(parent) = parent {
+                self.wake_waiter(parent, pid, status)?;
+            }
 
             return Ok(None);
         }
@@ -404,6 +456,119 @@ impl ProcessDaemon {
         }
     }
 
+    /// Handles a `Wait` request from `caller` selecting `(pid, options)`. Returns
+    /// `Ok(Some(reply))` for an immediate reply, or `Ok(None)` when the waiter blocks (the reply is
+    /// then produced later by the process-termination handler).
+    fn handle_wait(
+        &mut self,
+        caller: ProcessIdentifier,
+        message: WaitMessage,
+    ) -> Result<Option<Message>, Error> {
+        let pid: ProcessIdentifier = message.pid;
+        let options: i32 = message.options;
+
+        // Resolve the selector. A positive `pid` selects that specific child; every other value
+        // selects any child of the caller. The POSIX process-group selectors (`pid == 0` and
+        // `pid < -1`) are treated as "any child" because Nanvix has no process groups yet (see the
+        // `waitpid()` limitations). Since only parent/child lineage is tracked, every eligible
+        // child is already a child of the caller, so this is a harmless superset.
+        let selector: WaitSelector = if i32::from(pid) > 0 {
+            WaitSelector::Pid(pid)
+        } else {
+            WaitSelector::Any
+        };
+
+        // Enumerate the eligible children of the caller.
+        let children: Vec<ProcessIdentifier> = match self.processes.get(&caller) {
+            Some(record) => record
+                .children
+                .iter()
+                .copied()
+                .filter(|child| selector.matches(*child))
+                .collect(),
+            None => Vec::new(),
+        };
+
+        // The caller has no eligible children: report `ECHILD`.
+        if children.is_empty() {
+            let reply: Message = message::wait_response(
+                caller,
+                ProcessIdentifier::from(0),
+                0,
+                ErrorCode::NoChildProcess.get(),
+            )?;
+            return Ok(Some(reply));
+        }
+
+        // Look for a ready zombie among the eligible children (lowest pid for determinism).
+        let mut zombies: Vec<(ProcessIdentifier, i32)> = children
+            .iter()
+            .filter_map(|child| {
+                self.processes
+                    .get(child)
+                    .and_then(|record| record.zombie.map(|status| (*child, status)))
+            })
+            .collect();
+        zombies.sort_by_key(|(child, _)| *child);
+
+        if let Some((child, status)) = zombies.first().copied() {
+            // Reap the zombie and reply immediately.
+            self.reap(caller, child);
+            let reply: Message = message::wait_response(caller, child, status, 0)?;
+            return Ok(Some(reply));
+        }
+
+        // No zombie is ready.
+        if options & WNOHANG != 0 {
+            // Non-blocking poll: report that no child is ready (child pid of zero, no error).
+            let reply: Message = message::wait_response(caller, ProcessIdentifier::from(0), 0, 0)?;
+            return Ok(Some(reply));
+        }
+
+        // Block the waiter; the reply is deferred until a matching child terminates.
+        self.blocked.push(BlockedWaiter {
+            waiter: caller,
+            selector,
+        });
+
+        Ok(None)
+    }
+
+    /// Wakes a parent blocked in `waitpid()` that is waiting for `child` (a child of `parent`) and
+    /// reaps the zombie. If no waiter is blocked, the zombie is left in place until a future
+    /// `waitpid()` reaps it.
+    fn wake_waiter(
+        &mut self,
+        parent: ProcessIdentifier,
+        child: ProcessIdentifier,
+        status: i32,
+    ) -> Result<(), Error> {
+        if let Some(index) = self
+            .blocked
+            .iter()
+            .position(|waiter| waiter.waiter == parent && waiter.selector.matches(child))
+        {
+            let waiter: BlockedWaiter = self.blocked.remove(index);
+
+            // Reap the zombie before sending the deferred response.
+            self.reap(parent, child);
+
+            let reply: Message = message::wait_response(waiter.waiter, child, status, 0)?;
+            ::sys::kcall::ipc::__kcall_send(&reply)?;
+        }
+
+        Ok(())
+    }
+
+    /// Reaps a zombie `child` of `parent`, removing it from the registry and from the parent's list
+    /// of children.
+    fn reap(&mut self, parent: ProcessIdentifier, child: ProcessIdentifier) {
+        if let Some(record) = self.processes.get_mut(&parent) {
+            record.children.retain(|c| *c != child);
+        }
+        self.processes.remove(&child);
+    }
+
     /// Returns `true` if `name` belongs to a system daemon that should not trigger shutdown.
     fn is_daemon(name: &str) -> bool {
         ::config::daemons::DAEMON_NAMES.contains(&name)
@@ -442,6 +607,14 @@ impl ProcessDaemon {
                 ProcessManagementMessageHeader::ForkSync => {
                     let message: ForkSyncMessage = ForkSyncMessage::from_bytes(message.payload);
                     self.handle_fork_sync(destination, message.child);
+                },
+                ProcessManagementMessageHeader::Wait => {
+                    let message: WaitMessage = WaitMessage::from_bytes(message.payload);
+                    // The reply is deferred (no send here) when the waiter blocks; it is produced
+                    // later by the process-termination handler.
+                    if let Some(reply) = self.handle_wait(destination, message)? {
+                        ::sys::kcall::ipc::__kcall_send(&reply)?;
+                    }
                 },
                 // Ignore all other messages.
                 _ => {},
@@ -749,7 +922,9 @@ impl ProcessDaemon {
         ::syslog::info!("shutting down process manager daemon...");
 
         // Drop bookkeeping for forked children: only live daemons need to be shut down cleanly,
-        // and dead processes will never produce further termination events.
+        // and dead processes will never produce further termination events. Any parent still
+        // blocked in `waitpid()` is torn down with the VM, so its blocked-waiter entry is dropped.
+        self.blocked.clear();
         self.processes
             .retain(|_pid, record| Self::is_daemon(&record.name));
 

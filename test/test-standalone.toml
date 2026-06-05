@@ -91,6 +91,12 @@ expected_exit_code = 13
 
 [[tests]]
 executor = "http"
+program = "./bin/waitpid-rust.initrd"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
 program = "./bin/stress-rust.initrd"
 input = "[]"
 expected_output = "ok"
@@ -159,6 +165,11 @@ program = "./bin/test-fork-guestfs.initrd"
 extra_nanvixd_args = "-ramfs ./bin/test-fork-guestfs.img"
 expect_empty_output = true
 expected_exit_code = 13
+
+[[tests]]
+executor = "terminal"
+program = "./bin/waitpid-rust.initrd"
+expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
