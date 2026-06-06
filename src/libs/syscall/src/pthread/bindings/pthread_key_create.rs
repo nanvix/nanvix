@@ -32,10 +32,16 @@ pub unsafe extern "C" fn pthread_key_create(
         return ErrorCode::InvalidArgument.get();
     }
 
-    // Check if destructor is not null.
+    // Destructors are not yet supported (would require per-thread
+    // cleanup on thread exit, which Nanvix's single-threaded
+    // user-space model has no use for).  Rather than refuse the
+    // call -- which breaks libraries like OpenSSL that always pass
+    // a non-null destructor as a defensive measure -- we accept
+    // the call, log a one-line warning, and silently drop the
+    // destructor.  Worst case is a per-thread resource leak at
+    // thread exit, which is benign in a process-lifetime model.
     if destructor.is_some() {
-        ::syslog::warn!("pthread_key_create(): destructors are not supported");
-        return ErrorCode::OperationNotSupported.get();
+        ::syslog::warn!("pthread_key_create(): destructor ignored (not yet supported)");
     }
 
     // Create key.
