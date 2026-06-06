@@ -419,31 +419,78 @@ use alloc::{
 
 /// Handles getdents with hostfs awareness.
 ///
-/// If the FD is backed by hostfs, returns `OperationNotSupported`. Directory listing
-/// over hostfs requires multiple sequential IKC round-trips (one per entry), which
-/// cannot be performed synchronously within the single-message getdents handler without
-/// blocking the event loop.
+/// If the FD is backed by hostfs, the directory listing is served by an async sweep:
+/// hostfsd returns one entry per IKC round-trip, so a single `getdents` call issues
+/// repeated readdir requests (under one op_id) until the requested entry count is
+/// reached or the directory is exhausted. The per-FD iteration cursor is persisted in
+/// the VFS handle so successive `getdents` calls resume where the previous one stopped.
 ///
-/// # Known limitation
+/// # Concurrency
 ///
-/// `getdents` on hostfs-backed file descriptors is not yet supported. This means that
-/// `ls /mnt/` (or any readdir-based directory listing) will fail with
-/// `OperationNotSupported` for paths served by hostfsd. Users must access individual
-/// files by full path.
+/// Like POSIX `readdir`, concurrent directory reads on a *shared* FD are unspecified:
+/// the per-FD cursor advances only when a sweep completes, so two overlapping
+/// `getdents` calls on the same FD may observe duplicated or skipped entries. Programs
+/// must not share a directory FD across threads doing simultaneous reads.
 ///
-/// TODO(#hostfs-getdents): convert getdents into an async multi-step operation via the
-/// pending queue so that `ls /mnt/` works from the guest.
+/// Returns `None` when the request was forwarded to hostfsd (the response is sent later
+/// from the event loop). Non-hostfs FDs fall through to the synchronous VFS handler.
 pub(crate) fn handle_getdents_with_hostfs(
     source: ThreadIdentifier,
     msg: SystemCallMessage,
-) -> Vec<Message> {
+    pending: &mut PendingQueue,
+) -> Option<Vec<Message>> {
     let req: GetDirectoryEntriesRequest = GetDirectoryEntriesRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
-    if ::vfs::fd::is_hostfs_fd(fd) {
-        ::syslog::warn!("getdents on hostfs fd {} not supported (use hostfs readdir protocol)", fd);
-        return vec![build_error(source, ErrorCode::OperationNotSupported)];
+
+    if let Some(remote_fd) = ::vfs::fd::vfs_hostfs_remote_fd(fd) {
+        // Reject getdents on hostfs non-directory FDs (e.g. regular files). The cursor
+        // accessor returns `Some(_)` only for hostfs directory handles, so a `None`
+        // here means the FD is a hostfs file. Fail rather than forward to hostfsd (which
+        // would look like an empty directory). `InvalidDirectory` (ENOTDIR) is the
+        // POSIX-correct error for `getdents` on a non-directory; note this differs from
+        // the non-hostfs FAT path, which surfaces `InvalidArgument` for the same case.
+        let Some(start_offset) = ::vfs::fd::vfs_hostfs_readdir_offset(fd) else {
+            return Some(vec![build_error(source, ErrorCode::InvalidDirectory)]);
+        };
+        let count: usize = req.count as usize;
+        if count == 0 {
+            return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+        }
+        // Do not trust the guest-supplied count: cap it to the protocol maximum so a
+        // malformed request cannot drive an unbounded sweep.
+        if count > GetDirectoryEntriesRequest::MAX_ENTRIES {
+            return Some(vec![build_error(source, ErrorCode::TooBig)]);
+        }
+        if !pending.has_capacity() {
+            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+        }
+        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
+        if hostfs::send_readdir_request(remote_fd, start_offset, op_id).is_err() {
+            return Some(vec![build_error(source, ErrorCode::IoErr)]);
+        }
+        if pending
+            .insert(
+                op_id,
+                PendingOp {
+                    source_tid: source,
+                    source_pid: None,
+                    kind: PendingOpKind::Getdents {
+                        remote_fd,
+                        guest_fd: fd,
+                        next_offset: start_offset,
+                        target_count: count,
+                        entries: alloc::vec::Vec::new(),
+                    },
+                },
+            )
+            .is_err()
+        {
+            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+        }
+        return None;
     }
-    super::long::handle_getdents(source, msg)
+
+    Some(super::long::handle_getdents(source, msg))
 }
 
 pub(crate) fn handle_openat_with_hostfs(

@@ -197,6 +197,12 @@ pub struct HostFsHandle {
     is_dir: bool,
     /// Absolute path used to open this handle (stored only for directories to support dirfd).
     path: Option<String>,
+    /// Next directory entry index to return on the following `getdents` call.
+    ///
+    /// hostfsd serves directory listings via offset-based iteration (one entry per
+    /// `offset`), so vfsd tracks the per-FD cursor here. It advances as entries are
+    /// consumed and is meaningful only for directory handles.
+    readdir_offset: u32,
 }
 
 impl HostFsHandle {
@@ -209,6 +215,7 @@ impl HostFsHandle {
             remote_fd,
             is_dir,
             path: if is_dir { path } else { None },
+            readdir_offset: 0,
         }
     }
 
@@ -225,6 +232,16 @@ impl HostFsHandle {
     /// Returns the path used to open this handle (only available for directories).
     pub fn path(&self) -> Option<&str> {
         self.path.as_deref()
+    }
+
+    /// Returns the current directory iteration cursor.
+    pub fn readdir_offset(&self) -> u32 {
+        self.readdir_offset
+    }
+
+    /// Sets the directory iteration cursor.
+    pub fn set_readdir_offset(&mut self, offset: u32) {
+        self.readdir_offset = offset;
     }
 }
 
@@ -450,6 +467,37 @@ pub fn vfs_hostfs_remote_fd(fd: c_int) -> Option<i32> {
 /// Returns `true` if the given FD is backed by the host filesystem.
 pub fn is_hostfs_fd(fd: c_int) -> bool {
     vfs_hostfs_remote_fd(fd).is_some()
+}
+
+/// Returns the current directory iteration cursor for a hostfs directory FD.
+///
+/// Returns `None` if the FD is not a hostfs directory handle (including hostfs
+/// regular files), so callers can use this to distinguish hostfs directories from
+/// hostfs files.
+pub fn vfs_hostfs_readdir_offset(fd: c_int) -> Option<u32> {
+    let slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd).ok()?;
+    let entry: &VfsEntry = slot.as_ref()?;
+    match &entry.handle {
+        VfsFileHandle::HostFs(h) if h.is_dir() => Some(h.readdir_offset()),
+        _ => None,
+    }
+}
+
+/// Updates the directory iteration cursor for a hostfs directory FD.
+///
+/// Returns `true` if the FD is a hostfs directory handle and the cursor was updated.
+/// The cursor is left untouched for non-directory hostfs handles (regular files).
+pub fn vfs_hostfs_set_readdir_offset(fd: c_int, offset: u32) -> bool {
+    let Ok(mut slot) = FD_TABLE.lock(fd) else {
+        return false;
+    };
+    match slot.as_mut().map(|e| &mut e.handle) {
+        Some(VfsFileHandle::HostFs(h)) if h.is_dir() => {
+            h.set_readdir_offset(offset);
+            true
+        },
+        _ => false,
+    }
 }
 
 //==================================================================================================
@@ -1026,8 +1074,10 @@ pub fn vfs_renameat(
     newdirfd: c_int,
     newpath: &str,
 ) -> Result<(), Fat32Error> {
-    let old_resolved: String = vfs_resolve_path(olddirfd, oldpath).ok_or(Fat32Error::InvalidArgument)?;
-    let new_resolved: String = vfs_resolve_path(newdirfd, newpath).ok_or(Fat32Error::InvalidArgument)?;
+    let old_resolved: String =
+        vfs_resolve_path(olddirfd, oldpath).ok_or(Fat32Error::InvalidArgument)?;
+    let new_resolved: String =
+        vfs_resolve_path(newdirfd, newpath).ok_or(Fat32Error::InvalidArgument)?;
     crate::rename(&old_resolved, &new_resolved)
 }
 

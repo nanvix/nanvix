@@ -246,10 +246,12 @@ pub(crate) fn handle_ipc_message(
             }
         },
         SystemCallMessageHeader::GetDirectoryEntriesRequest => {
-            let responses: Vec<Message> =
-                handler::handle_getdents_with_hostfs(source_tid, syscall_msg);
-            for response in responses {
-                send_response(&response);
+            if let Some(responses) =
+                handler::handle_getdents_with_hostfs(source_tid, syscall_msg, pending)
+            {
+                for response in responses {
+                    send_response(&response);
+                }
             }
         },
 
