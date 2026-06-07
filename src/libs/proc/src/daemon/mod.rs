@@ -343,7 +343,16 @@ impl ProcessDaemon {
                     }
 
                     ::syslog::info!("signing up process (pid={:?}, name={:?})", pid, s.as_bytes());
-                    self.processes.insert(pid, ProcessRecord::new(s, None));
+                    // Preserve any existing lineage (parent/children) that may have been recorded
+                    // by `RegisterChild` before this signup. Only update the process name.
+                    match self.processes.get_mut(&pid) {
+                        Some(record) => {
+                            record.name = s;
+                        },
+                        None => {
+                            self.processes.insert(pid, ProcessRecord::new(s, None));
+                        },
+                    }
                     message::signup_response(destination, pid, 0)
                 },
                 Err(_) => {
