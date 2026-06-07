@@ -430,13 +430,21 @@ impl ProcessDaemon {
         message::register_child_response(destination, 0)
     }
 
-    // Handles a get-parent message.
-    fn handle_get_parent(
-        &mut self,
-        destination: ProcessIdentifier,
-        message: GetParentMessage,
-    ) -> Result<Message, Error> {
         let pid: ProcessIdentifier = message.pid;
+
+        // Reject spoofed requests: only the calling process may query its own parent.
+        if pid != destination {
+            ::syslog::warn!(
+                "get_parent: sender mismatch (sender={:?}, pid={:?})",
+                destination,
+                pid
+            );
+            return message::get_parent_response(
+                destination,
+                crate::PROCD,
+                ErrorCode::OperationNotPermitted.get(),
+            );
+        }
 
         // Resolve the parent. Processes with no recorded parent (the root application) and unknown
         // processes report the process manager daemon as their parent (init-like semantics).
