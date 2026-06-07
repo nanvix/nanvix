@@ -372,8 +372,21 @@ impl ProcessDaemon {
         let child: ProcessIdentifier = message.child;
         let parent: ProcessIdentifier = message.parent;
 
-        ::syslog::info!("registering child (child={:?}, parent={:?})", child, parent);
+        // Reject spoofed registrations: only the parent process may register its own child.
+        if destination != parent {
+            ::syslog::warn!(
+                "register_child: sender mismatch (sender={:?}, parent={:?}, child={:?})",
+                destination,
+                parent,
+                child
+            );
+            return message::register_child_response(
+                destination,
+                ErrorCode::OperationNotPermitted.get(),
+            );
+        }
 
+        ::syslog::info!("registering child (child={:?}, parent={:?})", child, parent);
         // Ensure that a record exists for the parent. If the parent is seen for the first time, it
         // has no parent of its own and is therefore the root application.
         self.processes
