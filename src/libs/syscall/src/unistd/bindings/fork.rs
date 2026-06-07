@@ -40,7 +40,7 @@ pub extern "C" fn fork() -> pid_t {
         -1
     }
 
-    #[cfg(feature = "standalone")]
+    #[cfg(all(feature = "standalone", target_arch = "x86"))]
     {
         use crate::errno::__errno_location;
 
@@ -54,5 +54,18 @@ pub extern "C" fn fork() -> pid_t {
                 -1
             },
         }
+    }
+
+    #[cfg(all(feature = "standalone", not(target_arch = "x86")))]
+    {
+        use crate::errno::__errno_location;
+        use ::sys::error::ErrorCode;
+
+        ::syslog::debug!("fork(): not supported on this architecture");
+        // SAFETY: `__errno_location()` returns a valid pointer to the thread-local `errno`.
+        unsafe {
+            *__errno_location() = ErrorCode::InvalidSysCall.get();
+        }
+        -1
     }
 }
