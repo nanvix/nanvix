@@ -17,7 +17,7 @@ pub mod message;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
-        #[cfg(feature = "standalone")]
+        #[cfg(all(feature = "standalone", target_arch = "x86"))]
         pub mod fork;
        pub  mod syscall;
         pub use self::syscall::{
