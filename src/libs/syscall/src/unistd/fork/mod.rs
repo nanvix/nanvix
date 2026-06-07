@@ -278,7 +278,7 @@ pub fn do_fork() -> Result<pid_t, ErrorCode> {
     // Allocate the bootstrap stack for the child's main thread.
     let stack: *mut u8 = alloc_bootstrap_stack();
     if stack.is_null() {
-        return Err(ErrorCode::TryAgain);
+        return Err(ErrorCode::OutOfMemory);
     }
     // SAFETY: `boot_stack` is a valid local. The volatile write forces it to memory so the clone
     // captures it and the resumed child observes the parent-written value.
