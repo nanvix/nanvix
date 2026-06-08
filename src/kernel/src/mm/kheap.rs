@@ -171,9 +171,7 @@ impl Kheap {
             lemma_from_raw_parts_ptr_preconditions(addr, size, slab_size, heap_start_addr);
         }
 
-        #[cfg(not(verus_keep_ghost))]
         info!("heap size: {} MB", size / constants::MEGABYTE);
-        #[cfg(not(verus_keep_ghost))]
         info!("slab size: {} KB", slab_size / constants::KILOBYTE);
         proof_with! {alloc_map: Ghost(Map::<int, nat>::empty())};
         let kheap = Kheap {
