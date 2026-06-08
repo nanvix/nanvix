@@ -1842,6 +1842,7 @@ version = "0.16.19"
 dependencies = [
  "cc",
  "cfg-if",
+ "hostfs-api",
  "libc_string",
  "nvx",
  "nvx-crt0",
