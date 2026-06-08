@@ -87,6 +87,9 @@ pub struct SandboxConfig<T> {
     /// This must be provided if a Linux Daemon instance was not provided before sandbox initialization.
     l2: Option<bool>,
 
+    /// Whether networking system calls are enabled.
+    networking_enabled: bool,
+
     /// Phantom data to maintain the generic type parameter `T` in the structure.
     /// This is required because `T` is only used in single-process mode for the syscall table.
     #[cfg(not(feature = "single-process"))]
@@ -143,6 +146,7 @@ impl<T> SandboxConfig<T> {
     /// - `clh_bin_path`: Optional path to the cloud-hypervisor binary directory.
     /// - `tmp_directory`: Optional path to the temporary directory.
     /// - `l2`: Optional flag to deploy the Linux Daemon inside an L2 VM.
+    /// - `networking_enabled`: Whether networking system calls are enabled.
     ///
     /// # Returns
     ///
@@ -170,6 +174,7 @@ impl<T> SandboxConfig<T> {
         clh_bin_path: Option<String>,
         tmp_directory: Option<String>,
         l2: Option<bool>,
+        networking_enabled: bool,
     ) -> Self {
         Self {
             tenant_id: tenant_id.to_string(),
@@ -194,6 +199,7 @@ impl<T> SandboxConfig<T> {
             clh_bin_path,
             tmp_directory,
             l2,
+            networking_enabled,
             #[cfg(not(feature = "single-process"))]
             _phantom: PhantomData,
         }
@@ -408,6 +414,19 @@ impl<T> SandboxConfig<T> {
     ///
     pub fn l2(&self) -> Option<bool> {
         self.l2
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether networking system calls are enabled.
+    ///
+    /// # Returns
+    ///
+    /// `true` if networking is enabled; `false` otherwise.
+    ///
+    pub fn networking_enabled(&self) -> bool {
+        self.networking_enabled
     }
 
     ///

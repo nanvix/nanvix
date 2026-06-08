@@ -15,7 +15,7 @@
 pub const MAGIC: [u8; 4] = *b"NVMB";
 
 /// Current format version.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 /// Size of the image header in bytes.
 pub const HEADER_SIZE: usize = core::mem::size_of::<MultibinHeader>();
@@ -44,6 +44,10 @@ pub struct MultibinHeader {
     pub version: u32,
     /// Number of entries in the image.
     pub num_entries: u32,
+    /// Byte offset from the start of the image to the kernel arguments string.
+    pub kernel_args_offset: u32,
+    /// Length of the kernel arguments string in bytes.
+    pub kernel_args_size: u32,
     /// Reserved for future use — must be zero.
     pub reserved: u32,
 }
@@ -87,12 +91,8 @@ pub struct ParsedEntry {
 // Parser (no_std)
 //==================================================================================================
 
-///
-/// # Description
-///
 /// Maximum number of entries supported in a single multibinary image.
-///
-const MAX_ENTRIES: usize = 32;
+pub const MAX_ENTRIES: usize = 16;
 
 ///
 /// # Description
@@ -105,6 +105,10 @@ pub struct ParseResult {
     entries: [ParsedEntry; MAX_ENTRIES],
     /// Number of valid entries.
     count: usize,
+    /// Byte offset from the start of the image to the kernel arguments string.
+    kernel_args_offset: usize,
+    /// Length of the kernel arguments string in bytes.
+    kernel_args_size: usize,
 }
 
 impl ParseResult {
@@ -148,6 +152,24 @@ impl ParseResult {
             result: self,
             index: 0,
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the byte offset of the kernel arguments string within the image.
+    ///
+    pub fn kernel_args_offset(&self) -> usize {
+        self.kernel_args_offset
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the length of the kernel arguments string in bytes.
+    ///
+    pub fn kernel_args_size(&self) -> usize {
+        self.kernel_args_size
     }
 }
 
@@ -238,12 +260,25 @@ pub fn parse(data: &[u8]) -> Result<ParseResult, error::Error> {
     let num_entries: u32 = read_u32(data, 8);
     let num_entries_usize: usize = num_entries as usize;
 
-    // Validate reserved field is zero.
-    let reserved: u32 = read_u32(data, 12);
+    // Parse kernel arguments.
+    let kernel_args_offset: usize = read_u32(data, 12) as usize;
+    let kernel_args_size: usize = read_u32(data, 16) as usize;
+    let reserved: u32 = read_u32(data, 20);
     if reserved != 0 {
         return Err(error::Error::new(
             error::ErrorCode::InvalidArgument,
             "multibinary reserved field is non-zero",
+        ));
+    }
+    // Validate kernel args region is within bounds.
+    if kernel_args_size > 0
+        && kernel_args_offset
+            .checked_add(kernel_args_size)
+            .is_none_or(|end| end > data.len())
+    {
+        return Err(error::Error::new(
+            error::ErrorCode::InvalidArgument,
+            "multibinary kernel args out of bounds",
         ));
     }
 
@@ -315,6 +350,8 @@ pub fn parse(data: &[u8]) -> Result<ParseResult, error::Error> {
     Ok(ParseResult {
         entries,
         count: num_entries_usize,
+        kernel_args_offset,
+        kernel_args_size,
     })
 }
 
@@ -342,6 +379,7 @@ pub mod builder {
     ///
     pub struct MultibinBuilder {
         entries: Vec<BuildEntry>,
+        kernel_args: Vec<u8>,
     }
 
     impl MultibinBuilder {
@@ -353,6 +391,7 @@ pub mod builder {
         pub fn new() -> Self {
             Self {
                 entries: Vec::new(),
+                kernel_args: Vec::new(),
             }
         }
 
@@ -366,11 +405,38 @@ pub mod builder {
         /// - `elf_data`: Raw bytes of the ELF binary.
         /// - `cmdline`: Command-line string for this binary (UTF-8).
         ///
-        pub fn add(&mut self, elf_data: Vec<u8>, cmdline: &str) -> &mut Self {
+        /// # Returns
+        ///
+        /// A mutable reference to the builder on success, or an error if the maximum number of
+        /// entries has been reached.
+        ///
+        pub fn add(&mut self, elf_data: Vec<u8>, cmdline: &str) -> Result<&mut Self, error::Error> {
+            if self.entries.len() >= MAX_ENTRIES {
+                return Err(error::Error::new(
+                    error::ErrorCode::InvalidArgument,
+                    "maximum number of multibinary entries reached",
+                ));
+            }
             self.entries.push(BuildEntry {
                 elf_data,
                 cmdline: cmdline.as_bytes().to_vec(),
             });
+            Ok(self)
+        }
+
+        ///
+        /// # Description
+        ///
+        /// Sets the kernel arguments string for the image.
+        ///
+        /// Kernel arguments are stored once in the image header and apply to all entries.
+        ///
+        /// # Parameters
+        ///
+        /// - `kernel_args`: Kernel arguments string (UTF-8).
+        ///
+        pub fn set_kernel_args(&mut self, kernel_args: &str) -> &mut Self {
+            self.kernel_args = kernel_args.as_bytes().to_vec();
             self
         }
 
@@ -403,6 +469,10 @@ pub mod builder {
                 cursor += entry.cmdline.len();
             }
 
+            // Lay out kernel arguments string after per-entry cmdlines.
+            let kernel_args_offset: usize = cursor;
+            cursor += self.kernel_args.len();
+
             // Align to page boundary for first binary.
             let first_binary_offset: usize = align_up(cursor, PAGE_SIZE)?;
 
@@ -420,11 +490,22 @@ pub mod builder {
             // Build the image.
             let mut image: Vec<u8> = std::vec![0u8; total_size];
 
+            // Validate kernel args offset and size fit in u32.
+            if kernel_args_offset > u32::MAX as usize || self.kernel_args.len() > u32::MAX as usize
+            {
+                return Err(error::Error::new(
+                    error::ErrorCode::InvalidArgument,
+                    "multibinary kernel args offset or size exceeds u32",
+                ));
+            }
+
             // Write header.
             image[0..4].copy_from_slice(&MAGIC);
-            image[4..8].copy_from_slice(&(VERSION).to_le_bytes());
+            image[4..8].copy_from_slice(&VERSION.to_le_bytes());
             image[8..12].copy_from_slice(&(num_entries as u32).to_le_bytes());
-            image[12..16].copy_from_slice(&0u32.to_le_bytes());
+            image[12..16].copy_from_slice(&(kernel_args_offset as u32).to_le_bytes());
+            image[16..20].copy_from_slice(&(self.kernel_args.len() as u32).to_le_bytes());
+            image[20..24].copy_from_slice(&0u32.to_le_bytes()); // reserved
 
             // Write entry descriptors.
             for i in 0..num_entries {
@@ -452,6 +533,12 @@ pub mod builder {
             for (i, entry) in self.entries.iter().enumerate() {
                 let off: usize = cmdline_offsets[i];
                 image[off..off + entry.cmdline.len()].copy_from_slice(&entry.cmdline);
+            }
+
+            // Write kernel arguments string.
+            if !self.kernel_args.is_empty() {
+                image[kernel_args_offset..kernel_args_offset + self.kernel_args.len()]
+                    .copy_from_slice(&self.kernel_args);
             }
 
             // Write binary data.
@@ -491,8 +578,12 @@ mod tests {
     #[test]
     fn test_round_trip() {
         let mut builder: builder::MultibinBuilder = builder::MultibinBuilder::new();
-        builder.add(vec![0x7f, b'E', b'L', b'F', 1, 2, 3, 4], "testd");
-        builder.add(vec![0x7f, b'E', b'L', b'F', 5, 6, 7, 8], "procd;ENV=1");
+        builder
+            .add(vec![0x7f, b'E', b'L', b'F', 1, 2, 3, 4], "testd")
+            .unwrap();
+        builder
+            .add(vec![0x7f, b'E', b'L', b'F', 5, 6, 7, 8], "procd;ENV=1")
+            .unwrap();
 
         let image: Vec<u8> = builder.build().expect("build should succeed");
 
@@ -521,14 +612,49 @@ mod tests {
         // Validate page alignment of binary data.
         assert_eq!(e0.offset % PAGE_SIZE, 0);
         assert_eq!(e1.offset % PAGE_SIZE, 0);
+
+        // No kernel args by default.
+        assert_eq!(result.kernel_args_size(), 0);
+    }
+
+    #[test]
+    fn test_round_trip_with_kernel_args() {
+        let mut builder: builder::MultibinBuilder = builder::MultibinBuilder::new();
+        builder
+            .add(vec![0x7f, b'E', b'L', b'F', 1, 2, 3, 4], "testd")
+            .unwrap();
+        builder
+            .add(vec![0x7f, b'E', b'L', b'F', 5, 6, 7, 8], "procd;ENV=1")
+            .unwrap();
+        builder.set_kernel_args("snapshot verbose");
+
+        let image: Vec<u8> = builder.build().expect("build should succeed");
+
+        // Parse the image back.
+        let result: ParseResult = parse(&image).expect("parse should succeed");
+        assert_eq!(result.count(), 2);
+        let ka_off: usize = result.kernel_args_offset();
+        let ka_size: usize = result.kernel_args_size();
+        assert_eq!(
+            core::str::from_utf8(&image[ka_off..ka_off + ka_size]).unwrap(),
+            "snapshot verbose"
+        );
+
+        // Per-entry cmdlines should not contain kernel args.
+        let e0: &ParsedEntry = result.get(0).expect("entry 0 should exist");
+        assert_eq!(
+            core::str::from_utf8(&image[e0.cmdline_offset..e0.cmdline_offset + e0.cmdline_size])
+                .unwrap(),
+            "testd"
+        );
     }
 
     #[test]
     fn test_iterator() {
         let mut builder: builder::MultibinBuilder = builder::MultibinBuilder::new();
-        builder.add(vec![1, 2, 3], "a");
-        builder.add(vec![4, 5, 6], "b");
-        builder.add(vec![7, 8, 9], "c");
+        builder.add(vec![1, 2, 3], "a").unwrap();
+        builder.add(vec![4, 5, 6], "b").unwrap();
+        builder.add(vec![7, 8, 9], "c").unwrap();
 
         let image: Vec<u8> = builder.build().expect("build should succeed");
         let result: ParseResult = parse(&image).expect("parse should succeed");

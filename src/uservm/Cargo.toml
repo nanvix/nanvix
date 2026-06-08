@@ -25,14 +25,16 @@ cfg-if = { workspace = true }
 config = { workspace = true }
 control-plane-api = { workspace = true }
 elf = { workspace = true, features = ["std"] }
-fatfs = { workspace = true }
 gdbstub = { workspace = true, optional = true }
 gdbstub_arch = { workspace = true, optional = true }
-hyperlight-host = { workspace = true, optional = true }
+hostfs-api = { workspace = true }
+hostfsd = { workspace = true }
+koptions = { workspace = true, features = ["std"] }
 log = { workspace = true }
-mkramfs = { workspace = true }
 multibin = { workspace = true, features = ["std"] }
 multiimage = { workspace = true, features = ["std"] }
+nanvix-sandbox-config = { workspace = true }
+networkd = { workspace = true }
 profiler = { workspace = true, features = ["auto-calibrate"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"], optional = true }
@@ -40,7 +42,6 @@ static_assert = { workspace = true }
 sys = { workspace = true, features = ["std"] }
 syscall = { workspace = true }
 syslog = { workspace = true, features = ["std"] }
-tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -57,9 +58,8 @@ windows = { workspace = true }
 [features]
 default = ["microvm"]
 gdb = ["microvm", "dep:gdbstub", "dep:gdbstub_arch"]
-hyperlight = ["dep:hyperlight-host", "config/hyperlight"]
 microvm = ["config/microvm"]
-whp = ["config/whp"]
+whp = ["microvm", "config/whp"]
 # Enables fine-grained time profiling.
 profile-time = ["dep:serde_json"]
 timestamp-messages = ["profiler/timestamp-messages"]

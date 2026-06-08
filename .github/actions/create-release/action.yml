@@ -1,0 +1,61 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Create Release"
+description: "Create a release tag on merge commits to dev"
+
+inputs:
+  bump-type:
+    description: "Version bump type: patch, minor, or major"
+    required: true
+    default: "patch"
+  skip-merge-check:
+    description: "Skip the merge commit verification (for manual dispatch releases)"
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Verify merge commit"
+      id: verify-merge
+      shell: bash
+      run: |
+        if [ "${{ inputs.skip-merge-check }}" = "true" ]; then
+          echo "Merge commit check skipped (manual dispatch)."
+          echo "is_merge=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        # Check if the current commit is a merge commit (has multiple parents).
+        PARENT_COUNT=$(git rev-list --parents -n 1 HEAD | wc -w)
+        # A merge commit has at least 3 words: commit_hash parent1 parent2
+        if [ "$PARENT_COUNT" -lt 3 ]; then
+          echo "Not a merge commit, skipping release creation."
+          echo "is_merge=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        echo "Merge commit detected, proceeding with release creation."
+        echo "is_merge=true" >> "$GITHUB_OUTPUT"
+
+    - name: "Configure Git"
+      if: steps.verify-merge.outputs.is_merge == 'true'
+      shell: bash
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git remote set-url origin git@github.com:${{ github.repository }}.git
+
+    - name: "Create release"
+      if: steps.verify-merge.outputs.is_merge == 'true'
+      shell: bash
+      # This step runs the release script, which:
+      # - Increments the version in Cargo.toml and regenerates Cargo.lock.
+      # - Commits the version bump with a standardized message.
+      # - Requires the following secret to be available in the workflow:
+      #   - DEPLOY_PRIVATE_SSH_KEY: used in the checkout step for SSH-based operations.
+      run: |
+        EXTRA_ARGS=""
+        if [ "${{ inputs.skip-merge-check }}" = "true" ]; then
+          EXTRA_ARGS="--skip-merge-check"
+        fi
+        python3 scripts/create-release.py --${{ inputs.bump-type }} --push ${EXTRA_ARGS}

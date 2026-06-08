@@ -23,6 +23,7 @@ use ::chrono::Local;
 use ::nanvix::{
     hwloc::HwLoc,
     log::DEFAULT_LOG_DIRECTORY,
+    sandbox_config::NetworkingMode,
     syscomm::SocketType,
 };
 use ::std::{
@@ -46,7 +47,6 @@ use ::std::{
 #[derive(Debug, Clone)]
 pub struct Args {
     /// Optional HTTP server socket address (host:port). If present, enables HTTP mode.
-    #[cfg(unix)]
     http_sockaddr: Option<String>,
     /// Directory path containing Nanvix binaries.
     binary_directory: String,
@@ -82,9 +82,20 @@ pub struct Args {
     snapshot_path: Option<String>,
     /// Optional host directory to mount on the guest (standalone mode only).
     mount_directory: Option<String>,
+    /// Optional kernel arguments written to guest control registers (standalone mode only).
+    kernel_args: Option<String>,
     /// Optional GDB server port: when set, the uservm starts a GDB RSP server on this TCP port.
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
+    /// Networking mode (applies to all deployment modes).
+    networking_mode: NetworkingMode,
+    /// When `true`, route nanvixd's logs to stdout instead of a auto-named file.
+    log_to_stdout: bool,
+    /// Optional path of the standalone gateway endpoint -- the host-side
+    /// rendezvous point where a consumer reads the guest's stdout/stderr
+    /// and writes to its stdin. UDS path on Unix, named pipe path on
+    /// Windows. Defaults to a per-process auto path when omitted.
+    gateway_sockaddr: Option<String>,
 }
 
 //==================================================================================================
@@ -95,7 +106,6 @@ impl Args {
     /// Command-line flag that prints usage information.
     pub const OPT_HELP: &'static str = "-help";
     /// Command-line option that sets the HTTP socket address.
-    #[cfg(unix)]
     pub const OPT_HTTP_SOCKADDR: &'static str = "-http-addr";
     /// Command-line option that sets the binary directory path.
     pub const OPT_BIN_DIRECTORY: &'static str = "-bin-dir";
@@ -131,9 +141,18 @@ impl Args {
     pub const OPT_SNAPSHOT: &'static str = "-snapshot";
     /// Command-line option for host directory to mount on the guest (standalone mode only).
     pub const OPT_MOUNT_DIRECTORY: &'static str = "-mount";
+    /// Command-line option for kernel arguments (standalone mode only).
+    pub const OPT_KERNEL_ARGS: &'static str = "-kernel-args";
     /// Command-line option for GDB server port (standalone mode only).
     #[cfg(feature = "gdb")]
     pub const OPT_GDB_PORT: &'static str = "-gdb-port";
+    /// Command-line flag that enables host networking for the guest.
+    pub const OPT_ALLOW_HOST_NETWORKING: &'static str = "-allow-host-networking";
+    /// Command-line flag that routes nanvixd's logs to stdout instead of the auto-named file.
+    pub const OPT_LOG_TO_STDOUT: &'static str = "-log-to-stdout";
+    /// Command-line option for the standalone gateway endpoint (UDS
+    /// path on Unix, named pipe path on Windows).
+    pub const OPT_GATEWAY_SOCKADDR: &'static str = "-gateway-sockaddr";
 
     ///
     /// # Description
@@ -154,7 +173,6 @@ impl Args {
     /// the parsing issue or validation failure.
     ///
     pub fn parse(args: Vec<String>) -> Result<Self> {
-        #[cfg(unix)]
         let mut http_sockaddr: Option<String> = None;
         let mut binary_directory: String = config::DEFAULT_BIN_DIRECTORY.to_string();
         let mut clh_bin_path: String = config::DEFAULT_CLH_BIN_PATH.to_string();
@@ -171,6 +189,7 @@ impl Args {
         let mut hwloc: Option<HwLoc> = None;
         let mut netns_pool_size: usize = Self::DEFAULT_NETNS_POOL_SIZE;
         let mut log_directory: String = DEFAULT_LOG_DIRECTORY.to_string();
+        let mut log_directory_set: bool = false;
         let mut l2: bool = false;
         let mut l2_snapshot_path: String = String::new();
         let mut control_plane_socket_type: Option<SocketType> = None;
@@ -181,8 +200,12 @@ impl Args {
         let mut tmp_directory: String = DEFAULT_TMP_DIRECTORY.to_string();
         let mut snapshot_path: Option<String> = None;
         let mut mount_directory: Option<String> = None;
+        let mut kernel_args: Option<String> = None;
         #[cfg(feature = "gdb")]
         let mut gdb_port: Option<u16> = None;
+        let mut networking_mode: NetworkingMode = NetworkingMode::Disabled;
+        let mut log_to_stdout: bool = false;
+        let mut gateway_sockaddr: Option<String> = None;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -206,7 +229,6 @@ impl Args {
                     Self::usage(args[0].as_str());
                     return Err(anyhow::anyhow!("wrong usage"));
                 },
-                #[cfg(unix)]
                 Self::OPT_HTTP_SOCKADDR => {
                     i += 1;
                     http_sockaddr = Some(args[i].clone());
@@ -222,6 +244,17 @@ impl Args {
                 Self::OPT_CONSOLE_FILE => {
                     i += 1;
                     console_file = Some(args[i].clone());
+                },
+                Self::OPT_GATEWAY_SOCKADDR => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!(
+                            "missing value for: {}",
+                            Self::OPT_GATEWAY_SOCKADDR
+                        ));
+                    }
+                    gateway_sockaddr = Some(args[i].clone());
                 },
                 Self::OPT_HWLOC => {
                     i += 1;
@@ -257,6 +290,7 @@ impl Args {
                 Self::OPT_LOG_DIRECTORY => {
                     i += 1;
                     log_directory = args[i].clone();
+                    log_directory_set = true;
                 },
                 Self::OPT_NETNS_POOL_SIZE => {
                     i += 1;
@@ -308,6 +342,17 @@ impl Args {
                     }
                     mount_directory = Some(args[i].clone());
                 },
+                Self::OPT_KERNEL_ARGS => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!(
+                            "missing value for: {}",
+                            Self::OPT_KERNEL_ARGS
+                        ));
+                    }
+                    kernel_args = Some(args[i].clone());
+                },
                 // Set GDB server port (standalone mode only).
                 #[cfg(feature = "gdb")]
                 Self::OPT_GDB_PORT => {
@@ -320,12 +365,28 @@ impl Args {
                         anyhow::anyhow!("invalid GDB port (arg={}, error={e:?})", args[i])
                     })?);
                 },
+                Self::OPT_ALLOW_HOST_NETWORKING => {
+                    networking_mode = NetworkingMode::Enabled;
+                },
+                Self::OPT_LOG_TO_STDOUT => {
+                    log_to_stdout = true;
+                },
                 arg => {
                     return Err(anyhow::anyhow!("invalid argument: {arg}"));
                 },
             }
 
             i += 1;
+        }
+
+        // -log-to-stdout and -log-dir are mutually exclusive: -log-to-stdout routes nanvixd's
+        // logs to stdout, making an explicit log directory meaningless.
+        if log_to_stdout && log_directory_set {
+            anyhow::bail!(
+                "{} and {} are mutually exclusive",
+                Self::OPT_LOG_TO_STDOUT,
+                Self::OPT_LOG_DIRECTORY,
+            );
         }
 
         // If we set the l2 snapshot path, but do not enable l2, we have an invalid configuration.
@@ -375,14 +436,18 @@ impl Args {
             anyhow::bail!("{} is only supported in standalone builds", Self::OPT_MOUNT_DIRECTORY);
         }
 
+        // Reject -kernel-args in non-standalone builds.
+        #[cfg(not(feature = "standalone"))]
+        if kernel_args.is_some() {
+            anyhow::bail!("{} is only supported in standalone builds", Self::OPT_KERNEL_ARGS);
+        }
+
         // Determine operation mode: HTTP mode is active if -http-addr is provided,
         // interactive mode is active if `--` separator with program name is provided.
-        #[cfg(unix)]
         let http_mode: bool = http_sockaddr.is_some();
         let interactive_mode: bool = program_name.is_some();
 
         // Ensure exactly one mode is active.
-        #[cfg(unix)]
         if http_mode && interactive_mode {
             anyhow::bail!(
                 "cannot use both HTTP mode ({}) and interactive mode ({}) simultaneously",
@@ -391,7 +456,6 @@ impl Args {
             );
         }
 
-        #[cfg(unix)]
         if !http_mode && !interactive_mode {
             anyhow::bail!(
                 "must specify either HTTP mode ({} <sockaddr>) or interactive mode ({} <program> \
@@ -401,18 +465,7 @@ impl Args {
             );
         }
 
-        // On Windows, only interactive mode is supported.
-        #[cfg(windows)]
-        if !interactive_mode {
-            anyhow::bail!(
-                "must specify interactive mode ({} <program> [<args>...]) (HTTP mode is not \
-                 supported on Windows)",
-                Self::OPT_SEPARATOR
-            );
-        }
-
         Ok(Self {
-            #[cfg(unix)]
             http_sockaddr,
             binary_directory,
             clh_bin_path,
@@ -431,8 +484,12 @@ impl Args {
             tmp_directory,
             snapshot_path,
             mount_directory,
+            kernel_args,
             #[cfg(feature = "gdb")]
             gdb_port,
+            networking_mode,
+            log_to_stdout,
+            gateway_sockaddr,
         })
     }
 
@@ -446,13 +503,10 @@ impl Args {
     /// - `program_name`: Name of the program executable.
     ///
     pub fn usage(program_name: &str) {
-        #[cfg(unix)]
         let http_usage: String = format!(
             "\nUsage (HTTP mode):\n  {program_name} {} <sockaddr> [OPTIONS]\n",
             Self::OPT_HTTP_SOCKADDR,
         );
-        #[cfg(windows)]
-        let http_usage: &str = "";
 
         println!(
             "\
@@ -485,7 +539,18 @@ Options:
   {snapshot} <path>                         Restore VM from snapshot instead of cold-booting \
              (standalone mode only).
   {mount} <host-dir>                       Mount a host directory on the guest at /mnt (standalone \
-             mode only).{gdb_port_line}
+             mode only).
+  {kernel_args} <args>                      Pass kernel arguments to guest control registers \
+             (standalone mode only).
+  {allow_host_networking}                   Enable host networking for the guest (disabled when \
+             omitted).
+  {log_to_stdout}                          Route nanvixd's own logrus output to stdout instead of \
+             a file in {log_dir} (file logger is otherwise the default).
+  {gateway_sockaddr} <path>                 (Standalone) Path at which to expose the gateway \
+             endpoint -- the host-side rendezvous point where a consumer (e.g. the containerd \
+             shim) reads the guest's stdout/stderr and writes to its stdin. UDS path on Unix, \
+             named pipe path on Windows. Defaults to a per-process auto path when \
+             omitted.{gdb_port_line}
 ",
             http_usage = http_usage,
             program_name = program_name,
@@ -506,6 +571,10 @@ Options:
             tmp_dir = Self::OPT_TMP_DIRECTORY,
             snapshot = Self::OPT_SNAPSHOT,
             mount = Self::OPT_MOUNT_DIRECTORY,
+            kernel_args = Self::OPT_KERNEL_ARGS,
+            allow_host_networking = Self::OPT_ALLOW_HOST_NETWORKING,
+            log_to_stdout = Self::OPT_LOG_TO_STDOUT,
+            gateway_sockaddr = Self::OPT_GATEWAY_SOCKADDR,
             gdb_port_line = if cfg!(feature = "gdb") {
                 "\n  -gdb-port <port>                         GDB server port (standalone mode \
                  only)."
@@ -524,7 +593,6 @@ Options:
     ///
     /// The HTTP socket address if present; `None` otherwise.
     ///
-    #[cfg(unix)]
     pub fn http_sockaddr(&self) -> Option<&str> {
         self.http_sockaddr.as_deref()
     }
@@ -581,6 +649,12 @@ Options:
         self.console_file.clone()
     }
 
+    /// Returns the optional standalone gateway endpoint path (UDS on
+    /// Unix, named pipe on Windows). See [`Self::OPT_GATEWAY_SOCKADDR`].
+    pub fn gateway_sockaddr(&self) -> Option<&str> {
+        self.gateway_sockaddr.as_deref()
+    }
+
     ///
     /// # Description
     ///
@@ -618,6 +692,19 @@ Options:
     ///
     pub fn mount_directory(&self) -> Option<&str> {
         self.mount_directory.as_deref()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the optional kernel arguments string.
+    ///
+    /// # Returns
+    ///
+    /// The kernel arguments string, if present.
+    ///
+    pub fn kernel_args(&self) -> Option<&str> {
+        self.kernel_args.as_deref()
     }
 
     ///
@@ -775,5 +862,134 @@ Options:
     #[cfg(feature = "gdb")]
     pub fn gdb_port(&self) -> Option<u16> {
         self.gdb_port
+    }
+
+    /// Returns the networking mode.
+    pub fn networking_mode(&self) -> NetworkingMode {
+        self.networking_mode
+    }
+
+    /// When `true`, nanvixd should route its logrus output to stdout
+    /// instead of the file logger. See [`Self::OPT_LOG_TO_STDOUT`].
+    pub fn log_to_stdout(&self) -> bool {
+        self.log_to_stdout
+    }
+}
+
+//==================================================================================================
+// Unit tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn argv(extras: &[&str]) -> Vec<String> {
+        let mut v: Vec<String> = vec!["nanvixd".to_string()];
+        for s in extras {
+            v.push((*s).to_string());
+        }
+        v
+    }
+
+    #[test]
+    fn log_to_stdout_defaults_to_false() {
+        let args = Args::parse(argv(&["--", "/bin/foo"])).expect("parse");
+        assert!(!args.log_to_stdout());
+    }
+
+    #[test]
+    fn log_to_stdout_flag_sets_true() {
+        let args = Args::parse(argv(&["-log-to-stdout", "--", "/bin/foo"])).expect("parse");
+        assert!(args.log_to_stdout());
+    }
+
+    #[test]
+    fn log_to_stdout_composes_with_interactive_mode() {
+        let args = Args::parse(argv(&["-log-to-stdout", "--", "/bin/foo", "arg1"])).expect("parse");
+        assert!(args.log_to_stdout());
+        assert!(args.interactive_mode());
+        assert_eq!(args.program_name(), Some("/bin/foo"));
+    }
+
+    #[test]
+    fn log_to_stdout_and_log_dir_are_mutually_exclusive() {
+        let err = Args::parse(argv(&[
+            "-log-to-stdout",
+            "-log-dir",
+            "/tmp/somewhere",
+            "--",
+            "/bin/foo",
+        ]))
+        .expect_err("parse should fail when both -log-to-stdout and -log-dir are provided");
+        let msg = format!("{err}");
+        assert!(msg.contains(Args::OPT_LOG_TO_STDOUT), "unexpected error: {msg}");
+        assert!(msg.contains(Args::OPT_LOG_DIRECTORY), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn log_dir_alone_is_accepted() {
+        let args =
+            Args::parse(argv(&["-log-dir", "/tmp/somewhere", "--", "/bin/foo"])).expect("parse");
+        assert!(!args.log_to_stdout());
+        assert_eq!(args.log_directory(), "/tmp/somewhere");
+    }
+
+    #[test]
+    fn parses_http_mode_with_sockaddr() {
+        let args = Args::parse(argv(&["-http-addr", "127.0.0.1:9999"])).expect("parse");
+        assert_eq!(args.http_sockaddr(), Some("127.0.0.1:9999"));
+        assert!(!args.interactive_mode());
+        assert_eq!(args.program_name(), None);
+    }
+
+    #[test]
+    fn parses_interactive_mode() {
+        let args = Args::parse(argv(&["--", "/bin/foo", "arg1"])).expect("parse");
+        assert_eq!(args.http_sockaddr(), None);
+        assert!(args.interactive_mode());
+        assert_eq!(args.program_name(), Some("/bin/foo"));
+    }
+
+    #[test]
+    fn rejects_both_http_and_interactive() {
+        let res = Args::parse(argv(&["-http-addr", "127.0.0.1:9999", "--", "/bin/foo"]));
+        assert!(res.is_err(), "expected error when both modes are set");
+        let msg: String = format!("{:#}", res.err().unwrap());
+        assert!(msg.contains("cannot use both HTTP mode"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn rejects_neither_http_nor_interactive() {
+        let res = Args::parse(argv(&[]));
+        assert!(res.is_err(), "expected error when no mode is set");
+        let msg: String = format!("{:#}", res.err().unwrap());
+        assert!(msg.contains("must specify either HTTP mode"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn parses_gateway_sockaddr_flag() {
+        let args = Args::parse(argv(&[
+            "-http-addr",
+            "127.0.0.1:9999",
+            "-gateway-sockaddr",
+            "/tmp/test-gw.sock",
+        ]))
+        .expect("parse");
+        assert_eq!(args.gateway_sockaddr(), Some("/tmp/test-gw.sock"));
+    }
+
+    #[test]
+    fn gateway_sockaddr_is_none_when_unset() {
+        let args = Args::parse(argv(&["-http-addr", "127.0.0.1:9999"])).expect("parse");
+        assert_eq!(args.gateway_sockaddr(), None);
+    }
+
+    #[test]
+    fn rejects_gateway_sockaddr_without_value() {
+        let res = Args::parse(argv(&["-gateway-sockaddr"]));
+        assert!(res.is_err(), "expected error when -gateway-sockaddr has no value");
+        let msg: String = format!("{:#}", res.err().unwrap());
+        assert!(msg.contains("missing value for: -gateway-sockaddr"), "unexpected error: {msg}");
     }
 }

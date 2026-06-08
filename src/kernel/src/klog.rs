@@ -172,7 +172,12 @@ pub unsafe fn puts(_s: &str) {
             return;
         }
 
-        KLOG_BUFFER.get().append(_s);
+        // No backing storage installed yet — silently drop the output.
+        if KLOG_BUFFER.is_null() {
+            return;
+        }
+
+        (*KLOG_BUFFER).append(_s);
     }
 }
 
@@ -199,7 +204,12 @@ pub unsafe fn flush() {
             return;
         }
 
-        KLOG_BUFFER.get().flush();
+        // No backing storage installed yet — nothing to flush.
+        if KLOG_BUFFER.is_null() {
+            return;
+        }
+
+        (*KLOG_BUFFER).flush();
     }
 }
 
@@ -212,48 +222,36 @@ pub unsafe fn flush() {
 #[cfg(not(feature = "smp"))]
 mod buffer {
     use super::*;
-    use ::core::cell::UnsafeCell;
+    use ::sys::error::{
+        Error,
+        ErrorCode,
+    };
 
     /// Size of the kernel log buffer in bytes.
     pub const BUFFER_SIZE: usize = config::kernel::KLOG_BUFFER_SIZE;
 
-    /// Global kernel log buffer.
+    /// Total size of the [`KlogBuffer`] struct in bytes. Platform modules use this constant to
+    /// allocate appropriately-sized backing storage.
+    pub const KLOG_BUFFER_STORAGE_SIZE: usize = core::mem::size_of::<KlogBuffer>();
+
+    /// Required alignment of the [`KlogBuffer`] backing storage.
     ///
-    /// Wrapped in [`SyncUnsafeCell`] to allow safe static storage on a single-core system.
-    pub static KLOG_BUFFER: SyncUnsafeCell<KlogBuffer> = SyncUnsafeCell::new(KlogBuffer::new());
+    /// `KlogBuffer` contains a `usize` field, so on 64-bit targets the struct requires 8-byte
+    /// alignment. Use `Align8` conservatively to be correct on all supported targets.
+    pub const KLOG_BUFFER_ALIGNMENT: ::sys::mm::Alignment = ::sys::mm::Alignment::Align8;
 
-    /// A thin wrapper around [`UnsafeCell`] that implements [`Sync`].
+    /// Pointer to the platform-provided klog buffer backing storage.
     ///
-    /// # Safety
-    ///
-    /// This is sound because the Nanvix kernel runs on a single core with interrupts disabled
-    /// during all access to the wrapped value, so no concurrent access can occur.
-    pub struct SyncUnsafeCell<T>(UnsafeCell<T>);
-
-    impl<T> SyncUnsafeCell<T> {
-        pub const fn new(value: T) -> Self {
-            Self(UnsafeCell::new(value))
-        }
-
-        /// Returns a mutable reference to the inner value.
-        ///
-        /// # Safety
-        ///
-        /// The caller must ensure that no other reference to the inner value exists.
-        #[allow(clippy::mut_from_ref)]
-        pub unsafe fn get(&self) -> &mut T {
-            &mut *self.0.get()
-        }
-    }
-
-    // SAFETY: the kernel is single-core with interrupts disabled during access.
-    unsafe impl<T> Sync for SyncUnsafeCell<T> {}
+    /// Initialized by [`set_backing_storage()`] before the first logging call. On microvm the
+    /// storage is a BSS-allocated static.
+    pub static mut KLOG_BUFFER: *mut KlogBuffer = core::ptr::null_mut();
 
     /// A fixed-size buffer that batches kernel log output before flushing to the platform device.
     ///
     /// All kernel log output (from logging macros and the debug kernel call) is appended to this
     /// buffer instead of being written directly to the output device. The buffer is flushed in bulk
     /// when it is full or when an explicit flush is requested, reducing per-character I/O overhead.
+    #[repr(C)]
     pub struct KlogBuffer {
         /// Underlying storage.
         data: [u8; BUFFER_SIZE],
@@ -262,14 +260,6 @@ mod buffer {
     }
 
     impl KlogBuffer {
-        /// Creates a new, empty kernel log buffer.
-        pub const fn new() -> Self {
-            Self {
-                data: [0; BUFFER_SIZE],
-                len: 0,
-            }
-        }
-
         ///
         /// # Description
         ///
@@ -341,7 +331,53 @@ mod buffer {
             self.len = 0;
         }
     }
+
+    ///
+    /// # Description
+    ///
+    /// Installs platform-provided backing storage for the kernel log buffer.
+    ///
+    /// Must be called exactly once before the first logging macro invocation. On microvm the
+    /// storage is a BSS-allocated static.
+    ///
+    /// # Parameters
+    ///
+    /// - `storage`: Pointer to at least [`KLOG_BUFFER_STORAGE_SIZE`] bytes whose lifetime exceeds
+    ///   all subsequent logging operations. Must be aligned to [`KLOG_BUFFER_ALIGNMENT`] and
+    ///   zero-initialized.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the backing storage was successfully installed.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::InvalidArgument`] if `storage` is null or not properly aligned.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it sets a global raw pointer that all logging operations
+    /// depend on. The caller must ensure:
+    /// - `storage` is non-null and points to at least [`KLOG_BUFFER_STORAGE_SIZE`] bytes.
+    /// - The backing memory is zero-initialized.
+    /// - The backing memory outlives all logging usage.
+    /// - This function is called at most once.
+    ///
+    pub unsafe fn set_backing_storage(storage: *mut u8) -> Result<(), Error> {
+        if storage.is_null() {
+            let reason: &str = "null klog backing storage pointer";
+            error!("set_backing_storage(): {}", reason);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        if !::sys::mm::is_aligned(storage as usize, KLOG_BUFFER_ALIGNMENT) {
+            let reason: &str = "klog backing storage pointer is not properly aligned";
+            error!("set_backing_storage(): {}", reason);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        KLOG_BUFFER = storage as *mut KlogBuffer;
+        Ok(())
+    }
 }
 
 #[cfg(not(feature = "smp"))]
-use buffer::*;
+pub(crate) use buffer::*;

@@ -164,10 +164,15 @@ impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
         // Write page directory entry.
         self.write_pde(pgtable_address, pde);
 
+        // Invalidate the TLB entry for this page table range so the CPU does not use a
+        // stale PDE pointing to the freed page table.
+        // SAFETY: called from kernel mode after modifying a PDE.
+        unsafe { ::arch::mem::paging::invlpg(pgtable_address.into_raw_value()) };
+
         Ok(paddr)
     }
 
-    pub fn clean(&mut self) {
+    fn clean(&mut self) {
         for pde in self.entries.iter_mut() {
             *pde = 0;
         }
@@ -184,8 +189,8 @@ impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
     }
 
     pub fn physical_address(&self) -> Result<FrameAddress, Error> {
-        Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(
-            self.entries.as_ptr() as usize,
-        )?)?))
+        let vaddr: usize = self.entries.as_ptr() as usize;
+        let paddr: usize = crate::hal::platform::virt_to_phys(vaddr);
+        Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(paddr)?)?))
     }
 }

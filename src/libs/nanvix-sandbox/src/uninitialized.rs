@@ -328,6 +328,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                         config.log_directory().to_string(),
                         tmp_directory,
                         l2,
+                        config.networking_enabled(),
                         #[cfg(feature = "single-process")]
                         config.syscall_table(),
                     )

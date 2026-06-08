@@ -5,16 +5,15 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::Error;
-use sysapi::sys_stat;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::sys::stat::message::FileStatRequest,
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
+use crate::sys::stat::message::FileStatRequest;
+#[cfg(feature = "standalone")]
+use ::sys::error::ErrorCode;
+use ::sys::{
+    error::Error,
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
+use sysapi::sys_stat;
 
 //==================================================================================================
 // Standalone Functions
@@ -35,37 +34,29 @@ use {
 /// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
-#[allow(unreachable_code)]
 pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
-    // In standalone mode, forward operation to virtual file system (VFS).
+    ::syslog::trace!("fstat(): fd={:?}", fd);
+
+    // In standalone mode, synthesize a character-device stat for stdio fds so that
+    // common libc patterns (isatty, buffering heuristics) continue to work.
     #[cfg(feature = "standalone")]
     {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return ::nvx::vfs::fd::vfs_fstat(fd, buf).map_err(|e| {
-                let code: ::sys::error::ErrorCode = e.into();
-                ::syslog::warn!("fstat(): VFS fstat failed (fd={fd}, error={e})");
-                Error::new(code, "vfs fstat failed")
-            });
-        }
-        use ::sysapi::{
-            sys_stat::{
-                file_mode,
-                file_type,
-            },
-            unistd::{
-                STDERR_FILENO,
-                STDIN_FILENO,
-                STDOUT_FILENO,
-            },
+        use ::sysapi::unistd::{
+            STDERR_FILENO,
+            STDIN_FILENO,
+            STDOUT_FILENO,
         };
         if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
+            use ::sysapi::sys_stat::{
+                file_mode,
+                file_type,
+            };
             // SAFETY: zeroes all bytes of `buf` before field assignment.
             unsafe {
                 ::core::ptr::write_bytes(buf, 0, 1);
             }
             buf.st_mode = file_type::S_IFCHR | file_mode::S_IRUSR | file_mode::S_IWUSR;
-            // Block size matches the page-sized granularity of push/pull kernel calls when
-            // crossing the VM boundary.
+            // Block size matches the page-sized granularity of push/pull kernel calls.
             buf.st_blksize = ::arch::mem::PAGE_SIZE as i64;
             // Timestamp set to Unix epoch (1970-01-01T00:00:00 UTC).
             let ts = ::sysapi::time::timespec {
@@ -77,20 +68,21 @@ pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
             buf.st_ctim = ts;
             return Ok(());
         }
-        Err(Error::new(::sys::error::ErrorCode::BadFile, "fstat: invalid fd in standalone mode"))
+
+        // Only VFS file descriptors should be routed to vfsd.
+        if !crate::is_vfs_fd(fd) {
+            ::syslog::warn!("fstat(): bad file descriptor fd={fd} in standalone mode");
+            return Err(Error::new(
+                ErrorCode::BadFile,
+                "fstat: fd is not a VFS fd in standalone mode",
+            ));
+        }
     }
 
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    fstat_linuxd(fd, buf)
-}
-
-/// Forwards a `fstat` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn fstat_linuxd(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
-    let message: Message = FileStatRequest::build(tid, fd);
-    ::sys::kcall::ipc::send(&message)?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
+    let message: Message =
+        FileStatRequest::build(tid, fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
+    ::sys::kcall::ipc::__kcall_send(&message)?;
 
     *buf = crate::sys::stat::syscall::fstatat_response()?;
 

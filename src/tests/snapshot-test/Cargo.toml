@@ -1,0 +1,26 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "snapshot-test"
+version.workspace = true
+license-file.workspace = true
+edition = "2024"
+authors.workspace = true
+description = "Integration test for snapshot save / restore lifecycle"
+homepage.workspace = true
+
+[[bin]]
+name = "snapshot-test"
+
+[dependencies]
+nvx = { workspace = true }
+libc_string = { workspace = true }
+sys = { workspace = true, features = ["kcall"] }
+
+[features]
+default = ["panic"]
+panic = ["nvx/panic"]
+
+[lints]
+workspace = true

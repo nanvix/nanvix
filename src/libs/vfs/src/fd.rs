@@ -25,6 +25,10 @@ use ::alloc::{
     string::String,
     vec::Vec,
 };
+use ::config::fds::{
+    VFS_FD_BASE,
+    VFS_MAX_OPEN_FILES,
+};
 use ::fat32::Fat32Error;
 use ::spin::Mutex;
 use ::sysapi::{
@@ -50,15 +54,6 @@ use ::sysapi::{
 //==================================================================================================
 // Constants
 //==================================================================================================
-
-/// Base file descriptor number for VFS-managed handles.
-///
-/// VFS file descriptors occupy the range `[VFS_FD_BASE, VFS_FD_BASE + VFS_MAX_OPEN_FILES)`.
-/// This range must not overlap with linuxd-assigned file descriptors.
-const VFS_FD_BASE: c_int = 1024;
-
-/// Maximum number of simultaneously open VFS files.
-const VFS_MAX_OPEN_FILES: usize = 64;
 
 /// Block size reported in stat results (bytes).
 const STAT_BLOCK_SIZE: i64 = 4096;
@@ -181,6 +176,73 @@ pub enum VfsFileHandle {
     DirectRead(DirectReadHandle),
     /// Open directory handle for `readdir()`/`getdents()` operations.
     Directory(DirectoryHandle),
+    /// Remote file opened through the host filesystem daemon (hostfsd).
+    /// Operations on this handle must be forwarded via IKC by the caller (vfsd).
+    HostFs(HostFsHandle),
+}
+
+/// Handle for a file opened on the host filesystem via hostfsd.
+///
+/// This handle stores the remote file descriptor returned by hostfsd.
+/// The VFS cannot perform I/O on this handle directly — all operations
+/// must be forwarded via IKC by the owning daemon (vfsd).
+///
+/// The `is_dir` flag is set once at open time and never re-checked. If the
+/// host-side path changes type out-of-band (e.g., replaced by a directory),
+/// subsequent operations will use the stale classification.
+pub struct HostFsHandle {
+    /// Remote file descriptor on the host side.
+    remote_fd: i32,
+    /// Whether this is a directory.
+    is_dir: bool,
+    /// Absolute path used to open this handle (stored only for directories to support dirfd).
+    path: Option<String>,
+    /// Next directory entry index to return on the following `getdents` call.
+    ///
+    /// hostfsd serves directory listings via offset-based iteration (one entry per
+    /// `offset`), so vfsd tracks the per-FD cursor here. It advances as entries are
+    /// consumed and is meaningful only for directory handles.
+    readdir_offset: u32,
+}
+
+impl HostFsHandle {
+    /// Creates a new HostFs handle with the given remote file descriptor.
+    ///
+    /// The `path` argument is only meaningful for directory handles (used by dirfd resolution).
+    /// Pass `None` for regular file handles to avoid unnecessary allocations.
+    pub fn new(remote_fd: i32, is_dir: bool, path: Option<String>) -> Self {
+        Self {
+            remote_fd,
+            is_dir,
+            path: if is_dir { path } else { None },
+            readdir_offset: 0,
+        }
+    }
+
+    /// Returns the remote file descriptor.
+    pub fn remote_fd(&self) -> i32 {
+        self.remote_fd
+    }
+
+    /// Returns whether this is a directory handle.
+    pub fn is_dir(&self) -> bool {
+        self.is_dir
+    }
+
+    /// Returns the path used to open this handle (only available for directories).
+    pub fn path(&self) -> Option<&str> {
+        self.path.as_deref()
+    }
+
+    /// Returns the current directory iteration cursor.
+    pub fn readdir_offset(&self) -> u32 {
+        self.readdir_offset
+    }
+
+    /// Sets the directory iteration cursor.
+    pub fn set_readdir_offset(&mut self, offset: u32) {
+        self.readdir_offset = offset;
+    }
 }
 
 /// Handle for an open directory.
@@ -235,6 +297,7 @@ impl VfsFileHandle {
             VfsFileHandle::Fat32(file) => file.read(buf),
             VfsFileHandle::DirectRead(handle) => Ok(handle.read(buf)),
             VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
+            VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
         }
     }
 
@@ -244,6 +307,7 @@ impl VfsFileHandle {
             VfsFileHandle::Fat32(file) => file.write(buf),
             VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
             VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
+            VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
         }
     }
 
@@ -256,6 +320,7 @@ impl VfsFileHandle {
             },
             VfsFileHandle::DirectRead(handle) => handle.seek(offset, whence),
             VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
+            VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
         }
     }
 
@@ -265,12 +330,30 @@ impl VfsFileHandle {
             VfsFileHandle::Fat32(file) => file.size(),
             VfsFileHandle::DirectRead(handle) => Ok(handle.size() as u64),
             VfsFileHandle::Directory(_) => Ok(0),
+            VfsFileHandle::HostFs(_) => Ok(0),
         }
     }
 
     /// Returns whether this handle is a directory.
     pub fn is_dir(&self) -> bool {
-        matches!(self, VfsFileHandle::Directory(_))
+        match self {
+            VfsFileHandle::Directory(_) => true,
+            VfsFileHandle::HostFs(h) => h.is_dir(),
+            _ => false,
+        }
+    }
+
+    /// Returns whether this handle is backed by the host filesystem.
+    pub fn is_hostfs(&self) -> bool {
+        matches!(self, VfsFileHandle::HostFs(_))
+    }
+
+    /// Returns the remote FD if this is a HostFs handle.
+    pub fn hostfs_remote_fd(&self) -> Option<i32> {
+        match self {
+            VfsFileHandle::HostFs(h) => Some(h.remote_fd()),
+            _ => None,
+        }
     }
 }
 
@@ -357,6 +440,67 @@ impl VfsFdTable {
 static FD_TABLE: VfsFdTable = VfsFdTable::new();
 
 //==================================================================================================
+// HostFs FD Helpers
+//==================================================================================================
+
+/// Allocates a VFS file descriptor for a host filesystem handle.
+///
+/// This is called by vfsd after receiving a successful OPEN response from hostfsd.
+/// The returned FD is handed back to the user process.
+pub fn vfs_alloc_hostfs(
+    remote_fd: i32,
+    is_dir: bool,
+    path: Option<String>,
+) -> Result<c_int, Fat32Error> {
+    let handle: VfsFileHandle = VfsFileHandle::HostFs(HostFsHandle::new(remote_fd, is_dir, path));
+    FD_TABLE.alloc(handle)
+}
+
+/// Returns the remote FD for a HostFs file descriptor, or `None` if the FD
+/// is not backed by hostfs.
+pub fn vfs_hostfs_remote_fd(fd: c_int) -> Option<i32> {
+    let slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd).ok()?;
+    let entry: &VfsEntry = slot.as_ref()?;
+    entry.handle.hostfs_remote_fd()
+}
+
+/// Returns `true` if the given FD is backed by the host filesystem.
+pub fn is_hostfs_fd(fd: c_int) -> bool {
+    vfs_hostfs_remote_fd(fd).is_some()
+}
+
+/// Returns the current directory iteration cursor for a hostfs directory FD.
+///
+/// Returns `None` if the FD is not a hostfs directory handle (including hostfs
+/// regular files), so callers can use this to distinguish hostfs directories from
+/// hostfs files.
+pub fn vfs_hostfs_readdir_offset(fd: c_int) -> Option<u32> {
+    let slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd).ok()?;
+    let entry: &VfsEntry = slot.as_ref()?;
+    match &entry.handle {
+        VfsFileHandle::HostFs(h) if h.is_dir() => Some(h.readdir_offset()),
+        _ => None,
+    }
+}
+
+/// Updates the directory iteration cursor for a hostfs directory FD.
+///
+/// Returns `true` if the FD is a hostfs directory handle and the cursor was updated.
+/// The cursor is left untouched for non-directory hostfs handles (regular files).
+pub fn vfs_hostfs_set_readdir_offset(fd: c_int, offset: u32) -> bool {
+    let Ok(mut slot) = FD_TABLE.lock(fd) else {
+        return false;
+    };
+    match slot.as_mut().map(|e| &mut e.handle) {
+        Some(VfsFileHandle::HostFs(h)) if h.is_dir() => {
+            h.set_readdir_offset(offset);
+            true
+        },
+        _ => false,
+    }
+}
+
+//==================================================================================================
 // Path Routing
 //==================================================================================================
 
@@ -367,7 +511,7 @@ pub fn is_vfs_path(path: &str) -> bool {
 
 /// Returns `true` if the given file descriptor belongs to the VFS.
 pub fn is_vfs_fd(fd: c_int) -> bool {
-    fd >= VFS_FD_BASE && fd < VFS_FD_BASE + VFS_MAX_OPEN_FILES as c_int
+    ::config::fds::is_vfs_fd(fd)
 }
 
 /// Resolves a `dirfd` + `path` pair into an absolute VFS path.
@@ -379,6 +523,14 @@ pub fn is_vfs_fd(fd: c_int) -> bool {
 ///
 /// Returns `None` if `dirfd` is not a VFS fd and not `AT_FDCWD`, indicating
 /// that VFS cannot handle this request.
+///
+/// # Limitations
+///
+/// For hostfs directory fds, resolution uses the path stored at open time.
+/// If the directory is renamed after being opened, subsequent `*at()` calls
+/// using this dirfd will resolve against the stale path. A future protocol
+/// extension could support `*at()` operations relative to a remote directory
+/// FD on the host side to provide stable POSIX-like dirfd semantics.
 pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Option<String> {
     use ::sysapi::fcntl::atflags::AT_FDCWD;
 
@@ -406,6 +558,7 @@ pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Option<String> {
     let entry: &VfsEntry = slot.as_ref()?;
     let dir_path: &str = match &entry.handle {
         VfsFileHandle::Directory(dh) => &dh.path,
+        VfsFileHandle::HostFs(hh) if hh.is_dir() => hh.path()?,
         _ => return None, // fd is not a directory
     };
 
@@ -689,7 +842,7 @@ pub fn vfs_ftruncate(fd: c_int, length: off_t) -> Result<(), Fat32Error> {
             }
         },
         VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
-        VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
+        VfsFileHandle::Directory(_) | VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
     }
 }
 
@@ -730,7 +883,7 @@ pub fn vfs_fallocate(fd: c_int, offset: off_t, len: off_t) -> Result<(), Fat32Er
             Ok(())
         },
         VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
-        VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
+        VfsFileHandle::Directory(_) | VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
     }
 }
 
@@ -742,7 +895,9 @@ pub fn vfs_fsync(fd: c_int) -> Result<(), Fat32Error> {
     let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
     match &mut entry.handle {
         VfsFileHandle::Fat32(file) => file.flush(),
-        VfsFileHandle::DirectRead(_) | VfsFileHandle::Directory(_) => Ok(()),
+        VfsFileHandle::DirectRead(_) | VfsFileHandle::Directory(_) | VfsFileHandle::HostFs(_) => {
+            Ok(())
+        },
     }
 }
 
@@ -910,7 +1065,7 @@ pub fn vfs_getdents(
 ///
 /// # Errors
 ///
-/// Returns [`Fat32Error::InvalidArgument`] if either dirfd is not `AT_FDCWD`.
+/// Returns [`Fat32Error::InvalidArgument`] if a dirfd cannot be resolved.
 /// Returns a [`Fat32Error`] if the paths are on different mounts, the old path does not exist,
 /// or the new path already exists.
 pub fn vfs_renameat(
@@ -919,11 +1074,11 @@ pub fn vfs_renameat(
     newdirfd: c_int,
     newpath: &str,
 ) -> Result<(), Fat32Error> {
-    use ::sysapi::fcntl::atflags::AT_FDCWD;
-    if olddirfd != AT_FDCWD || newdirfd != AT_FDCWD {
-        return Err(Fat32Error::InvalidArgument);
-    }
-    crate::rename(oldpath, newpath)
+    let old_resolved: String =
+        vfs_resolve_path(olddirfd, oldpath).ok_or(Fat32Error::InvalidArgument)?;
+    let new_resolved: String =
+        vfs_resolve_path(newdirfd, newpath).ok_or(Fat32Error::InvalidArgument)?;
+    crate::rename(&old_resolved, &new_resolved)
 }
 
 /// Unlinks a file or removes a directory relative to a directory file descriptor through the VFS.
@@ -939,21 +1094,16 @@ pub fn vfs_renameat(
 ///
 /// # Errors
 ///
-/// Returns [`Fat32Error::InvalidArgument`] if `dirfd` is not `AT_FDCWD`.
+/// Returns [`Fat32Error::InvalidArgument`] if `dirfd` cannot be resolved.
 /// Returns a [`Fat32Error`] if the path does not exist, the directory is not empty (when removing
 /// a directory), or the path refers to a directory but `AT_REMOVEDIR` is not set.
 pub fn vfs_unlinkat(dirfd: c_int, path: &str, flags: c_int) -> Result<(), Fat32Error> {
-    use ::sysapi::fcntl::atflags::{
-        AT_FDCWD,
-        AT_REMOVEDIR,
-    };
-    if dirfd != AT_FDCWD {
-        return Err(Fat32Error::InvalidArgument);
-    }
+    use ::sysapi::fcntl::atflags::AT_REMOVEDIR;
+    let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
     if flags & AT_REMOVEDIR != 0 {
-        crate::rmdir(path)
+        crate::rmdir(&resolved)
     } else {
-        crate::unlink(path)
+        crate::unlink(&resolved)
     }
 }
 

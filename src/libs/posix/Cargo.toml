@@ -31,7 +31,6 @@ default = ["syscall", "allocator", "staticlib"]
 allocator = ["dep:sysalloc"]
 syscall = ["syslog", "syscall/dlfcn"]
 standalone = ["syscall/standalone"]
-hyperlight = ["syscall/hyperlight"]
 std = []
 staticlib = ["nvx/staticlib"]
 

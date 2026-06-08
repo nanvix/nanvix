@@ -147,6 +147,9 @@ pub struct MemoryRegion<T: Address> {
 }
 
 impl<T: Address> MemoryRegion<T> {
+    /// Maximum byte-length of a memory region name.
+    const MEMORY_REGION_NAME_MAX: usize = 32;
+
     /// Creates a new memory region.
     pub fn new(
         name: &str,
@@ -155,6 +158,13 @@ impl<T: Address> MemoryRegion<T> {
         typ: MemoryRegionType,
         perm: AccessPermission,
     ) -> Result<Self, Error> {
+        // Check if name is too long (byte length).
+        if name.len() > Self::MEMORY_REGION_NAME_MAX {
+            let reason: &str = "memory region name is too long";
+            error!("{reason} (name.len={}, NAME_MAX={})", name.len(), Self::MEMORY_REGION_NAME_MAX);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
         // Check if size of the memory region is valid.
         if size == 0 {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid memory region size"));

@@ -85,7 +85,7 @@ pub unsafe extern "C" fn mmap(
 ) -> *mut u8 {
     // Check if mapping length is invalid.
     if length == 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "mmap(): invalid mapping length (addr={addr:?}, length={length}), prot={prot}, \
              flags={flags}, fd={fd}, offset={offset})"
         );
@@ -99,7 +99,7 @@ pub unsafe extern "C" fn mmap(
     let length: usize = match TryFrom::try_from(length) {
         Ok(length) => length,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "mmap(): invalid mapping length (addr={addr:?}, length={length}), prot={prot}, \
                  flags={flags}, fd={fd}, offset={offset}), error={error:?}"
             );
@@ -122,7 +122,7 @@ pub unsafe extern "C" fn mmap(
     let flags: MemoryMapFlags = match TryFrom::try_from(flags) {
         Ok(flags) => flags,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "mmap(): invalid flags (addr={addr:?}, length={length}, prot={prot}, \
                  flags={flags}, fd={fd}, offset={offset}), error={error:?}"
             );
@@ -135,7 +135,7 @@ pub unsafe extern "C" fn mmap(
 
     // Check for unsupported flags.
     if flags.is_shared() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "mmap(): shared memory mapping is not supported (addr={addr:?}, length={length}, \
              prot={prot}, flags={flags:?}, fd={fd}, offset={offset})"
         );
@@ -144,7 +144,7 @@ pub unsafe extern "C" fn mmap(
         }
         return MAP_FAILED;
     } else if flags.is_fixed() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "mmap(): fixed memory mapping is not supported (addr={addr:?}, length={length}, \
              prot={prot}, flags={flags:?}, fd={fd}, offset={offset})"
         );
@@ -153,7 +153,7 @@ pub unsafe extern "C" fn mmap(
         }
         return MAP_FAILED;
     } else if !flags.is_anonymous() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "mmap(): non-anonymous memory mapping is not supported (addr={addr:?}, \
              length={length}, prot={prot}, flags={flags:?}, fd={fd}, offset={offset})"
         );
@@ -162,7 +162,7 @@ pub unsafe extern "C" fn mmap(
         }
         return MAP_FAILED;
     } else if flags.is_anonymous() && fd != -1 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "mmap(): anonymous memory mapping with file descriptor is not supported \
              (addr={addr:?}, length={length}, prot={prot}, flags={flags:?}, fd={fd}, \
              offset={offset})"
@@ -185,7 +185,7 @@ pub unsafe extern "C" fn mmap(
     let prot: MemoryMapProtectionFlags = match TryFrom::try_from(prot) {
         Ok(prot) => prot,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "mmap(): invalid protection flags (addr={addr:?}, length={length}, prot={prot}, \
                  flags={flags:?}, fd={fd}, offset={offset}), error={error:?}"
             );
@@ -206,7 +206,7 @@ pub unsafe extern "C" fn mmap(
             virt_addr.into_raw_value() as *mut u8
         },
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "mmap(): failed (addr={addr:?}, length={length}, prot={prot:?}, flags={flags:?}, \
                  fd={fd}, offset={offset}), error={error:?}"
             );

@@ -16,8 +16,8 @@ use {
             PipeRequest,
             PipeResponse,
         },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         ipc::Message,
@@ -46,28 +46,28 @@ pub fn pipe() -> Result<[i32; 2], Error> {
 /// Forwards a `pipe` request to linuxd via IPC.
 #[cfg(not(feature = "standalone"))]
 fn pipe_linuxd() -> Result<[i32; 2], Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = PipeRequest::build(tid);
-    ::sys::kcall::ipc::send(&request)?;
+    let request: Message = PipeRequest::build(tid, crate::LINUXD, ::sys::ipc::MessageType::Ikc);
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
         // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::syslog::error!("pipe(): failed (error={})", error_code);
+        ::syslog::warn!("pipe(): failed (error={})", error_code);
         Err(Error::new(error_code, "pipe() failed"))
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        match SystemCallMessage::try_from_bytes(response.payload) {
             // Response was successfully parsed.
             Ok(message) => match message.header {
                 // Response was successfully parsed.
-                LinuxDaemonMessageHeader::PipeResponse => {
+                SystemCallMessageHeader::PipeResponse => {
                     // Parse response.
                     let response: PipeResponse = PipeResponse::from_bytes(message.payload);
 
@@ -119,7 +119,7 @@ pub mod bindings {
                 0
             },
             Err(error) => {
-                ::syslog::error!("pipe(): failed (error={error:?})");
+                ::syslog::warn!("pipe(): failed (error={error:?})");
                 unsafe {
                     *__errno_location() = error.code.get();
                 }

@@ -65,6 +65,8 @@ pub struct ThreadState {
     interrupt_reason: Option<InterruptReason>,
     /// FPU state.
     fpu_state: Pin<Box<FpuState>>,
+    /// Whether the thread is detached (will be auto-harvested on exit).
+    detached: bool,
 }
 
 //==================================================================================================
@@ -107,6 +109,7 @@ impl ThreadState {
             locked_mutexes: BTreeMap::new(),
             interrupt_reason: None,
             fpu_state: Box::pin(fpu_state),
+            detached: false,
         }
     }
 
@@ -222,6 +225,24 @@ impl ThreadState {
     ///
     /// # Description
     ///
+    /// Returns whether the thread is detached.
+    ///
+    pub(super) fn is_detached(&self) -> bool {
+        self.detached
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Marks the thread as detached. A detached thread is auto-harvested when it exits.
+    ///
+    pub(super) fn set_detached(&mut self) {
+        self.detached = true;
+    }
+
+    ///
+    /// # Description
+    ///
     /// Returns the kernel stack of the thread, if any.
     ///
     /// # Returns
@@ -259,6 +280,7 @@ impl ThreadState {
     ///
     /// The guard threshold value, or `None` if this thread has no kernel stack.
     ///
+    #[cfg(feature = "exception-stack-guard")]
     pub(super) fn guard_threshold(&self) -> Option<u32> {
         self.kernel_stack.as_ref().map(|ks| ks.guard_threshold())
     }

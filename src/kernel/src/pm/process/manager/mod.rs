@@ -68,7 +68,6 @@ use ::alloc::{
         vec_deque::VecDeque,
         LinkedList,
     },
-    ffi::CString,
     vec::Vec,
 };
 use ::arch::{
@@ -148,8 +147,15 @@ pub struct ProcessManager {
     zombies: LinkedList<ZombieProcess>,
     /// Thread manager.
     tm: ThreadManager,
+    /// Number of live processes (including the kernel process). A process slot is considered
+    /// occupied from creation until the corresponding zombie is buried (popped off the zombie
+    /// list). Used to enforce [`config::kernel::MAX_PROCESSES`].
+    live_count: usize,
     /// Number of messages buffered (not yet consumed).
     number_buffered_messages: usize,
+    /// Detached-thread zombies whose reaping was deferred because their
+    /// `ContextInformation` was still needed by an in-progress context switch.
+    deferred_reap: Vec<(ProcessIdentifier, ZombieThread)>,
 }
 
 impl ProcessManager {
@@ -180,7 +186,9 @@ impl ProcessManager {
             zombies: LinkedList::new(),
             running: Some(kernel),
             tm,
+            live_count: 1,
             number_buffered_messages: 0,
+            deferred_reap: Vec::new(),
         }
     }
 
@@ -423,6 +431,36 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Writes a NUL-terminated string directly to user space without heap allocation.
+    /// The string bytes are copied from the source `&str` followed by a single `\0` terminator.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Virtual memory address space to write into.
+    /// - `dest`: Destination virtual address in user space.
+    /// - `s`: Source string to write (must not contain interior NUL bytes).
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    fn write_nul_terminated_to_user(
+        vmem: &mut Vmem,
+        dest: VirtualAddress,
+        s: &str,
+    ) -> Result<(), Error> {
+        if !s.is_empty() {
+            vmem.copy_to_user_unaligned(dest, VirtualAddress::new(s.as_ptr() as usize), s.len())?;
+        }
+        static NUL: u8 = 0;
+        let nul_vaddr: VirtualAddress = VirtualAddress::new(dest.into_raw_value() + s.len());
+        vmem.copy_to_user_unaligned(nul_vaddr, VirtualAddress::new(&NUL as *const u8 as usize), 1)?;
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Creates a new process.
     ///
     /// # Parameters
@@ -450,6 +488,17 @@ impl ProcessManager {
 
         trace!("args={:?}, env={:?}", args, env);
 
+        // Refuse to create a new process when the system-wide live-process cap has been reached.
+        if self.live_count >= ::config::kernel::MAX_PROCESSES {
+            let reason: &str = "maximum number of processes reached";
+            error!(
+                "{reason} (live_count={}, max_processes={})",
+                self.live_count,
+                ::config::kernel::MAX_PROCESSES
+            );
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
+
         // Reserve the next process and thread identifiers early, before any resource allocation.
         let (pid, next_pid): (ProcessIdentifier, ProcessIdentifier) = self.try_next_pid()?;
         let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
@@ -457,30 +506,26 @@ impl ProcessManager {
         // Strip leading and trailing spaces from arguments.
         let args: &str = args.trim();
 
-        // Convert args to C-style string.
-        let args: CString = match CString::new(args) {
-            Ok(cmdline) => cmdline,
-            Err(error) => {
-                let reason: &str = "failed to convert command line string";
-                error!("{} (error={:?})", reason, error);
-                return Err(Error::new(ErrorCode::InvalidArgument, reason));
-            },
-        };
-        let args: &[u8] = args.as_bytes_with_nul();
+        // Validate that args does not contain interior null bytes (for C-string semantics).
+        if args.as_bytes().contains(&0) {
+            let reason: &str = "command line contains interior null byte";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        // args_len includes the null terminator that will be written to user space.
+        let args_total_len: usize = args.len() + 1;
 
         // Strip leading and trailing spaces from environment variables.
         let env: &str = env.trim();
 
-        // Convert env to C-style string.
-        let env: CString = match CString::new(env) {
-            Ok(cmdline) => cmdline,
-            Err(error) => {
-                let reason: &str = "failed to convert environment string";
-                error!("{reason} (error={error:?})");
-                return Err(Error::new(ErrorCode::InvalidArgument, reason));
-            },
-        };
-        let env: &[u8] = env.as_bytes_with_nul();
+        // Validate that env does not contain interior null bytes (for C-string semantics).
+        if env.as_bytes().contains(&0) {
+            let reason: &str = "environment string contains interior null byte";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        // env_len includes the null terminator that will be written to user space.
+        let env_total_len: usize = env.len() + 1;
 
         // Create a new memory address space for the process.
         let mut vmem: Vmem = mm.new_vmem(self.get_running().state().vmem())?;
@@ -490,10 +535,11 @@ impl ProcessManager {
             mm.load_elf(&mut vmem, elf)?;
 
         // Allocate a user-space page, write command line arguments to it, and check for errors.
-        // Note we subtract a pointer size from PAGE_SIZE to account for the null terminator.
-        if args.len() > PAGE_SIZE - ::core::mem::size_of::<*const u8>() {
+        // The total length includes the null terminator written after the args bytes, and must fit
+        // entirely within a single page.
+        if args_total_len > PAGE_SIZE {
             let reason: &str = "command line is too long";
-            error!("{reason} (cmdline.len={:?})", args.len());
+            error!("{reason} (cmdline.len={:?})", args_total_len);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
         mm.alloc_upages(
@@ -504,18 +550,19 @@ impl ProcessManager {
             1,
             &mut Vec::with_capacity(1),
         )?;
-        vmem.copy_to_user_unaligned(
-            args_vaddr.into_inner(),
-            VirtualAddress::new(args.as_ptr() as usize),
-            args.len(),
-        )?;
-        debug!("arguments written to user space (args_vaddr={:?}, args={:?})", args_vaddr, args);
+        // Write args as a NUL-terminated string directly to user space.
+        Self::write_nul_terminated_to_user(&mut vmem, args_vaddr.into_inner(), args)?;
+        debug!(
+            "arguments written to user space (args_vaddr={:?}, args={:?})",
+            args_vaddr,
+            args.as_bytes()
+        );
 
         // Allocate another page for the environment variables and check for errors.
-        // Note we subtract a pointer size from PAGE_SIZE to account for the null terminator.
-        if env.len() > PAGE_SIZE - ::core::mem::size_of::<*const u8>() {
+        // The total length includes the null terminator and must fit within a single page.
+        if env_total_len > PAGE_SIZE {
             let reason: &str = "environment variables are too long";
-            error!("{reason} (env.len={:?})", env.len());
+            error!("{reason} (env.len={:?})", env_total_len);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
         let envp_vaddr: PageAligned<VirtualAddress> = PageAligned::<VirtualAddress>::from_address(
@@ -530,15 +577,12 @@ impl ProcessManager {
             &mut Vec::with_capacity(1),
         )?;
 
-        // Populate the environment variable page.
-        vmem.copy_to_user_unaligned(
-            envp_vaddr.into_inner(),
-            VirtualAddress::new(env.as_ptr() as usize),
-            env.len(),
-        )?;
+        // Write env as a NUL-terminated string directly to user space.
+        Self::write_nul_terminated_to_user(&mut vmem, envp_vaddr.into_inner(), env)?;
         debug!(
             "environment variables written to user space (envp_vaddr={:?}, env={:?})",
-            envp_vaddr, env
+            envp_vaddr,
+            env.as_bytes()
         );
 
         // Create a kernel context.
@@ -592,12 +636,141 @@ impl ProcessManager {
             // Commit the next process and thread identifiers now that all fallible operations have succeeded.
             self.next_pid = next_pid;
             self.tm.commit_next_tid(next_tid);
+            self.live_count += 1;
             let process: RunnableProcess = RunnableProcess::new(pid, thread, vmem);
 
             // Add process to the queue of ready processes.
             self.ready.push_back(process);
 
             Ok(pid)
+        }))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Duplicates the calling process. The child process is created with a clone of the
+    /// caller's address space, and its main thread starts executing the user-supplied entry
+    /// function on the user-supplied stack.
+    ///
+    /// The operation is refused when the calling process owns any "special" resources, as
+    /// reported by [`ProcessState::has_special_resources`]. This guarantees that no resource
+    /// that is uniquely owned by the parent (memory-mapped I/O regions, port-mapped I/O
+    /// ports, event ownerships, or buffered in-flight messages) is silently leaked or
+    /// duplicated into the child.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Memory manager to use.
+    /// - `pid`: Process identifier of the calling (parent) process.
+    /// - `args`: Thread creation arguments describing the child main thread's entry point
+    ///   and stack.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the process identifier of the new (child) process is
+    /// returned. Otherwise, an error is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// This function fails with the following error codes, among others:
+    ///
+    /// - [`ErrorCode::OperationNotPermitted`]: The calling process owns one or more special
+    ///   resources that prevent it from being duplicated.
+    /// - [`ErrorCode::InvalidArgument`]: The supplied entry function or stack does not lie
+    ///   within the user address space.
+    ///
+    pub fn duplicate_process(
+        &mut self,
+        mm: &mut VirtMemoryManager,
+        pid: ProcessIdentifier,
+        args: &ThreadCreateArgs,
+    ) -> Result<ProcessIdentifier, Error> {
+        trace!("pid={pid:?}, args={args:?}");
+
+        // Sanity-check the caller against the running process, mirroring create_thread().
+        debug_assert!(
+            self.get_running().state().pid() == pid,
+            "duplicate_process: pid must match the running process"
+        );
+
+        // Validate user-supplied entry point and stack range.
+        if !Vmem::is_user_addr(args.user_fn) {
+            let reason: &str = "user function does not lie within the user address space";
+            error!("{reason} (user_fn={:?})", args.user_fn);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        if !Vmem::is_user_region(args.user_stack_base, args.user_stack_size) {
+            let reason: &str = "user stack does not lie within the user address space";
+            error!(
+                "{reason} (user_stack_base={:?}, user_stack_size={})",
+                args.user_stack_base, args.user_stack_size
+            );
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        if let Some(user_tda) = args.user_tda {
+            if !Vmem::is_user_addr(user_tda) {
+                let reason: &str =
+                    "user-space thread data area does not lie within the user address space";
+                error!("{reason} (user_tda={:?})", user_tda);
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            }
+        }
+
+        // Refuse to duplicate when the caller owns special resources.
+        if self.get_running().state().has_special_resources() {
+            let reason: &str = "caller owns special resources (mmio/pmio/events/mailbox)";
+            error!("{reason} (pid={pid:?})");
+            return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+        }
+
+        // Refuse to create a new process when the system-wide live-process cap has been reached.
+        if self.live_count >= ::config::kernel::MAX_PROCESSES {
+            let reason: &str = "maximum number of processes reached";
+            error!(
+                "{reason} (live_count={}, max_processes={})",
+                self.live_count,
+                ::config::kernel::MAX_PROCESSES
+            );
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
+
+        // Reserve identifiers early, before any allocation that could fail.
+        let (child_pid, next_pid): (ProcessIdentifier, ProcessIdentifier) = self.try_next_pid()?;
+        let (child_tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
+
+        // Clone caller's address space.
+        let mut vmem: Vmem = mm.new_vmem(self.get_running().state().vmem())?;
+
+        // Share parent's user-space pages with the child using copy-on-write semantics:
+        // both address spaces transparently see the same data until either side writes,
+        // at which point the in-kernel page-fault handler allocates a private copy for
+        // the faulting side.
+        mm.link_user_pages(self.get_running_mut().state_mut().vmem_mut(), &mut vmem)?;
+
+        // Forge a kernel context that, on first dispatch, enters user mode at `user_fn` on the
+        // supplied user stack.
+        let (kernel_stack, context): (KernelStack, ContextInformation) =
+            Self::forge_user_context(mm, &mut vmem, args, self.interrupt_capable)?;
+
+        //==============================================================
+        // NOTE: if we fail beyond this point we leak page mappings.
+        //==============================================================
+
+        Ok(no_fail!(ProcessIdentifier, {
+            let thread: ReadyThread =
+                self.tm
+                    .create_thread(child_tid, Some(kernel_stack), None, args.user_tda, context);
+
+            // Commit reserved identifiers now that all fallible operations succeeded.
+            self.next_pid = next_pid;
+            self.tm.commit_next_tid(next_tid);
+            self.live_count += 1;
+
+            let process: RunnableProcess = RunnableProcess::new(child_pid, thread, vmem);
+            self.ready.push_back(process);
+
+            Ok(child_pid)
         }))
     }
 
@@ -997,17 +1170,29 @@ impl ProcessManager {
         let (join_cond, previous_context): (Condvar, *mut ContextInformation) =
             match running_process.exit_thread(status) {
                 // The calling process still has runnable threads, put it in the list of ready processes.
-                Ok((join_cond, runnable_process, previous_context)) => {
+                (Ok((join_cond, runnable_process, previous_context)), deferred_zombie) => {
+                    let pid: ProcessIdentifier = runnable_process.state().pid();
                     self.ready.push_back(runnable_process);
+                    if let Some(zombie) = deferred_zombie {
+                        self.deferred_reap.push((pid, zombie));
+                    }
                     (join_cond, previous_context)
                 },
                 // The calling process has only sleeping threads left, put it in the list of suspended processes.
-                Err(Ok((join_cond, sleeping_process, previous_context))) => {
+                (Err(Ok((join_cond, sleeping_process, previous_context))), deferred_zombie) => {
+                    let pid: ProcessIdentifier = sleeping_process.state().pid();
                     self.suspended.push_back(sleeping_process);
+                    if let Some(zombie) = deferred_zombie {
+                        self.deferred_reap.push((pid, zombie));
+                    }
                     (join_cond, previous_context)
                 },
                 // The calling process has only zombie threads left, put it in the list of zombies processes.
-                Err(Err((join_cond, zombie_process, previous_context))) => {
+                (Err(Err((join_cond, zombie_process, previous_context))), deferred_zombie) => {
+                    debug_assert!(
+                        deferred_zombie.is_none(),
+                        "deferred zombie must be None when no other threads remain"
+                    );
                     self.zombies.push_back(zombie_process);
                     (join_cond, previous_context)
                 },
@@ -1203,6 +1388,12 @@ impl ProcessManager {
                 zombie_threads.pop_front();
             more_zombie_threads.push_front(zombie_thread);
 
+            // The kernel process is never reaped, so live_count must stay at least 1.
+            if self.live_count <= 1 {
+                unreachable!("live_count underflow: kernel process must always remain counted");
+            }
+            self.live_count -= 1;
+
             Some((more_zombie_threads, state, status))
         } else {
             None
@@ -1237,6 +1428,38 @@ impl ProcessManager {
                 error!("{reason} (pid={pid:?}, tid={tid:?})");
                 Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))
             },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Detaches a thread in the calling process. A detached thread is auto-harvested when it exits.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier of the calling process.
+    /// - `tid`: Thread identifier of the thread to detach.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns `Ok(None)` if the thread was marked detached, or `Ok(Some(zombie))` if
+    /// the thread was already a zombie and should be harvested immediately. On failure, returns an
+    /// error.
+    ///
+    fn do_detach_thread(
+        &mut self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+    ) -> Result<Option<ZombieThread>, Error> {
+        match self.find_process_mut(pid) {
+            Ok(ProcessRefMut::Running(process)) => process.detach_thread(tid),
+            Ok(_process_ref) => {
+                let reason: &str = "process is not running";
+                error!("{reason} (pid={pid:?}, tid={tid:?})");
+                Err(Error::new(ErrorCode::OperationNotPermitted, reason))
+            },
+            Err(error) => Err(error),
         }
     }
 
@@ -1447,16 +1670,19 @@ impl ProcessManager {
     /// Called after setting `self.running` in every scheduling path.
     ///
     fn update_active_stack_guard(&self) {
-        if let Some(ref running) = self.running {
-            if let Some(threshold) = running.guard_threshold() {
-                crate::mm::kstack::set_active_guard(threshold);
-                return;
+        #[cfg(feature = "exception-stack-guard")]
+        {
+            if let Some(ref running) = self.running {
+                if let Some(threshold) = running.guard_threshold() {
+                    crate::mm::kstack::set_active_guard(threshold);
+                    return;
+                }
             }
-        }
 
-        // When there is no running process or no guard threshold, clear the guard so that
-        // a stale threshold from a previous stack does not trigger a false overflow.
-        crate::mm::kstack::set_active_guard(0);
+            // When there is no running process or no guard threshold, clear the guard so that
+            // a stale threshold from a previous stack does not trigger a false overflow.
+            crate::mm::kstack::set_active_guard(0);
+        }
     }
 
     ///
@@ -1493,6 +1719,35 @@ impl ProcessManager {
     fn get_running(&self) -> &RunningProcess {
         // NOTE: it is safe to call unwrap because there is always a process running.
         self.running.as_ref().expect("the kernel should be running")
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reports whether the currently running process owns any "special" resources, as
+    /// defined by [`crate::pm::process::state::ProcessState::has_special_resources`].
+    ///
+    /// Thin test-only accessor used by in-kernel tests; it avoids widening the visibility of
+    /// [`Self::get_running`]. The `duplicate()` kernel call reaches the same predicate
+    /// directly through its internal `get_running()` view.
+    ///
+    #[cfg(feature = "test")]
+    pub fn current_has_special_resources(&self) -> bool {
+        self.get_running().state().has_special_resources()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a shared reference to the currently running process's virtual address space.
+    ///
+    /// Thin test-only accessor used by in-kernel tests that need a reference [`Vmem`] to clone
+    /// from (e.g. via [`crate::mm::VirtMemoryManager::new_vmem`]). Production code paths reach
+    /// this through the internal [`Self::get_running`] view instead.
+    ///
+    #[cfg(feature = "test")]
+    pub fn current_vmem(&self) -> &Vmem {
+        self.get_running().state().vmem()
     }
 
     fn get_running_mut(&mut self) -> &mut RunningProcess {
@@ -1784,13 +2039,25 @@ impl ProcessManager {
     /// Upon successful completion, empty is returned. On failure, an error is returned instead.
     ///
     pub fn vmcopy_user_to_user(
-        &self,
+        &mut self,
         src_pid: ProcessIdentifier,
         src: VirtualAddress,
         dst_pid: ProcessIdentifier,
         dst: VirtualAddress,
         size: usize,
     ) -> Result<(), Error> {
+        // Eagerly resolve any copy-on-write mappings in the destination region before the
+        // copy. The byte-copy path below targets the destination frames via their physical
+        // alias, which bypasses the page-table read-only/CoW bits, so the resolution must
+        // happen here rather than on the page-fault path.
+        if size > 0 {
+            let mut dst_proc = self.find_process_mut(dst_pid)?;
+            dst_proc
+                .state_mut()
+                .vmem_mut()
+                .resolve_cow_for_region(dst, size)?;
+        }
+
         let src_proc: ProcessRef<'_> = self.find_process(src_pid)?;
         let dst_proc: ProcessRef<'_> = self.find_process(dst_pid)?;
         let src_vmem: &Vmem = src_proc.state().vmem();
@@ -1872,6 +2139,9 @@ impl ProcessManager {
                 // Frames allocated to the user stack are freed when we exit this scope.
                 // Frames allocated to the kernel stack are freed when we exit this scope.
             }
+
+            // Notify the thread manager that this thread has been reaped.
+            self.tm.on_thread_reaped();
         }
 
         Ok(Some((state.pid(), status)))
@@ -2228,5 +2498,33 @@ impl ProcessManager {
         self.mmap(mm, pid, vaddr, 1, AccessPermission::RDWR)?;
 
         Ok(true)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Handles a page fault that may be caused by a copy-on-write mapping in the
+    /// running process's address space.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Virtual memory manager.
+    /// - `fault_addr`: Faulting virtual address.
+    /// - `error_code`: Typed x86 page-fault error code.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(true)` if the fault was resolved as a copy-on-write fault.
+    /// - `Ok(false)` if the fault is not a copy-on-write fault.
+    /// - `Err(...)` if resolving the fault failed.
+    ///
+    pub fn handle_cow_page_fault(
+        &mut self,
+        mm: &mut VirtMemoryManager,
+        fault_addr: usize,
+        error_code: excp::ErrorCode,
+    ) -> Result<bool, Error> {
+        let vmem: &mut Vmem = self.get_running_mut().state_mut().vmem_mut();
+        mm.try_resolve_cow_fault(vmem, fault_addr, error_code)
     }
 }

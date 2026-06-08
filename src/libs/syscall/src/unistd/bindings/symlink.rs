@@ -48,7 +48,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
     let target: &str = {
         // Check if `target` is invalid.
         if target.is_null() {
-            syslog::error!(
+            syslog::warn!(
                 "symlink(): target path is null (target={target:?}, linkpath={linkpath:?})"
             );
             *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -58,7 +58,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
         match ffi::CStr::from_ptr(target).to_str() {
             Ok(pathname) => pathname,
             Err(_) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "symlink(): invalid target (target={target:?}, linkpath={linkpath:?})"
                 );
                 *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -71,9 +71,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
     let linkpath: &str = {
         // Check if `linkpath` is invalid.
         if linkpath.is_null() {
-            syslog::error!(
-                "symlink(): linkpath is null (target={target:?}, linkpath={linkpath:?})"
-            );
+            syslog::warn!("symlink(): linkpath is null (target={target:?}, linkpath={linkpath:?})");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         }
@@ -81,7 +79,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
         match ffi::CStr::from_ptr(linkpath).to_str() {
             Ok(pathname) => pathname,
             Err(_) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "symlink(): invalid linkpath (target={target:?}, linkpath={linkpath:?})"
                 );
                 *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -94,7 +92,7 @@ pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char)
     match unistd::symlink(target, linkpath) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!("symlink(): {error:?} (target={target}, linkpath={linkpath})");
+            ::syslog::warn!("symlink(): {error:?} (target={target}, linkpath={linkpath})");
             *__errno_location() = error.code.get();
             -1
         },

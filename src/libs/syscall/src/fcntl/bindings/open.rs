@@ -77,7 +77,7 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
     match fcntl::open(pathname, flags, mode) {
         Ok(fd) => fd,
         Err(error) => {
-            ::syslog::trace!("open(): {error:?} (path={path:?}, flags={flags:?}, mode={mode:?})");
+            ::syslog::warn!("open(): {error:?} (path={path:?}, flags={flags:?}, mode={mode:?})");
             *__errno_location() = error.code.get();
             -1
         },

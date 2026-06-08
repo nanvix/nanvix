@@ -8,21 +8,15 @@
 //! the control-plane socket connections for communication with these instances.
 
 //==================================================================================================
-// Public Modules
-//==================================================================================================
-
-pub mod config;
-
-//==================================================================================================
 // Exports
 //==================================================================================================
 
-pub use self::config::SandboxCacheConfig;
 pub use ::nanvix_sandbox::{
     syscomm,
     HwLoc,
     SandboxTag,
 };
+pub use ::nanvix_sandbox_config::SandboxCacheConfig;
 
 //==================================================================================================
 // Imports
@@ -446,6 +440,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             self.config.log_directory().to_string(),
             linuxd_tmp_dir.to_string_lossy().into_owned(),
             self.config.l2(),
+            self.config.networking_mode().is_enabled(),
         );
 
         let linuxd: Arc<LinuxDaemon> = {
@@ -709,6 +704,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             Some(self.config.clh_bin_path().to_string()),
             Some(sandbox_tmp_dir.to_string_lossy().into_owned()),
             Some(self.config.l2()),
+            self.config.networking_mode().is_enabled(),
         );
 
         let uninitialized_sandbox: UninitializedSandbox<T> =
@@ -877,6 +873,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
 mod tests {
     use super::*;
     use ::nanvix_sandbox::syscomm::SocketType;
+    use ::nanvix_sandbox_config::NetworkingMode;
 
     // Constant for test user VM identifier that is guaranteed to not exist.
     const NONEXISTENT_USER_VM_ID: u32 = 99999;
@@ -967,6 +964,7 @@ mod tests {
             false,
             &format!("{}/snapshot", tmp_dir.path()),
             tmp_dir.path(),
+            NetworkingMode::Disabled,
         );
         (config, tmp_dir)
     }
@@ -1013,6 +1011,7 @@ mod tests {
             l2,
             &format!("{}/snapshot", tmp_dir.path()),
             tmp_dir.path(),
+            NetworkingMode::Disabled,
         );
 
         (config, tmp_dir)

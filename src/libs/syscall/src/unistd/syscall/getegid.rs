@@ -14,8 +14,8 @@ use {
             GetIdsRequest,
             GetIdsResponse,
         },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         error::ErrorCode,
@@ -53,18 +53,18 @@ pub fn getegid() -> Result<gid_t, Error> {
 /// Forwards a `getegid` request to linuxd via IPC.
 #[cfg(not(feature = "standalone"))]
 fn getegid_linuxd() -> Result<gid_t, Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it
-    let request: Message = GetIdsRequest::build(tid);
-    ::sys::kcall::ipc::send(&request)?;
+    let request: Message = GetIdsRequest::build(tid, crate::LINUXD, ::sys::ipc::MessageType::Ikc);
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not
     if response.status != 0 {
-        ::syslog::error!("getegid(): failed (tid={:?}, status={:?})", tid, { response.status });
+        ::syslog::warn!("getegid(): failed (tid={:?}, status={:?})", tid, { response.status });
 
         match ErrorCode::try_from(response.status) {
             // System call failed, return error
@@ -74,20 +74,16 @@ fn getegid_linuxd() -> Result<gid_t, Error> {
         }
     } else {
         // System call succeeded, parse response
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         match message.header {
             // Response was successfully parsed
-            LinuxDaemonMessageHeader::GetIdsResponse => {
+            SystemCallMessageHeader::GetIdsResponse => {
                 let response: GetIdsResponse = GetIdsResponse::from_bytes(message.payload);
                 Ok(response.egid)
             },
             // Invalid response
             header => {
-                ::syslog::error!(
-                    "getegid(): invalid response (tid={:?}, header={:?})",
-                    tid,
-                    header
-                );
+                ::syslog::warn!("getegid(): invalid response (tid={:?}, header={:?})", tid, header);
                 Err(Error::new(ErrorCode::InvalidMessage, "invalid response"))
             },
         }

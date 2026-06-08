@@ -272,6 +272,7 @@ impl UserVm {
                         kernel_filename,
                         initrd_filename: Some(initrd_filename.clone()),
                         initrd_args,
+                        kernel_args: None,
                         ramfs_filename,
                         stderr: stderr_file,
                         vcpu_thread_stdout_tx,
@@ -280,7 +281,6 @@ impl UserVm {
                         io_control_tx,
                         counters,
                         snapshot_path: None,
-                        mount_directory: None,
                         #[cfg(feature = "gdb")]
                         gdb_port: None,
                         #[cfg(feature = "profile-time")]

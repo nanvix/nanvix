@@ -22,10 +22,10 @@ use ::sys::error::{
 //==================================================================================================
 
 mod demand_paging;
+mod detach;
 mod direction_flag;
-#[cfg(not(feature = "hyperlight"))]
+mod duplicate;
 mod mmio_ramfs;
-#[cfg(not(feature = "hyperlight"))]
 mod rendezvous;
 mod tls;
 
@@ -53,7 +53,10 @@ const EXIT_CODE: i32 = 13;
 ///
 #[no_mangle]
 pub fn main() -> Result<(), Error> {
-    #[cfg(not(feature = "hyperlight"))]
+    detach::run()?;
+
+    duplicate::run()?;
+
     mmio_ramfs::run()?;
 
     tls::run()?;
@@ -62,7 +65,6 @@ pub fn main() -> Result<(), Error> {
 
     demand_paging::run()?;
 
-    #[cfg(not(feature = "hyperlight"))]
     rendezvous::run()?;
 
     // Return an error with the specified exit code.

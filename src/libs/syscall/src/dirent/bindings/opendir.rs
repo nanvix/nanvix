@@ -54,7 +54,7 @@ use ::syslog::trace_libcall;
 pub unsafe extern "C" fn opendir(dirname: *const i8) -> *mut DirectoryStream {
     // Check if `dirname` is null.
     if dirname.is_null() {
-        ::syslog::error!("opendir(): null dirname (dirname={dirname:?})");
+        ::syslog::warn!("opendir(): null dirname (dirname={dirname:?})");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return ptr::null_mut();
     }
@@ -63,7 +63,7 @@ pub unsafe extern "C" fn opendir(dirname: *const i8) -> *mut DirectoryStream {
     let dirname: &str = match ffi::CStr::from_ptr(dirname).to_str() {
         Ok(dirname) => dirname,
         Err(_) => {
-            ::syslog::error!("opendir(): invalid dirname (dirname={dirname:?})");
+            ::syslog::warn!("opendir(): invalid dirname (dirname={dirname:?})");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return ptr::null_mut();
         },
@@ -73,7 +73,7 @@ pub unsafe extern "C" fn opendir(dirname: *const i8) -> *mut DirectoryStream {
     match dirent::opendir(dirname) {
         Ok(dirp) => Box::into_raw(dirp),
         Err(error) => {
-            ::syslog::error!("opendir(): {error:?} (dirname={dirname:?})");
+            ::syslog::warn!("opendir(): {error:?} (dirname={dirname:?})");
             *__errno_location() = error.code.get();
             ptr::null_mut()
         },

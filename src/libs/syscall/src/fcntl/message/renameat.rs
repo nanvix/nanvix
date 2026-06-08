@@ -7,13 +7,13 @@
 
 use crate::{
     message::{
-        LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
+        SystemCallMessagePart,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::alloc::{
     string::{
@@ -34,7 +34,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::limits::NAME_MAX;
 
@@ -104,7 +107,7 @@ impl RenameAtRequest {
         // Check if `oldpath` is too long.
         if oldpath.len() > NAME_MAX {
             #[cfg(target_os = "none")]
-            ::syslog::error!(
+            ::syslog::warn!(
                 "renameat(): oldpath is too long (olddirfd={:?}, oldpath={:?}, newdirfd={:?}, \
                  newpath={:?})",
                 olddirfd,
@@ -118,7 +121,7 @@ impl RenameAtRequest {
         // Check if `newpath` is too long.
         if newpath.len() > NAME_MAX {
             #[cfg(target_os = "none")]
-            ::syslog::error!(
+            ::syslog::warn!(
                 "renameat(): newpath is too long (olddirfd={:?}, oldpath={:?}, newdirfd={:?}, \
                  newpath={:?})",
                 olddirfd,
@@ -169,14 +172,14 @@ impl MessageDeserializer for RenameAtRequest {
         // Check if the message is too short.
         if bytes.len() < Self::OFFSET_OLDPATH {
             #[cfg(target_os = "none")]
-            ::syslog::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
+            ::syslog::warn!("try_from_bytes(): message is too short (len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "message is too short"));
         }
 
         // Check if the message is too long.
         if bytes.len() > Self::MAX_SIZE {
             #[cfg(target_os = "none")]
-            ::syslog::error!("try_from_bytes(): message is too long (len={:?})", bytes.len());
+            ::syslog::warn!("try_from_bytes(): message is too long (len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "message is too long"));
         }
 
@@ -216,14 +219,14 @@ impl MessageDeserializer for RenameAtRequest {
         // Check if the message is too short.
         if bytes.len() < Self::OFFSET_OLDPATH + oldpath_len as usize {
             #[cfg(target_os = "none")]
-            ::syslog::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
+            ::syslog::warn!("try_from_bytes(): message is too short (len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "message is too short"));
         }
 
         // Check if `oldpath` is too long.
         if oldpath_len as usize > NAME_MAX {
             #[cfg(target_os = "none")]
-            ::syslog::error!(
+            ::syslog::warn!(
                 "try_from_bytes(): oldpath is too long (olddirfd={:?}, oldpath={:?}, \
                  newdirfd={:?}, newpath={:?})",
                 olddirfd,
@@ -243,14 +246,14 @@ impl MessageDeserializer for RenameAtRequest {
         // Check if the message is too short.
         if bytes.len() < Self::OFFSET_OLDPATH + oldpath_len as usize + newpath_len as usize {
             #[cfg(target_os = "none")]
-            ::syslog::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
+            ::syslog::warn!("try_from_bytes(): message is too short (len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "message is too short"));
         }
 
         // Check if `newpath` is too long.
         if newpath_len as usize > NAME_MAX {
             #[cfg(target_os = "none")]
-            ::syslog::error!(
+            ::syslog::warn!(
                 "try_from_bytes(): newpath is too long (olddirfd={:?}, oldpath={:?}, \
                  newdirfd={:?}, newpath={:?})",
                 olddirfd,
@@ -285,15 +288,19 @@ impl MessagePartitioner for RenameAtRequest {
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
-        LinuxDaemonMessagePart::build_request(
+        SystemCallMessagePart::build_request(
             tid,
-            LinuxDaemonMessageHeader::RenameAtRequestPart,
+            SystemCallMessageHeader::RenameAtRequestPart,
             total_parts,
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }
@@ -307,10 +314,10 @@ pub struct RenameAtResponse {
     pub ret: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(RenameAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(RenameAtResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl RenameAtResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
     fn new(ret: i32) -> Self {
         Self {
@@ -319,24 +326,27 @@ impl RenameAtResponse {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, ret: i32) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        ret: i32,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: RenameAtResponse = RenameAtResponse::new(ret);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::RenameAtResponse,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::RenameAtResponse, message.into_bytes());
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

@@ -215,7 +215,7 @@ impl OomHandler for NanvixOomHandler {
 ///
 #[allow(static_mut_refs)]
 pub fn init(base: VirtualAddress, capacity: usize) -> Result<(), Error> {
-    let pid: ProcessIdentifier = kcall::pm::getpid()?;
+    let pid: ProcessIdentifier = kcall::pm::__kcall_getpid()?;
 
     let size: usize = PAGE_SIZE;
 
@@ -298,7 +298,7 @@ fn try_reclaim(talc: &mut Talc<NanvixOomHandler>) {
         let (_, acme) = match allocated_span.get_base_acme() {
             Some(pair) => pair,
             None => {
-                ::syslog::error!("try_reclaim(): non-empty span returned None from get_base_acme");
+                ::syslog::warn!("try_reclaim(): non-empty span returned None from get_base_acme");
                 return;
             },
         };
@@ -306,14 +306,14 @@ fn try_reclaim(talc: &mut Talc<NanvixOomHandler>) {
         let relative_end: usize = match raw_end.checked_sub(base_raw) {
             Some(v) => v,
             None => {
-                ::syslog::error!("try_reclaim(): acme precedes heap base");
+                ::syslog::warn!("try_reclaim(): acme precedes heap base");
                 return;
             },
         };
         match mm::align_up(relative_end, PAGE_ALIGNMENT) {
             Some(v) => v,
             None => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "try_reclaim(): align_up overflow (relative_end={:X?})",
                     relative_end
                 );

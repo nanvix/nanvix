@@ -85,6 +85,10 @@ pub enum KcallNumber {
     Pull = KcallNumber::NR_PULL_SYSCALL,
     /// Creates a snapshot of the virtual machine.
     Snapshot = KcallNumber::NR_SNAPSHOT_SYSCALL,
+    /// Detaches a thread so it is auto-harvested on exit.
+    DetachThread = KcallNumber::NR_DETACH_THREAD_SYSCALL,
+    /// Duplicates the calling process.
+    Duplicate = KcallNumber::NR_DUPLICATE_SYSCALL,
     /// Invalid kernel call.
     Invalid = KcallNumber::NR_INVALID_SYSCALL,
 }
@@ -127,6 +131,8 @@ impl KcallNumber {
     const NR_PUSH_SYSCALL: u32 = 33;
     const NR_PULL_SYSCALL: u32 = 34;
     const NR_SNAPSHOT_SYSCALL: u32 = 35;
+    const NR_DETACH_THREAD_SYSCALL: u32 = 36;
+    const NR_DUPLICATE_SYSCALL: u32 = 37;
     const NR_INVALID_SYSCALL: u32 = u32::MAX;
 }
 
@@ -170,6 +176,8 @@ impl From<u32> for KcallNumber {
             Self::NR_PUSH_SYSCALL => KcallNumber::Push,
             Self::NR_PULL_SYSCALL => KcallNumber::Pull,
             Self::NR_SNAPSHOT_SYSCALL => KcallNumber::Snapshot,
+            Self::NR_DETACH_THREAD_SYSCALL => KcallNumber::DetachThread,
+            Self::NR_DUPLICATE_SYSCALL => KcallNumber::Duplicate,
             _ => KcallNumber::Invalid,
         }
     }
@@ -215,6 +223,8 @@ impl From<KcallNumber> for u32 {
             KcallNumber::Push => KcallNumber::NR_PUSH_SYSCALL,
             KcallNumber::Pull => KcallNumber::NR_PULL_SYSCALL,
             KcallNumber::Snapshot => KcallNumber::NR_SNAPSHOT_SYSCALL,
+            KcallNumber::DetachThread => KcallNumber::NR_DETACH_THREAD_SYSCALL,
+            KcallNumber::Duplicate => KcallNumber::NR_DUPLICATE_SYSCALL,
             KcallNumber::Invalid => KcallNumber::NR_INVALID_SYSCALL,
         }
     }

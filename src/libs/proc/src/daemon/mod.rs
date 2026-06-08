@@ -56,22 +56,19 @@ pub struct ProcessDaemon {
 }
 
 impl ProcessDaemon {
-    // TODO: Change this, once we rename testd to initd.
-    const INITD_NAME: &'static str = "testd";
-
     /// Initializes the process manager daemon.
     pub fn init() -> Result<Self, Error> {
         ::syslog::info!("running process manager daemon...");
-        let mypid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
+        let mypid: ProcessIdentifier = ::sys::kcall::pm::__kcall_getpid()?;
         assert_eq!(mypid, crate::PROCD, "process daemon has unexpected pid");
 
         // Acquire process management capabilities.
         ::syslog::info!("acquiring process managemnet capabilities...");
-        ::sys::kcall::pm::capctl(Capability::ProcessManagement, true)?;
+        ::sys::kcall::pm::__kcall_capctl(Capability::ProcessManagement, true)?;
 
         // Subscribe to process termination.
         ::syslog::info!("subscribing to process termination...");
-        ::sys::kcall::event::evctrl(
+        ::sys::kcall::event::__kcall_evctrl(
             Event::Scheduling(SchedulingEvent::ProcessTermination),
             EventCtrlRequest::Register,
         )?;
@@ -82,9 +79,10 @@ impl ProcessDaemon {
     }
 
     /// Runs the process manager daemon.
-    pub fn run(&mut self) {
+    /// Returns the exit status of the non-daemon process that triggered shutdown.
+    pub fn run(&mut self) -> i32 {
         loop {
-            match ::sys::kcall::ipc::recv() {
+            match ::sys::kcall::ipc::__kcall_recv() {
                 Ok(message) => {
                     ::syslog::info!("received message from={:?}", { message.source });
                     match message.message_type {
@@ -98,8 +96,8 @@ impl ProcessDaemon {
                         MessageType::Ikc => unreachable!("should not receive IKC messages"),
                         MessageType::ProcessTerminationEvent => {
                             match self.handle_process_termination_event(message) {
-                                Ok(true) => break,
-                                Ok(false) => continue,
+                                Ok(Some(status)) => return status,
+                                Ok(None) => continue,
                                 Err(e) => {
                                     ::syslog::error!(
                                         "failed to handle scheduling event (error={:?})",
@@ -112,6 +110,12 @@ impl ProcessDaemon {
                             ::syslog::error!("received unexpected pull response, ignoring");
                             continue;
                         },
+                        MessageType::ProcessCreationEvent => {
+                            ::syslog::error!(
+                                "received unexpected process creation event, ignoring"
+                            );
+                            continue;
+                        },
                     }
                 },
                 Err(e) => ::syslog::error!("failed to receive exception message (error={:?})", e),
@@ -119,7 +123,7 @@ impl ProcessDaemon {
         }
     }
 
-    fn handle_process_termination_event(&mut self, message: Message) -> Result<bool, Error> {
+    fn handle_process_termination_event(&mut self, message: Message) -> Result<Option<i32>, Error> {
         // Deserialize process identifier.
         let raw_pid_bytes: [u8; 4] = match message.payload[0..4].try_into() {
             Ok(bytes) => bytes,
@@ -141,12 +145,29 @@ impl ProcessDaemon {
         if let Some((name, _identity)) = self.processes.remove(&pid) {
             ::syslog::info!("deregistering process (pid={:?}, name={:?}", pid, name,);
 
-            if name == Self::INITD_NAME {
-                return Ok(true);
+            // A daemon terminated — not a shutdown trigger (unless it crashed).
+            if Self::is_daemon(&name) {
+                if status != 0 {
+                    ::syslog::error!(
+                        "critical daemon {:?} terminated with non-zero status {} — triggering \
+                         shutdown",
+                        name,
+                        status
+                    );
+                    return Ok(Some(status));
+                }
+                return Ok(None);
             }
         }
 
-        Ok(false)
+        // A non-daemon (or unregistered) process terminated — initiate shutdown.
+        // Return the exit status so procd can propagate it.
+        Ok(Some(status))
+    }
+
+    /// Returns `true` if `name` belongs to a system daemon that should not trigger shutdown.
+    fn is_daemon(name: &str) -> bool {
+        ::config::daemons::DAEMON_NAMES.contains(&name)
     }
 
     fn handle_ipc_message(&mut self, message: Message) -> Result<(), Error> {
@@ -172,12 +193,12 @@ impl ProcessDaemon {
                 ProcessManagementMessageHeader::Signup => {
                     let message: SignupMessage = SignupMessage::from_bytes(message.payload);
                     let message: Message = self.handle_signup(destination, message)?;
-                    ::sys::kcall::ipc::send(&message)?;
+                    ::sys::kcall::ipc::__kcall_send(&message)?;
                 },
                 ProcessManagementMessageHeader::Lookup => {
                     let message: LookupMessage = LookupMessage::from_bytes(message.payload);
                     let message: Message = self.handle_lookup(destination, message)?;
-                    ::sys::kcall::ipc::send(&message)?;
+                    ::sys::kcall::ipc::__kcall_send(&message)?;
                 },
                 // Ignore all other messages.
                 _ => {},
@@ -199,7 +220,7 @@ impl ProcessDaemon {
                 Ok(name) => {
                     let s: String = name.to_string();
 
-                    if s == "memd" {
+                    if s == ::config::daemons::MEMD_NAME {
                         ::syslog::info!("signup memory daemon");
                     } else {
                         ::syslog::info!("signup other process = {:?}", name);
@@ -270,12 +291,13 @@ impl ProcessDaemon {
             ::syslog::info!("shutting down process (pid={:?}, name={:?})", pid, pname);
             let message: Message =
                 message::shutdown_request(*pid, 0).expect("failed to broadcast shutdown message");
-            ::sys::kcall::ipc::send(&message).expect("failed to broadcast shutdown message");
+            ::sys::kcall::ipc::__kcall_send(&message)
+                .expect("failed to broadcast shutdown message");
         }
 
         // Wait for memory daemon to terminate.
         while !self.processes.is_empty() {
-            match ::sys::kcall::ipc::recv() {
+            match ::sys::kcall::ipc::__kcall_recv() {
                 Ok(message) => {
                     if message.message_type == MessageType::ProcessTerminationEvent {
                         // Deserialize process identifier.
@@ -314,7 +336,7 @@ impl Drop for ProcessDaemon {
     fn drop(&mut self) {
         // Unsubscribe from scheduling events.
         ::syslog::info!("unsubscribing from scheduling events...");
-        if let Err(e) = ::sys::kcall::event::evctrl(
+        if let Err(e) = ::sys::kcall::event::__kcall_evctrl(
             Event::Scheduling(SchedulingEvent::ProcessTermination),
             EventCtrlRequest::Unregister,
         ) {
@@ -322,7 +344,7 @@ impl Drop for ProcessDaemon {
         }
 
         ::syslog::info!("shutting down process manager daemon...");
-        if let Err(e) = ::sys::kcall::pm::capctl(Capability::ProcessManagement, false) {
+        if let Err(e) = ::sys::kcall::pm::__kcall_capctl(Capability::ProcessManagement, false) {
             ::syslog::error!("failed to release process management capabilities (error={:?})", e);
         }
     }

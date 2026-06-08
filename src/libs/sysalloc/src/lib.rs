@@ -8,7 +8,6 @@
 #![deny(clippy::all)]
 #![forbid(clippy::large_stack_frames)]
 #![forbid(clippy::large_stack_arrays)]
-#![cfg_attr(not(feature = "rustc-dep-of-std"), feature(allocator_api))]
 #![no_std]
 
 //==================================================================================================
@@ -40,8 +39,8 @@ pub use ::arch::mem::*;
 pub use ::sys::mm::*;
 
 pub use ::sys::kcall::mm::{
-    mmap,
-    munmap,
+    __kcall_mmap,
+    __kcall_munmap,
 };
 
 pub use allocator::*;

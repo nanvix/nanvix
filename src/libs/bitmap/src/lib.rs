@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(all(test, feature = "std"), feature(random))]
 // To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
 // we need `proc_macro_hygiene`.
 #![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
@@ -216,6 +215,27 @@ impl Bitmap {
     ///
     /// # Description
     ///
+    /// Returns the number of bits currently set (allocated) in the bitmap.
+    ///
+    /// # Returns
+    ///
+    /// The number of set bits.
+    ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            result as int == self@.usage(),
+            0 <= result as int,
+            result as int <= self@.num_bits,
+    )]
+    pub fn usage(&self) -> usize {
+        self.usage
+    }
+
+    ///
+    /// # Description
+    ///
     /// Allocates a bit in the bitmap.
     ///
     /// # Returns
@@ -227,23 +247,23 @@ impl Bitmap {
         requires
             old(self).inv(),
         ensures
-            self.inv(),
+            final(self).inv(),
             match result {
                 Ok(index) => {
-                    &&& 0 <= index < self@.num_bits
-                    &&& self@.num_bits == old(self)@.num_bits
+                    &&& 0 <= index < final(self)@.num_bits
+                    &&& final(self)@.num_bits == old(self)@.num_bits
                     &&& !old(self)@.is_bit_set(index as int)
-                    &&& self@.is_bit_set(index as int)
+                    &&& final(self)@.is_bit_set(index as int)
                     &&& forall|i: int|
-                        0 <= i < self@.num_bits && i != index ==> self@.is_bit_set(i) == old(
+                        0 <= i < final(self)@.num_bits && i != index ==> final(self)@.is_bit_set(i) == old(
                             self,
                         )@.is_bit_set(i)
-                    &&& self@.set_bits == old(self)@.set_bits.insert(index as int)
-                    &&& self@.usage() == old(self)@.usage() + 1
+                    &&& final(self)@.set_bits == old(self)@.set_bits.insert(index as int)
+                    &&& final(self)@.usage() == old(self)@.usage() + 1
                 },
                 Err(_) => {
                     &&& old(self)@.is_full()
-                    &&& self@ == old(self)@
+                    &&& final(self)@ == old(self)@
                 },
             },
     )]
@@ -276,33 +296,33 @@ impl Bitmap {
             size > 0,
             size <= old(self)@.num_bits,
         ensures
-            self.inv(),
+            final(self).inv(),
             match result {
                 Ok(start) => {
-                    &&& 0 <= start < self@.num_bits
-                    &&& 0 < size <= self@.num_bits
-                    &&& start + (size as int) <= self@.num_bits
-                    &&& self@.num_bits == old(self)@.num_bits
-                    &&& self@.all_bits_set_in_range(start as int, start + (size as int))
+                    &&& 0 <= start < final(self)@.num_bits
+                    &&& 0 < size <= final(self)@.num_bits
+                    &&& start + (size as int) <= final(self)@.num_bits
+                    &&& final(self)@.num_bits == old(self)@.num_bits
+                    &&& final(self)@.all_bits_set_in_range(start as int, start + (size as int))
                     &&& old(self)@.all_bits_unset_in_range(
                         start as int,
                         start + (size as int),
                     )
                     // Frame: only the allocated range changed.
                     &&& forall|i: int|
-                        0 <= i < self@.num_bits && (i < start || i >= start + (size as int))
-                            ==> self@.is_bit_set(i) == old(self)@.is_bit_set(
+                        0 <= i < final(self)@.num_bits && (i < start || i >= start + (size as int))
+                            ==> final(self)@.is_bit_set(i) == old(self)@.is_bit_set(
                             i,
                         )
                     // Set-based frame.
-                    &&& self@.set_bits == old(self)@.set_bits.union(
+                    &&& final(self)@.set_bits == old(self)@.set_bits.union(
                         BitmapView::range_set(start as int, start + (size as int)),
                     )
-                    &&& self@.usage() == old(self)@.usage() + (size as int)
+                    &&& final(self)@.usage() == old(self)@.usage() + (size as int)
                 },
                 Err(_) => {
                     &&& !old(self)@.exists_contiguous_free_range(size as int)
-                    &&& self@ == old(self)@
+                    &&& final(self)@ == old(self)@
                 },
             },
     )]
@@ -497,26 +517,26 @@ impl Bitmap {
         requires
             old(self).inv(),
         ensures
-            self.inv(),
+            final(self).inv(),
             match result {
                 Ok(()) => {
-                    &&& index < self@.num_bits
-                    &&& self@.is_bit_set(index as int)
+                    &&& index < final(self)@.num_bits
+                    &&& final(self)@.is_bit_set(index as int)
                     &&& !old(self)@.is_bit_set(index as int)
-                    &&& self@.num_bits == old(self)@.num_bits
+                    &&& final(self)@.num_bits == old(self)@.num_bits
                     // Frame.
                     &&& forall|i: int|
-                        0 <= i < self@.num_bits && i != (index as int) ==> self@.is_bit_set(i)
+                        0 <= i < final(self)@.num_bits && i != (index as int) ==> final(self)@.is_bit_set(i)
                             == old(self)@.is_bit_set(
                             i,
                         )
                     // Set-based frame.
-                    &&& self@.set_bits == old(self)@.set_bits.insert(index as int)
-                    &&& self@.usage() == old(self)@.usage() + 1
+                    &&& final(self)@.set_bits == old(self)@.set_bits.insert(index as int)
+                    &&& final(self)@.usage() == old(self)@.usage() + 1
                 },
                 Err(_) => {
                     &&& index >= old(self)@.num_bits || old(self)@.is_bit_set(index as int)
-                    &&& *self == *old(self)
+                    &&& *final(self) == *old(self)
                 },
             },
     )]
@@ -563,21 +583,21 @@ impl Bitmap {
         requires
             old(self).inv(),
         ensures
-            self.inv(),
+            final(self).inv(),
             match result {
                 Ok(()) => {
-                    &&& index < self@.num_bits
-                    &&& !self@.is_bit_set(index as int)
-                    &&& self@.num_bits == old(self)@.num_bits
+                    &&& index < final(self)@.num_bits
+                    &&& !final(self)@.is_bit_set(index as int)
+                    &&& final(self)@.num_bits == old(self)@.num_bits
                     &&& forall|i: int|
-                        0 <= i < self@.num_bits && i != (index as int) ==> self@.is_bit_set(i)
+                        0 <= i < final(self)@.num_bits && i != (index as int) ==> final(self)@.is_bit_set(i)
                             == old(self)@.is_bit_set(i)
-                    &&& self@.set_bits == old(self)@.set_bits.remove(index as int)
-                    &&& self@.usage() == old(self)@.usage() - 1
+                    &&& final(self)@.set_bits == old(self)@.set_bits.remove(index as int)
+                    &&& final(self)@.usage() == old(self)@.usage() - 1
                 },
                 Err(_) => {
                     &&& index >= old(self)@.num_bits || !old(self)@.is_bit_set(index as int)
-                    &&& *self == *old(self)
+                    &&& *final(self) == *old(self)
                 },
             },
     )]

@@ -25,12 +25,12 @@ use ::sys::{
     },
     kcall::{
         pm::{
-            create_thread,
-            join_thread,
-            lock_mutex,
-            unlock_mutex,
+            __kcall_create_thread,
+            __kcall_join_thread,
+            __kcall_lock_mutex,
+            __kcall_unlock_mutex,
         },
-        sched::sched_yield,
+        sched::__kcall_sched_yield,
     },
     pm::{
         ThreadCreateArgs,
@@ -79,14 +79,14 @@ pub fn run() -> Result<(), StressError> {
     for worker_id in 0..CHURN_WORKERS {
         let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?;
         let mut args: ThreadCreateArgs = thread_args(&stack, mutex_churn_worker, worker_id);
-        let tid: ThreadIdentifier = create_thread(&mut args)?;
+        let tid: ThreadIdentifier = __kcall_create_thread(&mut args)?;
         tids.push(tid);
         stacks.push(stack);
     }
 
-    for (tid, stack) in tids.into_iter().zip(stacks.into_iter()) {
+    for (tid, stack) in tids.into_iter().zip(stacks) {
         let mut retval: usize = 0;
-        join_thread(tid, &mut retval)?;
+        __kcall_join_thread(tid, &mut retval)?;
         drop(stack);
         if retval == CHURN_WORKER_FAILURE {
             let code_raw: usize = CHURN_ERROR_CODE.swap(0, Ordering::AcqRel);
@@ -147,12 +147,12 @@ extern "C" fn mutex_churn_worker(worker_id: usize) -> usize {
 /// `Ok(count)` on success where `count` is the number of iterations completed.
 fn mutex_churn_worker_impl(worker_id: usize) -> Result<usize, Error> {
     for iteration in 0..CHURN_ITERATIONS {
-        lock_mutex(stress_mutex_addr(), None)?;
+        __kcall_lock_mutex(stress_mutex_addr(), None)?;
         CHURN_TOTAL.fetch_add(1, Ordering::AcqRel);
-        unlock_mutex(stress_mutex_addr())?;
+        __kcall_unlock_mutex(stress_mutex_addr())?;
 
         if (iteration ^ worker_id) & 0x7 == 0 {
-            sched_yield()?;
+            __kcall_sched_yield()?;
         }
     }
 

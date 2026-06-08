@@ -46,25 +46,25 @@ impl Heap {
 
         // Check if base address is page-aligned.
         if !base.is_aligned(PAGE_ALIGNMENT) {
-            ::syslog::error!("new(): unaligned base address {:X?}", base);
+            ::syslog::warn!("new(): unaligned base address {:X?}", base);
             return Err(Error::new(ErrorCode::BadAddress, "unaligned base address"));
         }
 
         // Check if size is zero.
         if size == 0 {
-            ::syslog::error!("new(): zero size");
+            ::syslog::warn!("new(): zero size");
             return Err(Error::new(ErrorCode::BadAddress, "zero size"));
         }
 
         // Check if capacity is zero.
         if capacity == 0 {
-            ::syslog::error!("new(): zero capacity");
+            ::syslog::warn!("new(): zero capacity");
             return Err(Error::new(ErrorCode::BadAddress, "zero capacity"));
         }
 
         // Check if capacity is smaller than size.
         if capacity < size {
-            ::syslog::error!("new(): capacity is too small");
+            ::syslog::warn!("new(): capacity is too small");
             return Err(Error::new(ErrorCode::BadAddress, "capacity is too small"));
         }
 
@@ -98,19 +98,19 @@ impl Heap {
 
         // Check if increment is page-aligned.
         if !mm::is_aligned(increment, PAGE_ALIGNMENT) {
-            ::syslog::error!("grow(): unaligned increment");
+            ::syslog::warn!("grow(): unaligned increment");
             return Err(Error::new(ErrorCode::BadAddress, "unaligned increment"));
         }
 
         // Check if increment is zero.
         if increment == 0 {
-            ::syslog::error!("grow(): zero increment");
+            ::syslog::warn!("grow(): zero increment");
             return Err(Error::new(ErrorCode::BadAddress, "zero increment"));
         }
 
         // Check if increment would exceed capacity.
         if self.size + increment > self.capacity {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "grow(): exceeds capacity (self.size={:X?}, increment={:X?}, self.capacity={:X?})",
                 self.size,
                 increment,
@@ -146,7 +146,7 @@ impl Heap {
 
         // Check if new size is page-aligned.
         if !mm::is_aligned(new_size, PAGE_ALIGNMENT) {
-            ::syslog::error!("shrink(): unaligned new_size");
+            ::syslog::warn!("shrink(): unaligned new_size");
             return Err(Error::new(ErrorCode::BadAddress, "unaligned new_size"));
         }
 
@@ -166,8 +166,8 @@ impl Heap {
 
         for page in (new_end..old_end).step_by(mem::PAGE_SIZE).rev() {
             let page_addr: VirtualAddress = VirtualAddress::from_raw_value(page);
-            if let Err(error) = kcall::mm::munmap(self.pid, page_addr) {
-                ::syslog::error!(
+            if let Err(error) = kcall::mm::__kcall_munmap(self.pid, page_addr) {
+                ::syslog::warn!(
                     "shrink(): failed to unmap page at {:X?}, stopping (error={:?})",
                     page_addr,
                     error
@@ -204,7 +204,7 @@ pub fn map_range(
     // against invalid ranges where the end address wraps around the address space.
     if start > end {
         let reason: &str = "map_range(): start address is greater than end address";
-        ::syslog::error!("{reason}");
+        ::syslog::warn!("{reason}");
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
@@ -214,9 +214,9 @@ pub fn map_range(
 
     // Use batch mmap kcall to map all pages in a single kernel transition.
     if let Err(error) =
-        kcall::mm::mmap(pid, VirtualAddress::new(start), npages, AccessPermission::RDWR)
+        kcall::mm::__kcall_mmap(pid, VirtualAddress::new(start), npages, AccessPermission::RDWR)
     {
-        ::syslog::error!(
+        ::syslog::warn!(
             "map_range(): batch mmap failed at {:X?}..{:X?}, npages={} (error={:?})",
             start,
             end,
@@ -251,8 +251,8 @@ pub fn unmap_range(
 
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
 
-        if let Err(error) = kcall::mm::munmap(pid, vaddr) {
-            ::syslog::error!(
+        if let Err(error) = kcall::mm::__kcall_munmap(pid, vaddr) {
+            ::syslog::warn!(
                 "unmap_range(): failed to unmap page at {:X?}, skipping (error={:?})",
                 vaddr,
                 error

@@ -705,4 +705,40 @@ mod tests {
         let (mount, _buf) = make_readonly_mount("/data");
         assert!(mount.readonly(), "read-only mount should return true");
     }
+
+    // -- Tilde is no longer expanded server-side ---------------------------------
+
+    /// Tests that "~" is treated as a relative path (no expansion).
+    #[test]
+    fn normalize_tilde_is_relative() {
+        let vfs: Vfs = Vfs::new();
+        let result: String = vfs.normalize_path("~").expect("should succeed");
+        assert_eq!(result, "/~", "bare ~ should be treated as relative segment");
+    }
+
+    /// Tests that "~/foo" is treated as a relative path (no expansion).
+    #[test]
+    fn normalize_tilde_subpath_is_relative() {
+        let vfs: Vfs = Vfs::new();
+        let result: String = vfs.normalize_path("~/foo").expect("should succeed");
+        assert_eq!(result, "/~/foo", "~/foo should be treated as relative path");
+    }
+
+    /// Tests that paths not starting with "~" are unaffected.
+    #[test]
+    fn normalize_no_tilde() {
+        let vfs: Vfs = Vfs::new();
+        let result: String = vfs
+            .normalize_path("/data/file.txt")
+            .expect("should succeed");
+        assert_eq!(result, "/data/file.txt");
+    }
+
+    /// Tests that "~user" is treated as a relative path.
+    #[test]
+    fn normalize_tilde_user_not_expanded() {
+        let vfs: Vfs = Vfs::new();
+        let result: String = vfs.normalize_path("~other").expect("should succeed");
+        assert_eq!(result, "/~other", "~user should not be expanded");
+    }
 }

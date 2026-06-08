@@ -24,7 +24,8 @@ use crate::{
 // Send Message
 //==================================================================================================
 
-pub fn send(message: &Message) -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_send(message: &Message) -> Result<(), Error> {
     let result: i64 = kcall1!(KcallNumber::Send.into(), message as *const Message as usize as u32);
 
     if result == 0 {
@@ -38,7 +39,8 @@ pub fn send(message: &Message) -> Result<(), Error> {
 // Receive Message
 //==================================================================================================
 
-pub fn recv() -> Result<Message, Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_recv() -> Result<Message, Error> {
     let mut message: Message = Default::default();
 
     let result: i64 =
@@ -75,7 +77,8 @@ pub fn recv() -> Result<Message, Error> {
 /// - [`ErrorCode::InvalidArgument`]: Invalid destination identifiers, self-push, or transfer
 ///   length exceeds `u32::MAX`.
 ///
-pub fn push(
+#[unsafe(no_mangle)]
+pub fn __kcall_push(
     destination_pid: ProcessIdentifier,
     destination_tid: ThreadIdentifier,
     buffer: &[u8],
@@ -127,7 +130,8 @@ pub fn push(
 /// - [`ErrorCode::InvalidArgument`]: Invalid sender identifiers, self-pull, or transfer length
 ///   exceeds `u32::MAX`.
 ///
-pub fn pull(
+#[unsafe(no_mangle)]
+pub fn __kcall_pull(
     sender_pid: ProcessIdentifier,
     sender_tid: ThreadIdentifier,
     buffer: &mut [u8],

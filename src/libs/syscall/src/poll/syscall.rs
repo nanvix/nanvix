@@ -19,16 +19,16 @@ use ::sysapi::ffi::{
 use {
     crate::{
         message::{
-            LinuxDaemonLongMessage,
-            LinuxDaemonMessagePart,
             MessagePartitioner,
+            SystemCallLongMessage,
+            SystemCallMessagePart,
         },
         poll::message::{
             PollRequest,
             PollResponse,
         },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         ipc::Message,
@@ -145,7 +145,9 @@ pub fn poll(
     // In standalone mode, poll is not available (no linuxd).
     #[cfg(feature = "standalone")]
     {
-        Err(Error::new(ErrorCode::OperationNotSupported, "poll not available in standalone mode"))
+        let reason: &str = "poll() is not available in standalone mode";
+        ::syslog::warn!("poll(): {reason} (fds={fds:?}, timeout={timeout:?})");
+        Err(Error::new(ErrorCode::OperationNotSupported, reason))
     }
 
     // Forward to linuxd via IPC.
@@ -159,24 +161,25 @@ fn poll_linuxd(
     fds: &[PollFd],
     timeout: PollTimeout,
 ) -> Result<Vec<(RawFileDescriptor, PollEvents)>, Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
     let events: Vec<i16> = fds.iter().map(|fd| fd.events.0).collect();
     let poll_fds: Vec<RawFileDescriptor> = fds.iter().map(|fd| fd.fd).collect();
     let timeout: i32 = timeout.into();
     let request: PollRequest = PollRequest::new(&poll_fds, &events, timeout)?;
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::LINUXD, ::sys::ipc::MessageType::Ikc)?;
     for request in &requests {
-        ipc::send(request)?;
+        ipc::__kcall_send(request)?;
     }
 
     // Compute maximum number of parts in the response.
-    let capacity: usize = PollResponse::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
-    let mut assembler: LinuxDaemonLongMessage = LinuxDaemonLongMessage::new(capacity)?;
+    let capacity: usize = PollResponse::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
+    let mut assembler: SystemCallLongMessage = SystemCallLongMessage::new(capacity)?;
 
     loop {
-        let response: Message = ipc::recv()?;
+        let response: Message = ipc::__kcall_recv()?;
 
         // Check if system call failed.
         if response.status != 0 {
@@ -186,7 +189,7 @@ fn poll_linuxd(
                     break Err(Error::new(error_code, reason));
                 },
                 Err(error) => {
-                    ::syslog::error!(
+                    ::syslog::warn!(
                         "poll(): failed to parse error code (fds={fds:?}, timeout={timeout:?}, \
                          error={error:?})"
                     );
@@ -196,23 +199,22 @@ fn poll_linuxd(
         }
 
         // Parse system call response.
-        let message: LinuxDaemonMessage = match LinuxDaemonMessage::try_from_bytes(response.payload)
-        {
+        let message: SystemCallMessage = match SystemCallMessage::try_from_bytes(response.payload) {
             Ok(m) => m,
             Err(error) => {
-                ::syslog::error!("poll(): {error:?} (fds={fds:?}, timeout={timeout:?})");
+                ::syslog::warn!("poll(): {error:?} (fds={fds:?}, timeout={timeout:?})");
                 break Err(error);
             },
         };
 
         match message.header {
-            LinuxDaemonMessageHeader::PollResponsePart => {
-                let part: LinuxDaemonMessagePart =
-                    LinuxDaemonMessagePart::from_bytes(message.payload);
+            SystemCallMessageHeader::PollResponsePart => {
+                let part: SystemCallMessagePart =
+                    SystemCallMessagePart::from_bytes(message.payload);
 
                 // Add response part to message assembler and check for errors.
                 if let Err(e) = assembler.add_part(part) {
-                    ::syslog::error!(
+                    ::syslog::warn!(
                         "poll(): failed to assemble response (fds={fds:?}, timeout={timeout:?})"
                     );
                     break Err(e);
@@ -223,7 +225,7 @@ fn poll_linuxd(
                     continue;
                 }
 
-                let parts: Vec<LinuxDaemonMessagePart> = assembler.take_parts();
+                let parts: Vec<SystemCallMessagePart> = assembler.take_parts();
 
                 // Assemble message.
                 match PollResponse::from_parts(&parts) {
@@ -240,14 +242,14 @@ fn poll_linuxd(
                         break Ok(ready);
                     },
                     Err(error) => {
-                        ::syslog::error!("poll(): {error:?} (fds={fds:?}, timeout={timeout:?})");
+                        ::syslog::warn!("poll(): {error:?} (fds={fds:?}, timeout={timeout:?})");
                         break Err(error);
                     },
                 }
             },
             _ => {
                 let reason: &'static str = "unexpected message header";
-                ::syslog::error!("poll(): {reason} (fds={fds:?}, timeout={timeout:?})");
+                ::syslog::warn!("poll(): {reason} (fds={fds:?}, timeout={timeout:?})");
                 break Err(Error::new(ErrorCode::InvalidMessage, reason));
             },
         }

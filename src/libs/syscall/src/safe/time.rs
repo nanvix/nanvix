@@ -61,7 +61,7 @@ impl Time {
     ///
     pub fn now() -> Result<Time, Error> {
         let mut now: SystemTime = SystemTime::default();
-        kcall::pm::gettime(&mut now)?;
+        kcall::pm::__kcall_gettime(&mut now)?;
         Ok(Time(now))
     }
 

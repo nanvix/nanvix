@@ -5,36 +5,27 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    safe::RawFileDescriptor,
+    unistd::message::{
+        PartialReadRequest,
+        PartialReadResponse,
+    },
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::core::cmp;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::{
     c_size_t,
     off_t,
-};
-#[cfg(feature = "standalone")]
-use ::sysapi::unistd::{
-    STDERR_FILENO,
-    STDIN_FILENO,
-    STDOUT_FILENO,
-};
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        unistd::message::{
-            PartialReadRequest,
-            PartialReadResponse,
-        },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
-    },
-    ::core::cmp,
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
 };
 
 //==================================================================================================
@@ -60,39 +51,31 @@ use {
 pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<c_size_t, Error> {
     ::syslog::trace!("pread(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
-    // In standalone mode, forward operation to virtual file system (VFS).
+    // POSIX requires pread on a non-seekable fd (pipe/stdio) to return ESPIPE.
     #[cfg(feature = "standalone")]
     {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return ::nvx::vfs::fd::vfs_pread(fd, buffer, offset).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::warn!("pread(): VFS pread failed (fd={fd}, error={e})");
-                Error::new(code, "vfs pread failed")
-            });
-        }
+        use ::sysapi::unistd::{
+            STDERR_FILENO,
+            STDIN_FILENO,
+            STDOUT_FILENO,
+        };
+
         if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
-            let reason: &str = "illegal seek on stdio";
-            ::syslog::error!("pread(): {reason} (fd={fd})");
-            return Err(Error::new(ErrorCode::IllegalSeek, reason));
+            ::syslog::warn!(
+                "pread(): illegal seek on stdio (fd={fd}, buffer={buffer:?}, offset={offset})",
+            );
+            return Err(Error::new(ErrorCode::IllegalSeek, "illegal seek on stdio"));
         }
-        let reason: &str = "pread: fd is not a VFS fd in standalone mode";
-        ::syslog::error!("pread(): {reason} (fd={fd})");
-        Err(Error::new(ErrorCode::BadFile, reason))
     }
 
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    pread_linuxd(fd, buffer, offset)
-}
+    // In standalone mode, only VFS file descriptors should be routed to vfsd.
+    #[cfg(feature = "standalone")]
+    if !crate::is_vfs_fd(fd) {
+        ::syslog::warn!("pread(): bad file descriptor fd={fd} in standalone mode");
+        return Err(Error::new(ErrorCode::BadFile, "pread: fd is not a VFS fd in standalone mode"));
+    }
 
-/// Forwards a `pread` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn pread_linuxd(
-    fd: RawFileDescriptor,
-    buffer: &mut [u8],
-    offset: off_t,
-) -> Result<c_size_t, Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let mut total_read: c_size_t = 0;
     let mut buffer_offset: usize = 0;
@@ -107,15 +90,17 @@ fn pread_linuxd(
             fd,
             chunk_size as c_size_t,
             offset + buffer_offset as off_t,
+            crate::VFS_DESTINATION,
+            crate::VFS_MESSAGE_TYPE,
         );
-        ::sys::kcall::ipc::send(&request)?;
+        ::sys::kcall::ipc::__kcall_send(&request)?;
 
         // Receive response.
-        let response: Message = ::sys::kcall::ipc::recv()?;
+        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
         // Check whether system call succeeded or not.
         if response.status != 0 {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "pread(): failed (fd={}, buffer.len={}, offset={}, error_code={})",
                 fd,
                 buffer.len(),
@@ -128,17 +113,17 @@ fn pread_linuxd(
                 Ok(error_code) => return Err(Error::new(error_code, "pread() failed")),
                 // System call failed, return unknown error.
                 Err(error) => {
-                    ::syslog::error!("pread(): failed to convert error code (error={:?})", error);
+                    ::syslog::warn!("pread(): failed to convert error code (error={:?})", error);
                     return Err(Error::new(ErrorCode::TryAgain, "pread() failed"));
                 },
             }
         } else {
             // System call succeeded, parse response.
-            let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+            let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
             // Response was successfully parsed.
             match message.header {
                 // Response was successfully parsed.
-                LinuxDaemonMessageHeader::PartialReadResponse => {
+                SystemCallMessageHeader::PartialReadResponse => {
                     // Parse response.
                     let response: PartialReadResponse =
                         PartialReadResponse::from_bytes(message.payload);
@@ -160,7 +145,7 @@ fn pread_linuxd(
                     }
                 },
                 header => {
-                    ::syslog::error!(
+                    ::syslog::warn!(
                         "pread(): failed to parse response (fd={}, buffer.len={}, offset={}, \
                          header={:?})",
                         fd,

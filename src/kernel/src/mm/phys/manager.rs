@@ -5,17 +5,19 @@
 // Imports
 //==================================================================================================
 
-use crate::mm::phys::{
-    kpool::{
-        KernelFrame,
-        Kpool,
-    },
-    upool::{
-        Upool,
-        UserFrame,
+use crate::{
+    hal::mem::FrameAddress,
+    mm::phys::{
+        frame,
+        kframe::KernelFrame,
+        upool::{
+            Upool,
+            UserFrame,
+        },
     },
 };
 use ::alloc::vec::Vec;
+use ::arch::mem;
 use ::core::{
     hint::unlikely,
     mem::MaybeUninit,
@@ -58,7 +60,6 @@ static PHYS_MEMORY_MANAGER_INIT: AtomicBool = AtomicBool::new(false);
 /// Physical memory manager.
 ///
 pub struct PhysMemoryManager {
-    kpool: Kpool,
     upool: Upool,
 }
 
@@ -74,14 +75,13 @@ impl PhysMemoryManager {
     ///
     /// # Parameters
     ///
-    /// - `kpool`: Kernel page pool.
     /// - `upool`: User page pool.
     ///
     /// # Errors
     ///
     /// Returns `InvalidArgument` if the singleton has already been initialized.
     ///
-    pub(super) fn init(kpool: Kpool, upool: Upool) -> Result<(), Error> {
+    pub(super) fn init(upool: Upool) -> Result<(), Error> {
         if unlikely(PHYS_MEMORY_MANAGER_INIT.load(ORDER)) {
             return Err(Error::new(
                 ErrorCode::InvalidArgument,
@@ -90,7 +90,7 @@ impl PhysMemoryManager {
         }
 
         // SAFETY: this happens during kernel initialization and no other threads are running.
-        unsafe { PHYS_MEMORY_MANAGER.write(PhysMemoryManager { kpool, upool }) };
+        unsafe { PHYS_MEMORY_MANAGER.write(PhysMemoryManager { upool }) };
         PHYS_MEMORY_MANAGER_INIT.store(true, ORDER);
         Ok(())
     }
@@ -130,6 +130,8 @@ impl PhysMemoryManager {
     /// Allocates user frames into caller-provided storage.
     ///
     /// The returned frames are not guaranteed to be physically contiguous.
+    /// User allocations are gated by the kernel watermark: if fulfilling the request would
+    /// leave fewer than `KERNEL_WATERMARK` free frames, the allocation is rejected.
     ///
     /// # Parameters
     ///
@@ -159,6 +161,13 @@ impl PhysMemoryManager {
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
+        // A zero-sized allocation is trivially satisfied.
+        if count == 0 {
+            return Ok(());
+        }
+
+        Self::check_user_watermark(count)?;
+
         for _ in 0..count {
             match self.upool.alloc() {
                 Ok(frame) => frames.push(frame),
@@ -174,20 +183,81 @@ impl PhysMemoryManager {
     ///
     /// # Description
     ///
+    /// Allocates a single user frame, applying the same kernel watermark check as
+    /// [`Self::alloc_many_user_frames`]. This is the single-frame fast path used on
+    /// hot paths such as copy-on-write fault resolution, where allocating an
+    /// intermediate [`Vec`] would be wasteful.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a [`UserFrame`] is returned. Upon failure, an error is returned
+    /// instead.
+    ///
+    pub fn alloc_user_frame(&mut self) -> Result<UserFrame, Error> {
+        Self::check_user_watermark(1)?;
+        self.upool.alloc()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Rejects user allocations of `count` frames that would breach the kernel
+    /// watermark, i.e. that would drop the number of free frames below
+    /// [`config::kernel::KERNEL_WATERMARK`].
+    ///
+    /// # Parameters
+    ///
+    /// - `count`: Number of user frames the caller intends to allocate.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
+    fn check_user_watermark(count: usize) -> Result<(), Error> {
+        let watermark_threshold: usize = config::kernel::KERNEL_WATERMARK
+            .checked_add(count)
+            .ok_or_else(|| {
+                let reason: &str = "watermark + count overflow";
+                error!("{reason}");
+                Error::new(ErrorCode::InvalidArgument, reason)
+            })?;
+        if frame::free_count() < watermark_threshold {
+            let reason: &str = "would breach kernel watermark";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Allocates a kernel frame.
+    ///
+    /// Kernel allocations bypass the watermark — no artificial ceiling.
     ///
     /// # Return Values
     ///
     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
     ///
     pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
-        self.kpool.alloc()
+        let frame_addr: FrameAddress = frame::alloc()?;
+        KernelFrame::new(frame_addr).inspect_err(|e| {
+            warn!("failed to wrap frame after KernelFrame::new failure: {e:?}");
+            if let Err(free_err) = frame::free(frame_addr) {
+                warn!("failed to free frame after KernelFrame::new failure: {free_err:?}");
+            }
+        })
     }
 
     ///
     /// # Description
     ///
     /// Allocates a contiguous range of kernel frames into caller-provided storage.
+    ///
+    /// Kernel stacks require physically contiguous frames because the kernel uses identity
+    /// mapping and the hardware stack pointer traverses the region linearly.
+    /// Kernel allocations bypass the watermark — no artificial ceiling.
     ///
     /// # Parameters
     ///
@@ -217,6 +287,28 @@ impl PhysMemoryManager {
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
-        self.kpool.alloc_many(count, frames)
+        let base_addr: FrameAddress = frame::alloc_contiguous(count)?;
+        let base_raw: usize = base_addr.into_raw_value();
+        for i in 0..count {
+            let raw_addr: usize = base_raw + i * mem::PAGE_SIZE;
+            match FrameAddress::from_raw_value(raw_addr).and_then(KernelFrame::new) {
+                Ok(kf) => frames.push(kf),
+                Err(e) => {
+                    // Drop already-wrapped frames (frees them via KernelFrame::Drop).
+                    frames.clear();
+                    // Free remaining un-wrapped frames from the contiguous allocation.
+                    for j in i..count {
+                        let leak_raw: usize = base_raw + j * mem::PAGE_SIZE;
+                        if let Ok(fa) = FrameAddress::from_raw_value(leak_raw) {
+                            if let Err(e) = frame::free(fa) {
+                                warn!("failed to free leaked frame {fa:?}: {e:?}");
+                            }
+                        }
+                    }
+                    return Err(e);
+                },
+            }
+        }
+        Ok(())
     }
 }

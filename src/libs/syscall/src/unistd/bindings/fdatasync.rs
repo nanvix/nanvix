@@ -57,7 +57,7 @@ pub unsafe extern "C" fn fdatasync(fd: c_int) -> c_int {
     match crate::unistd::fdatasync(fd) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!("fdatasync(): {error:?} (fd={fd:?})");
+            ::syslog::warn!("fdatasync(): {error:?} (fd={fd:?})");
             *__errno_location() = error.code.get();
             -1
         },

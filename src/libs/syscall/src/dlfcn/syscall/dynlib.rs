@@ -16,7 +16,10 @@ use crate::safe::{
     RegularFileOpenFlags,
 };
 use ::alloc::{
-    collections::btree_map::BTreeMap,
+    collections::{
+        btree_map::BTreeMap,
+        btree_set::BTreeSet,
+    },
     ffi::CString,
     fmt,
     string::{
@@ -138,7 +141,7 @@ impl DynamicLibrary {
             Ok(cstr) => cstr,
             Err(_) => {
                 let reason: &str = "failed to convert filename to C string";
-                ::syslog::error!("open(): {}", reason);
+                ::syslog::warn!("open(): {}", reason);
                 return Err(Error::new(ErrorCode::BadFile, reason));
             },
         };
@@ -149,7 +152,7 @@ impl DynamicLibrary {
         // Check if file is not a regular file.
         if attr.file_type() != FileType::RegularFile {
             let reason: &str = "file is not a regular file";
-            ::syslog::error!("open(): {}", reason);
+            ::syslog::warn!("open(): {}", reason);
             return Err(Error::new(ErrorCode::BadFile, reason));
         }
 
@@ -164,7 +167,7 @@ impl DynamicLibrary {
                 // Check if ELF file is not a dynamic library.
                 if !elf.is_lib {
                     let reason: &str = "file is not a dynamic library";
-                    ::syslog::error!("load(): {}", reason);
+                    ::syslog::warn!("load(): {}", reason);
                     return Err(Error::new(ErrorCode::BadFile, reason));
                 }
 
@@ -198,7 +201,7 @@ impl DynamicLibrary {
                             // Check if program headers overlap.
                             if base < end_address.into_raw_value() {
                                 let reason: &str = "program headers overlap";
-                                ::syslog::error!("load(): {} (phdr={:#x?}", reason, phdr);
+                                ::syslog::warn!("load(): {} (phdr={:#x?}", reason, phdr);
                                 return Err(Error::new(ErrorCode::BadFile, reason));
                             }
 
@@ -208,7 +211,7 @@ impl DynamicLibrary {
                                 mm::align_up(offset + phdr.p_memsz as usize, PAGE_ALIGNMENT)
                                     .ok_or_else(|| {
                                         let reason: &str = "align_up overflow";
-                                        ::syslog::error!(
+                                        ::syslog::warn!(
                                             "load(): {reason} (p_memsz={}, vaddr={:#x}, \
                                              base={:#x})",
                                             phdr.p_memsz,
@@ -220,7 +223,7 @@ impl DynamicLibrary {
                             let end_raw: usize =
                                 base.into_raw_value().checked_add(capacity).ok_or_else(|| {
                                     let reason: &str = "end_address overflow";
-                                    ::syslog::error!(
+                                    ::syslog::warn!(
                                         "load(): {reason} (base={:#x}, capacity={capacity})",
                                         base.into_raw_value()
                                     );
@@ -261,7 +264,7 @@ impl DynamicLibrary {
                         section_headers.insert(section_name.to_string(), section.clone())
                     {
                         let reason: &str = "duplicate section header";
-                        ::syslog::error!("load(): {} (section.name={:?})", reason, section_name);
+                        ::syslog::warn!("load(): {} (section.name={:?})", reason, section_name);
                         return Err(Error::new(ErrorCode::BadFile, reason));
                     }
                 }
@@ -271,7 +274,7 @@ impl DynamicLibrary {
                     Some(dynsym) => dynsym,
                     None => {
                         let reason: &str = "missing dynamic symbol table";
-                        ::syslog::error!("load(): {}", reason);
+                        ::syslog::warn!("load(): {}", reason);
                         return Err(Error::new(ErrorCode::BadFile, reason));
                     },
                 };
@@ -279,7 +282,7 @@ impl DynamicLibrary {
                     Some(dynstr) => dynstr,
                     None => {
                         let reason: &str = "missing dynamic string table";
-                        ::syslog::error!("load(): {}", reason);
+                        ::syslog::warn!("load(): {}", reason);
                         return Err(Error::new(ErrorCode::BadFile, reason));
                     },
                 };
@@ -302,7 +305,7 @@ impl DynamicLibrary {
             },
             Err(error) => {
                 let reason: &str = "failed to parse ELF file";
-                ::syslog::error!("load(): {} (error={:?})", reason, error);
+                ::syslog::warn!("load(): {} (error={:?})", reason, error);
                 Err(Error::new(ErrorCode::IoErr, reason))
             },
         }
@@ -344,7 +347,7 @@ impl DynamicLibrary {
                 let aligned_end: usize =
                     mm::align_up(unaligned_end, PAGE_ALIGNMENT).ok_or_else(|| {
                         let reason: &str = "align_up overflow in compute_load_size";
-                        ::syslog::error!("compute_load_size(): {reason}");
+                        ::syslog::warn!("compute_load_size(): {reason}");
                         Error::new(ErrorCode::BadFile, reason)
                     })?;
                 if aligned_end > max_end {
@@ -354,7 +357,7 @@ impl DynamicLibrary {
         }
         if max_end == 0 {
             let reason: &str = "no loadable segments found";
-            ::syslog::error!("compute_load_size(): {}", reason);
+            ::syslog::warn!("compute_load_size(): {}", reason);
             return Err(Error::new(ErrorCode::BadFile, reason));
         }
         Ok(max_end - min_base)
@@ -471,7 +474,11 @@ impl DynamicLibrary {
         ::syslog::trace!("lookup(): symbol={}, dlname={:?}", symbol_name, self.filename);
 
         // Search self and dependency tree without global fallback.
-        if let Some(result) = self.lookup_in_load_group(symbol_name)? {
+        // The visited set tracks which dependencies have been traversed in
+        // this lookup to avoid re-searching in diamond-shaped graphs and to
+        // prevent infinite recursion on cyclic dependencies.
+        let mut visited: BTreeSet<usize> = BTreeSet::new();
+        if let Some(result) = self.lookup_in_load_group(symbol_name, &mut visited)? {
             return Ok(Some(result));
         }
 
@@ -492,7 +499,15 @@ impl DynamicLibrary {
     /// Does NOT fall back to the global symbol table. This ensures that
     /// recursive dependency searches do not short-circuit to the global scope
     /// before the entire dependency tree has been checked.
-    fn lookup_in_load_group(&self, symbol_name: &str) -> Result<Option<(usize, usize)>, Error> {
+    ///
+    /// The `visited` set tracks `Arc` allocation addresses of dependencies
+    /// already traversed in this lookup, preventing redundant work on
+    /// diamond-shaped graphs and avoiding false-positive cycle detection.
+    fn lookup_in_load_group(
+        &self,
+        symbol_name: &str,
+        visited: &mut BTreeSet<usize>,
+    ) -> Result<Option<(usize, usize)>, Error> {
         if let Some(symbol) = self.find(symbol_name) {
             if !symbol.is_undefined() {
                 // Symbol is defined in this library.
@@ -503,20 +518,26 @@ impl DynamicLibrary {
         // Symbol is either undefined in this library or not in its dynsym at
         // all. Per POSIX, dlsym must search the full dependency tree regardless
         // of whether the root library references the symbol.
-        for (_dlname, dlfile) in self.dependencies.iter() {
-            if let Some(dlfile) = dlfile {
-                // Check if dependency is locked.
-                if dlfile.is_locked() {
-                    let reason: &str = "circular dependency detected";
-                    ::syslog::error!("lookup(): {:?} (symbol_name={:?})", reason, symbol_name);
-                    return Err(Error::new(ErrorCode::BadFile, reason));
-                }
+        for dlfile in self.dependencies.values().flatten() {
+            // Guard against deadlock: if the mutex is held by an ancestor
+            // in our call chain (true cycle back to a locked parent) or by
+            // a concurrent lookup, skip rather than spinning forever.
+            if dlfile.is_locked() {
+                continue;
+            }
 
-                let dlfile: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
+            // Use the Arc's heap allocation address as a unique,
+            // lock-free identifier for this dependency. Skip if already
+            // traversed in this lookup (diamond-shaped dependency).
+            let id: usize = Arc::as_ptr(dlfile) as usize;
+            if !visited.insert(id) {
+                continue;
+            }
 
-                if let Some(result) = dlfile.lookup_in_load_group(symbol_name)? {
-                    return Ok(Some(result));
-                }
+            let dlfile: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
+
+            if let Some(result) = dlfile.lookup_in_load_group(symbol_name, visited)? {
+                return Ok(Some(result));
             }
         }
 
@@ -528,7 +549,7 @@ impl DynamicLibrary {
             Ok(sym)
         } else {
             let reason: &str = "invalid symbol index";
-            ::syslog::error!("get_symbol(): {} (rel={:?})", reason, rel);
+            ::syslog::warn!("get_symbol(): {} (rel={:?})", reason, rel);
             Err(Error::new(ErrorCode::BadFile, reason))
         }
     }
@@ -538,8 +559,31 @@ impl DynamicLibrary {
         let symbol_value: usize = match self.lookup(symbol_name)? {
             Some((base, symbol_value)) => base + symbol_value,
             None => {
+                // Per the System V ABI (gABI, chapter "Symbol Table"), an undefined
+                // symbol whose binding is `STB_WEAK` and which cannot be resolved at
+                // dynamic-link time is silently taken to have the value zero (or `NULL`
+                // for function symbols). Every mainstream ELF dynamic loader (glibc
+                // `elf/dl-lookup.c`, musl `ldso/dynlink.c`, FreeBSD `rtld-elf/rtld.c`,
+                // Android Bionic `linker/linker_relocate.cpp`) implements this rule,
+                // and we follow them here.
+                //
+                // Substituting zero is safe across the relocation types we currently
+                // handle (R_386_32, R_386_PC32, R_386_JMP_SLOT, R_386_GLOB_DAT): the
+                // resulting GOT/PLT entry or in-place 32-bit slot will be null, so any
+                // code path that actually dereferences the symbol traps deterministically
+                // — matching the contract the spec puts on the program (it must
+                // null-check before use).
+                if sym.is_undefined() && sym.is_weak() {
+                    ::syslog::debug!(
+                        "get_symbol_value(): resolving unresolved weak undefined symbol to zero \
+                         per System V ABI (symbol_name={:?})",
+                        symbol_name
+                    );
+                    return Ok(0);
+                }
+
                 let reason: &str = "symbol not found";
-                ::syslog::error!(
+                ::syslog::warn!(
                     "get_symbol_value(): {} (symbol_name={:?}, symbol={:?})",
                     reason,
                     symbol_name,
@@ -563,6 +607,17 @@ impl DynamicLibrary {
             None;
 
         for sym in self.dynsym.iter() {
+            // Skip undefined symbols: with the STB_WEAK handling in
+            // `get_symbol_value()`, an unresolved weak undefined symbol resolves
+            // to 0 — that's the right behaviour for relocation but would cause
+            // `dladdr()` to report a ghost symbol at address 0 for every weak
+            // undefined entry in the dynsym.  Symbols that have an in-module
+            // definition (or that resolved to a real address elsewhere) are
+            // never `SHN_UNDEF` in this DSO's dynsym, so this filter only
+            // excludes references the loader had to substitute zero for.
+            if sym.is_undefined() {
+                continue;
+            }
             if let Ok(symbol_value) = self.get_symbol_value(sym) {
                 let sym_addr: VirtualAddress = VirtualAddress::from_raw_value(symbol_value);
                 if sym_addr <= symbol_addr {
@@ -620,7 +675,7 @@ impl DynamicLibrary {
                 // R_386_RELATIVE relocation must have a zero symbol index.
                 if rel.symbol_index() != 0 {
                     let reason: &str = "invalid R_386_RELATIVE relocation";
-                    ::syslog::error!("resolve(): {} (rel={:?})", reason, rel);
+                    ::syslog::warn!("resolve(): {} (rel={:?})", reason, rel);
                     return Err(Error::new(ErrorCode::BadFile, reason));
                 }
 
@@ -667,7 +722,7 @@ impl DynamicLibrary {
 
             relocation_entry_type => {
                 let reason: &str = "unsupported relocation type";
-                ::syslog::error!(
+                ::syslog::warn!(
                     "resolve(): {} (relocation_type={:?}, rel={:?})",
                     reason,
                     relocation_entry_type,
@@ -722,7 +777,12 @@ impl DynamicLibrary {
     ///
     unsafe fn resolve_r_386_32(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
         let symbol_addend: i32 = storage_unit.read_unaligned() as i32;
-        let final_value: u32 = symbol_value.strict_add_signed(symbol_addend);
+        // ELF arithmetic (System V ABI): `S + A` is performed with wrapping
+        // 32-bit semantics.  Use `wrapping_add_signed` instead of
+        // `strict_add_signed` so that the loader does not panic when
+        // resolving a weak undefined symbol (`S == 0`) against a negative
+        // addend, which is legal per spec.
+        let final_value: u32 = symbol_value.wrapping_add_signed(symbol_addend);
         storage_unit.write_unaligned(final_value);
     }
 
@@ -788,7 +848,12 @@ impl DynamicLibrary {
     unsafe fn resolve_r_386_pc32(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
         let symbol_addend: i32 = storage_unit.read_unaligned() as i32;
         let relocation_offset: u32 = storage_unit.as_ptr() as u32;
-        let tmp: u32 = symbol_value.strict_add_signed(symbol_addend);
+        // ELF arithmetic (System V ABI): `S + A - P` is performed with
+        // wrapping 32-bit semantics.  Use `wrapping_add_signed` instead of
+        // `strict_add_signed` so that the loader does not panic when
+        // resolving a weak undefined symbol (`S == 0`) against a negative
+        // addend, which is legal per spec.
+        let tmp: u32 = symbol_value.wrapping_add_signed(symbol_addend);
 
         let final_value: i32 = if tmp > relocation_offset {
             (tmp - relocation_offset) as i32
@@ -851,12 +916,12 @@ impl DynamicLibrary {
             },
             Some(Some(_)) => {
                 let reason: &str = "dependency already loaded";
-                ::syslog::error!("load_dependency(): {}", reason);
+                ::syslog::warn!("load_dependency(): {}", reason);
                 Err(Error::new(ErrorCode::BadFile, reason))
             },
             None => {
                 let reason: &str = "dependency not listed";
-                ::syslog::error!("load_dependency(): {}", reason);
+                ::syslog::warn!("load_dependency(): {}", reason);
                 Err(Error::new(ErrorCode::BadFile, reason))
             },
         }

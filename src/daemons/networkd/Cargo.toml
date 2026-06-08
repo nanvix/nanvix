@@ -1,0 +1,28 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "networkd"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Network Daemon for Nanvix"
+homepage.workspace = true
+
+[lib]
+name = "networkd"
+path = "src/lib.rs"
+
+[dependencies]
+log = { workspace = true }
+net-backend = { workspace = true }
+sys = { workspace = true, features = ["std"] }
+syscall = { workspace = true, features = ["std"] }
+sysapi = { workspace = true, features = ["std"] }
+
+[features]
+default = []
+
+[lints]
+workspace = true

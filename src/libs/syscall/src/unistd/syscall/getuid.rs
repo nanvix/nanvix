@@ -14,8 +14,8 @@ use {
             GetIdsRequest,
             GetIdsResponse,
         },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        SystemCallMessage,
+        SystemCallMessageHeader,
     },
     ::sys::{
         error::ErrorCode,
@@ -53,18 +53,18 @@ pub fn getuid() -> Result<uid_t, Error> {
 /// Forwards a `getuid` request to linuxd via IPC.
 #[cfg(not(feature = "standalone"))]
 fn getuid_linuxd() -> Result<uid_t, Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it
-    let request: Message = GetIdsRequest::build(tid);
-    ::sys::kcall::ipc::send(&request)?;
+    let request: Message = GetIdsRequest::build(tid, crate::LINUXD, ::sys::ipc::MessageType::Ikc);
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not
     if response.status != 0 {
-        ::syslog::error!("getuid(): failed (tid={:?}, status={:?})", tid, { response.status });
+        ::syslog::warn!("getuid(): failed (tid={:?}, status={:?})", tid, { response.status });
 
         match ErrorCode::try_from(response.status) {
             // System call failed, return error
@@ -74,16 +74,16 @@ fn getuid_linuxd() -> Result<uid_t, Error> {
         }
     } else {
         // System call succeeded, parse response
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         match message.header {
             // Response was successfully parsed
-            LinuxDaemonMessageHeader::GetIdsResponse => {
+            SystemCallMessageHeader::GetIdsResponse => {
                 let response: GetIdsResponse = GetIdsResponse::from_bytes(message.payload);
                 Ok(response.uid)
             },
             // Invalid response
             header => {
-                ::syslog::error!("getuid(): invalid response (tid={:?}, header={:?})", tid, header);
+                ::syslog::warn!("getuid(): invalid response (tid={:?}, header={:?})", tid, header);
                 Err(Error::new(ErrorCode::InvalidMessage, "invalid response"))
             },
         }

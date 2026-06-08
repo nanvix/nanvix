@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::mem;
 use ::sys::{
@@ -17,7 +17,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::sys_types::c_size_t;
 
@@ -32,11 +35,11 @@ pub struct ReadRequest {
     pub count: u32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(ReadRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ReadRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl ReadRequest {
     pub const PADDING_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<u32>();
+        SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<u32>();
 
     fn new(fd: i32, count: c_size_t) -> Self {
         Self {
@@ -46,22 +49,28 @@ impl ReadRequest {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, fd: i32, count: c_size_t) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        fd: i32,
+        count: c_size_t,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: ReadRequest = ReadRequest::new(fd, count);
-        let message: LinuxDaemonMessage =
-            LinuxDaemonMessage::new(LinuxDaemonMessageHeader::ReadRequest, message.into_bytes());
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::ReadRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -79,31 +88,37 @@ pub struct ReadResponse {
     pub count: i32,
     pub buffer: [u8; Self::BUFFER_SIZE],
 }
-::static_assert::assert_eq_size!(ReadResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ReadResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl ReadResponse {
-    pub const BUFFER_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
+    pub const BUFFER_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
     fn new(count: i32, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
         Self { count, buffer }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, count: i32, buffer: [u8; Self::BUFFER_SIZE]) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        count: i32,
+        buffer: [u8; Self::BUFFER_SIZE],
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: ReadResponse = ReadResponse::new(count, buffer);
-        let message: LinuxDaemonMessage =
-            LinuxDaemonMessage::new(LinuxDaemonMessageHeader::ReadResponse, message.into_bytes());
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::ReadResponse, message.into_bytes());
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -111,7 +126,11 @@ impl ReadResponse {
     }
 
     /// Creates an EOF (end-of-file) ReadResponse with count=0 and an empty buffer.
-    pub fn eof(tid: ThreadIdentifier) -> Message {
-        Self::build(tid, 0, [0u8; Self::BUFFER_SIZE])
+    pub fn eof(
+        tid: ThreadIdentifier,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
+        Self::build(tid, 0, [0u8; Self::BUFFER_SIZE], source, message_type)
     }
 }

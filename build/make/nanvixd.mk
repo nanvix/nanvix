@@ -5,7 +5,6 @@ NANVIXD_FEATURES :=
 NANVIXD_FEATURES += $(if $(filter standalone,$(DEPLOYMENT_MODE)),standalone,)
 NANVIXD_FEATURES += $(if $(filter single-process,$(DEPLOYMENT_MODE)),single-process,)
 NANVIXD_FEATURES += $(if $(filter multi-process l2,$(DEPLOYMENT_MODE)),multi-process,)
-NANVIXD_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 NANVIXD_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIXD_FEATURES += $(if $(filter yes,$(WHP)),whp,)
 NANVIXD_FEATURES += $(if $(filter yes,$(PROFILER)),profile-time,)
@@ -53,7 +52,7 @@ endif
 endif
 
 check-nanvixd:
-	$(HOST_CARGO_CHECK_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
+	@$(HOST_CARGO_CHECK_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
 
 format-nanvixd:
 	$(HOST_CARGO_FMT_CMD) -p nanvixd

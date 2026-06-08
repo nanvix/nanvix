@@ -5,23 +5,20 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    message::MessagePartitioner,
+    unistd::message::ChangeDirectoryRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        message::MessagePartitioner,
-        unistd::message::ChangeDirectoryRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+use ::alloc::vec::Vec;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
     },
-    ::alloc::vec::Vec,
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -45,39 +42,23 @@ use {
 pub fn chdir(path: &str) -> Result<(), Error> {
     ::syslog::trace!("chdir(): path={:?}", path);
 
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_chdir(path).map_err(|e| {
-            let code: ErrorCode = e.into();
-            ::syslog::warn!("chdir(): VFS chdir failed (path={path:?}, error={e})");
-            Error::new(code, "vfs chdir failed")
-        })
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    chdir_linuxd(path)
-}
-
-/// Forwards a `chdir` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn chdir_linuxd(path: &str) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let path: alloc::borrow::Cow<'_, str> = crate::path::expand_path(path);
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: ChangeDirectoryRequest = ChangeDirectoryRequest::new(path)?;
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let request: ChangeDirectoryRequest = ChangeDirectoryRequest::new(&path)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
     for request in &requests {
-        ::sys::kcall::ipc::send(request)?;
+        ::sys::kcall::ipc::__kcall_send(request)?;
     }
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!("chdir(): failed (path={:?}, error_code={:?})", path, { response.status });
+        ::syslog::warn!("chdir(): failed (path={:?}, error_code={:?})", path, { response.status });
         // System call failed, parse error code and return.
         match ErrorCode::try_from(response.status) {
             // Succeeded to parse error code.
@@ -87,7 +68,7 @@ fn chdir_linuxd(path: &str) -> Result<(), Error> {
             },
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "chdir(): failed to parse error code (path={:?}, error={:?})",
                     path,
                     error
@@ -97,12 +78,12 @@ fn chdir_linuxd(path: &str) -> Result<(), Error> {
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         match message.header {
-            LinuxDaemonMessageHeader::ChangeDirectoryResponse => Ok(()),
+            SystemCallMessageHeader::ChangeDirectoryResponse => Ok(()),
             header => {
                 let reason: &str = "unexpected message header";
-                ::syslog::error!("chdir(): {:?} (path={:?}, header={:?})", reason, path, header);
+                ::syslog::warn!("chdir(): {:?} (path={:?}, header={:?})", reason, path, header);
                 Err(Error::new(ErrorCode::InvalidMessage, reason))
             },
         }

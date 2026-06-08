@@ -257,58 +257,113 @@ impl RunningProcess {
     ///
     #[allow(clippy::type_complexity)]
     pub fn exit_thread(
-        mut self,
+        self,
         status: ExitStatus,
-    ) -> Result<
-        (Condvar, RunnableProcess, *mut ContextInformation),
+    ) -> (
         Result<
-            (Condvar, SleepingProcess, *mut ContextInformation),
-            (Condvar, ZombieProcess, *mut ContextInformation),
+            (Condvar, RunnableProcess, *mut ContextInformation),
+            Result<
+                (Condvar, SleepingProcess, *mut ContextInformation),
+                (Condvar, ZombieProcess, *mut ContextInformation),
+            >,
         >,
-    > {
+        Option<ZombieThread>, // Detached zombie that must be reaped after the context switch.
+    ) {
+        let is_detached: bool = self.running.is_detached();
         let join_cond: Condvar = self.running.join_cond();
 
+        // Extract all fields from self before running.exit() consumes self.running.
+        let mut state: Box<ProcessState> = self.state;
+        let ready: Option<NonEmptyVecDeque<ReadyThread>> = self.ready;
+        let interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>> =
+            self.interrupted_threads;
+        let sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>> = self.sleeping_threads;
+        let existing_zombies: Option<NonEmptyVecDeque<ZombieThread>> = self.zombie;
+
         let (zombie_thread, ctx) = self.running.exit(status);
-        let zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie.take() {
-            Some(mut zombie_threads) => {
-                zombie_threads.push_back(zombie_thread);
-                zombie_threads
-            },
-            None => NonEmptyVecDeque::new(zombie_thread),
+
+        // Determine whether other threads remain. If so, a detached zombie must NOT be dropped
+        // here — it owns the ContextInformation that `ctx` points to, and the context switch
+        // will write through that pointer. Instead, return it for deferred reaping after the
+        // context switch completes.
+        let has_other_threads: bool =
+            ready.is_some() || interrupted_threads.is_some() || sleeping_threads.is_some();
+
+        let (zombie_threads, deferred_zombie): (
+            Option<NonEmptyVecDeque<ZombieThread>>,
+            Option<ZombieThread>,
+        ) = if is_detached && has_other_threads {
+            // Return the zombie for deferred reaping. Do NOT drop it here — the context
+            // switch still needs the ContextInformation that lives inside the zombie's
+            // ThreadState.
+            (existing_zombies, Some(zombie_thread))
+        } else {
+            (
+                Some(match existing_zombies {
+                    Some(mut zombie_threads) => {
+                        zombie_threads.push_back(zombie_thread);
+                        zombie_threads
+                    },
+                    None => NonEmptyVecDeque::new(zombie_thread),
+                }),
+                None,
+            )
         };
 
-        if let Some(ready_threads) = self.ready.take() {
-            Ok((
-                join_cond,
-                RunnableProcess::from_state(
-                    self.state,
-                    ready_threads,
-                    self.interrupted_threads.take(),
-                    self.sleeping_threads.take(),
-                    Some(zombie_threads),
-                ),
-                ctx,
-            ))
-        } else if let Some(interrupted_threads) = self.interrupted_threads.take() {
+        if let Some(ready_threads) = ready {
+            (
+                Ok((
+                    join_cond,
+                    RunnableProcess::from_state(
+                        state,
+                        ready_threads,
+                        interrupted_threads,
+                        sleeping_threads,
+                        zombie_threads,
+                    ),
+                    ctx,
+                )),
+                deferred_zombie,
+            )
+        } else if let Some(interrupted_threads) = interrupted_threads {
             let interrupted_process: InterruptedProcess = InterruptedProcess::from_sleeping(
-                self.state,
-                self.sleeping_threads.take(),
+                state,
+                sleeping_threads,
                 interrupted_threads,
-                Some(zombie_threads),
+                zombie_threads,
             );
 
-            Ok((join_cond, interrupted_process.resume(), ctx))
-        } else if let Some(sleeping_threads) = self.sleeping_threads.take() {
-            Err(Ok((
-                join_cond,
-                SleepingProcess::new(self.state, sleeping_threads, Some(zombie_threads)),
-                ctx,
-            )))
+            (Ok((join_cond, interrupted_process.resume(), ctx)), deferred_zombie)
+        } else if let Some(sleeping_threads) = sleeping_threads {
+            (
+                Err(Ok((
+                    join_cond,
+                    SleepingProcess::new(state, sleeping_threads, zombie_threads),
+                    ctx,
+                ))),
+                deferred_zombie,
+            )
         } else {
-            // Use pending exit status if set (from a prior exit() call), otherwise use current
-            // thread's status.
-            let final_status: ExitStatus = self.state.take_pending_exit_status().unwrap_or(status);
-            Err(Err((join_cond, ZombieProcess::new(self.state, zombie_threads, final_status), ctx)))
+            match zombie_threads {
+                Some(zombie_threads) => {
+                    // Use pending exit status if set (from a prior exit() call), otherwise use
+                    // current thread's status.
+                    let final_status: ExitStatus =
+                        state.take_pending_exit_status().unwrap_or(status);
+                    (
+                        Err(Err((
+                            join_cond,
+                            ZombieProcess::new(state, zombie_threads, final_status),
+                            ctx,
+                        ))),
+                        deferred_zombie,
+                    )
+                },
+                // Unreachable: zombie_threads is None only when is_detached && has_other_threads,
+                // which guarantees at least one of the ready/interrupted/sleeping branches above
+                // would match.
+                None => unreachable!("no zombie threads and no other threads"),
+            }
         }
     }
 
@@ -340,6 +395,7 @@ impl RunningProcess {
     ///
     /// The guard threshold value, or `None` if the running thread has no kernel stack.
     ///
+    #[cfg(feature = "exception-stack-guard")]
     #[inline]
     pub fn guard_threshold(&self) -> Option<u32> {
         self.running.guard_threshold()
@@ -411,6 +467,15 @@ impl RunningProcess {
         }
 
         // Search for thread in zombie threads.
+        if let Some(zombie_threads) = &self.zombie {
+            for zombie_thread in zombie_threads.iter() {
+                if zombie_thread.id() == tid && zombie_thread.is_detached() {
+                    let reason: &str = "cannot join a detached thread";
+                    error!("{reason} (tid={tid:?})");
+                    return Err(Err(Error::new(ErrorCode::InvalidArgument, reason)));
+                }
+            }
+        }
         if let Some(zombie_threads) = self.zombie.take() {
             match zombie_threads.remove_if(|thread| thread.id() == tid) {
                 Ok((zombie_threads, zombie_thread)) => {
@@ -427,6 +492,11 @@ impl RunningProcess {
         if let Some(ready_threads) = &mut self.ready {
             for ready_thread in ready_threads.iter() {
                 if ready_thread.id() == tid {
+                    if ready_thread.is_detached() {
+                        let reason: &str = "cannot join a detached thread";
+                        error!("{reason} (tid={tid:?})");
+                        return Err(Err(Error::new(ErrorCode::InvalidArgument, reason)));
+                    }
                     let join_cond: Condvar = ready_thread.join_cond();
                     return Err(Ok(join_cond));
                 }
@@ -437,6 +507,11 @@ impl RunningProcess {
         if let Some(sleeping_threads) = &mut self.sleeping_threads {
             for sleeping_thread in sleeping_threads.iter() {
                 if sleeping_thread.id() == tid {
+                    if sleeping_thread.is_detached() {
+                        let reason: &str = "cannot join a detached thread";
+                        error!("{reason} (tid={tid:?})");
+                        return Err(Err(Error::new(ErrorCode::InvalidArgument, reason)));
+                    }
                     let join_cond: Condvar = sleeping_thread.join_cond();
                     return Err(Ok(join_cond));
                 }
@@ -447,6 +522,11 @@ impl RunningProcess {
         if let Some(interrupted_threads) = &mut self.interrupted_threads {
             for interrupted_thread in interrupted_threads.iter() {
                 if interrupted_thread.id() == tid {
+                    if interrupted_thread.is_detached() {
+                        let reason: &str = "cannot join a detached thread";
+                        error!("{reason} (tid={tid:?})");
+                        return Err(Err(Error::new(ErrorCode::InvalidArgument, reason)));
+                    }
                     let join_cond: Condvar = interrupted_thread.join_cond();
                     return Err(Ok(join_cond));
                 }
@@ -456,6 +536,96 @@ impl RunningProcess {
         let reason: &str = "thread not found";
         error!("{:?} (state={:?})", reason, self.state());
         Err(Err(Error::new(ErrorCode::NoSuchProcess, reason)))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Detaches a thread so that it will be auto-harvested when it exits. If the thread is already
+    /// a zombie, it is removed from the zombie queue and returned for immediate harvesting.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the thread to detach.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns `Ok(None)` if the thread was marked detached, or `Ok(Some(zombie))` if
+    /// the thread was already a zombie and should be harvested. On failure, returns an error.
+    ///
+    pub fn detach_thread(&mut self, tid: ThreadIdentifier) -> Result<Option<ZombieThread>, Error> {
+        // Detach the running (calling) thread.
+        if self.running.id() == tid {
+            if self.running.is_detached() {
+                let reason: &str = "thread is already detached";
+                error!("{reason} (tid={tid:?})");
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            }
+            self.running.set_detached();
+            return Ok(None);
+        }
+
+        // Search in zombie threads — if found, remove and return for immediate harvest.
+        if let Some(zombie_threads) = self.zombie.take() {
+            match zombie_threads.remove_if(|thread| thread.id() == tid) {
+                Ok((zombie_threads, zombie_thread)) => {
+                    self.zombie = NonEmptyVecDeque::from(zombie_threads);
+                    return Ok(Some(zombie_thread));
+                },
+                Err(zombie_threads) => {
+                    self.zombie = Some(zombie_threads);
+                },
+            }
+        }
+
+        // Search in ready threads.
+        if let Some(ready_threads) = &mut self.ready {
+            for ready_thread in ready_threads.iter_mut() {
+                if ready_thread.id() == tid {
+                    if ready_thread.is_detached() {
+                        let reason: &str = "thread is already detached";
+                        error!("{reason} (tid={tid:?})");
+                        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                    }
+                    ready_thread.set_detached();
+                    return Ok(None);
+                }
+            }
+        }
+
+        // Search in sleeping threads.
+        if let Some(sleeping_threads) = &mut self.sleeping_threads {
+            for sleeping_thread in sleeping_threads.iter_mut() {
+                if sleeping_thread.id() == tid {
+                    if sleeping_thread.is_detached() {
+                        let reason: &str = "thread is already detached";
+                        error!("{reason} (tid={tid:?})");
+                        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                    }
+                    sleeping_thread.set_detached();
+                    return Ok(None);
+                }
+            }
+        }
+
+        // Search in interrupted threads.
+        if let Some(interrupted_threads) = &mut self.interrupted_threads {
+            for interrupted_thread in interrupted_threads.iter_mut() {
+                if interrupted_thread.id() == tid {
+                    if interrupted_thread.is_detached() {
+                        let reason: &str = "thread is already detached";
+                        error!("{reason} (tid={tid:?})");
+                        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                    }
+                    interrupted_thread.set_detached();
+                    return Ok(None);
+                }
+            }
+        }
+
+        let reason: &str = "thread not found";
+        error!("{reason} (tid={tid:?})");
+        Err(Error::new(ErrorCode::NoSuchProcess, reason))
     }
 
     ///

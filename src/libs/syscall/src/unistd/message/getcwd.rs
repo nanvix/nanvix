@@ -7,13 +7,13 @@
 
 use crate::{
     message::{
-        LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
+        SystemCallMessagePart,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::alloc::{
     string::{
@@ -33,7 +33,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use sysapi::limits::PATH_MAX;
 
@@ -47,7 +50,7 @@ pub struct GetCurrentWorkingDirectoryRequest {
 }
 
 impl GetCurrentWorkingDirectoryRequest {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE;
 
     fn new() -> Self {
         Self {
@@ -55,24 +58,28 @@ impl GetCurrentWorkingDirectoryRequest {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { core::mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { core::mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: GetCurrentWorkingDirectoryRequest = GetCurrentWorkingDirectoryRequest::new();
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            crate::LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            crate::SystemCallMessageHeader::GetCurrentWorkingDirectoryRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -166,15 +173,19 @@ impl MessagePartitioner for GetCurrentWorkingDirectoryResponse {
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
-        LinuxDaemonMessagePart::build_response(
+        SystemCallMessagePart::build_response(
             tid,
-            LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryResponsePart,
+            SystemCallMessageHeader::GetCurrentWorkingDirectoryResponsePart,
             total_parts,
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }

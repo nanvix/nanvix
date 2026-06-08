@@ -67,7 +67,7 @@ pub unsafe extern "C" fn connect(
     // Check if `sockaddr` is valid.
     if sockaddr.is_null() {
         let reason: &str = "invalid socket address";
-        ::syslog::error!(
+        ::syslog::warn!(
             "connect(): {reason} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
         );
         *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -77,7 +77,7 @@ pub unsafe extern "C" fn connect(
     // Check if `len` is valid.
     if len == 0 {
         let reason: &str = "invalid socket address length";
-        ::syslog::error!(
+        ::syslog::warn!(
             "connect(): {reason} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
         );
         *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -88,7 +88,7 @@ pub unsafe extern "C" fn connect(
     let sockaddr: SocketAddr = match TryFrom::<&sockaddr>::try_from(&*sockaddr) {
         Ok(sockaddr) => sockaddr,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "connect(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
             );
             *__errno_location() = error.code.get();
@@ -100,7 +100,7 @@ pub unsafe extern "C" fn connect(
     match socket::syscall::connect(sockfd, &sockaddr) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "connect(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
             );
             *__errno_location() = error.code.get();

@@ -25,12 +25,12 @@ use ::sys::{
     },
     kcall::{
         pm::{
-            create_thread,
-            join_thread,
-            lock_mutex,
-            unlock_mutex,
+            __kcall_create_thread,
+            __kcall_join_thread,
+            __kcall_lock_mutex,
+            __kcall_unlock_mutex,
         },
-        sched::sched_yield,
+        sched::__kcall_sched_yield,
     },
     pm::{
         MutexAddress,
@@ -99,7 +99,7 @@ fn test_mutex_contention() -> Result<(), Error> {
     WORKER_STATE.store(0, Ordering::Relaxed);
 
     let mutex_addr: MutexAddress = test_mutex_addr();
-    lock_mutex(mutex_addr, None)?;
+    __kcall_lock_mutex(mutex_addr, None)?;
 
     let stack: Stack = Stack::new(USER_THREAD_STACK_SIZE)?;
     let mut args: ThreadCreateArgs = ThreadCreateArgs {
@@ -110,17 +110,17 @@ fn test_mutex_contention() -> Result<(), Error> {
         user_stack_size: stack.size(),
         user_tda: None,
     };
-    let tid = create_thread(&mut args)?;
+    let tid = __kcall_create_thread(&mut args)?;
 
     while WORKER_STATE.load(Ordering::Acquire) == 0 {
-        sched_yield()?;
+        __kcall_sched_yield()?;
     }
     assert_eq!(WORKER_STATE.load(Ordering::Acquire), 1, "worker should be blocked");
 
-    unlock_mutex(mutex_addr)?;
+    __kcall_unlock_mutex(mutex_addr)?;
 
     let mut retval: usize = 0;
-    join_thread(tid, &mut retval)?;
+    __kcall_join_thread(tid, &mut retval)?;
     drop(stack);
     assert_eq!(retval, 0, "mutex worker returned unexpected status");
     assert_eq!(WORKER_STATE.load(Ordering::Acquire), 2, "worker never executed critical section");
@@ -131,16 +131,16 @@ fn test_mutex_timeout() -> Result<(), Error> {
     reset_test_mutex();
 
     let mutex_addr: MutexAddress = test_mutex_addr();
-    lock_mutex(mutex_addr, None)?;
+    __kcall_lock_mutex(mutex_addr, None)?;
 
-    match lock_mutex(mutex_addr, Some(SystemTime::EPOCH)) {
+    match __kcall_lock_mutex(mutex_addr, Some(SystemTime::EPOCH)) {
         Err(err) => {
             assert_eq!(err.code, ErrorCode::OperationTimedOut, "unexpected error code");
         },
         Ok(_) => panic!("second lock must time out immediately"),
     }
 
-    unlock_mutex(mutex_addr)?;
+    __kcall_unlock_mutex(mutex_addr)?;
     Ok(())
 }
 
@@ -151,9 +151,9 @@ extern "C" fn mutex_worker(raw_addr: usize) -> usize {
 
 fn mutex_worker_impl(mutex_addr: MutexAddress) -> Result<usize, Error> {
     WORKER_STATE.store(1, Ordering::Release);
-    lock_mutex(mutex_addr, None)?;
+    __kcall_lock_mutex(mutex_addr, None)?;
     WORKER_STATE.store(2, Ordering::Release);
-    unlock_mutex(mutex_addr)?;
+    __kcall_unlock_mutex(mutex_addr)?;
     Ok(0)
 }
 
@@ -190,7 +190,7 @@ fn test_mutex_dynamic_init() -> Result<(), Error> {
             if ready != 0 {
                 break;
             }
-            sched_yield()?;
+            __kcall_sched_yield()?;
         }
 
         let retval = thread.join()?;

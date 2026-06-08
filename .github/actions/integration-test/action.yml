@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 name: "Integration Test"
-description: "Run integration tests for microvm/hyperlight machine types"
+description: "Run integration tests for microvm machine type"
 
 inputs:
   build-type:
@@ -36,7 +36,7 @@ runs:
         echo "In-kernel tests passed."
 
     # Smoke test that boots nanvixd and checks for the kernel magic string,
-    # verifying the multibin initrd (procd, testd, memd).
+    # verifying the multibin initrd (procd, testd, memd, vfsd).
     - name: "Smoke Test (${{ inputs.machine-type }})"
       shell: bash
       env:
@@ -44,36 +44,16 @@ runs:
       run: |
         set -Eeuo pipefail
 
-        MAGIC_STRING="hello, world!"
         TIMEOUT=120
-
-        # Build multibin image from pre-built artifacts.
-        ./bin/mkimage.elf -o nanvix.img \
-            "bin/procd.elf;procd" \
-            "bin/memd.elf;memd" \
-            "bin/testd.elf;testd"
-
+        RELEASE_FLAG=""
         if [[ "${{ inputs.build-type }}" == "release" ]]; then
-          # In release builds, CI sets LOG_LEVEL=error, which suppresses the
-          # debug-level magic string. Validate success by requiring nanvixd to
-          # exit cleanly before timeout.
-          if ! bash scripts/run-nanvixd.sh \
-                "${{ inputs.machine-type }}" nanvix.img "${TIMEOUT}"; then
-            echo "::error::Smoke test failed: nanvixd did not exit cleanly within ${TIMEOUT}s."
-            exit 1
-          fi
-        else
-          # In debug builds, assert successful boot by waiting for kernel magic
-          # string in console output.
-          if ! bash scripts/run-nanvixd.sh \
-                "${{ inputs.machine-type }}" nanvix.img "${TIMEOUT}" \
-                --wait-for-string "${MAGIC_STRING}"; then
-            echo "::error::Smoke test failed: magic string '${MAGIC_STRING}' not found within ${TIMEOUT}s."
-            exit 1
-          fi
+          RELEASE_FLAG="--release"
         fi
 
-        echo "Smoke test passed."
+        ./z build ${RELEASE_FLAG} -- run-smoke-test \
+            "MACHINE=${{ inputs.machine-type }}" \
+            "DEPLOYMENT_MODE=${{ inputs.deployment-type }}" \
+            "TIMEOUT=${TIMEOUT}"
 
     # Run test binary directly from downloaded artifacts.
     - name: "Integration Test (${{ inputs.machine-type }})"

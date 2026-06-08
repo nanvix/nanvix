@@ -6,7 +6,7 @@
 //==================================================================================================
 
 pub(crate) mod frame;
-mod kpool;
+mod kframe;
 mod manager;
 mod upool;
 
@@ -18,7 +18,6 @@ mod test;
 //==================================================================================================
 
 use crate::{
-    collections::Bitmap,
     hal::mem::{
         Address,
         PageAligned,
@@ -30,11 +29,8 @@ use crate::{
 };
 use ::alloc::collections::LinkedList;
 use ::arch::mem;
-use ::sparse_bitmap::SparseBitmap;
-use ::sys::error::{
-    Error,
-    ErrorCode,
-};
+use ::bitmap::Bitmap;
+use ::sys::error::Error;
 #[cfg(verus_keep_ghost)]
 use ::vstd::prelude::*;
 
@@ -47,10 +43,7 @@ include!("mod.spec.rs");
 //==================================================================================================
 
 pub use self::{
-    kpool::{
-        KernelFrame,
-        Kpool,
-    },
+    kframe::KernelFrame,
     manager::PhysMemoryManager,
     upool::UserFrame,
 };
@@ -84,22 +77,18 @@ fn book_mmio_regions(
         let mut start: usize = region.start().into_raw_value();
         let end: usize = start + (region.size() - 1);
         while start < end {
-            let mmio_addr: VirtualAddress = VirtualAddress::from_raw_value(start);
+            let mmio_addr: usize = crate::hal::platform::gva_to_gpa(start);
             let phys_addr: PageAligned<PhysicalAddress> = PageAligned::from_address(unsafe {
-                PhysicalAddress::from_mmio_address(mmio_addr)?
+                // MMIO GPAs may legitimately lie outside tracked RAM, so they must not go through
+                // the regular physical-address validator here.
+                PhysicalAddress::from_mmio_address(VirtualAddress::from_raw_value(mmio_addr))?
             })?;
 
-            // Attempt to book underlying frame.
-            match frame::book(phys_addr) {
-                // Frame successfully booked.
-                Ok(()) => {},
-                // Frame lies outside addressable physical memory.
-                Err(e) if e.code == ErrorCode::InvalidArgument => {},
-                // Something went wrong.
-                Err(e) => {
-                    warn!("failed to book frame for mmio region {:?} ({:?})", region, e);
-                    return Err(e);
-                },
+            // Only book frames that the frame allocator actually tracks.
+            // MMIO regions above RAM (e.g. the LAPIC at 0xFEE0_0000) are not
+            // covered by the bitmap and must be skipped.
+            if frame::is_covered(phys_addr) {
+                frame::book(phys_addr)?;
             }
             start += mem::FRAME_SIZE;
         }
@@ -115,22 +104,18 @@ fn book_mmio_regions(
 ///
 /// # Parameters
 ///
-/// - `kpool_base`: Base address of the kernel page pool.
 /// - `physical_memory_regions`: Physical memory regions to book.
 /// - `mmio_regions`: Memory-mapped I/O regions to book.
 /// - `physical_memory_layout`: Physical memory layout bitmap.
-/// - `kpool_bitmap`: Bitmap for the kernel page pool.
 ///
 /// # Returns
 ///
 /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
 ///
 pub fn init(
-    kpool_base: PageAligned<PhysicalAddress>,
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
     mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
-    physical_memory_layout: SparseBitmap,
-    kpool_bitmap: Bitmap,
+    physical_memory_layout: Bitmap,
 ) -> Result<(), Error> {
     // Initialize frame allocator singleton.
     info!("initializing the frame allocator ...");
@@ -140,18 +125,13 @@ pub fn init(
 
     book_mmio_regions(mmio_regions)?;
 
-    // Initialize kernel page pool singleton.
-    info!("initializing the kernel page pool ...");
-    // Safety: called exactly once during single-threaded boot.
-    let kpool: Kpool = unsafe { kpool::init(kpool_base, kpool_bitmap)? };
-
     // Initialize user page pool.
     info!("initializing the user page pool ...");
     let upool: Upool = Upool::new();
 
     // Initialize physical memory manager singleton.
     info!("initializing the physical memory manager ...");
-    PhysMemoryManager::init(kpool, upool)?;
+    PhysMemoryManager::init(upool)?;
 
     Ok(())
 }

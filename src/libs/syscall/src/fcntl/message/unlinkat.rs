@@ -7,13 +7,13 @@
 
 use crate::{
     message::{
-        LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
+        SystemCallMessagePart,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::alloc::{
     string::{
@@ -34,7 +34,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::{
     ffi::c_int,
@@ -97,7 +100,7 @@ impl UnlinkAtRequest {
         // Check if pathname is too long.
         if pathname.len() > NAME_MAX {
             #[cfg(target_os = "none")]
-            ::syslog::error!(
+            ::syslog::warn!(
                 "new(): pathname is too long (dirfd={:?}, pathname={:?}, flags={:?})",
                 dirfd,
                 pathname,
@@ -140,14 +143,14 @@ impl MessageDeserializer for UnlinkAtRequest {
         // Check if the message is too short.
         if bytes.len() < Self::OFFSET_OF_PATHNAME {
             #[cfg(target_os = "none")]
-            ::syslog::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
+            ::syslog::warn!("try_from_bytes(): message is too short (len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "message is too short"));
         }
 
         // Check if the message is too long.
         if bytes.len() > Self::MAX_SIZE {
             #[cfg(target_os = "none")]
-            ::syslog::error!("try_from_bytes(): message is too long (len={:?})", bytes.len());
+            ::syslog::warn!("try_from_bytes(): message is too long (len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "message is too long"));
         }
 
@@ -180,14 +183,14 @@ impl MessageDeserializer for UnlinkAtRequest {
         // Check if the message is too short.
         if bytes.len() < Self::OFFSET_OF_PATHNAME + pathname_len {
             #[cfg(target_os = "none")]
-            ::syslog::error!("try_from_bytes(): message is too short (len={:?})", bytes.len());
+            ::syslog::warn!("try_from_bytes(): message is too short (len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "message is too short"));
         }
 
         // Check if `pathname` is too long.
         if pathname_len > NAME_MAX {
             #[cfg(target_os = "none")]
-            ::syslog::error!("try_from_bytes(): pathname is too long (len={:?})", pathname_len);
+            ::syslog::warn!("try_from_bytes(): pathname is too long (len={:?})", pathname_len);
             return Err(Error::new(ErrorCode::InvalidArgument, "pathname is too long"));
         }
 
@@ -212,15 +215,19 @@ impl MessagePartitioner for UnlinkAtRequest {
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
-        LinuxDaemonMessagePart::build_request(
+        SystemCallMessagePart::build_request(
             tid,
-            LinuxDaemonMessageHeader::UnlinkAtRequestPart,
+            SystemCallMessageHeader::UnlinkAtRequestPart,
             total_parts,
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }
@@ -234,10 +241,10 @@ pub struct UnlinkAtResponse {
     pub ret: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(UnlinkAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(UnlinkAtResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl UnlinkAtResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
     fn new(ret: i32) -> Self {
         Self {
@@ -246,24 +253,27 @@ impl UnlinkAtResponse {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, ret: i32) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        ret: i32,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: UnlinkAtResponse = UnlinkAtResponse::new(ret);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::UnlinkAtResponse,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::UnlinkAtResponse, message.into_bytes());
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

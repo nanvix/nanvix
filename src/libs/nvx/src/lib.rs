@@ -16,7 +16,7 @@
 
 #[cfg(not(feature = "rustc-dep-of-std"))]
 mod panic;
-mod pie;
+pub mod pie;
 
 //==================================================================================================
 // Imports
@@ -28,10 +28,6 @@ extern crate alloc;
 
 use ::config::memory_layout::USER_BASE_RAW;
 
-/// Re-export the VFS crate when the `standalone` feature is enabled.
-#[cfg(feature = "standalone")]
-pub use ::vfs;
-
 #[cfg(not(feature = "staticlib"))]
 use ::core::sync::atomic::{
     AtomicI32,
@@ -40,6 +36,16 @@ use ::core::sync::atomic::{
 };
 
 use ::alloc::vec::Vec;
+
+//==================================================================================================
+// External Functions
+//==================================================================================================
+
+#[cfg(feature = "staticlib")]
+unsafe extern "C" {
+    /// Initializes the environment table from a null-terminated array of "KEY=VALUE" C strings.
+    fn __nanvix_env_init(envp: *const *const core::ffi::c_char);
+}
 
 //==================================================================================================
 // Global Variables
@@ -168,6 +174,14 @@ pub unsafe extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
         environ = env.as_mut_ptr();
     }
 
+    // Populate the environment table used by getenv()/setenv()/unsetenv().
+    // The `environ` pointer is a null-terminated array of "KEY=VALUE" C strings,
+    // which is exactly the format expected by __nanvix_env_init().
+    #[cfg(feature = "staticlib")]
+    unsafe {
+        __nanvix_env_init(environ as *const *const core::ffi::c_char);
+    }
+
     cfg_if::cfg_if! {
         if #[cfg(feature = "staticlib")] {
             let status: i32 = c_trampoline(argc, argv);
@@ -180,7 +194,7 @@ pub unsafe extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
     cleanup();
 
     // Exits the runtime.
-    let Err(error) = ::sys::kcall::pm::exit(status);
+    let Err(error) = ::sys::kcall::pm::__kcall_exit(status);
     panic!("failed to exit process (error={error:?})");
 }
 
@@ -304,7 +318,12 @@ fn c_trampoline(argc: i32, argv: *const *const u8) -> i32 {
 }
 
 /// Initializes system runtime.
-fn init() {
+///
+/// Brings up the heap-region reservation, the `sysalloc` allocator, and the
+/// thread-data-area (TDA) used for thread-local storage.  Public so the
+/// startup crate (`nvx-crt0`) can call it from `_start` without duplicating
+/// the logic.
+pub fn init() {
     #[cfg(any(target_os = "none", target_os = "nanvix"))]
     {
         // Reserve virtual address space for the heap from the unified mmap region.
@@ -321,7 +340,7 @@ fn init() {
     #[cfg(any(target_os = "none", target_os = "nanvix"))]
     match sysalloc::tda::alloc() {
         core::prelude::v1::Ok(Some(tda_ptr)) => {
-            if let Err(error) = ::sys::kcall::pm::set_thread_data_area(tda_ptr) {
+            if let Err(error) = ::sys::kcall::pm::__kcall_set_thread_data_area(tda_ptr) {
                 panic!("init(): failed to set thread data area (error={error:?})");
             }
             sysalloc::tda::mark_initialized();
@@ -333,14 +352,14 @@ fn init() {
             panic!("init(): create thread data area (error={error:?})");
         },
     }
-
-    // Initialize in-memory filesystem from RAMFS MMIO region (if present).
-    #[cfg(feature = "standalone")]
-    vfs_init_ramfs();
 }
 
 /// Cleans up system runtime.
-fn cleanup() {
+///
+/// Tears down the thread-data-area and the `sysalloc` allocator.  Public so
+/// the startup crate (`nvx-crt0`) can call it from `_start` without
+/// duplicating the logic.
+pub fn cleanup() {
     #[cfg(any(target_os = "none", target_os = "nanvix"))]
     if let Err(error) = ::sysalloc::tda::cleanup() {
         panic!("failed to cleanup thread data area ({error:?})");
@@ -348,183 +367,5 @@ fn cleanup() {
     #[cfg(any(target_os = "none", target_os = "nanvix"))]
     if let Err(e) = sysalloc::cleanup() {
         panic!("failed to cleanup memory manager: {:?}", e);
-    }
-}
-
-//==================================================================================================
-// In-Memory Filesystem Initialization
-//==================================================================================================
-
-/// Initializes the VFS and mounts the RAMFS MMIO region at the root (`/`).
-///
-/// Called automatically during guest startup when the `standalone` feature is
-/// enabled. The RAMFS MMIO region is provided by the hypervisor via a
-/// well-known tag. If no RAMFS region is present, this function silently
-/// returns (the guest may not have been launched with `-ramfs`).
-///
-/// The MMIO region is mapped with read-write permissions by the kernel, so
-/// the filesystem is mounted directly on the MMIO memory without copying.
-/// The MMIO allocation is kept for the lifetime of the process (automatic
-/// cleanup on exit) so the mounted image remains valid. The image is
-/// mounted at `/` so it serves as the root filesystem and relative paths
-/// resolve naturally against it.
-#[cfg(feature = "standalone")]
-fn vfs_init_ramfs() {
-    use ::sys::{
-        mm::Address,
-        pm::Capability,
-    };
-
-    /// Encoded 8-byte "RAMFS   " tag exposed by the MicroVM RAMFS MMIO region.
-    const RAMFS_MMIO_TAG: u64 = u64::from_be_bytes(*b"RAMFS   ");
-
-    /// Mount path for the RAMFS image (root filesystem).
-    const RAMFS_MOUNT_PATH: &str = "/";
-
-    /// Mount path for the host-mounted directory image.
-    const MOUNT_DIR_PATH: &str = "/mnt";
-
-    // Initialize the VFS (idempotent — ignore AlreadyInitialized).
-    if ::vfs::init().is_err() && !::vfs::is_initialized() {
-        ::syslog::warn!("vfs_init_ramfs(): failed to initialize VFS");
-        return;
-    }
-
-    // Acquire IO management capability.
-    if ::sys::kcall::pm::capctl(Capability::IoManagement, true).is_err() {
-        ::syslog::warn!("vfs_init_ramfs(): failed to acquire IoManagement capability");
-        return;
-    }
-
-    // Attempt to allocate and mount the RAMFS MMIO region.
-    let mounted: bool = (|| -> bool {
-        if ::sys::kcall::mm::mmio_alloc(RAMFS_MMIO_TAG).is_err() {
-            // No RAMFS region available — the guest was simply not launched with `-ramfs`.
-            return false;
-        }
-
-        let info: ::sys::mm::MmioRegionInfo = match ::sys::kcall::mm::mmio_info(RAMFS_MMIO_TAG) {
-            Ok(i) => i,
-            Err(_) => {
-                // Free the MMIO mapping on failure.
-                let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
-                return false;
-            },
-        };
-        let total_size: usize = info.size();
-
-        // On hyperlight, the MMIO region is mapped read-only + execute by map_file_cow.
-        // The VFS needs read-write access, so copy the FAT image into a heap buffer.
-        // FIXME (#1760): this doubles memory footprint; need writable file mappings from hyperlight.
-        #[cfg(feature = "hyperlight")]
-        let (mount_ptr, free_mmio_early) = {
-            let base_ptr: *const u8 = info.base().into_raw_value() as *const u8;
-            let mut buf: alloc::vec::Vec<u8> = alloc::vec![0u8; total_size];
-            unsafe { core::ptr::copy_nonoverlapping(base_ptr, buf.as_mut_ptr(), total_size) };
-            let rw_ptr: *mut u8 = buf.as_mut_ptr();
-            core::mem::forget(buf);
-            let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
-            (rw_ptr, true)
-        };
-
-        // On other platforms the MMIO region is writable — mount directly.
-        #[cfg(not(feature = "hyperlight"))]
-        let (mount_ptr, free_mmio_early) = {
-            let base_ptr: *mut u8 = info.base().into_raw_value() as *mut u8;
-            (base_ptr, false)
-        };
-
-        // Check if the MMIO region contains a multi-image container.
-        let region_slice: &[u8] = unsafe { core::slice::from_raw_parts(mount_ptr, total_size) };
-        if ::multiimage::is_multiimage(region_slice) {
-            // Parse multi-image header and mount each sub-image.
-            let header = match ::multiimage::parse_header(region_slice) {
-                Ok(h) => h,
-                Err(_) => {
-                    ::syslog::warn!("vfs_init_ramfs(): failed to parse multi-image header");
-                    if !free_mmio_early {
-                        let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
-                    }
-                    return false;
-                },
-            };
-
-            let entries = match ::multiimage::parse_entries(region_slice, header.num_images) {
-                Ok(e) => e,
-                Err(_) => {
-                    ::syslog::warn!("vfs_init_ramfs(): failed to parse multi-image entries");
-                    if !free_mmio_early {
-                        let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
-                    }
-                    return false;
-                },
-            };
-
-            // Validate that the header's total_size fits within the MMIO region and
-            // that every entry's offset+size falls within the container bounds.
-            if header.total_size as usize > total_size {
-                ::syslog::warn!(
-                    "vfs_init_ramfs(): header total_size ({}) exceeds MMIO region ({})",
-                    header.total_size,
-                    total_size
-                );
-                if !free_mmio_early {
-                    let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
-                }
-                return false;
-            }
-            if ::multiimage::validate_entries(entries, header.total_size).is_err() {
-                ::syslog::warn!("vfs_init_ramfs(): multi-image entry validation failed");
-                if !free_mmio_early {
-                    let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
-                }
-                return false;
-            }
-
-            // Mount ROOTFS at "/" if present.
-            if let Some(rootfs) =
-                ::multiimage::find_entry_by_tag(entries, &::multiimage::ROOTFS_MMIO_TAG)
-            {
-                let sub_ptr: *mut u8 = unsafe { mount_ptr.add(rootfs.offset as usize) };
-                let sub_size: usize = rootfs.size as usize;
-                if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, sub_ptr, sub_size, false) }
-                    .is_err()
-                {
-                    ::syslog::warn!("vfs_init_ramfs(): failed to mount ROOTFS at /");
-                }
-            }
-
-            // Mount MOUNTFS at "/mnt" if present.
-            if let Some(mountfs) =
-                ::multiimage::find_entry_by_tag(entries, &::multiimage::MOUNTFS_MMIO_TAG)
-            {
-                let sub_ptr: *mut u8 = unsafe { mount_ptr.add(mountfs.offset as usize) };
-                let sub_size: usize = mountfs.size as usize;
-                if unsafe { ::vfs::mount_image(MOUNT_DIR_PATH, sub_ptr, sub_size, false) }.is_err()
-                {
-                    ::syslog::warn!("vfs_init_ramfs(): failed to mount MOUNTFS at /mnt");
-                }
-            }
-        } else {
-            // Legacy single-image path.
-            if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, mount_ptr, total_size, false) }
-                .is_err()
-            {
-                ::syslog::warn!("vfs_init_ramfs(): failed to mount RAMFS image");
-                if !free_mmio_early {
-                    let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
-                }
-                return false;
-            }
-        }
-
-        true
-    })();
-
-    // Release IO management capability.
-    let _ = ::sys::kcall::pm::capctl(Capability::IoManagement, false);
-
-    if mounted {
-        ::syslog::info!("vfs_init_ramfs(): mounted RAMFS at {}", RAMFS_MOUNT_PATH);
     }
 }

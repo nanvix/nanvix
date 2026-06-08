@@ -37,6 +37,16 @@ include!("lib.spec.rs");
 include!("lib.proof.rs");
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Slab poison byte used in debug builds to fill freed blocks and make use-after-free bugs more
+/// likely to cause a crash and easier to diagnose. This is not used in release builds to avoid
+/// the performance overhead of filling freed blocks.
+#[cfg(all(debug_assertions, not(verus_keep_ghost)))]
+pub const SLAB_POISON_BYTE: u8 = 0xDE;
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -103,6 +113,9 @@ impl Slab {
                      &&& slab@.start_addr >= addr as usize
                      &&& slab@.end_addr <= addr as usize + len
                      &&& slab@.allocated_addrs == Set::<usize>::empty()
+                     &&& forall|i: int| 0 <= i < (slab@.end_addr - slab@.start_addr) / block_size as int
+                         ==> #[trigger] slab@.free_addrs.contains(
+                             (slab@.start_addr + i * block_size as int) as usize)
                  },
                  Err(e) => {
                      &&& e.code == ErrorCode::InvalidArgument
@@ -265,13 +278,13 @@ impl Slab {
         requires
             old(self).inv(),
         ensures
-            self.inv(),
+            final(self).inv(),
             match result {
                 Ok(ptr) => {
                     let addr = ptr as usize;
                     &&& old(self)@.free_addrs.contains(addr)
-                    &&& addr % self@.block_size == 0
-                    &&& self@ == SlabView {
+                    &&& addr % final(self)@.block_size == 0
+                    &&& final(self)@ == SlabView {
                         allocated_addrs: old(self)@.allocated_addrs.insert(addr),
                         free_addrs: old(self)@.free_addrs.remove(addr),
                         ..old(self)@
@@ -279,7 +292,7 @@ impl Slab {
                 },
                 Err(_) => {
                     &&& old(self)@.free_addrs == Set::<usize>::empty()
-                    &&& self@ == old(self)@
+                    &&& final(self)@ == old(self)@
                 },
             },
     )]
@@ -317,11 +330,11 @@ impl Slab {
         requires
             old(self).inv(),
         ensures
-            self.inv(),
+            final(self).inv(),
             match result {
                 Ok(()) => {
                     &&& old(self)@.allocated_addrs.contains(ptr as usize)
-                    &&& self@ == (SlabView {
+                    &&& final(self)@ == (SlabView {
                         allocated_addrs: old(self)@.allocated_addrs.remove(ptr as usize),
                         free_addrs: old(self)@.free_addrs.insert(ptr as usize),
                         ..old(self)@
@@ -329,7 +342,7 @@ impl Slab {
                 },
                 Err(_) => {
                     &&& !old(self)@.allocated_addrs.contains(ptr as usize)
-                    &&& self@ == old(self)@
+                    &&& final(self)@ == old(self)@
                 },
             },
     )]
@@ -358,6 +371,13 @@ impl Slab {
 
         // Free the block.
         self.index.clear(index)?;
+
+        // Poison the freed block so that any use-after-free dereference through a stale pointer
+        // reads a recognizable garbage pattern instead of silently reusing stale data.
+        #[cfg(all(debug_assertions, not(verus_keep_ghost)))]
+        unsafe {
+            core::ptr::write_bytes(ptr as *mut u8, SLAB_POISON_BYTE, self.block_size);
+        }
 
         proof! { self.lemma_deallocate_ok(old(self), index, ptr); }
 

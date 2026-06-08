@@ -13,6 +13,7 @@ use crate::{
     x86::mem::paging::{
         flags::{
             AccessedFlag,
+            CopyOnWriteFlag,
             DirtyFlag,
             PageCacheDisableFlag,
             PageWriteThroughFlag,
@@ -50,6 +51,8 @@ pub struct PageTableEntryFlags {
     accessed: AccessedFlag,
     /// Dirty flag.
     dirty: DirtyFlag,
+    /// Copy-on-write flag (OS-defined, stored in an AVL bit).
+    cow: CopyOnWriteFlag,
 }
 
 impl PageTableEntryFlags {
@@ -89,6 +92,7 @@ impl PageTableEntryFlags {
             page_cache_disable,
             accessed,
             dirty,
+            cow: CopyOnWriteFlag::NotCopyOnWrite,
         }
     }
 
@@ -114,6 +118,7 @@ impl PageTableEntryFlags {
             page_cache_disable: PageCacheDisableFlag::from_raw_value(value),
             accessed: AccessedFlag::from_raw_value(value),
             dirty: DirtyFlag::from_raw_value(value),
+            cow: CopyOnWriteFlag::from_raw_value(value),
         }
     }
 
@@ -136,6 +141,7 @@ impl PageTableEntryFlags {
         value |= self.page_cache_disable.into_raw_value();
         value |= self.accessed.into_raw_value();
         value |= self.dirty.into_raw_value();
+        value |= self.cow.into_raw_value();
 
         value
     }
@@ -208,6 +214,34 @@ impl PageTableEntryFlags {
     #[inline(always)]
     pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
         self.user_supervisor = user_supervisor;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the copy-on-write flag is set.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the copy-on-write flag is set, `false` otherwise.
+    ///
+    #[inline(always)]
+    pub fn is_cow(&self) -> bool {
+        matches!(self.cow, CopyOnWriteFlag::CopyOnWrite)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the copy-on-write flag.
+    ///
+    /// # Parameters
+    ///
+    /// - `cow`: The copy-on-write flag.
+    ///
+    #[inline(always)]
+    pub fn set_cow(&mut self, cow: CopyOnWriteFlag) {
+        self.cow = cow;
     }
 }
 
@@ -366,6 +400,32 @@ impl PageTableEntry {
     ///
     pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
         self.flags.set_user_supervisor(user_supervisor);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks whether the target page table entry is marked copy-on-write.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the entry is marked copy-on-write, `false` otherwise.
+    ///
+    pub fn is_cow(&self) -> bool {
+        self.flags.is_cow()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the copy-on-write flag in the target page table entry.
+    ///
+    /// # Parameters
+    ///
+    /// - `cow`: The copy-on-write flag.
+    ///
+    pub fn set_cow(&mut self, cow: CopyOnWriteFlag) {
+        self.flags.set_cow(cow);
     }
 }
 

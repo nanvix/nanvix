@@ -50,7 +50,7 @@ use ::syslog::trace_syscall;
 pub unsafe extern "C" fn unlinkat(dirfd: c_int, pathname: *const c_char, flags: c_int) -> c_int {
     // Check if `pathname` is null.
     if pathname.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "unlinkat(): null pathname (dirfd={dirfd:?}, pathname={pathname:?}, flags={flags:?})"
         );
         *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -61,7 +61,7 @@ pub unsafe extern "C" fn unlinkat(dirfd: c_int, pathname: *const c_char, flags: 
     let path: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "unlinkat(): invalid pathname (dirfd={dirfd:?}, pathname={pathname:?}, \
                  flags={flags:?})"
             );
@@ -76,7 +76,7 @@ pub unsafe extern "C" fn unlinkat(dirfd: c_int, pathname: *const c_char, flags: 
         Ok(()) => 0,
         // System call failed.
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "unlinkat(): {error:?} (dirfd={dirfd:?}, pathname={pathname:?}, flags={flags:?})"
             );
             *__errno_location() = error.code.get();

@@ -5,7 +5,6 @@ NANVIX_TEST_FEATURES :=
 NANVIX_TEST_FEATURES += $(if $(filter standalone,$(DEPLOYMENT_MODE)),standalone,)
 NANVIX_TEST_FEATURES += $(if $(filter single-process,$(DEPLOYMENT_MODE)),single-process,)
 NANVIX_TEST_FEATURES += $(if $(filter multi-process l2,$(DEPLOYMENT_MODE)),multi-process,)
-NANVIX_TEST_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 NANVIX_TEST_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIX_TEST_FEATURES += $(if $(filter yes,$(WHP)),whp,)
 NANVIX_TEST_FEATURES := $(strip $(NANVIX_TEST_FEATURES))
@@ -16,7 +15,7 @@ all-nanvix-test: init
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/nanvix-test$(CARGO_EXE_SUFFIX) $(BINARIES_DIR)/nanvix-test.$(HOST_BIN_EXT)
 
 check-nanvix-test:
-	$(HOST_CARGO_CHECK_CMD) $(NANVIX_TEST_CARGO_FEATURES) -p nanvix-test
+	@$(HOST_CARGO_CHECK_CMD) $(NANVIX_TEST_CARGO_FEATURES) -p nanvix-test
 
 format-nanvix-test:
 	$(HOST_CARGO_FMT_CMD) -p nanvix-test

@@ -54,7 +54,7 @@ use ::syslog::trace_syscall;
 pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
     // Check if `path` is invalid.
     if path.is_null() {
-        ::syslog::error!("chdir(): path is null (path={path:?})");
+        ::syslog::warn!("chdir(): path is null (path={path:?})");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -63,7 +63,7 @@ pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
     let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::syslog::error!("chdir(): invalid path (path={path:?})");
+            ::syslog::warn!("chdir(): invalid path (path={path:?})");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -73,7 +73,7 @@ pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
     match crate::unistd::chdir(path) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!("chdir(): {error:?} (path={path:?})");
+            ::syslog::warn!("chdir(): {error:?} (path={path:?})");
             *__errno_location() = error.code.get();
             -1
         },

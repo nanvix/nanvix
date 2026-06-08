@@ -24,10 +24,10 @@ use ::sys::{
         ErrorCode,
     },
     kcall::pm::{
-        lock_mutex,
-        signal_cond,
-        unlock_mutex,
-        wait_cond,
+        __kcall_lock_mutex,
+        __kcall_signal_cond,
+        __kcall_unlock_mutex,
+        __kcall_wait_cond,
     },
     pm::{
         ConditionAddress,
@@ -164,7 +164,7 @@ pub fn pthread_rwlock_init(
         Ok(())
     } else {
         let reason: &str = "read-write lock is already initialized";
-        ::syslog::error!("pthread_rwlock_init(): {reason}");
+        ::syslog::warn!("pthread_rwlock_init(): {reason}");
         Err(Error::new(ErrorCode::InvalidArgument, reason))
     }
 }
@@ -191,7 +191,7 @@ pub fn pthread_rwlock_destroy(rwlock: &mut pthread_rwlock_t) -> Result<(), Error
         let locked_runtime_rwlock: MutexGuard<'_, ReadWriteLockState> = runtime.lock();
         if locked_runtime_rwlock.readers != 0 || locked_runtime_rwlock.writer_active {
             let reason: &str = "read-write lock is busy";
-            ::syslog::error!("pthread_rwlock_destroy(): {}", reason);
+            ::syslog::warn!("pthread_rwlock_destroy(): {}", reason);
             return Err(Error::new(ErrorCode::ResourceBusy, reason));
         }
     } else {
@@ -200,7 +200,7 @@ pub fn pthread_rwlock_destroy(rwlock: &mut pthread_rwlock_t) -> Result<(), Error
             return Ok(());
         } else {
             let reason: &str = "read-write lock is not initialized";
-            ::syslog::error!("pthread_rwlock_destroy(): {reason}");
+            ::syslog::warn!("pthread_rwlock_destroy(): {reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }
@@ -238,7 +238,7 @@ pub fn pthread_rwlock_rdlock(rwlock: &mut pthread_rwlock_t) -> Result<(), Error>
     };
 
     // Protect state.
-    lock_mutex(mutex_addr, None)?;
+    __kcall_lock_mutex(mutex_addr, None)?;
 
     loop {
         let should_wait: bool = {
@@ -253,10 +253,10 @@ pub fn pthread_rwlock_rdlock(rwlock: &mut pthread_rwlock_t) -> Result<(), Error>
         };
 
         if !should_wait {
-            unlock_mutex(mutex_addr)?;
+            __kcall_unlock_mutex(mutex_addr)?;
             break Ok(());
         }
-        wait_cond(readers_cond_addr, mutex_addr, None)?;
+        __kcall_wait_cond(readers_cond_addr, mutex_addr, None)?;
     }
 }
 
@@ -286,7 +286,7 @@ pub fn pthread_rwlock_wrlock(rwlock: &mut pthread_rwlock_t) -> Result<(), Error>
         (mutex_addr, writers_cond_addr)
     };
 
-    lock_mutex(mutex_addr, None)?;
+    __kcall_lock_mutex(mutex_addr, None)?;
 
     {
         let mut runtime: MutexGuard<'_, ReadWriteLockState> = runtime_rwlock.lock();
@@ -305,10 +305,10 @@ pub fn pthread_rwlock_wrlock(rwlock: &mut pthread_rwlock_t) -> Result<(), Error>
         }
 
         if acquired {
-            unlock_mutex(mutex_addr)?;
+            __kcall_unlock_mutex(mutex_addr)?;
             break Ok(());
         }
-        wait_cond(writers_cond_addr, mutex_addr, None)?;
+        __kcall_wait_cond(writers_cond_addr, mutex_addr, None)?;
     }
 }
 
@@ -344,7 +344,7 @@ pub fn pthread_rwlock_unlock(rwlock: &mut pthread_rwlock_t) -> Result<(), Error>
         (mutex_addr, readers_cond_addr, writers_cond_addr)
     };
 
-    lock_mutex(mutex_addr, None)?;
+    __kcall_lock_mutex(mutex_addr, None)?;
 
     let (wake_readers, wake_writer): (bool, bool) = {
         let mut locked_runtime: MutexGuard<'_, ReadWriteLockState> = runtime_rwlock.lock();
@@ -360,7 +360,7 @@ pub fn pthread_rwlock_unlock(rwlock: &mut pthread_rwlock_t) -> Result<(), Error>
             // Must be a reader.
             if locked_runtime.readers == 0 {
                 let reason: &str = "unlock on unlocked read-write lock";
-                ::syslog::error!("pthread_rwlock_unlock(): {reason}");
+                ::syslog::warn!("pthread_rwlock_unlock(): {reason}");
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             }
             locked_runtime.readers -= 1;
@@ -374,12 +374,12 @@ pub fn pthread_rwlock_unlock(rwlock: &mut pthread_rwlock_t) -> Result<(), Error>
 
     // Wake appropriate waiters while still holding protection mutex so they observe state.
     if wake_writer {
-        let _ = signal_cond(writers_cond_addr, false);
+        let _ = __kcall_signal_cond(writers_cond_addr, false);
     } else if wake_readers {
-        let _ = signal_cond(readers_cond_addr, true); // broadcast to all readers
+        let _ = __kcall_signal_cond(readers_cond_addr, true); // broadcast to all readers
     }
 
-    unlock_mutex(mutex_addr)
+    __kcall_unlock_mutex(mutex_addr)
 }
 
 ///
@@ -407,7 +407,7 @@ fn get_runtime_rwlock(rwlock: &pthread_rwlock_t) -> Result<ReadWriteLock, Error>
             ))));
         } else {
             let reason: &str = "read-write lock is not initialized";
-            ::syslog::error!("lazy_register_rwlock(): {reason}");
+            ::syslog::warn!("lazy_register_rwlock(): {reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
     }

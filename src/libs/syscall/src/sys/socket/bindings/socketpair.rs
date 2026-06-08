@@ -70,14 +70,14 @@ pub unsafe extern "C" fn socketpair(
 ) -> c_int {
     // Check if `socket_fds` is invalid.
     if socket_fds.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "socketpair(): invalid sockets array (domain={domain:?}, typ={typ:?}, \
              protocol={protocol:?}, socket_fds={socket_fds:?})"
         );
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     } else if !(socket_fds as usize).is_multiple_of(::core::mem::size_of::<c_int>()) {
-        ::syslog::error!(
+        ::syslog::warn!(
             "socketpair(): invalid sockets array alignment (domain={domain:?}, typ={typ:?}, \
              protocol={protocol:?}, socket_fds={socket_fds:?})"
         );
@@ -92,7 +92,7 @@ pub unsafe extern "C" fn socketpair(
     let domain: AddressFamily = match domain.try_into() {
         Ok(domain) => domain,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "socketpair(): {error:?} (domain={domain:?}, typ={typ:?}, protocol={protocol:?}, \
                  socket_fds={socket_fds:?})"
             );
@@ -105,7 +105,7 @@ pub unsafe extern "C" fn socketpair(
     let typ: SocketType = match typ.try_into() {
         Ok(typ) => typ,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "socketpair(): {error:?} (domain={domain:?}, typ={typ:?}, protocol={protocol:?}, \
                  socket_fds={socket_fds:?})"
             );
@@ -118,7 +118,7 @@ pub unsafe extern "C" fn socketpair(
     let protocol: Protocol = match protocol.try_into() {
         Ok(protocol) => protocol,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "socketpair(): {error:?} (domain={domain:?}, typ={typ:?}, protocol={protocol:?}, \
                  socket_fds={socket_fds:?})"
             );
@@ -131,7 +131,7 @@ pub unsafe extern "C" fn socketpair(
     match crate::sys::socket::syscall::socketpair(domain, typ, protocol, socket_fds) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "socketpair(): {error:?} (domain={domain:?}, typ={typ:?}, protocol={protocol:?}, \
                  socket_fds={socket_fds:?})"
             );

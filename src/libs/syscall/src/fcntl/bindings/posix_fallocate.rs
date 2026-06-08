@@ -46,7 +46,7 @@ pub unsafe extern "C" fn posix_fallocate(fd: c_int, offset: off_t, len: off_t) -
     match fcntl::posix_fallocate(fd, offset, len) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "posix_fallocate(): {error:?} (fd={fd:?}, offset={offset:?}, len={len:?})",
             );
             error.code.get()

@@ -62,7 +62,11 @@ use ::goblin::{
         },
         section_header::SHN_UNDEF,
         sym::{
+            st_bind,
             st_type,
+            STB_GLOBAL,
+            STB_LOCAL,
+            STB_WEAK,
             STT_FUNC,
             STT_OBJECT,
         },
@@ -344,6 +348,44 @@ pub enum SymbolType {
 }
 
 //==================================================================================================
+// Symbol Binding
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A high-level representation of the binding attribute encoded in the high 4 bits of an
+/// ELF symbol's `st_info` field.
+///
+/// Bindings control how the link editor and the dynamic loader treat a symbol when multiple
+/// definitions are visible and when no definition can be found.
+///
+/// Per the System V ABI (gABI, chapter "Symbol Table"):
+/// - `STB_LOCAL` — definitions are not visible to other object files.
+/// - `STB_GLOBAL` — definitions are visible to all combined object files; an undefined
+///   global reference that cannot be resolved is an error.
+/// - `STB_WEAK` — like global, but with lower precedence; **an undefined weak reference
+///   that cannot be resolved at dynamic-link time is silently taken to be the value zero**
+///   (or `NULL` for function symbols). The dynamic loader is required to honour this rule.
+///
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive)]
+pub enum SymbolBinding {
+    /// Local symbol — invisible outside the defining object file.
+    Local = STB_LOCAL,
+    /// Global symbol — visible to all object files.
+    Global = STB_GLOBAL,
+    /// Weak symbol — global with lower precedence; an unresolved weak undefined reference
+    /// is resolved to address zero per the System V ABI.
+    Weak = STB_WEAK,
+    /// Any other binding value defined by the platform or the processor supplement
+    /// (for example reserved or processor-specific bindings) that we do not interpret
+    /// further.
+    #[num_enum(default)]
+    Other,
+}
+
+//==================================================================================================
 // Symbol
 //==================================================================================================
 
@@ -389,6 +431,20 @@ impl Symbol {
     ///
     /// # Description
     ///
+    /// Returns the binding attribute of the symbol (high 4 bits of `st_info`).
+    ///
+    /// # Returns
+    ///
+    /// A [`SymbolBinding`] value. Bindings the loader does not interpret further are
+    /// returned as [`SymbolBinding::Other`].
+    ///
+    pub fn binding(&self) -> SymbolBinding {
+        st_bind(self.0.st_info).into()
+    }
+
+    ///
+    /// # Description
+    ///
     /// Get the value of the symbol.
     ///
     /// # Returns
@@ -423,6 +479,23 @@ impl Symbol {
     ///
     pub fn is_undefined(&self) -> bool {
         self.0.st_shndx as u32 == SHN_UNDEF
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests if the symbol has weak binding (`STB_WEAK`).
+    ///
+    /// Per the System V ABI, a weak undefined symbol that cannot be resolved at
+    /// dynamic-link time is silently resolved to address zero. Loaders that consume this
+    /// helper are expected to follow that rule rather than reporting a lookup failure.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the symbol's binding is `STB_WEAK`, `false` otherwise.
+    ///
+    pub fn is_weak(&self) -> bool {
+        self.binding() == SymbolBinding::Weak
     }
 
     ///
@@ -597,5 +670,84 @@ impl RelocationEntry {
     ///
     pub fn offset(&self) -> u32 {
         self.0.r_offset
+    }
+}
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::elf32::STT_NOTYPE;
+    use ::goblin::elf32::sym::Sym;
+
+    /// Builds a Symbol with the given binding (high 4 bits) and type (low 4 bits),
+    /// and the given section index.
+    fn make_symbol(binding: u8, sym_type: u8, st_shndx: u16) -> Symbol {
+        Symbol(Sym {
+            st_name: 0,
+            st_value: 0,
+            st_size: 0,
+            st_info: (binding << 4) | (sym_type & 0xf),
+            st_other: 0,
+            st_shndx,
+        })
+    }
+
+    #[test]
+    fn binding_decodes_local_global_weak() {
+        let local = make_symbol(STB_LOCAL, STT_FUNC, 1);
+        let global = make_symbol(STB_GLOBAL, STT_FUNC, 1);
+        let weak = make_symbol(STB_WEAK, STT_FUNC, 1);
+
+        assert_eq!(local.binding(), SymbolBinding::Local);
+        assert_eq!(global.binding(), SymbolBinding::Global);
+        assert_eq!(weak.binding(), SymbolBinding::Weak);
+    }
+
+    #[test]
+    fn binding_falls_back_to_other_for_unknown_values() {
+        // Reserved/processor-specific binding values must not be classified as a known
+        // binding; the loader is expected to treat them conservatively (i.e., not weak).
+        let exotic = make_symbol(10, STT_FUNC, 1);
+        assert_eq!(exotic.binding(), SymbolBinding::Other);
+        assert!(!exotic.is_weak());
+    }
+
+    #[test]
+    fn is_weak_matches_stb_weak_only() {
+        assert!(!make_symbol(STB_LOCAL, STT_FUNC, 0).is_weak());
+        assert!(!make_symbol(STB_GLOBAL, STT_FUNC, 0).is_weak());
+        assert!(make_symbol(STB_WEAK, STT_FUNC, 0).is_weak());
+        assert!(make_symbol(STB_WEAK, STT_OBJECT, 0).is_weak());
+    }
+
+    #[test]
+    fn is_undefined_and_is_weak_are_independent() {
+        // Weak + undefined is the case the dynamic loader must resolve to 0.
+        let weak_undef = make_symbol(STB_WEAK, STT_NOTYPE, SHN_UNDEF as u16);
+        assert!(weak_undef.is_undefined());
+        assert!(weak_undef.is_weak());
+
+        // Weak + defined: a definition that may be overridden by a strong one.
+        let weak_def = make_symbol(STB_WEAK, STT_FUNC, 1);
+        assert!(!weak_def.is_undefined());
+        assert!(weak_def.is_weak());
+
+        // Strong + undefined: must remain an error in the loader.
+        let strong_undef = make_symbol(STB_GLOBAL, STT_NOTYPE, SHN_UNDEF as u16);
+        assert!(strong_undef.is_undefined());
+        assert!(!strong_undef.is_weak());
+    }
+
+    #[test]
+    fn binding_does_not_depend_on_type_nibble() {
+        // The low 4 bits encode the symbol type; the high 4 bits encode the binding.
+        // Changing the type must not affect the binding decoding.
+        for sym_type in [STT_NOTYPE, STT_OBJECT, STT_FUNC] {
+            assert_eq!(make_symbol(STB_WEAK, sym_type, 1).binding(), SymbolBinding::Weak);
+        }
     }
 }

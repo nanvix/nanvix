@@ -7,12 +7,12 @@
 
 use crate::{
     message::{
-        LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
+        SystemCallMessagePart,
     },
-    LinuxDaemonMessageHeader,
+    SystemCallMessageHeader,
 };
 use ::alloc::{
     string::String,
@@ -27,8 +27,14 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
-    pm::ThreadIdentifier,
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::limits::{
     PATH_MAX,
@@ -203,6 +209,8 @@ impl MessagePartitioner for ReadLinkAtRequest {
     /// - `part_number`: Partition number.
     /// - `payload_size`: Size of the payload.
     /// - `payload`: Payload.
+    /// - `destination`: Process identifier.
+    /// - `message_type`: Message type.
     ///
     /// # Returns
     ///
@@ -213,15 +221,19 @@ impl MessagePartitioner for ReadLinkAtRequest {
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
-        LinuxDaemonMessagePart::build_request(
+        SystemCallMessagePart::build_request(
             tid,
-            LinuxDaemonMessageHeader::ReadLinkAtRequestPart,
+            SystemCallMessageHeader::ReadLinkAtRequestPart,
             total_parts,
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }
@@ -352,6 +364,8 @@ impl MessagePartitioner for ReadLinkAtResponse {
     /// - `part_number`: Partition number.
     /// - `payload_size`: Size of the payload.
     /// - `payload`: Payload.
+    /// - `destination`: Process identifier.
+    /// - `message_type`: Message type.
     ///
     /// # Returns
     ///
@@ -362,15 +376,19 @@ impl MessagePartitioner for ReadLinkAtResponse {
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
-        LinuxDaemonMessagePart::build_response(
+        SystemCallMessagePart::build_response(
             tid,
-            LinuxDaemonMessageHeader::ReadLinkAtResponsePart,
+            SystemCallMessageHeader::ReadLinkAtResponsePart,
             total_parts,
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }

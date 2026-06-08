@@ -49,11 +49,6 @@
 //! Enables single-process execution mode where all daemons run within a single process. This
 //! feature is useful for development, testing, and resource-constrained environments.
 //!
-//! #### `hyperlight`
-//!
-//! Enables support for the Hyperlight virtualization backend, providing integration with
-//! Hyperlight-based sandboxing and isolation mechanisms.
-//!
 //! ## Architecture
 //!
 //! The Nanvix operating system follows a microkernel architecture where core functionality is
@@ -85,14 +80,13 @@
 
 pub use config;
 pub use hwloc;
-#[cfg(unix)]
 pub use nanvix_http as http;
-pub use nanvix_registry as registry;
 pub use nanvix_sandbox as sandbox;
 #[cfg(feature = "single-process")]
 pub use nanvix_sandbox::simple_cache as sandbox_cache;
 #[cfg(feature = "multi-process")]
 pub use nanvix_sandbox_cache as sandbox_cache;
+pub use nanvix_sandbox_config as sandbox_config;
 pub use nanvix_terminal as terminal;
 pub use syscomm;
 pub use syslog as log;

@@ -36,12 +36,11 @@ The pipeline runs these steps in order:
 ### Machine-Dependent Steps
 
 `scripts/pipeline.sh` executes machine-dependent
-steps for `microvm` and `hyperlight`.
+steps for `microvm`.
 
 | Machine       | Build Types    | Deployment Types              |
 |---------------|----------------|-------------------------------|
 | `microvm`     | debug, release | standalone, single, multi, l2 |
-| `hyperlight`  | debug, release | single, multi, l2             |
 
 ### Build Parameter Mapping
 
@@ -80,9 +79,9 @@ pipeline, but matrix coverage is split across multiple jobs and run on pull requ
 Matrix coverage in GitHub Actions:
 
 - `checks`: format + spellcheck (single run).
-- `lint`, `verify`, `ci-build`: `microvm` and `hyperlight` with `standalone`,
+- `lint`, `verify`, `ci-build`: `microvm` with `standalone`,
   `single-process`, and `multi-process`.
-- `ci-test`: same matrix, excluding `hyperlight + standalone`.
+- `ci-test`: same matrix.
 
 > **Note:** The local pipeline covers the `l2` deployment type, but CI does not run L2 jobs.
 
@@ -99,10 +98,20 @@ Matrix coverage in GitHub Actions:
 # nanvix-<ver>-<target>-<machine>-<deploy>-<mode>-<log>-<memory>mb.tar.bz2
 ```
 
-Minor releases can be created with:
+Releases can be created with:
 
 ```bash
-./scripts/create-minor-release.sh
+# Patch release (X.Y.Z -> X.Y.(Z+1))
+python3 scripts/create-release.py --patch   # Linux / macOS
+python scripts/create-release.py --patch    # Windows
+
+# Minor release (X.Y.Z -> X.(Y+1).0)
+python3 scripts/create-release.py --minor   # Linux / macOS
+python scripts/create-release.py --minor    # Windows
+
+# Major release (X.Y.Z -> (X+1).0.0)
+python3 scripts/create-release.py --major   # Linux / macOS
+python scripts/create-release.py --major    # Windows
 ```
 
 ## Pipeline Output

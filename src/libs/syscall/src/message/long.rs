@@ -2,7 +2,7 @@
 // Imports
 //==================================================================================================
 
-use crate::message::LinuxDaemonMessagePart;
+use crate::message::SystemCallMessagePart;
 use ::alloc::vec::Vec;
 use ::sys::error::{
     Error,
@@ -18,18 +18,18 @@ use ::sys::error::{
 ///
 /// This structure represents a long message that is split into multiple parts.
 ///
-pub struct LinuxDaemonLongMessage {
+pub struct SystemCallLongMessage {
     /// Maximum number of parts that the message can contain.
     capacity: usize,
     /// Parts of the message.
-    parts: Vec<LinuxDaemonMessagePart>,
+    parts: Vec<SystemCallMessagePart>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl LinuxDaemonLongMessage {
+impl SystemCallLongMessage {
     ///
     /// # Description
     ///
@@ -68,7 +68,7 @@ impl LinuxDaemonLongMessage {
     ///
     /// Upon success, the function returns empty. Otherwise, it returns an error.
     ///
-    pub fn add_part(&mut self, part: LinuxDaemonMessagePart) -> Result<(), Error> {
+    pub fn add_part(&mut self, part: SystemCallMessagePart) -> Result<(), Error> {
         // Check if we reached the maximum capacity.
         if self.parts.len() == self.capacity {
             return Err(Error::new(ErrorCode::MessageTooLong, "message too long"));
@@ -116,7 +116,7 @@ impl LinuxDaemonLongMessage {
     ///
     /// Returns the parts of the message.
     ///
-    pub fn take_parts(self) -> Vec<LinuxDaemonMessagePart> {
+    pub fn take_parts(self) -> Vec<SystemCallMessagePart> {
         self.parts
     }
 }

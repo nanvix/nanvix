@@ -23,9 +23,6 @@ pub const RAMFS_MMIO_TAG: MmioTag = MmioTag::new(*b"RAMFS   ");
 /// Tag used to identify the root filesystem image.
 pub const ROOTFS_MMIO_TAG: MmioTag = MmioTag::new(*b"ROOTFS  ");
 
-/// Tag used to identify a host-mounted filesystem image.
-pub const MOUNTFS_MMIO_TAG: MmioTag = MmioTag::new(*b"MOUNTFS ");
-
 //==================================================================================================
 // MicroVM
 //==================================================================================================
@@ -43,27 +40,3 @@ mod microvm {
 
 #[cfg(feature = "microvm")]
 pub use microvm::*;
-
-//==================================================================================================
-// Hyperlight
-//==================================================================================================
-
-#[cfg(feature = "hyperlight")]
-mod hyperlight {
-    use super::MmioTag;
-
-    /// Tag used to identify the Hyperlight PEB MMIO region.
-    pub const PEB_MMIO_TAG: MmioTag = MmioTag::new(*b"PEB     ");
-
-    /// Tag used to identify the Hyperlight input data buffer MMIO region.
-    pub const INPUT_BUF_MMIO_TAG: MmioTag = MmioTag::new(*b"INPUTBUF");
-
-    /// Tag used to identify the Hyperlight output data buffer MMIO region.
-    pub const OUTPUT_BUF_MMIO_TAG: MmioTag = MmioTag::new(*b"OUTPUTBF");
-
-    /// Tag used to identify the Hyperlight scratch I/O MMIO region.
-    pub const SCRATCH_IO_MMIO_TAG: MmioTag = MmioTag::new(*b"SCRATCH ");
-}
-
-#[cfg(feature = "hyperlight")]
-pub use hyperlight::*;

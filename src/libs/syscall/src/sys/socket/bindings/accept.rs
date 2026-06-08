@@ -64,7 +64,7 @@ pub unsafe extern "C" fn accept(
 ) -> c_int {
     // Check if sockaddr and len is invalid.
     if !sockaddr.is_null() && len.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "accept(): invalid length pointer (sockfd={sockfd:?}, sockaddr={sockaddr:?}, \
              len={len:?})"
         );
@@ -86,7 +86,7 @@ pub unsafe extern "C" fn accept(
             sockfd
         },
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "accept(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
             );
             *__errno_location() = error.code.get();

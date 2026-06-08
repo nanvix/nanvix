@@ -70,7 +70,7 @@ pub unsafe extern "C" fn send(
 ) -> c_ssize_t {
     // Check if `buf` is valid.
     if buf.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "send(): invalid buffer (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, flags={flags:?})"
         );
         *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -81,7 +81,7 @@ pub unsafe extern "C" fn send(
 
     // Check if `flags` is valid.
     if flags != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "send(): unsupported flags (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, \
              flags={flags:?})"
         );
@@ -93,7 +93,7 @@ pub unsafe extern "C" fn send(
     let len: usize = match len.try_into() {
         Ok(len) => len,
         Err(_error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "send(): failed to convert length (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, \
                  flags={flags:?})"
             );
@@ -110,7 +110,7 @@ pub unsafe extern "C" fn send(
         Ok(bytes_sent) => match bytes_sent.try_into() {
             Ok(bytes_sent) => bytes_sent,
             Err(_error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "send(): failed to convert bytes sent (sockfd={sockfd:?}, buf={buf:?}, \
                      len={len:?}, flags={flags:?})"
                 );
@@ -119,7 +119,7 @@ pub unsafe extern "C" fn send(
             },
         },
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "send(): {error:?} (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, flags={flags:?})"
             );
             *__errno_location() = error.code.get();

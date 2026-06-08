@@ -28,7 +28,7 @@ from typing import NoReturn, Sequence
 # Constants
 # ==================================================================================================
 
-VALID_MACHINES: tuple[str, ...] = ("microvm", "hyperlight")
+VALID_MACHINES: tuple[str, ...] = ("microvm",)
 VALID_DEPLOYMENT_MODES: tuple[str, ...] = (
     "standalone",
     "single-process",
@@ -41,7 +41,7 @@ VALID_MESSAGE_FORMATS: tuple[str, ...] = ("json", "json-diagnostic-rendered-ansi
 
 DEFAULT_MACHINE = "microvm"
 DEFAULT_TARGET = "x86"
-DEFAULT_DEPLOYMENT_MODE_LINUX = "multi-process"
+DEFAULT_DEPLOYMENT_MODE_LINUX = "standalone"
 DEFAULT_DEPLOYMENT_MODE_WINDOWS = "standalone"
 DEFAULT_LOG_LEVEL_DEBUG = "trace"
 DEFAULT_LOG_LEVEL_RELEASE = "warn"
@@ -65,9 +65,6 @@ KNOWN_MAKE_VARS: frozenset[str] = frozenset(
         "IMAGE",
         "CLH_DIR",
         "HOST_CPU",
-        "WASM_BINARY",
-        "WASM_BINARY_ARGS",
-        "WASMD_SOCKADDR",
         "MAKE_NO_PRINT",
         "MEMORY_SIZE",
         "MESSAGE_FORMAT",
@@ -96,7 +93,7 @@ def _supports_color() -> bool:
     if sys.platform == "win32":
         # Windows Terminal and modern consoles support ANSI.
         return True
-    return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+    return hasattr(sys.stderr, "isatty") and sys.stderr.isatty()
 
 
 _COLOR = _supports_color()
@@ -112,13 +109,13 @@ def print_error(msg: str) -> None:
 
 
 def print_success(msg: str) -> None:
-    """Print success message to stdout."""
-    print(f"{_c(_GREEN, '[OK]')}    {msg}")
+    """Print success message to stderr."""
+    print(f"{_c(_GREEN, '[OK]')}    {msg}", file=sys.stderr)
 
 
 def print_info(msg: str) -> None:
-    """Print info message to stdout."""
-    print(f"{_c(_CYAN, '[INFO]')}  {msg}")
+    """Print info message to stderr."""
+    print(f"{_c(_CYAN, '[INFO]')}  {msg}", file=sys.stderr)
 
 
 def print_warning(msg: str) -> None:
@@ -264,10 +261,6 @@ class BuildConfig:
     sysroot_dir: str = ""
     host_cpu: str = ""
 
-    wasm_binary: str = ""
-    wasm_binary_args: str = ""
-    wasmd_sockaddr: str = ""
-
     image: str = ""
     memory_size: str = ""
     message_format: str = ""
@@ -337,12 +330,6 @@ def _parse_make_var(config: BuildConfig, key: str, val: str) -> None:
             config.whp = val.lower() == "yes"
         case "HOST_CPU":
             config.host_cpu = val
-        case "WASM_BINARY":
-            config.wasm_binary = val
-        case "WASM_BINARY_ARGS":
-            config.wasm_binary_args = val
-        case "WASMD_SOCKADDR":
-            config.wasmd_sockaddr = val
         case "IMAGE":
             config.image = val
         case "MEMORY_SIZE":
@@ -473,20 +460,26 @@ def validate_git_context() -> Path:
             text=True,
             check=True,
         )
-        repo_root = Path(result.stdout.strip()).resolve()
+        git_root = Path(result.stdout.strip())
     except subprocess.CalledProcessError:
         die("Failed to determine repository root.")
 
-    cwd = Path.cwd().resolve()
+    cwd = Path.cwd()
     try:
-        same_location = cwd.samefile(repo_root)
+        same_location = cwd.samefile(git_root)
     except (OSError, NotImplementedError):
-        same_location = str(cwd).casefold() == str(repo_root).casefold()
+        same_location = (
+            str(cwd.resolve()).casefold() == str(git_root.resolve()).casefold()
+        )
 
     if not same_location:
-        die(f"Must run from repo root ({repo_root}), not {cwd}.")
+        die(f"Must run from repo root ({git_root.resolve()}), not {cwd.resolve()}.")
 
-    return repo_root
+    # Return the caller's cwd (not the canonicalized git path) so that
+    # substituted drives on Windows (e.g. `subst N: C:\path`) are preserved.
+    # Resolving would expand the alias and cause Make's CURDIR to become a
+    # long path, which can blow past cmd.exe's 8191-char command-line limit.
+    return cwd
 
 
 def check_filesystem_support(directory: str) -> bool:
@@ -992,7 +985,7 @@ Options:
   --toolchain-dir DIR   Toolchain directory (setup only, Linux, default: ~/toolchain).
 
 Build Parameters (after --):
-  MACHINE=microvm|hyperlight     Target machine (default: microvm).
+  MACHINE=microvm                Target machine (default: microvm).
   RELEASE=yes|no                 Release mode.
   DEPLOYMENT_MODE=MODE           standalone|single-process|multi-process|l2.
   LOG_LEVEL=LEVEL                trace|debug|info|warn|error|panic.

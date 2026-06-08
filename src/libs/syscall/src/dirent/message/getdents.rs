@@ -8,13 +8,13 @@
 use crate::{
     dirent::posix_dent,
     message::{
-        LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
+        SystemCallMessagePart,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::alloc::vec::Vec;
 use ::core::mem;
@@ -29,7 +29,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::{
     ffi::{
@@ -62,11 +65,11 @@ pub struct GetDirectoryEntriesRequest {
     pub count: u32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(GetDirectoryEntriesRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(GetDirectoryEntriesRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl GetDirectoryEntriesRequest {
     pub const PADDING_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_int>() - mem::size_of::<u32>();
+        SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<c_int>() - mem::size_of::<u32>();
 
     /// Maximum number of entries in the request.
     pub const MAX_ENTRIES: usize = MAX_ENTRIES;
@@ -86,24 +89,30 @@ impl GetDirectoryEntriesRequest {
         })
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    pub fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    pub fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, fd: c_int, count: usize) -> Result<Message, Error> {
+    pub fn build(
+        tid: ThreadIdentifier,
+        fd: c_int,
+        count: usize,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Result<Message, Error> {
         let message: GetDirectoryEntriesRequest = GetDirectoryEntriesRequest::new(fd, count)?;
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::GetDirectoryEntriesRequest,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::GetDirectoryEntriesRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -261,15 +270,19 @@ impl MessagePartitioner for GetDirectoryEntriesResponse {
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
-        LinuxDaemonMessagePart::build_response(
+        SystemCallMessagePart::build_response(
             tid,
-            LinuxDaemonMessageHeader::GetDirectoryEntriesResponsePart,
+            SystemCallMessageHeader::GetDirectoryEntriesResponsePart,
             total_parts,
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }

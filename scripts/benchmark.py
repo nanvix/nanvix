@@ -24,7 +24,6 @@ from typing import Optional
 # Constants
 # ======================================================================
 
-HYPERLIGHT_MACHINE_TYPE = "hyperlight"
 MICROVM_MACHINE_TYPE = "microvm"
 IS_WINDOWS = platform.system() == "Windows"
 NA = "NA"
@@ -275,11 +274,32 @@ def filter_benchmark_stdout(benchmark: str, raw_stdout: str, commit: str) -> str
     A CSV string (header + data rows) with the benchmark metrics.
     """
     if benchmark in PERCENTILE_BENCHMARKS:
+        # The snapshot-restore benchmark prints multiple percentile blocks
+        # (Cold-start, Snapshot restore, Post-restore execution). Restrict
+        # parsing to the headline "Snapshot restore (...)" section so the
+        # CSV continues to track the same metric across releases. For all
+        # other percentile benchmarks the full stdout is scanned.
+        if benchmark == SNAPSHOT_RESTORE_BENCH:
+            section_match = re.search(
+                r"^Snapshot restore \(.*?\):\s*\n(?P<body>(?:[ \t]+.*\n?)+)",
+                raw_stdout,
+                re.MULTILINE,
+            )
+            if section_match is None:
+                print(
+                    "ERROR: missing 'Snapshot restore (...)' section in "
+                    f"benchmark '{benchmark}' output"
+                )
+                raise ValueError("Missing 'Snapshot restore' section")
+            search_scope = section_match.group("body")
+        else:
+            search_scope = raw_stdout
+
         pattern = re.compile(
             r"^\s*(p50|p95|p99)\s*:\s*([0-9]+)\s*us\b", re.IGNORECASE | re.MULTILINE
         )
         values = {}
-        for k, v in pattern.findall(raw_stdout):
+        for k, v in pattern.findall(search_scope):
             values[k.lower()] = int(v)
 
         # Ensure all three percentiles are present.
@@ -1430,7 +1450,7 @@ if __name__ == "__main__":
     run_parser.add_argument(
         "--machine-type",
         required=True,
-        choices=[MICROVM_MACHINE_TYPE, HYPERLIGHT_MACHINE_TYPE],
+        choices=[MICROVM_MACHINE_TYPE],
         help="Type of machine to run the benchmarks on",
     )
     run_parser.add_argument(

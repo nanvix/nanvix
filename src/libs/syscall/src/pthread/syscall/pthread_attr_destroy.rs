@@ -50,7 +50,7 @@ pub fn pthread_attr_destroy(attr: &mut pthread_attr_t) -> Result<(), Error> {
     // Check if `attr` references a thread attributes object that was not initialized.
     if attr.is_initialized == 0 {
         let reason: &'static str = "thread attributes object was not initialized";
-        ::syslog::error!("pthread_attr_destroy(): {reason} (attr={:p})", attr as *const _);
+        ::syslog::warn!("pthread_attr_destroy(): {reason} (attr={:p})", attr as *const _);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 

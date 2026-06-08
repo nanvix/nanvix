@@ -118,6 +118,10 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         KcallNumber::MemoryCopy => pm::mcopy(pid, arg0, arg1, arg2, arg3),
         // Handle `create_thread()` locally.
         KcallNumber::CreateThread => pm::create_thread(pid, arg0),
+        // Handle `detach_thread()` locally.
+        KcallNumber::DetachThread => pm::detach_thread(pid, arg0),
+        // Handle `duplicate()` locally.
+        KcallNumber::Duplicate => pm::duplicate(pid, arg0),
         // Handle `send()` locally.
         KcallNumber::Send => ipc::send(pid, tid, arg0),
         // SAFETY: The calling thread is not the kernel and no resources are held.
@@ -180,10 +184,17 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         },
 
         // Handle `snapshot()` locally (microvm platform only).
+        // The snapshot capability must have been enabled via the `snapshot` kernel option
+        // and is consumed on the first successful request; subsequent attempts are refused.
         #[cfg(feature = "microvm")]
         KcallNumber::Snapshot => {
-            crate::hal::platform::snapshot();
-            KcallResult::ok()
+            if crate::try_consume_snapshot() {
+                crate::hal::platform::snapshot();
+                KcallResult::ok()
+            } else {
+                error!("snapshot refused: not enabled or already consumed");
+                KcallResult::Error(ErrorCode::OperationNotPermitted.into())
+            }
         },
         // Snapshot is not supported on non-microvm platforms.
         #[cfg(not(feature = "microvm"))]

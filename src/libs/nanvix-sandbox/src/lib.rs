@@ -37,10 +37,15 @@
 //!
 //! ## Deployment Modes
 //!
-//! ### Multi-Process Mode (default)
+//! ### Standalone Mode (default)
 //!
-//! Linux Daemon and User VM run as separate OS processes. This is the production mode
-//! used by Nanvix Daemon for isolation and robustness.
+//! The sandbox runs as a self-contained unit without external Linux Daemon or User VM
+//! processes. This is the simplest deployment mode and the default for development.
+//!
+//! ### Multi-Process Mode
+//!
+//! Linux Daemon and User VM run as separate OS processes. This mode is used by Nanvix
+//! Daemon for isolation and robustness in production deployments.
 //!
 //! ### Single-Process Mode
 //!
@@ -82,6 +87,7 @@
 //!     Some("/path/to/toolchain/bin".to_string()),  // clh_bin_path
 //!     Some("/tmp".to_string()),  // tmp_directory
 //!     Some(false),  // l2
+//!     false,  // networking_enabled
 //! );
 //!
 //! // Create control-plane acceptor.
@@ -125,7 +131,6 @@
 //! ## Features
 //!
 //! - **`single-process`**: Enable single-process deployment mode
-//! - **`hyperlight`**: Enable Hyperlight virtualization backend support
 //!
 //! ## Architecture
 //!

@@ -67,7 +67,7 @@ pub unsafe extern "C" fn faccessat(
 ) -> c_int {
     // Check if `path` is invalid.
     if path.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "faccessat(): null path pointer (dirfd={dirfd:?}, path={path:?}, mode={mode:?}, \
              flag={flag:?})"
         );
@@ -79,7 +79,7 @@ pub unsafe extern "C" fn faccessat(
     let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "faccessat(): invalid path (dirfd={dirfd:?}, path={path:?}, mode={mode:?}, \
                  flag={flag:?})"
             );
@@ -92,7 +92,7 @@ pub unsafe extern "C" fn faccessat(
     match crate::unistd::faccessat(dirfd, path, mode, flag) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "faccessat(): {error:?} (dirfd={dirfd:?}, path={path:?}, mode={mode:?}, \
                  flag={flag:?})"
             );

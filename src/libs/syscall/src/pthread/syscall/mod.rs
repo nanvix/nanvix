@@ -45,10 +45,10 @@ use ::sys::{
     kcall::{
         arch,
         pm::{
-            create_thread,
-            exit_thread,
-            gettid,
-            join_thread,
+            __kcall_create_thread,
+            __kcall_exit_thread,
+            __kcall_gettid,
+            __kcall_join_thread,
         },
     },
     mm::VirtualAddress,
@@ -123,7 +123,7 @@ pub fn pthread_create(func: extern "C" fn(usize) -> usize, arg: usize) -> Result
         user_tda,
     };
 
-    let thread: pthread_t = create_thread(&mut args)?.try_into()?;
+    let thread: pthread_t = __kcall_create_thread(&mut args)?.try_into()?;
 
     // Store the stack in the global map.
     // NOTE: The stack will be dropped either when the thread is joined or the process exits.
@@ -154,13 +154,13 @@ pub fn pthread_join(thread: pthread_t) -> Result<usize, Error> {
     let tid: ThreadIdentifier = match thread.try_into() {
         Ok(tid) => tid,
         Err(error) => {
-            ::syslog::error!("pthread_join(): {error:?} (thread={thread:?})");
+            ::syslog::warn!("pthread_join(): {error:?} (thread={thread:?})");
             return Err(error);
         },
     };
 
     let mut retval: usize = 0;
-    join_thread(tid, &mut retval)?;
+    __kcall_join_thread(tid, &mut retval)?;
 
     // Remove the stack from the global map.
     // NOTE: The stack will be dropped when this function returns.
@@ -193,7 +193,7 @@ pub fn pthread_exit(retval: usize) -> Result<!, Error> {
         ::syslog::warn!("pthread_exit(): failed to cleanup thread data area ({error:?})");
     }
 
-    exit_thread(retval)
+    __kcall_exit_thread(retval)
 }
 
 ///
@@ -229,7 +229,7 @@ pub fn pthread_self() -> pthread_t {
         // Cache miss: the TDA slot still holds the TDA_TID_UNSET sentinel because tda::alloc()
         // cannot know the child's TID at allocation time. Resolve via kcall and cache for future
         // calls.
-        let real_tid: pthread_t = gettid()
+        let real_tid: pthread_t = __kcall_gettid()
             .expect("pthread_self(): gettid kcall failed (TDA cache-miss path)")
             .try_into()
             .expect("pthread_self(): invalid thread identifier from kernel (TDA cache-miss path)");
@@ -242,7 +242,7 @@ pub fn pthread_self() -> pthread_t {
     }
 
     // Fallback: TDA not yet initialized (early startup).
-    gettid()
+    __kcall_gettid()
         .expect("pthread_self(): gettid kcall failed (early-startup path)")
         .try_into()
         .expect("pthread_self(): invalid thread identifier from kernel (early-startup path)")

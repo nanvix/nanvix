@@ -285,7 +285,7 @@ impl GuestProfiler {
         }
 
         let mut entries: Vec<_> = folded.into_iter().collect();
-        entries.sort_by(|a, b| b.1.cmp(&a.1));
+        entries.sort_by_key(|b| std::cmp::Reverse(b.1));
         for (stack, count) in entries {
             writeln!(file, "{} {}", stack, count)?;
         }

@@ -22,7 +22,10 @@ use crate::{
     pm::{
         process::{
             manager::ProcessManager,
-            state::RunningProcess,
+            state::{
+                ProcessRefMut,
+                RunningProcess,
+            },
         },
         sync::{
             condvar::Condvar,
@@ -49,6 +52,7 @@ use crate::{
     PERF_SCHED_SOFT_CONTEXT_SWITCHES,
     PERF_SCHED_WAKEUP,
 };
+use ::alloc::vec::Vec;
 use ::arch::mem::PAGE_SIZE;
 use ::config::kernel::SCHEDULER_FREQ;
 use ::core::{
@@ -214,6 +218,9 @@ impl ProcessManager {
     pub unsafe fn exit(status: ExitStatus) -> Result<!, Error> {
         trace!("status={status:?}");
 
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         // Terminate the calling process and select another process to run next.
         let (next_pid, next_tid, from, to, user_tda): (
             ProcessIdentifier,
@@ -263,6 +270,9 @@ impl ProcessManager {
     /// - The processor is running in privileged mode.
     ///
     pub unsafe fn exit_thread(status: ExitStatus) -> Result<!, Error> {
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         // Terminate the calling thread and select another thread to run next.
         let (next_pid, next_tid, from, to, user_tda): (
             ProcessIdentifier,
@@ -291,6 +301,26 @@ impl ProcessManager {
 
         // SAFETY: `from` and `to` point to valid context information structures, and the processor
         // is running with interrupts disabled.
+
+        // Debug-only: detect use-after-free in the detached-thread exit path. With slab
+        // poison-on-free, a freed ContextInformation block is filled with SLAB_POISON_BYTE. If
+        // `from` points to a poisoned block, the zombie thread's ContextInformation was freed
+        // before the context switch — a use-after-free bug.
+        #[cfg(all(debug_assertions, not(verus_keep_ghost)))]
+        {
+            let from_bytes: &[u8] = unsafe {
+                core::slice::from_raw_parts(
+                    from as *const u8,
+                    core::mem::size_of::<ContextInformation>(),
+                )
+            };
+            debug_assert!(
+                !from_bytes.iter().all(|&b| b == slab::SLAB_POISON_BYTE),
+                "BUG: ContextInformation at {:p} freed before context switch (detached-thread UAF)",
+                from,
+            );
+        }
+
         PERF_SCHED_EXIT_THREAD_CONTEXT_SWITCHES.fetch_add(1, ORDER);
         Self::switch(next_pid, next_tid, from, to, user_tda);
 
@@ -298,6 +328,106 @@ impl ProcessManager {
         // reached, it indicates a critical bug and undefined behavior. This is considered
         // unreachable by design.
         core::hint::unreachable_unchecked()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reaps any detached-thread zombies whose cleanup was deferred because
+    /// their `ContextInformation` was still needed by an in-progress context
+    /// switch. This must be called at PM entry points so that deferred zombies
+    /// are cleaned up once the context switch that produced them has completed.
+    ///
+    /// # Safety
+    ///
+    /// This function is safe to call if and only if the following conditions are met:
+    /// - The process manager is initialized.
+    /// - Access to the process manager is synchronized.
+    /// - The memory manager is initialized.
+    /// - Access to the memory manager is synchronized.
+    ///
+    unsafe fn reap_deferred() {
+        let deferred: Vec<(ProcessIdentifier, ZombieThread)> =
+            core::mem::take(&mut Self::get_mut().deferred_reap);
+        for (pid, zombie) in deferred {
+            Self::harvest_zombie_thread(pid, zombie);
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Harvests a zombie thread by reclaiming its kernel and user stacks, unmapping user-stack
+    /// pages from the process address space, and notifying the thread manager.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier that owns the zombie thread.
+    /// - `zombie_thread`: The zombie thread to harvest.
+    ///
+    /// # Safety
+    ///
+    /// This function is safe to call if and only if the following conditions are met:
+    /// - The process manager is initialized.
+    /// - Access to the process manager is synchronized.
+    /// - The memory manager is initialized.
+    /// - Access to the memory manager is synchronized.
+    ///
+    unsafe fn harvest_zombie_thread(pid: ProcessIdentifier, zombie_thread: ZombieThread) {
+        // If the zombie has no user stack (kernel-only thread), the kernel stack is
+        // reclaimed via KernelStack::Drop and no page unmapping is needed.
+        if let (Some(_kernel_stack), Some(user_stack)) = zombie_thread.harvest() {
+            // Traverse pages belonging to user stack.
+            let base: usize = user_stack.base().into_raw_value();
+            let top: usize = user_stack.top().into_raw_value();
+            // Resolve the process vmem once before the loop.
+            let mut process_ref: ProcessRefMut<'_> = match Self::get_mut().find_process_mut(pid) {
+                Ok(process) => process,
+                Err(error) => {
+                    // Unexpected failure — log but continue since the address space will be
+                    // reclaimed when it is destroyed.
+                    error!("failed to find process (pid={pid:?}, error={error:?})",);
+                    return;
+                },
+            };
+            let vmem: &mut Vmem = process_ref.state_mut().vmem_mut();
+            // TODO: Use an iterator for this.
+            for raw_addr in (base..top).step_by(PAGE_SIZE) {
+                let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(raw_addr)
+                {
+                    Ok(vaddr) => vaddr,
+                    Err(_) => {
+                        // SAFETY: the following condition is unreachable, because
+                        // pages in the user stack are always page-aligned.
+                        unreachable!("address conversion should succeed")
+                    },
+                };
+                // Attempt to unmap page.
+                match VirtMemoryManager::get_mut().try_unmap_upage(vmem, vaddr) {
+                    Ok(true) => {
+                        // Page was present and has been successfully unmapped.
+                    },
+                    Ok(false) => {
+                        // Page was never mapped (not demand-paged). Skip silently.
+                    },
+                    Err(error) => {
+                        // Unexpected failure — log but continue since the
+                        // address space will be reclaimed when it is destroyed.
+                        warn!(
+                            "harvest_zombie_thread(): failed to unmap page (vaddr={:?}, \
+                             error={:?})",
+                            vaddr, error
+                        );
+                    },
+                }
+            }
+
+            // Frames allocated to the user stack are freed when we exit this scope.
+            // Frames allocated to the kernel stack are freed when we exit this scope.
+        }
+
+        // Notify the thread manager that this thread has been reaped.
+        Self::get_mut().tm.on_thread_reaped();
     }
 
     ///
@@ -337,6 +467,9 @@ impl ProcessManager {
     ) -> Result<ExitStatus, SleepError> {
         trace!("pid={:?}, tid={:?}", pid, tid);
 
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         loop {
             let result: Result<ZombieThread, Result<Condvar, Error>> =
                 Self::get_mut().try_join_thread(pid, tid);
@@ -344,54 +477,7 @@ impl ProcessManager {
             match result {
                 Ok(zombie_thread) => {
                     let status: ExitStatus = zombie_thread.status();
-
-                    // Harvest zombie thread.
-                    if let (Some(_kernel_stack), Some(user_stack)) = zombie_thread.harvest() {
-                        // Traverse pages belonging to user stack.
-                        let base: usize = user_stack.base().into_raw_value();
-                        let top: usize = user_stack.top().into_raw_value();
-                        // TODO: Use an iterator for this.
-                        for raw_addr in (base..top).step_by(PAGE_SIZE) {
-                            let vaddr: PageAligned<VirtualAddress> =
-                                match PageAligned::from_raw_value(raw_addr) {
-                                    Ok(vaddr) => vaddr,
-                                    Err(_) => {
-                                        // SAFETY: the following condition is unreachable, because
-                                        // pages in the user stack are always page-aligned.
-                                        unreachable!("address conversion should succeed")
-                                    },
-                                };
-                            // Attempt to unmap page.
-                            match VirtMemoryManager::get_mut().try_unmap_upage(
-                                Self::get_mut()
-                                    .find_process_mut(pid)
-                                    .map_err(SleepError::Generic)?
-                                    .state_mut()
-                                    .vmem_mut(),
-                                vaddr,
-                            ) {
-                                Ok(true) => {
-                                    // Page was present and has been successfully unmapped.
-                                },
-                                Ok(false) => {
-                                    // Page was never mapped (not demand-paged). Skip silently.
-                                },
-                                Err(error) => {
-                                    // Unexpected failure — log but continue since the
-                                    // address space will be reclaimed when it is destroyed.
-                                    warn!(
-                                        "harvest_zombies(): failed to unmap page (vaddr={:?}, \
-                                         error={:?})",
-                                        vaddr, error
-                                    );
-                                },
-                            }
-                        }
-
-                        // Frames allocated to the user stack are freed when we exit this scope.
-                        // Frames allocated to the kernel stack are freed when we exit this scope.
-                    }
-
+                    Self::harvest_zombie_thread(pid, zombie_thread);
                     break Ok(status);
                 },
 
@@ -401,6 +487,52 @@ impl ProcessManager {
 
                 Err(Err(error)) => break Err(SleepError::Generic(error)),
             }
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Detaches a thread in the calling process. A detached thread is automatically harvested when
+    /// it exits, without requiring another thread to join it.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier of the calling process.
+    /// - `tid`: Thread identifier of the thread to detach.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is safe to call if and only if the following conditions are met:
+    /// - The process manager is initialized.
+    /// - Access to the process manager is synchronized.
+    /// - The memory manager is initialized.
+    /// - Access to the memory manager is synchronized.
+    ///
+    pub unsafe fn detach_thread(
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+    ) -> Result<(), Error> {
+        trace!("pid={:?}, tid={:?}", pid, tid);
+
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
+        let result: Result<Option<ZombieThread>, Error> =
+            Self::get_mut().do_detach_thread(pid, tid);
+
+        match result {
+            Ok(Some(zombie_thread)) => {
+                // Thread was already a zombie — harvest it immediately.
+                Self::harvest_zombie_thread(pid, zombie_thread);
+                Ok(())
+            },
+            Ok(None) => Ok(()),
+            Err(error) => Err(error),
         }
     }
 
@@ -433,6 +565,9 @@ impl ProcessManager {
     /// - The processor is running in privileged mode.
     ///
     pub unsafe fn sleep(alarm: Option<SystemTime>) -> Result<(), SleepError> {
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         // Suspend the execution of the calling thread and select another thread to run next.
         let (next_pid, next_tid, from, to, user_tda): (
             ProcessIdentifier,
@@ -522,6 +657,9 @@ impl ProcessManager {
     /// - The processor is running in privileged mode.
     ///
     pub unsafe fn giveup() -> Result<(), Error> {
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         REMAINING_QUANTUM.store(0, ORDER);
 
         // Re-schedule the calling thread and select another thread to run next.

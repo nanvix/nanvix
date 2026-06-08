@@ -62,7 +62,7 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
     let domain: AddressFamily = match AddressFamily::try_from(domain) {
         Ok(domain) => domain,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "socket(): {error:?} (domain={domain:?}, type={typ:?}, protocol={protocol:?})"
             );
             *__errno_location() = error.code.get();
@@ -74,7 +74,7 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
     let typ: SocketType = match SocketType::try_from(typ) {
         Ok(typ) => typ,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "socket(): {error:?} (domain={domain:?}, type={typ:?}, protocol={protocol:?})"
             );
             *__errno_location() = error.code.get();
@@ -86,7 +86,7 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
     let protocol: Protocol = match Protocol::try_from(protocol) {
         Ok(protocol) => protocol,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "socket(): {error:?} (domain={domain:?}, type={typ:?}, protocol={protocol:?})"
             );
             *__errno_location() = error.code.get();
@@ -98,7 +98,7 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
     match crate::sys::socket::syscall::socket(domain, typ, protocol) {
         Ok(sockfd) => sockfd,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "socket(): {error:?} (domain={domain:?}, type={typ:?}, protocol={protocol:?})"
             );
             *__errno_location() = error.code.get();

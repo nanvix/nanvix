@@ -13,8 +13,8 @@ use crate::{
         },
         SocketAddr,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -44,40 +44,31 @@ use ::sysapi::ffi::c_int;
 ///
 /// Upon successful completion, empty is returned. Otherwise, an error number is returned.
 ///
-#[allow(unreachable_code)]
 pub fn getsockname(sockfd: c_int, sockaddr: &mut SocketAddr) -> Result<(), Error> {
     ::syslog::trace!("getsockname(): sockfd={:?}, sockaddr={:?}", sockfd, sockaddr);
 
-    #[cfg(feature = "standalone")]
-    {
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "getsockname not available in standalone mode",
-        ));
-    }
-
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
     let request: Message = GetSockNameRequest::build(tid, sockfd);
-    ::sys::kcall::ipc::send(&request)?;
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
         // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::syslog::error!("getsockname(): failed ({:?})", error_code);
+        ::syslog::warn!("getsockname(): failed ({:?})", error_code);
         Err(Error::new(error_code, "getsockname() failed"))
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::GetSockNameResponse => {
+            SystemCallMessageHeader::GetSockNameResponse => {
                 let response: GetSockNameResponse =
                     GetSockNameResponse::from_bytes(message.payload);
 

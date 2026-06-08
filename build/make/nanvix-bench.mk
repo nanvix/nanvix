@@ -2,15 +2,14 @@
 # Licensed under the MIT License.
 
 NANVIX_BENCH_FEATURES :=
+NANVIX_BENCH_FEATURES += profile-time
 NANVIX_BENCH_FEATURES += $(if $(filter standalone,$(DEPLOYMENT_MODE)),standalone,)
 NANVIX_BENCH_FEATURES += $(if $(filter single-process,$(DEPLOYMENT_MODE)),single-process,)
 NANVIX_BENCH_FEATURES += $(if $(filter multi-process,$(DEPLOYMENT_MODE)),multi-process,)
 NANVIX_BENCH_FEATURES += $(if $(filter l2,$(DEPLOYMENT_MODE)),l2,)
-NANVIX_BENCH_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 NANVIX_BENCH_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIX_BENCH_FEATURES += $(if $(filter yes,$(WHP)),whp,)
 NANVIX_BENCH_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),timestamp-messages,)
-NANVIX_BENCH_FEATURES += $(if $(filter yes,$(PROFILER)),profile-time,)
 NANVIX_BENCH_FEATURES := $(strip $(NANVIX_BENCH_FEATURES))
 NANVIX_BENCH_CARGO_FEATURES := $(if $(NANVIX_BENCH_FEATURES),--features "$(NANVIX_BENCH_FEATURES)")
 
@@ -19,7 +18,7 @@ all-nanvix-bench: init
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/nanvix-bench$(CARGO_EXE_SUFFIX) $(BINARIES_DIR)/nanvix-bench.$(HOST_BIN_EXT)
 
 check-nanvix-bench:
-	$(HOST_CARGO_CHECK_CMD) $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench
+	@$(HOST_CARGO_CHECK_CMD) $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench
 
 format-nanvix-bench:
 	$(HOST_CARGO_FMT_CMD) -p nanvix-bench

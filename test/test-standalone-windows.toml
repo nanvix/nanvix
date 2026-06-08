@@ -78,27 +78,76 @@ runs_on = ["microvm"]
 
 [[tests]]
 executor = "terminal"
-program = "./bin/arch-rust.elf"
+program = "./bin/arch-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/echo-rust-nostd.elf"
+program = "./bin/echo-rust-nostd.initrd"
 input = '["hello"]'
 expected_output = "hello"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/thread-rust.elf"
+program = "./bin/thread-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/stress-rust.elf"
+program = "./bin/stress-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/linux-app.elf"
+program = "./bin/linux-app.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/cmdline-len-rust.elf"
+# 4092 (MAX_CMDLINE_ARGS_LEN) - 20 (filename) - 1 (space separator) = 4071.
+program_args_padding_len = 4071
+expected_output = "ok"
+
+#===================================================================================================
+# Host Mount Tests
+#===================================================================================================
+
+[[tests]]
+executor = "terminal"
+program = "./bin/mount-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img -mount ./bin/mount-test-data"
+input = "[]"
+expected_output = "ok"
+expected_exit_code = 0
+runs_on = ["microvm"]
+
+[[tests]]
+executor = "terminal"
+program = "./bin/mount-multipart-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
+input = "[]"
+expected_output = "ok"
+expected_exit_code = 0
+runs_on = ["microvm"]
+
+#===================================================================================================
+# Networking Tests
+#===================================================================================================
+
+[[tests]]
+executor = "terminal"
+program = "./bin/network-rust.initrd"
+extra_nanvixd_args = "-allow-host-networking"
+expected_output = "ok"
+
+#===================================================================================================
+# Snapshot Save / Restore Tests
+#===================================================================================================
+
+[[tests]]
+executor = "snapshot-restore"
+program = "./bin/snapshot-test.elf"
+iterations = 1
+expected_exit_code = 32

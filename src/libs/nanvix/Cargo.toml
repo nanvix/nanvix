@@ -15,55 +15,50 @@ anyhow = { workspace = true }
 config = { workspace = true }
 hwloc = { workspace = true }
 linuxd = { workspace = true, optional = true }
-nanvix-http = { workspace = true, optional = true }
-nanvix-registry = { workspace = true }
+nanvix-http = { workspace = true }
 nanvix-sandbox = { workspace = true }
 nanvix-sandbox-cache = { workspace = true, optional = true }
 nanvix-terminal = { workspace = true }
+nanvix-sandbox-config = { workspace = true }
 sys = { workspace = true, features = ["std"], optional = true }
 syscall = { workspace = true, features = ["std"], optional = true }
 syscomm = { workspace = true }
 syslog = { workspace = true, features = ["std"] }
 uservm = { workspace = true, optional = true }
 
-[target.'cfg(unix)'.dependencies]
-nanvix-http = { workspace = true }
-
 [features]
 default = ["microvm", "multi-process"]
 internal-api = ["sys", "syscall", "uservm"]
 single-process = [
     "linuxd",
-    "nanvix-http?/single-process",
+    "nanvix-sandbox-config/single-process",
+    "nanvix-http/single-process",
     "nanvix-sandbox/single-process",
     "nanvix-terminal/single-process",
 ]
 multi-process = [
     "nanvix-sandbox-cache",
-    "nanvix-http?/multi-process",
+    "nanvix-http/multi-process",
     "nanvix-sandbox/multi-process",
     "nanvix-sandbox-cache/multi-process",
     "nanvix-terminal/multi-process",
 ]
 standalone = [
-    "nanvix-http?/standalone",
+    "nanvix-http/standalone",
     "nanvix-sandbox/standalone",
     "nanvix-terminal/standalone",
 ]
-gdb = ["nanvix-http?/gdb", "nanvix-sandbox/gdb", "nanvix-terminal/gdb"]
+gdb = [
+    "nanvix-sandbox-config/gdb",
+    "nanvix-http/gdb",
+    "nanvix-sandbox/gdb",
+    "nanvix-terminal/gdb",
+]
 # Enables fine-grained time profiling.
 profile-time = ["nanvix-sandbox/profile-time", "nanvix-terminal/profile-time"]
-hyperlight = [
-    "config/hyperlight",
-    "nanvix-http?/hyperlight",
-    "nanvix-sandbox/hyperlight",
-    "nanvix-sandbox-cache?/hyperlight",
-    "nanvix-terminal/hyperlight",
-    "uservm?/hyperlight",
-]
 microvm = [
     "config/microvm",
-    "nanvix-http?/microvm",
+    "nanvix-http/microvm",
     "nanvix-sandbox/microvm",
     "nanvix-sandbox-cache?/microvm",
     "nanvix-terminal/microvm",
@@ -71,7 +66,7 @@ microvm = [
 ]
 whp = [
     "config/whp",
-    "nanvix-http?/whp",
+    "nanvix-http/whp",
     "nanvix-sandbox/whp",
     "nanvix-sandbox-cache?/whp",
     "nanvix-terminal/whp",

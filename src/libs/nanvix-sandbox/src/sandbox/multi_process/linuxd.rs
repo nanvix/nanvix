@@ -523,6 +523,9 @@ impl LinuxDaemon {
                 args.system_vm_socket_info().1.to_str().to_string(),
             ]
         };
+        if args.networking_enabled() {
+            linuxd_args.push(args::Args::OPT_NETWORKING_ENABLED.to_string());
+        }
         if let Some(hwloc) = args.hwloc() {
             let taskset: Vec<String> = vec![
                 "taskset".to_string(),

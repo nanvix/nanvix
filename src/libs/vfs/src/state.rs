@@ -154,6 +154,9 @@ pub fn is_initialized() -> bool {
     VFS_STATE.lock().is_some()
 }
 
+///
+/// # Description
+///
 /// Mounts an existing FAT image from a memory region.
 ///
 /// # Parameters

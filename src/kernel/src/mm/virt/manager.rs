@@ -11,6 +11,7 @@ use crate::{
         mem::{
             AccessPermission,
             Address,
+            FrameAddress,
             PageAligned,
             PageTableAddress,
             VirtualAddress,
@@ -37,10 +38,17 @@ use ::alloc::{
     collections::LinkedList,
     vec::Vec,
 };
-use ::arch::mem;
+use ::arch::mem::{
+    self,
+    paging::PageTableEntry,
+    PAGE_ALIGNMENT,
+};
 use ::core::{
     hint::unlikely,
-    mem::MaybeUninit,
+    mem::{
+        ManuallyDrop,
+        MaybeUninit,
+    },
     sync::atomic::{
         AtomicBool,
         Ordering,
@@ -59,6 +67,12 @@ use ::sys::error::{
 // to use this ordering semantics because Nanvix is a single-core system, and the kernel runs with
 // interrupts disabled.
 const ORDER: Ordering = Ordering::Relaxed;
+
+/// Number of user mappings processed per chunk by [`VirtMemoryManager::link_user_pages`]
+/// and [`VirtMemoryManager::rollback_linked_pages`]. Sized so the per-chunk buffer fits
+/// comfortably on the kernel stack while keeping the snapshot/rollback walks of the
+/// parent's user mappings to a small number of passes for typical user processes.
+const LINK_CHUNK: usize = 32;
 
 //==================================================================================================
 // Global Variables
@@ -218,6 +232,271 @@ impl VirtMemoryManager {
     ///
     /// # Description
     ///
+    /// Shares every user-space page mapped in `parent` with `child` using copy-on-write
+    /// semantics.
+    ///
+    /// For each present user mapping in `parent`, this function adds a new reference to
+    /// the underlying physical frame and installs the same mapping in `child` at the same
+    /// virtual address. If the parent mapping is writable, both the parent and child PTEs
+    /// are then marked copy-on-write (read-only in hardware + AVL bit set), so that the
+    /// first write from either side triggers a page fault. The in-kernel page-fault
+    /// handler resolves such faults by allocating a private frame and pointing the
+    /// faulting PTE at it.
+    ///
+    /// Read-only mappings (e.g. the text segment) are shared without the copy-on-write
+    /// bit set: a write to them must continue to fault as a regular protection fault.
+    ///
+    /// # Parameters
+    ///
+    /// - `parent`: Virtual memory space whose user mappings should be shared.
+    /// - `child`: Destination virtual memory space. Must not already contain any user
+    ///   mappings overlapping those of `parent`.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned and both
+    /// `parent` and `child` are restored to the state they had on entry: any pages
+    /// already linked into `child` are unmapped (releasing the shared refcount) and any
+    /// copy-on-write marks installed on `parent` are cleared.
+    ///
+    pub fn link_user_pages(&mut self, parent: &mut Vmem, child: &mut Vmem) -> Result<(), Error> {
+        let page_table_allocator = || {
+            // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
+            // concurrent or re-entrant access to the physical memory manager is possible.
+            let mut kframe: KernelFrame =
+                unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
+            kframe.clear()?;
+            let kpage: KernelPage = KernelPage::new(kframe);
+            let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
+            let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
+            Ok(page_table)
+        };
+
+        // Process the parent's user mappings in fixed-size chunks. We cannot mutate
+        // `parent` while borrowing its page tables via `for_each_user_mapping`, so each
+        // chunk first snapshots up to LINK_CHUNK entries into a stack-resident buffer,
+        // then performs the share/map/mark steps. This avoids any heap allocation that
+        // scales with the parent's mapping count (the kernel slab allocator caps at
+        // 512-byte requests, which a single Vec proportional to the mapping set quickly
+        // exceeds).
+        //
+        // The selection filter checks `child` for an existing mapping at the candidate
+        // vaddr and skips entries already linked by a prior chunk. This makes the walk
+        // robust against the parent's iteration revisiting entries we have already
+        // processed (e.g. writable entries that are now CoW-marked but still present).
+        loop {
+            let mut buf: [MaybeUninit<(PageAligned<VirtualAddress>, FrameAddress, bool)>;
+                LINK_CHUNK] = [const { MaybeUninit::uninit() }; LINK_CHUNK];
+            let mut count: usize = 0;
+            parent.for_each_user_mapping(|vaddr, pte: PageTableEntry| {
+                if count < LINK_CHUNK && child.try_find_user_pte(vaddr)?.is_none() {
+                    let frame: FrameAddress = FrameAddress::from_frame_number(pte.frame_number())?;
+                    buf[count].write((vaddr, frame, pte.flags().is_writable()));
+                    count += 1;
+                }
+                Ok(())
+            })?;
+
+            if count == 0 {
+                break;
+            }
+
+            for slot in buf.iter().take(count) {
+                // SAFETY: `slot` was written above for indices < count.
+                let (vaddr, frame, writable) = unsafe { slot.assume_init_read() };
+                if let Err(e) = Self::link_one_user_page(
+                    parent,
+                    child,
+                    vaddr,
+                    frame,
+                    writable,
+                    &page_table_allocator,
+                ) {
+                    Self::rollback_linked_pages(parent, child);
+                    return Err(e);
+                }
+            }
+
+            if count < LINK_CHUNK {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Links a single user page from `parent` into `child` with copy-on-write semantics.
+    ///
+    /// On failure the caller is expected to invoke [`Self::rollback_linked_pages`] to
+    /// undo any prior fully-linked iterations; this helper itself leaves no partial
+    /// per-iteration state behind.
+    fn link_one_user_page<F>(
+        parent: &mut Vmem,
+        child: &mut Vmem,
+        vaddr: PageAligned<VirtualAddress>,
+        frame: FrameAddress,
+        writable: bool,
+        page_table_allocator: &F,
+    ) -> Result<(), Error>
+    where
+        F: Fn() -> Result<PageTable<PageTableStorage>, Error>,
+    {
+        // Wrap the parent's already-owned frame in a [`ManuallyDrop`] handle so that
+        // we can call [`UserFrame::share`] on it without risking a spurious decrement
+        // of the parent's refcount if `share` itself returns an error. The parent's
+        // page table still holds the original reference; only `child_handle` carries
+        // the freshly-acquired one.
+        let parent_handle: ManuallyDrop<UserFrame> = ManuallyDrop::new(UserFrame::new(frame));
+        let child_handle: UserFrame = parent_handle.share()?;
+
+        // The child installs the shared frame at the same virtual address. If the
+        // page is writable the mapping is created RDWR so the subsequent CoW marking
+        // can switch it to RO+CoW (mark_cow requires the entry to be writable);
+        // otherwise the page is plain read-only with no CoW bit on either side. If
+        // `map` fails it drops `child_handle`, releasing the refcount just acquired
+        // by `share`.
+        let access: AccessPermission = if writable {
+            AccessPermission::RDWR
+        } else {
+            AccessPermission::RDONLY
+        };
+        child.map(child_handle, vaddr, access, page_table_allocator)?;
+
+        if writable {
+            if let Err(e) = parent.mark_user_page_cow(vaddr) {
+                if let Err(re) = child.unmap(vaddr) {
+                    warn!(
+                        "link_user_pages(): partial rollback unmap failed (vaddr={vaddr:?}, \
+                         error={re:?})"
+                    );
+                }
+                return Err(e);
+            }
+            if let Err(e) = child.mark_user_page_cow(vaddr) {
+                if let Err(re) = parent.unmark_user_page_cow(vaddr) {
+                    warn!(
+                        "link_user_pages(): partial rollback unmark failed (vaddr={vaddr:?}, \
+                         error={re:?})"
+                    );
+                }
+                if let Err(re) = child.unmap(vaddr) {
+                    warn!(
+                        "link_user_pages(): partial rollback unmap failed (vaddr={vaddr:?}, \
+                         error={re:?})"
+                    );
+                }
+                return Err(e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Rolls back pages already linked by [`Self::link_user_pages`] on the error path.
+    ///
+    /// Iterates `child`'s user mappings in fixed-size chunks (avoiding any allocation
+    /// proportional to the mapping set) and, for each one: unmaps it from `child`
+    /// (releasing the shared refcount via the returned `UserFrame`'s `Drop`) and, if the
+    /// child PTE was marked copy-on-write, clears the matching mark on `parent`. The
+    /// child's CoW bit unambiguously identifies pages this call installed because
+    /// `link_user_pages` is invoked on a freshly created `child` with no pre-existing
+    /// user mappings, and the only path that sets the child's CoW bit also marked the
+    /// parent's. Steps log and continue on failure to make a best-effort restoration.
+    fn rollback_linked_pages(parent: &mut Vmem, child: &mut Vmem) {
+        loop {
+            let mut buf: [MaybeUninit<(PageAligned<VirtualAddress>, bool)>; LINK_CHUNK] =
+                [const { MaybeUninit::uninit() }; LINK_CHUNK];
+            let mut count: usize = 0;
+            let walk: Result<(), Error> = child.for_each_user_mapping(|vaddr, pte| {
+                if count < LINK_CHUNK {
+                    buf[count].write((vaddr, pte.is_cow()));
+                    count += 1;
+                }
+                Ok(())
+            });
+            if let Err(e) = walk {
+                warn!("link_user_pages(): rollback walk failed (error={e:?})");
+                return;
+            }
+            if count == 0 {
+                return;
+            }
+            for slot in buf.iter().take(count) {
+                // SAFETY: `slot` was written above for indices < count.
+                let (vaddr, was_cow) = unsafe { slot.assume_init_read() };
+                if was_cow {
+                    if let Err(re) = parent.unmark_user_page_cow(vaddr) {
+                        warn!(
+                            "link_user_pages(): rollback unmark failed (vaddr={vaddr:?}, \
+                             error={re:?})"
+                        );
+                    }
+                }
+                if let Err(re) = child.unmap(vaddr) {
+                    warn!(
+                        "link_user_pages(): rollback unmap failed (vaddr={vaddr:?}, error={re:?})"
+                    );
+                }
+            }
+            if count < LINK_CHUNK {
+                return;
+            }
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Attempts to handle a page fault as a copy-on-write fault.
+    ///
+    /// A page fault is treated as a copy-on-write fault when it is a user-mode write to
+    /// a present page whose PTE has the AVL copy-on-write bit set. In that case this
+    /// function allocates a private frame for the faulting address, copies the contents
+    /// of the shared frame into it, and points the faulting PTE at the new frame with
+    /// the writable bit restored and the copy-on-write bit cleared. The reference held
+    /// on the old shared frame is then released.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Virtual memory space of the faulting process.
+    /// - `fault_addr`: Faulting virtual address (need not be page-aligned).
+    /// - `error_code`: Typed x86 page-fault error code.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(true)` if the fault was resolved as a copy-on-write fault.
+    /// - `Ok(false)` if the fault is not a copy-on-write fault and should be forwarded
+    ///   to the registered handler.
+    /// - `Err(_)` if the fault was a copy-on-write fault but resolving it failed.
+    ///
+    pub fn try_resolve_cow_fault(
+        &mut self,
+        vmem: &mut Vmem,
+        fault_addr: usize,
+        error_code: ::arch::cpu::excp::ErrorCode,
+    ) -> Result<bool, Error> {
+        // Copy-on-write faults are user-mode writes to a present page.
+        if !error_code.is_present() || !error_code.is_write() || !error_code.is_user() {
+            return Ok(false);
+        }
+
+        // Reject addresses that are not in user space outright. We must do this before
+        // touching `vmem` so that bogus addresses do not error out.
+        let page_addr: usize = ::sys::mm::align_down(fault_addr, PAGE_ALIGNMENT);
+        let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(page_addr) {
+            Ok(v) => v,
+            Err(_) => return Ok(false),
+        };
+
+        // Delegate to the shared resolver. It returns `Ok(false)` if the page is not
+        // copy-on-write (in which case the fault is forwarded to the registered handler)
+        // and `Ok(true)` if a copy-on-write mapping was resolved.
+        vmem.resolve_cow_at(vaddr)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Attempts to unmap a user page from the target virtual memory space.
     ///
     /// # Parameters
@@ -319,7 +598,7 @@ impl VirtMemoryManager {
             // concurrent or re-entrant access to the physical memory manager is possible.
             let mut kframe: KernelFrame =
                 unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
-            kframe.clear();
+            kframe.clear()?;
             let kpage: KernelPage = KernelPage::new(kframe);
             let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
             let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
@@ -425,7 +704,7 @@ impl VirtMemoryManager {
         let mut kframe: KernelFrame =
             unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
         if clear {
-            kframe.clear();
+            kframe.clear()?;
         }
         Ok(KernelPage::new(kframe))
     }
@@ -468,8 +747,11 @@ impl VirtMemoryManager {
         // or re-entrant access to the physical memory manager is possible.
         unsafe { PhysMemoryManager::get_mut() }.alloc_many_kernel_frames(count, kframes)?;
         if clear {
-            for kframe in kframes.iter_mut() {
-                kframe.clear();
+            let clear_result = kframes.iter_mut().try_for_each(|kframe| kframe.clear());
+            if let Err(e) = clear_result {
+                // Drop all allocated frames to free them back to the physical memory manager.
+                kframes.clear();
+                return Err(e);
             }
         }
 

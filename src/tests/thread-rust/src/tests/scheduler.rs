@@ -15,10 +15,10 @@ use ::sys::{
     error::Error,
     kcall::{
         pm::{
-            create_thread,
-            join_thread,
+            __kcall_create_thread,
+            __kcall_join_thread,
         },
-        sched::sched_yield,
+        sched::__kcall_sched_yield,
     },
     pm::ThreadCreateArgs,
 };
@@ -51,7 +51,7 @@ fn test_sched_yield_progress() -> Result<(), Error> {
         user_stack_size: stack.size(),
         user_tda: None,
     };
-    let tid = create_thread(&mut args)?;
+    let tid = __kcall_create_thread(&mut args)?;
 
     // Signal the worker to proceed and yield until it observes the change.
     SCHED_STATE.store(1, Ordering::Release);
@@ -59,12 +59,12 @@ fn test_sched_yield_progress() -> Result<(), Error> {
         if SCHED_STATE.load(Ordering::Acquire) == 2 {
             break;
         }
-        sched_yield()?;
+        __kcall_sched_yield()?;
     }
 
     assert_eq!(SCHED_STATE.load(Ordering::Acquire), 2, "worker never observed yield");
     let mut retval: usize = 0;
-    join_thread(tid, &mut retval)?;
+    __kcall_join_thread(tid, &mut retval)?;
     drop(stack);
     assert_eq!(retval, 0, "yield worker returned unexpected status");
     Ok(())
@@ -77,7 +77,7 @@ extern "C" fn yield_worker(_arg: usize) -> usize {
 fn yield_worker_impl() -> Result<usize, Error> {
     // Wait until the main thread tells us to proceed.
     while SCHED_STATE.load(Ordering::Acquire) != 1 {
-        sched_yield()?;
+        __kcall_sched_yield()?;
     }
 
     SCHED_STATE.store(2, Ordering::Release);

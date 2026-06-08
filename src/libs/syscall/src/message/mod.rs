@@ -15,16 +15,22 @@ mod part;
 use ::alloc::vec::Vec;
 use ::sys::{
     error::Error,
-    ipc::Message,
-    pm::ThreadIdentifier,
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-pub use long::LinuxDaemonLongMessage;
-pub use part::LinuxDaemonMessagePart;
+pub use long::SystemCallLongMessage;
+pub use part::SystemCallMessagePart;
 
 //==================================================================================================
 // Traits
@@ -95,7 +101,9 @@ where
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error>;
 
     ///
@@ -106,17 +114,24 @@ where
     /// # Parameters
     ///
     /// - `tid`: Thread identifier.
+    /// - `destination`: Process identifier of the destination daemon.
+    /// - `message_type`: Message type to use.
     ///
     /// # Returns
     ///
     /// Upon success, a vector containing the message parts is returned. Upon failure, an error is
     /// returned instead.
     ///
-    fn into_parts(self, tid: ThreadIdentifier) -> Result<Vec<Message>, Error> {
+    fn into_parts(
+        self,
+        tid: ThreadIdentifier,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Result<Vec<Message>, Error> {
         let bytes: Vec<u8> = self.to_bytes();
         let num_parts: u16 = bytes
             .len()
-            .div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE)
+            .div_ceil(SystemCallMessagePart::PAYLOAD_SIZE)
             .try_into()
             .map_err(|_| {
                 Error::new(
@@ -127,10 +142,10 @@ where
         let mut parts: Vec<Message> = Vec::with_capacity(num_parts as usize);
 
         for (part_number, chunk) in bytes
-            .chunks(LinuxDaemonMessagePart::PAYLOAD_SIZE)
+            .chunks(SystemCallMessagePart::PAYLOAD_SIZE)
             .enumerate()
         {
-            let mut payload = [0; LinuxDaemonMessagePart::PAYLOAD_SIZE];
+            let mut payload = [0; SystemCallMessagePart::PAYLOAD_SIZE];
             payload[..chunk.len()].copy_from_slice(chunk);
             parts.push(Self::new_part(
                 tid,
@@ -138,6 +153,8 @@ where
                 part_number as u16,
                 chunk.len() as u8,
                 payload,
+                destination,
+                message_type,
             )?);
         }
 
@@ -159,9 +176,9 @@ where
     /// Upon success, a vector containing the response messages is returned. Upon failure, an error
     /// is returned instead.
     ///
-    fn from_parts(parts: &Vec<LinuxDaemonMessagePart>) -> Result<Self, Error> {
+    fn from_parts(parts: &[SystemCallMessagePart]) -> Result<Self, Error> {
         let mut bytes: Vec<u8> =
-            Vec::with_capacity(parts.len() * LinuxDaemonMessagePart::PAYLOAD_SIZE);
+            Vec::with_capacity(parts.len() * SystemCallMessagePart::PAYLOAD_SIZE);
 
         for part in parts {
             bytes.extend_from_slice(&part.payload[..part.payload_size as usize]);

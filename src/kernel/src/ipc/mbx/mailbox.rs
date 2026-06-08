@@ -47,6 +47,19 @@ impl Mailbox {
     ///
     /// # Description
     ///
+    /// Checks whether the mailbox has no buffered messages.
+    ///
+    /// # Returns
+    ///
+    /// `true` if no messages are buffered in the mailbox, otherwise `false`.
+    ///
+    pub(crate) fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
+
+    ///
+    /// # Description
+    ///
     /// Attempts to consume a message addressed to the given thread or its process.
     ///
     /// # Parameters

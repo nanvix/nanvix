@@ -15,12 +15,10 @@ alloc = { version = "1.0.1", optional = true, package = "rustc-std-workspace-all
 cfg-if = { workspace = true }
 config = { workspace = true }
 elf = { workspace = true }
-multiimage = { workspace = true, optional = true }
 syslog = { workspace = true, default-features = true }
 sys = { workspace = true, features = ["kcall"] }
 core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { workspace = true, optional = true }
-vfs = { workspace = true, optional = true }
 
 # Platform-specific dependencies.
 [target.'cfg(any(target_os = "none", target_os = "nanvix"))'.dependencies]
@@ -31,8 +29,7 @@ sysalloc = { workspace = true }
 [features]
 default = ["staticlib"]
 staticlib = []
-standalone = ["dep:vfs", "dep:multiimage"]
-hyperlight = []
+standalone = []
 rustc-dep-of-std = [
     "alloc",
     "core",

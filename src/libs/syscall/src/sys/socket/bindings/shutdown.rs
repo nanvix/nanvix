@@ -63,7 +63,7 @@ pub unsafe extern "C" fn shutdown(sockfd: c_int, how: c_int) -> c_int {
     let how: Shutdown = match Shutdown::try_from(how) {
         Ok(how) => how,
         Err(_error) => {
-            ::syslog::error!("shutdown(): invalid shutdown mode (sockfd={sockfd:?}, how={how:?})");
+            ::syslog::warn!("shutdown(): invalid shutdown mode (sockfd={sockfd:?}, how={how:?})");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -73,7 +73,7 @@ pub unsafe extern "C" fn shutdown(sockfd: c_int, how: c_int) -> c_int {
     match socket::syscall::shutdown(sockfd, how) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!("shutdown(): {error:?} (sockfd={sockfd:?}, how={how:?})");
+            ::syslog::warn!("shutdown(): {error:?} (sockfd={sockfd:?}, how={how:?})");
             *__errno_location() = error.code.get();
             -1
         },

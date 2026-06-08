@@ -69,13 +69,13 @@ pub unsafe extern "C" fn gethostname(name: *mut c_char, namelen: c_size_t) -> c_
     let buf: &mut [u8] = {
         // Check if the buffer is invalid.
         if name.is_null() {
-            ::syslog::error!("gethostname(): invalid buffer (name={name:?}, namelen={namelen:?})");
+            ::syslog::warn!("gethostname(): invalid buffer (name={name:?}, namelen={namelen:?})");
             return -1;
         }
 
         // Check if `namelen` is invalid.
         if namelen == 0 || namelen as usize >= isize::MAX as usize {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "gethostname(): invalid buffer size (name={name:?}, namelen={namelen:?})"
             );
             return -1;
@@ -92,7 +92,7 @@ pub unsafe extern "C" fn gethostname(name: *mut c_char, namelen: c_size_t) -> c_
         Ok(s) => s,
         // Failure.
         Err(_error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "gethostname(): failed to convert string (name={name:?}, namelen={namelen:?})",
             );
             return -1;

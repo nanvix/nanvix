@@ -10,8 +10,8 @@ use crate::{
         ReceiveSocketRequest,
         ReceiveSocketResponse,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::cmp;
 use ::sys::{
@@ -28,18 +28,8 @@ use ::sysapi::ffi::c_int;
 // Standalone Functions
 //==================================================================================================
 
-#[allow(unreachable_code)]
 pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<usize, Error> {
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (sockfd, buffer, flags);
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "recv not available in standalone mode",
-        ));
-    }
-
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Check if count is invalid.
     if buffer.is_empty() {
@@ -55,27 +45,23 @@ pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<usize, Error
 
         // Build request and send it.
         let request: Message = ReceiveSocketRequest::build(tid, sockfd, recv_len as u32, flags);
-        ::sys::kcall::ipc::send(&request)?;
+        ::sys::kcall::ipc::__kcall_send(&request)?;
 
         // Receive response.
-        let response: Message = ::sys::kcall::ipc::recv()?;
+        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
         // Check whether system call succeeded or not.
         if response.status != 0 {
             // System call failed, parse error code and return it.
-            match ErrorCode::try_from(response.status) {
-                Ok(error_code) => {
-                    return Err(Error::new(error_code, "failed to receive data on socket"))
-                },
-                Err(e) => return Err(e),
-            };
+            let error_code = ErrorCode::try_from(response.status)?;
+            return Err(Error::new(error_code, "failed to receive data on socket"));
         } else {
             // System call succeeded, parse response.
-            match LinuxDaemonMessage::try_from_bytes(response.payload) {
+            match SystemCallMessage::try_from_bytes(response.payload) {
                 // Response was successfully parsed.
                 Ok(message) => match message.header {
                     // Response was successfully parsed.
-                    LinuxDaemonMessageHeader::ReceiveSocketResponse => {
+                    SystemCallMessageHeader::ReceiveSocketResponse => {
                         // Parse response.
                         let response: ReceiveSocketResponse =
                             ReceiveSocketResponse::from_bytes(message.payload);
