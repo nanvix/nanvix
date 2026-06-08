@@ -15,6 +15,7 @@
 
 extern crate libc_string;
 extern crate nvx;
+extern crate nvx_crt0;
 
 use ::core::sync::atomic::Ordering;
 use ::sys::error::{
@@ -58,8 +59,8 @@ fn should_loop_after_snapshot() -> bool {
 /// Returns `true` if `flag` appears as a standalone argument (followed by a NUL terminator) in
 /// `argv`.
 fn has_flag(flag: &[u8]) -> bool {
-    let argc: i32 = nvx::ARGC.load(Ordering::SeqCst);
-    let argv: *mut *const u8 = nvx::ARGV.load(Ordering::SeqCst);
+    let argc: i32 = nvx_crt0::ARGC.load(Ordering::SeqCst);
+    let argv: *mut *const u8 = nvx_crt0::ARGV.load(Ordering::SeqCst);
 
     if argv.is_null() || argc <= 1 {
         return false;
