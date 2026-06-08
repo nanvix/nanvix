@@ -33,6 +33,12 @@
 //!   response capacity. Errors are always reported via the single-message
 //!   `HostFsReadlinkResponse` form; the multi-part response is only emitted for a
 //!   successful `readlink` whose target does not fit inline.
+//! - **ReadDir response**: `[op_id:4][is_dir:1][size:8][name_len:2][name:N]`. Used by
+//!   `HostFsReadDirResponsePart` messages when a directory entry name exceeds the
+//!   inline `ReadDirEntry` name capacity. The single-message `HostFsReadDirResponse`
+//!   form (one inline entry, `name_len == 0` signalling end-of-directory) continues to
+//!   carry short names and the end marker; the multi-part response is only emitted for
+//!   a single entry whose name does not fit inline.
 
 extern crate alloc;
 
@@ -76,6 +82,10 @@ pub const LSTAT_HEADER_SIZE: usize = 6;
 /// Header size for the long Readlink *response* body:
 /// `op_id(4) + status(4) + target_len(2) = 10`.
 pub const READLINK_RESPONSE_HEADER_SIZE: usize = 10;
+
+/// Header size for the long ReadDir *response* body:
+/// `op_id(4) + is_dir(1) + size(8) + name_len(2) = 15`.
+pub const READDIR_RESPONSE_HEADER_SIZE: usize = 15;
 
 /// Maximum number of body bytes that can be carried by a single multi-part
 /// long-response message.
@@ -242,6 +252,73 @@ pub fn serialize_long_readlink_response(
     buf.extend_from_slice(&target_len.to_le_bytes());
     buf.extend_from_slice(target);
     Some(buf)
+}
+
+/// Result of deserializing the body of a long READDIR *response*.
+///
+/// The `name` field borrows directly from the input buffer; no allocation is
+/// performed, making the helper usable from `no_std` callers (e.g., vfsd).
+pub struct LongReaddirResponse<'a> {
+    /// Operation identifier echoed by hostfsd. Matches the request's `op_id`.
+    pub op_id: crate::OperationId,
+    /// Whether the entry is a directory.
+    pub is_dir: bool,
+    /// File size in bytes.
+    pub size: u64,
+    /// Entry name bytes, exactly `name_len` long.
+    pub name: &'a [u8],
+}
+
+/// Serializes the body of a long READDIR *response*.
+///
+/// Wire format: `[op_id:4][is_dir:1][size:8][name_len:2][name:N]` (see
+/// [`READDIR_RESPONSE_HEADER_SIZE`]). This is the inverse of
+/// [`deserialize_long_readdir_response`]. Returns `None` if `name` is longer than
+/// [`MAX_PATH_LEN`] (the `u16` name-length field cannot represent it).
+pub fn serialize_long_readdir_response(
+    op_id: OperationId,
+    is_dir: bool,
+    size: u64,
+    name: &[u8],
+) -> Option<Vec<u8>> {
+    let name_len: u16 = u16::try_from(name.len()).ok()?;
+    let mut buf: Vec<u8> = Vec::with_capacity(READDIR_RESPONSE_HEADER_SIZE + name.len());
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.push(if is_dir { 1 } else { 0 });
+    buf.extend_from_slice(&size.to_le_bytes());
+    buf.extend_from_slice(&name_len.to_le_bytes());
+    buf.extend_from_slice(name);
+    Some(buf)
+}
+
+/// Deserializes the body of a long READDIR response.
+///
+/// `bytes` is the assembled body in wire format
+/// `[op_id:4][is_dir:1][size:8][name_len:2][name:N]`. Returns `None` if the buffer is
+/// shorter than the declared header, or if the declared `name_len` exceeds the
+/// remainder of the buffer.
+pub fn deserialize_long_readdir_response(bytes: &[u8]) -> Option<LongReaddirResponse<'_>> {
+    if bytes.len() < READDIR_RESPONSE_HEADER_SIZE {
+        return None;
+    }
+    let op_id: crate::OperationId =
+        crate::OperationId::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    let is_dir: bool = bytes[4] != 0;
+    let size: u64 = u64::from_le_bytes([
+        bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12],
+    ]);
+    let name_len: usize = u16::from_le_bytes([bytes[13], bytes[14]]) as usize;
+    let name_start: usize = READDIR_RESPONSE_HEADER_SIZE;
+    let name_end: usize = name_start.checked_add(name_len)?;
+    if bytes.len() < name_end {
+        return None;
+    }
+    Some(LongReaddirResponse {
+        op_id,
+        is_dir,
+        size,
+        name: &bytes[name_start..name_end],
+    })
 }
 
 //==================================================================================================
