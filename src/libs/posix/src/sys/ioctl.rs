@@ -5,7 +5,7 @@
 // Standalone Functions
 //==================================================================================================
 
-#[cfg(all(feature = "syscall", feature = "staticlib"))]
+#[cfg(feature = "syscall")]
 mod bindings {
     use ::sysapi::ffi::c_int;
     use ::syslog::trace_syscall;

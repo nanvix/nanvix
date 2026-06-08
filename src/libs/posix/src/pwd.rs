@@ -5,7 +5,7 @@
 // Standalone Functions
 //==================================================================================================
 
-#[cfg(all(feature = "syscall", feature = "staticlib"))]
+#[cfg(feature = "syscall")]
 mod bindings {
     use crate::errno::__errno_location;
     use ::sys::error::ErrorCode;
