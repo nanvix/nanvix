@@ -43,6 +43,8 @@ pub const SLAB_COUNT: usize = 32;
 pub const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
 #[verus_verify]
 pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
+#[verus_verify]
+const MAX_SLAB_SIZE: usize = 512;
 
 //==================================================================================================
 //  Structures
@@ -243,13 +245,13 @@ impl Kheap {
                     &&& final(self)@ == old(self)@
                     &&& !(old(self)@.allocations == Map::<int, nat>::empty())
                         || spec_layout_align(layout) > spec_layout_size(layout)
-                        || spec_layout_size(layout) > 512
+                        || spec_layout_size(layout) > MAX_SLAB_SIZE
                 },
             },
     )]
     unsafe fn allocate(&mut self, layout: Layout) -> Result<*mut u8, AllocError> {
-        // Reject layouts where alignment exceeds size or the maximum slab tier (512 bytes).
-        if layout.align() > layout.size() || layout.align() > 512 {
+        // Reject layouts where alignment exceeds size or the maximum slab tier.
+        if layout.align() > layout.size() || layout.align() > MAX_SLAB_SIZE {
             return Err(AllocError);
         }
         // Reveal is_pow2 so Verus can deduce align ≥ 1, which is needed to
@@ -304,7 +306,7 @@ impl Kheap {
     unsafe fn deallocate(&mut self, ptr: *mut u8, layout: Layout) -> Result<(), AllocError> {
         proof! {
             let size = spec_layout_size(layout);
-            if size == 0 || size > 512 {
+            if size == 0 || size > MAX_SLAB_SIZE {
                 lemma_dealloc_layout_to_allocator_err(self, ptr as usize, size);
             }
         }
@@ -350,7 +352,7 @@ impl Kheap {
                 },
                 Err(_) => {
                     spec_layout_size(*layout) == 0
-                        || spec_layout_size(*layout) > 512
+                        || spec_layout_size(*layout) > MAX_SLAB_SIZE
                 },
             },
     )]

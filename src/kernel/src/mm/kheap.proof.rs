@@ -528,7 +528,7 @@ proof fn lemma_alloc_preserves_view_inv(
         post.alloc_map@ == pre.alloc_map@.insert(ptr as int, size as nat),
         !pre.alloc_map@.dom().contains(ptr as int),
         0 < ptr,
-        1 <= size <= 512,
+        1 <= size <= MAX_SLAB_SIZE,
         // Overlap-with-new pre-proved by caller.
         forall|a2: int| #[trigger] pre.alloc_map@.dom().contains(a2)
             ==> ptr as int + size as int <= a2
@@ -562,7 +562,7 @@ proof fn lemma_allocate_ok(
         forall|s: usize| is_supported_tier(s) && s >= size ==> tier as usize <= s,
         is_pow2(align as int),
         align <= size,
-        align <= 512,
+        align <= MAX_SLAB_SIZE,
         post.slab_8_bytes.inv(),
         post.slab_16_bytes.inv(),
         post.slab_32_bytes.inv(),
@@ -695,7 +695,7 @@ proof fn lemma_allocate_result(
         forall|s: usize| is_supported_tier(s) && s >= size ==> tier as usize <= s,
         is_pow2(align as int),
         align <= size,
-        align <= 512,
+        align <= MAX_SLAB_SIZE,
         match result {
             Ok(ptr) => {
                 let addr = ptr as usize;
@@ -1166,7 +1166,7 @@ proof fn lemma_alloc_overlap_bundle(
 proof fn lemma_pow2_le_512_supported(align: usize)
     requires
         is_pow2(align as int),
-        align <= 512,
+        align <= MAX_SLAB_SIZE,
     ensures
         align == 1 || align == 2 || align == 4 || align == 8 || align == 16
             || align == 32 || align == 64 || align == 128 || align == 256 || align == 512,
@@ -1179,7 +1179,7 @@ proof fn lemma_pow2_le_512_supported(align: usize)
         assert(align as int % 2 == 0);
         assert(is_pow2(align as int / 2));
         assert(align / 2 < align) by (nonlinear_arith) requires align > 1;
-        assert(align / 2 <= 512);
+        assert(align / 2 <= MAX_SLAB_SIZE);
         assert(align as int / 2 == (align / 2) as int) by (nonlinear_arith)
             requires align as int % 2 == 0;
         Self::lemma_pow2_le_512_supported(align / 2);
@@ -1195,7 +1195,7 @@ proof fn lemma_tier_align(ptr: usize, size: usize, align: usize, tier: SlabSize)
     requires
         0 < align,
         align <= size,
-        size <= 512,
+        size <= MAX_SLAB_SIZE,
         align == 1 || align == 2 || align == 4 || align == 8 || align == 16
             || align == 32 || align == 64 || align == 128 || align == 256 || align == 512,
         (tier == SlabSize::Slab8 && 1 <= size <= 8 && ptr as int % 8 == 0)
@@ -1219,7 +1219,7 @@ proof fn lemma_tier_align(ptr: usize, size: usize, align: usize, tier: SlabSize)
         requires
             0 < align,
             align <= size,
-            size <= 512,
+            size <= MAX_SLAB_SIZE,
             align == 1 || align == 2 || align == 4 || align == 8 || align == 16
                 || align == 32 || align == 64 || align == 128 || align == 256 || align == 512,
             (tier == SlabSize::Slab8 && 1 <= size <= 8 && ptr as int % 8 == 0)
@@ -1587,12 +1587,12 @@ proof fn lemma_dealloc_err_reason(pre: &Kheap, tier: SlabSize, ptr: usize, size:
 
 } // impl Kheap
 
-/// When layout_to_allocator returns Err (size == 0 or size > 512),
+/// When layout_to_allocator returns Err (size == 0 or size > MAX_SLAB_SIZE),
 /// either ptr is not in alloc_map, or the stored value differs from size.
 proof fn lemma_dealloc_layout_to_allocator_err(kheap: &Kheap, ptr: usize, size: usize)
     requires
         kheap.inv(),
-        size == 0 || size > 512,
+        size == 0 || size > MAX_SLAB_SIZE,
     ensures
         !kheap.alloc_map@.dom().contains(ptr as int)
             || kheap.alloc_map@[ptr as int] != size as nat,
@@ -1600,7 +1600,7 @@ proof fn lemma_dealloc_layout_to_allocator_err(kheap: &Kheap, ptr: usize, size: 
     if kheap.alloc_map@.dom().contains(ptr as int) {
         assert(kheap.internal_inv());
         let stored = kheap.alloc_map@[ptr as int];
-        assert(1 <= stored <= 512);
+        assert(1 <= stored <= MAX_SLAB_SIZE);
         assert(stored != size as nat);
     }
 }
