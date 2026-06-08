@@ -85,7 +85,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    event::Event,
+    event::{
+        Event,
+        ProcessCreationInfo,
+    },
     ipc::{
         Message,
         MessageReceiver,
@@ -156,6 +159,12 @@ pub struct ProcessManager {
     /// Detached-thread zombies whose reaping was deferred because their
     /// `ContextInformation` was still needed by an in-progress context switch.
     deferred_reap: Vec<(ProcessIdentifier, ZombieThread)>,
+    /// Newly created processes whose creation has not yet been published as a scheduling event.
+    /// Drained by the kernel main loop, where no reference to the process manager is held, so that
+    /// subscribers can be woken safely. Bounded to [`config::kernel::MAX_PROCESSES`]: the
+    /// creation/duplication paths apply backpressure (failing the syscall) when the queue is full,
+    /// so it cannot grow without bound if publication stalls.
+    pending_creations: VecDeque<ProcessCreationInfo>,
 }
 
 impl ProcessManager {
@@ -189,6 +198,7 @@ impl ProcessManager {
             live_count: 1,
             number_buffered_messages: 0,
             deferred_reap: Vec::new(),
+            pending_creations: VecDeque::new(),
         }
     }
 
@@ -499,6 +509,19 @@ impl ProcessManager {
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
 
+        // Refuse to create a new process when the pending process-creation queue is full. This
+        // bounds the queue and applies backpressure so it cannot grow without bound if publication
+        // of creation events stalls.
+        if self.pending_creations.len() >= ::config::kernel::MAX_PROCESSES {
+            let reason: &str = "pending process-creation queue is full";
+            error!(
+                "{reason} (pending={}, max_processes={})",
+                self.pending_creations.len(),
+                ::config::kernel::MAX_PROCESSES
+            );
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
+
         // Reserve the next process and thread identifiers early, before any resource allocation.
         let (pid, next_pid): (ProcessIdentifier, ProcessIdentifier) = self.try_next_pid()?;
         let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
@@ -637,10 +660,17 @@ impl ProcessManager {
             self.next_pid = next_pid;
             self.tm.commit_next_tid(next_tid);
             self.live_count += 1;
+            let parent_pid: ProcessIdentifier = self.get_running().state().pid();
             let process: RunnableProcess = RunnableProcess::new(pid, thread, vmem);
 
             // Add process to the queue of ready processes.
             self.ready.push_back(process);
+
+            // Record the creation so the kernel main loop can publish a process-creation
+            // scheduling event. Notifying subscribers here is unsafe because the process manager is
+            // mutably borrowed; deferring to the main loop avoids re-entrant access.
+            self.pending_creations
+                .push_back(ProcessCreationInfo::new(pid, parent_pid));
 
             Ok(pid)
         }))
@@ -735,6 +765,19 @@ impl ProcessManager {
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
 
+        // Refuse to create a new process when the pending process-creation queue is full. This
+        // bounds the queue and applies backpressure so it cannot grow without bound if publication
+        // of creation events stalls.
+        if self.pending_creations.len() >= ::config::kernel::MAX_PROCESSES {
+            let reason: &str = "pending process-creation queue is full";
+            error!(
+                "{reason} (pending={}, max_processes={})",
+                self.pending_creations.len(),
+                ::config::kernel::MAX_PROCESSES
+            );
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
+
         // Reserve identifiers early, before any allocation that could fail.
         let (child_pid, next_pid): (ProcessIdentifier, ProcessIdentifier) = self.try_next_pid()?;
         let (child_tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
@@ -769,6 +812,12 @@ impl ProcessManager {
 
             let process: RunnableProcess = RunnableProcess::new(child_pid, thread, vmem);
             self.ready.push_back(process);
+
+            // Record the creation so the kernel main loop can publish a process-creation
+            // scheduling event. Notifying subscribers here is unsafe because the process manager is
+            // mutably borrowed; deferring to the main loop avoids re-entrant access.
+            self.pending_creations
+                .push_back(ProcessCreationInfo::new(child_pid, pid));
 
             Ok(child_pid)
         }))
@@ -2087,6 +2136,35 @@ impl ProcessManager {
     ) -> Result<usize, Error> {
         let proc_ref: ProcessRef<'_> = self.find_process(pid)?;
         proc_ref.state().vmem().user_vaddr_to_paddr(vaddr)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Removes and returns the next pending process-creation record, if any. The kernel main loop
+    /// drains these records to publish process-creation scheduling events to subscribers.
+    ///
+    /// # Returns
+    ///
+    /// The next pending [`ProcessCreationInfo`], or [`None`] if there are no pending records.
+    ///
+    pub fn take_pending_creation(&mut self) -> Option<ProcessCreationInfo> {
+        self.pending_creations.pop_front()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Re-queues a process-creation record at the front of the pending queue. Used by the kernel
+    /// main loop to restore a record whose publication failed, so that it is retried later instead
+    /// of being lost.
+    ///
+    /// # Parameters
+    ///
+    /// - `info`: The process-creation record to re-queue.
+    ///
+    pub fn requeue_pending_creation(&mut self, info: ProcessCreationInfo) {
+        self.pending_creations.push_front(info);
     }
 
     pub fn harvest_zombies(

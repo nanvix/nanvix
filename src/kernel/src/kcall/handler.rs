@@ -100,8 +100,30 @@ pub fn kcall_handler() -> ExitStatus {
             },
         }
 
+        // Publish process-creation scheduling events for newly created processes. Each pending
+        // record is drained while no reference to the process manager is held, so subscribers can
+        // be woken safely.
+        let mut notified_creation: bool = false;
+        while let Some(info) = pm!().take_pending_creation() {
+            // SAFETY: the calling process does not hold a reference to the inner state of the
+            // process manager.
+            match unsafe { EventManager::notify_process_creation(info) } {
+                Ok(()) => notified_creation = true,
+                Err(e) => {
+                    error!("failed to notify process creation: {:?}", e);
+                    // Delivery failed without buffering the notification (the scheduling-event
+                    // queue is full, or waking a subscriber failed and the entry was rolled back).
+                    // Restore the record at the front of the queue so it is retried on a later
+                    // iteration instead of being lost, and stop draining to avoid spinning on the
+                    // same failure.
+                    pm!().requeue_pending_creation(info);
+                    break;
+                },
+            }
+        }
+
         // No work to do, so yield the CPU.
-        if !message_received && !harvested_process {
+        if !message_received && !harvested_process && !notified_creation {
             // Flush the kernel log buffer.
             // SAFETY: the standard output device is present, initialized, and accessed
             // exclusively from a single core with interrupts disabled.
