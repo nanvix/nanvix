@@ -117,18 +117,19 @@ impl Inner {
         requires
             old(self).inv(),
         ensures
-            self.inv(),
+            final(self).inv(),
             match result {
                 Ok(frame) => {
                     &&& frame.inv()
                     &&& old(self)@.free_frames.contains(frame@)
-                    &&& self@ == UpoolView {
+                    &&& final(self)@ == UpoolView {
                         allocated_frames: old(self)@.allocated_frames.insert(frame@),
                         free_frames: old(self)@.free_frames.remove(frame@),
+                        refcounts: old(self)@.refcounts.insert(frame@, 1int),
                     }
                 },
                 Err(_) => {
-                    &&& self@ == old(self)@
+                    &&& final(self)@ == old(self)@
                     &&& old(self)@.free_frames.is_empty()
                 }
             },
@@ -177,6 +178,35 @@ impl Inner {
     /// Upon success, the base `FrameAddress` of the contiguous range is returned. Upon failure,
     /// an error is returned instead.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+            count > 0,
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(base) => {
+                    &&& base.inv()
+                    &&& ({
+                        let frames = Set::new(|addr: int|
+                            exists|i: int| 0 <= i < count && addr == #[trigger] (base@ + i * spec_page_size())
+                        );
+                        &&& frames.subset_of(old(self)@.free_frames)
+                        &&& final(self)@ == UpoolView {
+                            allocated_frames: old(self)@.allocated_frames.union(frames),
+                            free_frames: old(self)@.free_frames.difference(frames),
+                            refcounts: old(self)@.refcounts.union_prefer_right(
+                                Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)
+                            ),
+                        }
+                    })
+                },
+                Err(_) => {
+                    final(self)@ == old(self)@
+                }
+            },
+    )]
     fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
         let frame_number: usize = match self.bitmap.alloc_range(count) {
             Ok(index) => index,
@@ -227,17 +257,32 @@ impl Inner {
             old(self).inv(),
             frame.inv(),
         ensures
-            self.inv(),
+            final(self).inv(),
             match result {
                 Ok(()) => {
                     &&& old(self)@.allocated_frames.contains(frame@)
-                    &&& self@ == UpoolView {
-                        allocated_frames: old(self)@.allocated_frames.remove(frame@),
-                        free_frames: old(self)@.free_frames.insert(frame@),
+                    &&& old(self)@.refcounts.contains_key(frame@)
+                    &&& old(self)@.refcounts[frame@] > 0
+                    &&& if old(self)@.refcounts[frame@] == 1 {
+                        // Last reference: release frame
+                        final(self)@ == UpoolView {
+                            allocated_frames: old(self)@.allocated_frames.remove(frame@),
+                            free_frames: old(self)@.free_frames.insert(frame@),
+                            refcounts: old(self)@.refcounts.remove(frame@),
+                        }
+                    } else {
+                        // Still shared: decrement refcount
+                        final(self)@ == UpoolView {
+                            allocated_frames: old(self)@.allocated_frames,
+                            free_frames: old(self)@.free_frames,
+                            refcounts: old(self)@.refcounts.insert(
+                                frame@, old(self)@.refcounts[frame@] - 1
+                            ),
+                        }
                     }
                 },
                 Err(_) => {
-                    &&& self@ == old(self)@
+                    &&& final(self)@ == old(self)@
                     &&& !old(self)@.allocated_frames.contains(frame@)
                 }
             },
@@ -291,6 +336,35 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+            frame.inv(),
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(()) => {
+                    &&& old(self)@.allocated_frames.contains(frame@)
+                    &&& old(self)@.refcounts.contains_key(frame@)
+                    &&& final(self)@ == UpoolView {
+                        allocated_frames: old(self)@.allocated_frames,
+                        free_frames: old(self)@.free_frames,
+                        refcounts: old(self)@.refcounts.insert(
+                            frame@, old(self)@.refcounts[frame@] + 1
+                        ),
+                    }
+                },
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& (
+                        !old(self)@.allocated_frames.contains(frame@)
+                        || (old(self)@.refcounts.contains_key(frame@)
+                            && old(self)@.refcounts[frame@] >= 255)
+                    )
+                }
+            },
+    )]
     fn share(&mut self, frame: FrameAddress) -> Result<(), Error> {
         let frame_number: usize = frame.into_frame_number().into_raw_value();
 
@@ -334,6 +408,23 @@ impl Inner {
     /// Upon success, the current reference count is returned. Upon failure, an error is
     /// returned instead (out-of-bounds address, or the frame is not currently allocated).
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            self.inv(),
+            match result {
+                Ok(count) => {
+                    &&& self@.allocated_frames.contains(frame@)
+                    &&& self@.refcounts.contains_key(frame@)
+                    &&& count as int == self@.refcounts[frame@]
+                },
+                Err(_) => {
+                    !self@.allocated_frames.contains(frame@)
+                }
+            },
+    )]
     fn refcount(&self, frame: FrameAddress) -> Result<u8, Error> {
         let frame_number: usize = frame.into_frame_number().into_raw_value();
 
@@ -371,17 +462,18 @@ impl Inner {
             old(self).inv(),
             phys_addr.inv(),
         ensures
-            self.inv(),
+            final(self).inv(),
             match result {
                 Ok(()) => {
                     &&& old(self)@.free_frames.contains(phys_addr@)
-                    &&& self@ == UpoolView {
+                    &&& final(self)@ == UpoolView {
                         allocated_frames: old(self)@.allocated_frames.insert(phys_addr@),
                         free_frames: old(self)@.free_frames.remove(phys_addr@),
+                        refcounts: old(self)@.refcounts.insert(phys_addr@, 1int),
                     }
                 },
                 Err(_) => {
-                    &&& self@ == old(self)@
+                    &&& final(self)@ == old(self)@
                     &&& !old(self)@.free_frames.contains(phys_addr@)
                 }
             },
@@ -410,6 +502,18 @@ impl Inner {
     ///
     /// `true` if the frame allocator tracks the frame at `phys_addr`, `false` otherwise.
     ///
+    #[verus_verify(external_body)]
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+            phys_addr.inv(),
+        ensures
+            self.inv(),
+            ret <==> (
+                self@.allocated_frames.contains(phys_addr@)
+                || self@.free_frames.contains(phys_addr@)
+            ),
+    )]
     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
         frame_number < self.bitmap.number_of_bits()
@@ -434,7 +538,7 @@ impl Inner {
             old(self).inv(),
             region.inv(),
         ensures
-            self.inv(),
+            final(self).inv(),
             ({
                 let start_frame_number = region@.start / spec_page_size();
                 let end_frame_number = (region@.start + region@.size) / spec_page_size();
@@ -443,13 +547,16 @@ impl Inner {
                 match result {
                     Ok(()) => {
                         &&& frames.subset_of(old(self)@.free_frames)
-                        &&& self@ == UpoolView {
+                        &&& final(self)@ == UpoolView {
                             allocated_frames: old(self)@.allocated_frames.union(frames),
                             free_frames: old(self)@.free_frames.difference(frames),
+                            refcounts: old(self)@.refcounts.union_prefer_right(
+                                Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)
+                            ),
                         }
                     },
                     Err(_) => {
-                        &&& self@ == old(self)@
+                        &&& final(self)@ == old(self)@
                         &&& !frames.subset_of(old(self)@.free_frames)
                     },
                 }

@@ -8,56 +8,42 @@
 verus! {
 
 use crate::hal::mem::spec_page_size;
+use vstd::map::*;
 
 pub uninterp spec fn byte_at_address(ptr: int) -> u8;
 
-#[verifier::external_type_specification]
-pub struct ExErrorCode(sys::error::ErrorCode);
-#[verifier::external_type_specification]
-pub struct ExError(sys::error::Error);
-
-#[verifier::external_type_specification]
-#[verifier::external_body]
-#[verifier::reject_recursive_types(T)]
-pub struct ExRefCell<T: core::marker::MetaSized>(core::cell::RefCell<T>);
-
-pub struct KpoolView {
-    pub start: int,
-    pub num_pages: int,
-    pub used_page_indices: Set<int>,
-}
-
-impl KpoolView {
-
-    pub open spec fn wf(&self) -> bool
-    {
-        &&& self.num_pages > 0
-        &&& self.start % spec_page_size() == 0
-        &&& forall|i: int| self.used_page_indices.contains(i) ==> 0 <= i < self.num_pages
-    }
-
-    pub open spec fn range_free(&self, first_page_index: int, count: int) -> bool
-    {
-        &&& count > 0
-        &&& 0 <= first_page_index <= self.num_pages - count
-        &&& forall|i: int| first_page_index <= i < first_page_index + count ==> !self.used_page_indices.contains(i)
-    }
-    
-}
-
+/// Abstract view of the frame allocator (`frame::Inner`).
+///
+/// Captures which physical frames are currently allocated vs. free,
+/// together with a per-frame reference count that models shared
+/// ownership (e.g. copy-on-write after `share()`).
 pub struct UpoolView
 {
     pub allocated_frames: Set<int>,
     pub free_frames: Set<int>,
+    /// Maps each allocated frame address to its reference count.
+    /// A frame is present in the map iff it is currently allocated.
+    pub refcounts: Map<int, int>,
 }
 
 impl UpoolView
 {
     pub open spec fn wf(&self) -> bool
     {
+        // Page-alignment
         &&& forall|addr: int| self.allocated_frames.contains(addr) ==> addr % spec_page_size() == 0
         &&& forall|addr: int| self.free_frames.contains(addr) ==> addr % spec_page_size() == 0
+        // Disjoint
         &&& self.allocated_frames.disjoint(self.free_frames)
+        // Allocated ↔ refcount consistency: a frame is allocated iff it has a positive refcount
+        &&& forall|addr: int| #[trigger] self.allocated_frames.contains(addr) <==>
+            self.refcounts.contains_key(addr) && self.refcounts[addr] > 0
+        // Free frames have no refcount entry
+        &&& forall|addr: int| #[trigger] self.free_frames.contains(addr) ==>
+            !self.refcounts.contains_key(addr)
+        // Refcount bounded by u8 range
+        &&& forall|addr: int| self.refcounts.contains_key(addr) ==>
+            0 < self.refcounts[addr] <= 255
     }
 }
 
