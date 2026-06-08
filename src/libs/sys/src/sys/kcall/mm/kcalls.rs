@@ -37,7 +37,6 @@ fn split_tag(tag: u64) -> (u32, u32) {
 // Map Memory Pages
 //==================================================================================================
 
-#[unsafe(no_mangle)]
 pub fn __kcall_mmap(
     pid: ProcessIdentifier,
     vaddr: VirtualAddress,
@@ -65,7 +64,6 @@ pub fn __kcall_mmap(
 // Unmap Memory Page
 //==================================================================================================
 
-#[unsafe(no_mangle)]
 pub fn __kcall_munmap(pid: ProcessIdentifier, vaddr: VirtualAddress) -> Result<(), Error> {
     let result: i64 =
         kcall2!(KcallNumber::MemoryUnmap.into(), pid.try_into()?, vaddr.into_raw_value() as u32);
@@ -81,7 +79,6 @@ pub fn __kcall_munmap(pid: ProcessIdentifier, vaddr: VirtualAddress) -> Result<(
 // Change Memory Protection
 //==================================================================================================
 
-#[unsafe(no_mangle)]
 pub fn __kcall_mprotect(
     pid: ProcessIdentifier,
     vaddr: VirtualAddress,
@@ -120,7 +117,6 @@ pub fn __kcall_mprotect(
 ///
 /// `Ok(())` on success, or an error describing why the allocation failed.
 ///
-#[unsafe(no_mangle)]
 pub fn __kcall_mmio_alloc(tag: u64) -> Result<(), Error> {
     let (lower, upper): (u32, u32) = split_tag(tag);
     let result: i64 = kcall2!(KcallNumber::AllocMmio.into(), lower, upper);
@@ -150,7 +146,6 @@ pub fn __kcall_mmio_alloc(tag: u64) -> Result<(), Error> {
 ///
 /// `Ok(())` on success, or an error describing why the release failed.
 ///
-#[unsafe(no_mangle)]
 pub fn __kcall_mmio_free(tag: u64) -> Result<(), Error> {
     let (lower, upper): (u32, u32) = split_tag(tag);
     let result: i64 = kcall2!(KcallNumber::FreeMmio.into(), lower, upper);
@@ -180,7 +175,6 @@ pub fn __kcall_mmio_free(tag: u64) -> Result<(), Error> {
 ///
 /// On success, returns an [`MmioRegionInfo`] structure populated by the kernel.
 ///
-#[unsafe(no_mangle)]
 pub fn __kcall_mmio_info(tag: u64) -> Result<MmioRegionInfo, Error> {
     let (lower, upper): (u32, u32) = split_tag(tag);
     let mut info: MmioRegionInfo = MmioRegionInfo::default();

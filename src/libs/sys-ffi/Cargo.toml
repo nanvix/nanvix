@@ -1,0 +1,23 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "sys-ffi"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Unmangled-symbol shim re-exporting sys kernel-call wrappers for link-time resolution"
+homepage.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+sys = { workspace = true, features = ["kcall"] }
+
+[features]
+default = []
+
+[lints]
+workspace = true

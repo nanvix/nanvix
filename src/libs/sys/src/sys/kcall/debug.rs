@@ -31,7 +31,6 @@ use crate::{
 ///
 /// Upon success, empty is returned. Upon failure, an error is returned instead.
 ///
-#[unsafe(no_mangle)]
 pub fn __kcall_debug(buf: *const u8, size: usize) -> Result<(), Error> {
     let result: i64 = kcall2!(KcallNumber::Debug.into(), buf as u32, size as u32);
 

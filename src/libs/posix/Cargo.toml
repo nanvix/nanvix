@@ -23,6 +23,7 @@ crate-type = ["lib", "staticlib"]
 # bug — see `nanvix-todo/dlopen-load-address-conflict.md`.
 nvx = { workspace = true }
 sys = { workspace = true }
+sys-ffi = { workspace = true }
 cfg-if = { workspace = true }
 config = { workspace = true }
 num_enum = { workspace = true }
