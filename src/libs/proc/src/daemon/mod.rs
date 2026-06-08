@@ -430,6 +430,12 @@ impl ProcessDaemon {
         message::register_child_response(destination, 0)
     }
 
+    // Handles a get-parent message.
+    fn handle_get_parent(
+        &self,
+        destination: ProcessIdentifier,
+        message: GetParentMessage,
+    ) -> Result<Message, Error> {
         let pid: ProcessIdentifier = message.pid;
 
         // Reject spoofed requests: only the calling process may query its own parent.
