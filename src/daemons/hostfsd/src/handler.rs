@@ -1424,42 +1424,130 @@ impl HostFsHandler {
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
         let req: ReadDirRequest = ReadDirRequest::decode(payload);
-        let entry: &mut FdEntry = match self.fd_table.get_mut(req.fd) {
-            Some(e) => e,
+
+        // Copy the entry out of the cache so the mutable borrow of `self.fd_table` is
+        // released before we may need `&mut self` to emit a multi-part response.
+        let cached: Option<(String, bool, u64)> = match self.fd_table.get_mut(req.fd) {
+            Some(entry) => entry
+                .readdir_at(req.offset as usize)
+                .map(|c| (c.name.to_string_lossy().into_owned(), c.is_dir, c.size)),
             None => {
-                // Return empty readdir (name_len=0 signals end).
+                log::warn!("hostfsd: readdir on unknown fd {} (offset={})", req.fd, req.offset);
+                None
+            },
+        };
+
+        let (name, is_dir, size) = match cached {
+            Some(t) => t,
+            None => {
+                // Missing FD or past end of directory: name_len=0 signals end.
                 set_header(response, SystemCallMessageHeader::HostFsReadDirResponse as u16);
                 set_payload_data(response, &[0u8; 2]);
                 return;
             },
         };
 
-        // Use the cached directory listing (populated on first access).
-        if let Some(cached) = entry.readdir_at(req.offset as usize) {
-            let name: String = cached.name.to_string_lossy().into_owned();
-            let name_bytes: &[u8] = name.as_bytes();
-            let name_len: usize = name_bytes.len().min(MAX_DIR_ENTRY_NAME_LEN);
-
-            if name_bytes.len() > MAX_DIR_ENTRY_NAME_LEN {
-                log::warn!("hostfsd: filename truncated in readdir: {:?}", name);
-            }
-
+        let name_bytes: &[u8] = name.as_bytes();
+        if name_bytes.len() <= MAX_DIR_ENTRY_NAME_LEN {
+            // Inline fast path: the name fits in a single response message.
             let mut entry_name: [u8; MAX_DIR_ENTRY_NAME_LEN] = [0u8; MAX_DIR_ENTRY_NAME_LEN];
-            entry_name[..name_len].copy_from_slice(&name_bytes[..name_len]);
+            entry_name[..name_bytes.len()].copy_from_slice(name_bytes);
 
             let resp: ReadDirEntry = ReadDirEntry {
-                name_len: name_len as u16,
-                is_dir: if cached.is_dir { 1 } else { 0 },
-                size: cached.size,
+                name_len: name_bytes.len() as u16,
+                is_dir: if is_dir { 1 } else { 0 },
+                size,
                 name: entry_name,
             };
             resp.encode(response);
             set_header(response, SystemCallMessageHeader::HostFsReadDirResponse as u16);
         } else {
-            // No more entries at this offset.
-            set_header(response, SystemCallMessageHeader::HostFsReadDirResponse as u16);
-            set_payload_data(response, &[0u8; 2]);
+            // Multi-part response: the name exceeds the inline capacity, so emit a
+            // `HostFsReadDirResponsePart` stream carrying the full name.
+            let op_id: OperationId = get_op_id(payload);
+            self.emit_long_readdir_response(response, op_id, is_dir, size, name_bytes);
         }
+    }
+
+    /// Builds a multi-part `HostFsReadDirResponsePart` stream for a directory entry
+    /// whose name exceeds the inline `ReadDirEntry` capacity.
+    ///
+    /// Wire-format details (body layout, per-part framing, chunk size) live in
+    /// [`long_msg::serialize_long_readdir_response`] and
+    /// [`long_msg::chunk_long_response`]. The first chunk is written into
+    /// `first_response`, and the remaining chunks are queued in `extra_responses` for
+    /// the caller to drain via [`Self::take_next_response_part`].
+    ///
+    /// As with the readlink multi-part response, `op_id` is recorded *only* in the
+    /// first 4 bytes of the assembled body; the outer-frame bytes `[2..6]` carry the
+    /// `SystemCallMessagePart` framing, so `set_op_id` is intentionally not applied to
+    /// multi-part responses (see `run` in `handle_request`).
+    fn emit_long_readdir_response(
+        &mut self,
+        first_response: &mut [u8; Message::PAYLOAD_SIZE],
+        op_id: OperationId,
+        is_dir: bool,
+        size: u64,
+        name_bytes: &[u8],
+    ) {
+        let body: Vec<u8> =
+            match long_msg::serialize_long_readdir_response(op_id, is_dir, size, name_bytes) {
+                Some(body) => body,
+                None => {
+                    // Unreachable in practice: host filenames are bounded far below the u16
+                    // name-length limit. Guard against emitting a zeroed (and therefore
+                    // malformed) frame by falling back to a single-message end-of-directory
+                    // marker, so the getdents sweep terminates cleanly instead of leaving the
+                    // caller hung on a frame it cannot parse. The op_id is stamped by the
+                    // caller (`run` in `handle_request`) because this is not a multi-part
+                    // response header.
+                    debug_assert!(
+                        false,
+                        "serialize_long_readdir_response failed: name len {} exceeds wire limit",
+                        name_bytes.len()
+                    );
+                    log::error!(
+                        "hostfsd: readdir entry name ({} bytes) exceeds the wire-format limit; \
+                         ending directory listing early",
+                        name_bytes.len()
+                    );
+                    set_header(
+                        first_response,
+                        SystemCallMessageHeader::HostFsReadDirResponse as u16,
+                    );
+                    set_payload_data(first_response, &[0u8; 2]);
+                    return;
+                },
+            };
+
+        let parts_vec: Vec<[u8; Message::PAYLOAD_SIZE]> = match long_msg::chunk_long_response(
+            SystemCallMessageHeader::HostFsReadDirResponsePart as u16,
+            &body,
+        ) {
+            Some(v) => v,
+            None => {
+                debug_assert!(
+                    false,
+                    "chunk_long_response rejected body of {} bytes (exceeds wire-format limit)",
+                    body.len()
+                );
+                log::error!(
+                    "hostfsd: dropping readdir response body ({} bytes) that exceeds the \
+                     long-response part limit",
+                    body.len()
+                );
+                // Fall back to a well-formed single-message end-of-directory marker so the
+                // caller's getdents sweep terminates cleanly.
+                set_header(first_response, SystemCallMessageHeader::HostFsReadDirResponse as u16);
+                set_payload_data(first_response, &[0u8; 2]);
+                return;
+            },
+        };
+        let mut parts: std::vec::IntoIter<[u8; Message::PAYLOAD_SIZE]> = parts_vec.into_iter();
+        if let Some(first) = parts.next() {
+            *first_response = first;
+        }
+        self.extra_responses.extend(parts);
     }
 
     fn handle_mkdir(
