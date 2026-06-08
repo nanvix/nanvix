@@ -712,6 +712,41 @@ fn test_readdir_reports_directory_flag_and_size() {
     assert_eq!(data.2, 11, "data.bin size should be reported");
 }
 
+#[test]
+fn test_readdir_long_name_multipart_response() {
+    let (mut handler, tmp) = setup();
+    // A name longer than the inline `ReadDirEntry` capacity forces the multi-part
+    // response path. Use a name that comfortably exceeds MAX_DIR_ENTRY_NAME_LEN (29).
+    let long_name: String = "l".repeat(180) + ".txt";
+    assert!(long_name.len() > MAX_DIR_ENTRY_NAME_LEN, "test name must exceed the inline cap");
+    fs::write(tmp.path().join(&long_name), b"payload!!").unwrap();
+
+    let fd: i32 = open_file(&mut handler, "/", O_RDONLY | O_DIRECTORY);
+    assert!(fd > 0);
+
+    let payload: [u8; Message::PAYLOAD_SIZE] = make_readdir_request_at(fd, 0);
+    let first: [u8; Message::PAYLOAD_SIZE] = handler.handle_request(&payload).unwrap();
+
+    // The entry must be returned as a `HostFsReadDirResponsePart` stream.
+    let header_raw: u16 = u16::from_ne_bytes([first[0], first[1]]);
+    assert_eq!(
+        header_raw,
+        SystemCallMessageHeader::HostFsReadDirResponsePart as u16,
+        "long-name readdir must use the multi-part response header"
+    );
+
+    let body: Vec<u8> = drain_multipart_response(
+        &mut handler,
+        first,
+        SystemCallMessageHeader::HostFsReadDirResponsePart,
+    );
+    let resp = hostfs_api::long_msg::deserialize_long_readdir_response(&body)
+        .expect("readdir long response must deserialize");
+    assert!(!resp.is_dir, "regular file should not be flagged as a directory");
+    assert_eq!(resp.size, 9, "file size should be reported");
+    assert_eq!(resp.name, long_name.as_bytes(), "full name must round-trip");
+}
+
 //==================================================================================================
 // Tests: Sandbox Security
 //==================================================================================================
