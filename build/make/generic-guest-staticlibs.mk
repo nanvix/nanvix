@@ -116,7 +116,7 @@ guest_staticlib_artifact = lib$(subst -,_,$(1)).a
 # the `full_availability` block in `src/math/mod.rs` is skipped at the
 # source. No such field exists today and no upstream PR is in flight;
 # until one lands, this post-build localization is the canonical
-# nanvix fix.
+# Nanvix fix.
 #
 # Safety of localization: no Nanvix Rust no_std guest code calls these
 # C math symbols. `core`'s `f64::sqrt()` etc. lower to LLVM intrinsics
@@ -144,7 +144,10 @@ guest_staticlib_artifact = lib$(subst -,_,$(1)).a
 # Tooling: rust-objcopy comes from cargo-binutils, a build prerequisite
 # (see build/make/kernel.mk for an identical fallback pattern). The
 # command is a no-op on staticlibs that don't define these symbols.
-GUEST_STATICLIB_OBJCOPY := $(shell command -v rust-objcopy 2>/dev/null || command -v objcopy 2>/dev/null)
+# The tool is looked up at command time (via `command -v` in the recipe
+# below) rather than at make parse time, so it picks up `rust-objcopy`
+# even if it becomes available between make startup and recipe
+# execution. Archive paths are quoted to tolerate spaces.
 
 # C99 libm wrapper names that newlib's libm.a defines as STRONG DEFAULT and
 # that compiler_builtins shadows as WEAK HIDDEN. Stable; effectively pinned
@@ -158,8 +161,10 @@ GUEST_STATICLIB_LIBM_LOCALIZE_ARGS := \
 	$(addprefix --localize-symbol=,$(GUEST_STATICLIB_LIBM_WRAPPERS))
 
 define GUEST_STATICLIB_LIBM_FIX_CMD
-	if [ -n "$(GUEST_STATICLIB_OBJCOPY)" ]; then \
-	    $(GUEST_STATICLIB_OBJCOPY) $(GUEST_STATICLIB_LIBM_LOCALIZE_ARGS) $(1); \
+	if command -v rust-objcopy >/dev/null 2>&1; then \
+	    rust-objcopy $(GUEST_STATICLIB_LIBM_LOCALIZE_ARGS) "$(1)"; \
+	elif command -v objcopy >/dev/null 2>&1; then \
+	    objcopy $(GUEST_STATICLIB_LIBM_LOCALIZE_ARGS) "$(1)"; \
 	else \
 	    echo "WARNING: rust-objcopy/objcopy not found; skipping libm visibility fix on $(1)"; \
 	fi;
