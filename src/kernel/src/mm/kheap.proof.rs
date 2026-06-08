@@ -40,13 +40,6 @@ closed spec fn spec_tier_size(tier: SlabSize) -> usize {
 }
 
 impl Kheap {
-    /// Public invariant: abstract well-formedness + slab-level structural facts.
-    pub open spec fn inv(&self) -> bool {
-        &&& self@.inv()
-        &&& self.internal_inv()
-    }
-
-
     /// Slab-level invariants kept internal to the module. These bridge the
     /// concrete slab state to the abstract `KheapView`.
     pub closed spec fn internal_inv(&self) -> bool {

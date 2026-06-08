@@ -94,4 +94,12 @@ impl KheapView {
         KheapView { allocations: self.allocations.remove(addr) }
     }
 }
+
+impl Kheap {
+    /// Public invariant: abstract well-formedness plus an implementation-owned invariant.
+    pub open spec fn inv(&self) -> bool {
+        &&& self@.inv()
+        &&& self.internal_inv()
+    }
+}
 } // verus!
