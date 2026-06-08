@@ -122,7 +122,7 @@ impl Inner {
                 Ok(frame) => {
                     &&& frame.inv()
                     &&& old(self)@.free_frames.contains(frame@)
-                    &&& final(self)@ == UpoolView {
+                    &&& final(self)@ == FrameAllocView {
                         allocated_frames: old(self)@.allocated_frames.insert(frame@),
                         free_frames: old(self)@.free_frames.remove(frame@),
                         refcounts: old(self)@.refcounts.insert(frame@, 1int),
@@ -193,7 +193,7 @@ impl Inner {
                             exists|i: int| 0 <= i < count && addr == #[trigger] (base@ + i * spec_page_size())
                         );
                         &&& frames.subset_of(old(self)@.free_frames)
-                        &&& final(self)@ == UpoolView {
+                        &&& final(self)@ == FrameAllocView {
                             allocated_frames: old(self)@.allocated_frames.union(frames),
                             free_frames: old(self)@.free_frames.difference(frames),
                             refcounts: old(self)@.refcounts.union_prefer_right(
@@ -265,14 +265,14 @@ impl Inner {
                     &&& old(self)@.refcounts[frame@] > 0
                     &&& if old(self)@.refcounts[frame@] == 1 {
                         // Last reference: release frame
-                        final(self)@ == UpoolView {
+                        final(self)@ == FrameAllocView {
                             allocated_frames: old(self)@.allocated_frames.remove(frame@),
                             free_frames: old(self)@.free_frames.insert(frame@),
                             refcounts: old(self)@.refcounts.remove(frame@),
                         }
                     } else {
                         // Still shared: decrement refcount
-                        final(self)@ == UpoolView {
+                        final(self)@ == FrameAllocView {
                             allocated_frames: old(self)@.allocated_frames,
                             free_frames: old(self)@.free_frames,
                             refcounts: old(self)@.refcounts.insert(
@@ -347,7 +347,7 @@ impl Inner {
                 Ok(()) => {
                     &&& old(self)@.allocated_frames.contains(frame@)
                     &&& old(self)@.refcounts.contains_key(frame@)
-                    &&& final(self)@ == UpoolView {
+                    &&& final(self)@ == FrameAllocView {
                         allocated_frames: old(self)@.allocated_frames,
                         free_frames: old(self)@.free_frames,
                         refcounts: old(self)@.refcounts.insert(
@@ -466,7 +466,7 @@ impl Inner {
             match result {
                 Ok(()) => {
                     &&& old(self)@.free_frames.contains(phys_addr@)
-                    &&& final(self)@ == UpoolView {
+                    &&& final(self)@ == FrameAllocView {
                         allocated_frames: old(self)@.allocated_frames.insert(phys_addr@),
                         free_frames: old(self)@.free_frames.remove(phys_addr@),
                         refcounts: old(self)@.refcounts.insert(phys_addr@, 1int),
@@ -547,7 +547,7 @@ impl Inner {
                 match result {
                     Ok(()) => {
                         &&& frames.subset_of(old(self)@.free_frames)
-                        &&& final(self)@ == UpoolView {
+                        &&& final(self)@ == FrameAllocView {
                             allocated_frames: old(self)@.allocated_frames.union(frames),
                             free_frames: old(self)@.free_frames.difference(frames),
                             refcounts: old(self)@.refcounts.union_prefer_right(

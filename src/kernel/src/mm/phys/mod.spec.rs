@@ -17,7 +17,7 @@ pub uninterp spec fn byte_at_address(ptr: int) -> u8;
 /// Captures which physical frames are currently allocated vs. free,
 /// together with a per-frame reference count that models shared
 /// ownership (e.g. copy-on-write after `share()`).
-pub struct UpoolView
+pub struct FrameAllocView
 {
     pub allocated_frames: Set<int>,
     pub free_frames: Set<int>,
@@ -26,7 +26,7 @@ pub struct UpoolView
     pub refcounts: Map<int, int>,
 }
 
-impl UpoolView
+impl FrameAllocView
 {
     pub open spec fn wf(&self) -> bool
     {

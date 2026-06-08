@@ -1,6 +1,6 @@
 verus! {
 
-use super::UpoolView;
+use super::FrameAllocView;
 use crate::hal::mem::spec_page_size;
 use vstd::map::*;
 
@@ -10,10 +10,10 @@ pub open spec fn frame_addr_of(i: int) -> int {
 }
 
 impl View for Inner {
-    type V = UpoolView;
+    type V = FrameAllocView;
 
-    closed spec fn view(&self) -> UpoolView {
-        UpoolView {
+    closed spec fn view(&self) -> FrameAllocView {
+        FrameAllocView {
             allocated_frames: Set::new(|addr: int|
                 exists|i: int|
                     #[trigger] self.bitmap@.set_bits.contains(i)
