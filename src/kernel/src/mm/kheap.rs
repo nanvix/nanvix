@@ -269,21 +269,10 @@ impl Kheap {
         let align = layout.align();
         proof! {
             let size = spec_layout_size(layout);
-            lemma_tier_size_bounds(tier, size);
-            match r {
-                Ok(ptr) => {
-                    *self.alloc_map = self.alloc_map@.insert(ptr as int, size as nat);
-                    Kheap::lemma_alloc_preserves_internal_inv(old(self), self, tier, ptr as usize, size);
-                    Kheap::lemma_alloc_overlap_with_new(old(self), tier, ptr as usize, size);
-                    Kheap::lemma_alloc_preserves_view_inv(old(self), self, ptr as usize, size);
-                    Kheap::lemma_pow2_le_512_supported(align);
-                    Kheap::lemma_tier_align(ptr as usize, size, align, tier);
-                },
-                Err(_) => {
-                    Kheap::lemma_alloc_err_preserves_inv(old(self), self, tier);
-                    Kheap::lemma_alloc_err_implies_nonempty(old(self), tier);
-                },
+            if let Ok(ptr) = r {
+                *self.alloc_map = self.alloc_map@.insert(ptr as int, size as nat);
             }
+            Kheap::lemma_allocate_result(old(self), self, tier, r, size, align);
         }
         r
     }

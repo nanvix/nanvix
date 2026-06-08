@@ -552,6 +552,277 @@ proof fn lemma_alloc_preserves_view_inv(
     assert(post@ =~= pre@.spec_allocate(ptr as int, size as nat));
 }
 
+/// Closes all proof obligations for the successful path of `Kheap::allocate`.
+proof fn lemma_allocate_ok(
+    pre: &Kheap,
+    post: &Kheap,
+    tier: SlabSize,
+    ptr: usize,
+    size: usize,
+    align: usize,
+)
+    requires
+        pre.inv(),
+        size >= 1,
+        is_supported_tier(tier as usize),
+        tier as usize >= size,
+        forall|s: usize| is_supported_tier(s) && s >= size ==> tier as usize <= s,
+        is_pow2(align as int),
+        align <= size,
+        align <= 512,
+        post.slab_8_bytes.inv(),
+        post.slab_16_bytes.inv(),
+        post.slab_32_bytes.inv(),
+        post.slab_64_bytes.inv(),
+        post.slab_128_bytes.inv(),
+        post.slab_256_bytes.inv(),
+        post.slab_512_bytes.inv(),
+        post.slab_8_bytes@.block_size == 8,
+        post.slab_16_bytes@.block_size == 16,
+        post.slab_32_bytes@.block_size == 32,
+        post.slab_64_bytes@.block_size == 64,
+        post.slab_128_bytes@.block_size == 128,
+        post.slab_256_bytes@.block_size == 256,
+        post.slab_512_bytes@.block_size == 512,
+        post.slab_8_bytes@.start_addr == pre.slab_8_bytes@.start_addr,
+        post.slab_8_bytes@.end_addr == pre.slab_8_bytes@.end_addr,
+        post.slab_16_bytes@.start_addr == pre.slab_16_bytes@.start_addr,
+        post.slab_16_bytes@.end_addr == pre.slab_16_bytes@.end_addr,
+        post.slab_32_bytes@.start_addr == pre.slab_32_bytes@.start_addr,
+        post.slab_32_bytes@.end_addr == pre.slab_32_bytes@.end_addr,
+        post.slab_64_bytes@.start_addr == pre.slab_64_bytes@.start_addr,
+        post.slab_64_bytes@.end_addr == pre.slab_64_bytes@.end_addr,
+        post.slab_128_bytes@.start_addr == pre.slab_128_bytes@.start_addr,
+        post.slab_128_bytes@.end_addr == pre.slab_128_bytes@.end_addr,
+        post.slab_256_bytes@.start_addr == pre.slab_256_bytes@.start_addr,
+        post.slab_256_bytes@.end_addr == pre.slab_256_bytes@.end_addr,
+        post.slab_512_bytes@.start_addr == pre.slab_512_bytes@.start_addr,
+        post.slab_512_bytes@.end_addr == pre.slab_512_bytes@.end_addr,
+        post.slab_8_bytes@.allocated_addrs == if tier == SlabSize::Slab8 {
+            pre.slab_8_bytes@.allocated_addrs.insert(ptr)
+        } else { pre.slab_8_bytes@.allocated_addrs },
+        post.slab_16_bytes@.allocated_addrs == if tier == SlabSize::Slab16 {
+            pre.slab_16_bytes@.allocated_addrs.insert(ptr)
+        } else { pre.slab_16_bytes@.allocated_addrs },
+        post.slab_32_bytes@.allocated_addrs == if tier == SlabSize::Slab32 {
+            pre.slab_32_bytes@.allocated_addrs.insert(ptr)
+        } else { pre.slab_32_bytes@.allocated_addrs },
+        post.slab_64_bytes@.allocated_addrs == if tier == SlabSize::Slab64 {
+            pre.slab_64_bytes@.allocated_addrs.insert(ptr)
+        } else { pre.slab_64_bytes@.allocated_addrs },
+        post.slab_128_bytes@.allocated_addrs == if tier == SlabSize::Slab128 {
+            pre.slab_128_bytes@.allocated_addrs.insert(ptr)
+        } else { pre.slab_128_bytes@.allocated_addrs },
+        post.slab_256_bytes@.allocated_addrs == if tier == SlabSize::Slab256 {
+            pre.slab_256_bytes@.allocated_addrs.insert(ptr)
+        } else { pre.slab_256_bytes@.allocated_addrs },
+        post.slab_512_bytes@.allocated_addrs == if tier == SlabSize::Slab512 {
+            pre.slab_512_bytes@.allocated_addrs.insert(ptr)
+        } else { pre.slab_512_bytes@.allocated_addrs },
+        (tier == SlabSize::Slab8 ==> pre.slab_8_bytes@.free_addrs.contains(ptr))
+            && (tier == SlabSize::Slab16 ==> pre.slab_16_bytes@.free_addrs.contains(ptr))
+            && (tier == SlabSize::Slab32 ==> pre.slab_32_bytes@.free_addrs.contains(ptr))
+            && (tier == SlabSize::Slab64 ==> pre.slab_64_bytes@.free_addrs.contains(ptr))
+            && (tier == SlabSize::Slab128 ==> pre.slab_128_bytes@.free_addrs.contains(ptr))
+            && (tier == SlabSize::Slab256 ==> pre.slab_256_bytes@.free_addrs.contains(ptr))
+            && (tier == SlabSize::Slab512 ==> pre.slab_512_bytes@.free_addrs.contains(ptr)),
+        (tier == SlabSize::Slab8 ==> ptr as int % 8 == 0)
+            && (tier == SlabSize::Slab16 ==> ptr as int % 16 == 0)
+            && (tier == SlabSize::Slab32 ==> ptr as int % 32 == 0)
+            && (tier == SlabSize::Slab64 ==> ptr as int % 64 == 0)
+            && (tier == SlabSize::Slab128 ==> ptr as int % 128 == 0)
+            && (tier == SlabSize::Slab256 ==> ptr as int % 256 == 0)
+            && (tier == SlabSize::Slab512 ==> ptr as int % 512 == 0),
+        post.alloc_map@ == pre.alloc_map@.insert(ptr as int, size as nat),
+        !pre.alloc_map@.dom().contains(ptr as int),
+        0 < ptr,
+    ensures
+        post.inv(),
+        post@ == pre@.spec_allocate(ptr as int, size as nat),
+        ptr as int % align as int == 0,
+{
+    lemma_tier_size_bounds(tier, size);
+    Kheap::lemma_alloc_preserves_internal_inv(pre, post, tier, ptr, size);
+    Kheap::lemma_alloc_overlap_with_new(pre, tier, ptr, size);
+    Kheap::lemma_alloc_preserves_view_inv(pre, post, ptr, size);
+    Kheap::lemma_pow2_le_512_supported(align);
+    Kheap::lemma_tier_align(ptr, size, align, tier);
+    assert(post.inv());
+}
+
+/// Closes all proof obligations for the failing slab-allocation path of `Kheap::allocate`.
+proof fn lemma_allocate_err(pre: &Kheap, post: &Kheap, tier: SlabSize)
+    requires
+        pre.inv(),
+        post.slab_8_bytes.inv(),
+        post.slab_16_bytes.inv(),
+        post.slab_32_bytes.inv(),
+        post.slab_64_bytes.inv(),
+        post.slab_128_bytes.inv(),
+        post.slab_256_bytes.inv(),
+        post.slab_512_bytes.inv(),
+        post.slab_8_bytes@ == pre.slab_8_bytes@,
+        post.slab_16_bytes@ == pre.slab_16_bytes@,
+        post.slab_32_bytes@ == pre.slab_32_bytes@,
+        post.slab_64_bytes@ == pre.slab_64_bytes@,
+        post.slab_128_bytes@ == pre.slab_128_bytes@,
+        post.slab_256_bytes@ == pre.slab_256_bytes@,
+        post.slab_512_bytes@ == pre.slab_512_bytes@,
+        post.alloc_map@ == pre.alloc_map@,
+        (tier == SlabSize::Slab8 ==> pre.slab_8_bytes@.free_addrs =~= Set::<usize>::empty())
+            && (tier == SlabSize::Slab16 ==> pre.slab_16_bytes@.free_addrs =~= Set::<usize>::empty())
+            && (tier == SlabSize::Slab32 ==> pre.slab_32_bytes@.free_addrs =~= Set::<usize>::empty())
+            && (tier == SlabSize::Slab64 ==> pre.slab_64_bytes@.free_addrs =~= Set::<usize>::empty())
+            && (tier == SlabSize::Slab128 ==> pre.slab_128_bytes@.free_addrs =~= Set::<usize>::empty())
+            && (tier == SlabSize::Slab256 ==> pre.slab_256_bytes@.free_addrs =~= Set::<usize>::empty())
+            && (tier == SlabSize::Slab512 ==> pre.slab_512_bytes@.free_addrs =~= Set::<usize>::empty()),
+    ensures
+        post.inv(),
+        post@ == pre@,
+        !(pre.alloc_map@ =~= Map::<int, nat>::empty()),
+{
+    Kheap::lemma_alloc_err_preserves_inv(pre, post, tier);
+    Kheap::lemma_alloc_err_implies_nonempty(pre, tier);
+}
+
+/// Closes `Kheap::allocate` obligations after the caller updates the ghost allocation map.
+proof fn lemma_allocate_result(
+    pre: &Kheap,
+    post: &Kheap,
+    tier: SlabSize,
+    result: Result<*mut u8, AllocError>,
+    size: usize,
+    align: usize,
+)
+    requires
+        pre.inv(),
+        size >= 1,
+        is_supported_tier(tier as usize),
+        tier as usize >= size,
+        forall|s: usize| is_supported_tier(s) && s >= size ==> tier as usize <= s,
+        is_pow2(align as int),
+        align <= size,
+        align <= 512,
+        match result {
+            Ok(ptr) => {
+                let addr = ptr as usize;
+                &&& post.slab_8_bytes.inv()
+                &&& post.slab_16_bytes.inv()
+                &&& post.slab_32_bytes.inv()
+                &&& post.slab_64_bytes.inv()
+                &&& post.slab_128_bytes.inv()
+                &&& post.slab_256_bytes.inv()
+                &&& post.slab_512_bytes.inv()
+                &&& post.slab_8_bytes@.block_size == 8
+                &&& post.slab_16_bytes@.block_size == 16
+                &&& post.slab_32_bytes@.block_size == 32
+                &&& post.slab_64_bytes@.block_size == 64
+                &&& post.slab_128_bytes@.block_size == 128
+                &&& post.slab_256_bytes@.block_size == 256
+                &&& post.slab_512_bytes@.block_size == 512
+                &&& post.slab_8_bytes@.start_addr == pre.slab_8_bytes@.start_addr
+                &&& post.slab_8_bytes@.end_addr == pre.slab_8_bytes@.end_addr
+                &&& post.slab_16_bytes@.start_addr == pre.slab_16_bytes@.start_addr
+                &&& post.slab_16_bytes@.end_addr == pre.slab_16_bytes@.end_addr
+                &&& post.slab_32_bytes@.start_addr == pre.slab_32_bytes@.start_addr
+                &&& post.slab_32_bytes@.end_addr == pre.slab_32_bytes@.end_addr
+                &&& post.slab_64_bytes@.start_addr == pre.slab_64_bytes@.start_addr
+                &&& post.slab_64_bytes@.end_addr == pre.slab_64_bytes@.end_addr
+                &&& post.slab_128_bytes@.start_addr == pre.slab_128_bytes@.start_addr
+                &&& post.slab_128_bytes@.end_addr == pre.slab_128_bytes@.end_addr
+                &&& post.slab_256_bytes@.start_addr == pre.slab_256_bytes@.start_addr
+                &&& post.slab_256_bytes@.end_addr == pre.slab_256_bytes@.end_addr
+                &&& post.slab_512_bytes@.start_addr == pre.slab_512_bytes@.start_addr
+                &&& post.slab_512_bytes@.end_addr == pre.slab_512_bytes@.end_addr
+                &&& post.slab_8_bytes@.allocated_addrs == if tier == SlabSize::Slab8 {
+                    pre.slab_8_bytes@.allocated_addrs.insert(addr)
+                } else { pre.slab_8_bytes@.allocated_addrs }
+                &&& post.slab_16_bytes@.allocated_addrs == if tier == SlabSize::Slab16 {
+                    pre.slab_16_bytes@.allocated_addrs.insert(addr)
+                } else { pre.slab_16_bytes@.allocated_addrs }
+                &&& post.slab_32_bytes@.allocated_addrs == if tier == SlabSize::Slab32 {
+                    pre.slab_32_bytes@.allocated_addrs.insert(addr)
+                } else { pre.slab_32_bytes@.allocated_addrs }
+                &&& post.slab_64_bytes@.allocated_addrs == if tier == SlabSize::Slab64 {
+                    pre.slab_64_bytes@.allocated_addrs.insert(addr)
+                } else { pre.slab_64_bytes@.allocated_addrs }
+                &&& post.slab_128_bytes@.allocated_addrs == if tier == SlabSize::Slab128 {
+                    pre.slab_128_bytes@.allocated_addrs.insert(addr)
+                } else { pre.slab_128_bytes@.allocated_addrs }
+                &&& post.slab_256_bytes@.allocated_addrs == if tier == SlabSize::Slab256 {
+                    pre.slab_256_bytes@.allocated_addrs.insert(addr)
+                } else { pre.slab_256_bytes@.allocated_addrs }
+                &&& post.slab_512_bytes@.allocated_addrs == if tier == SlabSize::Slab512 {
+                    pre.slab_512_bytes@.allocated_addrs.insert(addr)
+                } else { pre.slab_512_bytes@.allocated_addrs }
+                &&& (tier == SlabSize::Slab8 ==> pre.slab_8_bytes@.free_addrs.contains(addr))
+                &&& (tier == SlabSize::Slab16 ==> pre.slab_16_bytes@.free_addrs.contains(addr))
+                &&& (tier == SlabSize::Slab32 ==> pre.slab_32_bytes@.free_addrs.contains(addr))
+                &&& (tier == SlabSize::Slab64 ==> pre.slab_64_bytes@.free_addrs.contains(addr))
+                &&& (tier == SlabSize::Slab128 ==> pre.slab_128_bytes@.free_addrs.contains(addr))
+                &&& (tier == SlabSize::Slab256 ==> pre.slab_256_bytes@.free_addrs.contains(addr))
+                &&& (tier == SlabSize::Slab512 ==> pre.slab_512_bytes@.free_addrs.contains(addr))
+                &&& (tier == SlabSize::Slab8 ==> addr as int % 8 == 0)
+                &&& (tier == SlabSize::Slab16 ==> addr as int % 16 == 0)
+                &&& (tier == SlabSize::Slab32 ==> addr as int % 32 == 0)
+                &&& (tier == SlabSize::Slab64 ==> addr as int % 64 == 0)
+                &&& (tier == SlabSize::Slab128 ==> addr as int % 128 == 0)
+                &&& (tier == SlabSize::Slab256 ==> addr as int % 256 == 0)
+                &&& (tier == SlabSize::Slab512 ==> addr as int % 512 == 0)
+                &&& post.alloc_map@ == pre.alloc_map@.insert(addr as int, size as nat)
+                &&& !pre.alloc_map@.dom().contains(addr as int)
+                &&& 0 < addr
+            },
+            Err(_) => {
+                &&& post.slab_8_bytes.inv()
+                &&& post.slab_16_bytes.inv()
+                &&& post.slab_32_bytes.inv()
+                &&& post.slab_64_bytes.inv()
+                &&& post.slab_128_bytes.inv()
+                &&& post.slab_256_bytes.inv()
+                &&& post.slab_512_bytes.inv()
+                &&& post.slab_8_bytes@ == pre.slab_8_bytes@
+                &&& post.slab_16_bytes@ == pre.slab_16_bytes@
+                &&& post.slab_32_bytes@ == pre.slab_32_bytes@
+                &&& post.slab_64_bytes@ == pre.slab_64_bytes@
+                &&& post.slab_128_bytes@ == pre.slab_128_bytes@
+                &&& post.slab_256_bytes@ == pre.slab_256_bytes@
+                &&& post.slab_512_bytes@ == pre.slab_512_bytes@
+                &&& post.alloc_map@ == pre.alloc_map@
+                &&& (tier == SlabSize::Slab8 ==> pre.slab_8_bytes@.free_addrs =~= Set::<usize>::empty())
+                &&& (tier == SlabSize::Slab16 ==> pre.slab_16_bytes@.free_addrs =~= Set::<usize>::empty())
+                &&& (tier == SlabSize::Slab32 ==> pre.slab_32_bytes@.free_addrs =~= Set::<usize>::empty())
+                &&& (tier == SlabSize::Slab64 ==> pre.slab_64_bytes@.free_addrs =~= Set::<usize>::empty())
+                &&& (tier == SlabSize::Slab128 ==> pre.slab_128_bytes@.free_addrs =~= Set::<usize>::empty())
+                &&& (tier == SlabSize::Slab256 ==> pre.slab_256_bytes@.free_addrs =~= Set::<usize>::empty())
+                &&& (tier == SlabSize::Slab512 ==> pre.slab_512_bytes@.free_addrs =~= Set::<usize>::empty())
+            },
+        },
+    ensures
+        post.inv(),
+        match result {
+            Ok(ptr) => {
+                let addr = ptr as usize;
+                &&& post@ == pre@.spec_allocate(addr as int, size as nat)
+                &&& addr as int % align as int == 0
+            },
+            Err(_) => {
+                &&& post@ == pre@
+                &&& !(pre.alloc_map@ =~= Map::<int, nat>::empty())
+            },
+        },
+{
+    match result {
+        Ok(ptr) => {
+            let addr = ptr as usize;
+            Kheap::lemma_allocate_ok(pre, post, tier, addr, size, align);
+        },
+        Err(_) => {
+            Kheap::lemma_allocate_err(pre, post, tier);
+        },
+    }
+}
+
 proof fn lemma_alloc_forward(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize, size: usize)
     requires
         pre.inv(),
