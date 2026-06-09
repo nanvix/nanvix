@@ -330,9 +330,12 @@ impl RamFs {
     /// # Note
     ///
     /// The RAMFS registers at GPA `0xC` and GPA `0x10` fall inside the kernel ELF's `.zero`
-    /// section (`LOAD` segment at GPA `0x0` with `MemSiz=0x8000`). The ELF loader zero-fills
-    /// this range when `load_kernel()` runs. This method must therefore execute **after** the
-    /// ELF has been loaded, so that the VMM-written values are not overwritten.
+    /// section (`LOAD` segment at GPA `0x0` with `MemSiz=0x8000`), which `load_kernel()`
+    /// zero-fills by default. This method must therefore execute **after** the ELF has been
+    /// loaded, so that the VMM-written values are not overwritten. (With the
+    /// `nightly-performance-optimizations` feature the loader skips that zeroing and relies on
+    /// the freshly allocated guest memory already being zero, but running after `load_kernel()`
+    /// remains correct.)
     ///
     /// # Parameters
     ///
