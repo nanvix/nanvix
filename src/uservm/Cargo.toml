@@ -63,6 +63,11 @@ whp = ["microvm", "config/whp"]
 # Enables fine-grained time profiling.
 profile-time = ["dep:serde_json"]
 timestamp-messages = ["profiler/timestamp-messages"]
+# Enables nightly performance optimizations that trade defensive guarantees for
+# speed. Enabled automatically for release builds (RELEASE=yes). Currently this
+# skips zero-filling the BSS region of loaded ELF segments, relying on the VMM
+# backends allocating zero-filled guest physical memory.
+nightly-performance-optimizations = []
 
 [lints]
 workspace = true
