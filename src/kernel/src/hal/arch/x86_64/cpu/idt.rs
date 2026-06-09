@@ -235,7 +235,8 @@ pub unsafe fn init() {
     IDT[INT_OFF as usize + 15] =
         idt_entry!(_do_hwint15, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
     // Set system call hook.
-    IDT[128] = idt_entry!(_do_kcall, DescriptorPrivilegeLevel::Ring3, GateType::Int32);
+    IDT[::sys::number::KCALL_VECTOR as usize] =
+        idt_entry!(_do_kcall, DescriptorPrivilegeLevel::Ring3, GateType::Int32);
 
     // Load IDT.
     IDTR.init(
