@@ -18,3 +18,13 @@ pub use manager::{
     ProcessManager,
     SleepError,
 };
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+/// Runs all in-kernel unit tests for the process module.
+#[cfg(feature = "test")]
+pub(super) fn test() -> bool {
+    state::test()
+}
