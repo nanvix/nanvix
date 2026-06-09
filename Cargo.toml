@@ -70,6 +70,7 @@ members = [
         "src/tests/dlfcn-rust",
         "src/tests/env-rust-nostd",
         "src/tests/file-rust",
+        "src/tests/test-fork-kcall",
         "src/tests/linux-app",
         "src/tests/memory-rust",
         "src/tests/misc-rust",

@@ -260,3 +260,162 @@ pub unsafe fn write_tda_u32(offset: u32, val: u32) {
         );
     }
 }
+
+//==================================================================================================
+// Fork Support
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Sentinel value returned by [`fork_save_context()`] when the saved context is resumed in the
+/// child.
+///
+pub const FORK_CHILD_SENTINEL: i32 = 1;
+
+///
+/// # Description
+///
+/// Minimal machine context captured by [`fork_save_context()`] and restored by the fork trampoline
+/// (see [`fork_trampoline_address()`]).
+///
+/// Only the callee-saved registers, the stack pointer and the resume address are stored. The
+/// caller-saved registers do not need to be preserved across the `fork()` boundary because the
+/// compiler already treats [`fork_save_context()`] as an opaque function call.
+///
+/// The field layout is mirrored by the assembly routines below and must not be reordered.
+///
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct ForkContext {
+    /// Saved `EBX` register (offset 0).
+    ebx: u32,
+    /// Saved `ESI` register (offset 4).
+    esi: u32,
+    /// Saved `EDI` register (offset 8).
+    edi: u32,
+    /// Saved `EBP` register (offset 12).
+    ebp: u32,
+    /// Saved `ESP` register (offset 16).
+    esp: u32,
+    /// Saved instruction pointer to resume at (offset 20).
+    eip: u32,
+}
+
+impl ForkContext {
+    /// Byte offset of the `ebx` field.
+    const OFFSET_EBX: usize = ::core::mem::offset_of!(Self, ebx);
+    /// Byte offset of the `esi` field.
+    const OFFSET_ESI: usize = ::core::mem::offset_of!(Self, esi);
+    /// Byte offset of the `edi` field.
+    const OFFSET_EDI: usize = ::core::mem::offset_of!(Self, edi);
+    /// Byte offset of the `ebp` field.
+    const OFFSET_EBP: usize = ::core::mem::offset_of!(Self, ebp);
+    /// Byte offset of the `esp` field.
+    const OFFSET_ESP: usize = ::core::mem::offset_of!(Self, esp);
+    /// Byte offset of the `eip` field.
+    const OFFSET_EIP: usize = ::core::mem::offset_of!(Self, eip);
+}
+
+// The assembly routines below assume a tightly packed, naturally ordered layout. These static
+// assertions guard that the Rust layout stays in lock-step with the kernel-facing ABI.
+::static_assert::assert_eq_size!(ForkContext, 24);
+::static_assert::assert_eq_align!(ForkContext, 4);
+::static_assert::assert_eq!(ForkContext::OFFSET_EBX == 0);
+::static_assert::assert_eq!(ForkContext::OFFSET_ESI == 4);
+::static_assert::assert_eq!(ForkContext::OFFSET_EDI == 8);
+::static_assert::assert_eq!(ForkContext::OFFSET_EBP == 12);
+::static_assert::assert_eq!(ForkContext::OFFSET_ESP == 16);
+::static_assert::assert_eq!(ForkContext::OFFSET_EIP == 20);
+
+::core::arch::global_asm!(
+    r#"
+    .global fork_save_context
+    .global fork_trampoline
+    .type fork_save_context, @function
+    .type fork_trampoline, @function
+
+    fork_save_context:
+        #
+        # i32 fork_save_context(ForkContext *ctx)
+        #
+        # Captures the calling thread's resumable context into *ctx and returns 0. When the saved
+        # context is later resumed in the child (see fork_trampoline), execution continues as if
+        # this function had returned 1 instead.
+        #
+        mov eax, [esp + 4]              # EAX = ctx (first argument)
+        mov [eax + {OFFSET_EBX}], ebx   # ctx->ebx = EBX
+        mov [eax + {OFFSET_ESI}], esi   # ctx->esi = ESI
+        mov [eax + {OFFSET_EDI}], edi   # ctx->edi = EDI
+        mov [eax + {OFFSET_EBP}], ebp   # ctx->ebp = EBP
+        lea ecx, [esp + 4]              # ECX = caller's ESP after this function returns
+        mov [eax + {OFFSET_ESP}], ecx   # ctx->esp = ECX
+        mov ecx, [esp]                  # ECX = return address into the caller
+        mov [eax + {OFFSET_EIP}], ecx   # ctx->eip = ECX
+        xor eax, eax                    # return 0 in the parent (PARENT_CONTINUE)
+        ret
+
+    fork_trampoline:
+        #
+        # Entry point of the child's main thread.
+        #
+        # The kernel enters a freshly forged user thread with its first argument in EDX (see the
+        # create-thread ABI). Here that argument is the address of the parent's ForkContext, which
+        # lives in the child's copy-on-write copy of the parent's stack. This stub restores that
+        # context, so the child resumes exactly where fork_save_context() was called, observing a
+        # return value of CHILD_RESUME (1).
+        #
+        # No return address is on the stack at entry and the stack is abandoned immediately, so no
+        # stack-alignment setup is required.
+        #
+        mov eax, edx                    # EAX = ctx (passed in EDX by the kernel)
+        mov ebx, [eax + {OFFSET_EBX}]   # EBX = ctx->ebx
+        mov esi, [eax + {OFFSET_ESI}]   # ESI = ctx->esi
+        mov edi, [eax + {OFFSET_EDI}]   # EDI = ctx->edi
+        mov ebp, [eax + {OFFSET_EBP}]   # EBP = ctx->ebp
+        mov ecx, [eax + {OFFSET_EIP}]   # ECX = ctx->eip (resume address)
+        mov esp, [eax + {OFFSET_ESP}]   # ESP = ctx->esp (switch to the duplicated parent stack)
+        mov eax, {CHILD_RESUME}         # observed return value of fork_save_context() = CHILD_RESUME
+        jmp ecx                         # resume in the child just after fork_save_context()
+    "#,
+    OFFSET_EBX = const ForkContext::OFFSET_EBX,
+    OFFSET_ESI = const ForkContext::OFFSET_ESI,
+    OFFSET_EDI = const ForkContext::OFFSET_EDI,
+    OFFSET_EBP = const ForkContext::OFFSET_EBP,
+    OFFSET_ESP = const ForkContext::OFFSET_ESP,
+    OFFSET_EIP = const ForkContext::OFFSET_EIP,
+    CHILD_RESUME = const FORK_CHILD_SENTINEL,
+);
+
+unsafe extern "C" {
+    /// Captures the calling thread's resumable context. See the assembly routine above.
+    ///
+    /// Returns `0` in the parent when the snapshot is taken, and [`FORK_CHILD_SENTINEL`] in the
+    /// child when execution later resumes from the snapshot.
+    ///
+    /// # Safety
+    ///
+    /// `ctx` must point to a valid, properly aligned [`ForkContext`]. This function must be called
+    /// directly from the frame that is meant to resume in the child, because the child resumes at
+    /// the return site within that caller; wrapping it in an intermediate frame that is later
+    /// popped would leave the child resuming into reclaimed stack.
+    pub fn fork_save_context(ctx: *mut ForkContext) -> i32;
+
+    /// Entry point of the child's main thread. See the assembly routine above.
+    fn fork_trampoline();
+}
+
+///
+/// # Description
+///
+/// Returns the address of the child's main-thread entry trampoline, suitable for use as the
+/// `user_fn` of a duplicate kernel call. The trampoline expects the address of the parent's
+/// [`ForkContext`] as its first argument.
+///
+/// # Returns
+///
+/// The address of the fork trampoline.
+///
+pub fn fork_trampoline_address() -> usize {
+    fork_trampoline as *const () as usize
+}
