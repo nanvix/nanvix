@@ -88,6 +88,7 @@ use ::sys::{
     event::{
         Event,
         ProcessCreationInfo,
+        ProcessTerminationInfo,
     },
     ipc::{
         Message,
@@ -165,6 +166,13 @@ pub struct ProcessManager {
     /// creation/duplication paths apply backpressure (failing the syscall) when the queue is full,
     /// so it cannot grow without bound if publication stalls.
     pending_creations: VecDeque<ProcessCreationInfo>,
+    /// Harvested zombie processes whose termination has not yet been published as a scheduling
+    /// event. Drained by the kernel main loop, where no reference to the process manager is held,
+    /// so that subscribers can be woken safely. Mirrors `pending_creations` so that termination
+    /// notifications are retried (rather than silently dropped) when the scheduling-event queue is
+    /// momentarily saturated. Bounded by the number of live processes, which is itself capped at
+    /// [`config::kernel::MAX_PROCESSES`].
+    pending_terminations: VecDeque<ProcessTerminationInfo>,
 }
 
 impl ProcessManager {
@@ -199,6 +207,7 @@ impl ProcessManager {
             number_buffered_messages: 0,
             deferred_reap: Vec::new(),
             pending_creations: VecDeque::new(),
+            pending_terminations: VecDeque::new(),
         }
     }
 
@@ -2165,6 +2174,51 @@ impl ProcessManager {
     ///
     pub fn requeue_pending_creation(&mut self, info: ProcessCreationInfo) {
         self.pending_creations.push_front(info);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Records a harvested process termination so the kernel main loop can publish a
+    /// process-termination scheduling event. Buffering the record (rather than notifying inline)
+    /// lets the main loop apply the same retry/backpressure as process creation, so termination
+    /// events are not lost when the scheduling-event queue is momentarily full.
+    ///
+    /// # Parameters
+    ///
+    /// - `info`: The process-termination record to buffer.
+    ///
+    pub fn push_pending_termination(&mut self, info: ProcessTerminationInfo) {
+        self.pending_terminations.push_back(info);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Removes and returns the next pending process-termination record, if any. The kernel main
+    /// loop drains these records to publish process-termination scheduling events to subscribers.
+    ///
+    /// # Returns
+    ///
+    /// The next pending [`ProcessTerminationInfo`], or [`None`] if there are no pending records.
+    ///
+    pub fn take_pending_termination(&mut self) -> Option<ProcessTerminationInfo> {
+        self.pending_terminations.pop_front()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Re-queues a process-termination record at the front of the pending queue. Used by the
+    /// kernel main loop to restore a record whose publication failed, so that it is retried later
+    /// instead of being lost.
+    ///
+    /// # Parameters
+    ///
+    /// - `info`: The process-termination record to re-queue.
+    ///
+    pub fn requeue_pending_termination(&mut self, info: ProcessTerminationInfo) {
+        self.pending_terminations.push_front(info);
     }
 
     pub fn harvest_zombies(
