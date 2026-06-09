@@ -116,6 +116,12 @@ impl OperationId {
     /// collide with any live operation.
     pub const INVALID: Self = Self(u32::MAX);
 
+    /// Size in bytes of the little-endian wire representation of an `OperationId`.
+    ///
+    /// Matches the length of the array produced by [`to_le_bytes`](Self::to_le_bytes)
+    /// and consumed by [`from_le_bytes`](Self::from_le_bytes).
+    pub const SERIALIZED_SIZE: usize = core::mem::size_of::<u32>();
+
     /// Creates a new operation identifier from a raw `u32` value.
     ///
     /// This is crate-internal: only [`get_op_id`] and [`OperationIdAllocator`] should
