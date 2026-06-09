@@ -34,17 +34,17 @@ use ::sys::error::{
 // Constants
 //==================================================================================================
 
-#[verus_verify]
-pub const NUM_OF_SLABS: usize = 7;
+verus! {
+const NUM_OF_SLABS: usize = 7;
 
-#[verus_verify]
-pub const SLAB_COUNT: usize = 32;
-#[verus_verify]
-pub const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
-#[verus_verify]
-pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
-#[verus_verify]
+pub(super) const SLAB_COUNT: usize = 32;
+
+const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
+
+pub(crate) closed const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
+
 const MAX_SLAB_SIZE: usize = 512;
+}
 
 //==================================================================================================
 //  Structures
