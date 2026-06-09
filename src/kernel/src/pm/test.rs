@@ -875,5 +875,6 @@ pub fn test() -> bool {
     passed &= run_test!(test_cow_resolution_fast_path_when_sole_owner);
     passed &= run_test!(test_link_user_pages_skips_preexisting_child_mappings);
     passed &= run_test!(test_link_user_pages_rolls_back_on_partial_failure);
+    passed &= super::process::test();
     passed
 }
