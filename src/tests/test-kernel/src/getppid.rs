@@ -40,6 +40,7 @@ use ::sys::{
     },
     mm::VirtualAddress,
     pm::{
+        Capability,
         ProcessIdentifier,
         ThreadCreateArgs,
     },
@@ -193,8 +194,17 @@ fn test_getppid_reports_parent() -> Result<(), Error> {
     // spinning process or leak the stack allocation.
     let outcome: Result<(), Error> = observe_child_parent(parent_pid, child_pid);
 
-    // Tear down the child and reclaim the stack regardless of the interaction outcome.
-    let teardown: Result<(), Error> = pm::__kcall_terminate(child_pid);
+    // Tear down the child and reclaim the stack regardless of the interaction outcome. The
+    // process-management capability is acquired only for the termination and released afterwards.
+    let teardown: Result<(), Error> = match pm::__kcall_capctl(Capability::ProcessManagement, true)
+    {
+        Ok(()) => {
+            let result: Result<(), Error> = pm::__kcall_terminate(child_pid);
+            let _ = pm::__kcall_capctl(Capability::ProcessManagement, false);
+            result
+        },
+        Err(e) => Err(e),
+    };
     // SAFETY: `stack_ptr`/`layout` came from the matching `alloc::alloc::alloc` above and the
     // child is being terminated so it no longer references the parent's mapping of these pages.
     unsafe { ::alloc::alloc::dealloc(stack_ptr, layout) };

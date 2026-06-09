@@ -39,6 +39,7 @@ use ::sys::{
     },
     mm::VirtualAddress,
     pm::{
+        Capability,
         ProcessIdentifier,
         ThreadCreateArgs,
     },
@@ -227,13 +228,23 @@ fn test_duplicate_cow() -> Result<(), Error> {
         PATTERN_PARENT
     );
 
-    // Tear down the child and reclaim the stack.
-    pm::__kcall_terminate(child_pid)?;
+    // Acquire the process-management capability required to terminate the child, tear it down,
+    // then release the capability. The capability is always released and the stack always
+    // reclaimed, even if the termination fails.
+    let teardown: Result<(), Error> = match pm::__kcall_capctl(Capability::ProcessManagement, true)
+    {
+        Ok(()) => {
+            let result: Result<(), Error> = pm::__kcall_terminate(child_pid);
+            let _ = pm::__kcall_capctl(Capability::ProcessManagement, false);
+            result
+        },
+        Err(e) => Err(e),
+    };
     // SAFETY: `stack_ptr`/`layout` came from the matching `alloc::alloc::alloc` above and the
     // child is being terminated so it no longer references the parent's mapping of these pages.
     unsafe { ::alloc::alloc::dealloc(stack_ptr, layout) };
 
-    Ok(())
+    teardown
 }
 
 //==================================================================================================
