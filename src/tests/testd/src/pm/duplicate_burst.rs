@@ -5,8 +5,8 @@
 //!
 //! Stresses process creation by spawning many child processes in rapid bursts through the
 //! [`__kcall_duplicate`] kernel call. Every `duplicate()` emits a process-creation scheduling
-//! event, and every child exit emits a process-termination scheduling event. Both events flow
-//! through the kernel's pending-event buffers before being delivered to the owner of the
+//! event, and tearing each child down emits a process-termination scheduling event. Both events
+//! flow through the kernel's pending-event buffers before being delivered to the owner of the
 //! scheduling-event class (the process manager daemon, `procd`).
 //!
 //! ## Timing and buffering
@@ -17,28 +17,25 @@
 //! events faster than `procd` can consume them, exercising the kernel-side buffering
 //! (`pending_creations`, `pending_terminations`, the per-event `pending_scheduling` queues, and
 //! zombie harvesting). If that buffering were insufficient, events would be lost or the kernel
-//! would become unstable under the burst. The test asserts that every child is created and runs,
-//! which only holds if the buffers
-//! absorb the burst correctly.
+//! would become unstable under the burst.
+//!
+//! ## Verification
+//!
+//! The burst children perform no inter-process communication: they simply spin until the parent
+//! terminates them. This keeps the parent's mailbox empty for the duration of the burst, which is
+//! required because `duplicate()` refuses a caller that owns special resources (including a
+//! non-empty mailbox). Tearing each child down with [`__kcall_terminate`] then both confirms that
+//! the kernel tracked every burst-created process — a child lost to a buffer overflow would fail
+//! with `NoSuchProcess` — and reaps the spinning children, so the buffers are validated end to
+//! end.
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
 use ::arch::mem::PAGE_SIZE;
-use ::core::sync::atomic::{
-    AtomicU32,
-    Ordering,
-};
 use ::sys::{
-    ipc::{
-        Message,
-        MessageReceiver,
-        MessageSender,
-        MessageType,
-    },
     kcall::{
-        ipc,
         mm,
         pm,
         sched,
@@ -57,9 +54,6 @@ use ::sys::{
 //==================================================================================================
 // Constants
 //==================================================================================================
-
-/// Ordering used for all atomic operations.
-const ORDER: Ordering = Ordering::SeqCst;
 
 /// Number of children spawned simultaneously in a single burst.
 const BURST_BATCH: usize = 8;
@@ -87,14 +81,6 @@ const STACK_REGION_BASE: usize = ::config::memory_layout::USER_MMAP_END_RAW;
 );
 
 //==================================================================================================
-// Global State
-//==================================================================================================
-
-/// Parent process identifier, published before the burst so that each child can recover it from its
-/// copy-on-write inherited memory image.
-static PARENT_PID_RAW: AtomicU32 = AtomicU32::new(0);
-
-//==================================================================================================
 // Child Entry Point
 //==================================================================================================
 
@@ -107,36 +93,10 @@ fn spin() -> ! {
 
 /// Entry point for a child process spawned by the burst.
 ///
-/// The child recovers its own and the parent's identifiers, sends a single acknowledgement back to
-/// the parent to prove that it was created and actually executed, then exits voluntarily with a
-/// success status.
+/// The child performs no inter-process communication, so the parent's mailbox stays empty for the
+/// whole burst (`duplicate()` refuses a caller that owns special resources such as a non-empty
+/// mailbox). It simply spins, yielding the processor, until the parent terminates it.
 extern "C" fn burst_child_entry(_arg: usize) -> usize {
-    let my_pid: ProcessIdentifier = match pm::__kcall_getpid() {
-        Ok(pid) => pid,
-        Err(_) => spin(),
-    };
-    let parent_pid: ProcessIdentifier =
-        match ProcessIdentifier::try_from(PARENT_PID_RAW.load(ORDER)) {
-            Ok(pid) => pid,
-            Err(_) => spin(),
-        };
-
-    // Acknowledge creation to the parent.
-    let ack: Message = Message::new(
-        MessageSender::from(my_pid),
-        MessageReceiver::from(parent_pid),
-        MessageType::Ipc,
-        None,
-        [0u8; Message::PAYLOAD_SIZE],
-    );
-    let _ = ipc::__kcall_send(&ack);
-
-    // Exit voluntarily with a success status. Using a clean exit (rather than being force-
-    // terminated by the parent) keeps the child's termination status at zero and lets `procd`
-    // reap it as an ordinary runtime-spawned child instead of treating it as a shutdown trigger.
-    let _ = pm::__kcall_exit(0);
-
-    // `exit()` does not return; spin as a defensive fallback.
     spin()
 }
 
@@ -148,7 +108,7 @@ extern "C" fn burst_child_entry(_arg: usize) -> usize {
 /// # Description
 ///
 /// Spawns many child processes in rapid bursts via [`__kcall_duplicate`] and verifies that every
-/// child is created and runs.
+/// burst-created child is tracked by the kernel and can be torn down.
 ///
 /// # Returns
 ///
@@ -159,14 +119,16 @@ fn test_duplicate_burst() -> bool {
         Ok(pid) => pid,
         Err(_) => return false,
     };
-    let raw_parent_pid: u32 = match u32::try_from(parent_pid) {
-        Ok(value) => value,
-        Err(_) => return false,
-    };
-    PARENT_PID_RAW.store(raw_parent_pid, ORDER);
 
-    // Acquire memory management capability for mapping child stacks.
-    if ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, true).is_err() {
+    // Acquire the memory-management capability for mapping child stacks.
+    if pm::__kcall_capctl(Capability::MemoryManagement, true).is_err() {
+        return false;
+    }
+
+    // Acquire the process-management capability for tearing the spawned children down. Release the
+    // memory-management capability again if this fails so that no capability leaks to later tests.
+    if pm::__kcall_capctl(Capability::ProcessManagement, true).is_err() {
+        let _ = pm::__kcall_capctl(Capability::MemoryManagement, false);
         return false;
     }
 
@@ -175,7 +137,10 @@ fn test_duplicate_burst() -> bool {
     'rounds: for _round in 0..BURST_ROUNDS {
         let mut children: [Option<ProcessIdentifier>; BURST_BATCH] = [None; BURST_BATCH];
 
-        // Phase 1: burst-spawn a batch of children as fast as possible.
+        // Phase 1: burst-spawn a batch of spinning children as fast as possible. The children
+        // perform no IPC, so the parent's mailbox stays empty for the whole burst and every
+        // duplicate() is accepted regardless of how the children interleave with the parent
+        // (duplicate() refuses a caller that owns special resources such as a non-empty mailbox).
         for (i, child_slot) in children.iter_mut().enumerate() {
             let stack_base: VirtualAddress =
                 VirtualAddress::from_raw_value(STACK_REGION_BASE + i * STACK_BYTES);
@@ -205,36 +170,23 @@ fn test_duplicate_burst() -> bool {
             }
         }
 
-        // Phase 2: collect exactly one acknowledgement per spawned child.
-        if success {
-            let spawned: usize = children.iter().filter(|child| child.is_some()).count();
-            for _ in 0..spawned {
-                match ipc::__kcall_recv() {
-                    Ok(message) => {
-                        let message_type: MessageType = { message.message_type };
-                        if message_type != MessageType::Ipc {
-                            success = false;
-                            break;
-                        }
-                    },
-                    Err(_) => {
-                        success = false;
-                        break;
-                    },
-                }
+        // Phase 2: tear down the batch by terminating every spawned child. A successful
+        // terminate() confirms that the kernel tracked the process across the burst (a child lost
+        // to a buffer overflow would fail with `NoSuchProcess`) and reaps the spinning child.
+        // These children were created by a user process rather than the kernel, so `procd` reaps
+        // them without triggering a system shutdown.
+        for child in children.iter().flatten() {
+            if pm::__kcall_terminate(*child).is_err() {
+                success = false;
             }
         }
 
-        // Phase 3: tear down the batch. Each child has already exited voluntarily after
-        // acknowledging its creation, so there is no need to force-terminate it here; simply
-        // reclaim the stack mappings owned by the parent. The children run in their own
-        // copy-on-write address spaces, so unmapping the parent's mappings cannot disturb a child
-        // that is still in the process of exiting.
-        //
-        // `mmap()` reserves `STACK_PAGES` pages per stack in a single call, but `munmap()` unmaps a
-        // single page at a time, so every page of every stack must be released individually.
-        // Otherwise the trailing pages leak and collide with the next round's mappings. A failed
-        // unmap means a page leaked, so fail the test.
+        // Phase 3: reclaim the stack mappings owned by the parent. `mmap()` reserves `STACK_PAGES`
+        // pages per stack in a single call, but `munmap()` unmaps a single page at a time, so every
+        // page of every stack must be released individually. Otherwise the trailing pages leak and
+        // collide with the next round's mappings. A failed unmap means a page leaked, so fail the
+        // test. The children run in their own copy-on-write address spaces, so releasing the
+        // parent's mappings cannot disturb them.
         for i in 0..BURST_BATCH {
             for page in 0..STACK_PAGES {
                 let page_addr: usize = STACK_REGION_BASE + i * STACK_BYTES + page * PAGE_SIZE;
@@ -251,8 +203,13 @@ fn test_duplicate_burst() -> bool {
         }
     }
 
-    // Release memory management capability.
-    if ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, false).is_err() {
+    // Release the process-management capability.
+    if pm::__kcall_capctl(Capability::ProcessManagement, false).is_err() {
+        success = false;
+    }
+
+    // Release the memory-management capability.
+    if pm::__kcall_capctl(Capability::MemoryManagement, false).is_err() {
         success = false;
     }
 
