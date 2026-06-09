@@ -3217,6 +3217,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-fork-kcall"
+version = "0.16.26"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "syslog",
+]
+
+[[package]]
 name = "test-kernel"
 version = "0.16.26"
 dependencies = [
