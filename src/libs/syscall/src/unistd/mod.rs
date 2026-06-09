@@ -32,6 +32,7 @@ cfg_if::cfg_if! {
             geteuid,
             getgid,
             getpid,
+            getppid,
             getuid,
             gethostname,
             link,
