@@ -269,6 +269,10 @@ pub enum SystemCallMessageHeader {
     HostMountResponse,
     HostUmountRequestPart,
     HostUmountResponse,
+    // New variants must be appended here to preserve the on-the-wire discriminant
+    // values of existing variants (this enum is `#[repr(u16)]` with implicit,
+    // sequential discriminants used directly as IPC/IKC message tags).
+    HostFsReadDirResponsePart,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageHeader
 impl TryFrom<u16> for SystemCallMessageHeader {
@@ -399,6 +403,7 @@ impl TryFrom<u16> for SystemCallMessageHeader {
             x if x == HostFsStatResponse as u16 => Ok(HostFsStatResponse),
             x if x == HostFsReadDirRequest as u16 => Ok(HostFsReadDirRequest),
             x if x == HostFsReadDirResponse as u16 => Ok(HostFsReadDirResponse),
+            x if x == HostFsReadDirResponsePart as u16 => Ok(HostFsReadDirResponsePart),
             x if x == HostFsMkdirRequest as u16 => Ok(HostFsMkdirRequest),
             x if x == HostFsMkdirResponse as u16 => Ok(HostFsMkdirResponse),
             x if x == HostFsRmdirRequest as u16 => Ok(HostFsRmdirRequest),
@@ -452,6 +457,7 @@ impl SystemCallMessageHeader {
                 | Self::HostFsStatResponse
                 | Self::HostFsReadDirRequest
                 | Self::HostFsReadDirResponse
+                | Self::HostFsReadDirResponsePart
                 | Self::HostFsMkdirRequest
                 | Self::HostFsMkdirResponse
                 | Self::HostFsRmdirRequest
@@ -529,13 +535,14 @@ impl SystemCallMessageHeader {
 
     /// Returns `true` if this header is a hostfs response variant.
     ///
-    /// Note: `HostFsReadlinkResponsePart` is intentionally excluded because of its
-    /// framing, not because vfsd lacks a multi-part assembler (it now has one). For
-    /// these parts, bytes `[2..6]` carry `total_parts`/`part_number`, while the
-    /// logical op_id lives in the first 4 bytes of the assembled body. Treating
-    /// them as regular hostfs responses would make `get_op_id` read the framing
-    /// bytes and remove the wrong entry from the pending queue. They are dispatched
-    /// through `is_hostfs_multipart_response` and the dedicated assembler in vfsd.
+    /// Note: `HostFsReadlinkResponsePart` and `HostFsReadDirResponsePart` are
+    /// intentionally excluded because of their framing, not because vfsd lacks a
+    /// multi-part assembler (it now has one). For these parts, bytes `[2..6]` carry
+    /// `total_parts`/`part_number`, while the logical op_id lives in the first 4 bytes
+    /// of the assembled body. Treating them as regular hostfs responses would make
+    /// `get_op_id` read the framing bytes and remove the wrong entry from the pending
+    /// queue. They are dispatched through `is_hostfs_multipart_response` and the
+    /// dedicated assemblers in vfsd.
     pub fn is_hostfs_response(&self) -> bool {
         matches!(
             self,
@@ -561,7 +568,7 @@ impl SystemCallMessageHeader {
 
     /// Returns `true` if this header represents a *part* of a multi-part hostfs *response* stream.
     pub fn is_hostfs_multipart_response(&self) -> bool {
-        matches!(self, Self::HostFsReadlinkResponsePart)
+        matches!(self, Self::HostFsReadlinkResponsePart | Self::HostFsReadDirResponsePart)
     }
 }
 

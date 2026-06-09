@@ -361,20 +361,17 @@ pub(crate) enum GetdentsStep {
     Done,
 }
 
-/// Advances a getdents sweep with a single hostfs readdir response.
+/// Appends one directory entry to a getdents sweep and reports whether the sweep is done.
 ///
-/// Decodes one directory entry from `response_payload` and appends it to the op's
-/// buffer. A zero-length entry name marks end-of-directory. Returns whether another
-/// round-trip is required or the sweep is finished.
+/// Shared by the inline ([`step_getdents`]) and multi-part long-name readdir paths.
+/// `name` is the raw entry name (already extracted from whichever wire form delivered
+/// it). Names longer than the guest `NAME_MAX` cannot be represented in a `posix_dent`,
+/// so they are clamped (and a warning is logged) rather than corrupting the buffer.
 ///
 /// # Panics
 ///
-/// Panics if `op` is not a [`PendingOpKind::Getdents`]; callers must route only getdents
-/// ops here.
-pub(crate) fn step_getdents(
-    op: &mut PendingOp,
-    response_payload: &[u8; Message::PAYLOAD_SIZE],
-) -> GetdentsStep {
+/// Panics if `op` is not a [`PendingOpKind::Getdents`].
+pub(crate) fn push_getdents_entry(op: &mut PendingOp, name: &[u8], is_dir: bool) -> GetdentsStep {
     use ::sysapi::{
         dirent::{
             dirent_file_type,
@@ -391,32 +388,30 @@ pub(crate) fn step_getdents(
         ..
     } = &mut op.kind
     else {
-        unreachable!("step_getdents invoked with non-Getdents pending op");
+        unreachable!("push_getdents_entry invoked with non-Getdents pending op");
     };
 
-    let entry: ::hostfs_api::ReadDirEntry = ::hostfs_api::ReadDirEntry::decode(response_payload);
-
-    // A zero-length name marks the end of the directory.
-    if entry.name_len == 0 {
-        return GetdentsStep::Done;
+    let copy_len: usize = name.len().min(NAME_MAX);
+    if name.len() > NAME_MAX {
+        ::syslog::warn!(
+            "getdents: directory entry name exceeds NAME_MAX ({} > {}), clamping",
+            name.len(),
+            NAME_MAX
+        );
     }
-
-    // Inline names are bounded by the wire format; clamp to the guest NAME_MAX as well.
-    let name_len: usize = (entry.name_len as usize).min(::hostfs_api::MAX_DIR_ENTRY_NAME_LEN);
-    let copy_len: usize = name_len.min(NAME_MAX);
 
     let mut dent: posix_dent = posix_dent {
         // hostfs has no stable inode numbers; use a synthetic 1-based index.
         d_ino: (*next_offset as u64) + 1,
         d_reclen: core::mem::size_of::<posix_dent>() as u16,
-        d_type: if entry.is_dir != 0 {
+        d_type: if is_dir {
             dirent_file_type::DT_DIR
         } else {
             dirent_file_type::DT_REG
         },
         ..posix_dent::default()
     };
-    dent.d_name[..copy_len].copy_from_slice(&entry.name[..copy_len]);
+    dent.d_name[..copy_len].copy_from_slice(&name[..copy_len]);
     dent.d_name[copy_len] = 0;
     entries.push(dent);
 
@@ -430,6 +425,32 @@ pub(crate) fn step_getdents(
             offset: *next_offset,
         }
     }
+}
+
+/// Advances a getdents sweep with a single inline hostfs readdir response.
+///
+/// Decodes one directory entry from `response_payload` and appends it to the op's
+/// buffer. A zero-length entry name marks end-of-directory. Returns whether another
+/// round-trip is required or the sweep is finished. Long entry names are delivered via
+/// a multi-part stream and handled separately (see [`push_getdents_entry`]).
+///
+/// # Panics
+///
+/// Panics if `op` is not a [`PendingOpKind::Getdents`]; callers must route only getdents
+/// ops here.
+pub(crate) fn step_getdents(
+    op: &mut PendingOp,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+) -> GetdentsStep {
+    let entry: ::hostfs_api::ReadDirEntry = ::hostfs_api::ReadDirEntry::decode(response_payload);
+
+    // A zero-length name marks the end of the directory.
+    if entry.name_len == 0 {
+        return GetdentsStep::Done;
+    }
+
+    let name_len: usize = (entry.name_len as usize).min(::hostfs_api::MAX_DIR_ENTRY_NAME_LEN);
+    push_getdents_entry(op, &entry.name[..name_len], entry.is_dir != 0)
 }
 
 /// Finalizes a getdents sweep: persists the directory cursor and sends the response.
@@ -472,6 +493,149 @@ pub(crate) fn finish_getdents(op: PendingOp) {
             ::syslog::error!("finish_getdents: into_parts failed (error={:?})", e);
             send_response(&build_error(op.source_tid, ErrorCode::IoErr));
         },
+    }
+}
+
+/// Drives a getdents sweep forward after an entry (or end-of-directory) was processed.
+///
+/// On [`GetdentsStep::Continue`], issues the next readdir request reusing `op_id` and
+/// leaves the pending op buffered for the next response. On [`GetdentsStep::Done`],
+/// removes the op and sends the assembled directory listing. If issuing the next
+/// request fails, the pending op is cancelled so the caller is not left blocked.
+pub(crate) fn drive_getdents(queue: &mut PendingQueue, op_id: OperationId, step: GetdentsStep) {
+    match step {
+        GetdentsStep::Continue { remote_fd, offset } => {
+            if let Err(e) = crate::hostfs::send_readdir_request(remote_fd, offset, op_id) {
+                ::syslog::error!(
+                    "drive_getdents: send_readdir_request failed (op_id={}, remote_fd={}, \
+                     offset={}, error={:?})",
+                    op_id,
+                    remote_fd,
+                    offset,
+                    e
+                );
+                if let Some(op) = queue.remove(op_id) {
+                    cancel_pending_op(op, ErrorCode::IoErr);
+                }
+            }
+        },
+        GetdentsStep::Done => {
+            if let Some(op) = queue.remove(op_id) {
+                finish_getdents(op);
+            }
+        },
+    }
+}
+
+/// Accumulates one part of a multi-part hostfs *response* stream into `slot`.
+///
+/// Shared by the long-target `readlink` and long-name `readdir` response paths, which
+/// use identical framing: part 0 carries the op_id in its first 4 bytes, and the
+/// assembled body is the concatenation of every part's payload. `label` names the
+/// stream in log messages (e.g. `"readlink"`).
+///
+/// `slot` holds the single in-flight assembler (hostfsd's single-threaded worker
+/// guarantees at most one stream is in flight at a time). On a fresh
+/// `part_number == 0`, any incomplete stream already in `slot` is discarded and its
+/// pending op cancelled. Allocation or `add_part` failures also cancel the pending op
+/// and clear `slot`.
+///
+/// Returns `Some((body, op_id))` once the stream is complete and ready for dispatch,
+/// or `None` when more parts are required or the part was dropped (all error handling,
+/// including pending-op cancellation, is performed internally).
+pub(crate) fn accumulate_response_part(
+    slot: &mut Option<(::syscall::message::SystemCallLongMessage, OperationId)>,
+    queue: &mut PendingQueue,
+    part: ::syscall::message::SystemCallMessagePart,
+    label: &str,
+) -> Option<(::alloc::vec::Vec<u8>, OperationId)> {
+    // A fresh stream starts at part 0: validate, extract the op_id, drop any stale
+    // stream, and allocate the assembler.
+    if part.part_number == 0 {
+        if (part.payload_size as usize) < OperationId::SERIALIZED_SIZE {
+            ::syslog::error!(
+                "{} response part 0 too short to carry op_id (payload_size={})",
+                label,
+                part.payload_size
+            );
+            return None;
+        }
+        let op_id: OperationId = OperationId::from_le_bytes([
+            part.payload[0],
+            part.payload[1],
+            part.payload[2],
+            part.payload[3],
+        ]);
+        if let Some((_, stale_op_id)) = slot.take() {
+            ::syslog::warn!(
+                "discarding incomplete {} response stream on new part-0 arrival (cancelling stale \
+                 op_id={})",
+                label,
+                stale_op_id
+            );
+            if let Some(op) = queue.remove(stale_op_id) {
+                cancel_pending_op(op, ErrorCode::IoErr);
+            }
+        }
+        let capacity: usize = part.total_parts.max(1) as usize;
+        match ::syscall::message::SystemCallLongMessage::new(capacity) {
+            Ok(asm) => {
+                *slot = Some((asm, op_id));
+            },
+            Err(e) => {
+                // Allocation failure: cancel the caller now rather than letting the
+                // pending op linger until eviction.
+                ::syslog::error!(
+                    "failed to allocate {} response assembler (op_id={}, capacity={}, error={:?})",
+                    label,
+                    op_id,
+                    capacity,
+                    e
+                );
+                *slot = None;
+                if let Some(op) = queue.remove(op_id) {
+                    cancel_pending_op(op, ErrorCode::IoErr);
+                }
+                return None;
+            },
+        }
+    }
+
+    if let Some((asm, op_id)) = slot.as_mut() {
+        let op_id_copy: OperationId = *op_id;
+        if let Err(e) = asm.add_part(part) {
+            ::syslog::error!(
+                "failed to add {} response part (op_id={}, error={:?})",
+                label,
+                op_id_copy,
+                e
+            );
+            *slot = None;
+            if let Some(op) = queue.remove(op_id_copy) {
+                cancel_pending_op(op, ErrorCode::IoErr);
+            }
+            return None;
+        }
+        if asm.is_complete() {
+            let (asm_done, _) = slot.take().unwrap();
+            let mut body: ::alloc::vec::Vec<u8> = ::alloc::vec::Vec::new();
+            for p in asm_done.take_parts() {
+                let n: usize = p.payload_size as usize;
+                body.extend_from_slice(&p.payload[..n]);
+            }
+            return Some((body, op_id_copy));
+        }
+        None
+    } else {
+        // Copy the field out of the packed `SystemCallMessagePart` before logging:
+        // taking a reference to a misaligned packed field is undefined behavior.
+        let pn: u16 = part.part_number;
+        ::syslog::warn!(
+            "{} response part received without active assembler (part_number={})",
+            label,
+            pn
+        );
+        None
     }
 }
 

@@ -14,7 +14,9 @@
 //! - listing completeness and per-entry type reporting (directory vs. regular file);
 //! - cursor resumption across many single-entry `readdir` calls (no duplicates or skips);
 //! - the multi-entry sweep's "requested count reached" vs. "directory exhausted" exits;
-//! - rejection of `getdents` on a non-directory hostfs FD (ENOTDIR).
+//! - rejection of `getdents` on a non-directory hostfs FD (ENOTDIR);
+//! - full round-trip of entry names that exceed the inline `ReadDirEntry` capacity,
+//!   delivered via the multi-part long-name response path (this change's core fix).
 
 use ::core::ffi::CStr;
 use ::sys::error::{
@@ -56,6 +58,7 @@ use ::syscall::safe::{
     FileType,
 };
 use alloc::{
+    format,
     string::{
         String,
         ToString,
@@ -71,6 +74,7 @@ const ITERATION_GUARD: usize = 128;
 
 pub fn test() -> Result<(), Error> {
     test_list_and_types()?;
+    test_long_names()?;
     test_empty_directory()?;
     test_sweep_count_and_eof()?;
     test_getdents_on_regular_file_fails()?;
@@ -92,6 +96,96 @@ fn dent_name(dent: &posix_dent) -> Option<String> {
     ::core::str::from_utf8(cstr.to_bytes())
         .ok()
         .map(ToString::to_string)
+}
+
+/// Largest entry name that still fits in the inline `ReadDirEntry` name field.
+///
+/// Entries up to this length use the single-message readdir fast path, while longer ones
+/// are delivered via the multi-part `HostFsReadDirResponsePart` stream that this change
+/// adds.
+const INLINE_NAME_CAP: usize = ::hostfs_api::MAX_DIR_ENTRY_NAME_LEN;
+
+/// Asserts that `listing` contains exactly one entry equal to `name` with the `expected`
+/// type.
+///
+/// Matching on the full string is the round-trip check: a name truncated to the inline cap
+/// (the pre-change behavior) would no longer compare equal and would surface here as a
+/// missing entry.
+fn expect_entry(listing: &[(String, FileType)], name: &str, expected: FileType) {
+    let mut found: usize = 0;
+    let mut type_ok: bool = false;
+    for (entry_name, entry_type) in listing {
+        if entry_name == name {
+            found += 1;
+            type_ok = *entry_type == expected;
+        }
+    }
+    if found != 1 {
+        panic!("expected exactly one entry of length {}, found {found}", name.len());
+    }
+    if !type_ok {
+        panic!("entry of length {} reported the wrong file type", name.len());
+    }
+}
+
+/// Lists a directory whose entries have names longer than the inline `ReadDirEntry`
+/// capacity and verifies that the full names round-trip with the correct type.
+///
+/// This is the core behavior this change adds: an entry whose name exceeds
+/// `INLINE_NAME_CAP` (29 bytes) is returned as a multi-part `HostFsReadDirResponsePart`
+/// stream carrying the complete name, instead of being truncated to the inline field. vfsd
+/// reassembles each long entry and folds it into the in-progress getdents sweep, so a
+/// regression (a truncated or corrupted name, or a dropped entry) surfaces here as a name
+/// that fails to compare equal to the one created. A short name in the same directory keeps
+/// the single-message fast path, so listing the mix also proves the two paths coexist
+/// within one sweep. Distinct fill characters per name keep any truncated form from
+/// accidentally matching another entry.
+fn test_long_names() -> Result<(), Error> {
+    let dir: &str = "/mnt/readdir-longnames";
+    ::syscall::sys::stat::mkdir(dir, S_IRWXU)?;
+
+    // Largest name that still fits inline — exercises the single-message boundary.
+    let inline_max: String = "i".repeat(INLINE_NAME_CAP);
+    // One byte over the inline cap — the smallest name that needs the multi-part path.
+    let over_by_one: String = "o".repeat(INLINE_NAME_CAP + 1);
+    // A long file name spanning several response parts (well beyond one chunk).
+    let long_file: String = "f".repeat(184);
+    // A long *directory* name — verifies the entry type survives the multi-part path.
+    let long_dir: String = "d".repeat(120);
+
+    create_file(&format!("{dir}/{inline_max}"))?;
+    create_file(&format!("{dir}/{over_by_one}"))?;
+    create_file(&format!("{dir}/{long_file}"))?;
+    ::syscall::sys::stat::mkdir(&format!("{dir}/{long_dir}"), S_IRWXU)?;
+
+    let dirname: FileSystemPath = FileSystemPath::new(dir)?;
+    let mut handle: RawDirectory = opendir(&dirname)?;
+    let mut listing: Vec<(String, FileType)> = Vec::new();
+    while let Some(entry) = readdir(&mut handle)? {
+        listing.push((entry.file_name()?.to_string(), entry.file_type()));
+        if listing.len() > ITERATION_GUARD {
+            panic!("readdir did not terminate for {dir} (possible cursor bug)");
+        }
+    }
+    closedir(&handle)?;
+
+    // Exactly the four created entries — no `.`/`..`, no duplicates, none dropped.
+    if listing.len() != 4 {
+        panic!("expected exactly 4 entries in {dir}, found {}", listing.len());
+    }
+    expect_entry(&listing, &inline_max, FileType::RegularFile);
+    expect_entry(&listing, &over_by_one, FileType::RegularFile);
+    expect_entry(&listing, &long_file, FileType::RegularFile);
+    expect_entry(&listing, &long_dir, FileType::Directory);
+    ::syslog::info!("mount-test: [PASS] readdir returns full long entry names with correct types");
+
+    // Cleanup.
+    ::syscall::fcntl::unlinkat(AT_FDCWD, &format!("{dir}/{inline_max}"), 0)?;
+    ::syscall::fcntl::unlinkat(AT_FDCWD, &format!("{dir}/{over_by_one}"), 0)?;
+    ::syscall::fcntl::unlinkat(AT_FDCWD, &format!("{dir}/{long_file}"), 0)?;
+    ::syscall::fcntl::unlinkat(AT_FDCWD, &format!("{dir}/{long_dir}"), AT_REMOVEDIR)?;
+    ::syscall::fcntl::unlinkat(AT_FDCWD, dir, AT_REMOVEDIR)?;
+    Ok(())
 }
 
 /// Lists a directory and verifies every created entry is reported exactly once with the

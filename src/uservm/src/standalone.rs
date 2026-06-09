@@ -439,10 +439,11 @@ async fn standalone_io_handler(
                             // Build the first response message and any queued
                             // multi-part follow-ups together so the entire response
                             // stream is delivered before the next request is
-                            // processed. Hostfs multi-part responses (currently the
-                            // long-target `readlink` form) leave additional payloads
-                            // in the handler's queue that must be drained via
-                            // `take_next_response_part` immediately after the head.
+                            // processed. Hostfs multi-part responses (the long-target
+                            // `readlink` and long-name `readdir` forms) leave
+                            // additional payloads in the handler's queue that must be
+                            // drained via `take_next_response_part` immediately after
+                            // the head.
                             let mut response_payloads: std::vec::Vec<[u8; Message::PAYLOAD_SIZE]> =
                                 std::vec::Vec::new();
                             response_payloads.push(response_payload);
