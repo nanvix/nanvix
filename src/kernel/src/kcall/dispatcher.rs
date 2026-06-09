@@ -60,6 +60,11 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
     let result: KcallResult = match KcallNumber::from(number) {
         // Handle `getpid()` locally.
         KcallNumber::GetPid => KcallResult::Success(<i64>::from(pid).into()),
+        // Handle `getppid()` locally.
+        KcallNumber::GetPpid => {
+            let ppid: ProcessIdentifier = unsafe { ProcessManager::get() }.get_ppid();
+            KcallResult::Success(<i64>::from(ppid).into())
+        },
         // Handle `gettid()` locally.
         KcallNumber::GetTid => KcallResult::Success(<i64>::from(tid).into()),
         KcallNumber::Exit => {
