@@ -230,10 +230,20 @@ fn test_duplicate_burst() -> bool {
         // reclaim the stack mappings owned by the parent. The children run in their own
         // copy-on-write address spaces, so unmapping the parent's mappings cannot disturb a child
         // that is still in the process of exiting.
+        //
+        // `mmap()` reserves `STACK_PAGES` pages per stack in a single call, but `munmap()` unmaps a
+        // single page at a time, so every page of every stack must be released individually.
+        // Otherwise the trailing pages leak and collide with the next round's mappings. A failed
+        // unmap means a page leaked, so fail the test.
         for i in 0..BURST_BATCH {
-            let stack_base: VirtualAddress =
-                VirtualAddress::from_raw_value(STACK_REGION_BASE + i * STACK_BYTES);
-            let _ = mm::__kcall_munmap(parent_pid, stack_base);
+            for page in 0..STACK_PAGES {
+                let page_addr: usize = STACK_REGION_BASE + i * STACK_BYTES + page * PAGE_SIZE;
+                if mm::__kcall_munmap(parent_pid, VirtualAddress::from_raw_value(page_addr))
+                    .is_err()
+                {
+                    success = false;
+                }
+            }
         }
 
         if !success {
