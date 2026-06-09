@@ -22,6 +22,7 @@ nvx-crt0 = { workspace = true, features = ["rust-main", "provides-allocator"] }
 sysalloc = { workspace = true }
 proc = { workspace = true, features = ["syscall"] }
 config = { workspace = true }
+static_assert = { workspace = true }
 syslog = { workspace = true, default-features = true }
 
 [build-dependencies]
