@@ -1027,8 +1027,10 @@ SMOKE_TEST_MAGIC_STRING := hello, world!
 
 # Smoke test: boot the system image and verify correct behavior.
 # Only applicable in standalone mode (the smoke image bundles guest daemons).
-# - Release mode (RELEASE=yes): validates VM exits with the expected status code.
-# - Debug mode (RELEASE=no): validates the kernel magic string appears in console output.
+# - Release mode (RELEASE=yes): validates the VM exits with the expected status code.
+# - Debug mode (RELEASE=no): validates the kernel magic string appears in console
+#   output AND the VM exits with the expected status code (the magic string is
+#   compiled out of release builds, so it can only be checked in debug builds).
 #
 # Driven by a single cross-platform Python helper (scripts/run-smoke-test.py)
 # that auto-detects the host OS: on Linux it launches nanvixd against
@@ -1048,7 +1050,7 @@ ifeq ($(RELEASE),yes)
 	@echo "Running smoke test (expected exit code=$(SMOKE_TEST_EXPECTED_EXIT_CODE))..."
 	@$(SMOKE_TEST_CMD) --release
 else
-	@echo "Running smoke test (waiting for magic string)..."
+	@echo "Running smoke test (magic string + expected exit code=$(SMOKE_TEST_EXPECTED_EXIT_CODE))..."
 	@$(SMOKE_TEST_CMD)
 endif
 else

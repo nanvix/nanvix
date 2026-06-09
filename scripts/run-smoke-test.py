@@ -6,8 +6,9 @@
 Unified smoke-test driver for nanvixd (Windows + Linux).
 
 Boots a system image under nanvixd and verifies correct behavior. In debug
-mode it scans console output for a magic string; in release mode it validates
-the process exit code.
+mode it validates both the kernel magic string and the process exit code; in
+release mode it validates the process exit code only (debug-level console
+output, including the magic string, is compiled out of release builds).
 
 On Linux, nanvixd is launched against cloud-hypervisor via -clh-bin-path and
 the kernel console is wired to nanvixd's stdout via `-console-file /dev/stdout`.
@@ -92,7 +93,8 @@ def banner(
         )
     else:
         print(
-            f"MODE             = debug (waiting for magic string '{args.magic_string}')"
+            f"MODE             = debug (magic string '{args.magic_string}', "
+            f"expected exit code={args.expected_exit_code})"
         )
     print("=" * 69, flush=True)
 
@@ -423,38 +425,65 @@ def main() -> int:
                 else:
                     print(f"Smoke test passed (exit code={args.expected_exit_code}).")
         else:
-            # Debug mode: poll for the magic string.
+            # Debug mode: validate BOTH the kernel magic string (proves the
+            # kernel booted far enough to emit debug-level console output) AND
+            # the process exit code (proves all guest tests passed; testd's
+            # deliberate final page fault propagates as the expected status).
+            # The magic string is emitted during shutdown, immediately before
+            # the process exits, so we wait for natural exit rather than force-
+            # terminating on first sighting. This catches guest-test regressions
+            # (e.g. a test panicking early) that change the exit code without
+            # affecting the boot-time magic string.
             deadline = time.monotonic() + args.timeout
             found = False
+            timed_out = False
             offsets: dict[Path, int] = {}
             carry: dict[Path, str] = {}
-            while time.monotonic() < deadline:
-                if search_files(haystacks, args.magic_string, offsets, carry):
-                    found = True
-                    break
+            while True:
+                if not found:
+                    found = search_files(haystacks, args.magic_string, offsets, carry)
                 if proc.poll() is not None:
+                    break
+                if time.monotonic() >= deadline:
+                    timed_out = True
                     break
                 time.sleep(1)
 
-            # Stop the process and drain the tee threads so any bytes still
-            # buffered in nanvixd's stdout/stderr pipes are flushed into the
-            # on-disk log files before we make our final decision. Without
-            # this, the magic string can be emitted just before process exit
-            # and missed by `search_files` (false negative).
+            # Stop the process (no-op if it already exited) and drain the tee
+            # threads so any bytes still buffered in nanvixd's stdout/stderr
+            # pipes are flushed into the on-disk log files before the final
+            # magic-string scan. Without this, the magic string can be emitted
+            # just before process exit and missed by `search_files` (false
+            # negative).
             terminate(proc, is_windows)
             for t in (t_out, t_err):
                 t.join(timeout=5)
             if not found:
                 found = search_files(haystacks, args.magic_string, offsets, carry)
 
-            if not found:
+            if timed_out:
+                print(
+                    f"ERROR: Smoke test failed: nanvixd did not exit within "
+                    f"{args.timeout}s."
+                )
+                rc = 1
+            elif not found:
                 print(
                     f"ERROR: Smoke test failed: magic string "
                     f"'{args.magic_string}' not found within {args.timeout}s."
                 )
                 rc = 1
+            elif proc.returncode != args.expected_exit_code:
+                print(
+                    f"ERROR: Smoke test failed: expected exit code "
+                    f"{args.expected_exit_code}, got {proc.returncode}."
+                )
+                rc = 1
             else:
-                print("Smoke test passed (magic string found).")
+                print(
+                    f"Smoke test passed (magic string found, exit "
+                    f"code={args.expected_exit_code})."
+                )
     finally:
         terminate(proc, is_windows)
         tail_stop.set()
