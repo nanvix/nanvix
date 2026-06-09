@@ -6,6 +6,7 @@ USERVM_FEATURES += $(if $(filter yes,$(PROFILER)),profile-time,)
 USERVM_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),timestamp-messages,)
 USERVM_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 USERVM_FEATURES += $(if $(filter yes,$(WHP)),whp,)
+USERVM_FEATURES += $(if $(filter yes,$(RELEASE)),nightly-performance-optimizations,)
 USERVM_FEATURES := $(strip $(USERVM_FEATURES))
 USERVM_CARGO_FEATURES := $(if $(USERVM_FEATURES),--features "$(USERVM_FEATURES)")
 

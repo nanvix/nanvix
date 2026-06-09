@@ -464,8 +464,11 @@ impl Vmm {
             #[cfg(feature = "profile-time")]
             perf_timings.set_kernel_load(kernel_load_start.elapsed().as_micros() as u64);
 
-            // Write kernel arguments to guest control registers (must happen after
-            // load_kernel because the ELF .zero section overwrites this region).
+            // Write kernel arguments to guest control registers. These registers reside in
+            // the kernel ELF's `.zero` section, which `load_kernel()` zero-fills by default, so
+            // this write must happen after it. (With the `nightly-performance-optimizations`
+            // feature the loader skips that zeroing and relies on the freshly allocated guest
+            // memory already being zero, but writing after `load_kernel()` remains correct.)
             if let Some(ref kargs) = args.kernel_args {
                 Guest::write_kernel_args(&mut vmem, kargs)?;
             }
@@ -591,8 +594,12 @@ impl Vmm {
             guest.reset(&mut vmem, &mut vcpu)?;
 
             // Populate the pvclock page so the kernel uses TSC-based time instead
-            // of PIT tick counting. This must run AFTER load_kernel() because the
-            // ELF loader zero-fills the page at DEFAULT_PVCLOCK_PAGE.
+            // of PIT tick counting. The page at DEFAULT_PVCLOCK_PAGE resides in the
+            // kernel ELF's `.zero` section, which `load_kernel()` zero-fills by default,
+            // so this must run after it. (With the `nightly-performance-optimizations`
+            // feature the loader skips that zeroing and relies on the freshly allocated
+            // guest memory already being zero, but running after `load_kernel()` remains
+            // correct.)
             Self::setup_pvclock(&mut vmem)?;
 
             #[cfg(feature = "profile-time")]

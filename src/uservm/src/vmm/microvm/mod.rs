@@ -470,8 +470,11 @@ impl Vmm {
             #[allow(clippy::cast_possible_truncation)]
             perf_timings.set_kernel_load(kernel_load_start.elapsed().as_micros() as u64);
 
-            // Write kernel arguments to guest control registers (must happen after
-            // load_kernel because the ELF .zero section overwrites this region).
+            // Write kernel arguments to guest control registers. These registers reside in
+            // the kernel ELF's `.zero` section, which `load_kernel()` zero-fills by default, so
+            // this write must happen after it. (With the `nightly-performance-optimizations`
+            // feature the loader skips that zeroing and relies on the freshly allocated guest
+            // memory already being zero, but writing after `load_kernel()` remains correct.)
             if let Some(ref kargs) = args.kernel_args {
                 Guest::write_kernel_args(&mut vmem, kargs)?;
             }
@@ -547,11 +550,13 @@ impl Vmm {
             //
             // NOTE: The pvclock page at DEFAULT_PVCLOCK_PAGE (GPA 0x1000) falls inside
             // the kernel ELF's `.zero` section (LOAD segment at GPA 0x0 with MemSiz
-            // 0x8000). The ELF loader zero-fills this range when `load_kernel()` runs
-            // above. Both `setup_pvclock()` (which causes KVM to populate the page)
-            // and the boot-time write below must therefore execute **after** the ELF
-            // has been loaded. This is the same pattern used by the microvm control
-            // registers at GPA 0x0–0x10 (credits, pause-requested, ramfs).
+            // 0x8000), which `load_kernel()` zero-fills by default. `setup_pvclock()`
+            // (which causes KVM to populate the page) and the boot-time write below must
+            // therefore run after kernel loading, alongside the microvm control registers
+            // at GPA 0x0–0x10 (credits, pause-requested, ramfs). (With the
+            // `nightly-performance-optimizations` feature the loader skips that zeroing and
+            // relies on the freshly allocated guest memory already being zero, but running
+            // after `load_kernel()` remains correct.)
             let pvclock_gpa: u64 = ::config::microvm::DEFAULT_PVCLOCK_PAGE as u64;
             vcpu.setup_pvclock(pvclock_gpa)?;
 

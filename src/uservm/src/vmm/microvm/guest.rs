@@ -613,7 +613,10 @@ impl Guest {
     /// The length (u16 LE) is written at
     /// [`config::microvm::DEFAULT_MICROVM_CTRL_KERNEL_ARGS_LEN`] and the UTF-8 data at
     /// [`config::microvm::DEFAULT_MICROVM_CTRL_KERNEL_ARGS_DATA`]. Both offsets reside inside
-    /// the kernel ELF `.zero` section and must therefore be written **after** `load_kernel()`.
+    /// the kernel ELF `.zero` section, which `load_kernel()` zero-fills by default, so these
+    /// offsets must be written **after** it. (With the `nightly-performance-optimizations`
+    /// feature the loader skips that zeroing and relies on the freshly allocated guest memory
+    /// already being zero, but writing after `load_kernel()` remains correct.)
     ///
     /// # Parameters
     ///
@@ -662,10 +665,12 @@ impl Guest {
     ///
     /// The credits register at [`config::microvm::DEFAULT_MICROVM_CTRL_CREDITS`] (GPA `0x4`)
     /// falls inside the kernel ELF's `.zero` section (`LOAD` segment at GPA `0x0` with
-    /// `MemSiz=0x8000`). The ELF loader zero-fills this range when `load_kernel()` runs.
-    /// This method — and all other writes to the control registers at GPA `0x0`–`0x10` — must
-    /// therefore execute **after** the ELF has been loaded, so that the VMM-written values
-    /// are not overwritten.
+    /// `MemSiz=0x8000`), which `load_kernel()` zero-fills by default. This method — and all
+    /// other writes to the control registers at GPA `0x0`–`0x10` — must therefore execute
+    /// **after** the ELF has been loaded, so that the VMM-written values are not overwritten.
+    /// (With the `nightly-performance-optimizations` feature the loader skips that zeroing and
+    /// relies on the freshly allocated guest memory already being zero, but running after
+    /// `load_kernel()` remains correct.)
     ///
     /// # Returns
     ///
