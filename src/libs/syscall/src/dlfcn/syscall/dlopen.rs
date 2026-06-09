@@ -44,8 +44,12 @@ pub fn dlopen(filename: &str, global: bool) -> Result<DlHandle, Error> {
 
     // Resolve bare library names (e.g., "libfoo.so") to a canonical path
     // (e.g., "lib/libfoo.so") using the configured search directories.
-    // Paths with leading "/" are normalized to strip it, ensuring
-    // "/lib/libc.so" and "lib/libc.so" are treated as the same library.
+    // Paths that already contain a separator are passed through with only a
+    // leading "./" stripped; a leading "/" is preserved so that absolute
+    // paths stay absolute and resolve against the filesystem root regardless
+    // of the caller's CWD. As a consequence, "/lib/libc.so" and
+    // "lib/libc.so" are distinct keys in the already-loaded-library lookup
+    // below (matching the as-supplied path rather than a canonical form).
     let resolved: String = super::resolve_library_path(filename);
     let filename: &str = resolved.as_str();
 
