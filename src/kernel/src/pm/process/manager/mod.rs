@@ -183,7 +183,12 @@ impl ProcessManager {
         root: Vmem,
         tm: ThreadManager,
     ) -> Self {
-        let kernel: RunnableProcess = RunnableProcess::new(ProcessIdentifier::KERNEL, kernel, root);
+        let kernel: RunnableProcess = RunnableProcess::new(
+            ProcessIdentifier::KERNEL,
+            ProcessIdentifier::KERNEL,
+            kernel,
+            root,
+        );
 
         let (kernel, reason, _, _user_tda): (
             RunningProcess,
@@ -670,7 +675,7 @@ impl ProcessManager {
             self.tm.commit_next_tid(next_tid);
             self.live_count += 1;
             let parent_pid: ProcessIdentifier = self.get_running().state().pid();
-            let process: RunnableProcess = RunnableProcess::new(pid, thread, vmem);
+            let process: RunnableProcess = RunnableProcess::new(pid, parent_pid, thread, vmem);
 
             // Add process to the queue of ready processes.
             self.ready.push_back(process);
@@ -819,7 +824,7 @@ impl ProcessManager {
             self.tm.commit_next_tid(next_tid);
             self.live_count += 1;
 
-            let process: RunnableProcess = RunnableProcess::new(child_pid, thread, vmem);
+            let process: RunnableProcess = RunnableProcess::new(child_pid, pid, thread, vmem);
             self.ready.push_back(process);
 
             // Record the creation so the kernel main loop can publish a process-creation
@@ -2032,6 +2037,19 @@ impl ProcessManager {
     ///
     pub fn get_pid(&self) -> ProcessIdentifier {
         self.get_running().state().pid()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the ID of the parent of the calling process.
+    ///
+    /// # Returns
+    ///
+    /// The ID of the parent of the calling process.
+    ///
+    pub fn get_ppid(&self) -> ProcessIdentifier {
+        self.get_running().state().ppid()
     }
 
     ///

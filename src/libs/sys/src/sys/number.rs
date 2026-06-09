@@ -17,6 +17,8 @@ pub enum KcallNumber {
     Debug = KcallNumber::NR_DEBUG_SYSCALL,
     /// Get process identifier.
     GetPid = KcallNumber::NR_GET_PID_SYSCALL,
+    /// Get parent process identifier.
+    GetPpid = KcallNumber::NR_GET_PPID_SYSCALL,
     /// Get thread identifier.
     GetTid = KcallNumber::NR_GET_TID_SYSCALL,
     /// Terminate the calling process.
@@ -133,6 +135,7 @@ impl KcallNumber {
     const NR_SNAPSHOT_SYSCALL: u32 = 35;
     const NR_DETACH_THREAD_SYSCALL: u32 = 36;
     const NR_DUPLICATE_SYSCALL: u32 = 37;
+    const NR_GET_PPID_SYSCALL: u32 = 38;
     const NR_INVALID_SYSCALL: u32 = u32::MAX;
 }
 
@@ -142,6 +145,7 @@ impl From<u32> for KcallNumber {
         match value {
             Self::NR_DEBUG_SYSCALL => KcallNumber::Debug,
             Self::NR_GET_PID_SYSCALL => KcallNumber::GetPid,
+            Self::NR_GET_PPID_SYSCALL => KcallNumber::GetPpid,
             Self::NR_GET_TID_SYSCALL => KcallNumber::GetTid,
             Self::NR_EXIT_SYSCALL => KcallNumber::Exit,
             Self::NR_CAP_CTL_SYSCALL => KcallNumber::CapCtl,
@@ -189,6 +193,7 @@ impl From<KcallNumber> for u32 {
         match k {
             KcallNumber::Debug => KcallNumber::NR_DEBUG_SYSCALL,
             KcallNumber::GetPid => KcallNumber::NR_GET_PID_SYSCALL,
+            KcallNumber::GetPpid => KcallNumber::NR_GET_PPID_SYSCALL,
             KcallNumber::GetTid => KcallNumber::NR_GET_TID_SYSCALL,
             KcallNumber::Exit => KcallNumber::NR_EXIT_SYSCALL,
             KcallNumber::CapCtl => KcallNumber::NR_CAP_CTL_SYSCALL,

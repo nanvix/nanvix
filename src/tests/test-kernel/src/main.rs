@@ -26,6 +26,7 @@ mod demand_paging;
 mod detach;
 mod direction_flag;
 mod duplicate;
+mod getppid;
 mod mmio_ramfs;
 mod rendezvous;
 mod tls;
@@ -57,6 +58,8 @@ pub fn main() -> Result<(), Error> {
     detach::run()?;
 
     duplicate::run()?;
+
+    getppid::run()?;
 
     mmio_ramfs::run()?;
 
