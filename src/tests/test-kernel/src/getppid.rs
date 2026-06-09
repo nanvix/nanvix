@@ -195,13 +195,25 @@ fn test_getppid_reports_parent() -> Result<(), Error> {
     let outcome: Result<(), Error> = observe_child_parent(parent_pid, child_pid);
 
     // Tear down the child and reclaim the stack regardless of the interaction outcome. The
-    // process-management capability is acquired only for the termination and released afterwards.
-    let teardown: Result<(), Error> = match pm::__kcall_capctl(Capability::ProcessManagement, true)
-    {
-        Ok(()) => {
-            let result: Result<(), Error> = pm::__kcall_terminate(child_pid);
-            let _ = pm::__kcall_capctl(Capability::ProcessManagement, false);
-            result
+    // process-management capability is acquired only for the termination and released afterwards
+    // (only when this path acquired it). A release failure is surfaced as well so that it does not
+    // leave `ProcessManagement` enabled for subsequent tests. `ResourceBusy` means the capability
+    // is already held, so termination must still proceed without leaving it disabled afterwards.
+    let acquired: Result<bool, Error> =
+        match pm::__kcall_capctl(Capability::ProcessManagement, true) {
+            Ok(()) => Ok(true),
+            Err(e) if e.code == ErrorCode::ResourceBusy => Ok(false),
+            Err(e) => Err(e),
+        };
+    let teardown: Result<(), Error> = match acquired {
+        Ok(acquired) => {
+            let terminate: Result<(), Error> = pm::__kcall_terminate(child_pid);
+            let release: Result<(), Error> = if acquired {
+                pm::__kcall_capctl(Capability::ProcessManagement, false)
+            } else {
+                Ok(())
+            };
+            terminate.and(release)
         },
         Err(e) => Err(e),
     };
