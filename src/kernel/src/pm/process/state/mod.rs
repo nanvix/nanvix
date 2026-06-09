@@ -16,6 +16,8 @@ mod interrupted;
 mod runnable;
 mod running;
 mod sleeping;
+#[cfg(feature = "test")]
+mod test_detach;
 mod zombie;
 
 //==================================================================================================
@@ -81,6 +83,16 @@ pub use runnable::RunnableProcess;
 pub use running::RunningProcess;
 pub use sleeping::SleepingProcess;
 pub use zombie::ZombieProcess;
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+/// Runs all in-kernel unit tests for the process state module.
+#[cfg(feature = "test")]
+pub(super) fn test() -> bool {
+    test_detach::test()
+}
 
 //==================================================================================================
 // ProcessRefMut
