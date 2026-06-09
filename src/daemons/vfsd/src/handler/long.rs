@@ -137,14 +137,7 @@ pub(crate) fn handle_getdents(source: ThreadIdentifier, msg: SystemCallMessage) 
 //==================================================================================================
 
 pub(crate) fn handle_openat(source: ThreadIdentifier, request: OpenAtRequest) -> Vec<Message> {
-    let path: &str = &request.pathname;
-    let resolved: Option<alloc::string::String> = ::vfs::fd::vfs_resolve_path(request.dirfd, path);
-    let final_path: &str = match &resolved {
-        Some(p) => p.as_str(),
-        None => path,
-    };
-
-    match ::vfs::fd::vfs_open(final_path, request.flags) {
+    match ::vfs::fd::vfs_openat(request.dirfd, &request.pathname, request.flags) {
         Ok(fd) => {
             vec![OpenAtResponse::build(
                 source,
@@ -194,14 +187,7 @@ pub(crate) fn handle_mkdirat(
     source: ThreadIdentifier,
     request: MakeDirectoryAtRequest,
 ) -> Vec<Message> {
-    let resolved: Option<alloc::string::String> =
-        ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname);
-    let final_path: &str = match &resolved {
-        Some(p) => p.as_str(),
-        None => &request.pathname,
-    };
-
-    match ::vfs::fd::vfs_mkdir(final_path) {
+    match ::vfs::fd::vfs_mkdirat(request.dirfd, &request.pathname) {
         Ok(()) => {
             vec![MakeDirectoryAtResponse::build(
                 source,
@@ -215,15 +201,8 @@ pub(crate) fn handle_mkdirat(
 }
 
 pub(crate) fn handle_fstatat(source: ThreadIdentifier, request: FileStatAtRequest) -> Vec<Message> {
-    let resolved: Option<alloc::string::String> =
-        ::vfs::fd::vfs_resolve_path(request.dirfd, &request.path);
-    let final_path: &str = match &resolved {
-        Some(p) => p.as_str(),
-        None => &request.path,
-    };
-
     let mut st = stat::default();
-    match ::vfs::fd::vfs_stat(final_path, &mut st) {
+    match ::vfs::fd::vfs_fstatat(request.dirfd, &request.path, &mut st) {
         Ok(()) => {
             let response: FileStatAtResponse = FileStatAtResponse::new(st);
             match response.into_parts(source, ProcessIdentifier::VFSD, MessageType::Ipc) {
@@ -258,14 +237,7 @@ pub(crate) fn handle_faccessat(
     source: ThreadIdentifier,
     request: FileAccessAtRequest,
 ) -> Vec<Message> {
-    let resolved: Option<alloc::string::String> =
-        ::vfs::fd::vfs_resolve_path(request.dirfd, &request.path);
-    let final_path: &str = match &resolved {
-        Some(p) => p.as_str(),
-        None => &request.path,
-    };
-
-    match ::vfs::fd::vfs_access(final_path) {
+    match ::vfs::fd::vfs_accessat(request.dirfd, &request.path) {
         Ok(()) => {
             vec![FileAccessAtResponse::build(
                 source,
