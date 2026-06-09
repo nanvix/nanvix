@@ -83,25 +83,64 @@ pub fn kcall_handler() -> ExitStatus {
                     // It was, so we should shutdown.
                     break status;
                 }
-                // SAFETY: the calling process does not hold a reference to the inner state of the process manager.
-                match unsafe {
-                    EventManager::notify_process_termination(ProcessTerminationInfo::new(
-                        pid, status,
-                    ))
-                } {
-                    Ok(()) => harvested_process = true,
-                    Err(e) => {
-                        error!("failed to notify process termination: {:?}", e);
-                    },
-                }
+                // Record the termination so the main loop can publish a process-termination
+                // scheduling event below. Buffering it (rather than notifying inline) lets the
+                // same retry/backpressure as process creation apply, so termination events are not
+                // silently lost when the scheduling-event queue is momentarily full.
+                pm!().push_pending_termination(ProcessTerminationInfo::new(pid, status));
+                harvested_process = true;
             },
             Err(e) => {
                 error!("failed to harvest zombies: {:?}", e);
             },
         }
 
+        // Publish process-termination scheduling events for harvested processes. Each pending
+        // record is drained while no reference to the process manager is held, so subscribers can
+        // be woken safely.
+        let mut notified_termination: bool = false;
+        while let Some(info) = pm!().take_pending_termination() {
+            // SAFETY: the calling process does not hold a reference to the inner state of the
+            // process manager.
+            match unsafe { EventManager::notify_process_termination(info) } {
+                Ok(()) => notified_termination = true,
+                Err(e) => {
+                    error!("failed to notify process termination: {:?}", e);
+                    // Delivery failed without buffering the notification (the scheduling-event
+                    // queue is full, or waking a subscriber failed and the entry was rolled back).
+                    // Restore the record at the front of the queue so it is retried on a later
+                    // iteration instead of being lost, and stop draining to avoid spinning on the
+                    // same failure.
+                    pm!().requeue_pending_termination(info);
+                    break;
+                },
+            }
+        }
+
+        // Publish process-creation scheduling events for newly created processes. Each pending
+        // record is drained while no reference to the process manager is held, so subscribers can
+        // be woken safely.
+        let mut notified_creation: bool = false;
+        while let Some(info) = pm!().take_pending_creation() {
+            // SAFETY: the calling process does not hold a reference to the inner state of the
+            // process manager.
+            match unsafe { EventManager::notify_process_creation(info) } {
+                Ok(()) => notified_creation = true,
+                Err(e) => {
+                    error!("failed to notify process creation: {:?}", e);
+                    // Delivery failed without buffering the notification (the scheduling-event
+                    // queue is full, or waking a subscriber failed and the entry was rolled back).
+                    // Restore the record at the front of the queue so it is retried on a later
+                    // iteration instead of being lost, and stop draining to avoid spinning on the
+                    // same failure.
+                    pm!().requeue_pending_creation(info);
+                    break;
+                },
+            }
+        }
+
         // No work to do, so yield the CPU.
-        if !message_received && !harvested_process {
+        if !message_received && !harvested_process && !notified_termination && !notified_creation {
             // Flush the kernel log buffer.
             // SAFETY: the standard output device is present, initialized, and accessed
             // exclusively from a single core with interrupts disabled.
