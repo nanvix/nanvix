@@ -116,3 +116,10 @@ pub const PAGE_ALIGNMENT: Alignment = Alignment::Align4096;
 /// Alignment for a page table.
 ///
 pub const PGTAB_ALIGNMENT: Alignment = Alignment::Align4194304;
+
+///
+/// # Description
+///
+/// Stack alignment mandated by the System V ABI.
+///
+pub const STACK_ALIGNMENT: Alignment = Alignment::Align16;
