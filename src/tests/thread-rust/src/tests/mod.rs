@@ -7,6 +7,7 @@ use ::sys::error::Error;
 // Modules
 //==================================================================================================
 
+mod alarm_starvation;
 mod attributes;
 mod cond_timedwait;
 mod condvars;
@@ -39,6 +40,7 @@ pub fn run_all() -> Result<(), Error> {
     timers::run()?;
     tda::run()?;
     scheduler::run()?;
+    alarm_starvation::run()?;
     Ok(())
 }
 
