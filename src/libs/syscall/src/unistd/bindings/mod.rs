@@ -29,6 +29,7 @@ pub mod geteuid;
 pub mod getgid;
 pub mod gethostname;
 pub mod getpid;
+pub mod getppid;
 pub mod getuid;
 pub mod isatty;
 pub mod lchown;
