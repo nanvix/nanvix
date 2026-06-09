@@ -84,23 +84,28 @@ static DLINIT_ONCE: Once = Once::new();
 /// Resolves a library filename to a canonical path.
 ///
 /// If `filename` contains a path separator (`/`), it is treated as an explicit
-/// path (absolute or relative with directory component). The path is normalized
-/// by stripping leading `/` and `./` to produce a canonical form, but no
-/// search-path probing is performed. This matches Linux behavior where absolute
-/// and relative paths bypass `LD_LIBRARY_PATH`.
+/// path (absolute or relative with directory component).  Only a leading
+/// `./` is stripped (`./foo` is equivalent to `foo` for `openat()`
+/// purposes); the leading `/` of an absolute path is preserved as-is.
+/// This matches Linux behavior, where absolute and relative paths bypass
+/// `LD_LIBRARY_PATH` and are passed straight through to `open()`.
 ///
 /// If `filename` is a bare name (no `/`), the function tries each directory in
 /// [`LIBRARY_SEARCH_PATHS`] in order, returning the first path for which the
 /// file exists. If no match is found the bare name is returned so that the
 /// subsequent `open_regular_file` call produces the appropriate error.
 ///
-/// All paths are normalized to a consistent form without leading `/` or `./`,
-/// matching the convention used throughout the Nanvix dlfcn layer and test code
-/// (e.g., `"lib/libmul.so"`). The VFS accepts both relative and absolute paths
-/// and normalizes internally, so stripping the leading `/` is safe and ensures
-/// that `"/lib/libc.so"`, `"./lib/libc.so"`, `"lib/libc.so"`, and the bare
-/// DT_NEEDED name `"libc.so"` all resolve to the same canonical path
-/// `"lib/libc.so"`.
+/// # Absolute paths must stay absolute
+///
+/// Earlier revisions of this function also called `.trim_start_matches('/')`
+/// on absolute paths, on the assumption that the VFS accepted both forms
+/// and that this produced a more canonical form for the
+/// already-loaded-library lookup in `dlopen`.  In practice that conversion
+/// makes the subsequent `openat()` resolve the path against the caller's
+/// CWD instead of the filesystem root, which silently breaks
+/// `dlopen("/lib/foo.so")` for any caller whose CWD is not `/`.
+/// CPython's `regrtest` (which sets `TMPDIR=/tmp` and `chdir`s before
+/// running tests) is the canonical reproducer.
 ///
 /// NOTE: The probe opens and immediately closes a file descriptor per
 /// candidate path. The matched file is re-opened by `DynamicLibrary::open()`.
@@ -110,14 +115,17 @@ pub(super) fn resolve_library_path(filename: &str) -> String {
     // If the original filename contains a path separator, the caller provided
     // an explicit path (absolute or relative with directory). Normalize it
     // but do NOT search configured directories — matching Linux behavior
-    // where absolute/relative paths bypass LD_LIBRARY_PATH.
+    // where absolute/relative paths bypass `LD_LIBRARY_PATH`.
     if filename.contains('/') {
-        // Strip leading "./" and "/" for canonical form.
-        let normalized: &str = filename
-            .strip_prefix("./")
-            .unwrap_or(filename)
-            .trim_start_matches('/');
-        // Guard against pathological input like "/" or "./" becoming empty.
+        // `./foo` is equivalent to `foo` for `openat()` purposes, so strip
+        // a leading `./` if present.  Do NOT strip a leading `/` — that
+        // would convert an absolute path into a relative one and break
+        // resolution when CWD != `/` (see doc comment above).
+        let normalized: &str = match filename.strip_prefix("./") {
+            Some(rest) => rest.trim_start_matches('/'),
+            None => filename,
+        };
+        // Guard against pathological input like `./` becoming empty.
         if normalized.is_empty() {
             return String::from(filename);
         }
