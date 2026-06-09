@@ -21,6 +21,7 @@ mod geteuid;
 mod getgid;
 mod gethostname;
 mod getpid;
+mod getppid;
 mod getuid;
 mod isatty;
 mod link;
@@ -59,6 +60,7 @@ pub use self::{
     getgid::getgid,
     gethostname::gethostname,
     getpid::getpid,
+    getppid::getppid,
     getuid::getuid,
     isatty::isatty,
     link::link,
