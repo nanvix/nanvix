@@ -298,7 +298,8 @@ pub unsafe fn init() {
     *idt.add(INT_OFF as usize + 15) =
         idt_entry!(_do_hwint15, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
     // Set system call hook.
-    *idt.add(128) = idt_entry!(_do_kcall, DescriptorPrivilegeLevel::Ring3, GateType::Int32);
+    *idt.add(::sys::number::KCALL_VECTOR as usize) =
+        idt_entry!(_do_kcall, DescriptorPrivilegeLevel::Ring3, GateType::Int32);
 
     // Load IDT.
     (*IDTR).init(idt as u32, u16::try_from(IDT_SIZE).expect("wrong idt size, is it corrupted?"));
