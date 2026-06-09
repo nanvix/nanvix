@@ -840,6 +840,35 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Best-effort wakeup of a thread used by synchronization primitives.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: ID of the thread to wake up.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if a sleeping thread with the given identifier was woken, or `false` if no
+    /// such thread is currently sleeping (e.g., it already timed out before this call). Unlike
+    /// [`Self::wakeup`], the not-sleeping case is not treated as an error, so a stale waiter neither
+    /// consumes a notification nor produces a spurious error log.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn wakeup_waiter(tid: ThreadIdentifier) -> bool {
+        PERF_SCHED_WAKEUP.fetch_add(1, ORDER);
+        Self::get_mut().try_wakeup_thread(tid)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Takes a mutex guard from a thread.
     ///
     /// # Parameters
