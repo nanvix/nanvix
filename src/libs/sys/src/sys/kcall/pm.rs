@@ -59,6 +59,32 @@ pub fn __kcall_getpid() -> Result<ProcessIdentifier, Error> {
 }
 
 //==================================================================================================
+// Get Parent Process Identifier
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Gets the process identifier of the parent of the calling process.
+///
+/// # Returns
+///
+/// Upon successful completion, the process identifier of the parent of the calling process is
+/// returned. Upon failure, an error is returned instead.
+///
+#[unsafe(no_mangle)]
+pub fn __kcall_getppid() -> Result<ProcessIdentifier, Error> {
+    let result: i64 = kcall0!(KcallNumber::GetPpid.into());
+
+    // NOTE: errors are unlikely because getppid() always succeeds for a valid calling process.
+    if unlikely(result < 0) {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to getppid()"))
+    } else {
+        ProcessIdentifier::try_from(result)
+    }
+}
+
+//==================================================================================================
 // Get Thread Identifier
 //==================================================================================================
 

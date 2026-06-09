@@ -59,9 +59,14 @@ pub struct RunnableProcess {
 }
 
 impl RunnableProcess {
-    pub fn new(pid: ProcessIdentifier, ready_thread: ReadyThread, vmem: Vmem) -> Self {
+    pub fn new(
+        pid: ProcessIdentifier,
+        parent: ProcessIdentifier,
+        ready_thread: ReadyThread,
+        vmem: Vmem,
+    ) -> Self {
         Self {
-            state: Box::new(ProcessState::new(pid, vmem)),
+            state: Box::new(ProcessState::new(pid, parent, vmem)),
             ready_threads: NonEmptyVecDeque::new(ready_thread),
             interrupted_threads: None,
             sleeping_threads: None,

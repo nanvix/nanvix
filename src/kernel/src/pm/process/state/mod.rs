@@ -184,6 +184,8 @@ impl ProcessRef<'_> {
 pub struct ProcessState {
     /// Process identifier.
     pid: ProcessIdentifier,
+    /// Process identifier of the parent process.
+    parent: ProcessIdentifier,
     /// Capabilities.
     capabilities: Capabilities,
     /// Memory address space.
@@ -205,9 +207,10 @@ pub struct ProcessState {
 }
 
 impl ProcessState {
-    pub fn new(pid: ProcessIdentifier, vmem: Vmem) -> Self {
+    pub fn new(pid: ProcessIdentifier, parent: ProcessIdentifier, vmem: Vmem) -> Self {
         Self {
             pid,
+            parent,
             capabilities: Capabilities::default(),
             vmem,
             events: LinkedList::new(),
@@ -222,6 +225,10 @@ impl ProcessState {
 
     pub fn pid(&self) -> ProcessIdentifier {
         self.pid
+    }
+
+    pub fn ppid(&self) -> ProcessIdentifier {
+        self.parent
     }
 
     ///
