@@ -2,6 +2,26 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+///
+/// # Description
+///
+/// IDT vector used for the user→kernel call trap.
+///
+/// This vector is deliberately **not** `0x80`, because `0x80` collides with Linux's i386 syscall
+/// gate. Using `0x80` makes Nanvix user binaries accidentally "executable" on an x86_64 Linux host,
+/// where each `kcall*` turns into an arbitrary Linux syscall and the process exits in undefined
+/// ways. `0x81` is unused on Linux (and Windows), so a Nanvix binary run on such a host
+/// deterministically faults (`#GP` → `SIGSEGV`) instead of behaving unpredictably.
+///
+/// This constant is shared between the kernel IDT setup and the user-space kcall assembly so the
+/// two sides cannot drift apart.
+///
+pub const KCALL_VECTOR: u8 = 0x81;
+
+//==================================================================================================
 // Enums
 //==================================================================================================
 
@@ -232,5 +252,22 @@ impl From<KcallNumber> for u32 {
             KcallNumber::Duplicate => KcallNumber::NR_DUPLICATE_SYSCALL,
             KcallNumber::Invalid => KcallNumber::NR_INVALID_SYSCALL,
         }
+    }
+}
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The kcall trap vector must never be `0x80`, because that vector collides with the Linux
+    /// i386 syscall gate and makes Nanvix user binaries behave unpredictably when run on a Linux
+    /// host. See the module-level documentation of [`KCALL_VECTOR`] for details.
+    #[test]
+    fn test_kcall_vector_avoids_linux_syscall_gate() {
+        assert_ne!(KCALL_VECTOR, 0x80);
     }
 }

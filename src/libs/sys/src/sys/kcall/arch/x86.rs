@@ -34,7 +34,8 @@ pub unsafe fn kcall0(kcall_nr: u32) -> i64 {
 
     // SAFETY: this will trigger a kernel call.
     unsafe {
-        arch::asm!("int 0x80",
+        arch::asm!("int {kcall_vector}",
+            kcall_vector = const crate::number::KCALL_VECTOR,
             inout("eax") kcall_nr => low_ret,
             lateout("edx") high_ret,
             options(nostack, preserves_flags)
@@ -68,7 +69,8 @@ pub unsafe fn kcall1(kcall_nr: u32, arg0: u32) -> i64 {
 
     // SAFETY: this will trigger a kernel call.
     unsafe {
-        arch::asm!("int 0x80",
+        arch::asm!("int {kcall_vector}",
+            kcall_vector = const crate::number::KCALL_VECTOR,
             inout("eax") kcall_nr => low_ret,
             lateout("edx") high_ret,
             in("ebx") arg0,
@@ -104,7 +106,8 @@ pub unsafe fn kcall2(kcall_nr: u32, arg0: u32, arg1: u32) -> i64 {
 
     // SAFETY: this will trigger a kernel call.
     unsafe {
-        arch::asm!("int 0x80",
+        arch::asm!("int {kcall_vector}",
+            kcall_vector = const crate::number::KCALL_VECTOR,
             inout("eax") kcall_nr => low_ret,
             lateout("edx") high_ret,
             in("ebx") arg0,
@@ -142,7 +145,8 @@ pub unsafe fn kcall3(kcall_nr: u32, arg0: u32, arg1: u32, arg2: u32) -> i64 {
 
     // SAFETY: this will trigger a kernel call.
     unsafe {
-        arch::asm!("int 0x80",
+        arch::asm!("int {kcall_vector}",
+            kcall_vector = const crate::number::KCALL_VECTOR,
             inout("eax") kcall_nr => low_ret,
             lateout("edx") high_ret,
             in("ebx") arg0,
@@ -182,7 +186,8 @@ pub unsafe fn kcall4(kcall_nr: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u32) 
 
     // SAFETY: this will trigger a kernel call.
     unsafe {
-        arch::asm!("int 0x80",
+        arch::asm!("int {kcall_vector}",
+            kcall_vector = const crate::number::KCALL_VECTOR,
             inout("eax") kcall_nr => low_ret,
             lateout("edx") high_ret,
             in("ebx") arg0,
