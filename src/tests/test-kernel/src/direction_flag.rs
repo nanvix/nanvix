@@ -9,7 +9,7 @@
 //! ## Scenario
 //!
 //! User-mode code may set DF=1 via the `std` instruction.  If a kernel call
-//! (`int 0x80`) fires while DF is set and the kernel does not clear it, the
+//! (`int 0x81`) fires while DF is set and the kernel does not clear it, the
 //! kernel's Rust handlers run with DF=1.  Compiler-generated `rep movsl`
 //! instructions (used for struct copies in debug builds) then copy memory
 //! **backwards**, silently corrupting scheduler linked-list nodes and heap
@@ -50,7 +50,7 @@ const STRESS_ITERATIONS: u32 = 256;
 /// Sets the x86 direction flag (DF=1) via the `std` instruction.
 ///
 /// After this call, `rep movsb`/`rep movsl` will copy **backwards**.  Only thin kcall wrappers
-/// (whose body is a single `int 0x80` instruction) may be called while DF=1; the kernel clears DF
+/// (whose body is a single `int 0x81` instruction) may be called while DF=1; the kernel clears DF
 /// on entry, so the flag never leaks into compiler-generated code.  The caller must call
 /// `clear_df()` before returning to general Rust code.
 ///
