@@ -252,12 +252,12 @@ pub(crate) fn handle_fstatat_with_hostfs(
     request: FileStatAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let resolved: Option<alloc::string::String> =
-        ::vfs::fd::vfs_resolve_path(request.dirfd, &request.path);
-    let final_path: &str = match &resolved {
-        Some(p) => p.as_str(),
-        None => &request.path,
-    };
+    let resolved: alloc::string::String =
+        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.path) {
+            Some(p) => p,
+            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
+        };
+    let final_path: &str = &resolved;
 
     if hostfs::is_hostfs_path(final_path) {
         // Both stat modes are supported over hostfs. No-follow (`AT_SYMLINK_NOFOLLOW`)
@@ -498,12 +498,12 @@ pub(crate) fn handle_openat_with_hostfs(
     request: OpenAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let path: &str = &request.pathname;
-    let resolved: Option<alloc::string::String> = ::vfs::fd::vfs_resolve_path(request.dirfd, path);
-    let final_path: &str = match &resolved {
-        Some(p) => p.as_str(),
-        None => path,
-    };
+    let resolved: alloc::string::String =
+        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname) {
+            Some(p) => p,
+            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
+        };
+    let final_path: &str = &resolved;
 
     if hostfs::is_hostfs_path(final_path) {
         if !pending.has_capacity() {
@@ -647,12 +647,12 @@ pub(crate) fn handle_mkdirat_with_hostfs(
     request: MakeDirectoryAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let resolved: Option<alloc::string::String> =
-        ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname);
-    let final_path: &str = match &resolved {
-        Some(p) => p.as_str(),
-        None => &request.pathname,
-    };
+    let resolved: alloc::string::String =
+        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname) {
+            Some(p) => p,
+            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
+        };
+    let final_path: &str = &resolved;
 
     if hostfs::is_hostfs_path(final_path) {
         if !pending.has_capacity() {
@@ -690,12 +690,12 @@ pub(crate) fn handle_symlinkat_with_hostfs(
 ) -> Option<Vec<Message>> {
     // Routing key is `linkpath` (where the symlink will live). `target` is an opaque
     // string stored verbatim by the host and intentionally not consulted here.
-    let resolved: Option<alloc::string::String> =
-        ::vfs::fd::vfs_resolve_path(request.dirfd, &request.linkpath);
-    let final_link: &str = match &resolved {
-        Some(p) => p.as_str(),
-        None => &request.linkpath,
-    };
+    let resolved: alloc::string::String =
+        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.linkpath) {
+            Some(p) => p,
+            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
+        };
+    let final_link: &str = &resolved;
 
     if hostfs::is_hostfs_path(final_link) {
         if !pending.has_capacity() {
@@ -731,12 +731,12 @@ pub(crate) fn handle_readlinkat_with_hostfs(
     request: ReadLinkAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let resolved: Option<alloc::string::String> =
-        ::vfs::fd::vfs_resolve_path(request.dirfd, &request.path);
-    let final_path: &str = match &resolved {
-        Some(p) => p.as_str(),
-        None => &request.path,
-    };
+    let resolved: alloc::string::String =
+        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.path) {
+            Some(p) => p,
+            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
+        };
+    let final_path: &str = &resolved;
 
     if hostfs::is_hostfs_path(final_path) {
         if !pending.has_capacity() {
