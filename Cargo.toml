@@ -102,7 +102,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.16.30"
+version = "0.16.31"
 license-file = "LICENSE.txt"
 authors = ["The Maintainers of Nanvix"]
 edition = "2021"
