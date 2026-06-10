@@ -156,14 +156,7 @@ fn test_cow_resolution_creates_private_frame() -> bool {
 
     // Map the first handle into `parent` at the test address. `Vmem::map` leaks the handle
     // into the page table, so it must not be referenced again from this function.
-    let page_table_allocator = || {
-        let mut kframe = unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
-        kframe.clear()?;
-        let kpage: KernelPage = KernelPage::new(kframe);
-        let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
-        Ok(PageTable::new(pgtable_storage))
-    };
-    if let Err(e) = parent.map(uframe1, vaddr, AccessPermission::RDWR, page_table_allocator) {
+    if let Err(e) = parent.map(uframe1, vaddr, AccessPermission::RDWR) {
         error!("Vmem::map failed (error={e:?})");
         drop(uframe2);
         return false;
@@ -316,14 +309,7 @@ fn test_cow_resolution_fast_path_when_sole_owner() -> bool {
         },
     };
 
-    let page_table_allocator = || {
-        let mut kframe = unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
-        kframe.clear()?;
-        let kpage: KernelPage = KernelPage::new(kframe);
-        let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
-        Ok(PageTable::new(pgtable_storage))
-    };
-    if let Err(e) = parent.map(uframe1, vaddr, AccessPermission::RDWR, page_table_allocator) {
+    if let Err(e) = parent.map(uframe1, vaddr, AccessPermission::RDWR) {
         error!("Vmem::map failed (error={e:?})");
         drop(uframe2);
         return false;
@@ -501,26 +487,18 @@ fn test_link_user_pages_skips_preexisting_child_mappings() -> bool {
     let frame_b_num: usize = frame_b.address().into_frame_number().into_raw_value();
     let frame_c_num: usize = frame_c.address().into_frame_number().into_raw_value();
 
-    let page_table_allocator = || {
-        let mut kframe = unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
-        kframe.clear()?;
-        let kpage: KernelPage = KernelPage::new(kframe);
-        let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
-        Ok(PageTable::new(pgtable_storage))
-    };
-
     // Map parent's two writable user pages.
-    if let Err(e) = parent.map(frame_a, vaddr_a, AccessPermission::RDWR, page_table_allocator) {
+    if let Err(e) = parent.map(frame_a, vaddr_a, AccessPermission::RDWR) {
         error!("parent.map(vaddr_a) failed (error={e:?})");
         return false;
     }
-    if let Err(e) = parent.map(frame_b, vaddr_b, AccessPermission::RDWR, page_table_allocator) {
+    if let Err(e) = parent.map(frame_b, vaddr_b, AccessPermission::RDWR) {
         error!("parent.map(vaddr_b) failed (error={e:?})");
         return false;
     }
 
     // Pre-map child at vaddr_b so the second iteration of `link_user_pages` collides.
-    if let Err(e) = child.map(frame_c, vaddr_b, AccessPermission::RDWR, page_table_allocator) {
+    if let Err(e) = child.map(frame_c, vaddr_b, AccessPermission::RDWR) {
         error!("child.map(vaddr_b) failed (error={e:?})");
         return false;
     }
@@ -748,19 +726,11 @@ fn test_link_user_pages_rolls_back_on_partial_failure() -> bool {
         },
     }
 
-    let page_table_allocator = || {
-        let mut kframe = unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
-        kframe.clear()?;
-        let kpage: KernelPage = KernelPage::new(kframe);
-        let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
-        Ok(PageTable::new(pgtable_storage))
-    };
-
-    if let Err(e) = parent.map(frame_a, vaddr_a, AccessPermission::RDWR, page_table_allocator) {
+    if let Err(e) = parent.map(frame_a, vaddr_a, AccessPermission::RDWR) {
         error!("parent.map(vaddr_a) failed (error={e:?})");
         return false;
     }
-    if let Err(e) = parent.map(frame_b, vaddr_b, AccessPermission::RDWR, page_table_allocator) {
+    if let Err(e) = parent.map(frame_b, vaddr_b, AccessPermission::RDWR) {
         error!("parent.map(vaddr_b) failed (error={e:?})");
         return false;
     }
