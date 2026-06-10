@@ -29,7 +29,10 @@ use crate::{
         },
     },
 };
-use ::alloc::boxed::Box;
+use ::alloc::{
+    boxed::Box,
+    collections::vec_deque::VecDeque,
+};
 use ::sys::pm::ProcessIdentifier;
 use ::type_safe::NonEmptyVecDeque;
 use sys::{
@@ -212,6 +215,54 @@ impl RunnableProcess {
             .map(|thread| thread.admission_time())
             .min()
             .unwrap_or(clock::now())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Wakes every sleeping thread of this process whose alarm has expired, moving it into the
+    /// ready set with an [`InterruptReason::TimedOut`] reason.
+    ///
+    /// This services per-thread timer alarms while the process remains runnable because it still
+    /// has other ready threads. Without it, a sleeping thread parked inside a runnable process
+    /// would never have its alarm serviced until the whole process quiesced, allowing a CPU-bound
+    /// sibling thread to starve another thread's timed wait.
+    ///
+    /// # Parameters
+    ///
+    /// - `now`: The current system time.
+    ///
+    pub fn wakeup_expired_alarms(&mut self, now: SystemTime) {
+        // Take the sleeping-thread list, returning early when there is nothing to service.
+        let mut sleeping_threads: VecDeque<SleepingThread> = match self.sleeping_threads.take() {
+            Some(sleeping_threads) => VecDeque::from(sleeping_threads),
+            None => return,
+        };
+
+        // Visit each currently-sleeping thread exactly once, reusing the existing allocation.
+        // Threads whose alarm has expired are woken and moved to the ready set; the rest are
+        // rotated to the back of the same deque so they stay asleep without being revisited.
+        // The counter bounds the loop to the initial length, so re-queued threads are skipped.
+        let mut remaining: usize = sleeping_threads.len();
+        while remaining > 0 {
+            remaining -= 1;
+            let Some(thread) = sleeping_threads.pop_front() else {
+                break;
+            };
+            match thread.alarm() {
+                Some(alarm) if now >= alarm => {
+                    // Wake the thread carrying the TimedOut reason so the blocking kernel call
+                    // returns Interrupted(TimedOut), mirroring the suspended-process alarm path.
+                    let ready_thread: ReadyThread =
+                        thread.interrupt(InterruptReason::TimedOut).resume();
+                    self.ready_threads.push_back(ready_thread);
+                },
+                _ => sleeping_threads.push_back(thread),
+            }
+        }
+
+        // Restore the threads that are still sleeping (None when all of them were woken).
+        self.sleeping_threads = NonEmptyVecDeque::from(sleeping_threads);
     }
 
     ///

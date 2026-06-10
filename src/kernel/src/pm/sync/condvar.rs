@@ -101,8 +101,11 @@ impl Condvar {
     ///
     /// # Return Value
     ///
-    /// Upon successful completion, this function returns the number of threads that were awakened.
-    /// Otherwise, it returns an error object that specifying the reason of failure.
+    /// This function always returns `Ok` with the number of threads that were awakened (`1` if a
+    /// genuinely waiting thread was woken, or `0` if the sleeping queue was empty or contained only
+    /// stale waiters). Stale entries — whose thread already left the sleeping state (e.g., it timed
+    /// out before this notification) — are skipped on a best-effort basis rather than reported as
+    /// errors.
     ///
     /// # Safety
     ///
@@ -113,15 +116,17 @@ impl Condvar {
     /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn notify_first(&self) -> Result<u32, Error> {
-        let mut awakened: u32 = 0;
-
-        // Attempt to wake up the first thread in the sleeping queue.
-        if let Some(tid) = self.inner.sleeping.borrow_mut().pop_front() {
-            ProcessManager::wakeup(tid)?;
-            awakened += 1;
+        // Wake the first thread that is still genuinely waiting. Stale entries — whose thread
+        // already left the sleeping state (e.g., it timed out before this notification) — are
+        // discarded as they are encountered, so the notification is delivered to a thread that is
+        // actually waiting.
+        while let Some(tid) = self.inner.sleeping.borrow_mut().pop_front() {
+            if ProcessManager::wakeup_waiter(tid) {
+                return Ok(1);
+            }
         }
 
-        Ok(awakened)
+        Ok(0)
     }
 
     ///
@@ -135,7 +140,9 @@ impl Condvar {
     ///
     /// # Returns
     ///
-    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    /// This function always returns `Ok(())`. If the target thread already left the sleeping state
+    /// (e.g., it timed out before this notification), the wakeup is a best-effort no-op rather than
+    /// an error.
     ///
     /// # Safety
     ///
@@ -157,7 +164,9 @@ impl Condvar {
                     "notify_thread(): tid does not match (expected: tid={tid:?}, got \
                      tid={notified_tid:?})",
                 );
-                ProcessManager::wakeup(tid)?;
+                // Best-effort: if the thread already left the sleeping state (e.g., it timed out),
+                // there is nothing to wake and this is not an error.
+                let _ = ProcessManager::wakeup_waiter(tid);
             }
         }
 
@@ -171,11 +180,10 @@ impl Condvar {
     ///
     /// # Return Value
     ///
-    /// Upon successful completion, this function returns the number of threads that were awakened.
-    /// Otherwise, it returns an error object that specifying the reason of failure.  If an error
-    /// occurs while waking up a thread, it is logged and the function continues trying to wake up
-    /// the remaining threads. If no threads were successfully awakened and at least one error
-    /// occurred, the first encountered error is returned.
+    /// This function always returns `Ok` with the number of threads that were awakened. Stale
+    /// entries — whose thread already left the sleeping state (e.g., it timed out before this
+    /// notification) — are skipped on a best-effort basis and not counted, rather than reported as
+    /// errors.
     ///
     /// # Safety
     ///
@@ -187,26 +195,17 @@ impl Condvar {
     ///
     pub unsafe fn notify_all(&self) -> Result<u32, Error> {
         let mut awakened: u32 = 0; // Number of awakened threads.
-        let mut first_error: Option<Error> = None; // First error encountered (if any).
 
-        // Traverse the sleeping queue, waking up all threads.
+        // Traverse the sleeping queue, waking up every thread that is still genuinely waiting.
+        // Stale entries — whose thread already left the sleeping state (e.g., it timed out before
+        // this notification) — are skipped rather than reported as errors.
         while let Some(tid) = self.inner.sleeping.borrow_mut().pop_front() {
-            // Attempt to wake up thread and check for errors.
-            if let Err(error) = ProcessManager::wakeup(tid) {
-                // Failed to wake up thread, log a warning, store the first error, and continue.
-                warn!("{error:?} (tid={tid:?})");
-                if first_error.is_none() {
-                    first_error = Some(error);
-                }
-            } else {
-                // Only count successful wake-ups.
+            if ProcessManager::wakeup_waiter(tid) {
                 awakened += 1;
             }
         }
-        match first_error {
-            Some(error) if awakened == 0 => Err(error),
-            None | Some(_) => Ok(awakened),
-        }
+
+        Ok(awakened)
     }
 
     ///
