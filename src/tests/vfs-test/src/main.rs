@@ -1411,7 +1411,7 @@ fn create_file(path: &str, contents: &[u8]) -> Result<(), Error> {
             .write(&contents[written..])
             .map_err(|e| fat_err(e, "failed to write file"))?;
         if n == 0 {
-            return Err(Error::new(ErrorCode::NoSpaceOnDevice, "short write while creating file"));
+            return Err(Error::new(ErrorCode::IoErr, "short write while creating file"));
         }
         written += n;
     }
