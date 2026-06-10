@@ -24,10 +24,20 @@
 //! The burst children perform no inter-process communication: they simply spin until the parent
 //! terminates them. This keeps the parent's mailbox empty for the duration of the burst, which is
 //! required because `duplicate()` refuses a caller that owns special resources (including a
-//! non-empty mailbox). Tearing each child down with [`__kcall_terminate`] then both confirms that
-//! the kernel tracked every burst-created process — a child lost to a buffer overflow would fail
-//! with `NoSuchProcess` — and reaps the spinning children, so the buffers are validated end to
-//! end.
+//! non-empty mailbox). Tearing each child down with [`__kcall_terminate`] confirms that the kernel
+//! tracked every burst-created process — a child lost to a buffer overflow would fail with
+//! `NoSuchProcess`.
+//!
+//! ## Reaping between rounds
+//!
+//! `terminate()` only marks a child as a zombie; the child's thread slot is not released until the
+//! kernel's idle-loop harvester reaps that zombie. The harvester runs only when no user process is
+//! runnable, so a parent that bursts without ever yielding would accumulate un-reaped zombies and
+//! exhaust the system-wide thread limit (`MAX_THREADS`) after a few rounds. To keep the live thread
+//! count bounded and the test deterministic, the parent yields the processor once at the end of
+//! each round. Because the burst performs no IPC, the parent is then the only runnable user
+//! process, so the kernel idle thread is scheduled and drains every pending zombie before the next
+//! round begins.
 
 //==================================================================================================
 // Imports
@@ -172,16 +182,27 @@ fn test_duplicate_burst() -> bool {
 
         // Phase 2: tear down the batch by terminating every spawned child. A successful
         // terminate() confirms that the kernel tracked the process across the burst (a child lost
-        // to a buffer overflow would fail with `NoSuchProcess`) and reaps the spinning child.
-        // These children were created by a user process rather than the kernel, so `procd` reaps
-        // them without triggering a system shutdown.
+        // to a buffer overflow would fail with `NoSuchProcess`). terminate() only marks the child
+        // as a zombie; the kernel reaps it (and releases its thread slot) asynchronously. These
+        // children were created by a user process rather than the kernel, so `procd` reaps them
+        // without triggering a system shutdown.
         for child in children.iter().flatten() {
             if pm::__kcall_terminate(*child).is_err() {
                 success = false;
             }
         }
 
-        // Phase 3: reclaim the stack mappings owned by the parent. `mmap()` reserves `STACK_PAGES`
+        // Phase 3: yield the processor so the kernel's idle-loop harvester reaps this round's
+        // zombies before the next round starts. terminate() above only zombified the children; the
+        // harvester is what actually releases each child's thread slot, and it runs only when no
+        // user process is runnable. Without this yield the parent never quiesces during the burst,
+        // so the zombies accumulate across rounds and eventually exhaust the system-wide thread
+        // limit (`MAX_THREADS`). Because the burst performs no IPC, the parent is the only runnable
+        // user process here, so a single yield is enough for the kernel idle thread to drain every
+        // pending zombie.
+        let _ = sched::__kcall_sched_yield();
+
+        // Phase 4: reclaim the stack mappings owned by the parent. `mmap()` reserves `STACK_PAGES`
         // pages per stack in a single call, but `munmap()` unmaps a single page at a time, so every
         // page of every stack must be released individually. Otherwise the trailing pages leak and
         // collide with the next round's mappings. A failed unmap means a page leaked, so fail the
