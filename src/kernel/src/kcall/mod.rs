@@ -16,8 +16,6 @@ mod kcall_success;
 //==================================================================================================
 
 pub use handler::kcall_handler as handler;
-#[cfg(feature = "microvm")]
-pub use handler::poll_ikc_messages;
 pub use kcall_error::KcallError;
 pub use kcall_result::KcallResult;
 pub use kcall_success::KcallSuccess;
