@@ -142,10 +142,6 @@ pub fn init(
 
         {
             while vaddr.into_inner() < end {
-                // NOTE: each `VirtMemoryManager::get_mut()` borrow is scoped to its own inner
-                // block so that the mutable reference is dropped before any subsequent borrow,
-                // including the borrow that may occur when `page_table_allocator` is invoked
-                // inside `map_kpage`.
                 let kpage: KernelPage = {
                     // SAFETY: the memory manager is initialized and access is synchronized.
                     let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
