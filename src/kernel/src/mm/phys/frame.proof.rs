@@ -1,6 +1,7 @@
 verus! {
 
 use super::FrameAllocView;
+use ::bitmap::BitmapView;
 use crate::hal::mem::spec_page_size;
 use vstd::map::*;
 
@@ -9,32 +10,28 @@ pub open spec fn frame_addr_of(i: int) -> int {
     i * spec_page_size()
 }
 
+/// Helper: convert a frame (physical) address back to a bitmap index.
+///
+/// This is the left inverse of [`frame_addr_of`] on page-aligned addresses,
+/// which lets the view below build its set/map without an `exists` quantifier
+/// (see `Set::map_by`).
+pub open spec fn addr_to_frame(addr: int) -> int {
+    addr / spec_page_size()
+}
+
 impl View for Inner {
     type V = FrameAllocView;
 
     closed spec fn view(&self) -> FrameAllocView {
+        // Set of all covered frame addresses: { frame_addr_of(i) | 0 <= i < num_bits }.
+        // Built with `map_by` (forward `frame_addr_of`, reverse `addr_to_frame`) so the
+        // membership test is exists-free and stays stable under the planned
+        // finite-sets-and-maps Verus update.
+        let covered_frames: Set<int> = BitmapView::range_set(0, self.bitmap@.num_bits)
+            .map_by(|i: int| frame_addr_of(i), |addr: int| addr_to_frame(addr));
         FrameAllocView {
-            allocated_frames: Set::new(|addr: int|
-                exists|i: int|
-                    #[trigger] self.bitmap@.set_bits.contains(i)
-                    && addr == frame_addr_of(i)
-            ),
-            free_frames: Set::new(|addr: int|
-                exists|i: int| {
-                    &&& 0 <= i < self.bitmap@.num_bits
-                    &&& !#[trigger] self.bitmap@.set_bits.contains(i)
-                    &&& addr == frame_addr_of(i)
-                }
-            ),
-            refcounts: Map::new(
-                |addr: int|
-                    exists|i: int|
-                        #[trigger] self.bitmap@.set_bits.contains(i)
-                        && addr == frame_addr_of(i),
-                |addr: int| {
-                    let i = addr / spec_page_size();
-                    self.refcount@[i] as int
-                },
+            refcounts: covered_frames.mk_map(
+                |addr: int| self.refcount@[addr_to_frame(addr)] as int,
             ),
         }
     }
