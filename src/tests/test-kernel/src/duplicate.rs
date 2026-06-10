@@ -39,6 +39,7 @@ use ::sys::{
     },
     mm::VirtualAddress,
     pm::{
+        Capability,
         ProcessIdentifier,
         ThreadCreateArgs,
     },
@@ -227,13 +228,35 @@ fn test_duplicate_cow() -> Result<(), Error> {
         PATTERN_PARENT
     );
 
-    // Tear down the child and reclaim the stack.
-    pm::__kcall_terminate(child_pid)?;
+    // Acquire the process-management capability required to terminate the child, tear it down,
+    // then release the capability. The capability is always released (only when this path
+    // acquired it) and the stack always reclaimed, even if the termination fails. A release
+    // failure is surfaced as well so that it does not leave `ProcessManagement` enabled for
+    // subsequent tests. `ResourceBusy` means the capability is already held, so termination must
+    // still proceed without leaving it disabled afterwards.
+    let acquired: Result<bool, Error> =
+        match pm::__kcall_capctl(Capability::ProcessManagement, true) {
+            Ok(()) => Ok(true),
+            Err(e) if e.code == ErrorCode::ResourceBusy => Ok(false),
+            Err(e) => Err(e),
+        };
+    let teardown: Result<(), Error> = match acquired {
+        Ok(acquired) => {
+            let terminate: Result<(), Error> = pm::__kcall_terminate(child_pid);
+            let release: Result<(), Error> = if acquired {
+                pm::__kcall_capctl(Capability::ProcessManagement, false)
+            } else {
+                Ok(())
+            };
+            terminate.and(release)
+        },
+        Err(e) => Err(e),
+    };
     // SAFETY: `stack_ptr`/`layout` came from the matching `alloc::alloc::alloc` above and the
     // child is being terminated so it no longer references the parent's mapping of these pages.
     unsafe { ::alloc::alloc::dealloc(stack_ptr, layout) };
 
-    Ok(())
+    teardown
 }
 
 //==================================================================================================

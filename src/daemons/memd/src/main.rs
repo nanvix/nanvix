@@ -104,6 +104,12 @@ pub fn main() {
         panic!("failed to acquire exception management capability (error={:?})", e);
     }
 
+    // Acquire process management capability so that faulting processes can be terminated.
+    ::syslog::info!("acquiring process management capability...");
+    if let Err(e) = ::sys::kcall::pm::__kcall_capctl(Capability::ProcessManagement, true) {
+        panic!("failed to acquire process management capability (error={:?})", e);
+    }
+
     // Signup to the process manager daemon.
     // NOTE: this must happen before subscribing to page faults so that no
     // exception messages arrive during the synchronous signup handshake.
