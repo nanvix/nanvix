@@ -30,6 +30,7 @@ extern crate nvx;
 extern crate nvx_crt0;
 
 mod cross_fs;
+mod dirfd_reject;
 mod file_ops;
 mod fs_ops;
 mod mount_lifecycle;
@@ -66,6 +67,9 @@ pub fn main() -> Result<(), Error> {
 
     // Phase 3.6: Directory listing operations (getdents/readdir sweep).
     readdir_ops::test()?;
+
+    // Phase 3.7: Invalid-dirfd rejection for hostfs-routed *at() operations.
+    dirfd_reject::test()?;
 
     // Phase 4: Cross-filesystem consistency tests (RAMFS vs HostFS).
     cross_fs::test()?;

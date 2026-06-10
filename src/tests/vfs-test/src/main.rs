@@ -95,6 +95,10 @@ pub fn main() -> Result<(), Error> {
     test_fchmodat()?;
     test_fchownat()?;
     test_utimensat()?;
+    test_openat()?;
+    test_mkdirat()?;
+    test_accessat()?;
+    test_fstatat()?;
     test_ramfs_mount()?;
 
     Ok(())
@@ -1058,8 +1062,361 @@ fn test_utimensat() -> Result<(), Error> {
 }
 
 //==================================================================================================
+// Test: Openat
+//==================================================================================================
+
+/// Tests that `vfs_openat()` resolves paths relative to a directory file
+/// descriptor and refuses to silently fall back to the cwd when the `dirfd`
+/// cannot be resolved.
+fn test_openat() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_openat begin");
+
+    vfs::create_mount("/oat", 128 * 1024).map_err(|e| fat_err(e, "create_mount /oat failed"))?;
+    vfs::mkdir("/oat/sub").map_err(|e| fat_err(e, "mkdir /oat/sub"))?;
+
+    // File inside the subdirectory (the dirfd target).
+    create_file("/oat/sub/inside.txt", b"inside")?;
+    // Decoy file in the mount root (the cwd target).
+    create_file("/oat/decoy.txt", b"decoy")?;
+
+    // openat with an absolute path ignores dirfd.
+    let fd_abs: i32 = vfs::fd::vfs_openat(0, "/oat/sub/inside.txt", 0)
+        .map_err(|e| fat_err(e, "openat absolute path"))?;
+    vfs::fd::vfs_close(fd_abs).map_err(|e| fat_err(e, "close fd_abs"))?;
+
+    // openat with AT_FDCWD resolves against the cwd.
+    vfs::chdir("/oat/sub").map_err(|e| fat_err(e, "chdir /oat/sub"))?;
+    let cwd_result = vfs::fd::vfs_openat(::sysapi::fcntl::atflags::AT_FDCWD, "inside.txt", 0);
+    vfs::chdir("/").map_err(|e| fat_err(e, "chdir /"))?;
+    let fd_cwd: i32 = cwd_result.map_err(|e| fat_err(e, "openat AT_FDCWD relative"))?;
+    vfs::fd::vfs_close(fd_cwd).map_err(|e| fat_err(e, "close fd_cwd"))?;
+
+    // openat with a directory fd resolves the relative path against that directory.
+    let dir_fd: i32 = vfs::fd::vfs_open("/oat/sub", file_creation_flags::O_DIRECTORY)
+        .map_err(|e| fat_err(e, "open /oat/sub O_DIRECTORY"))?;
+    let fd_rel: i32 =
+        vfs::fd::vfs_openat(dir_fd, "inside.txt", 0).map_err(|e| fat_err(e, "openat dirfd rel"))?;
+    vfs::fd::vfs_close(fd_rel).map_err(|e| fat_err(e, "close fd_rel"))?;
+    vfs::fd::vfs_close(dir_fd).map_err(|e| fat_err(e, "close dir_fd"))?;
+
+    // Bug guard: a non-directory fd must not be usable as a dirfd. With the
+    // dirfd silently dropped, "decoy.txt" would wrongly resolve against the
+    // cwd (/oat) and open successfully.
+    let file_fd: i32 =
+        vfs::fd::vfs_open("/oat/decoy.txt", 0).map_err(|e| fat_err(e, "open decoy.txt"))?;
+    vfs::chdir("/oat").map_err(|e| fat_err(e, "chdir /oat"))?;
+    let bug = vfs::fd::vfs_openat(file_fd, "decoy.txt", 0);
+    vfs::chdir("/").map_err(|e| fat_err(e, "chdir /"))?;
+    vfs::fd::vfs_close(file_fd).map_err(|e| fat_err(e, "close file_fd"))?;
+    match bug {
+        Ok(stray) => {
+            let _ = vfs::fd::vfs_close(stray);
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "openat with a non-directory dirfd must fail instead of resolving against the cwd",
+            ));
+        },
+        Err(vfs::Fat32Error::InvalidArgument) => {},
+        Err(e) => {
+            return Err(fat_err(
+                e,
+                "openat with a non-directory dirfd must fail with EINVAL, not another error",
+            ));
+        },
+    }
+
+    // Clean up.
+    vfs::unlink("/oat/sub/inside.txt").map_err(|e| fat_err(e, "unlink inside.txt"))?;
+    vfs::unlink("/oat/decoy.txt").map_err(|e| fat_err(e, "unlink decoy.txt"))?;
+    vfs::rmdir("/oat/sub").map_err(|e| fat_err(e, "rmdir /oat/sub"))?;
+    vfs::unmount("/oat").map_err(|e| fat_err(e, "unmount /oat"))?;
+
+    ::syslog::info!("vfs-test: test_openat passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Test: Mkdirat
+//==================================================================================================
+
+/// Tests that `vfs_mkdirat()` creates directories relative to a directory file
+/// descriptor and refuses to silently fall back to the cwd when the `dirfd`
+/// cannot be resolved.
+fn test_mkdirat() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_mkdirat begin");
+
+    vfs::create_mount("/mat", 128 * 1024).map_err(|e| fat_err(e, "create_mount /mat failed"))?;
+    vfs::mkdir("/mat/sub").map_err(|e| fat_err(e, "mkdir /mat/sub"))?;
+    create_file("/mat/decoy.txt", b"decoy")?;
+
+    // mkdirat with an absolute path ignores dirfd.
+    vfs::fd::vfs_mkdirat(0, "/mat/abs").map_err(|e| fat_err(e, "mkdirat absolute path"))?;
+    if !path_exists("/mat/abs") {
+        return Err(Error::new(ErrorCode::InvalidArgument, "mkdirat absolute: dir not created"));
+    }
+
+    // mkdirat with AT_FDCWD resolves against the cwd.
+    vfs::chdir("/mat").map_err(|e| fat_err(e, "chdir /mat"))?;
+    let cwd_result = vfs::fd::vfs_mkdirat(::sysapi::fcntl::atflags::AT_FDCWD, "cwd_dir");
+    vfs::chdir("/").map_err(|e| fat_err(e, "chdir /"))?;
+    cwd_result.map_err(|e| fat_err(e, "mkdirat AT_FDCWD relative"))?;
+    if !path_exists("/mat/cwd_dir") {
+        return Err(Error::new(ErrorCode::InvalidArgument, "mkdirat AT_FDCWD: dir not in cwd"));
+    }
+
+    // mkdirat with a directory fd resolves the relative path against that directory.
+    let dir_fd: i32 = vfs::fd::vfs_open("/mat/sub", file_creation_flags::O_DIRECTORY)
+        .map_err(|e| fat_err(e, "open /mat/sub O_DIRECTORY"))?;
+    vfs::fd::vfs_mkdirat(dir_fd, "made").map_err(|e| fat_err(e, "mkdirat dirfd relative"))?;
+    vfs::fd::vfs_close(dir_fd).map_err(|e| fat_err(e, "close dir_fd"))?;
+    if !path_exists("/mat/sub/made") {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "mkdirat dirfd: directory created in the wrong place",
+        ));
+    }
+
+    // Bug guard: a non-directory fd must not silently fall back to the cwd.
+    let file_fd: i32 =
+        vfs::fd::vfs_open("/mat/decoy.txt", 0).map_err(|e| fat_err(e, "open decoy.txt"))?;
+    vfs::chdir("/mat").map_err(|e| fat_err(e, "chdir /mat"))?;
+    let bug = vfs::fd::vfs_mkdirat(file_fd, "stray");
+    vfs::chdir("/").map_err(|e| fat_err(e, "chdir /"))?;
+    vfs::fd::vfs_close(file_fd).map_err(|e| fat_err(e, "close file_fd"))?;
+    match bug {
+        Ok(()) => {
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "mkdirat with a non-directory dirfd must fail instead of resolving against the cwd",
+            ));
+        },
+        Err(vfs::Fat32Error::InvalidArgument) => {},
+        Err(e) => {
+            return Err(fat_err(
+                e,
+                "mkdirat with a non-directory dirfd must fail with EINVAL, not another error",
+            ));
+        },
+    }
+    if path_exists("/mat/stray") {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "mkdirat with a non-directory dirfd must not create a directory in the cwd",
+        ));
+    }
+
+    // Clean up.
+    vfs::rmdir("/mat/sub/made").map_err(|e| fat_err(e, "rmdir made"))?;
+    vfs::rmdir("/mat/sub").map_err(|e| fat_err(e, "rmdir /mat/sub"))?;
+    vfs::rmdir("/mat/abs").map_err(|e| fat_err(e, "rmdir abs"))?;
+    vfs::rmdir("/mat/cwd_dir").map_err(|e| fat_err(e, "rmdir cwd_dir"))?;
+    vfs::unlink("/mat/decoy.txt").map_err(|e| fat_err(e, "unlink decoy.txt"))?;
+    vfs::unmount("/mat").map_err(|e| fat_err(e, "unmount /mat"))?;
+
+    ::syslog::info!("vfs-test: test_mkdirat passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Test: Accessat
+//==================================================================================================
+
+/// Tests that `vfs_accessat()` resolves paths relative to a directory file
+/// descriptor and refuses to silently fall back to the cwd when the `dirfd`
+/// cannot be resolved.
+fn test_accessat() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_accessat begin");
+
+    vfs::create_mount("/aat", 128 * 1024).map_err(|e| fat_err(e, "create_mount /aat failed"))?;
+    vfs::mkdir("/aat/sub").map_err(|e| fat_err(e, "mkdir /aat/sub"))?;
+    create_file("/aat/sub/inside.txt", b"inside")?;
+    create_file("/aat/decoy.txt", b"decoy")?;
+
+    // accessat with an absolute path ignores dirfd.
+    vfs::fd::vfs_accessat(0, "/aat/sub/inside.txt")
+        .map_err(|e| fat_err(e, "accessat absolute path"))?;
+
+    // accessat with AT_FDCWD resolves against the cwd.
+    vfs::chdir("/aat/sub").map_err(|e| fat_err(e, "chdir /aat/sub"))?;
+    let cwd_result = vfs::fd::vfs_accessat(::sysapi::fcntl::atflags::AT_FDCWD, "inside.txt");
+    vfs::chdir("/").map_err(|e| fat_err(e, "chdir /"))?;
+    cwd_result.map_err(|e| fat_err(e, "accessat AT_FDCWD relative"))?;
+
+    // accessat with a directory fd resolves the relative path against that directory.
+    let dir_fd: i32 = vfs::fd::vfs_open("/aat/sub", file_creation_flags::O_DIRECTORY)
+        .map_err(|e| fat_err(e, "open /aat/sub O_DIRECTORY"))?;
+    vfs::fd::vfs_accessat(dir_fd, "inside.txt").map_err(|e| fat_err(e, "accessat dirfd rel"))?;
+
+    // A relative path that only exists in the cwd must NOT be found via the
+    // directory fd (decoy.txt lives in /aat, not in /aat/sub).
+    vfs::chdir("/aat").map_err(|e| fat_err(e, "chdir /aat"))?;
+    let cross = vfs::fd::vfs_accessat(dir_fd, "decoy.txt");
+    vfs::chdir("/").map_err(|e| fat_err(e, "chdir /"))?;
+    if cross.is_ok() {
+        let _ = vfs::fd::vfs_close(dir_fd);
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "accessat resolved against the cwd instead of the directory fd",
+        ));
+    }
+
+    // Bug guard: a non-directory fd must not silently fall back to the cwd.
+    let file_fd: i32 =
+        vfs::fd::vfs_open("/aat/decoy.txt", 0).map_err(|e| fat_err(e, "open decoy.txt"))?;
+    vfs::chdir("/aat").map_err(|e| fat_err(e, "chdir /aat"))?;
+    let bug = vfs::fd::vfs_accessat(file_fd, "decoy.txt");
+    vfs::chdir("/").map_err(|e| fat_err(e, "chdir /"))?;
+    vfs::fd::vfs_close(file_fd).map_err(|e| fat_err(e, "close file_fd"))?;
+    vfs::fd::vfs_close(dir_fd).map_err(|e| fat_err(e, "close dir_fd"))?;
+    match bug {
+        Ok(()) => {
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "accessat with a non-directory dirfd must fail instead of resolving against the \
+                 cwd",
+            ));
+        },
+        Err(vfs::Fat32Error::InvalidArgument) => {},
+        Err(e) => {
+            return Err(fat_err(
+                e,
+                "accessat with a non-directory dirfd must fail with EINVAL, not another error",
+            ));
+        },
+    }
+
+    // accessat on a non-existent file fails.
+    if vfs::fd::vfs_accessat(0, "/aat/missing.txt").is_ok() {
+        return Err(Error::new(ErrorCode::InvalidArgument, "accessat on missing file should fail"));
+    }
+
+    // Clean up.
+    vfs::unlink("/aat/sub/inside.txt").map_err(|e| fat_err(e, "unlink inside.txt"))?;
+    vfs::unlink("/aat/decoy.txt").map_err(|e| fat_err(e, "unlink decoy.txt"))?;
+    vfs::rmdir("/aat/sub").map_err(|e| fat_err(e, "rmdir /aat/sub"))?;
+    vfs::unmount("/aat").map_err(|e| fat_err(e, "unmount /aat"))?;
+
+    ::syslog::info!("vfs-test: test_accessat passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Test: Fstatat
+//==================================================================================================
+
+/// Tests that `vfs_fstatat()` resolves paths relative to a directory file
+/// descriptor and refuses to silently fall back to the cwd when the `dirfd`
+/// cannot be resolved.
+fn test_fstatat() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_fstatat begin");
+
+    vfs::create_mount("/sat", 128 * 1024).map_err(|e| fat_err(e, "create_mount /sat failed"))?;
+    vfs::mkdir("/sat/sub").map_err(|e| fat_err(e, "mkdir /sat/sub"))?;
+    create_file("/sat/sub/inside.txt", b"inside")?;
+    create_file("/sat/decoy.txt", b"decoy")?;
+
+    // fstatat with an absolute path ignores dirfd and reports a regular file.
+    let mut st: stat = unsafe { core::mem::zeroed() };
+    vfs::fd::vfs_fstatat(0, "/sat/sub/inside.txt", &mut st)
+        .map_err(|e| fat_err(e, "fstatat absolute path"))?;
+    if st.st_mode & file_type::S_IFMT != file_type::S_IFREG {
+        return Err(Error::new(ErrorCode::InvalidArgument, "fstatat absolute: not a regular file"));
+    }
+
+    // fstatat with AT_FDCWD resolves against the cwd.
+    vfs::chdir("/sat/sub").map_err(|e| fat_err(e, "chdir /sat/sub"))?;
+    let mut cwd_st: stat = unsafe { core::mem::zeroed() };
+    let cwd_result =
+        vfs::fd::vfs_fstatat(::sysapi::fcntl::atflags::AT_FDCWD, "inside.txt", &mut cwd_st);
+    vfs::chdir("/").map_err(|e| fat_err(e, "chdir /"))?;
+    cwd_result.map_err(|e| fat_err(e, "fstatat AT_FDCWD relative"))?;
+
+    // fstatat with a directory fd resolves the relative path against that directory.
+    let dir_fd: i32 = vfs::fd::vfs_open("/sat/sub", file_creation_flags::O_DIRECTORY)
+        .map_err(|e| fat_err(e, "open /sat/sub O_DIRECTORY"))?;
+    let mut rel_st: stat = unsafe { core::mem::zeroed() };
+    vfs::fd::vfs_fstatat(dir_fd, "inside.txt", &mut rel_st)
+        .map_err(|e| fat_err(e, "fstatat dirfd rel"))?;
+
+    // A relative path that only exists in the cwd must NOT be found via the
+    // directory fd (decoy.txt lives in /sat, not in /sat/sub).
+    vfs::chdir("/sat").map_err(|e| fat_err(e, "chdir /sat"))?;
+    let mut cross_st: stat = unsafe { core::mem::zeroed() };
+    let cross = vfs::fd::vfs_fstatat(dir_fd, "decoy.txt", &mut cross_st);
+    vfs::chdir("/").map_err(|e| fat_err(e, "chdir /"))?;
+    if cross.is_ok() {
+        let _ = vfs::fd::vfs_close(dir_fd);
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "fstatat resolved against the cwd instead of the directory fd",
+        ));
+    }
+
+    // Bug guard: a non-directory fd must not silently fall back to the cwd.
+    let file_fd: i32 =
+        vfs::fd::vfs_open("/sat/decoy.txt", 0).map_err(|e| fat_err(e, "open decoy.txt"))?;
+    vfs::chdir("/sat").map_err(|e| fat_err(e, "chdir /sat"))?;
+    let mut bug_st: stat = unsafe { core::mem::zeroed() };
+    let bug = vfs::fd::vfs_fstatat(file_fd, "decoy.txt", &mut bug_st);
+    vfs::chdir("/").map_err(|e| fat_err(e, "chdir /"))?;
+    vfs::fd::vfs_close(file_fd).map_err(|e| fat_err(e, "close file_fd"))?;
+    vfs::fd::vfs_close(dir_fd).map_err(|e| fat_err(e, "close dir_fd"))?;
+    match bug {
+        Ok(()) => {
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "fstatat with a non-directory dirfd must fail instead of resolving against the cwd",
+            ));
+        },
+        Err(vfs::Fat32Error::InvalidArgument) => {},
+        Err(e) => {
+            return Err(fat_err(
+                e,
+                "fstatat with a non-directory dirfd must fail with EINVAL, not another error",
+            ));
+        },
+    }
+
+    // fstatat on a non-existent file fails.
+    let mut missing_st: stat = unsafe { core::mem::zeroed() };
+    if vfs::fd::vfs_fstatat(0, "/sat/missing.txt", &mut missing_st).is_ok() {
+        return Err(Error::new(ErrorCode::InvalidArgument, "fstatat on missing file should fail"));
+    }
+
+    // Clean up.
+    vfs::unlink("/sat/sub/inside.txt").map_err(|e| fat_err(e, "unlink inside.txt"))?;
+    vfs::unlink("/sat/decoy.txt").map_err(|e| fat_err(e, "unlink decoy.txt"))?;
+    vfs::rmdir("/sat/sub").map_err(|e| fat_err(e, "rmdir /sat/sub"))?;
+    vfs::unmount("/sat").map_err(|e| fat_err(e, "unmount /sat"))?;
+
+    ::syslog::info!("vfs-test: test_fstatat passed");
+    Ok(())
+}
+
+//==================================================================================================
 // Helpers
 //==================================================================================================
+
+/// Creates a file with the given `contents`, truncating any existing file.
+fn create_file(path: &str, contents: &[u8]) -> Result<(), Error> {
+    let mut file: vfs::File = vfs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)
+        .map_err(|e| fat_err(e, "failed to create file"))?;
+    file.write(contents)
+        .map_err(|e| fat_err(e, "failed to write file"))?;
+    file.flush()
+        .map_err(|e| fat_err(e, "failed to flush file"))?;
+    Ok(())
+}
+
+/// Returns `true` if a path exists in the VFS.
+fn path_exists(path: &str) -> bool {
+    let mut st: stat = unsafe { core::mem::zeroed() };
+    vfs::fd::vfs_stat(path, &mut st).is_ok()
+}
 
 /// Opens a file and verifies its contents match `expected`.
 fn verify_file(path: &str, expected: &[u8]) -> Result<(), Error> {

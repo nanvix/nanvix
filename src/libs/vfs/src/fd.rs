@@ -589,6 +589,21 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
     FD_TABLE.alloc(handle)
 }
 
+/// Opens a file relative to a directory file descriptor through the VFS.
+///
+/// The `path` is resolved against `dirfd` via [`vfs_resolve_path`] and the
+/// resulting path is opened with [`vfs_open`].
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::InvalidArgument`] if `dirfd` cannot be resolved (for
+/// example, when it is not a VFS directory file descriptor). The `dirfd` is
+/// never silently ignored.
+pub fn vfs_openat(dirfd: c_int, path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
+    let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    vfs_open(&resolved, flags)
+}
+
 /// Reads from a VFS file descriptor.
 ///
 /// Uses the virtual position tracker. If the position is at or past EOF,
@@ -748,6 +763,25 @@ pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
     Ok(())
 }
 
+/// Gets file status for a path relative to a directory file descriptor through the VFS.
+///
+/// The `path` is resolved against `dirfd` via [`vfs_resolve_path`] and the
+/// resulting path is queried with [`vfs_stat`].
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::InvalidArgument`] if `dirfd` cannot be resolved (for
+/// example, when it is not a VFS directory file descriptor). The `dirfd` is
+/// never silently ignored.
+pub fn vfs_fstatat(
+    dirfd: c_int,
+    path: &str,
+    buf: &mut ::sysapi::sys_stat::stat,
+) -> Result<(), Fat32Error> {
+    let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    vfs_stat(&resolved, buf)
+}
+
 /// Renames a file or directory through the VFS.
 ///
 /// Both paths must be on the same VFS mount.
@@ -763,6 +797,21 @@ pub fn vfs_unlink(path: &str) -> Result<(), Fat32Error> {
 /// Creates a directory through the VFS.
 pub fn vfs_mkdir(path: &str) -> Result<(), Fat32Error> {
     crate::mkdir(path)
+}
+
+/// Creates a directory relative to a directory file descriptor through the VFS.
+///
+/// The `path` is resolved against `dirfd` via [`vfs_resolve_path`] and the
+/// resulting directory is created with [`vfs_mkdir`].
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::InvalidArgument`] if `dirfd` cannot be resolved (for
+/// example, when it is not a VFS directory file descriptor). The `dirfd` is
+/// never silently ignored.
+pub fn vfs_mkdirat(dirfd: c_int, path: &str) -> Result<(), Fat32Error> {
+    let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    vfs_mkdir(&resolved)
 }
 
 /// Removes an empty directory through the VFS.
@@ -982,6 +1031,21 @@ pub fn vfs_chmod(path: &str, _mode: ::sysapi::sys_types::mode_t) -> Result<(), F
 /// FAT32 does not have UNIX permissions, so only existence is checked.
 pub fn vfs_access(path: &str) -> Result<(), Fat32Error> {
     crate::stat(path).map(|_| ())
+}
+
+/// Checks the accessibility of a file relative to a directory file descriptor.
+///
+/// The `path` is resolved against `dirfd` via [`vfs_resolve_path`] and the
+/// resulting path is checked with [`vfs_access`].
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::InvalidArgument`] if `dirfd` cannot be resolved (for
+/// example, when it is not a VFS directory file descriptor). The `dirfd` is
+/// never silently ignored.
+pub fn vfs_accessat(dirfd: c_int, path: &str) -> Result<(), Fat32Error> {
+    let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    vfs_access(&resolved)
 }
 
 /// File control operation on a VFS file descriptor.
