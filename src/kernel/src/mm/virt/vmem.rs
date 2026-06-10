@@ -29,6 +29,7 @@ use crate::{
     },
     mm::{
         phys::{
+            KernelFrame,
             PhysMemoryManager,
             UserFrame,
         },
@@ -37,6 +38,7 @@ use crate::{
             page_table_allocator::PAGE_TABLE_ALLOCATOR,
             PageDirectoryStorage,
             PageTableStorage,
+            VirtMemoryManager,
         },
     },
 };
@@ -235,11 +237,10 @@ impl Vmem {
     ///
     /// Upon success, empty is returned. Upon failure, an error code is returned instead.
     ///
-    pub fn map_kpage<T: Fn() -> Result<PageTable<PageTableStorage>, Error>>(
+    pub fn map_kpage(
         &mut self,
         kpage: KernelPage,
         vaddr: PageAligned<VirtualAddress>,
-        page_table_allocator: T,
     ) -> Result<(), Error> {
         let pt_vaddr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
@@ -257,7 +258,7 @@ impl Vmem {
 
         // Check if page table does not exist.
         if !pde.is_present() {
-            let page_table: PageTable<PageTableStorage> = page_table_allocator()?;
+            let page_table: PageTable<PageTableStorage> = Self::allocate_kernel_page_table()?;
 
             // FIXME: do not be so open about permissions.
             self.pgdir.map(
@@ -305,13 +306,53 @@ impl Vmem {
         Err(Error::new(ErrorCode::NoSuchEntry, reason))
     }
 
+    ///
+    /// # Description
+    ///
+    /// Allocate a page table for mapping kernel memory.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(page_table)` is returned. Upon failure, an error is returned.
+    ///
+    fn allocate_kernel_page_table() -> Result<PageTable<PageTableStorage>, Error> {
+        let kpage: KernelPage = {
+            // SAFETY: the memory manager is initialized and access is synchronized.
+            let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+            mm.alloc_kpage(true)?
+        };
+        let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
+        let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
+        Ok(page_table)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Allocate a page table for mapping user memory.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(page_table)` is returned. Upon failure, an error is returned.
+    ///
+    fn allocate_user_page_table() -> Result<PageTable<PageTableStorage>, Error> {
+        // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
+        // concurrent or re-entrant access to the physical memory manager is possible.
+        let mut kframe: KernelFrame =
+            unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
+        kframe.clear()?;
+        let kpage: KernelPage = KernelPage::new(kframe);
+        let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
+        let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
+        Ok(page_table)
+    }
+
     /// Maps a page to the target virtual address space.
-    pub fn map<T: Fn() -> Result<PageTable<PageTableStorage>, Error>>(
+    pub fn map(
         &mut self,
         uframe: UserFrame,
         vaddr: PageAligned<VirtualAddress>,
         access: AccessPermission,
-        page_table_allocator: T,
     ) -> Result<(), Error> {
         // Check if the provided address lies outside the user space.
         if !Self::is_user_addr(vaddr.into_inner()) {
@@ -339,7 +380,7 @@ impl Vmem {
             // Get corresponding page table.
             // Check if corresponding page table does not exist.
             if !pde.is_present() {
-                let page_table: PageTable<PageTableStorage> = page_table_allocator()?;
+                let page_table: PageTable<PageTableStorage> = Self::allocate_user_page_table()?;
 
                 let page_table_address: FrameAddress = page_table.physical_address()?;
                 // FIXME: do not be so open about permissions.
