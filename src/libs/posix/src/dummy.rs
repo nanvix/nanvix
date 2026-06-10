@@ -366,3 +366,118 @@ pub unsafe extern "C" fn ftw(
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }
+
+///
+/// # Description
+///
+/// Retrieves file-system statistics for the file system that contains the file named by
+/// `path` and stores them in the `statvfs` structure pointed to by `buf`.
+///
+/// # Parameters
+///
+/// - `path`: Null-terminated pathname of any file within the queried file system.
+/// - `buf`: Pointer to a `struct statvfs` to be filled in on success.
+///
+/// # Returns
+///
+/// On success returns `0` and populates `*buf`. On failure returns `-1` and sets `errno`.
+///
+/// # Notes
+///
+/// This is a dummy implementation that always fails with `ENOSYS` (function not implemented).
+/// It exists so that consumers which only reference the symbol (notably libstdc++'s
+/// `std::filesystem::space()`) link successfully; such callers treat the `-1`/`errno`
+/// failure as "information unavailable". A future implementation should query the backing
+/// file-system daemon and populate the block / inode counts and the mount flags.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers supplied by foreign callers.
+/// It is safe to call this function if `path` points to a valid, null-terminated C string
+/// and `buf` (when non-null) points to writable storage large enough for a `struct statvfs`
+/// in a future, fully implemented version.
+///
+#[unsafe(no_mangle)]
+#[trace_libcall]
+pub unsafe extern "C" fn statvfs(_path: *const c_char, _buf: *mut c_void) -> c_int {
+    ::syslog::debug!("statvfs(): not implemented");
+    *__errno_location() = ErrorCode::InvalidSysCall.get();
+    -1
+}
+
+///
+/// # Description
+///
+/// Opens the file identified by `path` relative to the directory referred to by the file
+/// descriptor `dirfd` (or relative to the current working directory when `path` is absolute
+/// or `dirfd` is `AT_FDCWD`), using the access mode and flags in `flags`.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor that anchors a relative `path` (or `AT_FDCWD`).
+/// - `path`: Null-terminated pathname of the file to open.
+/// - `flags`: Bitwise OR of `O_*` access-mode and status flags.
+///
+/// # Returns
+///
+/// On success returns a new, non-negative file descriptor. On failure returns `-1` and sets
+/// `errno`.
+///
+/// # Notes
+///
+/// This is a dummy implementation that always fails with `ENOSYS` (function not implemented).
+/// It exists so that consumers which only reference the symbol (notably libstdc++'s
+/// `std::filesystem` directory iterators) link successfully. The trailing `mode` argument of
+/// the POSIX variadic prototype is intentionally omitted: this stub never inspects it, and on
+/// the i386 cdecl ABI the caller cleans up the stack, so ignoring it is safe. A future
+/// implementation should resolve `path` against `dirfd` and delegate to the regular `open()`
+/// path, honouring `mode` when `O_CREAT` is set.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences a raw pointer supplied by foreign callers.
+/// It is safe to call this function if `path` points to a valid, null-terminated C string.
+///
+#[unsafe(no_mangle)]
+#[trace_libcall]
+pub unsafe extern "C" fn openat(_dirfd: c_int, _path: *const c_char, _flags: c_int) -> c_int {
+    ::syslog::debug!("openat(): not implemented");
+    *__errno_location() = ErrorCode::InvalidSysCall.get();
+    -1
+}
+
+///
+/// # Description
+///
+/// Opens a directory stream positioned at the first entry, for the directory associated with
+/// the already-open file descriptor `fd`.
+///
+/// # Parameters
+///
+/// - `fd`: An open file descriptor referring to a directory.
+///
+/// # Returns
+///
+/// On success returns a pointer to an opaque `DIR` stream object. On failure returns a null
+/// pointer and sets `errno`.
+///
+/// # Notes
+///
+/// This is a dummy implementation that always fails with `ENOSYS` (function not implemented).
+/// It exists so that consumers which only reference the symbol (notably libstdc++'s
+/// `std::filesystem` directory iterators) link successfully; such callers treat the null
+/// return as "directory could not be opened". A future implementation should take ownership of
+/// `fd` and return a `DIR` stream backed by the directory it refers to.
+///
+/// # Safety
+///
+/// This function is safe to call with any integer; passing a descriptor that is not currently
+/// open does not change the (stub) behaviour.
+///
+#[unsafe(no_mangle)]
+#[trace_libcall]
+pub unsafe extern "C" fn fdopendir(_fd: c_int) -> *mut c_void {
+    ::syslog::debug!("fdopendir(): not implemented");
+    *__errno_location() = ErrorCode::InvalidSysCall.get();
+    core::ptr::null_mut()
+}
