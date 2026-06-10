@@ -117,8 +117,8 @@ pub(crate) fn handle_ipc_message(
         Err(tid) => ProcessIdentifier::from(i32::from(tid)),
     };
 
-    // procd registers with PID == INITD (it is the init daemon).
-    if source_pid == ProcessIdentifier::INITD {
+    // Rout messages from process daemon.
+    if source_pid == ProcessIdentifier::PROCD {
         return handle_system_message(message);
     }
 

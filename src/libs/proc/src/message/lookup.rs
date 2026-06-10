@@ -245,7 +245,7 @@ pub fn lookup_request(name: &str, pid: ProcessIdentifier) -> Result<Message, Err
     // Construct an IPC  message.
     let ipc_message: Message = Message::new(
         MessageSender::from(pid),
-        MessageReceiver::from(crate::PROCD),
+        MessageReceiver::from(ProcessIdentifier::PROCD),
         MessageType::Ipc,
         None,
         system_message.into_bytes(),
@@ -289,7 +289,7 @@ pub fn lookup_response(
 
     // Construct an IPC  message.
     let ipc_message: Message = Message::new(
-        MessageSender::from(crate::PROCD),
+        MessageSender::from(ProcessIdentifier::PROCD),
         MessageReceiver::from(destination),
         MessageType::Ipc,
         None,

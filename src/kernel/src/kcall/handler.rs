@@ -79,7 +79,7 @@ pub fn kcall_handler() -> ExitStatus {
             Ok(None) => {},
             Ok(Some((pid, status))) => {
                 // Check if init daemon process terminated.
-                if pid == ProcessIdentifier::INITD {
+                if pid == ProcessIdentifier::PROCD {
                     // It was, so we should shutdown.
                     break status;
                 }

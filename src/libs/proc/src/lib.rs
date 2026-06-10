@@ -30,9 +30,6 @@ extern crate alloc;
 // Exports
 //==================================================================================================
 
-/// Process identifier of the process manager daemon.
-pub const PROCD: ProcessIdentifier = ProcessIdentifier::INITD;
-
 pub use message::{
     lookup_request,
     lookup_response,
@@ -48,7 +45,6 @@ pub use message::{
     SignupResponseMessage,
 };
 
-use ::sys::pm::ProcessIdentifier;
 #[cfg(feature = "syscall")]
 pub use syscall::{
     getegid,

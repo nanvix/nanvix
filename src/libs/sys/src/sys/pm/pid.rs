@@ -53,8 +53,11 @@ impl ProcessIdentifier {
     /// Identifier of the kernel process.
     pub const KERNEL: ProcessIdentifier = ProcessIdentifier(Self::KERNEL_RAW);
 
-    /// Identifier of the init daemon process.
-    pub const INITD: ProcessIdentifier = ProcessIdentifier(1);
+    /// Raw identifier for the process management daemon process.
+    pub const PROCD_RAW: i32 = 1;
+
+    /// Identifier of the process management daemon process.
+    pub const PROCD: ProcessIdentifier = ProcessIdentifier(Self::PROCD_RAW);
 
     /// Raw identifier for the memory management daemon process.
     pub const MEMD_RAW: i32 = 2;

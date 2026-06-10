@@ -135,7 +135,7 @@ pub fn shutdown_request(destination: ProcessIdentifier, code: u8) -> Result<Mess
 
     // Construct an IPC message.
     let ipc_message: Message = Message::new(
-        MessageSender::from(crate::PROCD),
+        MessageSender::from(ProcessIdentifier::PROCD),
         MessageReceiver::from(destination),
         MessageType::Ipc,
         None,

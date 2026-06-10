@@ -2296,11 +2296,11 @@ impl ProcessManager {
     /// idle loop still publishes a process-termination scheduling event for it, exactly as if the
     /// zombie had been harvested there.
     ///
-    /// The init daemon ([`ProcessIdentifier::INITD`]) is never reaped here. Harvesting INITD is the
+    /// The init daemon ([`ProcessIdentifier::PROCD`]) is never reaped here. Harvesting PROCD is the
     /// kernel's shutdown signal, which is observed only by the idle-loop harvester
     /// ([`crate::kcall::handler::kcall_handler`]). Reaping it on this path would consume that
     /// signal, buffering an ordinary termination event and leaving shutdown to never be observed.
-    /// Because the zombie queue is processed in FIFO order, this stops as soon as INITD reaches the
+    /// Because the zombie queue is processed in FIFO order, this stops as soon as PROCD reaches the
     /// front, leaving it (and anything queued behind it) for the idle loop.
     ///
     /// # Parameters
@@ -2318,7 +2318,7 @@ impl ProcessManager {
             // Never reap the init daemon here; leave it queued so the idle loop can detect its
             // termination and shut the kernel down.
             if let Some(zombie) = self.zombies.front() {
-                if zombie.state().pid() == ProcessIdentifier::INITD {
+                if zombie.state().pid() == ProcessIdentifier::PROCD {
                     break;
                 }
             }
