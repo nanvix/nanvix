@@ -260,18 +260,6 @@ impl VirtMemoryManager {
     /// copy-on-write marks installed on `parent` are cleared.
     ///
     pub fn link_user_pages(&mut self, parent: &mut Vmem, child: &mut Vmem) -> Result<(), Error> {
-        let page_table_allocator = || {
-            // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
-            // concurrent or re-entrant access to the physical memory manager is possible.
-            let mut kframe: KernelFrame =
-                unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
-            kframe.clear()?;
-            let kpage: KernelPage = KernelPage::new(kframe);
-            let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
-            let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
-            Ok(page_table)
-        };
-
         // Process the parent's user mappings in fixed-size chunks. We cannot mutate
         // `parent` while borrowing its page tables via `for_each_user_mapping`, so each
         // chunk first snapshots up to LINK_CHUNK entries into a stack-resident buffer,
@@ -304,14 +292,7 @@ impl VirtMemoryManager {
             for slot in buf.iter().take(count) {
                 // SAFETY: `slot` was written above for indices < count.
                 let (vaddr, frame, writable) = unsafe { slot.assume_init_read() };
-                if let Err(e) = Self::link_one_user_page(
-                    parent,
-                    child,
-                    vaddr,
-                    frame,
-                    writable,
-                    &page_table_allocator,
-                ) {
+                if let Err(e) = Self::link_one_user_page(parent, child, vaddr, frame, writable) {
                     Self::rollback_linked_pages(parent, child);
                     return Err(e);
                 }
@@ -330,17 +311,13 @@ impl VirtMemoryManager {
     /// On failure the caller is expected to invoke [`Self::rollback_linked_pages`] to
     /// undo any prior fully-linked iterations; this helper itself leaves no partial
     /// per-iteration state behind.
-    fn link_one_user_page<F>(
+    fn link_one_user_page(
         parent: &mut Vmem,
         child: &mut Vmem,
         vaddr: PageAligned<VirtualAddress>,
         frame: FrameAddress,
         writable: bool,
-        page_table_allocator: &F,
-    ) -> Result<(), Error>
-    where
-        F: Fn() -> Result<PageTable<PageTableStorage>, Error>,
-    {
+    ) -> Result<(), Error> {
         // Wrap the parent's already-owned frame in a [`ManuallyDrop`] handle so that
         // we can call [`UserFrame::share`] on it without risking a spurious decrement
         // of the parent's refcount if `share` itself returns an error. The parent's
@@ -360,7 +337,7 @@ impl VirtMemoryManager {
         } else {
             AccessPermission::RDONLY
         };
-        child.map(child_handle, vaddr, access, page_table_allocator)?;
+        child.map(child_handle, vaddr, access)?;
 
         if writable {
             if let Err(e) = parent.mark_user_page_cow(vaddr) {
@@ -593,18 +570,6 @@ impl VirtMemoryManager {
             )?;
         }
 
-        let page_table_allocator = || {
-            // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
-            // concurrent or re-entrant access to the physical memory manager is possible.
-            let mut kframe: KernelFrame =
-                unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
-            kframe.clear()?;
-            let kpage: KernelPage = KernelPage::new(kframe);
-            let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
-            let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
-            Ok(page_table)
-        };
-
         // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no concurrent
         // or re-entrant access to the physical memory manager is possible.
         let alloc_result: Result<(), Error> =
@@ -619,7 +584,7 @@ impl VirtMemoryManager {
         let mut map_error: Result<(), Error> = Ok(());
 
         for uframe in uframes.drain(..) {
-            if let Err(e) = vmem.map(uframe, vaddr, access, page_table_allocator) {
+            if let Err(e) = vmem.map(uframe, vaddr, access) {
                 map_error = Err(e);
                 break;
             }

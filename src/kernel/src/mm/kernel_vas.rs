@@ -152,18 +152,7 @@ pub fn init(
                     mm.alloc_kpage(false)?
                 };
 
-                let page_table_allocator = || {
-                    let kpage: KernelPage = {
-                        // SAFETY: the memory manager is initialized and access is synchronized.
-                        let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
-                        mm.alloc_kpage(true)?
-                    };
-                    let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
-                    let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
-                    Ok(page_table)
-                };
-
-                vmem.map_kpage(kpage, vaddr, page_table_allocator)?;
+                vmem.map_kpage(kpage, vaddr)?;
 
                 match vaddr.into_raw_value().checked_add(mem::PAGE_SIZE) {
                     Some(raw_addr) => vaddr = PageAligned::from_raw_value(raw_addr)?,
