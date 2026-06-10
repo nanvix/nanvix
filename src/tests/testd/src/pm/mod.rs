@@ -8,6 +8,7 @@
 mod capability;
 mod duplicate_burst;
 mod sched;
+mod terminate;
 
 //==================================================================================================
 // Public Standalone Functions
@@ -22,4 +23,5 @@ pub fn test() {
     sched::test();
     capability::test();
     duplicate_burst::test();
+    terminate::test();
 }
