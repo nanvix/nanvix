@@ -31,11 +31,13 @@ extern crate alloc;
 //==================================================================================================
 
 pub use message::{
+    fork_clone_request,
     lookup_request,
     lookup_response,
     shutdown_request,
     signup_request,
     signup_response,
+    ForkCloneMessage,
     LookupMessage,
     LookupResponseMessage,
     ProcessManagementMessage,
