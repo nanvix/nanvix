@@ -920,6 +920,15 @@ impl ProcessManager {
 
         // Set the list of sleeping processes.
         self.suspended = suspended;
+
+        // Service per-thread alarms for processes that remain runnable because they still have
+        // other ready threads. Such a sleeping thread is parked inside the process's own
+        // sleeping-thread list (it never reaches `self.suspended`), so without this its alarm would
+        // never be serviced until the whole process quiesced — letting one CPU-bound sibling thread
+        // starve another thread's timed wait.
+        for process in self.ready.iter_mut() {
+            process.wakeup_expired_alarms(now);
+        }
     }
 
     ///
@@ -1006,36 +1015,58 @@ impl ProcessManager {
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
     pub fn do_wakeup(&mut self, tid: ThreadIdentifier) -> Result<(), Error> {
+        if self.try_wakeup_thread(tid) {
+            Ok(())
+        } else {
+            let reason: &str = "thread not found";
+            error!("{reason} (tid={tid:?})");
+            Err(Error::new(ErrorCode::NoSuchEntry, reason))
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Best-effort wakeup of a single thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: ID of the thread to wake up.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if a sleeping thread with the given identifier was woken, or `false` if no
+    /// such thread is currently in a sleeping state (for example, because it already timed out or
+    /// was woken by another notifier). Unlike [`Self::do_wakeup`], the not-sleeping case is reported
+    /// through the return value rather than an error, so that synchronization primitives can skip
+    /// stale waiters without producing spurious error logs.
+    ///
+    fn try_wakeup_thread(&mut self, tid: ThreadIdentifier) -> bool {
         // Check if thread belongs to the running process.
         if self.get_running().find_thread(tid).is_some() {
             let running_process: RunningProcess = self.take_running();
             match running_process.wakeup(tid) {
                 Ok(running_process) => {
                     self.running = Some(running_process);
-                    return Ok(());
+                    return true;
                 },
                 Err(running_process) => {
+                    // The thread exists in the running process but is not sleeping (e.g., it was
+                    // already woken). Report this as a no-op rather than an error.
                     self.running = Some(running_process);
-                    let reason: &str = "thread not found";
-                    error!("{reason} (tid={tid:?})");
-                    return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+                    return false;
                 },
             }
         }
 
-        // Check if thread belongs to a suspended process.
-        let runnable_process: RunnableProcess = match self.try_wakeup(tid) {
-            Some(runnable_process) => runnable_process,
-            None => {
-                let reason: &str = "thread not found";
-                error!("{reason} (tid={tid:?})");
-                return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+        // Check if thread belongs to a suspended or ready process.
+        match self.try_wakeup(tid) {
+            Some(runnable_process) => {
+                self.ready.push_back(runnable_process);
+                true
             },
-        };
-
-        self.ready.push_back(runnable_process);
-
-        Ok(())
+            None => false,
+        }
     }
 
     fn try_wakeup(&mut self, tid: ThreadIdentifier) -> Option<RunnableProcess> {
