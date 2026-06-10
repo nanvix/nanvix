@@ -6,13 +6,10 @@
 //==================================================================================================
 
 use crate::{
-    hal::{
-        arch::x86::mem::mmu::page_table::PageTable,
-        mem::{
-            AccessPermission,
-            PageAligned,
-            VirtualAddress,
-        },
+    hal::mem::{
+        AccessPermission,
+        PageAligned,
+        VirtualAddress,
     },
     ipc::Mailbox,
     mm::{
@@ -20,8 +17,6 @@ use crate::{
             PhysMemoryManager,
             UserFrame,
         },
-        KernelPage,
-        PageTableStorage,
         VirtMemoryManager,
         Vmem,
     },
