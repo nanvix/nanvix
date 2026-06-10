@@ -22,15 +22,22 @@
 
 use crate::fat32_backend;
 use ::alloc::{
+    collections::BTreeMap,
     string::String,
+    sync::Arc,
     vec::Vec,
 };
 use ::config::fds::{
     VFS_FD_BASE,
     VFS_MAX_OPEN_FILES,
 };
+use ::core::sync::atomic::{
+    AtomicI32,
+    Ordering,
+};
 use ::fat32::Fat32Error;
 use ::spin::Mutex;
+use ::sys::pm::ProcessIdentifier;
 use ::sysapi::{
     fcntl::{
         file_control_request,
@@ -361,11 +368,16 @@ impl VfsFileHandle {
 // File Descriptor Table
 //==================================================================================================
 
-/// An open file slot in the VFS file descriptor table.
+/// An open file description managed by the VFS.
 ///
 /// Tracks a POSIX-compliant virtual position independently of the
 /// underlying backend. This is necessary because FAT32 (via fatfs)
 /// clamps seeks past EOF, while POSIX `lseek` allows it.
+///
+/// An open file description is shared (via [`Arc`]) by every file descriptor that refers to it.
+/// `fork()` duplicates the file descriptors of a process by cloning these shared references, so the
+/// parent and child observe the same file offset — matching POSIX semantics — while each holds an
+/// independent descriptor that can be closed on its own.
 struct VfsEntry {
     /// The file handle from any backend.
     handle: VfsFileHandle,
@@ -379,65 +391,249 @@ struct VfsEntry {
 // exclusive access. The Cell is never shared across threads without the mutex.
 unsafe impl Send for VfsEntry {}
 
-/// Global file descriptor table for VFS-managed files.
+/// A shared, reference-counted open file description.
 ///
-/// Each slot is individually protected by a [`spin::Mutex`] so that
-/// concurrent operations on different FDs do not block each other.
-struct VfsFdTable {
-    /// File slots indexed by (fd - VFS_FD_BASE).
-    slots: [Mutex<Option<VfsEntry>>; VFS_MAX_OPEN_FILES],
+/// Every file descriptor that refers to the same open file description holds one of these
+/// references. The description is dropped — and its backend handle released — only when the last
+/// referring descriptor is closed. This is the mechanism by which `fork()` shares open files
+/// between a parent and its child.
+type OpenFile = Arc<Mutex<VfsEntry>>;
+
+/// Per-process VFS state: the open file descriptor table and the current working directory.
+///
+/// Each process is given its own descriptor table so that closing a descriptor in one process does
+/// not affect another, and its own working directory so that `chdir()` is process-local. `fork()`
+/// gives the child a copy of this state: the descriptor slots are cloned as shared references to
+/// the parent's open file descriptions, while the working directory is deep-copied.
+struct ProcessState {
+    /// File descriptor slots indexed by `(fd - VFS_FD_BASE)`.
+    slots: Vec<Option<OpenFile>>,
+    /// Current working directory (always absolute, never ends with "/").
+    cwd: String,
 }
 
-impl VfsFdTable {
-    /// Creates a new empty file descriptor table.
-    #[allow(clippy::declare_interior_mutable_const)]
-    const fn new() -> Self {
-        const NONE: Mutex<Option<VfsEntry>> = Mutex::new(None);
+impl ProcessState {
+    /// Creates a new, empty per-process state with the working directory set to "/".
+    fn new() -> Self {
         Self {
-            slots: [NONE; VFS_MAX_OPEN_FILES],
+            slots: alloc::vec![None; VFS_MAX_OPEN_FILES],
+            cwd: String::from("/"),
         }
     }
 
-    /// Allocates a new file descriptor for the given file handle.
-    fn alloc(&self, handle: VfsFileHandle) -> Result<c_int, Fat32Error> {
-        for i in 0..VFS_MAX_OPEN_FILES {
-            let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = self.slots[i].lock();
-            if slot.is_none() {
-                *slot = Some(VfsEntry {
-                    handle,
-                    virtual_pos: 0,
-                });
-                return Ok(VFS_FD_BASE + i as c_int);
-            }
-        }
-        Err(Fat32Error::TooManyOpenFiles)
-    }
-
-    /// Locks the slot for a given FD and returns the guard.
+    /// Creates a copy of this state for a freshly forked child.
     ///
-    /// Returns `Err(Fat32Error::InvalidFd)` if the FD is out of range.
-    fn lock(&self, fd: c_int) -> Result<spin::MutexGuard<'_, Option<VfsEntry>>, Fat32Error> {
-        let idx: usize = (fd - VFS_FD_BASE) as usize;
-        if idx >= VFS_MAX_OPEN_FILES {
-            return Err(Fat32Error::InvalidFd);
-        }
-        Ok(self.slots[idx].lock())
-    }
-
-    /// Closes and frees the file descriptor.
-    fn close(&self, fd: c_int) -> Result<(), Fat32Error> {
-        let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = self.lock(fd)?;
-        if slot.is_some() {
-            *slot = None;
-            Ok(())
-        } else {
-            Err(Fat32Error::InvalidFd)
+    /// The descriptor slots are cloned as shared references to the same open file descriptions,
+    /// so the parent and child share file offsets. The working directory is deep-copied.
+    fn fork(&self) -> Self {
+        Self {
+            slots: self.slots.clone(),
+            cwd: self.cwd.clone(),
         }
     }
 }
 
-/// Global file descriptor table.
-static FD_TABLE: VfsFdTable = VfsFdTable::new();
+/// Registry of per-process VFS state, keyed by process identifier.
+static PROCESSES: Mutex<BTreeMap<ProcessIdentifier, ProcessState>> = Mutex::new(BTreeMap::new());
+
+/// Identifier of the process on whose behalf the VFS is currently operating.
+///
+/// The daemon sets this before handling each request so that the descriptor and working-directory
+/// operations below resolve against the correct process. The default (`0`) provides a single
+/// implicit process for callers — such as unit tests and benchmarks — that never set it explicitly.
+///
+/// This is process-global. Any unit test that mutates it (directly or via [`set_current_process`])
+/// or that depends on the per-process registry must serialize against every other such test by
+/// holding `FORK_TEST_GUARD`, since the test harness runs tests concurrently.
+static CURRENT_PID: AtomicI32 = AtomicI32::new(0);
+
+/// Returns the identifier of the process the VFS is currently operating on behalf of.
+#[inline]
+fn current_pid() -> ProcessIdentifier {
+    ProcessIdentifier::from(CURRENT_PID.load(Ordering::Relaxed))
+}
+
+/// Selects the process on whose behalf subsequent VFS operations are performed.
+///
+/// The daemon must call this before dispatching a request so that descriptor and working-directory
+/// operations resolve against the requesting process. The process's state is created lazily on
+/// first use if it does not already exist.
+pub fn set_current_process(pid: ProcessIdentifier) {
+    {
+        let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+            PROCESSES.lock();
+        procs.entry(pid).or_insert_with(ProcessState::new);
+    }
+    CURRENT_PID.store(i32::from(pid), Ordering::Relaxed);
+}
+
+/// Returns the working directory of the process the VFS is operating on behalf of.
+///
+/// The working directory is owned solely by the per-process state; the VFS itself stores none.
+/// Defaults to "/" if the process has no recorded state yet.
+pub(crate) fn current_cwd() -> String {
+    let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
+    procs
+        .get(&current_pid())
+        .map(|state| state.cwd.clone())
+        .unwrap_or_else(|| String::from("/"))
+}
+
+/// Translates a file descriptor into a slot index, validating its range.
+fn fd_index(fd: c_int) -> Result<usize, Fat32Error> {
+    if fd < VFS_FD_BASE {
+        return Err(Fat32Error::InvalidFd);
+    }
+    let idx: usize = (fd - VFS_FD_BASE) as usize;
+    if idx >= VFS_MAX_OPEN_FILES {
+        return Err(Fat32Error::InvalidFd);
+    }
+    Ok(idx)
+}
+
+/// Returns a shared reference to the open file description for `fd` in the current process.
+fn entry_arc(fd: c_int) -> Result<OpenFile, Fat32Error> {
+    let idx: usize = fd_index(fd)?;
+    let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
+    let state: &ProcessState = procs.get(&current_pid()).ok_or(Fat32Error::InvalidFd)?;
+    state
+        .slots
+        .get(idx)
+        .and_then(|slot| slot.clone())
+        .ok_or(Fat32Error::InvalidFd)
+}
+
+/// Allocates a new file descriptor for the given handle in the current process.
+fn alloc_fd(handle: VfsFileHandle) -> Result<c_int, Fat32Error> {
+    let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+        PROCESSES.lock();
+    let state: &mut ProcessState = procs.entry(current_pid()).or_insert_with(ProcessState::new);
+    for i in 0..VFS_MAX_OPEN_FILES {
+        if state.slots[i].is_none() {
+            state.slots[i] = Some(Arc::new(Mutex::new(VfsEntry {
+                handle,
+                virtual_pos: 0,
+            })));
+            return Ok(VFS_FD_BASE + i as c_int);
+        }
+    }
+    Err(Fat32Error::TooManyOpenFiles)
+}
+
+/// Records the current working directory for the process the VFS is operating on behalf of.
+///
+/// This persists the directory in the per-process registry so that it is restored by
+/// [`set_current_process`] on the process's next request and copied to children by
+/// [`vfs_fork_clone`].
+pub(crate) fn set_current_cwd(cwd: String) {
+    let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+        PROCESSES.lock();
+    procs
+        .entry(current_pid())
+        .or_insert_with(ProcessState::new)
+        .cwd = cwd;
+}
+
+/// Duplicates the filesystem state of `parent` onto a freshly forked `child`.
+///
+/// The child inherits a copy of the parent's open file descriptors — sharing the underlying open
+/// file descriptions, and therefore file offsets, as POSIX requires — together with a private copy
+/// of the parent's current working directory.
+///
+/// `procd` owns process lifecycle: it registers every process with the VFS when the process is
+/// created and is the only component permitted to do so. A fork is therefore always cloned from a
+/// parent that `procd` has already registered.
+///
+/// # Errors
+///
+/// - [`Fat32Error::NotFound`] if `parent` has no recorded state. Because `procd` registers a
+///   process before it can ever fork, a missing parent is a lifecycle contract violation rather
+///   than a recoverable condition, and the child is left unregistered.
+/// - [`Fat32Error::AlreadyExists`] if `child` already has recorded state. A forked child must be a
+///   fresh process; silently overwriting its table would drop its open file descriptions and leak
+///   any host-backed remote handles they hold. The caller must reclaim that state first (e.g., via
+///   [`vfs_process_exit`]).
+pub fn vfs_fork_clone(
+    parent: ProcessIdentifier,
+    child: ProcessIdentifier,
+) -> Result<(), Fat32Error> {
+    let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+        PROCESSES.lock();
+    // Refuse to clobber a child that already has state: overwriting it would orphan any host-backed
+    // descriptors it still holds. The caller is responsible for reclaiming stale state first.
+    if procs.contains_key(&child) {
+        return Err(Fat32Error::AlreadyExists);
+    }
+    // The parent must already be registered. `procd` registers every process at creation and is the
+    // sole authority for doing so, so forking from an unregistered parent is a contract violation:
+    // surface it rather than fabricating a default child that would mask the bug.
+    let child_state: ProcessState = procs.get(&parent).ok_or(Fat32Error::NotFound)?.fork();
+    procs.insert(child, child_state);
+    Ok(())
+}
+
+/// Reclaims the per-process filesystem state of a terminated process.
+///
+/// Drops `pid`'s recorded state, releasing its references to the open file descriptions it held.
+/// This keeps the last-reference accounting correct for surviving siblings that still share those
+/// descriptions, and prevents the per-process table from growing without bound. Reclaiming an
+/// unknown `pid` is a no-op.
+///
+/// Returns the remote file descriptors of any host-backed open file descriptions for which `pid`
+/// held the final reference. The caller (vfsd) must forward a close for each of these to hostfsd:
+/// because the process is gone it can no longer close them itself, and the VFS has no other way to
+/// release a remote handle. Descriptions still shared with a surviving process are not returned.
+#[must_use = "the returned remote fds must be closed on hostfsd or they leak"]
+pub fn vfs_process_exit(pid: ProcessIdentifier) -> Vec<i32> {
+    // Detach the process's state while holding the registry lock, but defer dropping it until the
+    // lock is released. Dropping an open file description may run backend teardown; deferring keeps
+    // the registry lock from ever nesting with backend locks, matching `vfs_close`.
+    let removed: Option<ProcessState> = {
+        let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+            PROCESSES.lock();
+        procs.remove(&pid)
+    };
+    let Some(state) = removed else {
+        return Vec::new();
+    };
+    // The process has been removed from the registry, so an `Arc` strong count of one means no
+    // surviving descriptor — in this or any other process — still shares the open file description.
+    // Its remote handle must therefore be closed on hostfsd. As the sole owner, the lock below is
+    // uncontended.
+    let mut orphaned: Vec<i32> = Vec::new();
+    for open_file in state.slots.into_iter().flatten() {
+        if Arc::strong_count(&open_file) != 1 {
+            continue;
+        }
+        if let VfsFileHandle::HostFs(h) = &open_file.lock().handle {
+            orphaned.push(h.remote_fd());
+        }
+        // `open_file` is dropped here, after the registry lock has been released.
+    }
+    orphaned
+}
+
+/// Reports whether `fd` is the last descriptor referencing its open file description.
+///
+/// Returns `true` if closing `fd` in the current process would drop the final reference to the
+/// underlying open file description (so a host-backed close must be forwarded to hostfsd), and
+/// `false` if other descriptors — for example in a forked child — still share it, or if `fd` is
+/// invalid. This does not modify the descriptor table.
+pub fn vfs_hostfs_is_last_ref(fd: c_int) -> bool {
+    let Ok(idx) = fd_index(fd) else {
+        return false;
+    };
+    let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
+    let Some(state) = procs.get(&current_pid()) else {
+        return false;
+    };
+    match state.slots.get(idx).and_then(|slot| slot.as_ref()) {
+        // The table holds exactly one reference, so a strong count of one means no other descriptor
+        // shares this open file description.
+        Some(entry) => Arc::strong_count(entry) == 1,
+        None => false,
+    }
+}
 
 //==================================================================================================
 // HostFs FD Helpers
@@ -453,15 +649,15 @@ pub fn vfs_alloc_hostfs(
     path: Option<String>,
 ) -> Result<c_int, Fat32Error> {
     let handle: VfsFileHandle = VfsFileHandle::HostFs(HostFsHandle::new(remote_fd, is_dir, path));
-    FD_TABLE.alloc(handle)
+    alloc_fd(handle)
 }
 
 /// Returns the remote FD for a HostFs file descriptor, or `None` if the FD
 /// is not backed by hostfs.
 pub fn vfs_hostfs_remote_fd(fd: c_int) -> Option<i32> {
-    let slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd).ok()?;
-    let entry: &VfsEntry = slot.as_ref()?;
-    entry.handle.hostfs_remote_fd()
+    let file: OpenFile = entry_arc(fd).ok()?;
+    let guard = file.lock();
+    guard.handle.hostfs_remote_fd()
 }
 
 /// Returns `true` if the given FD is backed by the host filesystem.
@@ -475,9 +671,9 @@ pub fn is_hostfs_fd(fd: c_int) -> bool {
 /// regular files), so callers can use this to distinguish hostfs directories from
 /// hostfs files.
 pub fn vfs_hostfs_readdir_offset(fd: c_int) -> Option<u32> {
-    let slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd).ok()?;
-    let entry: &VfsEntry = slot.as_ref()?;
-    match &entry.handle {
+    let file: OpenFile = entry_arc(fd).ok()?;
+    let guard = file.lock();
+    match &guard.handle {
         VfsFileHandle::HostFs(h) if h.is_dir() => Some(h.readdir_offset()),
         _ => None,
     }
@@ -488,11 +684,12 @@ pub fn vfs_hostfs_readdir_offset(fd: c_int) -> Option<u32> {
 /// Returns `true` if the FD is a hostfs directory handle and the cursor was updated.
 /// The cursor is left untouched for non-directory hostfs handles (regular files).
 pub fn vfs_hostfs_set_readdir_offset(fd: c_int, offset: u32) -> bool {
-    let Ok(mut slot) = FD_TABLE.lock(fd) else {
+    let Ok(file) = entry_arc(fd) else {
         return false;
     };
-    match slot.as_mut().map(|e| &mut e.handle) {
-        Some(VfsFileHandle::HostFs(h)) if h.is_dir() => {
+    let mut guard = file.lock();
+    match &mut guard.handle {
+        VfsFileHandle::HostFs(h) if h.is_dir() => {
             h.set_readdir_offset(offset);
             true
         },
@@ -554,9 +751,9 @@ pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Option<String> {
         return None;
     }
 
-    let slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(dirfd).ok()?;
-    let entry: &VfsEntry = slot.as_ref()?;
-    let dir_path: &str = match &entry.handle {
+    let file: OpenFile = entry_arc(dirfd).ok()?;
+    let guard = file.lock();
+    let dir_path: &str = match &guard.handle {
         VfsFileHandle::Directory(dh) => &dh.path,
         VfsFileHandle::HostFs(hh) if hh.is_dir() => hh.path()?,
         _ => return None, // fd is not a directory
@@ -583,10 +780,10 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
         }
         let normalized: String = crate::normalize(path)?;
         let handle: VfsFileHandle = VfsFileHandle::Directory(DirectoryHandle::new(normalized));
-        return FD_TABLE.alloc(handle);
+        return alloc_fd(handle);
     }
     let handle: VfsFileHandle = fat32_backend::open(path, flags)?;
-    FD_TABLE.alloc(handle)
+    alloc_fd(handle)
 }
 
 /// Opens a file relative to a directory file descriptor through the VFS.
@@ -610,8 +807,9 @@ pub fn vfs_openat(dirfd: c_int, path: &str, flags: c_int) -> Result<c_int, Fat32
 /// returns 0 (POSIX EOF semantics). Otherwise syncs the handle, reads,
 /// and advances the virtual position.
 pub fn vfs_read(fd: c_int, buf: &mut [u8]) -> Result<c_size_t, Fat32Error> {
-    let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
-    let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+    let file: OpenFile = entry_arc(fd)?;
+    let mut guard = file.lock();
+    let entry: &mut VfsEntry = &mut guard;
 
     if entry.handle.is_dir() {
         return Err(Fat32Error::NotAFile);
@@ -634,8 +832,9 @@ pub fn vfs_read(fd: c_int, buf: &mut [u8]) -> Result<c_size_t, Fat32Error> {
 /// Uses the virtual position tracker. If the position is past EOF, extends
 /// the file with zeros first, then writes and advances the virtual position.
 pub fn vfs_write(fd: c_int, buf: &[u8]) -> Result<c_size_t, Fat32Error> {
-    let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
-    let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+    let file: OpenFile = entry_arc(fd)?;
+    let mut guard = file.lock();
+    let entry: &mut VfsEntry = &mut guard;
 
     let size: u64 = entry.handle.size()?;
     if (entry.virtual_pos as u64) > size {
@@ -668,8 +867,9 @@ pub fn vfs_write(fd: c_int, buf: &[u8]) -> Result<c_size_t, Fat32Error> {
 /// underlying backend handle is only synced when the position is within the
 /// file bounds.
 pub fn vfs_lseek(fd: c_int, offset: off_t, whence: c_int) -> Result<off_t, Fat32Error> {
-    let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
-    let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+    let file: OpenFile = entry_arc(fd)?;
+    let mut guard = file.lock();
+    let entry: &mut VfsEntry = &mut guard;
 
     let size: i64 = entry.handle.size()? as i64;
     let new_pos: i64 = match whence {
@@ -729,8 +929,9 @@ fn populate_stat_fields(buf: &mut ::sysapi::sys_stat::stat, size: u64, is_dir: b
 
 /// Gets file status for a VFS file descriptor.
 pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fat32Error> {
-    let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
-    let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+    let file: OpenFile = entry_arc(fd)?;
+    let mut guard = file.lock();
+    let entry: &mut VfsEntry = &mut guard;
     let is_dir: bool = matches!(&entry.handle, VfsFileHandle::Directory(_));
     let size: u64 = entry.handle.size()?;
 
@@ -746,7 +947,24 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
 
 /// Closes a VFS file descriptor.
 pub fn vfs_close(fd: c_int) -> Result<(), Fat32Error> {
-    FD_TABLE.close(fd)
+    let idx: usize = fd_index(fd)?;
+    // Detach the descriptor while holding the registry lock, but defer dropping the open file
+    // description until the lock is released. Its drop may run backend teardown (e.g. `File::drop`,
+    // which takes a global VFS lock); deferring keeps the registry lock from ever nesting with
+    // backend locks.
+    let removed: Option<OpenFile> = {
+        let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+            PROCESSES.lock();
+        let state: &mut ProcessState =
+            procs.get_mut(&current_pid()).ok_or(Fat32Error::InvalidFd)?;
+        let slot: &mut Option<OpenFile> = state.slots.get_mut(idx).ok_or(Fat32Error::InvalidFd)?;
+        slot.take()
+    };
+    match removed {
+        // The open file description is dropped here, after the registry lock has been released.
+        Some(_open_file) => Ok(()),
+        None => Err(Fat32Error::InvalidFd),
+    }
 }
 
 /// Gets file status for a path through the VFS.
@@ -828,12 +1046,17 @@ pub fn vfs_chdir(path: &str) -> Result<(), Fat32Error> {
 ///
 /// Only works on directory handles. Returns an error for file handles.
 pub fn vfs_fchdir(fd: c_int) -> Result<(), Fat32Error> {
-    let slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
-    let entry: &VfsEntry = slot.as_ref().ok_or(Fat32Error::InvalidFd)?;
-    match &entry.handle {
-        VfsFileHandle::Directory(dir) => crate::chdir(&dir.path),
-        _ => Err(Fat32Error::NotADirectory),
-    }
+    let file: OpenFile = entry_arc(fd)?;
+    // Extract the directory path and release the file lock before calling `chdir`, which acquires
+    // its own locks during path resolution.
+    let path: String = {
+        let guard = file.lock();
+        match &guard.handle {
+            VfsFileHandle::Directory(dir) => dir.path.clone(),
+            _ => return Err(Fat32Error::NotADirectory),
+        }
+    };
+    crate::chdir(&path)
 }
 
 /// Gets the VFS current working directory.
@@ -853,8 +1076,9 @@ pub fn vfs_readdir(path: &str) -> Result<alloc::vec::Vec<crate::DirEntry>, Fat32
 /// POSIX requires that `ftruncate()` does not change the file offset.
 /// The current offset is saved before truncation and restored afterwards.
 pub fn vfs_ftruncate(fd: c_int, length: off_t) -> Result<(), Fat32Error> {
-    let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
-    let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+    let open_file: OpenFile = entry_arc(fd)?;
+    let mut guard = open_file.lock();
+    let entry: &mut VfsEntry = &mut guard;
     match &mut entry.handle {
         VfsFileHandle::Fat32(file) => {
             let current_size: u64 = file.size()?;
@@ -900,8 +1124,9 @@ pub fn vfs_ftruncate(fd: c_int, length: off_t) -> Result<(), Fat32Error> {
 /// If the file is smaller than the target size, it is extended by writing
 /// zero bytes. The file offset is preserved.
 pub fn vfs_fallocate(fd: c_int, offset: off_t, len: off_t) -> Result<(), Fat32Error> {
-    let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
-    let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+    let open_file: OpenFile = entry_arc(fd)?;
+    let mut guard = open_file.lock();
+    let entry: &mut VfsEntry = &mut guard;
     match &mut entry.handle {
         VfsFileHandle::Fat32(file) => {
             let target_size: u64 = (offset + len) as u64;
@@ -940,8 +1165,9 @@ pub fn vfs_fallocate(fd: c_int, offset: off_t, len: off_t) -> Result<(), Fat32Er
 ///
 /// For in-memory FAT, this flushes the fatfs buffers.
 pub fn vfs_fsync(fd: c_int) -> Result<(), Fat32Error> {
-    let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
-    let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+    let file: OpenFile = entry_arc(fd)?;
+    let mut guard = file.lock();
+    let entry: &mut VfsEntry = &mut guard;
     match &mut entry.handle {
         VfsFileHandle::Fat32(file) => file.flush(),
         VfsFileHandle::DirectRead(_) | VfsFileHandle::Directory(_) | VfsFileHandle::HostFs(_) => {
@@ -961,8 +1187,9 @@ pub fn vfs_isatty(_fd: c_int) -> bool {
 ///
 /// POSIX semantics: reading past EOF returns 0 bytes (not an error).
 pub fn vfs_pread(fd: c_int, buf: &mut [u8], offset: off_t) -> Result<c_size_t, Fat32Error> {
-    let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
-    let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+    let file: OpenFile = entry_arc(fd)?;
+    let mut guard = file.lock();
+    let entry: &mut VfsEntry = &mut guard;
 
     // If the offset is at or past EOF, return 0 (POSIX EOF semantics).
     let size: u64 = entry.handle.size()?;
@@ -984,8 +1211,9 @@ pub fn vfs_pread(fd: c_int, buf: &mut [u8], offset: off_t) -> Result<c_size_t, F
 ///
 /// POSIX semantics: writing past EOF extends the file with zeros up to the offset.
 pub fn vfs_pwrite(fd: c_int, buf: &[u8], offset: off_t) -> Result<c_size_t, Fat32Error> {
-    let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
-    let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+    let file: OpenFile = entry_arc(fd)?;
+    let mut guard = file.lock();
+    let entry: &mut VfsEntry = &mut guard;
 
     // Save current handle position.
     let saved: off_t = entry.handle.seek(0, file_seek::SEEK_CUR)?;
@@ -1054,8 +1282,7 @@ pub fn vfs_accessat(dirfd: c_int, path: &str) -> Result<(), Fat32Error> {
 /// Other commands return `NotSupported`.
 pub fn vfs_fcntl(fd: c_int, cmd: c_int) -> Result<c_int, Fat32Error> {
     // Verify the fd is valid.
-    let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
-    let _entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+    let _file: OpenFile = entry_arc(fd)?;
 
     match cmd {
         file_control_request::F_GETFD => Ok(0), // No FD flags (no close-on-exec for VFS).
@@ -1081,8 +1308,9 @@ pub fn vfs_getdents(
         limits::NAME_MAX,
     };
 
-    let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
-    let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+    let file: OpenFile = entry_arc(fd)?;
+    let mut guard = file.lock();
+    let entry: &mut VfsEntry = &mut guard;
 
     let dir_handle: &mut DirectoryHandle = match &mut entry.handle {
         VfsFileHandle::Directory(dh) => dh,
@@ -1547,5 +1775,224 @@ mod tests {
             !is_vfs_fd(VFS_FD_BASE + VFS_MAX_OPEN_FILES as c_int),
             "FD past max should not be a VFS FD"
         );
+    }
+
+    // -- fork() per-process descriptor table tests -------------------------------
+
+    /// Serializes the fork tests below. They mutate the process-global `CURRENT_PID` and the shared
+    /// `PROCESSES` registry, so they must not run concurrently with one another.
+    static FORK_TEST_GUARD: Mutex<()> = Mutex::new(());
+
+    /// Returns the recorded working directory of a process, or `None` if it has no state.
+    fn registry_cwd(pid: ProcessIdentifier) -> Option<String> {
+        PROCESSES.lock().get(&pid).map(|state| state.cwd.clone())
+    }
+
+    /// Returns the number of open descriptor slots held by a process.
+    fn registry_open_fd_count(pid: ProcessIdentifier) -> usize {
+        PROCESSES
+            .lock()
+            .get(&pid)
+            .map(|state| state.slots.iter().filter(|slot| slot.is_some()).count())
+            .unwrap_or(0)
+    }
+
+    /// Reads the virtual position of a process's descriptor through its shared open file
+    /// description.
+    fn fd_virtual_pos(pid: ProcessIdentifier, fd: c_int) -> Option<off_t> {
+        let procs = PROCESSES.lock();
+        let state = procs.get(&pid)?;
+        let idx: usize = (fd - VFS_FD_BASE) as usize;
+        let entry: OpenFile = state.slots.get(idx)?.clone()?;
+        let pos: off_t = entry.lock().virtual_pos;
+        Some(pos)
+    }
+
+    /// Writes the virtual position of a process's descriptor through its shared open file
+    /// description.
+    fn set_fd_virtual_pos(pid: ProcessIdentifier, fd: c_int, pos: off_t) {
+        let procs = PROCESSES.lock();
+        if let Some(state) = procs.get(&pid) {
+            let idx: usize = (fd - VFS_FD_BASE) as usize;
+            if let Some(Some(entry)) = state.slots.get(idx) {
+                entry.lock().virtual_pos = pos;
+            }
+        }
+    }
+
+    /// Removes all recorded state for the given processes (test cleanup).
+    fn forget_processes(pids: &[ProcessIdentifier]) {
+        let mut procs = PROCESSES.lock();
+        for pid in pids {
+            procs.remove(pid);
+        }
+        CURRENT_PID.store(0, Ordering::Relaxed);
+    }
+
+    /// Tests that `fork()` gives the child a copy of the parent's open descriptors.
+    #[test]
+    fn fork_inherits_open_descriptors() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7001), ProcessIdentifier::from(0x7002));
+
+        // Parent opens a host-backed descriptor.
+        set_current_process(parent);
+        let fd: c_int = vfs_alloc_hostfs(42, false, None).expect("alloc should succeed");
+        assert_eq!(vfs_hostfs_remote_fd(fd), Some(42), "parent should see the remote fd");
+
+        // Fork: the child inherits a copy of the descriptor table.
+        vfs_fork_clone(parent, child).expect("fork clone should succeed");
+
+        // The child observes the same descriptor referring to the same remote fd.
+        set_current_process(child);
+        assert_eq!(
+            vfs_hostfs_remote_fd(fd),
+            Some(42),
+            "child should inherit the parent's descriptor"
+        );
+
+        forget_processes(&[parent, child]);
+    }
+
+    /// Tests that a forked parent and child share the same open file description (and offset).
+    #[test]
+    fn fork_shares_open_file_description() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7011), ProcessIdentifier::from(0x7012));
+
+        // Parent opens a descriptor; it is the sole reference.
+        set_current_process(parent);
+        let fd: c_int = vfs_alloc_hostfs(43, false, None).expect("alloc should succeed");
+        assert!(vfs_hostfs_is_last_ref(fd), "the only descriptor should be the last reference");
+
+        // Fork: parent and child now share the open file description.
+        vfs_fork_clone(parent, child).expect("fork clone should succeed");
+        set_current_process(parent);
+        assert!(!vfs_hostfs_is_last_ref(fd), "parent must not be the last reference after fork");
+        set_current_process(child);
+        assert!(!vfs_hostfs_is_last_ref(fd), "child must not be the last reference after fork");
+
+        // A position advanced through the parent's descriptor is visible through the child's,
+        // because both refer to the same open file description (POSIX offset sharing).
+        set_fd_virtual_pos(parent, fd, 128);
+        assert_eq!(
+            fd_virtual_pos(child, fd),
+            Some(128),
+            "child should observe the parent's file offset"
+        );
+
+        forget_processes(&[parent, child]);
+    }
+
+    /// Tests that closing a descriptor in the child leaves the parent's descriptor intact, and that
+    /// the parent then becomes the last reference (so a host close would be forwarded).
+    #[test]
+    fn fork_descriptor_close_is_isolated() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7021), ProcessIdentifier::from(0x7022));
+
+        set_current_process(parent);
+        let fd: c_int = vfs_alloc_hostfs(44, false, None).expect("alloc should succeed");
+        vfs_fork_clone(parent, child).expect("fork clone should succeed");
+
+        // The child closes its descriptor.
+        set_current_process(child);
+        vfs_close(fd).expect("child close should succeed");
+        assert_eq!(vfs_hostfs_remote_fd(fd), None, "child's descriptor should be gone");
+
+        // The parent's descriptor is untouched and is now the sole reference.
+        set_current_process(parent);
+        assert_eq!(vfs_hostfs_remote_fd(fd), Some(44), "parent's descriptor should remain open");
+        assert!(
+            vfs_hostfs_is_last_ref(fd),
+            "parent should be the last reference once the child has closed"
+        );
+
+        forget_processes(&[parent, child]);
+    }
+
+    /// Tests that `fork()` deep-copies the parent's working directory into the child.
+    #[test]
+    fn fork_clones_working_directory() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7031), ProcessIdentifier::from(0x7032));
+
+        // Parent sets a working directory, then forks.
+        set_current_process(parent);
+        set_current_cwd(String::from("/data"));
+        vfs_fork_clone(parent, child).expect("fork clone should succeed");
+
+        // The child inherits a copy of the parent's working directory.
+        assert_eq!(registry_cwd(child), Some(String::from("/data")), "child should inherit cwd");
+
+        // The copy is independent: changing the child's cwd does not affect the parent.
+        set_current_process(child);
+        set_current_cwd(String::from("/other"));
+        assert_eq!(
+            registry_cwd(parent),
+            Some(String::from("/data")),
+            "parent cwd must be unchanged"
+        );
+        assert_eq!(
+            registry_cwd(child),
+            Some(String::from("/other")),
+            "child cwd should be updated"
+        );
+
+        forget_processes(&[parent, child]);
+    }
+
+    /// Tests that forking from a parent with no recorded state is rejected. `procd` registers every
+    /// process before it can fork, so an unregistered parent is a contract violation.
+    #[test]
+    fn fork_without_parent_state_is_rejected() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7041), ProcessIdentifier::from(0x7042));
+
+        // The parent has never been seen by the VFS.
+        assert!(registry_cwd(parent).is_none(), "parent should have no state");
+
+        let err: Fat32Error =
+            vfs_fork_clone(parent, child).expect_err("fork from unregistered parent should fail");
+        assert_eq!(err, Fat32Error::NotFound, "missing parent state must be rejected");
+
+        // The child must not have been registered as a side effect of the failed fork.
+        assert!(registry_cwd(child).is_none(), "child must not be registered on failure");
+        assert_eq!(registry_open_fd_count(child), 0, "child should have no open descriptors");
+
+        forget_processes(&[parent, child]);
+    }
+
+    /// Tests that forking into a child that already has recorded state is rejected, so its open
+    /// descriptors are never silently dropped.
+    #[test]
+    fn fork_into_existing_child_is_rejected() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7051), ProcessIdentifier::from(0x7052));
+
+        // The child already holds an open descriptor (e.g., PID reuse or a logic bug).
+        set_current_process(child);
+        let fd: c_int = vfs_alloc_hostfs(45, false, None).expect("alloc should succeed");
+
+        // Forking onto it must fail rather than clobber the existing state.
+        let err: Fat32Error =
+            vfs_fork_clone(parent, child).expect_err("fork into existing child should fail");
+        assert_eq!(err, Fat32Error::AlreadyExists, "existing child state must be rejected");
+
+        // The child's descriptor is left intact.
+        set_current_process(child);
+        assert_eq!(
+            vfs_hostfs_remote_fd(fd),
+            Some(45),
+            "child's existing descriptor must be preserved"
+        );
+
+        forget_processes(&[parent, child]);
     }
 }
