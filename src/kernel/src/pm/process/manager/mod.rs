@@ -324,8 +324,11 @@ impl ProcessManager {
             "create_thread: pid must match the running process"
         );
 
-        // Reserve the next thread identifier early, before any resource allocation.
-        let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
+        // Reserve the next thread identifier early, before any resource allocation. Reap pending
+        // zombies on demand if the system-wide thread cap has been reached, so a terminate-heavy
+        // workload is not spuriously refused while reclaimable slots are awaiting harvest.
+        let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) =
+            self.try_next_tid_reaping(mm)?;
 
         let enable_interrupts: bool = self.interrupt_capable;
 
@@ -792,9 +795,12 @@ impl ProcessManager {
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
 
-        // Reserve identifiers early, before any allocation that could fail.
+        // Reserve identifiers early, before any allocation that could fail. Reap pending zombies
+        // on demand if the system-wide thread cap has been reached, so a terminate-heavy workload
+        // is not spuriously refused while reclaimable slots are awaiting harvest.
         let (child_pid, next_pid): (ProcessIdentifier, ProcessIdentifier) = self.try_next_pid()?;
-        let (child_tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
+        let (child_tid, next_tid): (ThreadIdentifier, ThreadIdentifier) =
+            self.try_next_tid_reaping(mm)?;
 
         // Clone caller's address space.
         let mut vmem: Vmem = mm.new_vmem(self.get_running().state().vmem())?;
@@ -2268,6 +2274,97 @@ impl ProcessManager {
     ///
     pub fn requeue_pending_termination(&mut self, info: ProcessTerminationInfo) {
         self.pending_terminations.push_front(info);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reaps pending process zombies on demand to reclaim thread (and process) slots when thread
+    /// admission would otherwise fail. Zombies are normally harvested lazily in the kernel idle
+    /// loop ([`crate::kcall::handler::kcall_handler`]); a workload that terminates children faster
+    /// than it quiesces can therefore exhaust the system-wide thread cap with
+    /// terminated-but-unharvested zombies. Draining them here turns a spurious
+    /// [`ErrorCode::OutOfMemory`] into successful admission.
+    ///
+    /// Each harvested termination is buffered via [`Self::push_pending_termination`] so the kernel
+    /// idle loop still publishes a process-termination scheduling event for it, exactly as if the
+    /// zombie had been harvested there.
+    ///
+    /// The init daemon ([`ProcessIdentifier::INITD`]) is never reaped here. Harvesting INITD is the
+    /// kernel's shutdown signal, which is observed only by the idle-loop harvester
+    /// ([`crate::kcall::handler::kcall_handler`]). Reaping it on this path would consume that
+    /// signal, buffering an ordinary termination event and leaving shutdown to never be observed.
+    /// Because the zombie queue is processed in FIFO order, this stops as soon as INITD reaches the
+    /// front, leaving it (and anything queued behind it) for the idle loop.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Virtual memory manager, used to reclaim the zombies' address-space resources.
+    ///
+    /// # Returns
+    ///
+    /// The number of process zombies that were reaped.
+    ///
+    fn reap_pending_zombies(&mut self, mm: &mut VirtMemoryManager) -> usize {
+        let mut reaped: usize = 0;
+        loop {
+            // Never reap the init daemon here; leave it queued so the idle loop can detect its
+            // termination and shut the kernel down.
+            if let Some(zombie) = self.zombies.front() {
+                if zombie.state().pid() == ProcessIdentifier::INITD {
+                    break;
+                }
+            }
+            match self.harvest_zombies(mm) {
+                Ok(Some((pid, status))) => {
+                    self.push_pending_termination(ProcessTerminationInfo::new(pid, status));
+                    reaped += 1;
+                },
+                Ok(None) => break,
+                Err(e) => {
+                    error!("failed to harvest zombies during admission: {:?}", e);
+                    break;
+                },
+            }
+        }
+        reaped
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reserves the next thread identifier, reaping pending zombies on demand and retrying once if
+    /// the system-wide thread cap has been reached. This makes thread admission self-healing: a
+    /// terminate-heavy workload that has not yet quiesced is not spuriously refused while
+    /// reclaimable thread slots are merely awaiting harvest. See [`Self::reap_pending_zombies`].
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Virtual memory manager, used to reclaim the zombies' address-space resources.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the reserved thread identifier together with the next thread identifier to
+    /// commit. Otherwise, an error is returned.
+    ///
+    fn try_next_tid_reaping(
+        &mut self,
+        mm: &mut VirtMemoryManager,
+    ) -> Result<(ThreadIdentifier, ThreadIdentifier), Error> {
+        match self.tm.try_next_tid() {
+            Ok(ids) => Ok(ids),
+            Err(e) if e.code == ErrorCode::OutOfMemory => {
+                // The thread cap may be held purely by terminated-but-unharvested zombies. Reap
+                // them on demand and retry admission exactly once; if nothing was reclaimable,
+                // surface the original error unchanged.
+                if self.reap_pending_zombies(mm) == 0 {
+                    error!("thread admission failed and no zombies were reclaimable: {:?}", e);
+                    return Err(e);
+                }
+                self.tm.try_next_tid()
+            },
+            Err(e) => Err(e),
+        }
     }
 
     pub fn harvest_zombies(
