@@ -259,6 +259,11 @@ fn do_connect(
     //
     // Connections to the DNS port are exempted in allowlist mode so name
     // resolution works for the allowed hosts (see `HostFilter::permits_connection`).
+    let min_socklen: usize = core::mem::size_of::<::syscall::sys::socket::sockaddr>();
+    if (request.socklen as usize) < min_socklen {
+        trace!("networkd::connect(): invalid sockaddr length (socklen={})", request.socklen);
+        return build_error(tid, ErrorCode::InvalidArgument);
+    }
     let permitted: bool = match SocketAddr::try_from(&request.sockaddr) {
         Ok(SocketAddr::V4(addr)) => filter.permits_connection(addr.addr().octets(), addr.port()),
         _ => filter.is_allow_all(),
