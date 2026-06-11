@@ -74,6 +74,16 @@ const ORDER: Ordering = Ordering::Relaxed;
 /// parent's user mappings to a small number of passes for typical user processes.
 const LINK_CHUNK: usize = 32;
 
+/// Snapshot entry for one parent user mapping consumed by
+/// [`VirtMemoryManager::link_user_pages`].
+type LinkUserMapping = (PageAligned<VirtualAddress>, FrameAddress, bool, bool);
+
+/// Uninitialized slot in a link snapshot chunk.
+type LinkUserMappingSlot = MaybeUninit<LinkUserMapping>;
+
+/// Fixed-size chunk buffer used while linking user pages.
+type LinkUserMappingBuf = [LinkUserMappingSlot; LINK_CHUNK];
+
 //==================================================================================================
 // Global Variables
 //==================================================================================================
@@ -237,14 +247,18 @@ impl VirtMemoryManager {
     ///
     /// For each present user mapping in `parent`, this function adds a new reference to
     /// the underlying physical frame and installs the same mapping in `child` at the same
-    /// virtual address. If the parent mapping is writable, both the parent and child PTEs
-    /// are then marked copy-on-write (read-only in hardware + AVL bit set), so that the
-    /// first write from either side triggers a page fault. The in-kernel page-fault
-    /// handler resolves such faults by allocating a private frame and pointing the
-    /// faulting PTE at it.
+    /// virtual address. A mapping is treated as *logically writable* when it is writable in
+    /// hardware or already copy-on-write (the latter arises when the page was shared
+    /// writable by an earlier fork, leaving it read-only with the AVL CoW bit set). For a
+    /// logically-writable mapping the child is mapped RDWR and then marked copy-on-write,
+    /// and the parent is marked copy-on-write too unless it already was, so that the first
+    /// write from any sharer triggers a page fault. The in-kernel page-fault handler
+    /// resolves such faults by allocating a private frame and pointing the faulting PTE at
+    /// it.
     ///
-    /// Read-only mappings (e.g. the text segment) are shared without the copy-on-write
-    /// bit set: a write to them must continue to fault as a regular protection fault.
+    /// Genuinely read-only mappings (e.g. the text segment) are shared without the
+    /// copy-on-write bit set: a write to them must continue to fault as a regular
+    /// protection fault.
     ///
     /// # Parameters
     ///
@@ -273,13 +287,21 @@ impl VirtMemoryManager {
         // robust against the parent's iteration revisiting entries we have already
         // processed (e.g. writable entries that are now CoW-marked but still present).
         loop {
-            let mut buf: [MaybeUninit<(PageAligned<VirtualAddress>, FrameAddress, bool)>;
-                LINK_CHUNK] = [const { MaybeUninit::uninit() }; LINK_CHUNK];
+            let mut buf: LinkUserMappingBuf = [const { MaybeUninit::uninit() }; LINK_CHUNK];
             let mut count: usize = 0;
             parent.for_each_user_mapping(|vaddr, pte: PageTableEntry| {
                 if count < LINK_CHUNK && child.try_find_user_pte(vaddr)?.is_none() {
                     let frame: FrameAddress = FrameAddress::from_frame_number(pte.frame_number())?;
-                    buf[count].write((vaddr, frame, pte.flags().is_writable()));
+                    // A page that is already copy-on-write (read-only in hardware with the
+                    // AVL CoW bit set) was shared writable by a prior fork and is therefore
+                    // logically writable. Classify it as writable so the new child is shared
+                    // copy-on-write too, rather than as a plain read-only mapping that would
+                    // fault fatally on the child's first write. The parent's current CoW
+                    // state is carried alongside so the link step can skip re-marking an
+                    // already-CoW parent (mark_cow requires a writable PTE).
+                    let parent_cow: bool = pte.is_cow();
+                    let writable: bool = pte.flags().is_writable() || parent_cow;
+                    buf[count].write((vaddr, frame, writable, parent_cow));
                     count += 1;
                 }
                 Ok(())
@@ -291,8 +313,10 @@ impl VirtMemoryManager {
 
             for slot in buf.iter().take(count) {
                 // SAFETY: `slot` was written above for indices < count.
-                let (vaddr, frame, writable) = unsafe { slot.assume_init_read() };
-                if let Err(e) = Self::link_one_user_page(parent, child, vaddr, frame, writable) {
+                let (vaddr, frame, writable, parent_cow) = unsafe { slot.assume_init_read() };
+                if let Err(e) =
+                    Self::link_one_user_page(parent, child, vaddr, frame, writable, parent_cow)
+                {
                     Self::rollback_linked_pages(parent, child);
                     return Err(e);
                 }
@@ -317,6 +341,7 @@ impl VirtMemoryManager {
         vaddr: PageAligned<VirtualAddress>,
         frame: FrameAddress,
         writable: bool,
+        parent_cow: bool,
     ) -> Result<(), Error> {
         // Wrap the parent's already-owned frame in a [`ManuallyDrop`] handle so that
         // we can call [`UserFrame::share`] on it without risking a spurious decrement
@@ -326,12 +351,11 @@ impl VirtMemoryManager {
         let parent_handle: ManuallyDrop<UserFrame> = ManuallyDrop::new(UserFrame::new(frame));
         let child_handle: UserFrame = parent_handle.share()?;
 
-        // The child installs the shared frame at the same virtual address. If the
-        // page is writable the mapping is created RDWR so the subsequent CoW marking
-        // can switch it to RO+CoW (mark_cow requires the entry to be writable);
-        // otherwise the page is plain read-only with no CoW bit on either side. If
-        // `map` fails it drops `child_handle`, releasing the refcount just acquired
-        // by `share`.
+        // The child installs the shared frame at the same virtual address. If the page is
+        // logically writable the mapping is created RDWR so the subsequent CoW marking can
+        // switch it to RO+CoW (mark_cow requires the entry to be writable); otherwise the
+        // page is plain read-only with no CoW bit on either side. If `map` fails it drops
+        // `child_handle`, releasing the refcount just acquired by `share`.
         let access: AccessPermission = if writable {
             AccessPermission::RDWR
         } else {
@@ -340,21 +364,32 @@ impl VirtMemoryManager {
         child.map(child_handle, vaddr, access)?;
 
         if writable {
-            if let Err(e) = parent.mark_user_page_cow(vaddr) {
-                if let Err(re) = child.unmap(vaddr) {
-                    warn!(
-                        "link_user_pages(): partial rollback unmap failed (vaddr={vaddr:?}, \
-                         error={re:?})"
-                    );
+            // Mark the parent copy-on-write only if it is not already so. A page that is
+            // already CoW was shared writable by an earlier fork; re-marking it would fail
+            // because mark_cow requires a writable PTE. The child is still mapped RDWR
+            // (above) and marked CoW (below) so that a later write from the child resolves
+            // as a copy-on-write fault instead of faulting fatally.
+            if !parent_cow {
+                if let Err(e) = parent.mark_user_page_cow(vaddr) {
+                    if let Err(re) = child.unmap(vaddr) {
+                        warn!(
+                            "link_user_pages(): partial rollback unmap failed (vaddr={vaddr:?}, \
+                             error={re:?})"
+                        );
+                    }
+                    return Err(e);
                 }
-                return Err(e);
             }
             if let Err(e) = child.mark_user_page_cow(vaddr) {
-                if let Err(re) = parent.unmark_user_page_cow(vaddr) {
-                    warn!(
-                        "link_user_pages(): partial rollback unmark failed (vaddr={vaddr:?}, \
-                         error={re:?})"
-                    );
+                // Only undo the parent's mark if this call installed it; a parent that was
+                // already copy-on-write must be left untouched.
+                if !parent_cow {
+                    if let Err(re) = parent.unmark_user_page_cow(vaddr) {
+                        warn!(
+                            "link_user_pages(): partial rollback unmark failed (vaddr={vaddr:?}, \
+                             error={re:?})"
+                        );
+                    }
                 }
                 if let Err(re) = child.unmap(vaddr) {
                     warn!(
@@ -372,22 +407,50 @@ impl VirtMemoryManager {
     /// Rolls back pages already linked by [`Self::link_user_pages`] on the error path.
     ///
     /// Iterates `child`'s user mappings in fixed-size chunks (avoiding any allocation
-    /// proportional to the mapping set) and, for each one: unmaps it from `child`
-    /// (releasing the shared refcount via the returned `UserFrame`'s `Drop`) and, if the
-    /// child PTE was marked copy-on-write, clears the matching mark on `parent`. The
-    /// child's CoW bit unambiguously identifies pages this call installed because
-    /// `link_user_pages` is invoked on a freshly created `child` with no pre-existing
-    /// user mappings, and the only path that sets the child's CoW bit also marked the
-    /// parent's. Steps log and continue on failure to make a best-effort restoration.
+    /// proportional to the mapping set) and unmaps each page that this call could have
+    /// linked, releasing the shared refcount via the returned `UserFrame`'s `Drop`. A
+    /// child page is unmapped only when `parent` still has a present user mapping at the
+    /// same virtual address: every page linked by [`Self::link_user_pages`] is a copy of a
+    /// parent mapping, so a child page with no counterpart in `parent` is skipped.
+    ///
+    /// This `parent`-presence filter is a coarse heuristic, not exact provenance tracking:
+    /// it cannot tell a page this call installed from a pre-existing `child` mapping that
+    /// merely happens to overlap a `parent` mapping at the same address — such a page would
+    /// still be unmapped. That ambiguity is harmless given [`Self::link_user_pages`]'s
+    /// contract that `child` must not already contain user mappings overlapping `parent`'s,
+    /// so under correct use the only `child` pages overlapping `parent` are exactly those
+    /// this call linked. The filter simply avoids tearing down any non-overlapping
+    /// pre-existing mappings.
+    ///
+    /// The parent's copy-on-write marks are intentionally left untouched. A parent page
+    /// that this call marked copy-on-write could in principle be restored to writable, but
+    /// distinguishing such a page from one that was already copy-on-write before this call
+    /// (a re-fork of a frame still shared with an earlier child) cannot be done reliably:
+    /// PTE state alone is ambiguous, and the shared frame's reference count is not either
+    /// (e.g. a frame may have had a refcount of 2 from a different child while this child
+    /// never linked it). Wrongly unmarking a page that another sharer still relies on would
+    /// break copy-on-write for that sharer, whereas leaving a page copy-on-write that could
+    /// have been writable merely costs one extra copy-on-write fault on the next write.
+    /// Since this rollback path is taken only on a rare allocation/mapping failure, that
+    /// extra fault is negligible, so the safe choice is to never unmark. Steps log and
+    /// continue on failure to make a best-effort restoration.
     fn rollback_linked_pages(parent: &mut Vmem, child: &mut Vmem) {
         loop {
-            let mut buf: [MaybeUninit<(PageAligned<VirtualAddress>, bool)>; LINK_CHUNK] =
+            let mut buf: [MaybeUninit<PageAligned<VirtualAddress>>; LINK_CHUNK] =
                 [const { MaybeUninit::uninit() }; LINK_CHUNK];
             let mut count: usize = 0;
-            let walk: Result<(), Error> = child.for_each_user_mapping(|vaddr, pte| {
+            let walk: Result<(), Error> = child.for_each_user_mapping(|vaddr, _pte| {
                 if count < LINK_CHUNK {
-                    buf[count].write((vaddr, pte.is_cow()));
-                    count += 1;
+                    // Only consider pages that also exist in `parent`; a child mapping
+                    // without a parent counterpart was not installed by this call.
+                    match parent.is_user_page_mapped(vaddr) {
+                        Ok(true) => {
+                            buf[count].write(vaddr);
+                            count += 1;
+                        },
+                        Ok(false) => {},
+                        Err(e) => return Err(e),
+                    }
                 }
                 Ok(())
             });
@@ -400,15 +463,7 @@ impl VirtMemoryManager {
             }
             for slot in buf.iter().take(count) {
                 // SAFETY: `slot` was written above for indices < count.
-                let (vaddr, was_cow) = unsafe { slot.assume_init_read() };
-                if was_cow {
-                    if let Err(re) = parent.unmark_user_page_cow(vaddr) {
-                        warn!(
-                            "link_user_pages(): rollback unmark failed (vaddr={vaddr:?}, \
-                             error={re:?})"
-                        );
-                    }
-                }
+                let vaddr = unsafe { slot.assume_init_read() };
                 if let Err(re) = child.unmap(vaddr) {
                     warn!(
                         "link_user_pages(): rollback unmap failed (vaddr={vaddr:?}, error={re:?})"
