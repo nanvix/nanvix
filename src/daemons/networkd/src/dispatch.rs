@@ -258,7 +258,7 @@ fn do_connect(
     // (preserving unrestricted behavior when no policy is set).
     let permitted: bool = match SocketAddr::try_from(&request.sockaddr) {
         Ok(SocketAddr::V4(addr)) => filter.permits(addr.addr().octets()),
-        _ => !filter.is_active(),
+        _ => filter.is_allow_all(),
     };
     if !permitted {
         trace!("networkd::connect(): destination denied by host egress filter");

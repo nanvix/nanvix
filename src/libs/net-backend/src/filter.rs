@@ -3,7 +3,7 @@
 
 //! Host egress filtering for guest network connections.
 //!
-//! NanVix proxies guest sockets through the host-side network daemon, so the
+//! Nanvix proxies guest sockets through the host-side network daemon, so the
 //! daemon is the natural enforcement point for per-host egress policy. The types
 //! here carry a resolved IPv4/CIDR allow- or block-set (typically forwarded by a
 //! consumer such as MXC) and answer the single question the daemon asks before
@@ -86,8 +86,12 @@ impl Ipv4Cidr {
 ///
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum HostFilter {
-    /// No filtering: every destination is permitted.
+    /// Deny all: every destination is blocked. This is the safe default for
+    /// contexts where no explicit policy has been configured.
     #[default]
+    DenyAll,
+    /// No filtering: every destination is permitted. Used when host networking
+    /// is enabled with no per-host list.
     AllowAll,
     /// Allowlist: only destinations matching one of these blocks are permitted.
     Allow(Vec<Ipv4Cidr>),
@@ -118,17 +122,18 @@ impl HostFilter {
     /// Returns whether a connection to `addr` (IPv4 octets) is permitted.
     pub fn permits(&self, addr: [u8; 4]) -> bool {
         match self {
+            Self::DenyAll => false,
             Self::AllowAll => true,
             Self::Allow(list) => list.iter().any(|c| c.contains(addr)),
             Self::Block(list) => !list.iter().any(|c| c.contains(addr)),
         }
     }
 
-    /// Returns whether this filter restricts any traffic (i.e. is not
+    /// Returns `true` if this filter applies no restrictions (i.e. is
     /// [`HostFilter::AllowAll`]). Used to decide whether non-IPv4 destinations,
-    /// which `permits` cannot evaluate, must be denied.
-    pub fn is_active(&self) -> bool {
-        !matches!(self, Self::AllowAll)
+    /// which `permits` cannot evaluate, should be permitted.
+    pub fn is_allow_all(&self) -> bool {
+        matches!(self, Self::AllowAll)
     }
 }
 
@@ -139,6 +144,14 @@ impl HostFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deny_all_blocks_everything() {
+        let f = HostFilter::DenyAll;
+        assert!(!f.permits([0, 0, 0, 0]));
+        assert!(!f.permits([8, 8, 8, 8]));
+        assert!(!f.is_allow_all());
+    }
 
     #[test]
     fn cidr_host_match() {
@@ -183,9 +196,9 @@ mod tests {
     }
 
     #[test]
-    fn is_active_reflects_filtering() {
-        assert!(!HostFilter::AllowAll.is_active());
-        assert!(HostFilter::from_lists(&["1.1.1.1".to_string()], &[]).is_active());
-        assert!(HostFilter::from_lists(&[], &["8.8.8.8".to_string()]).is_active());
+    fn is_allow_all_reflects_filtering() {
+        assert!(HostFilter::AllowAll.is_allow_all());
+        assert!(!HostFilter::from_lists(&["1.1.1.1".to_string()], &[]).is_allow_all());
+        assert!(!HostFilter::from_lists(&[], &["8.8.8.8".to_string()]).is_allow_all());
     }
 }

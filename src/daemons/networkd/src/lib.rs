@@ -100,6 +100,6 @@ impl NetworkDaemon {
 
 impl Default for NetworkDaemon {
     fn default() -> Self {
-        Self::new(HostFilter::AllowAll).expect("platform networking initialization should succeed")
+        Self::new(HostFilter::DenyAll).expect("platform networking initialization should succeed")
     }
 }
