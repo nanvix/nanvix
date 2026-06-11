@@ -3129,6 +3129,7 @@ dependencies = [
  "goblin",
  "libc_stdlib",
  "nvx",
+ "proc",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
  "spin",
