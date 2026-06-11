@@ -1405,8 +1405,16 @@ fn create_file(path: &str, contents: &[u8]) -> Result<(), Error> {
         .truncate(true)
         .open(path)
         .map_err(|e| fat_err(e, "failed to create file"))?;
-    file.write(contents)
-        .map_err(|e| fat_err(e, "failed to write file"))?;
+    let mut written: usize = 0;
+    while written < contents.len() {
+        let n: usize = file
+            .write(&contents[written..])
+            .map_err(|e| fat_err(e, "failed to write file"))?;
+        if n == 0 {
+            return Err(Error::new(ErrorCode::IoErr, "short write while creating file"));
+        }
+        written += n;
+    }
     file.flush()
         .map_err(|e| fat_err(e, "failed to flush file"))?;
     Ok(())
