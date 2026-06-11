@@ -292,8 +292,17 @@ impl Benchmark {
         Ok((elapsed.as_micros(), phase_timings))
     }
 
-    /// Returns the platform-specific path to the nanvixd binary.
+    /// Returns the path to the `nanvixd`-compatible binary to benchmark.
+    ///
+    /// When the `NANVIX_BENCH_NANVIXD` environment variable is set, its value is
+    /// used verbatim; this allows the same standalone driver to benchmark an
+    /// alternative VMM front-end (e.g. the OpenVMM-based `nanvixd-vmm`) for a
+    /// side-by-side comparison against the native `nanvixd.elf` (uservm).
+    /// Otherwise it defaults to the platform `nanvixd` binary under `bin/`.
     pub(crate) fn standalone_nanvixd_path(&self) -> PathBuf {
+        if let Some(path) = ::std::env::var_os("NANVIX_BENCH_NANVIXD") {
+            return PathBuf::from(path);
+        }
         let bin_name: &str = if cfg!(windows) {
             "nanvixd.exe"
         } else {

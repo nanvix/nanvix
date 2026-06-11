@@ -51,6 +51,11 @@ export IMAGE ?= nanvix.img
 # Enable WHP backend?
 export WHP ?= no
 
+# Build the OpenVMM-based standalone daemon (nanvixd-vmm) as part of `all`?
+# This is opt-in because it fetches a large set of OpenVMM crates from GitHub
+# (network access required on the first build) and adds significant compile time.
+export WITH_OPENVMM ?= no
+
 # Memory size in megabytes. Exported as MEMORY_SIZE_BYTES for build.rs scripts.
 # Example: make all MEMORY_SIZE=256
 export MEMORY_SIZE ?= 128
@@ -427,6 +432,12 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 all-nanvix: all-nanvix-bench
 endif
 
+# Opt-in: build the OpenVMM-based standalone daemon as part of `all` when
+# WITH_OPENVMM=yes (e.g. `./z build -- WITH_OPENVMM=yes`).
+ifeq ($(WITH_OPENVMM),yes)
+all-nanvix: all-nanvixd-vmm
+endif
+
 # Performs local initialization.
 init: init-repo
 
@@ -455,6 +466,9 @@ endif
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 clean: clean-nanvix-bench
 endif
+
+# The OpenVMM-based daemon is an opt-in build target, but always clean it up.
+clean: clean-nanvixd-vmm
 
 distclean: clean
 ifeq ($(IS_WINDOWS),yes)
@@ -526,6 +540,10 @@ help:
 	@echo "  help         Show this help message"
 	@echo "  test         Run unit and system tests sequentially"
 	@echo ""
+	@echo "Opt-in Build Targets (not part of 'all')"
+	@echo "  all-nanvixd-vmm  Build the OpenVMM-based standalone daemon (fetches OpenVMM"
+	@echo "                   crates from GitHub; network required on first build)"
+	@echo ""
 	@echo "Development Targets"
 	@echo "  check           Run all validation checks (syntax, compilation)"
 	@echo "  format          Fix code formatting issues automatically"
@@ -560,6 +578,7 @@ help:
 	@echo "  TIMEOUT          Execution timeout in seconds (default: $(TIMEOUT))"
 	@echo "  CLH_DIR          Cloud-hypervisor installation directory (default: $(CLH_DIR))"
 	@echo "  MEMORY_SIZE      Memory size in megabytes (default: $(MEMORY_SIZE))"
+	@echo "  WITH_OPENVMM     Include the OpenVMM-based daemon (nanvixd-vmm) in 'all' (default: $(WITH_OPENVMM)) [fetches OpenVMM crates from GitHub]"
 	@echo "  VERUS_EXECUTABLE_DIR  Path to directory containing the verus binary (unset: skip verification)"
 	@echo ""
 	@echo "Parameter Values"
@@ -570,6 +589,7 @@ help:
 	@echo "  LOG_LEVEL       trace, debug, info, warn, error, panic"
 	@echo "  PROFILER        yes, no"
 	@echo "  MAKE_NO_PRINT   yes, no"
+	@echo "  WITH_OPENVMM    yes, no"
 
 # Verifies all Verus-annotated crates.
 .PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
@@ -1112,6 +1132,12 @@ include build/make/nanvix-test.mk
 #===================================================================================================
 
 include build/make/nanvixd.mk
+
+#===================================================================================================
+# Build Rules for Nanvix Daemon on OpenVMM (opt-in; not part of `all`)
+#===================================================================================================
+
+include build/make/nanvixd-vmm.mk
 
 #===================================================================================================
 # Build Rules for Generic Host Binaries

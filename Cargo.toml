@@ -92,6 +92,7 @@ members = [
         "src/utils/nanvix-bench",
         "src/utils/nanvix-test",
         "src/utils/nanvixd",
+        "src/utils/nanvixd-vmm",
         "src/utils/strace",
         "src/libs/net-backend",
         "src/libs/nanvix-oci",
@@ -288,3 +289,10 @@ all = "deny"
 # nursery = "deny"
 # TODO (#1149): Enable cargo linting rules, once they are fixed.
 # cargo = "deny"
+
+# Patch required to build the OpenVMM virtualization crates that the
+# `nanvixd-vmm` utility depends on. Mirrors OpenVMM's own `[patch.crates-io]`
+# entry for `bitvec`; without it, OpenVMM's Hyper-V emulation crates
+# (`hv1_structs`) fail to resolve `bitvec`.
+[patch.crates-io]
+bitvec = { git = "https://github.com/smalis-msft/bitvec", branch = "set-aliased-previous-val" }
