@@ -1088,6 +1088,7 @@ mod tests {
         assert!(msg.contains("missing value for: -gateway-sockaddr"), "unexpected error: {msg}");
     }
 
+    #[cfg(feature = "standalone")]
     #[test]
     fn allow_host_builds_allowlist_filter() {
         let args = Args::parse(argv(&[
@@ -1106,6 +1107,7 @@ mod tests {
         assert!(!filter.permits([8, 8, 8, 8]));
     }
 
+    #[cfg(feature = "standalone")]
     #[test]
     fn block_host_builds_blocklist_filter() {
         let args = Args::parse(argv(&[
@@ -1121,6 +1123,7 @@ mod tests {
         assert!(filter.permits([1, 2, 3, 4]));
     }
 
+    #[cfg(feature = "standalone")]
     #[test]
     fn allow_and_block_host_are_mutually_exclusive() {
         let res = Args::parse(argv(&[
@@ -1137,6 +1140,7 @@ mod tests {
         assert!(msg.contains(Args::OPT_BLOCK_HOST), "unexpected error: {msg}");
     }
 
+    #[cfg(feature = "standalone")]
     #[test]
     fn host_filter_requires_networking_enabled() {
         let res = Args::parse(argv(&["-allow-host", "1.2.3.4", "--", "/bin/foo"]));
@@ -1144,6 +1148,7 @@ mod tests {
         assert!(msg.contains(Args::OPT_ALLOW_HOST_NETWORKING), "unexpected error: {msg}");
     }
 
+    #[cfg(feature = "standalone")]
     #[test]
     fn rejects_invalid_host_entry() {
         let res = Args::parse(argv(&[
@@ -1161,5 +1166,19 @@ mod tests {
     fn host_filter_defaults_to_allow_all() {
         let args = Args::parse(argv(&["-allow-host-networking", "--", "/bin/foo"])).expect("parse");
         assert!(matches!(args.host_filter(), HostFilter::AllowAll));
+    }
+
+    #[cfg(not(feature = "standalone"))]
+    #[test]
+    fn host_filter_flags_rejected_in_non_standalone_build() {
+        let res = Args::parse(argv(&[
+            "-allow-host-networking",
+            "-allow-host",
+            "1.2.3.4",
+            "--",
+            "/bin/foo",
+        ]));
+        let msg: String = format!("{:#}", res.expect_err("expected standalone-only error"));
+        assert!(msg.contains("standalone"), "unexpected error: {msg}");
     }
 }
