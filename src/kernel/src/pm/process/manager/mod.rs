@@ -2286,6 +2286,12 @@ impl ProcessManager {
     /// terminated-but-unharvested zombies. Draining them here turns a spurious
     /// [`ErrorCode::OutOfMemory`] into successful admission.
     ///
+    /// Thread slots can also be held by detached-thread zombies queued in `deferred_reap`, which
+    /// are normally reclaimed by [`Self::reap_deferred`] at PM entry points once the context switch
+    /// that produced them has completed. Those are drained here as well (via
+    /// [`Self::reap_deferred_zombie_threads`]) so that detached threads do not reintroduce the same
+    /// spurious exhaustion.
+    ///
     /// Each harvested termination is buffered via [`Self::push_pending_termination`] so the kernel
     /// idle loop still publishes a process-termination scheduling event for it, exactly as if the
     /// zombie had been harvested there.
@@ -2303,7 +2309,8 @@ impl ProcessManager {
     ///
     /// # Returns
     ///
-    /// The number of process zombies that were reaped.
+    /// The number of thread slots that were reclaimed, counting both process zombies and
+    /// deferred detached-thread zombies.
     ///
     fn reap_pending_zombies(&mut self, mm: &mut VirtMemoryManager) -> usize {
         let mut reaped: usize = 0;
@@ -2326,6 +2333,90 @@ impl ProcessManager {
                     break;
                 },
             }
+        }
+        // Thread slots may also be held by detached-thread zombies whose cleanup was deferred
+        // because their `ContextInformation` was still needed by an in-progress context switch.
+        // Drain them on demand as well so that admission is retried instead of spuriously failing.
+        reaped += self.reap_deferred_zombie_threads(mm);
+        reaped
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Drains the queue of deferred detached-thread zombies, reclaiming each one's kernel and user
+    /// stacks, unmapping its user-stack pages, and notifying the thread manager. This mirrors
+    /// [`Self::harvest_zombie_thread`] but operates through `&mut self` and the supplied memory
+    /// manager so that it can be invoked from the on-demand reap path
+    /// ([`Self::reap_pending_zombies`]) rather than only at PM entry points.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Virtual memory manager, used to reclaim the zombies' address-space resources.
+    ///
+    /// # Returns
+    ///
+    /// The number of deferred detached-thread zombies that were reaped.
+    ///
+    fn reap_deferred_zombie_threads(&mut self, mm: &mut VirtMemoryManager) -> usize {
+        let deferred: Vec<(ProcessIdentifier, ZombieThread)> =
+            core::mem::take(&mut self.deferred_reap);
+        let mut reaped: usize = 0;
+        for (pid, zombie_thread) in deferred {
+            // If the zombie has no user stack (kernel-only thread), the kernel stack is reclaimed
+            // via KernelStack::Drop and no page unmapping is needed.
+            if let (Some(_kernel_stack), Some(user_stack)) = zombie_thread.harvest() {
+                // Resolve the process vmem once before the page-unmapping loop below.
+                match self.find_process_mut(pid) {
+                    Ok(mut process_ref) => {
+                        let vmem: &mut Vmem = process_ref.state_mut().vmem_mut();
+                        // Traverse pages belonging to user stack.
+                        let base: usize = user_stack.base().into_raw_value();
+                        let top: usize = user_stack.top().into_raw_value();
+                        // TODO: Use an iterator for this.
+                        for raw_addr in (base..top).step_by(PAGE_SIZE) {
+                            let vaddr: PageAligned<VirtualAddress> =
+                                match PageAligned::from_raw_value(raw_addr) {
+                                    Ok(vaddr) => vaddr,
+                                    Err(_) => {
+                                        // SAFETY: the following condition is unreachable, because
+                                        // pages in the user stack are always page-aligned.
+                                        unreachable!("address conversion should succeed")
+                                    },
+                                };
+                            // Attempt to unmap page.
+                            match mm.try_unmap_upage(vmem, vaddr) {
+                                Ok(true) => {
+                                    // Page was present and has been successfully unmapped.
+                                },
+                                Ok(false) => {
+                                    // Page was never mapped (not demand-paged). Skip silently.
+                                },
+                                Err(error) => {
+                                    // Unexpected failure — log but continue since the address
+                                    // space will be reclaimed when it is destroyed.
+                                    warn!(
+                                        "failed to unmap page (vaddr={:?}, error={:?})",
+                                        vaddr, error
+                                    );
+                                },
+                            }
+                        }
+                    },
+                    Err(error) => {
+                        // Unexpected failure — log but continue since the address space will be
+                        // reclaimed when it is destroyed.
+                        error!("failed to find process (pid={pid:?}, error={error:?})");
+                    },
+                }
+
+                // Frames allocated to the user stack are freed when we exit this scope.
+                // Frames allocated to the kernel stack are freed when we exit this scope.
+            }
+
+            // Notify the thread manager that this thread has been reaped.
+            self.tm.on_thread_reaped();
+            reaped += 1;
         }
         reaped
     }
