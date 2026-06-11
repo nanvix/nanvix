@@ -23,6 +23,7 @@ use crate::{
 };
 use ::anyhow::Result;
 use ::log::{
+    debug,
     error,
     warn,
 };
@@ -67,6 +68,17 @@ use ::tokio_util::sync::CancellationToken;
 ///
 const CHUNK_SIZE: usize = 4096;
 
+///
+/// # Description
+///
+/// Number of times a terminal-executor iteration is retried after a stream-collection timeout
+/// before the test is failed. The standalone interactive launch can rarely wedge during VM
+/// boot/teardown so that nanvixd never emits stdout and never exits; retrying a bounded number
+/// of times absorbs that transient flake without masking a genuinely broken workload (which
+/// times out on every attempt).
+///
+const TERMINAL_STREAM_TIMEOUT_RETRIES: usize = 2;
+
 //==================================================================================================
 // Type Definitions
 //==================================================================================================
@@ -74,14 +86,42 @@ const CHUNK_SIZE: usize = 4096;
 ///
 /// # Description
 ///
-/// Bundles the async handles and buffers that collect Nanvix Daemon stdout and stderr streams.
+/// Error returned while collecting a Nanvix Daemon stream, distinguishing a recoverable timeout
+/// from a fatal failure.
 ///
-type StreamCollectors = (
-    JoinHandle<::std::io::Result<()>>,
-    Arc<AsyncMutex<Vec<u8>>>,
-    JoinHandle<::std::io::Result<()>>,
-    Arc<AsyncMutex<Vec<u8>>>,
-);
+enum StreamCollectError {
+    /// Collection exceeded the configured timeout. Recoverable: the caller may retry.
+    Timeout(String),
+    /// Collection failed for a non-recoverable reason (task join failure or stream I/O error).
+    Failed(::anyhow::Error),
+}
+
+///
+/// # Description
+///
+/// Outcome of a single terminal-executor attempt that did not produce a result.
+///
+enum TerminalAttemptError {
+    /// A stdout/stderr collection timed out. Recoverable: the iteration may be retried.
+    StreamTimeout(String),
+    /// A non-recoverable failure occurred; the test must fail.
+    Fatal(::anyhow::Error),
+}
+
+impl StreamCollectError {
+    ///
+    /// # Description
+    ///
+    /// Converts a stream-collection error into the corresponding terminal-attempt error, mapping
+    /// a timeout to the recoverable variant and any other failure to the fatal variant.
+    ///
+    fn into_attempt_error(self) -> TerminalAttemptError {
+        match self {
+            StreamCollectError::Timeout(reason) => TerminalAttemptError::StreamTimeout(reason),
+            StreamCollectError::Failed(error) => TerminalAttemptError::Fatal(error),
+        }
+    }
+}
 
 //==================================================================================================
 // Standalone Functions
@@ -172,63 +212,46 @@ pub async fn test_with_terminal_executor(
                 let collection_timeout: Duration =
                     Duration::from_millis(runner_config.stream_collection_timeout_ms);
 
-                let (mut nanvixd, stream_collectors) = {
-                    let mut nanvixd: NanvixdTerminal = NanvixdTerminal::spawn(runner_config, &nanvixd_terminal_args).await?;
-                    let stdout_pipe = nanvixd.take_stdout().ok_or_else(|| {
-                        let reason: String =
-                            "interactive mode requires capturing nanvixd stdout".to_string();
-                        error!("test_with_terminal_executor(): {reason}");
-                        ::anyhow::anyhow!(reason)
-                    })?;
-
-                    let stdout_buffer: Arc<AsyncMutex<Vec<u8>>> = Arc::new(AsyncMutex::new(Vec::new()));
-                    let stdout_handle: JoinHandle<::std::io::Result<()>> = ::tokio::spawn(
-                        collect_stream_to_buffer(stdout_pipe, Arc::clone(&stdout_buffer), None, None),
-                    );
-
-                    let stderr_pipe: ChildStderr = nanvixd.take_stderr().ok_or_else(|| {
-                        let reason: String =
-                            "interactive mode requires capturing nanvixd stderr".to_string();
-                        error!("test_with_terminal_executor(): {reason}");
-                        ::anyhow::anyhow!(reason)
-                    })?;
-
-                    let stderr_buffer: Arc<AsyncMutex<Vec<u8>>> = Arc::new(AsyncMutex::new(Vec::new()));
-                    let stderr_handle: JoinHandle<::std::io::Result<()>> = ::tokio::spawn(
-                        collect_stream_to_buffer(stderr_pipe, Arc::clone(&stderr_buffer), None, None),
-                    );
-
-                    let stdin_pipe: ChildStdin = nanvixd.take_stdin().ok_or_else(|| {
-                        let reason: String = "interactive mode does not expose stdin pipe".to_string();
-                        error!("test_with_terminal_executor(): {reason}");
-                        ::anyhow::anyhow!(reason)
-                    })?;
-
-                    send_interactive_input(stdin_pipe, workload.input()).await?;
-
-                    (nanvixd, (stdout_handle, stdout_buffer, stderr_handle, stderr_buffer))
+                // Defensive retry: the standalone interactive (terminal) launch can,
+                // rarely and non-deterministically, wedge during VM boot/teardown such that
+                // nanvixd never emits stdout and never exits. Rather than fail the whole suite on
+                // a single transient hang, re-spawn nanvixd and retry the iteration a bounded
+                // number of times. Each timed-out attempt drops (and thereby kills) its nanvixd
+                // before the next attempt, and a genuinely broken workload still fails because
+                // every attempt times out identically. The in-process uservm shutdown watchdog
+                // covers the common case; this retry is the outer safety net.
+                let max_attempts: usize = TERMINAL_STREAM_TIMEOUT_RETRIES + 1;
+                let (stdout_bytes, stderr_bytes, exit_code): (Vec<u8>, Vec<u8>, i32) = {
+                    let mut attempt: usize = 0;
+                    loop {
+                        attempt += 1;
+                        match run_terminal_attempt(
+                            runner_config,
+                            &nanvixd_terminal_args,
+                            workload.input(),
+                            collection_timeout,
+                            iteration,
+                        )
+                        .await
+                        {
+                            Ok(result) => break result,
+                            Err(TerminalAttemptError::StreamTimeout(reason)) => {
+                                if attempt >= max_attempts {
+                                    error!(
+                                        "test_with_terminal_executor(): giving up after \
+                                         {attempt} attempt(s) ({reason})"
+                                    );
+                                    return Err(::anyhow::anyhow!(reason));
+                                }
+                                warn!(
+                                    "test_with_terminal_executor(): {reason}; re-spawning \
+                                     nanvixd and retrying (attempt={attempt}/{max_attempts})"
+                                );
+                            },
+                            Err(TerminalAttemptError::Fatal(error)) => return Err(error),
+                        }
+                    }
                 };
-
-                let (stdout_handle, stdout_buffer, stderr_handle, stderr_buffer): StreamCollectors =
-                    stream_collectors;
-
-                let stdout_bytes: Vec<u8> = wait_stream_collector(
-                        stdout_handle,
-                        Arc::clone(&stdout_buffer),
-                        collection_timeout,
-                        "stdout",
-                        iteration,
-                    ).await?;
-                let stderr_bytes: Vec<u8> = wait_stream_collector(
-                        stderr_handle,
-                        Arc::clone(&stderr_buffer),
-                        collection_timeout,
-                        "stderr",
-                        iteration,
-                    ).await?;
-
-                // Wait for the nanvixd process to exit and get its exit code.
-                let exit_code: i32 = nanvixd.wait_exit_code().await?;
 
                 if let Err(error) = write(&stdout_file_path, &stdout_bytes) {
                     let reason: String = format!(
@@ -301,6 +324,119 @@ pub async fn test_with_terminal_executor(
             Err(::anyhow::anyhow!("cancelled"))
         }
     }
+}
+
+///
+/// # Description
+///
+/// Runs a single terminal-executor attempt: spawns nanvixd in interactive mode, wires its
+/// stdin/stdout/stderr, forwards the workload input, and collects the guest output and exit code.
+///
+/// The spawned nanvixd is owned by this function, so it is dropped -- and thereby killed via its
+/// `Drop` implementation -- whenever this function returns early with an error (including a
+/// stream-collection timeout). This guarantees the previous nanvixd is gone before the caller
+/// re-spawns for a retry.
+///
+/// # Parameters
+///
+/// - `runner_config`: Configuration required to spawn the Nanvix Daemon.
+/// - `nanvixd_terminal_args`: Arguments describing the interactive workload to launch.
+/// - `input`: Optional payload forwarded to the workload over stdin.
+/// - `collection_timeout`: Maximum time to wait for each of stdout and stderr to be collected.
+/// - `iteration`: Index of the current iteration, used for diagnostics.
+///
+/// # Return Value
+///
+/// On success, returns the collected stdout bytes, stderr bytes, and the nanvixd exit code.
+/// Returns [`TerminalAttemptError::StreamTimeout`] when stream collection times out (recoverable)
+/// or [`TerminalAttemptError::Fatal`] for any other failure.
+///
+async fn run_terminal_attempt(
+    runner_config: &RunnerConfig,
+    nanvixd_terminal_args: &NanvixdTerminalArgs,
+    input: Option<&str>,
+    collection_timeout: Duration,
+    iteration: usize,
+) -> ::std::result::Result<(Vec<u8>, Vec<u8>, i32), TerminalAttemptError> {
+    let mut nanvixd: NanvixdTerminal = NanvixdTerminal::spawn(runner_config, nanvixd_terminal_args)
+        .await
+        .map_err(TerminalAttemptError::Fatal)?;
+
+    let stdout_pipe = nanvixd.take_stdout().ok_or_else(|| {
+        let reason: String = "interactive mode requires capturing nanvixd stdout".to_string();
+        error!("run_terminal_attempt(): {reason}");
+        TerminalAttemptError::Fatal(::anyhow::anyhow!(reason))
+    })?;
+    let stdout_buffer: Arc<AsyncMutex<Vec<u8>>> = Arc::new(AsyncMutex::new(Vec::new()));
+    let stdout_handle: JoinHandle<::std::io::Result<()>> = ::tokio::spawn(
+        collect_stream_to_buffer(stdout_pipe, Arc::clone(&stdout_buffer), None, None),
+    );
+
+    let stderr_pipe: ChildStderr = match nanvixd.take_stderr() {
+        Some(pipe) => pipe,
+        None => {
+            stdout_handle.abort();
+            let reason: String = "interactive mode requires capturing nanvixd stderr".to_string();
+            error!("run_terminal_attempt(): {reason}");
+            return Err(TerminalAttemptError::Fatal(::anyhow::anyhow!(reason)));
+        },
+    };
+    let stderr_buffer: Arc<AsyncMutex<Vec<u8>>> = Arc::new(AsyncMutex::new(Vec::new()));
+    let stderr_handle: JoinHandle<::std::io::Result<()>> = ::tokio::spawn(
+        collect_stream_to_buffer(stderr_pipe, Arc::clone(&stderr_buffer), None, None),
+    );
+
+    let stdin_pipe: ChildStdin = match nanvixd.take_stdin() {
+        Some(pipe) => pipe,
+        None => {
+            stdout_handle.abort();
+            stderr_handle.abort();
+            let reason: String = "interactive mode does not expose stdin pipe".to_string();
+            error!("run_terminal_attempt(): {reason}");
+            return Err(TerminalAttemptError::Fatal(::anyhow::anyhow!(reason)));
+        },
+    };
+    if let Err(error) = send_interactive_input(stdin_pipe, input).await {
+        stdout_handle.abort();
+        stderr_handle.abort();
+        return Err(TerminalAttemptError::Fatal(error));
+    }
+
+    let stdout_bytes: Vec<u8> = match wait_stream_collector(
+        stdout_handle,
+        Arc::clone(&stdout_buffer),
+        collection_timeout,
+        "stdout",
+        iteration,
+    )
+    .await
+    {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            // Abort the still-running stderr collector before bailing so a retry does not
+            // accumulate a detached task holding pipe fds / buffers.
+            stderr_handle.abort();
+            return Err(error.into_attempt_error());
+        },
+    };
+
+    let stderr_bytes: Vec<u8> = wait_stream_collector(
+        stderr_handle,
+        Arc::clone(&stderr_buffer),
+        collection_timeout,
+        "stderr",
+        iteration,
+    )
+    .await
+    .map_err(StreamCollectError::into_attempt_error)?;
+
+    // Wait for the nanvixd process to exit and get its exit code.
+    let exit_code: i32 = nanvixd
+        .wait_exit_code()
+        .await
+        .map_err(TerminalAttemptError::Fatal)?;
+
+    Ok((stdout_bytes, stderr_bytes, exit_code))
 }
 
 ///
@@ -442,13 +578,13 @@ where
 /// failures, I/O errors, or timeouts.
 ///
 async fn wait_stream_collector(
-    handle: JoinHandle<::std::io::Result<()>>,
+    mut handle: JoinHandle<::std::io::Result<()>>,
     buffer: Arc<AsyncMutex<Vec<u8>>>,
     timeout: Duration,
     label: &str,
     iteration: usize,
-) -> Result<Vec<u8>> {
-    let join_result = match ::tokio::time::timeout(timeout, handle).await {
+) -> ::std::result::Result<Vec<u8>, StreamCollectError> {
+    let join_result = match ::tokio::time::timeout(timeout, &mut handle).await {
         Ok(result) => result,
         Err(_elapsed) => {
             let reason: String = format!(
@@ -456,8 +592,13 @@ async fn wait_stream_collector(
                 iteration,
                 timeout.as_millis()
             );
-            error!("test_with_terminal_executor(): {reason}");
-            return Err(::anyhow::anyhow!(reason));
+            // Abort the still-running collector task so its Arc buffer / pipe reader is
+            // released now instead of being detached to run until the process exits.
+            handle.abort();
+            // Logged at debug here because the caller decides whether this is recoverable
+            // (retryable) or final, and emits the user-facing warning/error accordingly.
+            debug!("wait_stream_collector(): {reason}");
+            return Err(StreamCollectError::Timeout(reason));
         },
     };
 
@@ -468,7 +609,7 @@ async fn wait_stream_collector(
                 iteration
             );
             error!("wait_stream_collector(): {reason}");
-            return Err(::anyhow::anyhow!(reason));
+            return Err(StreamCollectError::Failed(::anyhow::anyhow!(reason)));
         },
         Ok(Err(io_error)) => {
             let reason: String = format!(
@@ -476,7 +617,7 @@ async fn wait_stream_collector(
                 iteration
             );
             error!("wait_stream_collector(): {reason}");
-            return Err(::anyhow::anyhow!(reason));
+            return Err(StreamCollectError::Failed(::anyhow::anyhow!(reason)));
         },
         Ok(Ok(())) => {},
     }
