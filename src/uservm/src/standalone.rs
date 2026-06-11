@@ -67,7 +67,15 @@ use ::syscall::{
 };
 use ::tokio::{
     sync::mpsc,
-    task::JoinHandle,
+    task::{
+        AbortHandle,
+        JoinHandle,
+    },
+    time::{
+        Duration,
+        Instant,
+        sleep,
+    },
 };
 
 #[cfg(feature = "profile-time")]
@@ -89,6 +97,13 @@ type HostFsRequest = (Message, mpsc::Sender<IkcFrame>, MessageCounters);
 const STDIN_FILENO: i32 = 0;
 const STDOUT_FILENO: i32 = 1;
 const STDERR_FILENO: i32 = 2;
+
+/// Interval at which the shutdown watchdog polls for guest VM completion.
+const WATCHDOG_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Grace period granted to the I/O handler to drain any remaining guest output after the guest
+/// VM has exited, before it is force-aborted to unblock consumers waiting on the output channel.
+const IO_HANDLER_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 
 //==================================================================================================
 // Structures
@@ -126,6 +141,9 @@ pub struct StandaloneVmHandle {
     vmm_handle: JoinHandle<Result<u16>>,
     /// Task processing IKC messages between the guest and external I/O channels.
     io_handle: JoinHandle<()>,
+    /// Watchdog task that bounds the I/O handler's shutdown once the guest VM has exited, so a
+    /// parked handler can never keep the output channel (and thus nanvixd) alive forever.
+    watchdog_handle: JoinHandle<()>,
     /// Kept alive so the orchestrator's `io_control_rx` does not see an immediate channel close,
     /// which would cause it to exit the run loop before the guest starts executing.
     _io_cmd_tx: mpsc::Sender<IoControlCommand>,
@@ -235,9 +253,40 @@ impl StandaloneVmHandle {
             .await;
         });
 
+        // Shutdown watchdog: once the guest VM task finishes, the I/O handler must drain any
+        // remaining guest output and then close so that consumers draining the output channel
+        // (e.g., nanvix-terminal's `bridge_io`) observe EOF and stop waiting. If the handler does
+        // not close within a grace period -- for instance because it is parked on an IKC frame or
+        // on input that will never arrive now that the guest is gone -- it is force-aborted.
+        // Aborting drops the handler's `output_tx`, which unblocks consumers and lets nanvixd
+        // exit instead of hanging indefinitely. `abort_handle()` lets the watchdog observe and
+        // abort the tasks without consuming the join handles that `wait()` awaits.
+        let vmm_observer: AbortHandle = vmm_handle.abort_handle();
+        let io_aborter: AbortHandle = io_handle.abort_handle();
+        let watchdog_handle: JoinHandle<()> = tokio::spawn(async move {
+            while !vmm_observer.is_finished() {
+                sleep(WATCHDOG_POLL_INTERVAL).await;
+            }
+            // Give the I/O handler a chance to drain and exit on its own, polling so the watchdog
+            // returns promptly on the healthy path while still bounding teardown by the grace
+            // period when the handler is wedged.
+            let deadline: Instant = Instant::now() + IO_HANDLER_SHUTDOWN_GRACE;
+            while !io_aborter.is_finished() && Instant::now() < deadline {
+                sleep(WATCHDOG_POLL_INTERVAL).await;
+            }
+            if !io_aborter.is_finished() {
+                warn!(
+                    "standalone: I/O handler still running {:?} after VM exit; forcing shutdown",
+                    IO_HANDLER_SHUTDOWN_GRACE
+                );
+                io_aborter.abort();
+            }
+        });
+
         let handle: Self = Self {
             vmm_handle,
             io_handle,
+            watchdog_handle,
             _io_cmd_tx: io_cmd_tx,
             _io_resp_rx: io_resp_rx,
             #[cfg(feature = "profile-time")]
@@ -267,18 +316,32 @@ impl StandaloneVmHandle {
     /// the VM task panicked or the VM itself failed.
     ///
     pub async fn wait(self) -> Result<u16> {
-        let vm_exit_status: Result<u16> = self.vmm_handle.await?;
-        debug!("standalone: VM completed (exit_status={vm_exit_status:?})");
+        let join_result: ::std::result::Result<Result<u16>, ::tokio::task::JoinError> =
+            self.vmm_handle.await;
+        debug!("standalone: VM task settled");
 
-        // Wait for the I/O handler to finish.
-        if let Err(error) = self.io_handle.await {
-            warn!("standalone: I/O handler task failed (error={error:?})");
+        // Wait for the I/O handler to finish. The shutdown watchdog guarantees this resolves even
+        // if the handler would otherwise park forever after the guest exits: the watchdog aborts
+        // it after a grace period, which surfaces here as a cancellation rather than a hang.
+        match self.io_handle.await {
+            Ok(()) => {},
+            Err(error) if error.is_cancelled() => {
+                debug!("standalone: I/O handler task was cancelled during shutdown");
+            },
+            Err(error) => {
+                warn!("standalone: I/O handler task failed (error={error:?})");
+            },
         }
+
+        // Both tasks have settled, so the watchdog is no longer needed.
+        self.watchdog_handle.abort();
 
         // Emit performance timings to host stderr so the benchmark can parse them.
         #[cfg(feature = "profile-time")]
         self.perf_timings.emit_to_stderr();
 
+        let vm_exit_status: Result<u16> = join_result?;
+        debug!("standalone: VM completed (exit_status={vm_exit_status:?})");
         vm_exit_status
     }
 
@@ -290,6 +353,7 @@ impl StandaloneVmHandle {
     pub fn abort(&self) {
         self.vmm_handle.abort();
         self.io_handle.abort();
+        self.watchdog_handle.abort();
     }
 
     ///
@@ -300,8 +364,10 @@ impl StandaloneVmHandle {
     pub async fn abort_and_wait(self) {
         self.vmm_handle.abort();
         self.io_handle.abort();
+        self.watchdog_handle.abort();
         let _ = self.vmm_handle.await;
         let _ = self.io_handle.await;
+        let _ = self.watchdog_handle.await;
     }
 }
 
