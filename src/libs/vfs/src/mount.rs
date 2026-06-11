@@ -144,8 +144,6 @@ pub struct Vfs {
     /// Mount table, sorted by path length descending for
     /// longest-prefix matching.
     mounts: Vec<Mount>,
-    /// Current working directory (always absolute, never ends with "/").
-    cwd: String,
 }
 
 //==================================================================================================
@@ -153,12 +151,9 @@ pub struct Vfs {
 //==================================================================================================
 
 impl Vfs {
-    /// Creates a new empty VFS with cwd set to "/".
+    /// Creates a new empty VFS.
     pub fn new() -> Self {
-        Self {
-            mounts: Vec::new(),
-            cwd: String::from("/"),
-        }
+        Self { mounts: Vec::new() }
     }
 
     /// Adds a mount point.
@@ -208,59 +203,38 @@ impl Vfs {
         Ok(self.mounts.remove(pos))
     }
 
-    /// Gets the current working directory.
-    #[inline]
-    pub fn cwd(&self) -> &str {
-        &self.cwd
-    }
-
-    /// Changes the current working directory.
-    ///
-    /// # Parameters
-    ///
-    /// - `path`: The new working directory path.
-    ///
-    /// # Errors
-    ///
-    /// - [`Fat32Error::InvalidPath`] if the path is malformed.
-    /// - [`Fat32Error::NotFound`] if no mount handles this path.
-    pub fn set_cwd(&mut self, path: &str) -> Result<(), Fat32Error> {
-        let normalized: String = self.normalize_path(path)?;
-
-        if !normalized.is_empty() && normalized != "/" {
-            let _ = self.resolve(&normalized)?;
-        }
-
-        self.cwd = normalized;
-        Ok(())
-    }
-
     /// Normalizes a path to an absolute path.
     ///
     /// - Resolves `.` (current directory)
     /// - Resolves `..` (parent directory)
-    /// - Makes relative paths absolute using cwd
+    /// - Makes relative paths absolute using `cwd`
     /// - Removes trailing slashes (except for root)
     ///
     /// # Parameters
     ///
     /// - `path`: The path to normalize.
+    /// - `cwd`: The absolute current working directory used to anchor relative paths.
     ///
     /// # Errors
     ///
-    /// Returns [`Fat32Error::InvalidPath`] if the path is empty or contains
-    /// invalid sequences (e.g., too many `..`).
-    pub fn normalize_path(&self, path: &str) -> Result<String, Fat32Error> {
+    /// Returns [`Fat32Error::InvalidPath`] if the path is empty, if a relative `path` is
+    /// anchored to a `cwd` that is not absolute, or if the path contains invalid sequences
+    /// (e.g., too many `..`).
+    pub fn normalize_path(&self, path: &str, cwd: &str) -> Result<String, Fat32Error> {
         if path.is_empty() {
             return Err(Fat32Error::InvalidPath);
         }
 
         let abs_path: String = if path.starts_with('/') {
             String::from(path)
-        } else if self.cwd == "/" {
+        } else if !cwd.starts_with('/') {
+            // Relative paths are anchored to `cwd`, which must be absolute per this function's
+            // contract; reject a malformed `cwd` rather than silently produce a bogus result.
+            return Err(Fat32Error::InvalidPath);
+        } else if cwd == "/" {
             alloc::format!("/{}", path)
         } else {
-            alloc::format!("{}/{}", self.cwd, path)
+            alloc::format!("{}/{}", cwd, path)
         };
 
         let mut components: Vec<&str> = Vec::new();
@@ -298,6 +272,7 @@ impl Vfs {
     /// # Parameters
     ///
     /// - `path`: The path to resolve.
+    /// - `cwd`: The absolute current working directory used to anchor relative paths.
     ///
     /// # Returns
     ///
@@ -306,8 +281,8 @@ impl Vfs {
     /// # Errors
     ///
     /// Returns [`Fat32Error::NotFound`] if no mount matches the path.
-    pub fn resolve(&self, path: &str) -> Result<(usize, String), Fat32Error> {
-        let normalized: String = self.normalize_path(path)?;
+    pub fn resolve(&self, path: &str, cwd: &str) -> Result<(usize, String), Fat32Error> {
+        let normalized: String = self.normalize_path(path, cwd)?;
 
         for (idx, mount) in self.mounts.iter().enumerate() {
             if let Some(relative) = mount.matches(&normalized) {
@@ -368,7 +343,7 @@ mod tests {
     fn normalize_absolute_path() {
         let vfs: Vfs = Vfs::new();
         let result: String = vfs
-            .normalize_path("/data/file.txt")
+            .normalize_path("/data/file.txt", "/")
             .expect("should succeed");
         assert_eq!(result, "/data/file.txt");
     }
@@ -377,7 +352,7 @@ mod tests {
     #[test]
     fn normalize_relative_from_root() {
         let vfs: Vfs = Vfs::new();
-        let result: String = vfs.normalize_path("file.txt").expect("should succeed");
+        let result: String = vfs.normalize_path("file.txt", "/").expect("should succeed");
         assert_eq!(result, "/file.txt");
     }
 
@@ -386,7 +361,7 @@ mod tests {
     fn normalize_dot() {
         let vfs: Vfs = Vfs::new();
         let result: String = vfs
-            .normalize_path("/data/./file.txt")
+            .normalize_path("/data/./file.txt", "/")
             .expect("should succeed");
         assert_eq!(result, "/data/file.txt");
     }
@@ -396,7 +371,7 @@ mod tests {
     fn normalize_dotdot() {
         let vfs: Vfs = Vfs::new();
         let result: String = vfs
-            .normalize_path("/data/subdir/../file.txt")
+            .normalize_path("/data/subdir/../file.txt", "/")
             .expect("should succeed");
         assert_eq!(result, "/data/file.txt");
     }
@@ -405,7 +380,7 @@ mod tests {
     #[test]
     fn normalize_dotdot_at_root() {
         let vfs: Vfs = Vfs::new();
-        let result: String = vfs.normalize_path("/data/..").expect("should succeed");
+        let result: String = vfs.normalize_path("/data/..", "/").expect("should succeed");
         assert_eq!(result, "/");
     }
 
@@ -413,7 +388,7 @@ mod tests {
     #[test]
     fn normalize_too_many_dotdot() {
         let vfs: Vfs = Vfs::new();
-        let result = vfs.normalize_path("/data/../..");
+        let result = vfs.normalize_path("/data/../..", "/");
         assert_eq!(result.unwrap_err(), Fat32Error::InvalidPath, "should fail with InvalidPath");
     }
 
@@ -421,7 +396,7 @@ mod tests {
     #[test]
     fn normalize_empty_path() {
         let vfs: Vfs = Vfs::new();
-        let result = vfs.normalize_path("");
+        let result = vfs.normalize_path("", "/");
         assert_eq!(result.unwrap_err(), Fat32Error::InvalidPath, "empty path should fail");
     }
 
@@ -429,7 +404,7 @@ mod tests {
     #[test]
     fn normalize_root() {
         let vfs: Vfs = Vfs::new();
-        let result: String = vfs.normalize_path("/").expect("should succeed");
+        let result: String = vfs.normalize_path("/", "/").expect("should succeed");
         assert_eq!(result, "/");
     }
 
@@ -437,16 +412,19 @@ mod tests {
     #[test]
     fn normalize_trailing_slash() {
         let vfs: Vfs = Vfs::new();
-        let result: String = vfs.normalize_path("/data/subdir/").expect("should succeed");
+        let result: String = vfs
+            .normalize_path("/data/subdir/", "/")
+            .expect("should succeed");
         assert_eq!(result, "/data/subdir");
     }
 
     /// Tests relative path with non-root cwd.
     #[test]
     fn normalize_relative_with_cwd() {
-        let mut vfs: Vfs = Vfs::new();
-        vfs.cwd = String::from("/data");
-        let result: String = vfs.normalize_path("file.txt").expect("should succeed");
+        let vfs: Vfs = Vfs::new();
+        let result: String = vfs
+            .normalize_path("file.txt", "/data")
+            .expect("should succeed");
         assert_eq!(result, "/data/file.txt");
     }
 
@@ -551,7 +529,7 @@ mod tests {
         vfs.add_mount(mount).expect("add_mount should succeed");
 
         let (idx, relative) = vfs
-            .resolve("/data/file.txt")
+            .resolve("/data/file.txt", "/")
             .expect("resolve should succeed");
         assert_eq!(idx, 0, "mount index should be 0");
         assert_eq!(relative, "file.txt", "relative path should be 'file.txt'");
@@ -564,7 +542,7 @@ mod tests {
         let (mount, _buf) = make_mount("/data");
         vfs.add_mount(mount).expect("add_mount should succeed");
 
-        let (_idx, relative) = vfs.resolve("/data").expect("resolve should succeed");
+        let (_idx, relative) = vfs.resolve("/data", "/").expect("resolve should succeed");
         assert_eq!(relative, "", "mount root should resolve to empty relative path");
     }
 
@@ -608,7 +586,7 @@ mod tests {
     #[test]
     fn resolve_no_mounts_fails() {
         let vfs: Vfs = Vfs::new();
-        let result = vfs.resolve("/anything");
+        let result = vfs.resolve("/anything", "/");
         assert_eq!(result.unwrap_err(), Fat32Error::NotFound, "should fail with NotFound");
     }
 
@@ -624,7 +602,7 @@ mod tests {
 
         // /data/sub/file should resolve to the /data/sub mount.
         let (idx, relative) = vfs
-            .resolve("/data/sub/file.txt")
+            .resolve("/data/sub/file.txt", "/")
             .expect("resolve should succeed");
         let mount_path: &str = vfs.get_mount(idx).expect("mount should exist").path();
         assert_eq!(mount_path, "/data/sub", "should match longer mount");
@@ -632,40 +610,17 @@ mod tests {
 
         // /data/other should resolve to the /data mount.
         let (idx2, relative2) = vfs
-            .resolve("/data/other.txt")
+            .resolve("/data/other.txt", "/")
             .expect("resolve should succeed");
         let mount_path2: &str = vfs.get_mount(idx2).expect("mount should exist").path();
         assert_eq!(mount_path2, "/data", "should match /data mount");
         assert_eq!(relative2, "other.txt", "relative path within /data");
     }
 
-    /// Tests setting and getting cwd.
-    #[test]
-    fn set_and_get_cwd() {
-        let mut vfs: Vfs = Vfs::new();
-        assert_eq!(vfs.cwd(), "/", "initial cwd should be /");
-
-        // Need a mount for set_cwd to verify path exists.
-        let (mount, _buf) = make_mount("/data");
-        vfs.add_mount(mount).expect("add_mount should succeed");
-
-        vfs.set_cwd("/data").expect("set_cwd should succeed");
-        assert_eq!(vfs.cwd(), "/data", "cwd should be updated");
-    }
-
-    /// Tests that set_cwd to "/" always works (even without mounts).
-    #[test]
-    fn set_cwd_root() {
-        let mut vfs: Vfs = Vfs::new();
-        vfs.set_cwd("/").expect("set_cwd to / should succeed");
-        assert_eq!(vfs.cwd(), "/");
-    }
-
     /// Tests Default trait implementation.
     #[test]
     fn default_vfs() {
         let vfs: Vfs = Vfs::default();
-        assert_eq!(vfs.cwd(), "/");
         assert_eq!(vfs.mount_count(), 0);
     }
 
@@ -712,7 +667,7 @@ mod tests {
     #[test]
     fn normalize_tilde_is_relative() {
         let vfs: Vfs = Vfs::new();
-        let result: String = vfs.normalize_path("~").expect("should succeed");
+        let result: String = vfs.normalize_path("~", "/").expect("should succeed");
         assert_eq!(result, "/~", "bare ~ should be treated as relative segment");
     }
 
@@ -720,7 +675,7 @@ mod tests {
     #[test]
     fn normalize_tilde_subpath_is_relative() {
         let vfs: Vfs = Vfs::new();
-        let result: String = vfs.normalize_path("~/foo").expect("should succeed");
+        let result: String = vfs.normalize_path("~/foo", "/").expect("should succeed");
         assert_eq!(result, "/~/foo", "~/foo should be treated as relative path");
     }
 
@@ -729,7 +684,7 @@ mod tests {
     fn normalize_no_tilde() {
         let vfs: Vfs = Vfs::new();
         let result: String = vfs
-            .normalize_path("/data/file.txt")
+            .normalize_path("/data/file.txt", "/")
             .expect("should succeed");
         assert_eq!(result, "/data/file.txt");
     }
@@ -738,7 +693,7 @@ mod tests {
     #[test]
     fn normalize_tilde_user_not_expanded() {
         let vfs: Vfs = Vfs::new();
-        let result: String = vfs.normalize_path("~other").expect("should succeed");
+        let result: String = vfs.normalize_path("~other", "/").expect("should succeed");
         assert_eq!(result, "/~other", "~user should not be expanded");
     }
 }
