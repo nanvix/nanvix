@@ -34,6 +34,9 @@ const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
 /// Minimum heap size in bytes. This is the minimum size of the backing storage that must be
 /// provided to initialize the heap.
 pub(crate) const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
+/// Maximum slab size in bytes. Allocations whose size or alignment exceed this are rejected.
+/// Derived from the largest slab tier so it stays in sync if the tiers change.
+const MAX_SLAB_SIZE: usize = SlabSize::Slab512 as usize;
 
 //==================================================================================================
 //  Structures
@@ -83,6 +86,21 @@ static mut ALLOCATOR: ArenaAllocator = ArenaAllocator;
 
 impl Kheap {
     unsafe fn from_raw_parts(addr: usize, size: usize) -> Result<Kheap, Error> {
+        // Check if start address is zero.
+        if addr == 0 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "null start address"));
+        }
+
+        // Check if the region wraps around.
+        if addr.checked_add(size).is_none() {
+            return Err(Error::new(ErrorCode::InvalidArgument, "address space overflow"));
+        }
+
+        // Check if size exceeds isize::MAX.
+        if size > isize::MAX as usize {
+            return Err(Error::new(ErrorCode::InvalidArgument, "size exceeds isize::MAX"));
+        }
+
         // Check if start address is not page aligned.
         if !addr.is_multiple_of(mem::PAGE_SIZE) {
             return Err(Error::new(ErrorCode::InvalidArgument, "unaligned start address"));
@@ -148,6 +166,15 @@ impl Kheap {
     }
 
     unsafe fn allocate(&mut self, layout: Layout) -> Result<*mut u8, AllocError> {
+        // Zero-sized allocations must return a non-null, suitably-aligned pointer without
+        // touching any slab. Use the alignment as a dangling pointer, as the standard library does.
+        if layout.size() == 0 {
+            return Ok(layout.align() as *mut u8);
+        }
+        // Reject layouts where alignment exceeds size or the maximum slab tier.
+        if layout.align() > layout.size() || layout.align() > MAX_SLAB_SIZE {
+            return Err(AllocError);
+        }
         let tier: SlabSize = Kheap::layout_to_allocator(&layout)?;
         let r: Result<*mut u8, AllocError> = match tier {
             SlabSize::Slab8 => self.slab_8_bytes.allocate().map_err(|_e| AllocError),
@@ -165,6 +192,10 @@ impl Kheap {
 
     #[allow(clippy::let_and_return)]
     unsafe fn deallocate(&mut self, ptr: *mut u8, layout: Layout) -> Result<(), AllocError> {
+        // Deallocation of a zero-sized layout is a no-op, matching the allocation path above.
+        if layout.size() == 0 {
+            return Ok(());
+        }
         let tier: SlabSize = Kheap::layout_to_allocator(&layout)?;
         let r: Result<(), AllocError> = match tier {
             SlabSize::Slab8 => self.slab_8_bytes.deallocate(ptr).map_err(|_e| AllocError),
