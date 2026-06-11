@@ -431,6 +431,16 @@ impl ProcessState {
             cwd: self.cwd.clone(),
         }
     }
+
+    /// Reports whether this state holds no open file descriptors.
+    ///
+    /// A freshly created [`ProcessState`] is empty until a descriptor is allocated. This is used to
+    /// recognize the placeholder state that [`set_current_process`] inserts lazily when a request
+    /// arrives for a process the VFS has not seen before, so that a later fork-clone may safely
+    /// overwrite it without orphaning any host-backed remote handles.
+    fn is_empty(&self) -> bool {
+        self.slots.iter().all(Option::is_none)
+    }
 }
 
 /// Registry of per-process VFS state, keyed by process identifier.
@@ -549,20 +559,27 @@ pub(crate) fn set_current_cwd(cwd: String) {
 /// - [`Fat32Error::NotFound`] if `parent` has no recorded state. Because `procd` registers a
 ///   process before it can ever fork, a missing parent is a lifecycle contract violation rather
 ///   than a recoverable condition, and the child is left unregistered.
-/// - [`Fat32Error::AlreadyExists`] if `child` already has recorded state. A forked child must be a
-///   fresh process; silently overwriting its table would drop its open file descriptions and leak
-///   any host-backed remote handles they hold. The caller must reclaim that state first (e.g., via
-///   [`vfs_process_exit`]).
+/// - [`Fat32Error::AlreadyExists`] if `child` already has recorded state that holds open file
+///   descriptors. A forked child must be a fresh process; overwriting a populated table would drop
+///   its open file descriptions and leak any host-backed remote handles they hold. The caller must
+///   reclaim that state first (e.g., via [`vfs_process_exit`]). An empty placeholder state — which
+///   [`set_current_process`] inserts lazily when the child's first request races ahead of this
+///   fork-clone notification — holds nothing and is safely overwritten.
 pub fn vfs_fork_clone(
     parent: ProcessIdentifier,
     child: ProcessIdentifier,
 ) -> Result<(), Fat32Error> {
     let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
         PROCESSES.lock();
-    // Refuse to clobber a child that already has state: overwriting it would orphan any host-backed
-    // descriptors it still holds. The caller is responsible for reclaiming stale state first.
-    if procs.contains_key(&child) {
-        return Err(Fat32Error::AlreadyExists);
+    // The child's first request can reach the VFS before procd's fork-clone notification, in which
+    // case `set_current_process` has already inserted an empty placeholder state for it. That
+    // placeholder holds no descriptors, so it is safe to overwrite. Refuse only when the existing
+    // state actually holds open descriptors, since clobbering those would orphan any host-backed
+    // remote handles they reference.
+    if let Some(existing) = procs.get(&child) {
+        if !existing.is_empty() {
+            return Err(Fat32Error::AlreadyExists);
+        }
     }
     // The parent must already be registered. `procd` registers every process at creation and is the
     // sole authority for doing so, so forking from an unregistered parent is a contract violation:
@@ -1991,6 +2008,39 @@ mod tests {
             vfs_hostfs_remote_fd(fd),
             Some(45),
             "child's existing descriptor must be preserved"
+        );
+
+        forget_processes(&[parent, child]);
+    }
+
+    /// Tests that forking onto a child whose only state is the empty placeholder inserted by
+    /// [`set_current_process`] succeeds. The child's first request can race ahead of procd's
+    /// fork-clone notification and lazily create that placeholder; because it holds no descriptors,
+    /// the clone must overwrite it rather than fail, otherwise the child never inherits the
+    /// parent's descriptors.
+    #[test]
+    fn fork_overwrites_empty_placeholder_child() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7061), ProcessIdentifier::from(0x7062));
+
+        // Parent opens a host-backed descriptor.
+        set_current_process(parent);
+        let fd: c_int = vfs_alloc_hostfs(46, false, None).expect("alloc should succeed");
+
+        // The child's first request reaches the VFS before the fork-clone notification, lazily
+        // inserting an empty placeholder state for it.
+        set_current_process(child);
+        assert_eq!(registry_open_fd_count(child), 0, "placeholder must hold no descriptors");
+
+        // Fork-clone must overwrite the empty placeholder and install the inherited descriptors.
+        vfs_fork_clone(parent, child).expect("fork clone over empty placeholder should succeed");
+
+        set_current_process(child);
+        assert_eq!(
+            vfs_hostfs_remote_fd(fd),
+            Some(46),
+            "child should inherit the parent's descriptor after the placeholder is overwritten"
         );
 
         forget_processes(&[parent, child]);
