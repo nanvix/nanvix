@@ -90,8 +90,6 @@ pub struct Vmem {
     /// List of kernel pages mapped in the virtual address space.
     /// NOTE: this currently excludes kernel pages that are identity mapped.
     kernel_pages: LinkedList<Rc<RefCell<KernelPage>>>,
-    /// List of private kernel pages.
-    private_kernel_pages: LinkedList<KernelPage>,
     /// List of user page tables.
     user_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
 }
@@ -167,7 +165,6 @@ impl Vmem {
             pgdir,
             kernel_page_tables: kpage_tables,
             kernel_pages: kpages,
-            private_kernel_pages: LinkedList::new(),
             user_page_tables: LinkedList::new(),
         })
     }
@@ -208,7 +205,6 @@ impl Vmem {
             pgdir,
             kernel_page_tables,
             kernel_pages,
-            private_kernel_pages: LinkedList::new(),
             user_page_tables: LinkedList::new(),
         })
     }
@@ -1717,11 +1713,6 @@ impl Drop for Vmem {
     fn drop(&mut self) {
         while let Some((_pgtable_vaddr, user_page_table)) = self.user_page_tables.pop_front() {
             drop(user_page_table);
-        }
-
-        // Unmap all kernel private kernel pages.
-        while let Some(kpage) = self.private_kernel_pages.pop_front() {
-            drop(kpage)
         }
 
         // Unmap shared kernel pages.
