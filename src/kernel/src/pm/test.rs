@@ -623,8 +623,10 @@ fn test_link_user_pages_skips_preexisting_child_mappings() -> bool {
 ///
 /// Expected post-conditions after the call returns `Err`:
 ///
-/// - parent's `vaddr_a` PTE is writable, not copy-on-write, and still points at
-///   `frame_a` (the partial CoW mark installed before the failure was reverted).
+/// - parent's `vaddr_a` PTE is read-only and copy-on-write, still pointing at `frame_a`.
+///   The rollback deliberately leaves the parent's CoW mark in place because it cannot
+///   reliably tell a page it marked from one that was already shared copy-on-write before
+///   the call.
 /// - parent's `vaddr_b` PTE is untouched (writable, not CoW, original frame).
 /// - `child` has no mapping at either `vaddr_a` or `vaddr_b`.
 ///
@@ -747,7 +749,8 @@ fn test_link_user_pages_rolls_back_on_partial_failure() -> bool {
         }
     }
 
-    // Parent's vaddr_a must be rolled back: writable, not CoW, original frame.
+    // Parent's vaddr_a: the child mapping is rolled back, but the parent's CoW mark is
+    // intentionally left in place, so it is read-only + CoW, still pointing at frame_a.
     let parent_a: PageTableEntry = match parent.try_find_user_pte(vaddr_a) {
         Ok(Some(p)) => p,
         Ok(None) => {
@@ -759,12 +762,12 @@ fn test_link_user_pages_rolls_back_on_partial_failure() -> bool {
             return false;
         },
     };
-    if !parent_a.flags().is_writable() {
-        error!("parent PTE at vaddr_a is not writable after rollback");
+    if parent_a.flags().is_writable() {
+        error!("parent PTE at vaddr_a is unexpectedly writable after rollback");
         return false;
     }
-    if parent_a.is_cow() {
-        error!("parent PTE at vaddr_a still carries CoW bit after rollback");
+    if !parent_a.is_cow() {
+        error!("parent PTE at vaddr_a lost its CoW bit after rollback");
         return false;
     }
     if parent_a.frame_number().into_raw_value() != frame_a_num {
