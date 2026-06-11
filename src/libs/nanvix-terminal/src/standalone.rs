@@ -126,6 +126,7 @@ impl Terminal {
             self.config.snapshot_path().map(|s| s.to_string()),
             self.config.mount_directory().map(|s| s.to_string()),
             self.config.networking_mode(),
+            self.config.host_filter(),
             #[cfg(feature = "gdb")]
             self.config.gdb_port(),
         );
