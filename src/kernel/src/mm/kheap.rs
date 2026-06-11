@@ -166,6 +166,11 @@ impl Kheap {
     }
 
     unsafe fn allocate(&mut self, layout: Layout) -> Result<*mut u8, AllocError> {
+        // Zero-sized allocations must return a non-null, suitably-aligned pointer without
+        // touching any slab. Use the alignment as a dangling pointer, as the standard library does.
+        if layout.size() == 0 {
+            return Ok(layout.align() as *mut u8);
+        }
         // Reject layouts where alignment exceeds size or the maximum slab tier.
         if layout.align() > layout.size() || layout.align() > MAX_SLAB_SIZE {
             return Err(AllocError);
@@ -187,6 +192,10 @@ impl Kheap {
 
     #[allow(clippy::let_and_return)]
     unsafe fn deallocate(&mut self, ptr: *mut u8, layout: Layout) -> Result<(), AllocError> {
+        // Deallocation of a zero-sized layout is a no-op, matching the allocation path above.
+        if layout.size() == 0 {
+            return Ok(());
+        }
         let tier: SlabSize = Kheap::layout_to_allocator(&layout)?;
         let r: Result<(), AllocError> = match tier {
             SlabSize::Slab8 => self.slab_8_bytes.deallocate(ptr).map_err(|_e| AllocError),
