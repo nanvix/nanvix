@@ -11,6 +11,7 @@ use ::log::{
 };
 use ::net_backend::{
     error::NetError,
+    HostFilter,
     NetBackend,
 };
 use ::sys::{
@@ -52,6 +53,7 @@ use ::syscall::{
         CloseRequest,
         CloseResponse,
     },
+    sys::socket::SocketAddr,
     SystemCallMessage,
     SystemCallMessageHeader,
     SOCKET_FD_BASE,
@@ -102,6 +104,7 @@ pub fn is_networking_header(header: &SystemCallMessageHeader) -> bool {
 ///
 pub fn dispatch_message(
     backend: &NetBackend,
+    filter: &HostFilter,
     source: MessageSender,
     syscall_msg: SystemCallMessage,
 ) -> Option<Vec<Message>> {
@@ -129,7 +132,7 @@ pub fn dispatch_message(
         SystemCallMessageHeader::ConnectSocketRequest => {
             let request: ConnectSocketRequest =
                 ConnectSocketRequest::from_bytes(syscall_msg.payload);
-            Some(vec![do_connect(backend, tid, request)])
+            Some(vec![do_connect(backend, filter, tid, request)])
         },
         SystemCallMessageHeader::CreateSocketPairRequest => {
             let request: CreateSocketPairRequest =
@@ -237,10 +240,28 @@ fn do_bind(backend: &NetBackend, tid: ThreadIdentifier, request: BindSocketReque
 
 fn do_connect(
     backend: &NetBackend,
+    filter: &HostFilter,
     tid: ThreadIdentifier,
     request: ConnectSocketRequest,
 ) -> Message {
     trace!("networkd::connect(): tid={tid:?}, request={request:?}");
+    // Enforce host egress policy before performing the real connect. The guest
+    // never makes the syscall itself, so refusing here is an unbypassable
+    // boundary.
+    //
+    // IPv4 destinations are matched against the filter. Any non-IPv4 destination
+    // (e.g. AF_UNIX, which would otherwise let a guest reach host-local sockets)
+    // or an unparsable address cannot be evaluated by the IPv4 filter, so it is
+    // denied whenever a filter is active and permitted only under `AllowAll`
+    // (preserving unrestricted behavior when no policy is set).
+    let permitted: bool = match SocketAddr::try_from(&request.sockaddr) {
+        Ok(SocketAddr::V4(addr)) => filter.permits(addr.addr().octets()),
+        _ => !filter.is_active(),
+    };
+    if !permitted {
+        trace!("networkd::connect(): destination denied by host egress filter");
+        return build_error(tid, ErrorCode::PermissionDenied);
+    }
     match backend.connect(to_host_fd(request.sockfd), &request.sockaddr, request.socklen) {
         Ok(()) => ConnectSocketResponse::build(tid),
         Err(NetError::Interrupted) => build_error(tid, ErrorCode::Interrupted),

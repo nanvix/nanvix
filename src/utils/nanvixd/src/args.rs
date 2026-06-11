@@ -23,7 +23,11 @@ use ::chrono::Local;
 use ::nanvix::{
     hwloc::HwLoc,
     log::DEFAULT_LOG_DIRECTORY,
-    sandbox_config::NetworkingMode,
+    sandbox_config::{
+        HostFilter,
+        Ipv4Cidr,
+        NetworkingMode,
+    },
     syscomm::SocketType,
 };
 use ::std::{
@@ -89,6 +93,12 @@ pub struct Args {
     gdb_port: Option<u16>,
     /// Networking mode (applies to all deployment modes).
     networking_mode: NetworkingMode,
+    /// Allowlist of IPv4/CIDR destinations (`-allow-host`). When non-empty, only
+    /// these destinations are reachable. Mutually exclusive with `block_hosts`.
+    allow_hosts: Vec<String>,
+    /// Blocklist of IPv4/CIDR destinations (`-block-host`). When non-empty, all
+    /// destinations except these are reachable. Mutually exclusive with `allow_hosts`.
+    block_hosts: Vec<String>,
     /// When `true`, route nanvixd's logs to stdout instead of a auto-named file.
     log_to_stdout: bool,
     /// Optional path of the standalone gateway endpoint -- the host-side
@@ -148,6 +158,10 @@ impl Args {
     pub const OPT_GDB_PORT: &'static str = "-gdb-port";
     /// Command-line flag that enables host networking for the guest.
     pub const OPT_ALLOW_HOST_NETWORKING: &'static str = "-allow-host-networking";
+    /// Command-line option (repeatable) adding an IPv4/CIDR to the egress allowlist.
+    pub const OPT_ALLOW_HOST: &'static str = "-allow-host";
+    /// Command-line option (repeatable) adding an IPv4/CIDR to the egress blocklist.
+    pub const OPT_BLOCK_HOST: &'static str = "-block-host";
     /// Command-line flag that routes nanvixd's logs to stdout instead of the auto-named file.
     pub const OPT_LOG_TO_STDOUT: &'static str = "-log-to-stdout";
     /// Command-line option for the standalone gateway endpoint (UDS
@@ -204,6 +218,8 @@ impl Args {
         #[cfg(feature = "gdb")]
         let mut gdb_port: Option<u16> = None;
         let mut networking_mode: NetworkingMode = NetworkingMode::Disabled;
+        let mut allow_hosts: Vec<String> = Vec::new();
+        let mut block_hosts: Vec<String> = Vec::new();
         let mut log_to_stdout: bool = false;
         let mut gateway_sockaddr: Option<String> = None;
 
@@ -368,6 +384,36 @@ impl Args {
                 Self::OPT_ALLOW_HOST_NETWORKING => {
                     networking_mode = NetworkingMode::Enabled;
                 },
+                Self::OPT_ALLOW_HOST => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!("missing value for: {}", Self::OPT_ALLOW_HOST));
+                    }
+                    if Ipv4Cidr::parse(&args[i]).is_none() {
+                        return Err(anyhow::anyhow!(
+                            "invalid {} value (expected IPv4 or CIDR): {}",
+                            Self::OPT_ALLOW_HOST,
+                            args[i]
+                        ));
+                    }
+                    allow_hosts.push(args[i].clone());
+                },
+                Self::OPT_BLOCK_HOST => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!("missing value for: {}", Self::OPT_BLOCK_HOST));
+                    }
+                    if Ipv4Cidr::parse(&args[i]).is_none() {
+                        return Err(anyhow::anyhow!(
+                            "invalid {} value (expected IPv4 or CIDR): {}",
+                            Self::OPT_BLOCK_HOST,
+                            args[i]
+                        ));
+                    }
+                    block_hosts.push(args[i].clone());
+                },
                 Self::OPT_LOG_TO_STDOUT => {
                     log_to_stdout = true;
                 },
@@ -386,6 +432,41 @@ impl Args {
                 "{} and {} are mutually exclusive",
                 Self::OPT_LOG_TO_STDOUT,
                 Self::OPT_LOG_DIRECTORY,
+            );
+        }
+
+        // Host egress filtering is all-or-list, never both: an allowlist
+        // (deny-by-default) and a blocklist (allow-by-default) express opposite
+        // postures and cannot be combined.
+        if !allow_hosts.is_empty() && !block_hosts.is_empty() {
+            anyhow::bail!(
+                "{} and {} are mutually exclusive",
+                Self::OPT_ALLOW_HOST,
+                Self::OPT_BLOCK_HOST,
+            );
+        }
+
+        // A host filter is meaningless without host networking enabled -- the
+        // guest has no egress to filter. Reject rather than silently ignore.
+        if (!allow_hosts.is_empty() || !block_hosts.is_empty()) && !networking_mode.is_enabled() {
+            anyhow::bail!(
+                "{} / {} require {}",
+                Self::OPT_ALLOW_HOST,
+                Self::OPT_BLOCK_HOST,
+                Self::OPT_ALLOW_HOST_NETWORKING,
+            );
+        }
+
+        // Host egress filtering is only consulted on the standalone network
+        // daemon path. In single-/multi-process builds the flags would be
+        // silently ignored, giving a false sense of policy -- reject them so the
+        // operator is not misled into believing egress is restricted.
+        #[cfg(not(feature = "standalone"))]
+        if !allow_hosts.is_empty() || !block_hosts.is_empty() {
+            anyhow::bail!(
+                "{} / {} are only supported in standalone builds",
+                Self::OPT_ALLOW_HOST,
+                Self::OPT_BLOCK_HOST,
             );
         }
 
@@ -488,6 +569,8 @@ impl Args {
             #[cfg(feature = "gdb")]
             gdb_port,
             networking_mode,
+            allow_hosts,
+            block_hosts,
             log_to_stdout,
             gateway_sockaddr,
         })
@@ -544,6 +627,10 @@ Options:
              (standalone mode only).
   {allow_host_networking}                   Enable host networking for the guest (disabled when \
              omitted).
+  {allow_host} <ip|cidr>                    (Repeatable) Permit egress only to this IPv4/CIDR \
+             (allowlist; requires {allow_host_networking}; mutually exclusive with {block_host}).
+  {block_host} <ip|cidr>                    (Repeatable) Deny egress to this IPv4/CIDR (blocklist; \
+             requires {allow_host_networking}; mutually exclusive with {allow_host}).
   {log_to_stdout}                          Route nanvixd's own logrus output to stdout instead of \
              a file in {log_dir} (file logger is otherwise the default).
   {gateway_sockaddr} <path>                 (Standalone) Path at which to expose the gateway \
@@ -573,6 +660,8 @@ Options:
             mount = Self::OPT_MOUNT_DIRECTORY,
             kernel_args = Self::OPT_KERNEL_ARGS,
             allow_host_networking = Self::OPT_ALLOW_HOST_NETWORKING,
+            allow_host = Self::OPT_ALLOW_HOST,
+            block_host = Self::OPT_BLOCK_HOST,
             log_to_stdout = Self::OPT_LOG_TO_STDOUT,
             gateway_sockaddr = Self::OPT_GATEWAY_SOCKADDR,
             gdb_port_line = if cfg!(feature = "gdb") {
@@ -869,6 +958,12 @@ Options:
         self.networking_mode
     }
 
+    /// Returns the host egress filter built from the `-allow-host` /
+    /// `-block-host` lists. Returns [`HostFilter::AllowAll`] when neither is set.
+    pub fn host_filter(&self) -> HostFilter {
+        HostFilter::from_lists(&self.allow_hosts, &self.block_hosts)
+    }
+
     /// When `true`, nanvixd should route its logrus output to stdout
     /// instead of the file logger. See [`Self::OPT_LOG_TO_STDOUT`].
     pub fn log_to_stdout(&self) -> bool {
@@ -991,5 +1086,80 @@ mod tests {
         assert!(res.is_err(), "expected error when -gateway-sockaddr has no value");
         let msg: String = format!("{:#}", res.err().unwrap());
         assert!(msg.contains("missing value for: -gateway-sockaddr"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn allow_host_builds_allowlist_filter() {
+        let args = Args::parse(argv(&[
+            "-allow-host-networking",
+            "-allow-host",
+            "1.2.3.4",
+            "-allow-host",
+            "10.0.0.0/8",
+            "--",
+            "/bin/foo",
+        ]))
+        .expect("parse");
+        let filter = args.host_filter();
+        assert!(filter.permits([1, 2, 3, 4]));
+        assert!(filter.permits([10, 9, 8, 7]));
+        assert!(!filter.permits([8, 8, 8, 8]));
+    }
+
+    #[test]
+    fn block_host_builds_blocklist_filter() {
+        let args = Args::parse(argv(&[
+            "-allow-host-networking",
+            "-block-host",
+            "8.8.8.8",
+            "--",
+            "/bin/foo",
+        ]))
+        .expect("parse");
+        let filter = args.host_filter();
+        assert!(!filter.permits([8, 8, 8, 8]));
+        assert!(filter.permits([1, 2, 3, 4]));
+    }
+
+    #[test]
+    fn allow_and_block_host_are_mutually_exclusive() {
+        let res = Args::parse(argv(&[
+            "-allow-host-networking",
+            "-allow-host",
+            "1.2.3.4",
+            "-block-host",
+            "8.8.8.8",
+            "--",
+            "/bin/foo",
+        ]));
+        let msg: String = format!("{:#}", res.expect_err("expected mutual-exclusion error"));
+        assert!(msg.contains(Args::OPT_ALLOW_HOST), "unexpected error: {msg}");
+        assert!(msg.contains(Args::OPT_BLOCK_HOST), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn host_filter_requires_networking_enabled() {
+        let res = Args::parse(argv(&["-allow-host", "1.2.3.4", "--", "/bin/foo"]));
+        let msg: String = format!("{:#}", res.expect_err("expected requires-networking error"));
+        assert!(msg.contains(Args::OPT_ALLOW_HOST_NETWORKING), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn rejects_invalid_host_entry() {
+        let res = Args::parse(argv(&[
+            "-allow-host-networking",
+            "-allow-host",
+            "not-an-ip",
+            "--",
+            "/bin/foo",
+        ]));
+        let msg: String = format!("{:#}", res.expect_err("expected invalid-entry error"));
+        assert!(msg.contains("invalid"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn host_filter_defaults_to_allow_all() {
+        let args = Args::parse(argv(&["-allow-host-networking", "--", "/bin/foo"])).expect("parse");
+        assert!(matches!(args.host_filter(), HostFilter::AllowAll));
     }
 }

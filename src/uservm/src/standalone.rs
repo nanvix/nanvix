@@ -31,7 +31,10 @@ use ::log::{
     trace,
     warn,
 };
-use ::nanvix_sandbox_config::NetworkingMode;
+use ::nanvix_sandbox_config::{
+    HostFilter,
+    NetworkingMode,
+};
 use ::networkd::NetworkDaemon;
 use ::std::{
     collections::VecDeque,
@@ -195,6 +198,7 @@ impl StandaloneVmHandle {
         snapshot_path: Option<String>,
         mount_directory: Option<String>,
         networking_mode: NetworkingMode,
+        host_filter: HostFilter,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
     ) -> (Self, StandaloneVmIo) {
         // Create internal VM channels. In standalone mode these are wired directly without an
@@ -248,6 +252,7 @@ impl StandaloneVmHandle {
                 input_rx,
                 io_counters,
                 networking_mode,
+                host_filter,
                 mount_directory,
             )
             .await;
@@ -411,6 +416,7 @@ fn extract_tid(source: ::sys::ipc::MessageSender) -> ThreadIdentifier {
 /// - `output_tx`: Forwards application data written by the guest to the external consumer.
 /// - `input_rx`: Receives application data from the external consumer for guest reads.
 ///
+#[allow(clippy::too_many_arguments)]
 async fn standalone_io_handler(
     mut vm_stdout_rx: mpsc::Receiver<IkcFrame>,
     vm_stdin_tx: mpsc::Sender<IkcFrame>,
@@ -418,6 +424,7 @@ async fn standalone_io_handler(
     mut input_rx: mpsc::Receiver<Vec<u8>>,
     counters: MessageCounters,
     networking_mode: NetworkingMode,
+    host_filter: HostFilter,
     mount_directory: Option<String>,
 ) {
     let mut input_buffer: VecDeque<u8> = VecDeque::new();
@@ -435,7 +442,7 @@ async fn standalone_io_handler(
     let mut worker_long_op_id: Option<::hostfs_api::OperationId> = None;
 
     let network_daemon: Option<Arc<NetworkDaemon>> = if networking_mode.is_enabled() {
-        match NetworkDaemon::new() {
+        match NetworkDaemon::new(host_filter) {
             Ok(nd) => Some(Arc::new(nd)),
             Err(e) => {
                 error!("standalone io_handler: failed to initialize network daemon: {e}");

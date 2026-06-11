@@ -13,6 +13,7 @@ mod dispatch;
 
 use ::net_backend::{
     error::NetError,
+    HostFilter,
     NetBackend,
 };
 use ::sys::ipc::Message;
@@ -36,6 +37,8 @@ use ::syscall::{
 pub struct NetworkDaemon {
     /// Platform-agnostic networking backend.
     backend: NetBackend,
+    /// Host egress filter applied to guest `connect()` destinations.
+    filter: HostFilter,
 }
 
 //==================================================================================================
@@ -48,11 +51,15 @@ impl NetworkDaemon {
     ///
     /// Creates a new `NetworkDaemon` instance.
     ///
+    /// `filter` is the host egress policy enforced on guest `connect()`
+    /// destinations. Pass [`HostFilter::AllowAll`] for unrestricted networking.
+    ///
     /// Returns an error if platform networking initialization fails.
     ///
-    pub fn new() -> Result<Self, NetError> {
+    pub fn new(filter: HostFilter) -> Result<Self, NetError> {
         Ok(Self {
             backend: NetBackend::new()?,
+            filter,
         })
     }
 
@@ -77,7 +84,7 @@ impl NetworkDaemon {
             Err(_) => return None,
         };
 
-        dispatch::dispatch_message(&self.backend, msg.source, syscall_msg)
+        dispatch::dispatch_message(&self.backend, &self.filter, msg.source, syscall_msg)
     }
 
     ///
@@ -93,6 +100,6 @@ impl NetworkDaemon {
 
 impl Default for NetworkDaemon {
     fn default() -> Self {
-        Self::new().expect("platform networking initialization should succeed")
+        Self::new(HostFilter::AllowAll).expect("platform networking initialization should succeed")
     }
 }
