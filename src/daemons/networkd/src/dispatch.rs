@@ -259,9 +259,14 @@ fn do_connect(
     //
     // Connections to the DNS port are exempted in allowlist mode so name
     // resolution works for the allowed hosts (see `HostFilter::permits_connection`).
-    let min_socklen: usize = core::mem::size_of::<::syscall::sys::socket::sockaddr>();
-    if (request.socklen as usize) < min_socklen {
-        trace!("networkd::connect(): invalid sockaddr length (socklen={})", request.socklen);
+    //
+    // Reject sockaddrs too short to hold a `sockaddr` before parsing. `socklen`
+    // is copied out of the packed request first so the trace below does not take
+    // a reference to an unaligned field; `size_of_val` reuses the in-scope
+    // `sockaddr` value to avoid naming its (private) type path.
+    let socklen: usize = request.socklen as usize;
+    if socklen < core::mem::size_of_val(&request.sockaddr) {
+        trace!("networkd::connect(): invalid sockaddr length (socklen={socklen})");
         return build_error(tid, ErrorCode::InvalidArgument);
     }
     let permitted: bool = match SocketAddr::try_from(&request.sockaddr) {
