@@ -100,6 +100,10 @@ pub enum HostFilter {
 }
 
 impl HostFilter {
+    /// Destination port used for DNS. Connections to this port are exempted from
+    /// the allowlist (see [`HostFilter::permits_connection`]).
+    const DNS_PORT: u16 = 53;
+
     ///
     /// # Description
     ///
@@ -127,6 +131,30 @@ impl HostFilter {
             Self::Allow(list) => list.iter().any(|c| c.contains(addr)),
             Self::Block(list) => !list.iter().any(|c| c.contains(addr)),
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether a connection to `addr`:`port` is permitted, applying a
+    /// DNS carve-out on top of [`HostFilter::permits`].
+    ///
+    /// In allowlist mode ([`HostFilter::Allow`]) the configured resolver is
+    /// usually not among the allowed destinations, yet name resolution must
+    /// succeed for those hosts to be reachable. Connections to the DNS port are
+    /// therefore permitted regardless of destination IP, mirroring the
+    /// always-allow `:53` rule other Nanvix consumers (e.g. MXC's LXC and WSLC
+    /// backends) install in allowlist mode.
+    ///
+    /// The exemption is scoped to allowlist mode only: it never relaxes
+    /// [`HostFilter::DenyAll`] (networking off stays fully closed) and never
+    /// overrides an explicit block in [`HostFilter::Block`] mode.
+    ///
+    pub fn permits_connection(&self, addr: [u8; 4], port: u16) -> bool {
+        if port == Self::DNS_PORT && matches!(self, Self::Allow(_)) {
+            return true;
+        }
+        self.permits(addr)
     }
 
     /// Returns `true` if this filter applies no restrictions (i.e. is
@@ -200,5 +228,25 @@ mod tests {
         assert!(HostFilter::AllowAll.is_allow_all());
         assert!(!HostFilter::from_lists(&["1.1.1.1".to_string()], &[]).is_allow_all());
         assert!(!HostFilter::from_lists(&[], &["8.8.8.8".to_string()]).is_allow_all());
+    }
+
+    #[test]
+    fn allowlist_exempts_dns_port() {
+        let f = HostFilter::from_lists(&["1.1.1.1".to_string()], &[]);
+        // A resolver outside the allowlist is reachable on port 53 only.
+        assert!(f.permits_connection([8, 8, 8, 8], 53));
+        assert!(!f.permits_connection([8, 8, 8, 8], 443));
+        // Allowed hosts remain reachable on any port.
+        assert!(f.permits_connection([1, 1, 1, 1], 443));
+    }
+
+    #[test]
+    fn dns_exemption_scoped_to_allowlist() {
+        // DenyAll stays fully closed, including DNS.
+        assert!(!HostFilter::DenyAll.permits_connection([8, 8, 8, 8], 53));
+        // Blocklist never has the carve-out override an explicit block.
+        let f = HostFilter::from_lists(&[], &["8.8.8.8".to_string()]);
+        assert!(!f.permits_connection([8, 8, 8, 8], 53));
+        assert!(f.permits_connection([1, 1, 1, 1], 53));
     }
 }

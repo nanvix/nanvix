@@ -256,8 +256,11 @@ fn do_connect(
     // or an unparsable address cannot be evaluated by the IPv4 filter, so it is
     // denied whenever a filter is active and permitted only under `AllowAll`
     // (preserving unrestricted behavior when no policy is set).
+    //
+    // Connections to the DNS port are exempted in allowlist mode so name
+    // resolution works for the allowed hosts (see `HostFilter::permits_connection`).
     let permitted: bool = match SocketAddr::try_from(&request.sockaddr) {
-        Ok(SocketAddr::V4(addr)) => filter.permits(addr.addr().octets()),
+        Ok(SocketAddr::V4(addr)) => filter.permits_connection(addr.addr().octets(), addr.port()),
         _ => filter.is_allow_all(),
     };
     if !permitted {
