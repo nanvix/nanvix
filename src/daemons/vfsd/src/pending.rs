@@ -281,6 +281,17 @@ pub(crate) fn complete_pending_op(
     pending: PendingOp,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
 ) {
+    // Bind the VFS to the requesting process so that descriptor allocation (e.g. for a completed
+    // open) and directory-cursor updates land in its per-process state. Safe because vfsd is
+    // single-threaded: TID == PID.
+    //
+    // The caller is guaranteed to still be registered here: guest syscalls are synchronous, so it
+    // stays blocked awaiting this very response and cannot exit, and the only involuntary
+    // termination path (memd killing a faulting process) cannot target a process parked in a
+    // syscall. Completion therefore never resurrects an exited process — which would re-create an
+    // empty placeholder and leak any host handle this op allocates (e.g. a completed open).
+    ::vfs::fd::set_current_process(ProcessIdentifier::from(i32::from(pending.source_tid)));
+
     // Validate that the response header matches the expected operation kind.
     if !validate_response_header(&pending.kind, response_payload) {
         ::syslog::error!("hostfs pending op: response header does not match expected operation");

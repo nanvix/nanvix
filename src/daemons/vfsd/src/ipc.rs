@@ -15,9 +15,12 @@ use crate::{
         send_response,
     },
     handler,
+    hostfs,
     pending::PendingQueue,
 };
 use ::proc::{
+    ForkCloneMessage,
+    ProcessExitMessage,
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
     ShutdownMessage,
@@ -29,6 +32,7 @@ use ::sys::{
     },
     ipc::{
         Message,
+        MessageSender,
         SystemMessage,
         SystemMessageHeader,
     },
@@ -48,7 +52,7 @@ use alloc::{
 };
 
 //==================================================================================================
-// Helper: Extract caller TID from message source
+// Helpers: Extract caller identity from message source
 //==================================================================================================
 
 /// Extracts the caller's thread identifier from an IPC message.
@@ -68,11 +72,31 @@ fn caller_tid(message: &Message) -> ThreadIdentifier {
     }
 }
 
+/// Extracts the caller's process identifier from an IPC message.
+///
+/// When the message source encodes a TID (rather than a PID), the PID is derived by casting the
+/// TID value to a PID. This is correct only for single-threaded processes where TID == PID.
+fn caller_pid(message: &Message) -> ProcessIdentifier {
+    let sender: MessageSender = message.source;
+    match sender.as_id() {
+        Ok(pid) => pid,
+        Err(tid) => ProcessIdentifier::from(i32::from(tid)),
+    }
+}
+
 //==================================================================================================
 // SystemMessage Handler (procd shutdown)
 //==================================================================================================
 
 fn handle_system_message(message: Message) -> Result<bool, Error> {
+    // State-mutating process-management messages are privileged: only procd may direct them. The
+    // caller (handle_ipc_message) guarantees this by routing here only when the kernel-attributed
+    // source is procd, so assert the invariant rather than re-checking it.
+    debug_assert_eq!(
+        caller_pid(&message),
+        ProcessIdentifier::PROCD,
+        "handle_system_message invoked with non-procd source"
+    );
     let sys_msg: SystemMessage = SystemMessage::from_bytes(message.payload)?;
     match sys_msg.header {
         SystemMessageHeader::ProcessManagement => {
@@ -83,6 +107,60 @@ fn handle_system_message(message: Message) -> Result<bool, Error> {
                     let shutdown: ShutdownMessage = ShutdownMessage::from_bytes(pm_msg.payload);
                     ::syslog::info!("shutting down (code={:?})...", shutdown.code);
                     Ok(true)
+                },
+                ProcessManagementMessageHeader::ForkClone => {
+                    let fork_clone: ForkCloneMessage = ForkCloneMessage::from_bytes(pm_msg.payload);
+                    let parent: ProcessIdentifier = fork_clone.parent;
+                    let child: ProcessIdentifier = fork_clone.child;
+                    // Duplicate the parent's filesystem state onto the child: its open file
+                    // descriptors (sharing the underlying open file descriptions, and therefore
+                    // file offsets, as POSIX requires) together with a private copy of its current
+                    // working directory.
+                    if let Err(e) = ::vfs::fd::vfs_fork_clone(parent, child) {
+                        ::syslog::error!(
+                            "failed to clone filesystem state (parent={:?}, child={:?}, \
+                             error={:?})",
+                            parent,
+                            child,
+                            e
+                        );
+                    } else {
+                        ::syslog::info!(
+                            "cloned filesystem state (parent={:?}, child={:?})",
+                            parent,
+                            child
+                        );
+                    }
+                    Ok(false)
+                },
+                ProcessManagementMessageHeader::ProcessExit => {
+                    let exit: ProcessExitMessage = ProcessExitMessage::from_bytes(pm_msg.payload);
+                    let pid: ProcessIdentifier = exit.pid;
+                    // Reclaim the terminated process's per-process filesystem state, dropping its
+                    // open file descriptors so that surviving siblings retain correct last-reference
+                    // accounting. Any host-backed descriptors for which the process held the final
+                    // reference can no longer be closed by the process itself, so close them on
+                    // hostfsd here to avoid leaking remote handles.
+                    let orphaned: Vec<i32> = ::vfs::fd::vfs_process_exit(pid);
+                    for remote_fd in orphaned {
+                        // Fire-and-forget close: the requesting process is gone, so there is no
+                        // caller to acknowledge. As in the leak-avoidance path in `complete_open`,
+                        // a dummy op_id is used and no pending op is registered, so the main event
+                        // loop finds no matching pending op for hostfsd's response and discards it.
+                        let dummy_op_id: ::hostfs_api::OperationId =
+                            ::hostfs_api::get_op_id(&[0u8; Message::PAYLOAD_SIZE]);
+                        if let Err(e) = hostfs::send_close_request(remote_fd, dummy_op_id) {
+                            ::syslog::warn!(
+                                "failed to close orphaned hostfs fd on process exit (pid={:?}, \
+                                 remote_fd={}, error={:?})",
+                                pid,
+                                remote_fd,
+                                e
+                            );
+                        }
+                    }
+                    ::syslog::info!("reclaimed filesystem state (pid={:?})", pid);
+                    Ok(false)
                 },
                 _ => {
                     ::syslog::warn!("received unknown process management message, ignoring...");
@@ -110,17 +188,17 @@ pub(crate) fn handle_ipc_message(
     assemblers: &mut BTreeMap<(i32, u16), AssemblerEntry>,
     pending: &mut PendingQueue,
 ) -> Result<bool, Error> {
-    let msg_source = message.source;
     let source_tid: ThreadIdentifier = caller_tid(&message);
-    let source_pid: ProcessIdentifier = match msg_source.as_id() {
-        Ok(pid) => pid,
-        Err(tid) => ProcessIdentifier::from(i32::from(tid)),
-    };
+    let source_pid: ProcessIdentifier = caller_pid(&message);
 
     // Rout messages from process daemon.
     if source_pid == ProcessIdentifier::PROCD {
         return handle_system_message(message);
     }
+
+    // Bind the VFS to the requesting process so that descriptor and working-directory operations
+    // resolve against its per-process state. Safe because vfsd is single-threaded: TID == PID.
+    ::vfs::fd::set_current_process(source_pid);
 
     // Parse as SystemCallMessage from user processes.
     let syscall_msg: SystemCallMessage = match SystemCallMessage::try_from_bytes(message.payload) {
