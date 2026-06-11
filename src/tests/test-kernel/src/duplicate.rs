@@ -259,6 +259,179 @@ fn test_duplicate_cow() -> Result<(), Error> {
     teardown
 }
 
+/// Regression test for chained-fork copy-on-write (issue #2512).
+///
+/// Reproduces the scenario where a page that is *already* copy-on-write — because it was
+/// shared by an earlier `duplicate()` — is forked again before any sharer writes to it.
+/// The historical bug snapshotted only the parent PTE's hardware writable bit, so the
+/// already-CoW page (read-only in hardware) was shared with the new child as a plain
+/// read-only mapping with no copy-on-write bit. The new child's first write was then
+/// mistaken for a genuine protection fault and the process was killed instead of taking a
+/// private copy.
+///
+/// Sequence:
+///
+/// 1. The parent primes [`SHARED_BYTE`] with [`PATTERN_INIT`] while the page is private.
+/// 2. A first `duplicate()` (`first_child`) turns the page read-only + copy-on-write in the
+///    parent. The parent deliberately does **not** write to it, so it stays copy-on-write.
+/// 3. A second `duplicate()` (`second_child`) re-forks the now-CoW page. With the bug
+///    present, `second_child` receives a read-only mapping with no copy-on-write bit.
+/// 4. The parent writes [`PATTERN_PARENT`], taking its own private copy.
+/// 5. `second_child` is released; it must observe [`PATTERN_INIT`] (the parent's write must
+///    be invisible to it), then write [`PATTERN_CHILD`] — which must resolve as a
+///    copy-on-write fault rather than killing it — and report both values.
+///
+/// `first_child` is kept alive (blocked in `recv()`) throughout so the re-forked frame
+/// stays shared exactly as in the issue's reproduction; both children are torn down at the
+/// end. With the bug present, `second_child` is killed on its first write and never
+/// replies, so the parent's `recv()` never returns and the test fails by timing out.
+fn test_duplicate_cow_refork() -> Result<(), Error> {
+    // Record the parent's PID where the children can find it via CoW-shared memory.
+    let parent_pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    PARENT_PID_RAW.store(u32::try_from(parent_pid)?, ORDER);
+
+    // Prime the shared byte with the pre-duplicate pattern while the page is still private.
+    SHARED_BYTE.store(PATTERN_INIT, ORDER);
+
+    // Allocate page-aligned stacks for the two children's main threads.
+    let layout: Layout = Layout::from_size_align(CHILD_STACK_SIZE, PAGE_SIZE)
+        .map_err(|_| Error::new(ErrorCode::InvalidArgument, "bad stack layout"))?;
+    // SAFETY: layout has non-zero size.
+    let stack1_ptr: *mut u8 = unsafe { ::alloc::alloc::alloc(layout) };
+    if stack1_ptr.is_null() {
+        return Err(Error::new(ErrorCode::OutOfMemory, "failed to allocate first child stack"));
+    }
+    // SAFETY: layout has non-zero size.
+    let stack2_ptr: *mut u8 = unsafe { ::alloc::alloc::alloc(layout) };
+    if stack2_ptr.is_null() {
+        // SAFETY: `stack1_ptr`/`layout` came from the matching allocation just above.
+        unsafe { ::alloc::alloc::dealloc(stack1_ptr, layout) };
+        return Err(Error::new(ErrorCode::OutOfMemory, "failed to allocate second child stack"));
+    }
+
+    let args1: ThreadCreateArgs = ThreadCreateArgs {
+        user_fn: VirtualAddress::from_raw_value(child_entry as *const () as usize),
+        user_fn_arg0: 0,
+        user_fn_arg1: 0,
+        user_stack_base: VirtualAddress::from_raw_value(stack1_ptr as usize),
+        user_stack_size: CHILD_STACK_SIZE,
+        user_tda: None,
+    };
+    let args2: ThreadCreateArgs = ThreadCreateArgs {
+        user_fn: VirtualAddress::from_raw_value(child_entry as *const () as usize),
+        user_fn_arg0: 0,
+        user_fn_arg1: 0,
+        user_stack_base: VirtualAddress::from_raw_value(stack2_ptr as usize),
+        user_stack_size: CHILD_STACK_SIZE,
+        user_tda: None,
+    };
+
+    // First fork: turns SHARED_BYTE's page read-only + copy-on-write in the parent.
+    let first_child: ProcessIdentifier = pm::__kcall_duplicate(&args1)?;
+    // Second fork: re-forks the now-CoW page (the parent has not written to it yet, so it
+    // is still read-only + copy-on-write at this point).
+    let second_child: ProcessIdentifier = pm::__kcall_duplicate(&args2)?;
+
+    // Both children now exist. Run the observation scenario, capturing its result so that
+    // both children and both stacks are always reclaimed afterwards.
+    let scenario: Result<(), Error> = (|| {
+        assert!(second_child != parent_pid, "second_child must differ from parent_pid");
+        assert!(second_child != first_child, "second_child must differ from first_child");
+
+        // The parent takes its own private copy now; this must remain invisible to the
+        // re-forked child.
+        SHARED_BYTE.store(PATTERN_PARENT, ORDER);
+
+        // Release the second child to perform its observation and write.
+        let go: Message = Message::new(
+            MessageSender::from(parent_pid),
+            MessageReceiver::from(second_child),
+            MessageType::Ipc,
+            None,
+            [0u8; Message::PAYLOAD_SIZE],
+        );
+        ipc::__kcall_send(&go)?;
+
+        // Receive the second child's report. With the bug present the child is killed on
+        // its first write and never replies, so a missing reply (test timeout) also flags
+        // the regression.
+        let reply: Message = ipc::__kcall_recv()?;
+        let reply_type: MessageType = { reply.message_type };
+        assert!(reply_type == MessageType::Ipc, "expected IPC reply");
+
+        let child_observed_before: u8 = reply.payload[0];
+        let child_observed_after: u8 = reply.payload[1];
+        let parent_observed: u8 = SHARED_BYTE.load(ORDER);
+
+        // CoW invariant 1: the parent's post-duplicate write is invisible to the re-forked
+        // child. A wrong value here means the re-fork shared a stale/private frame.
+        assert!(
+            child_observed_before == PATTERN_INIT,
+            "re-forked child observed {:#x} before its own write; expected {:#x} (re-fork CoW \
+             sharing broken)",
+            child_observed_before,
+            PATTERN_INIT
+        );
+        // The child's own write must succeed and be visible to itself, proving the page was
+        // mapped copy-on-write rather than as a fatal read-only mapping.
+        assert!(
+            child_observed_after == PATTERN_CHILD,
+            "re-forked child observed {:#x} after its own write; expected {:#x}",
+            child_observed_after,
+            PATTERN_CHILD
+        );
+        // CoW invariant 2: the child's write is invisible to the parent.
+        assert!(
+            parent_observed == PATTERN_PARENT,
+            "parent observed {:#x} after child's write; expected {:#x} (child->parent isolation \
+             broken)",
+            parent_observed,
+            PATTERN_PARENT
+        );
+
+        Ok(())
+    })();
+
+    // Acquire the process-management capability to terminate the children, tear them down,
+    // then release it. The capability is released only when this path acquired it.
+    // `ResourceBusy` means it is already held, so termination must still proceed without
+    // leaving it disabled afterwards.
+    let acquired: Result<bool, Error> =
+        match pm::__kcall_capctl(Capability::ProcessManagement, true) {
+            Ok(()) => Ok(true),
+            Err(e) if e.code == ErrorCode::ResourceBusy => Ok(false),
+            Err(e) => Err(e),
+        };
+    let teardown: Result<(), Error> = match acquired {
+        Ok(acquired) => {
+            let terminate_first: Result<(), Error> = pm::__kcall_terminate(first_child);
+            let terminate_second: Result<(), Error> = pm::__kcall_terminate(second_child);
+            let release: Result<(), Error> = if acquired {
+                pm::__kcall_capctl(Capability::ProcessManagement, false)
+            } else {
+                Ok(())
+            };
+            terminate_first.and(terminate_second).and(release)
+        },
+        Err(e) => Err(e),
+    };
+
+    // Reclaim the child stacks only once teardown has confirmed both children were
+    // terminated. If teardown failed a child may still be running on its stack, so freeing
+    // it would risk a use-after-free; leak the stacks in that case instead.
+    if teardown.is_ok() {
+        // SAFETY: both pointers/layout came from the matching `alloc::alloc::alloc` calls
+        // above and teardown confirmed the children are terminated, so they no longer
+        // reference these stack pages.
+        unsafe {
+            ::alloc::alloc::dealloc(stack1_ptr, layout);
+            ::alloc::alloc::dealloc(stack2_ptr, layout);
+        }
+    }
+
+    scenario.and(teardown)
+}
+
 //==================================================================================================
 // Public Entry Point
 //==================================================================================================
@@ -275,6 +448,9 @@ pub fn run() -> Result<(), Error> {
 
     test_duplicate_cow()?;
     ::syslog::info!("test-kernel: duplicate: PASS - duplicate_cow");
+
+    test_duplicate_cow_refork()?;
+    ::syslog::info!("test-kernel: duplicate: PASS - duplicate_cow_refork");
 
     ::syslog::info!("test-kernel: duplicate: all tests passed");
 
