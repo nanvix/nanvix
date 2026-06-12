@@ -116,6 +116,16 @@ impl OperationId {
     /// collide with any live operation.
     pub const INVALID: Self = Self(u32::MAX);
 
+    /// Sentinel value used for fire-and-forget requests that expect no completion,
+    /// such as best-effort closes issued when the originating caller is gone (e.g. on
+    /// process exit, or when an open completes but the local descriptor cannot be
+    /// allocated). No pending op is registered for these, and vfsd's main loop
+    /// recognizes responses carrying this id and discards them without logging.
+    ///
+    /// [`OperationIdAllocator::alloc`] explicitly skips `0`, so this value is guaranteed not to
+    /// collide with any live operation — including after the allocator's counter wraps around.
+    pub const FIRE_AND_FORGET: Self = Self(0);
+
     /// Size in bytes of the little-endian wire representation of an `OperationId`.
     ///
     /// Matches the length of the array produced by [`to_le_bytes`](Self::to_le_bytes)
@@ -193,9 +203,8 @@ impl Default for OperationIdAllocator {
 impl OperationIdAllocator {
     /// Creates a new allocator starting at identifier 1.
     ///
-    /// Identifier 0 is a valid wire value (the set/get helpers accept it) but is
-    /// skipped by the allocator to reserve it as a potential sentinel in future
-    /// protocol extensions.
+    /// Identifier `0` is a valid wire value (the set/get helpers accept it) but is reserved as the
+    /// [`OperationId::FIRE_AND_FORGET`] sentinel, so [`alloc`](Self::alloc) never issues it.
     pub const fn new() -> Self {
         Self { next_id: 1 }
     }
@@ -204,11 +213,16 @@ impl OperationIdAllocator {
     ///
     /// The `in_use` predicate is called to skip identifiers that are currently active
     /// (e.g., present in a pending-operation map). This guarantees the returned ID does
-    /// not collide with any live operation. The allocator also skips [`OperationId::INVALID`]
-    /// (`u32::MAX`) which is reserved as a sentinel for error responses.
+    /// not collide with any live operation. The allocator also skips the reserved sentinels
+    /// [`OperationId::INVALID`] (`u32::MAX`, used for error responses) and
+    /// [`OperationId::FIRE_AND_FORGET`] (`0`, used for completion-less requests), so a returned
+    /// identifier never collides with either reserved value — including after wrap-around.
     pub fn alloc(&mut self, in_use: impl Fn(&OperationId) -> bool) -> OperationId {
         let mut id: u32 = self.next_id;
-        while id == u32::MAX || in_use(&OperationId(id)) {
+        while id == OperationId::INVALID.raw()
+            || id == OperationId::FIRE_AND_FORGET.raw()
+            || in_use(&OperationId(id))
+        {
             id = id.wrapping_add(1);
         }
         self.next_id = id.wrapping_add(1);
