@@ -1,0 +1,177 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::message::{
+    ProcessManagementMessage,
+    ProcessManagementMessageHeader,
+};
+use ::core::mem;
+use ::sys::{
+    error::Error,
+    ipc::{
+        Message,
+        MessageReceiver,
+        MessageSender,
+        MessageType,
+        SystemMessage,
+        SystemMessageHeader,
+    },
+    pm::ProcessIdentifier,
+};
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A message sent by a freshly forked parent to the process manager daemon asking it to confirm
+/// that the child's filesystem state has been duplicated. The parent and child both block until the
+/// daemon acknowledges, so that neither process races ahead of the fork-clone snapshot taken in the
+/// filesystem daemon.
+///
+#[repr(C, packed)]
+pub struct ForkSyncMessage {
+    /// Process identifier of the child (the freshly forked process).
+    pub child: ProcessIdentifier,
+    _padding: [u8; Self::PADDING_SIZE],
+}
+
+// NOTE: The size of a fork-sync message must match the size of a process management message payload.
+::static_assert::assert_eq_size!(ForkSyncMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+
+//==================================================================================================
+// Implementations
+//==================================================================================================
+
+impl ForkSyncMessage {
+    /// Size of padding.
+    pub const PADDING_SIZE: usize =
+        ProcessManagementMessage::PAYLOAD_SIZE - mem::size_of::<ProcessIdentifier>();
+
+    ///
+    /// # Description
+    ///
+    /// Instantiates a new fork-sync message.
+    ///
+    /// # Parameters
+    ///
+    /// - `child`: Process identifier of the child.
+    ///
+    pub fn new(child: ProcessIdentifier) -> Self {
+        Self {
+            child,
+            _padding: [0; Self::PADDING_SIZE],
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Converts a byte array into a fork-sync message.
+    ///
+    /// # Parameters
+    ///
+    /// - `bytes`: Byte array.
+    ///
+    /// # Returns
+    ///
+    /// A fork-sync message.
+    ///
+    pub fn from_bytes(bytes: [u8; ProcessManagementMessage::PAYLOAD_SIZE]) -> Self {
+        unsafe { mem::transmute(bytes) }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Converts a fork-sync message into a byte array.
+    ///
+    /// # Returns
+    ///
+    /// The corresponding byte array.
+    ///
+    pub fn into_bytes(self) -> [u8; ProcessManagementMessage::PAYLOAD_SIZE] {
+        unsafe { mem::transmute(self) }
+    }
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+/// Wraps a process management message destined to `destination` into an IPC message sent from
+/// `source`.
+fn wrap(
+    source: ProcessIdentifier,
+    destination: ProcessIdentifier,
+    pm_message: ProcessManagementMessage,
+) -> Message {
+    let system_message: SystemMessage =
+        SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
+
+    Message::new(
+        MessageSender::from(source),
+        MessageReceiver::from(destination),
+        MessageType::Ipc,
+        None,
+        system_message.into_bytes(),
+    )
+}
+
+///
+/// # Description
+///
+/// Builds a fork-sync request message addressed to the process manager daemon.
+///
+/// # Parameters
+///
+/// - `parent`: Process identifier of the requesting parent (message source).
+/// - `child`: Process identifier of the freshly forked child.
+///
+/// # Returns
+///
+/// Upon successful completion, a fork-sync request message is returned. Otherwise, an error is
+/// returned instead.
+///
+pub fn fork_sync_request(
+    parent: ProcessIdentifier,
+    child: ProcessIdentifier,
+) -> Result<Message, Error> {
+    let fork_sync_message: ForkSyncMessage = ForkSyncMessage::new(child);
+    let pm_message: ProcessManagementMessage = ProcessManagementMessage::new(
+        ProcessManagementMessageHeader::ForkSync,
+        fork_sync_message.into_bytes(),
+    );
+
+    Ok(wrap(parent, ProcessIdentifier::PROCD, pm_message))
+}
+
+///
+/// # Description
+///
+/// Builds a fork-sync acknowledgement message sent by the process manager daemon to release a
+/// blocked parent or child.
+///
+/// # Parameters
+///
+/// - `destination`: Process identifier of the process to release.
+///
+/// # Returns
+///
+/// Upon successful completion, a fork-sync acknowledgement message is returned. Otherwise, an error
+/// is returned instead.
+///
+pub fn fork_sync_ack(destination: ProcessIdentifier) -> Result<Message, Error> {
+    let pm_message: ProcessManagementMessage = ProcessManagementMessage::new(
+        ProcessManagementMessageHeader::ForkSyncAck,
+        [0u8; ProcessManagementMessage::PAYLOAD_SIZE],
+    );
+
+    Ok(wrap(ProcessIdentifier::PROCD, destination, pm_message))
+}

@@ -256,7 +256,7 @@ pub fn signup_request(pid: ProcessIdentifier, name: &str) -> Result<Message, Err
     // Construct an IPC  message.
     let ipc_message: Message = Message::new(
         MessageSender::from(pid),
-        MessageReceiver::from(crate::PROCD),
+        MessageReceiver::from(ProcessIdentifier::PROCD),
         MessageType::Ipc,
         None,
         system_message.into_bytes(),
@@ -301,7 +301,7 @@ pub fn signup_response(
 
     // Construct an IPC message.
     let ipc_message: Message = Message::new(
-        MessageSender::from(crate::PROCD),
+        MessageSender::from(ProcessIdentifier::PROCD),
         MessageReceiver::from(destination),
         MessageType::Ipc,
         None,

@@ -30,41 +30,42 @@ use ::sys::{
 ///
 /// # Description
 ///
-/// A message that encodes a shutdown operation.
+/// A message sent by the process manager daemon to the filesystem daemon notifying it that a
+/// process has terminated, so that the filesystem daemon can reclaim the process's per-process
+/// state (open file descriptors and current working directory).
 ///
-pub struct ShutdownMessage {
-    /// Shutdown code.
-    pub code: u8,
+#[repr(C, packed)]
+pub struct ProcessExitMessage {
+    /// Process identifier of the terminated process.
+    pub pid: ProcessIdentifier,
     _padding: [u8; Self::PADDING_SIZE],
 }
 
-// NOTE: the size of a shutdown message must match the size of a process management message payload.
-::static_assert::assert_eq_size!(ShutdownMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+// NOTE: The size of a process-exit message must match the size of a process management message
+// payload.
+::static_assert::assert_eq_size!(ProcessExitMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl ShutdownMessage {
+impl ProcessExitMessage {
     /// Size of padding.
-    pub const PADDING_SIZE: usize = ProcessManagementMessage::PAYLOAD_SIZE - mem::size_of::<u8>();
+    pub const PADDING_SIZE: usize =
+        ProcessManagementMessage::PAYLOAD_SIZE - mem::size_of::<ProcessIdentifier>();
 
     ///
     /// # Description
     ///
-    /// Instantiates a new shutdown message.
+    /// Instantiates a new process-exit message.
     ///
     /// # Parameters
     ///
-    /// - `code`: Shutdown code.
+    /// - `pid`: Process identifier of the terminated process.
     ///
-    /// # Returns
-    ///
-    /// A shutdown message.
-    ///
-    pub fn new(code: u8) -> Self {
+    pub fn new(pid: ProcessIdentifier) -> Self {
         Self {
-            code,
+            pid,
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -72,7 +73,7 @@ impl ShutdownMessage {
     ///
     /// # Description
     ///
-    /// Converts a byte array into a shutdown message.
+    /// Converts a byte array into a process-exit message.
     ///
     /// # Parameters
     ///
@@ -80,7 +81,7 @@ impl ShutdownMessage {
     ///
     /// # Returns
     ///
-    /// The corresponding shutdown message.
+    /// A process-exit message.
     ///
     pub fn from_bytes(bytes: [u8; ProcessManagementMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
@@ -89,7 +90,7 @@ impl ShutdownMessage {
     ///
     /// # Description
     ///
-    /// Converts a shutdown message into a byte array.
+    /// Converts a process-exit message into a byte array.
     ///
     /// # Returns
     ///
@@ -107,39 +108,33 @@ impl ShutdownMessage {
 ///
 /// # Description
 ///
-/// Builds a shutdown message.
+/// Builds a process-exit notification addressed to the filesystem daemon.
 ///
 /// # Parameters
 ///
-/// - `destination`: Destination process.
-/// - `code`: Shutdown code.
+/// - `pid`: Process identifier of the terminated process.
 ///
 /// # Returns
 ///
-/// Upon successful completion, the IPC message is returned. Upon failure, an error is returned
-/// instead.
+/// Upon successful completion, a process-exit notification message is returned. Otherwise, an error
+/// is returned instead.
 ///
-pub fn shutdown_request(destination: ProcessIdentifier, code: u8) -> Result<Message, Error> {
-    // Construct a shutdown message.
-    let shutdown_message: ShutdownMessage = ShutdownMessage::new(code);
-
-    // Construct a process management message.
+pub fn process_exit_request(pid: ProcessIdentifier) -> Result<Message, Error> {
+    let process_exit_message: ProcessExitMessage = ProcessExitMessage::new(pid);
     let pm_message: ProcessManagementMessage = ProcessManagementMessage::new(
-        ProcessManagementMessageHeader::Shutdown,
-        shutdown_message.into_bytes(),
+        ProcessManagementMessageHeader::ProcessExit,
+        process_exit_message.into_bytes(),
     );
 
-    // Construct a system message.
-    let sys_message: SystemMessage =
+    let system_message: SystemMessage =
         SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
 
-    // Construct an IPC message.
     let ipc_message: Message = Message::new(
         MessageSender::from(ProcessIdentifier::PROCD),
-        MessageReceiver::from(destination),
+        MessageReceiver::from(ProcessIdentifier::VFSD),
         MessageType::Ipc,
         None,
-        sys_message.into_bytes(),
+        system_message.into_bytes(),
     );
 
     Ok(ipc_message)

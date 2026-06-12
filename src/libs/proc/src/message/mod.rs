@@ -5,7 +5,10 @@
 // Modules
 //==================================================================================================
 
+mod fork_clone;
+mod fork_sync;
 mod lookup;
+mod process_exit;
 mod shutdown;
 mod signup;
 
@@ -13,7 +16,10 @@ mod signup;
 // Exports
 //==================================================================================================
 
+pub use fork_clone::*;
+pub use fork_sync::*;
 pub use lookup::*;
+pub use process_exit::*;
 pub use shutdown::*;
 pub use signup::*;
 
@@ -52,6 +58,20 @@ pub enum ProcessManagementMessageHeader {
     Lookup = 4,
     /// Lookup response.
     LookupResponse = 5,
+    // Discriminants 6-9 are reserved for future core process-management operations so that the
+    // fork-related variants below remain grouped in a stable, contiguous block.
+    /// Fork-clone operation (used to notify other daemons to clone a parent's resources onto a
+    /// freshly forked child).
+    ForkClone = 10,
+    /// Fork-sync request (a freshly forked parent asks the process manager daemon to confirm that
+    /// the child's filesystem state has been duplicated before either process proceeds).
+    ForkSync = 11,
+    /// Fork-sync acknowledgement (the process manager daemon releases a parent and its child once
+    /// the fork-clone has been dispatched to the filesystem daemon).
+    ForkSyncAck = 12,
+    /// Process-exit notification (used to notify other daemons to reclaim a terminated process's
+    /// per-process state).
+    ProcessExit = 13,
 }
 
 impl TryFrom<u8> for ProcessManagementMessageHeader {
@@ -64,6 +84,10 @@ impl TryFrom<u8> for ProcessManagementMessageHeader {
             3 => Ok(ProcessManagementMessageHeader::SignupResponse),
             4 => Ok(ProcessManagementMessageHeader::Lookup),
             5 => Ok(ProcessManagementMessageHeader::LookupResponse),
+            10 => Ok(ProcessManagementMessageHeader::ForkClone),
+            11 => Ok(ProcessManagementMessageHeader::ForkSync),
+            12 => Ok(ProcessManagementMessageHeader::ForkSyncAck),
+            13 => Ok(ProcessManagementMessageHeader::ProcessExit),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid process management message")),
         }
     }
@@ -77,6 +101,10 @@ impl From<&ProcessManagementMessageHeader> for u8 {
             ProcessManagementMessageHeader::SignupResponse => 3,
             ProcessManagementMessageHeader::Lookup => 4,
             ProcessManagementMessageHeader::LookupResponse => 5,
+            ProcessManagementMessageHeader::ForkClone => 10,
+            ProcessManagementMessageHeader::ForkSync => 11,
+            ProcessManagementMessageHeader::ForkSyncAck => 12,
+            ProcessManagementMessageHeader::ProcessExit => 13,
         }
     }
 }

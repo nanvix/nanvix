@@ -78,8 +78,8 @@ pub fn kcall_handler() -> ExitStatus {
         match pm!().harvest_zombies(mm!()) {
             Ok(None) => {},
             Ok(Some((pid, status))) => {
-                // Check if init daemon process terminated.
-                if pid == ProcessIdentifier::INITD {
+                // Check if the process manager daemon (PROCD) terminated.
+                if pid == ProcessIdentifier::PROCD {
                     // It was, so we should shutdown.
                     break status;
                 }

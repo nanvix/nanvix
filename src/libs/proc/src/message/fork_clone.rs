@@ -30,41 +30,47 @@ use ::sys::{
 ///
 /// # Description
 ///
-/// A message that encodes a shutdown operation.
+/// A message that asks the filesystem daemon to clone the filesystem resources (open file
+/// descriptors, current working directory, file-creation mask) of a parent process onto a freshly
+/// forked child. It is sent by the process manager daemon while it records the parent/child
+/// relationship, so that the child inherits a copy of the parent's filesystem state.
 ///
-pub struct ShutdownMessage {
-    /// Shutdown code.
-    pub code: u8,
+#[repr(C, packed)]
+pub struct ForkCloneMessage {
+    /// Process identifier of the parent (clone source).
+    pub parent: ProcessIdentifier,
+    /// Process identifier of the child (clone destination).
+    pub child: ProcessIdentifier,
     _padding: [u8; Self::PADDING_SIZE],
 }
 
-// NOTE: the size of a shutdown message must match the size of a process management message payload.
-::static_assert::assert_eq_size!(ShutdownMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+// NOTE: The size of a fork-clone message must match the size of a process management message payload.
+::static_assert::assert_eq_size!(ForkCloneMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl ShutdownMessage {
+impl ForkCloneMessage {
     /// Size of padding.
-    pub const PADDING_SIZE: usize = ProcessManagementMessage::PAYLOAD_SIZE - mem::size_of::<u8>();
+    pub const PADDING_SIZE: usize = ProcessManagementMessage::PAYLOAD_SIZE
+        - mem::size_of::<ProcessIdentifier>()
+        - mem::size_of::<ProcessIdentifier>();
 
     ///
     /// # Description
     ///
-    /// Instantiates a new shutdown message.
+    /// Instantiates a new fork-clone message.
     ///
     /// # Parameters
     ///
-    /// - `code`: Shutdown code.
+    /// - `parent`: Process identifier of the parent.
+    /// - `child`: Process identifier of the child.
     ///
-    /// # Returns
-    ///
-    /// A shutdown message.
-    ///
-    pub fn new(code: u8) -> Self {
+    pub fn new(parent: ProcessIdentifier, child: ProcessIdentifier) -> Self {
         Self {
-            code,
+            parent,
+            child,
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -72,7 +78,7 @@ impl ShutdownMessage {
     ///
     /// # Description
     ///
-    /// Converts a byte array into a shutdown message.
+    /// Converts a byte array into a fork-clone message.
     ///
     /// # Parameters
     ///
@@ -80,7 +86,7 @@ impl ShutdownMessage {
     ///
     /// # Returns
     ///
-    /// The corresponding shutdown message.
+    /// A fork-clone message.
     ///
     pub fn from_bytes(bytes: [u8; ProcessManagementMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
@@ -89,7 +95,7 @@ impl ShutdownMessage {
     ///
     /// # Description
     ///
-    /// Converts a shutdown message into a byte array.
+    /// Converts a fork-clone message into a byte array.
     ///
     /// # Returns
     ///
@@ -107,39 +113,43 @@ impl ShutdownMessage {
 ///
 /// # Description
 ///
-/// Builds a shutdown message.
+/// Builds a fork-clone request message addressed to the filesystem daemon.
 ///
 /// # Parameters
 ///
-/// - `destination`: Destination process.
-/// - `code`: Shutdown code.
+/// - `parent`: Process identifier of the parent (clone source).
+/// - `child`: Process identifier of the child (clone destination).
 ///
 /// # Returns
 ///
-/// Upon successful completion, the IPC message is returned. Upon failure, an error is returned
-/// instead.
+/// Upon successful completion, a fork-clone request message is returned. Otherwise, an error is
+/// returned instead.
 ///
-pub fn shutdown_request(destination: ProcessIdentifier, code: u8) -> Result<Message, Error> {
-    // Construct a shutdown message.
-    let shutdown_message: ShutdownMessage = ShutdownMessage::new(code);
+pub fn fork_clone_request(
+    parent: ProcessIdentifier,
+    child: ProcessIdentifier,
+) -> Result<Message, Error> {
+    // Construct a fork-clone message.
+    let fork_clone_message: ForkCloneMessage = ForkCloneMessage::new(parent, child);
 
     // Construct a process management message.
     let pm_message: ProcessManagementMessage = ProcessManagementMessage::new(
-        ProcessManagementMessageHeader::Shutdown,
-        shutdown_message.into_bytes(),
+        ProcessManagementMessageHeader::ForkClone,
+        fork_clone_message.into_bytes(),
     );
 
     // Construct a system message.
-    let sys_message: SystemMessage =
+    let system_message: SystemMessage =
         SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
 
-    // Construct an IPC message.
+    // Construct an IPC message. The notification is sent by the process manager daemon to the
+    // filesystem daemon.
     let ipc_message: Message = Message::new(
         MessageSender::from(ProcessIdentifier::PROCD),
-        MessageReceiver::from(destination),
+        MessageReceiver::from(ProcessIdentifier::VFSD),
         MessageType::Ipc,
         None,
-        sys_message.into_bytes(),
+        system_message.into_bytes(),
     );
 
     Ok(ipc_message)
