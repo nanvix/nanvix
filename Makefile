@@ -572,8 +572,8 @@ help:
 	@echo "  MAKE_NO_PRINT   yes, no"
 
 # Verifies all Verus-annotated crates.
-.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
-verify: $(addprefix verify-,$(VERUS_CRATES))
+.PHONY: verify $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
 
 # Ensures the correct Verus version is installed before verification.
 # When VERUS_EXECUTABLE_DIR is unset, verification is skipped.
@@ -606,6 +606,13 @@ ifeq ($(VERUS_EXECUTABLE_DIR),)
 	@true
 else
 	$(VERUS_VERIFY_CMD) -p $* $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+endif
+
+verify-kernel: ensure-verus
+ifeq ($(VERUS_EXECUTABLE_DIR),)
+	@true
+else
+	$(VERUS_VERIFY_CMD) -p kernel --features "microvm trace" $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 endif
 
 # Fixes code linting issues.

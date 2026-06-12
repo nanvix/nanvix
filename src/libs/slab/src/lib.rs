@@ -43,7 +43,7 @@ include!("lib.proof.rs");
 /// Slab poison byte used in debug builds to fill freed blocks and make use-after-free bugs more
 /// likely to cause a crash and easier to diagnose. This is not used in release builds to avoid
 /// the performance overhead of filling freed blocks.
-#[cfg(all(debug_assertions, not(verus_keep_ghost)))]
+#[cfg(debug_assertions)]
 pub const SLAB_POISON_BYTE: u8 = 0xDE;
 
 //==================================================================================================
@@ -242,7 +242,7 @@ impl Slab {
             invariant
                 index.inv(),
                 index@.num_bits == index_len * u8_bits,
-                index@.set_bits == Set::new(|j: int| num_data_blocks <= j < i),
+                index@.set_bits == Set::range(num_data_blocks as int, i as int),
         ))]
         for i in num_data_blocks..(index_len * u8_bits) {
             index.set(i)?;
