@@ -61,6 +61,10 @@ use ::core::{
     cell::RefCell,
     mem::ManuallyDrop,
 };
+use ::type_safe::{
+    usize_to_const_ptr,
+    usize_to_mut_ptr,
+};
 use ::sys::{
     config,
     error::{
@@ -962,7 +966,7 @@ impl Vmem {
 
         let src_paddr: usize = pte.frame_address();
         let dst_paddr: usize = new_frame.address().into_raw_value();
-        super::memcpy(dst_paddr as *mut u8, src_paddr as *const u8, mem::PAGE_SIZE)?;
+        super::memcpy(usize_to_mut_ptr(dst_paddr), usize_to_const_ptr(src_paddr), mem::PAGE_SIZE)?;
 
         // Repoint the PTE at the new frame; the previous frame address is returned so we
         // can drop the shared reference.
@@ -1142,8 +1146,8 @@ impl Vmem {
                     // Copy memory from user space to kernel space.
                     let dst_gpa: usize = crate::hal::platform::virt_to_phys(dst.into_raw_value());
                     super::memcpy(
-                        dst_gpa as *mut u8,
-                        (src_frame.into_raw_value() + offset) as *const u8,
+                        usize_to_mut_ptr(dst_gpa),
+                        usize_to_const_ptr(src_frame.into_raw_value() + offset),
                         copy_size,
                     )?;
                 }
@@ -1312,9 +1316,9 @@ impl Vmem {
                 }
 
                 // Copy memory from kernel space to user space.
-                let dst: *mut u8 = (dst_frame.into_raw_value() + offset) as *mut u8;
+                let dst: *mut u8 = usize_to_mut_ptr(dst_frame.into_raw_value() + offset);
                 let src_gpa: usize = crate::hal::platform::virt_to_phys(src.into_raw_value());
-                let src: *const u8 = src_gpa as *const u8;
+                let src: *const u8 = usize_to_const_ptr(src_gpa);
                 let copy_result: Result<(), Error> = super::memcpy(dst, src, copy_size);
                 if let Err(error) = copy_result {
                     let reason: &str = "failed to perform physical memory copy";
@@ -1456,7 +1460,11 @@ impl Vmem {
                     // mappings for the full source and destination ranges before copying.
                     let src_phys_addr: usize = src_frame.into_raw_value() + src_offset;
                     let dst_phys_addr: usize = dst_frame.into_raw_value() + dst_offset;
-                    super::memcpy(dst_phys_addr as *mut u8, src_phys_addr as *const u8, copy_size)?;
+                    super::memcpy(
+                        usize_to_mut_ptr(dst_phys_addr),
+                        usize_to_const_ptr(src_phys_addr),
+                        copy_size,
+                    )?;
                 }
 
                 remaining -= copy_size;
@@ -1498,7 +1506,7 @@ impl Vmem {
         // Get corresponding user page.
         let uframe: FrameAddress = self.find_user_frame(dst)?;
         let dst: PageAligned<PhysicalAddress> = uframe.into_physical_address();
-        let base: *mut u8 = dst.into_raw_value() as *mut u8;
+        let base: *mut u8 = usize_to_mut_ptr(dst.into_raw_value());
 
         super::memset(base, value as u8, mem::PAGE_SIZE)?;
 
