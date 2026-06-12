@@ -1524,6 +1524,7 @@ dependencies = [
  "cmdline",
  "config",
  "elf",
+ "error",
  "koptions",
  "mmio-tag",
  "multibin",
@@ -1534,6 +1535,7 @@ dependencies = [
  "static_assert",
  "sys",
  "type-safe",
+ "vstd",
 ]
 
 [[package]]
