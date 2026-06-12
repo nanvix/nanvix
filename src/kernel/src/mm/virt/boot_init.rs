@@ -87,7 +87,11 @@ pub fn init(
     };
 
     // Identity map memory regions.
-    while let Some(region) = regions.pop_front() {
+    loop {
+        let region: TruncatedMemoryRegion<VirtualAddress> = match regions.pop_front() {
+            Some(region) => region,
+            None => break,
+        };
         info!("booking: {:?}", region);
 
         let raw_vaddr: usize = region.start().into_raw_value();
