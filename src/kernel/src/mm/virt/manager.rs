@@ -607,7 +607,8 @@ impl VirtMemoryManager {
 
         // Check that none of the pages in the range are already mapped.
         let mut check_addr: PageAligned<VirtualAddress> = vaddr;
-        for _ in 0..nframes {
+        let mut checked_count: usize = 0;
+        while checked_count < nframes {
             if vmem.is_user_page_mapped(check_addr)? {
                 let reason: &str = "page already mapped in range";
                 error!("{reason} (vaddr={check_addr:?})");
@@ -623,6 +624,7 @@ impl VirtMemoryManager {
                         Error::new(ErrorCode::BadAddress, reason)
                     })?,
             )?;
+            checked_count += 1;
         }
 
         // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no concurrent
@@ -638,31 +640,40 @@ impl VirtMemoryManager {
         let mut mapped_count: usize = 0;
         let mut map_error: Result<(), Error> = Ok(());
 
-        for uframe in uframes.drain(..) {
-            if let Err(e) = vmem.map(uframe, vaddr, access) {
-                map_error = Err(e);
-                break;
-            }
-            mapped_count += 1;
-            if clear {
-                if let Err(e) = vmem.memset(vaddr, 0) {
+        {
+            let mut drain = uframes.drain(..);
+            loop {
+                let uframe: UserFrame = match drain.next() {
+                    Some(uframe) => uframe,
+                    None => break,
+                };
+
+                if let Err(e) = vmem.map(uframe, vaddr, access) {
                     map_error = Err(e);
                     break;
                 }
-            }
-            match PageAligned::from_raw_value(vaddr.into_raw_value() + mem::PAGE_SIZE) {
-                Ok(next) => vaddr = next,
-                Err(e) => {
-                    map_error = Err(e);
-                    break;
-                },
+                mapped_count += 1;
+                if clear {
+                    if let Err(e) = vmem.memset(vaddr, 0) {
+                        map_error = Err(e);
+                        break;
+                    }
+                }
+                match PageAligned::from_raw_value(vaddr.into_raw_value() + mem::PAGE_SIZE) {
+                    Ok(next) => vaddr = next,
+                    Err(e) => {
+                        map_error = Err(e);
+                        break;
+                    },
+                }
             }
         }
 
         if let Err(e) = map_error {
             // Rollback: unmap all pages that were successfully mapped.
             let mut rollback_addr: PageAligned<VirtualAddress> = start_vaddr;
-            for _ in 0..mapped_count {
+            let mut rollback_count: usize = 0;
+            while rollback_count < mapped_count {
                 if let Err(re) = self.try_unmap_upage(vmem, rollback_addr) {
                     warn!(
                         "alloc_upages(): rollback failed (vaddr={rollback_addr:?}, error={re:?})"
@@ -674,6 +685,7 @@ impl VirtMemoryManager {
                     Ok(next) => next,
                     Err(_) => break,
                 };
+                rollback_count += 1;
             }
             return Err(e);
         }
