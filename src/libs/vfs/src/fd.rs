@@ -68,6 +68,13 @@ const STAT_BLOCK_SIZE: i64 = 4096;
 /// Sector size used for `st_blocks` computation (POSIX convention: 512 bytes).
 const STAT_SECTOR_SIZE: u64 = 512;
 
+/// Working directory assigned to a process that has no recorded directory of its own.
+///
+/// [`ProcessState::new`] seeds every freshly created state — including the placeholder that
+/// [`set_current_process`] inserts lazily — with this value, so a state whose `cwd` still equals it
+/// has never been the target of an explicit `chdir`.
+const DEFAULT_CWD: &str = "/";
+
 //==================================================================================================
 // Metadata
 //==================================================================================================
@@ -413,11 +420,11 @@ struct ProcessState {
 }
 
 impl ProcessState {
-    /// Creates a new, empty per-process state with the working directory set to "/".
+    /// Creates a new, empty per-process state whose working directory defaults to [`DEFAULT_CWD`].
     fn new() -> Self {
         Self {
             slots: alloc::vec![None; VFS_MAX_OPEN_FILES],
-            cwd: String::from("/"),
+            cwd: String::from(DEFAULT_CWD),
         }
     }
 
@@ -430,6 +437,16 @@ impl ProcessState {
             slots: self.slots.clone(),
             cwd: self.cwd.clone(),
         }
+    }
+
+    /// Reports whether this state holds no open file descriptors.
+    ///
+    /// A freshly created [`ProcessState`] is empty until a descriptor is allocated. This is used to
+    /// recognize the placeholder state that [`set_current_process`] inserts lazily when a request
+    /// arrives for a process the VFS has not seen before, so that a later fork-clone may safely
+    /// overwrite it without orphaning any host-backed remote handles.
+    fn is_empty(&self) -> bool {
+        self.slots.iter().all(Option::is_none)
     }
 }
 
@@ -548,26 +565,49 @@ pub(crate) fn set_current_cwd(cwd: String) {
 ///
 /// - [`Fat32Error::NotFound`] if `parent` has no recorded state. Because `procd` registers a
 ///   process before it can ever fork, a missing parent is a lifecycle contract violation rather
-///   than a recoverable condition, and the child is left unregistered.
-/// - [`Fat32Error::AlreadyExists`] if `child` already has recorded state. A forked child must be a
-///   fresh process; silently overwriting its table would drop its open file descriptions and leak
-///   any host-backed remote handles they hold. The caller must reclaim that state first (e.g., via
-///   [`vfs_process_exit`]).
+///   than a recoverable condition, and the child is left unregistered. The `child` state is
+///   examined before the `parent`, so a `child` that already holds open descriptors yields
+///   [`Fat32Error::AlreadyExists`] even when `parent` is missing as well.
+/// - [`Fat32Error::AlreadyExists`] if `child` already has recorded state that holds open file
+///   descriptors. A forked child must be a fresh process; overwriting a populated table would drop
+///   its open file descriptions and leak any host-backed remote handles they hold. The caller must
+///   reclaim that state first (e.g., via [`vfs_process_exit`]). An empty placeholder state — which
+///   [`set_current_process`] inserts lazily when the child's first request races ahead of this
+///   fork-clone notification — holds no descriptors and is overwritten in place; any working
+///   directory the child set via `chdir` before the notification arrived is preserved rather than
+///   reverted to the parent's.
 pub fn vfs_fork_clone(
     parent: ProcessIdentifier,
     child: ProcessIdentifier,
 ) -> Result<(), Fat32Error> {
     let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
         PROCESSES.lock();
-    // Refuse to clobber a child that already has state: overwriting it would orphan any host-backed
-    // descriptors it still holds. The caller is responsible for reclaiming stale state first.
-    if procs.contains_key(&child) {
-        return Err(Fat32Error::AlreadyExists);
+    // The child's first request can reach the VFS before procd's fork-clone notification, in which
+    // case `set_current_process` has already inserted an empty placeholder state for it. That
+    // placeholder holds no descriptors, so it is safe to overwrite. Refuse only when the existing
+    // state actually holds open descriptors, since clobbering those would orphan any host-backed
+    // remote handles they reference.
+    //
+    // The placeholder can still carry a working directory: the racing child may have issued a
+    // `chdir` before this notification arrived. Capture a directory that differs from the default
+    // so the clone below keeps the child's own cwd instead of reverting it to the parent's.
+    let mut child_cwd: Option<String> = None;
+    if let Some(existing) = procs.get(&child) {
+        if !existing.is_empty() {
+            return Err(Fat32Error::AlreadyExists);
+        }
+        if existing.cwd != DEFAULT_CWD {
+            child_cwd = Some(existing.cwd.clone());
+        }
     }
     // The parent must already be registered. `procd` registers every process at creation and is the
     // sole authority for doing so, so forking from an unregistered parent is a contract violation:
     // surface it rather than fabricating a default child that would mask the bug.
-    let child_state: ProcessState = procs.get(&parent).ok_or(Fat32Error::NotFound)?.fork();
+    let mut child_state: ProcessState = procs.get(&parent).ok_or(Fat32Error::NotFound)?.fork();
+    // Honor a working directory the child established before the fork-clone notification arrived.
+    if let Some(cwd) = child_cwd {
+        child_state.cwd = cwd;
+    }
     procs.insert(child, child_state);
     Ok(())
 }
@@ -1991,6 +2031,99 @@ mod tests {
             vfs_hostfs_remote_fd(fd),
             Some(45),
             "child's existing descriptor must be preserved"
+        );
+
+        forget_processes(&[parent, child]);
+    }
+
+    /// Tests that forking onto a child whose only state is the empty placeholder inserted by
+    /// [`set_current_process`] succeeds. The child's first request can race ahead of procd's
+    /// fork-clone notification and lazily create that placeholder; because it holds no descriptors,
+    /// the clone must overwrite it rather than fail, otherwise the child never inherits the
+    /// parent's descriptors.
+    #[test]
+    fn fork_overwrites_empty_placeholder_child() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7061), ProcessIdentifier::from(0x7062));
+
+        // Parent opens a host-backed descriptor.
+        set_current_process(parent);
+        let fd: c_int = vfs_alloc_hostfs(46, false, None).expect("alloc should succeed");
+
+        // The child's first request reaches the VFS before the fork-clone notification, lazily
+        // inserting an empty placeholder state for it.
+        set_current_process(child);
+        assert_eq!(registry_open_fd_count(child), 0, "placeholder must hold no descriptors");
+
+        // Fork-clone must overwrite the empty placeholder and install the inherited descriptors.
+        vfs_fork_clone(parent, child).expect("fork clone over empty placeholder should succeed");
+
+        set_current_process(child);
+        assert_eq!(
+            vfs_hostfs_remote_fd(fd),
+            Some(46),
+            "child should inherit the parent's descriptor after the placeholder is overwritten"
+        );
+
+        forget_processes(&[parent, child]);
+    }
+
+    /// Tests that forking onto an empty placeholder preserves a working directory the child set
+    /// before the fork-clone notification arrived. The child's first request can race ahead of
+    /// procd's notification and `chdir` within the lazily created placeholder; that explicit update
+    /// must survive the clone rather than reverting to the parent's directory.
+    #[test]
+    fn fork_preserves_placeholder_cwd() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7071), ProcessIdentifier::from(0x7072));
+
+        // Parent establishes its own working directory.
+        set_current_process(parent);
+        set_current_cwd(String::from("/parent"));
+
+        // The child's first request races ahead of the fork-clone notification, lazily creating a
+        // placeholder, then the child changes its working directory before the notification lands.
+        set_current_process(child);
+        set_current_cwd(String::from("/child"));
+        assert_eq!(registry_open_fd_count(child), 0, "placeholder must hold no descriptors");
+
+        // Fork-clone overwrites the placeholder but must keep the child's own working directory.
+        vfs_fork_clone(parent, child).expect("fork clone over empty placeholder should succeed");
+        assert_eq!(
+            registry_cwd(child),
+            Some(String::from("/child")),
+            "child's pre-existing working directory must be preserved"
+        );
+
+        forget_processes(&[parent, child]);
+    }
+
+    /// Tests that forking onto a pristine placeholder — one the child created but never `chdir`ed —
+    /// lets the child inherit the parent's working directory. Only a directory the child actually
+    /// changed is preserved; an untouched placeholder must not pin the child to the default root.
+    #[test]
+    fn fork_pristine_placeholder_inherits_parent_cwd() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7081), ProcessIdentifier::from(0x7082));
+
+        // Parent establishes a non-default working directory.
+        set_current_process(parent);
+        set_current_cwd(String::from("/parent"));
+
+        // The child's first request creates a placeholder but never changes its directory, leaving
+        // it at the default root.
+        set_current_process(child);
+        assert_eq!(registry_cwd(child), Some(String::from("/")), "placeholder defaults to root");
+
+        // Fork-clone must give the child a copy of the parent's directory, not the default root.
+        vfs_fork_clone(parent, child).expect("fork clone over empty placeholder should succeed");
+        assert_eq!(
+            registry_cwd(child),
+            Some(String::from("/parent")),
+            "pristine placeholder must inherit the parent's working directory"
         );
 
         forget_processes(&[parent, child]);
