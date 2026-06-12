@@ -15,6 +15,7 @@ mod identity;
 mod mutex_timedlock;
 mod mutexes;
 mod nowait;
+mod once;
 mod rwlocks;
 mod scheduler;
 mod tda;
@@ -33,6 +34,7 @@ pub fn run_all() -> Result<(), Error> {
     attributes::run()?;
     mutexes::run()?;
     mutex_timedlock::run()?;
+    once::run()?;
     condvars::run()?;
     cond_timedwait::run()?;
     rwlocks::run()?;
