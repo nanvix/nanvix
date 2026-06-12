@@ -3218,6 +3218,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-fork-guestfs"
+version = "0.16.57"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "fatfs",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
+name = "test-fork-hostfs"
+version = "0.16.57"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
 name = "test-fork-kcall"
 version = "0.16.57"
 dependencies = [
