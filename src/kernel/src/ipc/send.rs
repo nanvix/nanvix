@@ -14,7 +14,10 @@ use crate::{
     },
 };
 use ::sys::{
-    error::Error,
+    error::{
+        Error,
+        ErrorCode,
+    },
     ipc::{
         Message,
         MessageSender,
@@ -67,12 +70,14 @@ pub fn send(pid: ProcessIdentifier, tid: ThreadIdentifier, arg0: u32) -> KcallRe
         return KcallResult::Error(e.code.into());
     }
 
-    // Check if message source is invalid.
+    // Reject messages whose source does not match the calling thread or process. Without this
+    // check a process could forge the `source` field to impersonate another (possibly privileged)
+    // peer, since receivers authenticate callers on `message.source`.
     if { message.source } != MessageSender::from(src_tid) && { message.source }
         != MessageSender::from(src_pid)
     {
-        let reason: &str = "invalid message source";
-        error!("{reason:?} (message={message:?})");
+        error!("invalid message source (message={message:?})");
+        return KcallResult::Error(ErrorCode::OperationNotPermitted.into());
     }
 
     // Route message based on its type.
