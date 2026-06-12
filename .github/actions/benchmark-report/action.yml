@@ -84,6 +84,9 @@ runs:
         'pull_request_target') && steps.pr.outputs.pr_number != '' &&
         steps.comment-strategy.outputs.can_comment_directly == 'true' }}
       id: fc
+      # Posting the PR comment is best-effort: a transient GitHub API hiccup
+      # (e.g. an intermittent 401) must not fail the benchmark finalize job.
+      continue-on-error: true
       with:
         token: ${{ inputs.github-token }}
         issue-number: ${{ steps.pr.outputs.pr_number }}
@@ -94,8 +97,12 @@ runs:
       if: ${{ (github.event_name == 'pull_request' || github.event_name ==
         'pull_request_target') && steps.pr.outputs.pr_number != '' &&
         steps.comment-strategy.outputs.can_comment_directly == 'true' &&
+        steps.fc.outcome == 'success' &&
         steps.fc.outputs.comment-id == '' }}
       uses: peter-evans/create-or-update-comment@v5
+      # Posting the PR comment is best-effort: a transient GitHub API hiccup
+      # (e.g. an intermittent 401) must not fail the benchmark finalize job.
+      continue-on-error: true
       with:
         token: ${{ inputs.github-token }}
         issue-number: ${{ steps.pr.outputs.pr_number }}
@@ -107,8 +114,12 @@ runs:
       if: ${{ (github.event_name == 'pull_request' || github.event_name ==
         'pull_request_target') &&
         steps.comment-strategy.outputs.can_comment_directly == 'true' &&
+        steps.fc.outcome == 'success' &&
         steps.fc.outputs.comment-id != '' }}
       uses: peter-evans/create-or-update-comment@v5
+      # Posting the PR comment is best-effort: a transient GitHub API hiccup
+      # (e.g. an intermittent 401) must not fail the benchmark finalize job.
+      continue-on-error: true
       with:
         token: ${{ inputs.github-token }}
         comment-id: ${{ steps.fc.outputs.comment-id }}
