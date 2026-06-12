@@ -1604,7 +1604,7 @@ impl Vmem {
             let at = self
                 .user_page_tables
                 .iter()
-                .position(|(addr, _)| addr == &pgtable_vaddr)
+                .position(|entry| entry.0 == pgtable_vaddr)
                 .expect("page table must be in the list of user page tables");
 
             let (_pgtable_addr, _page_table) = self.user_page_tables.remove(at);
