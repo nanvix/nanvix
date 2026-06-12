@@ -268,12 +268,30 @@ impl VirtMemoryManager {
     ///
     /// # Returns
     ///
-    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned and both
-    /// `parent` and `child` are restored to the state they had on entry: any pages
+    /// Upon success, `Ok(())` is returned. If `child` already contains a user mapping
+    /// overlapping one of `parent`'s, [`ErrorCode::EntryExists`] is returned and neither
+    /// `parent` nor `child` is modified. Upon any other failure, an error is returned and
+    /// both `parent` and `child` are restored to the state they had on entry: any pages
     /// already linked into `child` are unmapped (releasing the shared refcount) and any
     /// copy-on-write marks installed on `parent` are cleared.
     ///
     pub fn link_user_pages(&mut self, parent: &mut Vmem, child: &mut Vmem) -> Result<(), Error> {
+        // Enforce the contract that `child` must not already contain any user mapping
+        // overlapping `parent`'s. This pre-pass runs before any page is linked, so the
+        // only `child` mappings that can overlap `parent` at this point are pre-existing
+        // ones; a present overlap therefore violates the contract and is reported as an
+        // error rather than silently skipped. The chunked link loop below keeps its own
+        // `child` presence filter, but that filter exists solely to tolerate the parent's
+        // iteration revisiting entries this call has already linked.
+        parent.for_each_user_mapping(|vaddr, _pte| {
+            if child.try_find_user_pte(vaddr)?.is_some() {
+                let reason: &str = "child overlaps a parent user mapping";
+                error!("link_user_pages(): {reason} (vaddr={vaddr:?})");
+                return Err(Error::new(ErrorCode::EntryExists, reason));
+            }
+            Ok(())
+        })?;
+
         // Process the parent's user mappings in fixed-size chunks. We cannot mutate
         // `parent` while borrowing its page tables via `for_each_user_mapping`, so each
         // chunk first snapshots up to LINK_CHUNK entries into a stack-resident buffer,
