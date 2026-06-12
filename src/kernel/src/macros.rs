@@ -23,6 +23,23 @@ pub static STDOUT_LOCK: Spinlock = Spinlock::new();
 ///
 /// # Description
 ///
+/// Verus-friendly wrapper for [`::core::debug_assert!`].
+///
+/// The executable kernel keeps the standard `debug_assert!` behavior, but Verus treats this macro as
+/// a no-op so debug-only checks do not introduce verifier-visible `panic!` paths.
+///
+macro_rules! debug_assert {
+    ($($arg:tt)*) => ({
+        #[cfg(not(verus_keep_ghost))]
+        {
+            ::core::debug_assert!($($arg)*);
+        }
+    })
+}
+
+///
+/// # Description
+///
 /// Helper macro to extract the current function name using nightly Rust features.
 /// This creates a closure and extracts the function name from its type signature.
 ///
