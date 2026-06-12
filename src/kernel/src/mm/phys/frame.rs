@@ -346,10 +346,7 @@ impl Inner {
                 },
                 Err(_) => {
                     &&& final(self)@ == old(self)@
-                    &&& (
-                        !old(self)@.is_allocated(frame@)
-                        || old(self)@.refcounts[frame@] >= 255
-                    )
+                    &&& old(self)@.is_allocated(frame@) ==> old(self)@.refcounts[frame@] >= 255
                 }
             },
     )]
