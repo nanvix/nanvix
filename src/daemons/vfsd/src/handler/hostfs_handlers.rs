@@ -64,6 +64,12 @@ pub(crate) fn handle_close_with_hostfs(
     let fd: i32 = req.fd;
 
     if let Some(remote_fd) = ::vfs::fd::vfs_hostfs_remote_fd(fd) {
+        // A forked child may share this open file description with its parent. Only forward the
+        // close to hostfsd when this is the last descriptor referencing it; otherwise just drop the
+        // local descriptor and acknowledge.
+        if !::vfs::fd::vfs_hostfs_is_last_ref(fd) {
+            return Some(super::short::handle_close(source, msg));
+        }
         if !pending.has_capacity() {
             return Some(build_error(source, ErrorCode::ResourceBusy));
         }

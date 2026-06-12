@@ -314,6 +314,10 @@ pub fn main() {
                             }
                             if let Some(op) = pending.remove(op_id) {
                                 pending::complete_pending_op(op, &message.payload);
+                            } else if op_id == ::hostfs_api::OperationId::FIRE_AND_FORGET {
+                                // Expected: response to a fire-and-forget request (e.g. a
+                                // best-effort close on process exit or open-failure cleanup) for
+                                // which no pending op was registered. Discard it silently.
                             } else {
                                 ::syslog::warn!(
                                     "hostfs response with no pending op (header={:?}, op_id={})",
