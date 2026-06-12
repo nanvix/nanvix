@@ -627,10 +627,12 @@ Options:
              (standalone mode only).
   {allow_host_networking}                   Enable host networking for the guest (disabled when \
              omitted).
-  {allow_host} <ip|cidr>                    (Repeatable) Permit egress only to this IPv4/CIDR \
-             (allowlist; requires {allow_host_networking}; mutually exclusive with {block_host}).
-  {block_host} <ip|cidr>                    (Repeatable) Deny egress to this IPv4/CIDR (blocklist; \
-             requires {allow_host_networking}; mutually exclusive with {allow_host}).
+  {allow_host} <ip|cidr>                    (Repeatable, standalone mode only) Permit egress to \
+             this IPv4/CIDR (allowlist; requires {allow_host_networking}; mutually exclusive with \
+             {block_host}; DNS on port 53 is also permitted).
+  {block_host} <ip|cidr>                    (Repeatable, standalone mode only) Deny egress to this \
+             IPv4/CIDR (blocklist; requires {allow_host_networking}; mutually exclusive with \
+             {allow_host}).
   {log_to_stdout}                          Route nanvixd's own logrus output to stdout instead of \
              a file in {log_dir} (file logger is otherwise the default).
   {gateway_sockaddr} <path>                 (Standalone) Path at which to expose the gateway \
