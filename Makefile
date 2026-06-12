@@ -954,6 +954,7 @@ standalone-images-clean:
 test:
 	@$(MAKE) run-unit-tests
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	@$(MAKE) run-kernel-tests
 	@$(MAKE) run-smoke-test
 	@$(MAKE) run-nanvix-tests
 endif
