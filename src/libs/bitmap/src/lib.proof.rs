@@ -222,7 +222,6 @@ impl Bitmap {
             new_self.usage == self.usage,
         ensures
             new_self@.set_bits =~= self@.set_bits.insert(index),
-            new_self@.set_bits.finite(),
             new_self@.set_bits.len() == self@.set_bits.len() + 1,
             new_self@.wf(),
             self@.set_bits.len() + 1 <= self@.num_bits,
@@ -256,7 +255,6 @@ impl Bitmap {
             new_self.usage == self.usage,
         ensures
             new_self@.set_bits =~= self@.set_bits.remove(index),
-            new_self@.set_bits.finite(),
             new_self@.set_bits.len() == self@.set_bits.len() - 1,
             new_self@.wf(),
     {
@@ -392,7 +390,6 @@ impl Bitmap {
             old_self@.all_bits_unset_in_range(start as int, start + size),
             self.bits.inv(),
             self@.set_bits =~= old_self@.set_bits.union(BitmapView::range_set(start as int, start + size)),
-            self@.set_bits.finite(),
             self.number_of_bits == old_self.number_of_bits,
             self.number_of_bits as int == self@.num_bits,
             self@.num_bits == self.bits@.len() * (u8::BITS as int),
@@ -402,7 +399,6 @@ impl Bitmap {
             self.inv(),
             self@.usage() == old_self@.usage() + size,
     {
-        BitmapView::lemma_range_set_finite(start as int, start + size);
         let range: Set<int> = BitmapView::range_set(start as int, start + size);
         assert(self@.wf()) by {
             assert forall|i: int| self@.set_bits.contains(i) implies (0 <= i
@@ -421,7 +417,7 @@ impl Bitmap {
         }
         vstd::set_lib::lemma_set_disjoint_lens(old_self@.set_bits, range);
         BitmapView::lemma_range_set_len(start as int, start + size);
-        let full_range: Set<int> = vstd::set_lib::set_int_range(0, self@.num_bits);
+        let full_range: Set<int> = Set::range(0, self@.num_bits);
         vstd::set_lib::lemma_int_range(0, self@.num_bits);
         assert(self@.set_bits.subset_of(full_range)) by {
             assert forall|i: int|
@@ -463,7 +459,6 @@ impl Bitmap {
             loop_old_self@.set_bits =~= old_self@.set_bits.union(
                 BitmapView::range_set(start as int, start + alloc_offset),
             ),
-            loop_old_self@.set_bits.finite(),
             self@.set_bits =~= loop_old_self@.set_bits.insert(idx as int),
             idx == start + alloc_offset,
             0 <= start,
@@ -476,7 +471,6 @@ impl Bitmap {
                 BitmapView::range_set(start as int, start + alloc_offset + 1),
             ),
             self@.wf(),
-            self@.set_bits.finite(),
     {
         assert forall|i: int|
             self@.set_bits.contains(i) == old_self@.set_bits.union(
@@ -636,7 +630,6 @@ impl Bitmap {
                    start as int + (alloc_offset as int),
                ),
            )
-        &&& self@.set_bits.finite()
         &&& old_self@.all_bits_unset_in_range(
                start as int,
                start as int + (size as int),

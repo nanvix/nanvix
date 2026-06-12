@@ -187,13 +187,15 @@ impl Inner {
                 Ok(base) => {
                     &&& base.inv()
                     &&& ({
-                        let frames = Set::new(|addr: int|
-                            exists|i: int| 0 <= i < count && addr == #[trigger] (base@ + i * spec_page_size())
+                        let frame_indices = Set::range(0, count as int);
+                        let frames = frame_indices.map_by(
+                            |i: int| base@ + i * spec_page_size(),
+                            |addr: int| (addr - base@) / spec_page_size(),
                         );
                         &&& old(self)@.all_free(frames)
                         &&& final(self)@ == FrameAllocView {
                             refcounts: old(self)@.refcounts.union_prefer_right(
-                                Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)
+                                Map::new(frames, |addr: int| 1int)
                             ),
                         }
                     })
@@ -522,14 +524,14 @@ impl Inner {
             ({
                 let start_frame_number = region@.start / spec_page_size();
                 let end_frame_number = (region@.start + region@.size) / spec_page_size();
-                let frame_numbers = vstd::set_lib::set_int_range(start_frame_number, end_frame_number);
+                let frame_numbers = Set::range(start_frame_number, end_frame_number);
                 let frames = frame_numbers.map(|i: int| i * spec_page_size());
                 match result {
                     Ok(()) => {
                         &&& old(self)@.all_free(frames)
                         &&& final(self)@ == FrameAllocView {
                             refcounts: old(self)@.refcounts.union_prefer_right(
-                                Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)
+                                Map::new(frames, |addr: int| 1int)
                             ),
                         }
                     },

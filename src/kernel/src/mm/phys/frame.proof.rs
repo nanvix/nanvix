@@ -30,7 +30,8 @@ impl View for Inner {
         let covered_frames: Set<int> = BitmapView::range_set(0, self.bitmap@.num_bits)
             .map_by(|i: int| frame_addr_of(i), |addr: int| addr_to_frame(addr));
         FrameAllocView {
-            refcounts: covered_frames.mk_map(
+            refcounts: Map::new(
+                covered_frames,
                 |addr: int| self.refcount@[addr_to_frame(addr)] as int,
             ),
         }
@@ -52,7 +53,7 @@ impl Inner {
         // NOTE: logically implied by the above when refcount is u8 (>= 0),
         // but kept explicit to help the SMT solver without relying on type bounds.
         &&& forall|i: int| 0 <= i < self.bitmap@.num_bits ==> (
-            !self.bitmap@.set_bits.contains(i) <==> self.refcount@[i] == 0
+            !(#[trigger] self.bitmap@.set_bits.contains(i)) <==> self.refcount@[i] == 0
         )
         // refcount bounded by u8
         &&& forall|i: int| 0 <= i < self.bitmap@.num_bits && self.bitmap@.set_bits.contains(i) ==>

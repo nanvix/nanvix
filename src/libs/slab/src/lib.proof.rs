@@ -13,14 +13,19 @@ impl View for Slab {
     closed spec fn view(&self) -> SlabView {
         let bitmap_view = self.index@;
         let data_addr_as_int = self.data_addr as usize as int;
-        let set_bits = Set::<int>::new(|i: int| 0 <= i < self.num_data_blocks() && bitmap_view.is_bit_set(i));
-        let free_bits = Set::<int>::new(|i: int| 0 <= i < self.num_data_blocks() && !bitmap_view.is_bit_set(i));
+        let indices = Set::range(0, self.num_data_blocks() as int);
+        let set_bits = indices.filter(|i: int| bitmap_view.is_bit_set(i));
+        let free_bits = indices.filter(|i: int| !bitmap_view.is_bit_set(i));
         SlabView {
             block_size: self.block_size,
             start_addr: self.data_addr as usize,
             end_addr: self.end_addr as usize,
-            allocated_addrs: set_bits.map(|i: int| (data_addr_as_int + i * self.block_size) as usize),
-            free_addrs: free_bits.map(|i: int| (data_addr_as_int + i * self.block_size) as usize),
+            allocated_addrs: set_bits.map(
+                |i: int| (data_addr_as_int + i * self.block_size) as usize,
+            ),
+            free_addrs: free_bits.map(
+                |i: int| (data_addr_as_int + i * self.block_size) as usize,
+            ),
         }
     }
 }
@@ -213,7 +218,7 @@ impl Slab {
             addr as usize + len * size_of::<u8>() <= usize::MAX,
             index.inv(),
             index@.num_bits == index_len * U8_BITS,
-            index@.set_bits == Set::new(|j: int| num_data_blocks <= j < index_len * U8_BITS),
+            index@.set_bits == Set::range(num_data_blocks as int, (index_len * U8_BITS) as int),
             index_len == (num_data_blocks / U8_BITS) + if num_data_blocks % U8_BITS == 0 { 0int } else { 1int },
         ensures
             ({
@@ -314,7 +319,7 @@ impl Slab {
         }
 
         // After construction, no bits < num_data_blocks are set, so allocated_addrs is empty.
-        assert(slab.index@.set_bits =~= Set::new(|k: int| num_data_blocks <= k < index_len * U8_BITS));
+        assert(slab.index@.set_bits =~= Set::range(num_data_blocks as int, (index_len * U8_BITS) as int));
         assert forall|i: int| slab.num_data_blocks() as int <= i < slab.index@.num_bits as int
             implies slab.index@.is_bit_set(i) by {}
         assert forall|j: int| 0 <= j < slab.num_data_blocks() implies !slab.index@.is_bit_set(j) by {}
@@ -326,7 +331,8 @@ impl Slab {
         assert forall|a: usize| slab@.free_addrs.contains(a) implies
             slab@.start_addr <= a < slab@.end_addr && a % slab@.block_size == 0 by {
             let data_addr_as_int = slab.data_addr as usize as int;
-            let free_bits = Set::<int>::new(|i: int| 0 <= i < slab.num_data_blocks() && !slab.index@.is_bit_set(i));
+            let free_bits = Set::range(0, slab.num_data_blocks() as int)
+                .filter(|i: int| !slab.index@.is_bit_set(i));
             let j = choose|j: int| free_bits.contains(j) && a == (data_addr_as_int + j * slab.block_size) as usize;
             assert(j * slab.block_size < num_data_blocks * slab.block_size) by (nonlinear_arith)
                 requires 0 <= j < num_data_blocks as int, slab.block_size >= 1;
@@ -352,7 +358,8 @@ impl Slab {
             implies #[trigger] slab@.free_addrs.contains(
                 (slab@.start_addr + i * block_size as int) as usize) by {
             assert(!slab.index@.is_bit_set(i));
-            let free_bits = Set::<int>::new(|j: int| 0 <= j < slab.num_data_blocks() && !slab.index@.is_bit_set(j));
+            let free_bits = Set::range(0, slab.num_data_blocks() as int)
+                .filter(|j: int| !slab.index@.is_bit_set(j));
             assert(free_bits.contains(i));
         }
     }
@@ -405,9 +412,8 @@ impl Slab {
                 (self.data_addr as usize as int + i * self.block_size) as usize,
             ),
     {
-        assert(Set::<int>::new(
-            |j: int| 0 <= j < self.num_data_blocks() && self.index@.is_bit_set(j)
-        ).contains(i));
+        assert(Set::range(0, self.num_data_blocks() as int)
+            .filter(|j: int| self.index@.is_bit_set(j)).contains(i));
     }
 
     /// Proves that an unset bit within the data range implies the
@@ -423,9 +429,8 @@ impl Slab {
                 (self.data_addr as usize as int + i * self.block_size) as usize,
             ),
     {
-        assert(Set::<int>::new(
-            |j: int| 0 <= j < self.num_data_blocks() && !self.index@.is_bit_set(j)
-        ).contains(i));
+        assert(Set::range(0, self.num_data_blocks() as int)
+            .filter(|j: int| !self.index@.is_bit_set(j)).contains(i));
     }
 
     /// Proves that membership in `allocated_addrs` implies a set bit.

@@ -242,7 +242,7 @@ impl Slab {
             invariant
                 index.inv(),
                 index@.num_bits == index_len * u8_bits,
-                index@.set_bits == Set::new(|j: int| num_data_blocks <= j < i),
+                index@.set_bits == Set::range(num_data_blocks as int, i as int),
         ))]
         for i in num_data_blocks..(index_len * u8_bits) {
             index.set(i)?;
