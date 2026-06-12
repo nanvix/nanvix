@@ -14,11 +14,16 @@ homepage.workspace = true
 name = "kernel"
 path = "src/kmain.rs"
 
+[package.metadata.verus]
+verify = true
+
 [dependencies]
 arch = { workspace = true }
+vstd = { workspace = true }
 bitmap = { workspace = true }
 bump-allocator = { workspace = true }
 cfg-if = { workspace = true }
+error = { workspace = true, features = ["verus"] }
 cmdline = { workspace = true }
 config = { workspace = true, optional = true }
 koptions = { workspace = true }
