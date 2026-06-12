@@ -84,6 +84,25 @@ type LinkUserMappingSlot = MaybeUninit<LinkUserMapping>;
 /// Fixed-size chunk buffer used while linking user pages.
 type LinkUserMappingBuf = [LinkUserMappingSlot; LINK_CHUNK];
 
+///
+/// # Description
+///
+/// Creates an uninitialized fixed-size array.
+///
+/// This helper wraps `[const { MaybeUninit::uninit() }; N]`, which Verus does
+/// not support in verified function bodies. The construct is isolated here as
+/// a narrow external body boundary while callers keep the surrounding control
+/// flow visible to Verus.
+///
+/// # Returns
+///
+/// A fixed-size array of uninitialized values.
+///
+#[inline]
+fn make_uninitialized_array<T: Sized, const N: usize>() -> [MaybeUninit<T>; N] {
+    [const { MaybeUninit::<T>::uninit() }; N]
+}
+
 //==================================================================================================
 // Global Variables
 //==================================================================================================
@@ -287,7 +306,7 @@ impl VirtMemoryManager {
         // robust against the parent's iteration revisiting entries we have already
         // processed (e.g. writable entries that are now CoW-marked but still present).
         loop {
-            let mut buf: LinkUserMappingBuf = [const { MaybeUninit::uninit() }; LINK_CHUNK];
+            let mut buf: LinkUserMappingBuf = make_uninitialized_array();
             let mut count: usize = 0;
             parent.for_each_user_mapping(|vaddr, pte: PageTableEntry| {
                 if count < LINK_CHUNK && child.try_find_user_pte(vaddr)?.is_none() {
@@ -437,7 +456,7 @@ impl VirtMemoryManager {
     fn rollback_linked_pages(parent: &mut Vmem, child: &mut Vmem) {
         loop {
             let mut buf: [MaybeUninit<PageAligned<VirtualAddress>>; LINK_CHUNK] =
-                [const { MaybeUninit::uninit() }; LINK_CHUNK];
+                make_uninitialized_array();
             let mut count: usize = 0;
             let walk: Result<(), Error> = child.for_each_user_mapping(|vaddr, _pte| {
                 if count < LINK_CHUNK {
