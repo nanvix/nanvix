@@ -83,6 +83,14 @@ expected_exit_code = 13
 
 [[tests]]
 executor = "http"
+program = "./bin/test-fork-guestfs.initrd"
+extra_nanvixd_args = "-ramfs ./bin/test-fork-guestfs.img"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 13
+
+[[tests]]
+executor = "http"
 program = "./bin/stress-rust.initrd"
 input = "[]"
 expected_output = "ok"
@@ -147,6 +155,13 @@ expected_exit_code = 13
 
 [[tests]]
 executor = "terminal"
+program = "./bin/test-fork-guestfs.initrd"
+extra_nanvixd_args = "-ramfs ./bin/test-fork-guestfs.img"
+expect_empty_output = true
+expected_exit_code = 13
+
+[[tests]]
+executor = "terminal"
 program = "./bin/stress-rust.initrd"
 expected_output = "ok"
 
@@ -188,6 +203,15 @@ extra_nanvixd_args = "-mount ./bin/mount-test-data"
 input = "[]"
 expected_output = "ok"
 expected_exit_code = 0
+runs_on = ["microvm"]
+
+[[tests]]
+executor = "terminal"
+program = "./bin/test-fork-hostfs.initrd"
+extra_nanvixd_args = "-mount ./bin/test-fork-hostfs-data"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 13
 runs_on = ["microvm"]
 
 [[tests]]

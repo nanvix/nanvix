@@ -878,6 +878,39 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
+name = "test-fork-guestfs"
+version = "0.16.46"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "fatfs",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
+name = "test-fork-hostfs"
+version = "0.16.46"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
 name = "form_urlencoded"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
