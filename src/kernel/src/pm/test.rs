@@ -389,26 +389,25 @@ fn test_cow_resolution_fast_path_when_sole_owner() -> bool {
 ///
 /// # Description
 ///
-/// Verifies that [`VirtMemoryManager::link_user_pages`] skips parent mappings whose
-/// virtual address already exists in `child`, leaving both sides of the collision
-/// untouched while still linking the remaining pages.
+/// Verifies that [`VirtMemoryManager::link_user_pages`] returns an error when `child`
+/// already contains a user mapping overlapping one of `parent`'s, instead of silently
+/// skipping the colliding address.
 ///
 /// Setup:
 ///
 /// - `parent` is given two consecutive writable user pages at `vaddr_a` and `vaddr_b`.
 /// - `child` is pre-populated with an independent user page at `vaddr_b`, so that
-///   address is filtered out of the snapshot used by `link_user_pages`.
+///   address overlaps a `parent` mapping.
 ///
-/// Expected post-conditions after the call returns `Ok`:
+/// Expected post-conditions after the call returns `Err(ErrorCode::EntryExists)`:
 ///
-/// - parent's `vaddr_a` PTE is read-only with the copy-on-write bit set and still
-///   points at the original frame (the page was linked into `child`).
-/// - parent's `vaddr_b` PTE is untouched (writable, not CoW, original frame) because
-///   the collision caused the entry to be skipped.
-/// - `child` has a read-only CoW PTE at `vaddr_a` pointing at the parent's frame.
+/// - parent's `vaddr_a` PTE is untouched (writable, not CoW, original frame) because the
+///   overlap is detected before any page is linked.
+/// - parent's `vaddr_b` PTE is untouched (writable, not CoW, original frame).
+/// - `child` has no mapping at `vaddr_a` (nothing was linked).
 /// - `child`'s mapping at `vaddr_b` is unchanged (the pre-existing page is intact).
 ///
-fn test_link_user_pages_skips_preexisting_child_mappings() -> bool {
+fn test_link_user_pages_errors_on_preexisting_child_overlap() -> bool {
     const VADDR_A_RAW: usize = ::config::memory_layout::USER_MMAP_BASE_RAW;
     const VADDR_B_RAW: usize = ::config::memory_layout::USER_MMAP_BASE_RAW + ::arch::mem::PAGE_SIZE;
 
@@ -492,27 +491,34 @@ fn test_link_user_pages_skips_preexisting_child_mappings() -> bool {
         return false;
     }
 
-    // Pre-map child at vaddr_b so the second iteration of `link_user_pages` collides.
+    // Pre-map child at vaddr_b so it overlaps a parent mapping.
     if let Err(e) = child.map(frame_c, vaddr_b, AccessPermission::RDWR) {
         error!("child.map(vaddr_b) failed (error={e:?})");
         return false;
     }
 
-    // Invoke the routine under test. Must succeed: the colliding vaddr_b is filtered
-    // out of the snapshot, and vaddr_a is linked into `child`.
+    // Invoke the routine under test. Must fail with `EntryExists`: the child already
+    // contains a user mapping overlapping the parent's at vaddr_b.
     {
         let mm_mut: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
-        if let Err(e) = mm_mut.link_user_pages(&mut parent, &mut child) {
-            error!("link_user_pages failed unexpectedly (error={e:?})");
-            return false;
+        match mm_mut.link_user_pages(&mut parent, &mut child) {
+            Ok(()) => {
+                error!("link_user_pages unexpectedly succeeded on overlapping child");
+                return false;
+            },
+            Err(e) if e.code == ErrorCode::EntryExists => {},
+            Err(e) => {
+                error!("link_user_pages failed with unexpected error (error={e:?})");
+                return false;
+            },
         }
     }
 
-    // Parent's vaddr_a must be marked CoW: read-only, CoW bit set, original frame.
+    // Parent's vaddr_a must be untouched: the overlap is detected before any linking.
     let parent_a: PageTableEntry = match parent.try_find_user_pte(vaddr_a) {
         Ok(Some(p)) => p,
         Ok(None) => {
-            error!("parent PTE at vaddr_a missing after link");
+            error!("parent PTE at vaddr_a missing after rejected link");
             return false;
         },
         Err(e) => {
@@ -520,24 +526,24 @@ fn test_link_user_pages_skips_preexisting_child_mappings() -> bool {
             return false;
         },
     };
-    if parent_a.flags().is_writable() {
-        error!("parent PTE at vaddr_a is still writable after link");
+    if !parent_a.flags().is_writable() {
+        error!("parent PTE at vaddr_a is not writable after rejected link");
         return false;
     }
-    if !parent_a.is_cow() {
-        error!("parent PTE at vaddr_a is missing the CoW bit after link");
+    if parent_a.is_cow() {
+        error!("parent PTE at vaddr_a unexpectedly carries CoW bit after rejected link");
         return false;
     }
     if parent_a.frame_number().into_raw_value() != frame_a_num {
-        error!("parent PTE at vaddr_a points at the wrong frame after link");
+        error!("parent PTE at vaddr_a points at the wrong frame after rejected link");
         return false;
     }
 
-    // Parent's vaddr_b must be untouched: the collision caused it to be skipped.
+    // Parent's vaddr_b must be untouched as well.
     let parent_b: PageTableEntry = match parent.try_find_user_pte(vaddr_b) {
         Ok(Some(p)) => p,
         Ok(None) => {
-            error!("parent PTE at vaddr_b missing after link");
+            error!("parent PTE at vaddr_b missing after rejected link");
             return false;
         },
         Err(e) => {
@@ -546,7 +552,7 @@ fn test_link_user_pages_skips_preexisting_child_mappings() -> bool {
         },
     };
     if !parent_b.flags().is_writable() {
-        error!("parent PTE at vaddr_b is not writable after link");
+        error!("parent PTE at vaddr_b is not writable after rejected link");
         return false;
     }
     if parent_b.is_cow() {
@@ -558,29 +564,17 @@ fn test_link_user_pages_skips_preexisting_child_mappings() -> bool {
         return false;
     }
 
-    // Child's vaddr_a must be a CoW alias of the parent's frame_a.
-    let child_a: PageTableEntry = match child.try_find_user_pte(vaddr_a) {
-        Ok(Some(p)) => p,
-        Ok(None) => {
-            error!("child PTE at vaddr_a missing after link");
+    // Child must have no mapping at vaddr_a: nothing was linked.
+    match child.is_user_page_mapped(vaddr_a) {
+        Ok(false) => {},
+        Ok(true) => {
+            error!("child unexpectedly has a mapping at vaddr_a after rejected link");
             return false;
         },
         Err(e) => {
-            error!("try_find_user_pte(child, vaddr_a) failed (error={e:?})");
+            error!("child.is_user_page_mapped(vaddr_a) failed (error={e:?})");
             return false;
         },
-    };
-    if child_a.flags().is_writable() {
-        error!("child PTE at vaddr_a is unexpectedly writable");
-        return false;
-    }
-    if !child_a.is_cow() {
-        error!("child PTE at vaddr_a is missing the CoW bit");
-        return false;
-    }
-    if child_a.frame_number().into_raw_value() != frame_a_num {
-        error!("child PTE at vaddr_a points at the wrong frame");
-        return false;
     }
 
     // Child's pre-existing vaddr_b mapping must still point at frame_c.
@@ -824,7 +818,7 @@ fn test_link_user_pages_rolls_back_on_partial_failure() -> bool {
         },
     }
 
-    // NOTE: see the disposition comment on `test_link_user_pages_skips_preexisting_child_mappings`
+    // NOTE: see the disposition comment on `test_link_user_pages_errors_on_preexisting_child_overlap`
     // — dropping `parent` and `child` does not free the frames installed in their page
     // tables, and the 254 extra references on frame_b deliberately remain to keep that
     // frame's refcount saturated for the duration of the test.
@@ -841,7 +835,7 @@ pub fn test() -> bool {
     passed &= run_test!(test_kernel_process_has_no_special_resources);
     passed &= run_test!(test_cow_resolution_creates_private_frame);
     passed &= run_test!(test_cow_resolution_fast_path_when_sole_owner);
-    passed &= run_test!(test_link_user_pages_skips_preexisting_child_mappings);
+    passed &= run_test!(test_link_user_pages_errors_on_preexisting_child_overlap);
     passed &= run_test!(test_link_user_pages_rolls_back_on_partial_failure);
     passed &= super::process::test();
     passed
