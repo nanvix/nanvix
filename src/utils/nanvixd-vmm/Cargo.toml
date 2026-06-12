@@ -26,10 +26,24 @@ syscall = { workspace = true, default-features = false }
 hostfs-api = { workspace = true, features = ["std"] }
 hostfsd = { workspace = true }
 networkd = { workspace = true }
+# Reused for the HTTP control-plane wire types (`UserVmIdentifier`); keeps the
+# NEW/KILL JSON identical to the production `nanvixd` HTTP API without pulling in
+# the `uservm` VMM that this crate replaces.
+user-vm-api = { workspace = true }
 
 anyhow = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
+
+# HTTP (standalone) deployment mode: a tokio + hyper control server that mirrors
+# the production `nanvixd` standalone contract (NEW/KILL over `-http-addr` plus a
+# gateway Unix socket carrying the guest's stdio).
+tokio = { workspace = true, features = ["full"] }
+hyper = { workspace = true, features = ["full"] }
+hyper-util = { workspace = true, features = ["full"] }
+http-body-util = { workspace = true }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true, features = ["std"] }
 
 # OpenVMM virtualization libraries, consumed from the upstream GitHub repo
 # pinned to a specific revision. These provide the hypervisor backend (KVM

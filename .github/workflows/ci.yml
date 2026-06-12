@@ -559,6 +559,142 @@ jobs:
             **/*.err
 
   # ==========================================================================================
+  # OpenVMM Standalone (Linux)
+  # ==========================================================================================
+
+  # Build the OpenVMM-based standalone daemon (nanvixd-vmm) and validate it as a
+  # drop-in for nanvixd.elf: the standalone test suite (terminal + http + empty
+  # executors) is run against it via nanvix-test, using
+  # test/test-standalone-openvmm.toml. This job fetches the OpenVMM crate tree
+  # from GitHub and needs protoc + KVM, so it is heavier than the other Linux
+  # jobs; it builds and tests in a single job to avoid shuffling the large
+  # (~120 MB) host binaries between jobs.
+  ci-openvmm:
+    name: "OpenVMM Standalone (${{ matrix.build-type }}, ${{ matrix.machine-type }})"
+    needs: [ precheck, checks, lint, verify ]
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        # PRs run debug only (fast feedback); merge queue and dev pushes run
+        # release only; manual dispatch runs both. Mirrors ci-build.
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' ||
+          github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
+          '["release"]') }}
+        machine-type: [ microvm ]
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/nanvix/ci:ubuntu-24.04
+      options: --privileged
+    permissions:
+      contents: read
+      packages: read
+    env:
+      # The CI container runs as root without USER set; nanvixd uses it as
+      # fallback tenant-id and fails when the variable is missing.
+      USER: root
+
+    # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
+    # !failure() ensures the job does not start when checks/lint/verify fail.
+    if: |
+      !cancelled() && !failure() &&
+      github.repository == 'nanvix/nanvix' && (
+        github.event_name == 'merge_group' || github.event_name == 'schedule' || (
+          needs.precheck.outputs.up_to_date == 'true' && (
+            github.event_name != 'push' ||
+            github.event.head_commit == null ||
+            !startsWith(github.event.head_commit.message, 'Merge ')
+          ) && (
+            github.event_name != 'pull_request' ||
+            !github.event.pull_request.draft
+          )
+        )
+      )
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: "Setup"
+        uses: ./.github/actions/native-setup
+
+      - name: "Setup sccache"
+        uses: Mozilla-Actions/sccache-action@v0.0.10
+        with:
+          version: "v0.10.0"
+
+      - name: "Install protoc"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # protoc is required by transitive OpenVMM build dependencies. The CI
+          # container does not ship it, so install it on demand.
+          if ! command -v protoc >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y protobuf-compiler
+          fi
+          protoc --version
+
+      - name: "Setup KVM"
+        uses: ./.github/actions/setup-kvm
+
+      - name: "Build Guests, nanvix-test, and nanvixd-vmm"
+        shell: bash
+        env:
+          MACHINE_TYPE: ${{ matrix.machine-type }}
+          LOG_LEVEL: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
+          RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
+        run: |
+          set -Eeuo pipefail
+          # Guests + host tools (kernel, nanvix-test, test images) for standalone,
+          # pinned at 128 MiB to match nanvixd-vmm's runtime guest-RAM default.
+          ./z build -- all \
+            "MACHINE=${MACHINE_TYPE}" \
+            TARGET=x86 \
+            "LOG_LEVEL=${LOG_LEVEL}" \
+            VERBOSE=yes \
+            BUILD_OPT=yes \
+            ${RELEASE_FLAG} \
+            DEPLOYMENT_MODE=standalone \
+            MEMORY_SIZE=128
+          # The OpenVMM-based daemon is opt-in (fetches OpenVMM crates from
+          # GitHub on the first build). The Makefile resolves protoc and exports
+          # MEMORY_SIZE_BYTES for the config crate.
+          PROTOC="$(command -v protoc)" ./z build ${RELEASE_FLAG} -- all-nanvixd-vmm \
+            "MACHINE=${MACHINE_TYPE}" \
+            TARGET=x86 \
+            DEPLOYMENT_MODE=standalone \
+            MEMORY_SIZE=128
+
+      - name: "Lint & Format Check (nanvixd-vmm)"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PROTOC="$(command -v protoc)" ./z build -- \
+            format-check-nanvixd-vmm rust-lint-check-nanvixd-vmm
+
+      - name: "Standalone Test (terminal + http)"
+        shell: bash
+        env:
+          RUST_LOG: info
+        run: |
+          set -Eeuo pipefail
+          echo "Running: ./bin/nanvix-test.elf test/test-standalone-openvmm.toml"
+          ./bin/nanvix-test.elf test/test-standalone-openvmm.toml
+
+      - name: "Upload logs in case of failures"
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nanvix-openvmm-logs-${{ github.event.pull_request.number ||
+            github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}
+          overwrite: "true"
+          path: |
+            logs/
+            **/*.log
+            **/*.out
+            **/*.err
+
+  # ==========================================================================================
   # Windows CI (GitHub-Hosted Runners)
   # ==========================================================================================
 

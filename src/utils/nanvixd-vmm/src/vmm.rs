@@ -28,6 +28,7 @@ use chipset_resources::{
 };
 use guestmem::GuestMemory;
 use hvdef::Vtl;
+use state_unit::StateUnits;
 use std::{
     future::{
         poll_fn,
@@ -90,7 +91,6 @@ use vmotherboard::{
     Chipset,
     ChipsetDeviceHandle,
 };
-use state_unit::StateUnits;
 
 /// Runs the Nanvix guest to completion and returns its exit code.
 ///
@@ -244,8 +244,7 @@ pub async fn run(
         Arc::new(ApicLintLineTarget::new(partition.clone(), Vtl::Vtl0)),
     );
 
-    let (chipset, _chipset_devices) =
-        chipset_builder.build().context("failed to build chipset")?;
+    let (chipset, _chipset_devices) = chipset_builder.build().context("failed to build chipset")?;
 
     // Start the device model (PIC/PIT) and the vmtime clock.
     state_units.start().await;

@@ -75,43 +75,75 @@ affect the default `./z build` (the guest build).
 ```text
 nanvixd-vmm [-bin-dir DIR] [-console-file PATH] [-ramfs IMG] \
             [-kernel-args ARGS] [-mount DIR] [-allow-host-networking] \
-            -- PROGRAM [ARGS...]
+            ( -http-addr HOST:PORT | -- PROGRAM [ARGS...] )
 ```
+
+`nanvixd-vmm` is a drop-in for the production `nanvixd` standalone binary and
+supports the same two mutually exclusive operating modes:
+
+- **terminal** (interactive): a `PROGRAM` is given after `--`; it is booted as
+  the initrd, its `ARGS` become the guest command line, the guest's stdin/stdout
+  are bridged to the daemon's stdin/stdout, and the process exits with the
+  guest's exit code.
+- **http**: `-http-addr HOST:PORT` starts a control server exposing the same
+  `NEW`/`KILL` JSON API as `nanvixd` (selected by the `X-NVX-Message-Type`
+  header) plus a per-VM **gateway Unix socket** carrying the guest's stdio. The
+  gateway path is returned in the `NEW` response; the host-side consumer connects
+  to it to exchange stdin/stdout.
+
+Common options:
 
 - `-bin-dir DIR` — directory containing `kernel.elf` (default `./bin`).
 - `-mount DIR` — serve the guest's HostFS requests via `hostfsd`, rooted at `DIR`.
 - `-allow-host-networking` — serve the guest's networking via `networkd`.
 - `-console-file PATH` — route the guest kernel console here (default: stderr).
 - `-ramfs IMG`, `-kernel-args ARGS` — as in the Nanvix daemon.
-- `PROGRAM` after `--` is booted as the initrd; its `ARGS` become the guest
-  command line.
+
+For drop-in parity, the flags `-clh-bin-path`, `-hwloc`, `-log-dir`, and
+`-netns-pool-size` are accepted and ignored (they are not meaningful for a
+single-vCPU standalone OpenVMM guest); `-l2` is rejected.
 
 Examples:
 
 ```bash
-# Host filesystem mount test.
+# Terminal mode: host filesystem mount test.
 nanvixd-vmm -bin-dir ./bin -mount ./bin/mount-test-data -- ./bin/mount-test.initrd
 
-# Host networking test.
+# Terminal mode: host networking test.
 nanvixd-vmm -bin-dir ./bin -allow-host-networking -- ./bin/network-rust.initrd
+
+# HTTP mode: serve the NEW/KILL control API on 127.0.0.1:9999.
+nanvixd-vmm -bin-dir ./bin -http-addr 127.0.0.1:9999
 ```
 
 Set `NANVIXD_VMM_LOG=debug` for verbose host-side logging (emitted to stderr).
 
 ## Tests
 
-`run-standalone-tests.py` drives the `terminal`-executor cases from
-`nanvix/test/test-standalone.toml` against the built binary — including the
-host mount and networking cases served by the reused `hostfsd`/`networkd`
-daemons:
+Because `nanvixd-vmm` is a drop-in for `nanvixd.elf`, the canonical test path is
+the real Nanvix `nanvix-test` framework driven against it:
+
+```bash
+./z build -- all                       # guests + nanvix-test + test images
+./z build -- all-nanvixd-vmm           # the OpenVMM daemon (-> bin/nanvixd-vmm.elf)
+./bin/nanvix-test.elf test/test-standalone-openvmm.toml
+```
+
+`test/test-standalone-openvmm.toml` mirrors `test/test-standalone.toml` (same
+`empty`, `http`, and `terminal` cases, including the host mount and networking
+cases served by the reused `hostfsd`/`networkd` daemons) but points
+`nanvixd_binary_path` at `./bin/nanvixd-vmm.elf`. The `snapshot-restore` /
+`snapshot-save-exit` cases are omitted because snapshotting is not supported by
+this VMM. This is exactly what the `ci-openvmm` CI job runs.
+
+For quick terminal-only iteration without the full harness, `run-standalone-tests.py`
+drives the `terminal`-executor cases from `test/test-standalone.toml` directly
+against the built binary:
 
 ```bash
 cargo build -p nanvixd-vmm           # or ./build.sh
 python3 run-standalone-tests.py      # add --verbose to print commands
 ```
-
-Expected: all `terminal` cases pass; the only skips are the HTTP/snapshot
-executors and two escaped-semicolon argument cases the harness does not model.
 
 ## Benchmarks: OpenVMM vs uservm
 

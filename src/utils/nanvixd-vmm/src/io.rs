@@ -163,4 +163,55 @@ impl GuestIoHandle {
     pub fn close_input(&mut self) {
         self.to_guest = None;
     }
+
+    /// Splits the handle into independent sender/receiver halves.
+    ///
+    /// This is what the HTTP-mode gateway bridge uses: the sender half is moved
+    /// into the task that forwards the gateway connection to the guest's stdin,
+    /// while the receiver half is drained (on a blocking task) to forward the
+    /// guest's stdout back to the connection. Splitting is required because the
+    /// two directions run concurrently and the underlying channels are not
+    /// `Sync`.
+    pub fn split(self) -> (GuestStdinSender, GuestStdoutReceiver) {
+        (
+            GuestStdinSender {
+                to_guest: self.to_guest,
+            },
+            GuestStdoutReceiver {
+                from_guest: self.from_guest,
+            },
+        )
+    }
+}
+
+/// The stdin-feeding half of a split [`GuestIoHandle`].
+pub struct GuestStdinSender {
+    to_guest: Option<Sender<Vec<u8>>>,
+}
+
+impl GuestStdinSender {
+    /// Feeds `data` to the guest's subsequent stdin read(s).
+    pub fn send(&self, data: &[u8]) {
+        if let Some(tx) = &self.to_guest {
+            let _ = tx.send(data.to_vec());
+        }
+    }
+
+    /// Closes the guest's input, causing its next blocking read to see EOF.
+    pub fn close(self) {
+        drop(self.to_guest);
+    }
+}
+
+/// The stdout-draining half of a split [`GuestIoHandle`].
+pub struct GuestStdoutReceiver {
+    from_guest: Receiver<Vec<u8>>,
+}
+
+impl GuestStdoutReceiver {
+    /// Blocks until the guest writes the next chunk of output. Returns `None`
+    /// when the guest has closed its output (EOF).
+    pub fn recv(&self) -> Option<Vec<u8>> {
+        self.from_guest.recv().ok()
+    }
 }

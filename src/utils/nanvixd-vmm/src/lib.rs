@@ -15,6 +15,7 @@
 //! `hostfsd`) and `-allow-host-networking` (served by the reused `networkd`).
 
 pub mod device;
+pub mod http;
 pub mod ikc;
 pub mod io;
 pub mod load;
@@ -34,6 +35,39 @@ pub const DEFAULT_MEM_SIZE: u64 = 128 * 1024 * 1024;
 
 /// A host-side sink for the guest's kernel console output.
 pub type ConsoleSink = Box<dyn std::io::Write + Send>;
+
+/// Opens the host-side sink for the guest's kernel console.
+///
+/// When `path` is `Some`, the console is written to that file (truncating it);
+/// otherwise it falls back to the host's stderr, keeping it off stdout so it
+/// never intermingles with guest application output.
+pub fn open_console(path: Option<&std::path::Path>) -> std::io::Result<ConsoleSink> {
+    match path {
+        Some(path) => Ok(Box::new(std::fs::File::create(path)?)),
+        None => Ok(Box::new(std::io::stderr())),
+    }
+}
+
+/// Builds the [`load::GuestImage`] for a boot, resolving the kernel ELF from
+/// `bin_dir` and stamping the host TSC frequency for guest timer calibration.
+pub fn build_guest_image(
+    bin_dir: &std::path::Path,
+    initrd: Option<std::path::PathBuf>,
+    initrd_args: Option<String>,
+    kernel_args: Option<String>,
+    ramfs: Option<std::path::PathBuf>,
+    mem_size: u64,
+) -> load::GuestImage {
+    load::GuestImage {
+        kernel: bin_dir.join("kernel.elf"),
+        initrd,
+        initrd_args,
+        kernel_args,
+        ramfs,
+        mem_size,
+        tsc_freq_mhz: host_tsc_freq_mhz(),
+    }
+}
 
 /// Initializes host-side logging, reading its filter from `env_var`.
 ///

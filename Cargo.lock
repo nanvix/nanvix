@@ -3015,7 +3015,7 @@ dependencies = [
 
 [[package]]
 name = "nanvixd-vmm"
-version = "0.16.40"
+version = "0.16.49"
 dependencies = [
  "anyhow",
  "build_rs_guest_arch",
@@ -3027,15 +3027,22 @@ dependencies = [
  "guestmem",
  "hostfs-api",
  "hostfsd",
+ "http-body-util",
  "hvdef",
+ "hyper",
+ "hyper-util",
  "log",
  "mesh",
  "networkd",
  "pal_async",
+ "serde",
+ "serde_json",
  "sparse_mmap",
  "state_unit",
  "sys",
  "syscall",
+ "tokio",
+ "user-vm-api",
  "virt",
  "virt_kvm",
  "vm_resource",
