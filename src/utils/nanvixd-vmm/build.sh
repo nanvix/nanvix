@@ -49,8 +49,8 @@ if [[ -z "${PROTOC:-}" ]]; then
         if [[ -x "${CANDIDATE}" ]]; then
             export PROTOC="${CANDIDATE}"
         else
-            echo "[ERROR] protoc not found. Install it (e.g. 'apt-get install" >&2
-            echo "        protobuf-compiler'), set PROTOC, or restore OpenVMM's packages." >&2
+            echo "[ERROR] protoc not found. Install it (e.g. 'apt-get install protobuf-compiler')," >&2
+            echo "        set PROTOC, or restore OpenVMM's packages." >&2
             exit 1
         fi
     fi

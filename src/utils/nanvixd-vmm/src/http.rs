@@ -58,13 +58,22 @@ use ::serde::{
 };
 use ::std::{
     future::Future,
-    os::unix::fs::PermissionsExt as _,
+    os::unix::fs::{
+        DirBuilderExt as _,
+        PermissionsExt as _,
+    },
     path::{
         Path,
         PathBuf,
     },
     pin::Pin,
-    sync::Arc,
+    sync::{
+        atomic::{
+            AtomicU64,
+            Ordering,
+        },
+        Arc,
+    },
     thread::JoinHandle,
 };
 use ::tokio::{
@@ -180,8 +189,9 @@ struct RunningVm {
     vm_thread: JoinHandle<u16>,
     /// Task bridging the gateway socket and the guest's stdio.
     gateway_bridge: ::tokio::task::JoinHandle<()>,
-    /// Filesystem path of the gateway socket (removed on teardown).
-    gateway_path: PathBuf,
+    /// Private (0700) directory holding the gateway socket; removed wholesale on
+    /// teardown.
+    gateway_dir: PathBuf,
 }
 
 /// Shared server state: the static config and the single running VM (if any).
@@ -261,7 +271,7 @@ pub async fn serve(sockaddr: &str, config: HttpConfig) -> ::anyhow::Result<()> {
 async fn teardown(state: &State) {
     if let Some(vm) = state.running.lock().await.take() {
         vm.gateway_bridge.abort();
-        remove_gateway_socket(&vm.gateway_path);
+        remove_gateway_dir(&vm.gateway_dir);
         // The guest thread is detached: it is reaped when the process exits.
     }
 }
@@ -396,8 +406,19 @@ async fn serve_new(state: &State, message: &New) -> ::anyhow::Result<NewResponse
     let mount_directory: Option<PathBuf> = config.mount_directory.clone();
     let networking: bool = config.networking;
 
+    // Bind the gateway socket BEFORE spawning the guest so that a bind failure
+    // cannot leave a running VM untracked (state.running stays None) and leak
+    // resources across subsequent NEW requests. The socket lives inside a
+    // per-VM private 0700 directory created before the bind, so no other local
+    // user can reach it (closing the post-bind chmod TOCTOU window).
+    let (gateway_dir, gateway_path): (PathBuf, PathBuf) = gateway_paths();
+    let listener: UnixListener = bind_gateway(&gateway_dir, &gateway_path)
+        .await
+        .context("failed to bind gateway socket")?;
+    debug!("serve_new(): gateway bound at {}", gateway_path.display());
+
     info!("serve_new(): spawning guest program={}", message.program);
-    let vm_thread: JoinHandle<u16> = ::std::thread::Builder::new()
+    let vm_thread: JoinHandle<u16> = match ::std::thread::Builder::new()
         .name("nanvixd-vmm-guest".to_string())
         .spawn(move || {
             let result = ::pal_async::DefaultPool::run_with(move |driver| async move {
@@ -411,25 +432,21 @@ async fn serve_new(state: &State, message: &New) -> ::anyhow::Result<NewResponse
                     u16::MAX
                 },
             }
-        })
-        .context("failed to spawn guest VM thread")?;
-
-    let gateway_path: PathBuf = default_gateway_path();
-    let listener: UnixListener = match bind_gateway(&gateway_path).await {
-        Ok(listener) => listener,
+        }) {
+        Ok(vm_thread) => vm_thread,
         Err(e) => {
-            // The guest thread is now running with no gateway; let it observe
-            // EOF on stdin (the handle drops here) and reap it on process exit.
-            return Err(e).context("failed to bind gateway socket");
+            // Reclaim the bound gateway so it is not left behind.
+            remove_gateway_dir(&gateway_dir);
+            return Err(e).context("failed to spawn guest VM thread");
         },
     };
-    debug!("serve_new(): gateway bound at {}", gateway_path.display());
+
     let gateway_bridge = ::tokio::spawn(gateway_bridge_task(listener, handle));
 
     *guard = Some(RunningVm {
         vm_thread,
         gateway_bridge,
-        gateway_path: gateway_path.clone(),
+        gateway_dir,
     });
 
     Ok(NewResponse {
@@ -448,7 +465,7 @@ async fn serve_kill(state: &State, _message: &Kill) -> ::anyhow::Result<KillResp
     let RunningVm {
         vm_thread,
         gateway_bridge,
-        gateway_path,
+        gateway_dir,
     } = vm;
 
     // The client closes the gateway write half (EOF to the guest's stdin) before
@@ -458,7 +475,7 @@ async fn serve_kill(state: &State, _message: &Kill) -> ::anyhow::Result<KillResp
 
     // The guest has exited (or its thread panicked); the bridge can stop.
     gateway_bridge.abort();
-    remove_gateway_socket(&gateway_path);
+    remove_gateway_dir(&gateway_dir);
 
     let exit_code: i32 = match join_result {
         Ok(Ok(code)) => i32::from(code),
@@ -547,38 +564,54 @@ async fn gateway_bridge_task(listener: UnixListener, handle: GuestIoHandle) {
 // Gateway socket helpers
 //==================================================================================================
 
-/// Returns a per-process default path for the gateway socket.
-fn default_gateway_path() -> PathBuf {
-    let mut path: PathBuf = ::std::env::temp_dir();
-    path.push(format!("nanvixd-vmm-gw-{}.sock", ::std::process::id()));
-    path
+/// Returns a unique (gateway directory, gateway socket) pair for one VM.
+///
+/// The socket lives inside a per-process, per-VM directory so it can be made
+/// private (0700) before the socket is bound, and removed wholesale on teardown.
+fn gateway_paths() -> (PathBuf, PathBuf) {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let id: u64 = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let mut dir: PathBuf = ::std::env::temp_dir();
+    dir.push(format!("nanvixd-vmm-{}-{}", ::std::process::id(), id));
+    let socket: PathBuf = dir.join("gateway.sock");
+    (dir, socket)
 }
 
-/// Binds the gateway Unix socket, restricting it to the owning user.
-async fn bind_gateway(path: &Path) -> ::anyhow::Result<UnixListener> {
-    match ::std::fs::remove_file(path) {
+/// Binds the gateway Unix socket inside a freshly created private directory.
+///
+/// The directory is created with mode 0700 *before* the socket is bound, so the
+/// socket is never reachable by other local users — closing the TOCTOU window
+/// that a post-bind `chmod` would leave open. The socket itself is also
+/// restricted to 0600 for defense in depth.
+async fn bind_gateway(dir: &Path, socket: &Path) -> ::anyhow::Result<UnixListener> {
+    // Remove any stale directory left by a previous incarnation.
+    match ::std::fs::remove_dir_all(dir) {
         Ok(()) => {},
         Err(e) if e.kind() == ::std::io::ErrorKind::NotFound => {},
         Err(e) => {
             return Err(e)
-                .with_context(|| format!("failed to remove stale gateway socket at {path:?}"));
+                .with_context(|| format!("failed to remove stale gateway dir at {dir:?}"));
         },
     }
-    let listener: UnixListener = UnixListener::bind(path)
-        .with_context(|| format!("failed to bind gateway socket at {path:?}"))?;
-    // Restrict the gateway socket to the owning user so no other local user can
-    // attach to the guest's stdin/stdout.
-    let mut perms = ::std::fs::metadata(path)?.permissions();
+    ::std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(dir)
+        .with_context(|| format!("failed to create gateway dir at {dir:?}"))?;
+
+    let listener: UnixListener = UnixListener::bind(socket)
+        .with_context(|| format!("failed to bind gateway socket at {socket:?}"))?;
+    let mut perms = ::std::fs::metadata(socket)?.permissions();
     perms.set_mode(0o600);
-    ::std::fs::set_permissions(path, perms)?;
+    ::std::fs::set_permissions(socket, perms)?;
     Ok(listener)
 }
 
-/// Removes the gateway socket file, ignoring a missing file.
-fn remove_gateway_socket(path: &Path) {
-    if let Err(e) = ::std::fs::remove_file(path) {
+/// Removes the private gateway directory (and the socket within), ignoring a
+/// missing directory.
+fn remove_gateway_dir(dir: &Path) {
+    if let Err(e) = ::std::fs::remove_dir_all(dir) {
         if e.kind() != ::std::io::ErrorKind::NotFound {
-            error!("failed to remove gateway socket {path:?}: {e}");
+            error!("failed to remove gateway dir {dir:?}: {e}");
         }
     }
 }

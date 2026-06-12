@@ -3015,7 +3015,7 @@ dependencies = [
 
 [[package]]
 name = "nanvixd-vmm"
-version = "0.16.49"
+version = "0.16.50"
 dependencies = [
  "anyhow",
  "build_rs_guest_arch",

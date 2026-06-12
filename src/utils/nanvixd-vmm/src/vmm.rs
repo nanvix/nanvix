@@ -489,7 +489,10 @@ trait RequestYield: Send + Sync {
 
 impl<T: Partition> RequestYield for T {
     fn request_yield(&self, vp_index: VpIndex) {
-        self.request_yield(vp_index)
+        // Forward explicitly to the `Partition` method via UFCS: a plain
+        // `self.request_yield(..)` is ambiguous with (and could resolve back
+        // to) this trait method.
+        Partition::request_yield(self, vp_index)
     }
 }
 

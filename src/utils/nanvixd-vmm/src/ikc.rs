@@ -160,9 +160,11 @@ impl IkcBridge {
     pub fn guest_stdin(&mut self, gm: &GuestMemory, envelope: &VmBusMessage) -> anyhow::Result<()> {
         let Some(frame) = self.outbound.pop_front() else {
             // The guest only fetches when CREDITS is positive, so this is not
-            // expected; nothing to deliver.
+            // expected. Re-sync CREDITS (now 0) before returning so the guest
+            // observes an empty queue and stops fetching instead of spinning on
+            // a stale, nonzero value.
             log::warn!("guest fetched IKC message with empty queue");
-            return Ok(());
+            return self.sync_credits(gm);
         };
 
         match frame {

@@ -190,6 +190,15 @@ fn load_initrd(
     // The guest locates the command line at the page-rounded end of the initrd
     // region (it derives the region size in pages from the boot register), so
     // the length-prefixed string must be written there, not at the raw end.
+    // The check above only bounds the initrd payload; ensure the trailing
+    // command line (a `u16` length followed by its bytes) also fits in guest RAM.
+    let cmdline_end = end + 2 + args.len() as u64;
+    if cmdline_end > mem_size {
+        anyhow::bail!(
+            "initrd command line does not fit in guest memory (cmdline_end={cmdline_end:#x}, \
+             mem_size={mem_size:#x})"
+        );
+    }
     write_initrd_args(gm, base + size_rounded, &args)?;
 
     Ok((base, size_rounded))
