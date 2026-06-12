@@ -472,10 +472,12 @@ fn ensure_identity_mapped_range(
 
     let start_raw: usize = start.into_raw_value();
     let num_pages: usize = size / mem::PAGE_SIZE;
-    for i in 0..num_pages {
+    let mut i: usize = 0;
+    while i < num_pages {
         let page_addr: PageAligned<PhysicalAddress> =
             PageAligned::from_raw_value(start_raw + i * mem::PAGE_SIZE)?;
         identity_map_page(page_addr)?;
+        i += 1;
     }
 
     Ok(())

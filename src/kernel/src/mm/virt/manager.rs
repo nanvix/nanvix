@@ -330,15 +330,18 @@ impl VirtMemoryManager {
                 break;
             }
 
-            for slot in buf.iter().take(count) {
+            let mut slot_idx: usize = 0;
+            while slot_idx < count {
                 // SAFETY: `slot` was written above for indices < count.
-                let (vaddr, frame, writable, parent_cow) = unsafe { slot.assume_init_read() };
+                let (vaddr, frame, writable, parent_cow) =
+                    unsafe { buf[slot_idx].assume_init_read() };
                 if let Err(e) =
                     Self::link_one_user_page(parent, child, vaddr, frame, writable, parent_cow)
                 {
                     Self::rollback_linked_pages(parent, child);
                     return Err(e);
                 }
+                slot_idx += 1;
             }
 
             if count < LINK_CHUNK {
