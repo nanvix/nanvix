@@ -179,7 +179,12 @@ impl Vmem {
         let mut kernel_page_tables: LinkedList<
             Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>,
         > = LinkedList::new();
-        for entry in from.kernel_page_tables.iter() {
+        let mut kernel_page_table_iter = from.kernel_page_tables.iter();
+        loop {
+            let entry = match kernel_page_table_iter.next() {
+                Some(entry) => entry,
+                None => break,
+            };
             let page_table_address: FrameAddress = entry.borrow().1.physical_address()?;
             // FIXME: do not be so open about permissions.
             pgdir.map(entry.borrow().0, page_table_address, false, AccessPermission::RDWR)?;
@@ -188,7 +193,12 @@ impl Vmem {
 
         // Store root pages.
         let mut kernel_pages: LinkedList<Rc<RefCell<KernelPage>>> = LinkedList::new();
-        for entry in from.kernel_pages.iter() {
+        let mut kernel_page_iter = from.kernel_pages.iter();
+        loop {
+            let entry = match kernel_page_iter.next() {
+                Some(entry) => entry,
+                None => break,
+            };
             kernel_pages.push_back(entry.clone());
         }
 
@@ -274,7 +284,12 @@ impl Vmem {
         };
 
         // Get corresponding page table.
-        for entry in self.kernel_page_tables.iter_mut() {
+        let mut kernel_page_table_iter = self.kernel_page_tables.iter_mut();
+        loop {
+            let entry = match kernel_page_table_iter.next() {
+                Some(entry) => entry,
+                None => break,
+            };
             if entry.borrow().0.into_raw_value() == pt_vaddr.into_raw_value() {
                 // Map the page to the target virtual address space.
                 // FIXME: do not be so open about permissions and caching.
@@ -592,7 +607,12 @@ impl Vmem {
         // Find corresponding page table.
         let mut page_table: Option<Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>> =
             None;
-        for pt in self.kernel_page_tables.iter_mut() {
+        let mut kernel_page_table_iter = self.kernel_page_tables.iter_mut();
+        loop {
+            let pt = match kernel_page_table_iter.next() {
+                Some(pt) => pt,
+                None => break,
+            };
             if pt.borrow().1.physical_address()? == pgtab_addr {
                 page_table = Some(pt.clone());
                 break;
@@ -630,7 +650,12 @@ impl Vmem {
         )?);
 
         // Look for the corresponding page table.
-        for (lookup_pgtable_addr, page_table) in self.user_page_tables.iter() {
+        let mut user_page_table_iter = self.user_page_tables.iter();
+        loop {
+            let (lookup_pgtable_addr, page_table) = match user_page_table_iter.next() {
+                Some(entry) => entry,
+                None => break,
+            };
             // Found.
             if lookup_pgtable_addr == &pgtab_addr {
                 // Look for the corresponding page.
@@ -667,7 +692,12 @@ impl Vmem {
             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
         )?);
 
-        for (lookup_pgtable_addr, page_table) in self.user_page_tables.iter() {
+        let mut user_page_table_iter = self.user_page_tables.iter();
+        loop {
+            let (lookup_pgtable_addr, page_table) = match user_page_table_iter.next() {
+                Some(entry) => entry,
+                None => break,
+            };
             if lookup_pgtable_addr == &pgtab_addr {
                 if page_table.is_page_present(page_addr)? {
                     return Ok(Some(page_table.lookup(page_addr)?));
@@ -705,7 +735,12 @@ impl Vmem {
             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
         )?);
 
-        for (lookup_pgtable_addr, page_table) in self.user_page_tables.iter() {
+        let mut user_page_table_iter = self.user_page_tables.iter();
+        loop {
+            let (lookup_pgtable_addr, page_table) = match user_page_table_iter.next() {
+                Some(entry) => entry,
+                None => break,
+            };
             if lookup_pgtable_addr == &pgtab_addr {
                 return Ok(page_table.read_pte_at(page_addr));
             }
@@ -736,9 +771,19 @@ impl Vmem {
     where
         F: FnMut(PageAligned<VirtualAddress>, PageTableEntry) -> Result<(), Error>,
     {
-        for (pgtab_addr, page_table) in self.user_page_tables.iter() {
+        let mut user_page_table_iter = self.user_page_tables.iter();
+        loop {
+            let (pgtab_addr, page_table) = match user_page_table_iter.next() {
+                Some(entry) => entry,
+                None => break,
+            };
             let base: usize = pgtab_addr.into_raw_value();
-            for (pte_idx, pte) in page_table.iter_present_ptes() {
+            let mut pte_iter = page_table.iter_present_ptes();
+            loop {
+                let (pte_idx, pte) = match pte_iter.next() {
+                    Some(entry) => entry,
+                    None => break,
+                };
                 let raw_vaddr: usize = base
                     .checked_add(
                         pte_idx.checked_mul(mem::PAGE_SIZE).ok_or_else(|| {

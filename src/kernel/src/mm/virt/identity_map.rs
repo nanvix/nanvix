@@ -120,11 +120,13 @@ pub(crate) fn init(
     // This covers all physical memory, so no new PDEs are created at runtime.
     let pd_paddr: usize = kernel_pd_paddr.into_raw_value();
     let pde_count: usize = MEMORY_SIZE / mem::PGTAB_SIZE;
-    for i in 0..pde_count {
+    let mut i: usize = 0;
+    while i < pde_count {
         let pde_idx: TableIndex = paging::pd_index(i * mem::PGTAB_SIZE);
         // SAFETY: the PD is identity-mapped.
         let pd: Table<PageDirectoryEntry> = unsafe { Table::from_address(pd_paddr) };
         ensure_pt(pd, pde_idx)?;
+        i += 1;
     }
 
     // Publish the kernel PD and CR3 only after pre-allocation succeeds, so that other code
@@ -294,7 +296,8 @@ pub(crate) fn sync_kernel_pdes(target_pd_paddr: PageDirectoryAddress) -> Result<
     // Number of PDEs to sync — bounded by MEMORY_SIZE.
     let kernel_pde_count: usize = MEMORY_SIZE / mem::PGTAB_SIZE;
 
-    for i in 0..kernel_pde_count {
+    let mut i: usize = 0;
+    while i < kernel_pde_count {
         // SAFETY: `i` is always < PAGE_TABLE_LENGTH because MEMORY_SIZE < 4 GiB.
         let pde_idx: TableIndex = paging::pd_index(i * mem::PGTAB_SIZE);
 
@@ -302,6 +305,7 @@ pub(crate) fn sync_kernel_pdes(target_pd_paddr: PageDirectoryAddress) -> Result<
             .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "invalid PDE index"))?;
 
         if !kernel_pde.is_present() {
+            i += 1;
             continue;
         }
 
@@ -312,6 +316,8 @@ pub(crate) fn sync_kernel_pdes(target_pd_paddr: PageDirectoryAddress) -> Result<
         if !target_pde.is_present() {
             unsafe { target_pd.write(pde_idx, kernel_pde) };
         }
+
+        i += 1;
     }
 
     Ok(())
