@@ -6,7 +6,7 @@
   "current_phase_idx": 0,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "c5344eb2-b81f-497a-ba94-8aa73398e7ec",
   "completed": false,
   "base_branch": "verus-ai/phys-kframe",
   "verus_branch": "verus-ai/phys-frame",
