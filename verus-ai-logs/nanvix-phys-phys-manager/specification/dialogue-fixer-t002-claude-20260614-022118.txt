@@ -93,3 +93,21 @@ Turn 5
 ────────────────────────────────────────────────────────────
 Both greps clean. Now run verification:
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::phys 2>&1 | tail -12
+[RESULT ✓] bash: - share
+    - refcount
+    - drop
+    - new
+
+=== Summary ===
+  verification: 19 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=24 admit=10 trusted=0 no_decreases=0 cfg_gate=10
+  coverage: 24/45 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/v...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+0 errors, admit count dropped 11→10 as the reviewer required. Now non-verus build and full verify:
+[TOOL] bash: cd /home/ruize/nanvix-phy; ./z build -- check-kernel 2>&1 | tail -3; echo "=== full verify ==="; make verify 2>&1 | grep
