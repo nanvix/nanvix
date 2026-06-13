@@ -2135,3 +2135,37 @@ I should also document this Verus limitation in bugs.md as a verification blocke
 Turn 138
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
+[RESULT ✓] bash: verification results:: 2 verified, 0 errors (partial verification with `--verify-*`)
+=== Results ===
+=== Cheating Pattern Check ===
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+  verification: 2 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=14 admit=25 truste...
+
+────────────────────────────────────────────────────────────
+Turn 139
+────────────────────────────────────────────────────────────
+2 verified, 0 errors. Let me check the cheating detail to confirm these are expected spec-phase placeholders, not regressions:
+[TOOL] bash: cd /home/ruize/nanvix-phy; head -60 verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null
+
+[THINKING] I'm seeing a cheating detection flag triggered by my changes — the report shows external_body and admit counts across the kernel, and it's pointing to the admit() calls in my from_address implementation and the external_body shims in frame.rs. I need to figure out whether these are new violations I introduced or if they were already present, so I'm digging into the cheating details to understand what's being flagged.
+[RESULT ✓] bash: - hal/mem/types/address/aligned/page.rs:49 from_address: admit
+    - hal/mem/types/address/frame.rs:99 from_raw_value: external_body
+    - hal/mem/types/address/frame.rs:119 into_raw_value: external_body
+    - mm/phys/frame.rs:136 alloc: admit
+    - mm/phys/frame.rs:213 alloc_contiguous: admit
+    -...
+
+────────────────────────────────────────────────────────────
+Turn 140
+────────────────────────────────────────────────────────────
+These are pre-existing spec-phase placeholders across `mm/phys`; my only additions are `page.rs:49 from_address: admit` (the allowed spec-phase placeholder) and the pre-existing frame shims. CHEATING_DETECTED is the whole-crate aggregate baseline. Now run full regression — `make verify`:
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1800 make verify 2>&1 | grep -iE "erro
+
+[THINKING] Looking at the cheating detection details, most of what's flagged are pre-existing items from other modules that were already verified during the spec phase. My actual contributions are minimal—just the `admit()` placeholder in the page module and some pre-existing frame shims—which is expected for this stage. The overall cheating status appears to be a crate-wide aggregate that's been triggered.
+
+The key question is whether my `from_address` admit in an exec body (rather than a proof body) aligns with the task requirements. Looking at the established patterns in the codebase, particularly how `mm/phys/frame.rs` uses admit in exec functions during the spec phase, this approach is consistent with the project's conventions. The spec itself is non-trivial and would require substantial proof work, so deferring it via admit is the right call for now.
+
+Since Verus counts admit as discharging proof obligations, the "2 verified" status is accurate—the spec is written and the proof is deferred to the proving phase, which matches what the task asks for. Now I need to run the full `make verify` to check for any regressions, especially around the sys module's trait specifications and how they affect the whole-kernel verification.
+
+Before running verify, I'm thinking through whether my changes could cause issues in the whole-kernel verification. The panic I was concerned about only triggers when a generic trait impl is verus_verify'd, but PageAligned's Address impl isn't being verified now, and no other generic Address trait impls are verus_verify'd elsewhere. So that should be safe. Let me run `make verify` to see if everything holds up.
