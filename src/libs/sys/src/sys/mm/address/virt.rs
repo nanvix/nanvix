@@ -45,6 +45,10 @@ pub struct VirtualAddress(usize);
 //==================================================================================================
 
 impl VirtualAddress {
+    #[verus_spec(result =>
+        ensures
+            result@ == value as int,
+    )]
     pub const fn new(value: usize) -> Self {
         Self(value)
     }
@@ -58,6 +62,10 @@ impl VirtualAddress {
     ///
     /// - `raw_addr`: The raw value.
     ///
+    #[verus_spec(result =>
+        ensures
+            result@ == raw_addr as int,
+    )]
     pub fn from_raw_value(raw_addr: usize) -> Self {
         VirtualAddress::new(raw_addr)
     }
@@ -240,6 +248,7 @@ impl Address for VirtualAddress {
         usize::MAX
     }
 
+    #[verus_verify]
     fn into_raw_value(self) -> usize {
         self.0
     }

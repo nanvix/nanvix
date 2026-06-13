@@ -549,3 +549,86 @@ Turn 24
 [THINKING] I'm working through the module path structure—the crate is named `sys` with a `mod sys` declaration inside it, so the full path should be `sys::sys::mm::address::virt`, but Verus is showing just `sys::mm::address::virt`, which suggests there might be a discrepancy in how the module hierarchy is being resolved.
 
 Looking at the script's behavior, it strips the leading `sys::` prefix from the module path, so if I pass `sys::mm::address::virt` it becomes `mm::address::virt`—which is incorrect. The solution is to pass the full path `sys::sys::mm::address::virt` so that after stripping one `sys::` prefix, I'm left with the correct `sys::mm::address::virt` for verification.
+[RESULT ✓] bash: - checked_sub
+    - from_raw_value
+    - align_up
+    - align_down
+    - is_aligned
+    - max_addr
+    - into_raw_value
+    - clone_address
+    - as_ptr
+    - as_mut_ptr
+    - fmt
+    - add
+    - add_assign
+    - from
+    - from
+    - from
+    - from
+
+=== Summary ===
+  verification: 0 verified, 0 er...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "fn is_aligned\|fn align_up\|fn align_down\|spec_align_value\|verus_spec" src/libs/s
+
+[THINKING] The baseline shows zero errors but no function contracts yet across the 23 functions in virt.rs. The module path is now working correctly at `sys::sys::mm::address::virt`. I'm adding specs with `#[verus_spec]` annotations to the `new` and `from_raw_value` functions, and I need to verify whether the trait implementation block for `into_raw_value` is being checked during verification.
+
+The trait `Address` is defined in mod.rs with specs, and the impl block is in virt.rs, so it should be verified. But there's a potential issue: `is_aligned` calls `mm::is_aligned` which has no spec, so Verus won't be able to prove the postcondition that relates the result to the alignment check. I'm trying to understand why the baseline is still CLEAN if these trait impl methods should be getting verified against their trait specs.
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/alignment.rs:156:pub open spec fn spec_align_value(align: Alignment) -> int {
+src/libs/sys/src/sys/mm/alignment.rs:188:pub const fn align_up(value: usize, align: Alignment) -> Option<usize> {
+src/libs/sys/src/sys/mm/alignment.rs:196:pub fn align_down(value: usize, align: Alig...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '150,215p' src/libs/sys/src/sys/mm/alignment.rs
+[RESULT ✓] bash: #[cfg(verus_keep_ghost)]
+verus! {
+
+// Abstract numeric value (in bytes) of an [`Alignment`]. Mirrors the enum's
+// discriminants so specs can relate `is_aligned` results to the underlying modulus.
+pub open spec fn spec_align_value(align: Alignment) -> int {
+    match align {
+        Alignment::Align...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Baseline is clean. Now let me add specs. First the inherent constructors and the trait method:
+[TOOL] report_intent: Adding specs to virt.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I'm realizing that `mm::is_aligned` lacks the `#[verus_spec]` attribute and just returns a bool without any ensures clause, so the `Address::is_aligned` implementation for VirtualAddress would actually fail verification against the trait spec that requires `result == self@ % spec_align_value(align) == 0`. Yet the baseline passes cleanly, which tells me that trait impl methods aren't being verified against their trait specs during module verification.
+
+The trait `Address` is defined in the parent module `sys::mm::address`, while the impl block lives in `sys::mm::address::virt`, so the impl methods should theoretically be in scope. But since there's no verification error, either Verus isn't checking trait impls in this context, or the nanvix setup uses the syntactic macro mode where only items explicitly annotated with `#[verus_verify]` or `#[verus_spec]` get verified—meaning unannotated functions are treated as external and skipped.
+
+This explains why baseline is clean despite the 23 unverified functions: the opt-in model means `into_raw_value` and other trait methods aren't being checked at all. To bring `into_raw_value` into verification, I'd need to annotate it, but that risks pulling in `is_aligned` and other trait methods that would fail because `mm::is_aligned` has no spec. The challenge is isolating just `into_raw_value` for verification without forcing the other trait methods to be checked.
+
+I'm wondering if I can annotate just the `into_raw_value` method with `#[verus_verify]` to check it against the inherited trait spec, or if the impl block itself needs annotation for that to work. Let me try incrementally: add specs to the inherent `new` and `from_raw_value` methods first, then attempt `#[verus_verify]` on just the `into_raw_value` method and see if verification passes.
+
+But looking at how other types like `PageAligned` handle `into_raw_value`—no annotation, just an assume_specification elsewhere—suggests the codebase pattern is to treat these as external rather than verify them directly.
+
+Still, since the task explicitly lists `VirtualAddress::into_raw_value` as in-scope and the `Address` trait already has the spec `result as int == self@`, the contract is there. I just need to verify the impl satisfies it. Let me write the changes: add a spec to `new` ensuring `result@ == value as int`, add one to the inherent `from_raw_value` ensuring `result@ == raw_addr as int`, and try `#[verus_verify]` on the trait method. The view is closed but transparent within the module, so `new` returning `Self(value)` should satisfy the spec since `view = self.0 as int = value as int`.
+
+For `into_raw_value`, it returns `self.0`, and I need to prove `result as int == self@ == self.0 as int`, which is straightforward. I'll skip adding `inv()` to spec.rs since no in-scope spec requires it, and leave both spec.rs and proof.rs as empty verus blocks. Now I need to handle the cross-module concern where phys.spec.rs has assumptions about `VirtualAddress::new` and `into_raw_value`.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I'm going to try adding `#[verus_verify]` directly to the `into_raw_value` method and see if it verifies against the trait specification without needing the other methods like `is_aligned`. Let me just run an experiment to check how this annotation behaves on a single trait-impl method.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::sys::mm::address::virt 2>&1 | tail -20
