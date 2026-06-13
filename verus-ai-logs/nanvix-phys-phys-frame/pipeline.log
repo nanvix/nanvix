@@ -53,3 +53,6 @@ Module: phys-frame
 [2026-06-14 04:16:19]   ↳ dialogue-reviewer-t2 done in 3m11s (exit=0)
 [2026-06-14 04:16:19] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-06-14 04:16:19] [DIALOGUE] specification ended after 2 turns: RESOLVED (779s)
+[2026-06-14 04:16:19] [PHASE] specification: dialogue-RESOLVED (39m26s)
+[2026-06-14 04:16:19] [SPEC DRIFT] (within specification) Comparing 97e31408 → f1527a8b
+[2026-06-14 04:16:19] [SPEC DRIFT] (within specification) No changes detected
