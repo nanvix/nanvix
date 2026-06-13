@@ -30,6 +30,7 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Constants
@@ -81,6 +82,7 @@ impl PhysMemoryManager {
     ///
     /// Returns `InvalidArgument` if the singleton has already been initialized.
     ///
+    #[verus_verify(external_body)]
     pub(super) fn init(upool: Upool) -> Result<(), Error> {
         if unlikely(PHYS_MEMORY_MANAGER_INIT.load(ORDER)) {
             return Err(Error::new(

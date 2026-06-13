@@ -1272,3 +1272,278 @@ Turn 63
 Turn 64
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
+[RESULT ✓] bash: note: verifying module mm::phys
+note: verifying module mm::phys::frame
+verification results:: 0 verified, 0 errors (partial verification with `--verify-*`)
+  0 verified
+  0 errors
+  Unverified functions:
+  verification: 0 verified, 0 errors (exit 0)
+<shellId: 44 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+The spec definitions compile. Now let me mark the cross-module callees so verified code can call them.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== upool.rs has vstd? ==="; grep -c "vstd::prelude" src/kernel/src/mm/phys/upool.rs; e
+
+[THINKING] Now I'm adding the exec annotations to mark the key initialization functions as external bodies with callable contracts. I need to annotate frame::init, Upool::new, and PhysMemoryManager::init, then add external_body specs to the memory booking functions with their phys_view contracts. After that I'll add the verified spec and admit-lemmas to the proof module.
+
+For frame::init specifically, since it's an unsafe function, the external_body marker alone should make it callable—I'll rely on admit-lemmas to establish that it produces the initialized and well-formed state. I also need to add the vstd prelude imports to upool.rs and manager.rs before applying the markers.
+[RESULT ✓] bash: === upool.rs has vstd? ===
+0
+=== manager.rs has vstd? ===
+0
+=== frame::init current attr ===
+
+/// Initialize the frame allocator singleton.
+///
+/// # Safety
+///
+/// Must be called exactly once during boot, before any other function
+/// in this module.
+pub(super) unsafe fn init(bitmap: Bitmap) -> Res...
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 138.     ///
+139.     /// Instantiates a user frame pool.
+140.     ///
+141.     /// # Returns
+142.     ///
+143.     /// A user frame pool.
+144.     ///
+145.     pub(super) fn new() -> Self {
+146.         Self { _private: () }
+147.     }
+148. 
+149.     ///
+150.     /// # Description
+151.     ///
+152....
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== frame.rs verus setup (top + includes) ==="; grep -n "verus_verify\|verus_spec\|vstd
+
+[THINKING] I'm checking whether the `#[verus_verify(external_body)]` attribute will resolve without importing `use ::vstd::prelude::*`, since it's a proc-macro provided by verus's builtin_macros. Let me see how frame.rs handles this setup so I can apply the same pattern to upool.rs and manager.rs.
+[RESULT ✓] bash: === frame.rs verus setup (top + includes) ===
+47:use ::vstd::prelude::*;
+49:#[cfg(verus_keep_ghost)]
+50:include!("frame.spec.rs");
+52:#[cfg(verus_keep_ghost)]
+53:include!("frame.proof.rs");
+81:#[verus_verify]
+103:#[verus_verify]
+115:    #[verus_verify(external_body)]
+116:    #[verus_spec(result =>
+1...
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,20p' src/kernel/src/mm/phys/manager.rs; echo "=== init ==="; sed -n '78,90p' src/ke
+
+[THINKING] I need to import the verus prelude in both upool.rs and manager.rs so I can use the `#[verus_verify]` attribute. Even though these files aren't normally part of the verified module set, they'll be processed when the kernel compiles with verus_keep_ghost enabled, so adding the import and marking functions with `#[verus_verify(external_body)]` should work. There's something subtle about this approach I'm still thinking through.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use cra...
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I'm adding the vstd prelude import and external_body attributes to both files, inserting the use statement after the existing imports in upool.rs and manager.rs respectively.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '18,40p' src/kernel/src/mm/phys/manager.rs
+
+[THINKING] Looking at the manager.rs file now, I need to check where the imports end so I can add a new use statement in the right place.
+[RESULT ✓] bash: };
+use ::alloc::vec::Vec;
+use ::arch::mem;
+use ::core::{
+    hint::unlikely,
+    mem::MaybeUninit,
+    sync::atomic::{
+        AtomicBool,
+        Ordering,
+    },
+};
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
+
+//=================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+Now mark `frame::init` external_body:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 653. ///
+654. /// Must be called exactly once during boot, before any other function
+655. /// in this module.
+656. pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
+657.     if unlikely(INSTANCE_INIT.load(ORDER)) {
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+Now let me view the current mod.spec.rs and mod.rs to add the exec annotations correctly.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+
+[THINKING] I need to check the current mod.rs file and review mod.spec.rs to see what helper names are available, then add the necessary annotations to those three functions.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // This file contains specification functions and view types.
+7. 
+8. verus! {
+9. 
+10. use crate::hal::mem::spec_page_size;
+11. use vstd::map::*;
+12. 
+13. pub unin...
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+
+[THINKING] Now I'm looking at the mod.rs file to identify which target functions need annotations added.
+[RESULT ✓] view: 40. #[cfg(verus_keep_ghost)]
+41. include!("mod.spec.rs");
+42. #[cfg(verus_keep_ghost)]
+43. include!("mod.proof.rs");
+44. 
+45. //==================================================================================================
+46. // Exports
+47. //====================================================...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm designing the function contract for booking physical memory regions, specifying the preconditions that the physical view must be initialized and valid, and the postconditions that ensure either all frames are reserved on success or the state remains unchanged on failure.
+
+For the MMIO regions function, I need to set up similar contracts but with a reference parameter instead of a consumed value, ensuring that any frames covered by the MMIO regions are properly reserved in the physical view after a successful call.
+
+Now for the init function itself — it's verified without external_body, so it needs to establish that the final state satisfies the invariant, is live, has all physical regions reserved, and has all covered MMIO regions reserved as well.
+
+The proof strategy walks through each step: calling the frame initialization lemma to get initialized and well-formedness, then booking physical and MMIO regions (which requires the invariant to hold), then establishing manager_ready via another lemma. The tricky part is handling the `?` operator — when an error occurs early, the function returns Err, and the ensures clause just requires true for that path, but the invariant still needs to hold at every return point. Since phys_view() is fixed and we've already established the necessary facts after frame initialization, the invariant holds even at early error returns. Completing the init function body...
+[RESULT ✓] view: 181.     #[verus_verify(external_body)]
+182.     #[verus_spec(result =>
+183.         requires
+184.             old(self).inv(),
+185.             count > 0,
+186.         ensures
+187.             final(self).inv(),
+188.             match result {
+189.                 Ok(base) => {
+190.                ...
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+Now I'll add the annotations to the three functions in mod.rs:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+
+[THINKING] Now I'm ready to apply the Verus spec annotations to the `book_physical_memory_regions` function in mod.rs.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+Now the proof lemmas:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs
+
+[THINKING] I should clean up that redundant empty `verus! {}` block to avoid duplication.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+Now let me run verification:
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr

@@ -56,6 +56,20 @@ pub use self::{
 // Standalone Functions
 //==================================================================================================
 
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        phys_view().initialized,
+        phys_view().inv(),
+    ensures
+        phys_view().inv(),
+        phys_view().initialized,
+        match result {
+            Ok(_) => phys_view().frames.all_reserved(
+                phys_regions_frame_set(&physical_memory_regions)),
+            Err(_) => true,
+        },
+)]
 fn book_physical_memory_regions(
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
 ) -> Result<(), Error> {
@@ -70,6 +84,22 @@ fn book_physical_memory_regions(
     Ok(())
 }
 
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        phys_view().initialized,
+        phys_view().inv(),
+    ensures
+        phys_view().inv(),
+        phys_view().initialized,
+        match result {
+            Ok(_) => forall|a: int|
+                #[trigger] mmio_regions_frame_set(mmio_regions).contains(a)
+                    && phys_view().frames.covers(a)
+                    ==> phys_view().frames.reserved(a),
+            Err(_) => true,
+        },
+)]
 fn book_mmio_regions(
     mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
 ) -> Result<(), Error> {
@@ -116,6 +146,24 @@ fn book_mmio_regions(
 ///
 /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
 ///
+#[verus_spec(result =>
+    requires
+        phys_view().inv(),
+    ensures
+        phys_view().inv(),
+        match result {
+            Ok(_) => {
+                &&& phys_view().live()
+                &&& phys_view().frames.all_reserved(
+                    phys_regions_frame_set(&physical_memory_regions))
+                &&& forall|a: int|
+                    #[trigger] mmio_regions_frame_set(mmio_regions).contains(a)
+                        && phys_view().frames.covers(a)
+                        ==> phys_view().frames.reserved(a)
+            },
+            Err(_) => true,
+        },
+)]
 pub fn init(
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
     mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
@@ -125,6 +173,9 @@ pub fn init(
     info!("initializing the frame allocator ...");
     // Safety: called exactly once during single-threaded boot.
     unsafe { frame::init(physical_memory_layout)? };
+    proof {
+        lemma_frame_initialized();
+    }
     book_physical_memory_regions(physical_memory_regions)?;
 
     book_mmio_regions(mmio_regions)?;
@@ -136,6 +187,9 @@ pub fn init(
     // Initialize physical memory manager singleton.
     info!("initializing the physical memory manager ...");
     PhysMemoryManager::init(upool)?;
+    proof {
+        lemma_manager_ready();
+    }
 
     Ok(())
 }

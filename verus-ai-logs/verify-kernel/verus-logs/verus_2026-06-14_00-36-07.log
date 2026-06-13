@@ -1,0 +1,73 @@
+Timestamp: 2026-06-14_00-36-07
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=14
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=5
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/mod.rs:177:32
+    |
+176 |     proof {
+    |     ----- while parsing this struct
+177 |         lemma_frame_initialized();
+    |         -----------------------^ expected one of `,`, `:`, or `}`
+    |         |
+    |         while parsing this struct field
+    |
+help: try naming a field
+    |
+177 |         lemma_frame_initialized: lemma_frame_initialized();
+    |         ++++++++++++++++++++++++
+
+error: expected `;`, found `book_physical_memory_regions`
+   --> src/kernel/src/mm/phys/mod.rs:178:6
+    |
+178 |     }
+    |      ^ help: add `;` here
+179 |     book_physical_memory_regions(physical_memory_regions)?;
+    |     ---------------------------- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/mod.rs:191:28
+    |
+190 |     proof {
+    |     ----- while parsing this struct
+191 |         lemma_manager_ready();
+    |         -------------------^ expected one of `,`, `:`, or `}`
+    |         |
+    |         while parsing this struct field
+    |
+help: try naming a field
+    |
+191 |         lemma_manager_ready: lemma_manager_ready();
+    |         ++++++++++++++++++++
+
+error: expected `;`, found `Ok`
+   --> src/kernel/src/mm/phys/mod.rs:192:6
+    |
+192 |     }
+    |      ^ help: add `;` here
+193 |
+194 |     Ok(())
+    |     -- unexpected token
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/phys/mod.rs:167:1
+    |
+167 | pub fn init(
+    | ^^^
+
+error: could not compile `kernel` (bin "kernel") due to 5 previous errors
