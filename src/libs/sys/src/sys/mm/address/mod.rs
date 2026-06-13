@@ -48,6 +48,10 @@ where
     ///
     fn from_raw_value(raw_addr: usize) -> Result<Self, Error>;
 
+    #[verus_spec(result =>
+        ensures
+            result as int == self@,
+    )]
     fn into_raw_value(self) -> usize;
     ///
     /// # Description

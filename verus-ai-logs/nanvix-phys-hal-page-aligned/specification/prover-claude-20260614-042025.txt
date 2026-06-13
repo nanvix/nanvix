@@ -1897,3 +1897,60 @@ Let me test a hypothesis: if I temporarily remove the `#[verus_spec]` from the s
 Actually, looking more carefully at the panic message about duplicate `(impl_path, method)` entries, I think the issue is that when PageAligned's impl is marked `#[verus_verify]`, all its methods become TraitMethodImpl entries. The `into_raw_value` method has a spec in the trait declaration, so the macro likely creates both a real implementation and a spec companion function, both with the same method name, causing the duplicate. This pattern wouldn't trigger in VirtualAddress since its impl isn't verified, which explains why sys doesn't panic. The combination of a spec'd trait method plus a verified impl seems to be the problem—possibly a genuine Verus bug, though it's odd that other verified traits in nanvix don't hit this.
 
 Let me reconsider whether the issue is specific to the generic `impl<T>` or the `external_derive` on the struct. I could also try moving the spec off the trait declaration and onto the impl method directly, but I need to check if that's even allowed. The simplest test is just to remove the `#[verus_spec]` from into_raw_value in the trait and see if the panic goes away.
+[RESULT ✓] bash: removed trait spec
+verification results:: 4 verified, 0 errors
+verification results:: 0 verified, 0 errors
+verification results:: 70 verified, 0 errors
+verification results:: 35 verified, 0 errors
+thread 'rustc' (1344602) panicked at vir/src/traits.rs:511:13:
+error: could not compile `kernel` (bin "...
+
+────────────────────────────────────────────────────────────
+Turn 123
+────────────────────────────────────────────────────────────
+Panic persists without the trait spec — it's caused by `#[verus_verify]` on the generic Address impl itself. Let me restore the trait spec and check how `frame.rs` handles its Address impl:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address; cp /tmp/mod.rs.bak mod.rs; echo "restored sys"; cd /home/ruiz
+
+[THINKING] The panic persists even without the trait declaration spec, which means it's triggered by the `#[verus_verify]` attribute on the generic trait implementation itself rather than the into_raw_value spec. The duplicate TraitMethodImpl seems inherent to verifying this generic trait impl, possibly due to interactions with the supertrait or multiple implementations. It did manage to verify 35 functions across crates before hitting the panic in the kernel.
+
+The duplicate appears during the kernel crate's trait processing. PageAligned implements Address through multiple paths — there's the generic `impl<T: Address> Address for PageAligned<T>`, plus inherent impls for specific types like `PageAligned<VirtualAddress>` and `PageAligned<PhysicalAddress>`, along with Deref and Ord implementations. I'm wondering if the issue stems from how Verus handles the generic Address trait impl, or if there's something about the supertrait processing that's creating the duplicate entry.
+
+Let me check whether FrameAddress already has a verus_verify'd Address impl in frame.rs that's working correctly — if it does, then the problem is specific to the generic PageAligned impl rather than a broader issue with Address trait verification.
+[RESULT ✓] bash: restored sys
+27:#[verus_verify(external_derive)]
+87:#[verus_verify]
+90:    // `external_body` until the address layer is verified.
+91:    #[verus_verify(external_body)]
+112:    // Dependency contract: the raw value is the abstract frame address. `external_body` until the
+114:    #[verus_verify(exter...
+
+────────────────────────────────────────────────────────────
+Turn 124
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 85. 
+86. // Dependency contract for the manager layer: raw-value conversions of a frame address.
+87. #[verus_verify]
+88. impl FrameAddress {
+89.     // Succeeds only for page-aligned inputs, so the resulting frame address satisfies `inv()`.
+90.     // `external_body` until the address layer is verif...
+
+────────────────────────────────────────────────────────────
+Turn 125
+────────────────────────────────────────────────────────────
+FrameAddress avoids the trait — it uses inherent methods. The panic likely comes from the `View` supertrait creating a duplicate `view` method impl. Let me get a backtrace to confirm which method duplicates:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned; grep -n "verus_verify" page.rs
+
+[THINKING] FrameAddress uses inherent methods rather than implementing the Address trait, with `from_raw_value` and `into_raw_value` defined directly on the impl block using external_body annotations. This approach lets frame.rs bypass trait-method verification entirely by relying on these inherent methods instead.
+
+For PageAligned, though, `into_raw_value` is a genuine trait method from the Address trait, so external_body isn't allowed unless it's in tcb-allowed.md. The real challenge is figuring out how to verify this trait method without triggering the Verus panic about duplicate TraitMethodImpl entries. The panic happens even without the trait declaration spec, which suggests that simply marking the generic trait impl with `#[verus_verify]` is somehow creating duplicate method entries in the function collection. I'm wondering if the issue stems from the supertrait relationship (`Address: View<V=int>`) or the genericity itself. So the immediate goal is to get this module to zero Verus errors and give `into_raw_value` the spec `result as int == self@`. The cleanest approach given the Verus panic might be to verify `into_raw_value` without marking the entire trait impl, since `#[verus_spec]` on a trait-impl method alone forces the whole impl to be verified. But I should actually look at the panic backtrace to see which method is being duplicated—that might reveal whether the supertrait is the real culprit or if something else is going on.
+[RESULT ✓] bash: 35:#[verus_verify(external_derive)]
+39:#[verus_verify]
+64:#[verus_verify]
+<shellId: 85 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 126
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus RUST_BACKTRACE=full
+# run verus directly to get
