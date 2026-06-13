@@ -82,3 +82,146 @@ Turn 3
 Turn 4
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::sys::mm::address::virt 2>&1 | grep -v "^    - " | tail -40
+[RESULT ✓] bash: error: Verus does not support this cast: `usize` to `*const u8`
+   --> src/libs/sys/src/sys/mm/address/virt.rs:268:9
+    |
+268 |         self.0 as *const u8
+    |         ^^^^^^^^^^^^^^^^^^^
+
+error: Verus does not support this cast: `usize` to `*mut u8`
+   --> src/libs/sys/src/sys/mm/address/virt.rs...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Progress — alignment errors gone, but now `as_ptr`/`as_mut_ptr` ptr casts are unsupported. Let me see the full error list:
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '17,90p' verus-ai-logs/verify-sys/verus-logs/verus_2026-06-14_06-50-02.log
+
+[THINKING] The alignment errors cleared up, but now I'm seeing different issues with pointer casting. Let me pull up the full error log to see what else is going on.
+[RESULT ✓] bash: --- Full output ---
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+error: Verus does not support this cast: `usize` to `*const u8`
+   --> src/libs/sys/src/sys/mm/address/virt.rs:268:9
+    |
+268 |         self.0 as *const u8
+    |         ^^^^^^^^^^^^^^^^^^^
+
+error: Verus does not su...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The whole-impl-verify hits a Verus ptr-cast limitation. But `phys.rs` has a `#[verus_verify] impl Address for PhysicalAddress` that verifies. Let me see how it handles `as_ptr`/`as_mut_ptr` and the alignment delegations:
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '262,295p' src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] The alignment errors disappeared because I was annotating the entire inherent impl block earlier, which caused issues with the trait impl's delegating methods. The trait impl's align_up, align_down, and is_aligned methods call self.align_up rather than directly invoking the mm:: versions, so I need to trace through how that delegation actually works. I'm realizing the issue: the inherent alignment methods are in a plain (non-verus) impl block, so they're external to Verus's verification scope. When the trait impl calls them—especially `is_aligned` which has a declared ensures clause—Verus would need a spec on those external functions to prove the contract, but it doesn't have one. Yet only the pointer cast errors were reported, which suggests Verus might be stopping at compilation-level errors before attempting proof obligations.
+
+The core problem is that annotating the entire `impl Address for VirtualAddress` block forces all methods through Verus verification, including `as_ptr` and `as_mut_ptr` which use unsupported pointer casts, and the alignment methods which call external `mm::` functions. This hits two hard blockers: Verus doesn't support those cast operations, and calling external functions from verified code requires explicit specifications.
+
+The reviewer wants `into_raw_value` verified with a spec proving the round-trip property, but the trait already declares this contract at the module level. The challenge is that Verus requires the entire impl block to be verified if any part is — there's no way to selectively verify just one method. Fixing the pointer casts isn't feasible since they're a known Verus limitation, and the external function calls would still need specifications.
+
+Let me check how the PhysicalAddress impl handles this — it's marked with `#[verus_verify]` and verified successfully, so maybe there's a pattern I'm missing for handling the pointer operations.
+[RESULT ✓] bash: fn into_raw_value(self) -> usize {
+        self.0.into_raw_value()
+    }
+
+    fn clone_address(&self) -> Self {
+        PhysicalAddress(self.0)
+    }
+
+    fn as_ptr(&self) -> *const u8 {
+        self.0.as_ptr()
+    }
+
+    fn as_mut_ptr(&self) -> *mut u8 {
+        self.0.as_mut_ptr()
+    }
+}
+
+impl co...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+`phys.rs` verifies because its `as_ptr` *delegates* to `VirtualAddress::as_ptr` (opaque/external to the kernel crate). In `virt.rs`, that's where the actual unsupported `usize as *const u8` cast lives. Annotating the whole impl forces Verus to translate that cast. Let me confirm whether Verus supports a usize→ptr cast at all and check the version:
+[TOOL] bash: cat /home/ruize/toolchain/verus/version.json 2>/dev/null; echo "=== search vstd for usize->ptr cast / with_exposed / fro
+
+[THINKING] I see that `PhysicalAddress::as_ptr` wraps a call to `VirtualAddress::as_ptr`, which performs the actual `usize` to pointer cast. Since `VirtualAddress::as_ptr` is defined externally in phys.rs, Verus treats it as an opaque function call rather than seeing the unsupported cast directly in the code.
+
+But in virt.rs, that's where the cast actually lives — the `impl Address for VirtualAddress` block contains the raw pointer cast that Verus can't handle. The trait declaration itself in mod.rs is fine since it has no body, only the implementation causes the problem.
+
+The reviewer wants me to keep changes limited to `into_raw_value`, but annotating the entire impl block forces Verus to process all methods including `as_ptr`. I'm wondering if there's a way to annotate just that one method instead of the whole impl.
+
+Actually, Verus requires all-or-nothing verification for trait impls — I can't selectively verify some methods and leave others unverified. I could mark individual methods with `#[verifier::external_body]` to skip them, but the task forbids that unless they're in the TCB list, and pointer casts aren't listed there.
+
+Let me reconsider what the reviewer is actually asking for. They're pointing out that the trait declaration carries an ensures clause, and the impl body is what's unverified. Maybe the issue isn't about verifying the whole impl, but about understanding what's already specified at the trait level.
+
+If I try to fix the pointer casts to make the impl verifiable, I'll likely hit cascading issues: the alignment methods call external inherent functions, which Verus won't allow from within a verified context. So even if I solve the cast problem, I'd need to either verify those alignment methods too or mark them external — both of which hit other constraints.
+
+The original design actually handles this cleanly by putting the contract on the trait declaration itself, which ensures all implementations satisfy it and callers can rely on it. But the reviewer wants the impl body verified, which creates a genuine tension: either I verify the whole impl (and hit multiple Verus limitations), or I keep it unverified (and the coverage metric stays incomplete). There's no middle ground — Verus enforces all-or-nothing verification for trait impl methods.
+
+The real blockers are the `usize` to pointer casts and external function calls that Verus doesn't support. I could try fixing just the pointer casts to see what other errors surface, which would give a complete picture of what's actually blocking verification. But that risks violating the constraint against rewriting exec code. The most honest path is to actually attempt a few concrete approaches and document the exact errors I hit, since the instructions ask me to show results rather than just explain why it's hard.
+[RESULT ✓] bash: {
+  "verus": {
+    "profile": "release",
+    "version": "0.2026.05.24.ecee80a",
+    "platform": {
+      "os": "linux",
+      "arch": "x86_64"
+    },
+    "toolchain": "1.95.0-x86_64-unknown-linux-gnu",
+    "commit": "ecee80a2139923d503338e6989f79fb690ec7847"
+  }
+}
+=== search vstd for usize->ptr cast ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "with_exposed_provenance\|from_exposed_addr\|fn .*-> \*const\|fn .*-> \*mut" /home/r
+[RESULT ✓] bash: 238:    pub open spec fn ptr(&self) -> *mut T {
+344:pub uninterp spec fn ptr_mut_from_data<T: core::marker::PointeeSized>(data: PtrData<T>) -> *mut T;
+350:pub open spec fn ptr_from_data<T: core::marker::PointeeSized>(data: PtrData<T>) -> *const T {
+363:pub uninterp spec fn view_reverse_for_eq<T: ?Si...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+`with_exposed_provenance` exists but using it would require **rewriting** the out-of-scope `as_ptr`/`as_mut_ptr` exec bodies (forbidden by verus-constraints). The `usize as *const u8` cast is a genuine Verus front-end limitation. Let me confirm the cascade: I'll temporarily neutralize the casts to enumerate *all* remaining blockers (investigation only, will revert):
+[TOOL] bash: cd /home/ruize/nanvix-phy; cp src/libs/sys/src/sys/mm/address/virt.rs /tmp/virt_backup.rs; sed -n '744,780p' /home/ruize
+
+[THINKING] I'm realizing that `with_exposed_provenance` is available as an exec function in vstd, but using it would require rewriting the exec code of `as_ptr`, which violates the constraint against modifying exec code for out-of-scope functions. So the `usize as *const u8` cast is genuinely unsupported in Verus exec code, and the only workaround would break the rules.
+
+The trait impl is blocked by this fundamental limitation. I'm checking if there's a way to give `into_raw_value` a spec without verifying the entire impl — but Verus enforces an all-or-nothing rule per trait impl, so that's not possible. External body methods are forbidden on current module functions, and `assume_specification` only applies to external code, not workspace-internal functions like `as_ptr`.
+
+The real solution is that the trait-level declaration in mod.rs already provides the `into_raw_value` ensures contract, which every caller and implementer must satisfy. The VirtualAddress implementation trivially satisfies it, but the all-or-nothing rule prevents machine-checking it in isolation.
+
+Let me reconsider whether the alignment methods' external calls are actually the blocker. The errors I saw were only the ptr casts — Verus may have stopped at the unsupported cast syntax before even reaching call resolution. If I could prevent `as_ptr` and `as_mut_ptr` from being translated, maybe the rest of the impl could verify. I'm also reconsidering the inherent-block split: the trait methods call the plain inherent methods, and Verus needs to handle those external calls.
+
+The real question is whether to keep the `#[verus_verify]` on the impl and hit the cast error, or revert it and record the limitation. The fixer instructions say ptr casts that are unsupported should be recorded in verus-unsupported.md, not worked around with exec rewrites. But the reviewer rejected justification, so I need to either find a genuine fix or declare NEEDS_GUIDANCE with the exact errors. Let me try keeping the impl verified with `#[verus_spec]` on `into_raw_value` and see if I can handle the pointer methods using vstd's provenance utilities instead of raw casts.
+
+Actually, that's still rewriting exec code, which is forbidden. And there's no compliant attribute like `#[verus_verify(external)]` that would help here. The trait already has the contract at the declaration level, so maybe that's sufficient. But before I give up and call NEEDS_GUIDANCE, I should test rigorously: if I temporarily remove the casts to see what other errors surface, I can give the reviewer a complete picture of all the downstream blockers, not just the cast issue.
+[RESULT ✓] bash: pub fn with_exposed_provenance<T: Sized>(
+    addr: usize,
+    Tracked(provenance): Tracked<IsExposed>,
+) -> (p: *mut T)
+    ensures
+        p == ptr_mut_from_data::<T>(
+            PtrData::<T> { addr: addr, provenance: provenance@, metadata: () },
+        ),
+    opens_invariants none
+    no_unwind...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Investigation only — temporarily mark the two ptr-cast methods `external_body` to expose any further blockers, then I'll revert:
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 - <<'EOF'
+import re
+p="src/libs/sys/src/sys/mm/address/virt.rs"
+s=open(p).read()
+s=s.
+
+[THINKING] The `with_exposed_provenance` approach won't work because it needs a `Tracked<IsExposed>` parameter, which would require modifying the `as_ptr` function signature and implementation—something that's off-limits here. So the cast can't be made Verus-translatable without rewriting the underlying exec code. I'm starting to map out the full chain of dependencies to understand what would need to change.
+
+Let me try a simpler investigation: I'll temporarily add `#[verifier::external_body]` to `as_ptr` and `as_mut_ptr` to skip their verification, then re-run to see if the alignment-call errors surface. Once I've identified the next layer of issues, I'll revert these changes.

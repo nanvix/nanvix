@@ -1,0 +1,2 @@
+    - sys/mm/address/virt.rs:268 as_ptr: external_body
+    - sys/mm/address/virt.rs:273 as_mut_ptr: external_body

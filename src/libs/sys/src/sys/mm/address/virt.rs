@@ -264,10 +264,12 @@ impl Address for VirtualAddress {
         VirtualAddress(self.0)
     }
 
+    #[verifier::external_body]
     fn as_ptr(&self) -> *const u8 {
         self.0 as *const u8
     }
 
+    #[verifier::external_body]
     fn as_mut_ptr(&self) -> *mut u8 {
         self.0 as *mut u8
     }

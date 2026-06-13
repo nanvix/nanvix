@@ -1,0 +1,47 @@
+Timestamp: 2026-06-14_06-52-20
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: sys::mm::address::virt
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=2
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=1
+
+--- Full output ---
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+error: cannot use function `sys::sys::mm::address::virt::VirtualAddress::align_down` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/sys/src/sys/mm/address/virt.rs:221:12
+    |
+221 |         Ok(self.align_down(align))
+    |            ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::sys::mm::address::virt::VirtualAddress::align_down] (_0: &crate::sys::mm::address::virt::VirtualAddress, _1: crate::sys::mm::alignment::Alignment) -> crate::sys::mm::address::virt::VirtualAddress;
+
+error: cannot use function `sys::sys::mm::address::virt::VirtualAddress::is_aligned` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/sys/src/sys/mm/address/virt.rs:239:12
+    |
+239 |         Ok(self.is_aligned(align))
+    |            ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::sys::mm::address::virt::VirtualAddress::is_aligned] (_0: &crate::sys::mm::address::virt::VirtualAddress, _1: crate::sys::mm::alignment::Alignment) -> bool;
+
+error: cannot use function `sys::sys::mm::address::virt::VirtualAddress::align_up` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/sys/src/sys/mm/address/virt.rs:202:9
+    |
+202 |         self.align_up(align)
+    |         ^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::sys::mm::address::virt::VirtualAddress::align_up] (_0: &crate::sys::mm::address::virt::VirtualAddress, _1: crate::sys::mm::alignment::Alignment) -> core::option::Option<sys::mm::address::virt::VirtualAddress>;
+
+error: could not compile `sys` (lib) due to 3 previous errors
