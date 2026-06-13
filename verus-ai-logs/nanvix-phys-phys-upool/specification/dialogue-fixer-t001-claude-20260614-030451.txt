@@ -113,3 +113,23 @@ Turn 5
 Turn 6
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 400 make verify-kernel MODULE=mm::phys::upool 2>&1 | tail -25
+[RESULT ✓] bash: 6 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::phys::upool:
+    ⚠️  external_body: 3
+    ⚠️  cfg-gated exec code: 1
+  Affected functions:
+    - upool.rs:221 Upool (struct): external_body
+    - upool.rs:246 new: external_body
+    - upool.rs:279 alloc: external_body...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+upool verifies (6 verified, 0 errors). Now re-verify the frame module and run the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== frame module ==="; timeout 400 make verify-kernel MODULE=mm::phys::frame 2>&1 | gre
+
+[THINKING] I need to verify that the frame module still compiles correctly after the Err arm changes, particularly checking that the frame::share external_body contract holds up—since external_body means the wrapper's body isn't verified against the ensures clause, I need to confirm the Inner::share ensures still imply the right properties. Let me re-verify the frame module and run the build.
