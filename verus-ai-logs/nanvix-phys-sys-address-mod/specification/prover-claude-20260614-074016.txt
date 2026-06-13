@@ -902,3 +902,188 @@ The flagged `cfg_gate` is pre-existing in `alignment.rs:151` (an unrelated modul
 [THINKING] The flagged `cfg_gate` in `alignment.rs:151` is a false positive—it's a pre-existing `verus!` block guarded by cfg, which is a normal pattern in the codebase. Since this is in the alignment module and outside my scope, I can safely ignore it.
 
 My own `mod.spec.rs` doesn't add to the cfg count since the `verus!` block isn't separately guarded—it's already wrapped by the include directive's cfg gate. The verification shows 0 errors, which is what matters for the task. Now I need to run the full `make verify` to check for any regressions, particularly around the kernel's assumption for `PhysicalAddress::from_raw_value`.
+[RESULT ✓] bash: Checking elf v0.16.17 (/home/ruize/nanvix-phy/src/libs/elf)
+verification results:: 0 verified, 0 errors
+    Checking bitmap v0.16.17 (/home/ruize/nanvix-phy/src/libs/bitmap)
+verification results:: 70 verified, 0 errors
+    Checking nanvix-slab v0.16.17 (/home/ruize/nanvix-phy/src/libs/slab)
+verifica...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+Full `make verify`: **0 errors**, no regressions (kernel's `assume_specification` coexists fine with the new trait contract). Let me confirm the sys crate result in that run and then check `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy; L=$(ls -t verus-ai-logs/verify-sys/verus-logs/*.log | head -1); echo "sys log: $L"; grep -n "
+
+[THINKING] The full kernel verification passed with 66 verified and 0 errors, so my changes didn't introduce any regressions. The existing cheating stats in the kernel (external_body, admit, cfg_gate) were already there from the in-progress verification work and aren't related to my changes in sys — the kernel still verifies cleanly.
+
+The key thing is that Verus allows the kernel's assume_specification for `PhysicalAddress::from_raw_value` to coexist with my new trait ensures without conflict. The assume_specification overrides for the concrete instance while the trait spec applies to generic callers. Now I need to verify that sys actually ran and passed in this full verification run, since the output was truncated to show just the tail crates.
+[RESULT ✓] bash: sys log: verus-ai-logs/verify-sys/verus-logs/verus_2026-06-14_07-48-41.log
+=== check verify output for sys crate ===
+<shellId: 45 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; tail -20 verus-ai-logs/verify-sys/verus-logs/verus_2026-06-14_07-48-41.log
+[RESULT ✓] bash: Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=1
+
+--- Full output ---
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::address::virt
+
+    Finished `dev` p...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+sys verified (modules `sys::mm::address` + `sys::mm::address::virt`), 0 errors. Now verify normal compilation with `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 make build 2>&1 | tail -25
+
+[THINKING] The sys verify completed successfully using cached results from the earlier full verification run, confirming zero errors across all modules. Now I'm moving on to run `make build` for the dual compilation step without verus.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 47 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "^build:\|^all:\|^.PHONY: build\|build-sys\|cargo build\|^run:" Makefile | head; echo
+[RESULT ✓] bash: 411:all: all-nanvix
+842:run: image
+916:# otherwise spawn one `cargo build -p <pkg>` per bundled binary, which adds significant
+=== try building sys crate normally ===
+   Compiling sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+error: unused import: `::vstd::prelude::*`
+  --> src/libs/sys/src/sys...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+Bare `cargo build` flags a duplicate vstd import. Let me check whether this is pre-existing (not caused by my edit).
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== current imports in mod.rs ==="; grep -n "vstd::prelude" src/libs/sys/src/sys/mm/add
+
+[THINKING] I'm noticing there's a duplicate import in mod.rs where vstd::prelude is imported twice — once on line 8 as `use vstd::prelude::*;` and again on line 30 as `use ::vstd::prelude::*;`. The normal build flags the second one as unused since vstd isn't available without verus, and I'm trying to figure out if this was already there or something I introduced, though I haven't actually modified the imports myself. The duplicate import at line 30 is genuinely unused in the normal build path since line 8 already provides `View` through vstd::prelude, which is needed for the trait bound. This redundancy was pre-existing in the original code, so the cargo build failure isn't caused by my changes — it's likely a pre-existing issue with how bare `cargo build` handles the configuration, since the actual project build uses `make all` with specific feature flags and targets.
+[RESULT ✓] bash: === current imports in mod.rs ===
+8:use vstd::prelude::*;
+30:use ::vstd::prelude::*;
+=== original (before my edits) ===
+a85df8c38 [verus] verify PASS: sys::sys::mm::address (2 verified, 0 errors)
+192f966ee [verus-ai] caller-analysis START: sys-address-mod
+40a4c4b60 [verus] verify PASS (cheating dete...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+The duplicate import (lines 8 & 30) is **pre-existing** — identical in the pre-spec commit. My additive Verus annotations are erased in normal builds. Let me confirm no *real* compile errors from my changes by building with the pre-existing lint capped.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/sys; RUSTFLAGS="--cap-lints=allow" timeout 300 cargo build 2>&1 | tail -15
+
+[THINKING] The duplicate import is actually pre-existing from before my changes, so the bare `cargo build -D warnings` failure isn't something I introduced. Though I'm wondering whether this is actually a blocker for the project's real build process — `make all` might use different targets or not apply the same strict warning settings.
+
+Since my edits are purely additive Verus annotations that get erased during normal compilation, and the import duplication is identical before and after my changes, the dual compilation behavior should be unchanged. I should verify that the sys crate builds correctly under the kernel's actual configuration to confirm there's no regression.
+[RESULT ✓] bash: Compiling mmio-tag v0.16.17 (/home/ruize/nanvix-phy/src/libs/mmio-tag)
+   Compiling cfg-if v1.0.4
+   Compiling static_assert v0.16.17 (/home/ruize/nanvix-phy/src/libs/static_assert)
+   Compiling verus_builtin v0.0.0-2026-05-17-0151
+   Compiling config v0.16.17 (/home/ruize/nanvix-phy/src/libs/config...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+Sys compiles cleanly (no real errors from my changes). Let me confirm the `-D warnings` source and that the project's real build path is unaffected.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== .cargo/config ==="; cat .cargo/config.toml 2>/dev/null .cargo/config 2>/dev/null | 
+
+[THINKING] The sys crate compiles without issues once lints are capped, so my changes aren't introducing real errors—just exposing a pre-existing duplicate-import lint that would fail under `-D warnings`. I need to check what the project's actual build process is and whether it enforces strict warnings, since that duplicate import would block any `-D warnings` build. I should trace where `-D warnings` is configured in the project's build setup to understand why the real build path doesn't hit this duplicate import issue.
+[RESULT ✓] bash: === .cargo/config ===
+=== KERNEL_RUST_FLAGS in Makefile ===
+215:export GUEST_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
+218:export KERNEL_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
+225:export HOST_RUST_FLAGS := $(if $(HOST_CPU),-C target-cpu=$(HOST_CPU))
+252...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "warnings\|\[lints\]\|deny" Cargo.toml src/libs/sys/Cargo.toml 2>/dev/null | head; e
+
+[THINKING] I'm realizing the KERNEL_RUST_FLAGS don't actually include `-D warnings`, so the unused import wouldn't cause the real build to fail—the `-D warnings` I saw must have come from somewhere else like a workspace lint configuration or an environment variable.
+
+Since `make verify` passed with no errors and my changes don't introduce any real compilation issues, the pre-existing duplicate import is out of scope. Let me quickly check the workspace lints to confirm where that `-D warnings` is coming from, then validate the build through the project's actual mechanism to be certain.
+[RESULT ✓] bash: Cargo.toml:273:warnings = "deny"
+Cargo.toml:274:unexpected_cfgs = { level = "deny", check-cfg = [
+Cargo.toml:281:all = "deny"
+Cargo.toml:283:# restriction = "deny"
+Cargo.toml:285:# pedantic = "deny"
+Cargo.toml:287:# nursery = "deny"
+Cargo.toml:289:# cargo = "deny"
+src/libs/sys/Cargo.toml:35:[lints]
+...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+The workspace denies warnings, and the duplicate `vstd::prelude` import (line 30) is pre-existing. Let me definitively prove I didn't introduce this by building the pre-spec version of the file.
+[TOOL] bash: cd /home/ruize/nanvix-phy; cp src/libs/sys/src/sys/mm/address/mod.rs /tmp/mymod.rs; git show 192f966ee:src/libs/sys/src/
+
+[THINKING] The workspace has warnings set to deny across the board, which means the duplicate import would actually fail the build in production too. But the project was supposedly working before my changes, so there's something else going on—it seems the real build uses a different compilation mode that might be stripping out or handling this differently. The duplicate import is the second half of line 30, which completes the `use ::vstd::prelude::*;` statement. This is a pre-existing redundancy with line 8's `use vstd::prelude::*;` — likely from the verus dual-compilation tooling adding line 8 while the original import remained at line 30. Since this predates my changes, I should verify the build status hasn't regressed from my edits while noting this pre-existing issue.
+[RESULT ✓] bash: === build pre-spec version (host, default flags) ===
+error: unused import: `::vstd::prelude::*`
+error: could not compile `sys` (lib) due to 1 previous error
+=== restore my version ===
+<shellId: 53 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+Confirmed pre-existing (identical failure on the pre-spec version). Notably, the sibling `virt.rs` has only **one** `vstd::prelude` import (line 8 style) and builds fine, while `mod.rs` carries a redundant second one at line 30 — a stray duplicate. Since the task requires dual compilation to work and this is in my edited file, removing the compiler-flagged redundant import is the surgical fix. Let me view the exact context.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+
+[THINKING] The pre-existing duplicate import error in mod.rs was already present before my changes, so my version is correct. The bare `cargo build` was failing due to this pre-existing issue, not anything I introduced, while the actual project build presumably handles the sys crate differently. Now I need to address what the task is actually asking for.
+
+Since the task explicitly requires verifying dual compilation works, and this duplicate import is a real blocker in the same file I'm editing, I'm considering whether to remove it. The compiler flags line 30 (`use ::vstd::prelude::*;`) as unused while line 8 (`use vstd::prelude::*;`) is needed for the `View` trait bound and the verus_spec macros. Removing the duplicate is a safe fix that the compiler suggests, but I need to verify it won't break the verus_keep_ghost build path before proceeding. I've verified that my changes don't introduce any new failures—the duplicate import issue predates my work and appears identically before and after my modifications. Since the task specifies `make build` (which is a no-op that succeeds) and both `make verify-sys` and `make verify` pass with zero errors, I'm confident the dual compilation works as required. I'll leave the pre-existing duplicate import untouched to avoid unintended side effects on the verus build, especially since it's outside the scope of my three target functions and fixing unrelated pre-existing issues goes against the stated guidelines. I should remove the duplicate `use ::vstd::prelude::*;` at line 30 since line 8 already provides the same import following the convention used in virt.rs and other modules, then verify both the normal and verus builds pass.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+I'll remove the redundant duplicate import (compiler-flagged, matches sibling `virt.rs`'s working pattern, keeps the conventional line-8 import that Verus needs). Then re-verify both builds.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+
+[THINKING] I need to figure out which import statement to keep—line 8 uses the verus convention while line 30 is the original project import, and the compiler is flagging line 30 as unused since line 8 shadows it. The real question is whether line 8 was in the original source or added by the tooling, which would determine which one to remove.
+
+Removing line 30 aligns with the verus convention and matches the working pattern in virt.rs, plus it would let `cargo build` pass cleanly. But I'm hesitant because this is pre-existing code and the validation command already passes—modifying it might be out of scope or seen as fixing unrelated issues. The grading criteria focus on the three functions, zero verus errors, and no regressions, and the dual-compilation requirement is just that `make build` still works, which it does as a no-op.
+
+That said, the explicit task asks me to verify dual compilation works, and a plain `cargo build` currently fails. Removing this redundant import is compiler-recommended, trivial, safe, in my own file, and directly enables proper dual-compilation verification. I'll make the fix and re-verify to catch any verus regression.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/sys; timeout 200 cargo build 2>&1 | grep -E "unused import|error\[|error:|warning:|Fi
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.43s
+<shellId: 54 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+Normal build now passes. Re-verify Verus still passes (full sys + module).
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-sys MODULE=sys::sys::mm::address 2>&1 | grep -A6 "=== Summary"
+
+[THINKING] The build is now clean with no warnings or errors, so I should verify that the verus tests still pass after removing that import.
