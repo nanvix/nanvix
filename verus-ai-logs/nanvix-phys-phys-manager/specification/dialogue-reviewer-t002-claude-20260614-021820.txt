@@ -149,3 +149,175 @@ I'll verify the fixer's turn 1 changes. First, read what they claim, then check 
 7. **Fix A — `init`: remove the tautological Err arm**
 8. - `src/kernel/src/mm/phys/manager.rs:101` — changed `Err(_) => true` to
 9.   `Err(_) => crat...
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=24 admit=11 trusted=0 no_decreases=0 cfg_gate=10
+  Detail:...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Verification Exit 0. Now let me read the actual modified files to confirm each fix landed as claimed.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] view: 95.     // untouched. Listed in `verus-ai-logs/tcb-allowed.md`.
+96.     #[verus_verify(external_body)]
+97.     #[verus_spec(result =>
+98.         ensures
+99.             match result {
+100.                 Ok(_) => crate::mm::phys::phys_view().manager_ready,
+101.                 Err(_) => crate::mm:...
+[RESULT ✓] view: 170.     /// error is returned and any frames allocated by this call are dropped by truncating `frames`
+171.     /// back to empty.
+172.     ///
+173.     #[verus_spec(result =>
+174.         requires
+175.             self.inv(),
+176.             old(frames)@.len() == 0,
+177.         ensures
+178.     ...
+[RESULT ✓] view: 265.     /// Upon success, a [`UserFrame`] is returned. Upon failure, an error is returned
+266.     /// instead.
+267.     ///
+268.     #[verus_spec(result =>
+269.         requires
+270.             self.inv(),
+271.         ensures
+272.             final(self).inv(),
+273.             match result {
+27...
+[RESULT ✓] view: 345.     /// # Return Values
+346.     ///
+347.     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
+348.     ///
+349.     #[verus_spec(result =>
+350.         requires
+351.             self.inv(),
+352.         ensures
+353.             final(self).inv(),
+354.  ...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Fixes A, C, D landed in code. But Fix D needs scrutiny — the fixer recorded OBS-3 admitting the Err-arm `free_count()==0` is an "open contradiction." Let me examine Fix B, the proof lemmas, bugs.md, and critically whether `KernelFrame::new` can actually fail (which would make Fix D's spec false).
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] Fixes A, C, and D are applied. Now I need to examine Fix B around the `alloc_many_kernel_frames` function, verify the spec helper and proof lemmas, and look into the bugs documented in OBS-2 and OBS-3. I'm also taking a closer look at Fix D—there's a potential contradiction in the `KernelFrame::new` error path where it returns an error after a successful frame allocation, which seems to conflict with what the spec claims about the free count.
+
+The core issue is that when frame::alloc succeeds, we know at least one frame was available before the call, so the precondition `old(self)@.free_count() == 0` should be false on that error path. The lemma `lemma_kernel_alloc_err_empty` is admitted to make the spec pass, but admitting a false lemma to verify an incorrect spec is exactly the kind of shortcut the checklist warns against. The design document itself committed to this behavior in section 4.1, but there's a genuine code path where it doesn't hold. I need to determine whether `KernelFrame::new` can actually fail in practice and whether the spec needs to be corrected rather than just admitted. So the real issue is that KernelFrame::new has no guarantee of success according to its spec, which means the wrap-failure path is actually reachable. If that path executes, the precondition `old(self)@.free_count()==0` is false—the frame was just allocated, so free_count must be at least 1. This means Fix D introduced a provably false spec backed by an admitted lemma, which is unsound and will fail during the proving phase. The fixer recorded the contradiction but left the false spec in place rather than actually fixing it.
+
+The honest resolution would be to either drop the `free_count()==0` clause entirely (reverting to the original weakened state) or express it correctly as conditional on whether wrapping succeeded. But this raises a deeper question: was the original turn-1 demand to restore `free_count()==0` even justified if the design didn't account for KernelFrame::new potentially failing? I need to check whether KernelFrame::new actually returns Err in practice.
+[RESULT ✓] view: 405.     /// # Parameters
+406.     ///
+407.     /// - `count`: Number of frames to allocate.
+408.     /// - `frames`: Mutable reference to a pre-allocated vector into which to store
+409.     ///   those frames' addresses.
+410.     ///
+411.     /// # Return Values
+412.     ///
+413.     /// Upon succe...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::mm::phys::phys_view;
+4. 
+5. //==================================================================================================
+6. // Global-token attachment (deferred to the proving phase)
+7. //==========================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+I need to confirm `KernelFrame::new` is genuinely fallible — this determines whether Fix D's `free_count()==0` Err clause is false. Let me check it and bugs.md.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== KernelFrame::new signature & body ==="; grep -n "fn new" src/kernel/src/mm/phys/k
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== bugs.md ==="; cat verus-ai-logs/nanvix-phys-phys-manager/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+
+[THINKING] I'm seeing a critical issue with the `lemma_kernel_alloc_err_empty` specification — it guarantees `free_count() == 0` in the postcondition but has no precondition constraining when this applies. The problem is it's being called in two different contexts: when `frame::alloc()` itself fails (where the guarantee makes sense), and when `KernelFrame::new` fails after a successful allocation (where the precondition's free_count was already >= 1, making the postcondition contradictory).
+
+The real danger is that this lemma as stated is unconditionally false — it claims ANY well-formed FrameAllocView has zero free frames, which would let you derive `false` from any counterexample and poison the entire module's soundness. This isn't a deferred proof; it's a logically impossible statement that can never be discharged. The fix acknowledged this as OBS-3 but left the false lemma in place, which violates the rule that incorrect specs must be replaced with equally strong correct ones, not weakened or left false.
+
+The real solution requires rethinking what the Err arm actually needs to guarantee — it can't unconditionally claim `free_count() == 0` because the failure path after a successful alloc breaks that invariant. So the fix is to remove the `free_count()==0` clause entirely from the Err arm and delete the `lemma_kernel_alloc_err_empty` lemma along with its call sites, leaving just `final(self)@ == old(self)@` as the honest spec. The core issue is that the design's claim about `free_count()==0` on error is simply false given that KernelFrame::new can fail on the wrap path, making the spec unprovable regardless of how we precondition the lemma — the spec itself has to change.
+[RESULT ✓] bash: === KernelFrame::new signature & body ===
+84:    pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
+    pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
+        // Ensure the frame is identity-mapped in the kernel address space so that
+        // Deref/DerefMut can safely a...
+[RESULT ✓] bash: === bugs.md ===
+# Bugs — Nanvix phys manager
+
+## Observations (record-only; validated in the proving phase)
+
+### OBS-1: `alloc_many_kernel_frames` lacks the `count == 0` fast-path guard
+
+`alloc_many_user_frames` early-returns `Ok(())` when `count == 0`, but
+`alloc_many_kernel_frames` has no such gua...
+[RESULT ✓] view: 108. //==================================================================================================
+109. // Handle-set helpers
+110. //==================================================================================================
+111. 
+112. /// The set of physical frame addresses owned by a...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Confirmed the critical problem. `KernelFrame::new` (kframe.rs:84) calls `identity_map_page` via `?` — it is **genuinely fallible** *after* `frame::alloc` already succeeded. So Fix D's Err-arm clause `old(self)@.free_count() == 0` is **false** on the wrap-failure path, and `lemma_kernel_alloc_err_empty` (`requires pre.wf() ensures pre.free_count()==0`) is an **unconditionally false** admitted proof fn — a soundness landmine. Fixes A/B/C are genuinely correct. Let me write the turn-2 review.
+[TOOL] report_intent: Writing turn 2 review
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/specification/dialogue/turn_002_driver.md
+
+[THINKING] So `KernelFrame::new` is actually fallible since it calls `identity_map_page` which returns a `Result` that gets propagated. This means after `frame::alloc` succeeds, the `KernelFrame::new` call can still fail and return an error. When that happens, the frame gets freed back to its original state, but the error path handling seems incomplete.
+
+The real issue is that the lemma claiming `free_count() == 0` on error is unconditionally false — it asserts something that can't hold for any well-formed view with available frames. Using an admitted false lemma to make a false spec verify is exactly the kind of soundness violation that's not acceptable. The spec needs to be corrected, not worked around with false proofs.
+
+The three options are: make `KernelFrame::new` infallible (out of scope since it genuinely can fail), reclassify the failure as a panic (changes behavior), or weaken the spec to a sound disjunction that doesn't claim `free_count() == 0` unconditionally. Option 3 is the right path forward.
+
+At the FrameAllocView abstraction level, the wrap-failure isn't observable — there's no field distinguishing it — so the strongest sound postcondition for the Err arm is just that the view state remains unchanged. Dropping the false `free_count() == 0` clause isn't a weakening violation because the clause is false to begin with; the checklist explicitly requires replacing incorrect specs with the strongest correct ones. This is a straightforward contract correction that doesn't require rolling back the view design itself, since the View struct, invariants, and transition functions don't need to change.
+
+My action is to remove the over-strong ensures clause from the Err arm of `alloc_kernel_frame`, delete the false lemma and its call sites, and update the observation to reflect that the liveness property isn't expressible at this abstraction because handle-wrapping failures are invisible to FrameAllocView. The caller will handle the propagated error appropriately, so we can't promise more than what's actually true at the spec level.
+
+The key issue is that `lemma_kernel_alloc_err_empty` is an admitted lemma with a false statement — anyone could invoke it to derive that a well-formed view has zero free frames, which is categorically worse than an admitted-but-plausible lemma. This is the central failure for turn 2.
+
+Now I'm checking the other fixes: Fix A's Err arm returning `manager_ready` is sound because init only returns Err when the manager was already initialized, which means the abstract flag is set. Since init is external_body, the ensures is trusted as part of the TCB and represents a meaningful property, not a tautology.
+
+Fix B strengthens the contiguity and no-leak ensures with kernel_frames_contiguous, length, and allocation tracking on the Ok path, while the Err path ensures frames are cleared or untouched — Verus verified this. Fix C adds distinctness via the user address set length matching the count. All three are genuinely fixed.
+
+For Fix D, I'm considering whether the disjunction of exhaustion or wrapping-failure could be expressed more strongly, but wrapping-failure isn't modeled in the view and error codes aren't tracked, so dropping the false ensures is the only option. The spec ensures must hold on every Err path, and since wrapping-failure can return Err, the ensures would be false there — the only real escape is preventing wrapping-failure from returning Err, which is outside the scope of the spec phase.
+
+I'm not creating a STOP marker since Fix D fails. Let me verify the admit count: manager.proof.rs went from 8 to 9 admits (the new false lemma), and the crate-wide count went from 10 to 11. Once I remove the false admit, we're back to the original counts. Now I'll write the review document.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/specification/dialogue/turn_002_driver.md with 7931 characters
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Turn 2 review complete. Wrote `turn_002_driver.md`. **No STOP file** — Fix D is unsound and remains open.
+
+**Verified FIXED (3 of 4):**
+- **Fix A** — `init` Err arm now `manager_ready` (sound: Err only on double-init). ✓
+- **Fix B** — `alloc_many_kernel_frames` restored contiguity (`kernel_frames_contiguous`) + Err no-leak (`frames@.len()==0`); lemma strengthened. ✓
+- **Fix C** — `alloc_many_user_frames` restored distinctness (`user_addr_set.len()==count`); lemma strengthened; OBS-2 recorded. ✓
+
+**FAIL — Fix D (unsound):** The fixer "satisfied" my turn-1 request by adding a **false** ensures backed by a **false** admitted lemma:
+- I confirmed `KernelFrame::new` (kframe.rs:84) propagates `identity_map_page(...)?` — it's fallible **after** `frame::alloc` already succeeded. On that path `old(self)@.free_count() >= 1`, so the Err-arm clause `free_count() == 0` is **false**.
+- `lemma_kernel_alloc_err_empty` (`requires wf ensures free_count()==0`) is **unconditionally false** — a `pub proof fn` + `admit()` that can derive `false` from any wf view. A soundness landmine, not deferred-but-true work.
+- The fixer recorded this as OBS-3 but left the false spec/lemma in place to pass via `admit()` — passing by cheating, not a fix.
+
+**Fix request D2:** drop the `free_count()==0` clause (Err arm = `final(self)@ == old(self)@`, the strongest *sound* statement since wrap-failure is invisible to `FrameAllocView`), delete the false lemma + its two call sites, update OBS-3 as resolved. Verify via `make verify-kernel` Exit 0 and three greps returning no matches. Not a ROLLBACK — the View/inv/transitions are fine; only one over-strong contract clause (inherited from view-design §4.1) needs correcting.
+
+
+=== Session End ===
+Session: c21d35ef-9de3-4bc7-8ac8-9a5d51118acd
+Duration: 177.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/specification/dialogue-reviewer-t002-claude-20260614-021820.jsonl
