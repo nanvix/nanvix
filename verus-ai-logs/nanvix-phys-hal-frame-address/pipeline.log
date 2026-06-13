@@ -32,3 +32,10 @@ Module: hal-frame-address
 [2026-06-14 07:03:47] [PROVER] Running view-design...
 [2026-06-14 07:03:47] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-14 07:05:43]   ↳ prover done in 1m55s (exit=0)
+[2026-06-14 07:05:43] [PHASE] view-design: no-review (1m55s)
+[2026-06-14 07:05:43] ✅ view-design: PASS (0/0)
+
+============================================================
+PHASE: specification
+Module: hal-frame-address
+============================================================
