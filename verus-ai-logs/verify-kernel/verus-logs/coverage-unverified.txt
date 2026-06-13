@@ -1,4 +1,4 @@
-# Unverified exec functions: 988/1023
+# Unverified exec functions: 986/1023
   do_debug
   debug
   do_evctrl
@@ -540,11 +540,9 @@
   is_covered
   book
   alloc_range
-  base
   clear
   deref
   deref_mut
-  drop
   get_mut
   test
   new
