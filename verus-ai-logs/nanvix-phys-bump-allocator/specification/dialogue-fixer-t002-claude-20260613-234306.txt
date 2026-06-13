@@ -445,3 +445,90 @@ Turn 31
 Turn 32
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A6 -iE "does not yet support|panic|
+[RESULT ✓] bash: error: `bump_allocator::BssStorage::STORAGE_SIZE` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/libs/bump_allocator/src/lib.rs:288:60
+    |
+288 |                     &&& a + (N as int) <= base_of::<S>() + S::STORAGE_SIZE...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Two issues: `S::STORAGE_SIZE` (associated const) isn't spec-accessible, and the `alloc` method needs its struct declared. Declaring the struct needs the trait declared, which panics. Let me isolate the panic trigger — test whether it's the trait declaration alone or its interaction with the `as_mut_ptr` `#[verus_spec]`:
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat > /tmp/vtest.rs <<'EOF'
+use ::vstd::prelude::*;
+verus!{
+pub uninterp spec fn base_of<S:
+
+[THINKING] I'm hitting a circular dependency issue: the `alloc` method needs to be marked for Verus verification, but that requires the struct to be declared within the Verus macro, which in turn requires declaring the trait. So I need to go back and properly declare both the struct and trait to Verus.
+
+The panic happens during trait impl processing, and I'm wondering if it's triggered by having `#[verus_spec]` on the trait method declaration combined with `#[verus_verify]` on the trait itself. Let me test whether removing the spec annotation from the method while keeping the trait declaration helps isolate whether the panic comes from the trait alone or from the combination. I need to isolate whether the panic comes from combining `#[verus_verify]` on the trait with method specs, so I'll test by adding the trait attribute while removing the spec from `as_mut_ptr` to see if that's the trigger. Beyond that, there's the deeper issue that `S::STORAGE_SIZE` isn't accessible in specs without spec accessors or assume_specification linking, which complicates the in-bounds guarantee the reviewer wants. I should step back and figure out the cleanest design that satisfies the core requirements: non-trivial requires/ensures on `alloc`/`alloc_as`, Ok arm carrying alignment and in-bounds facts, using the raw-array external_body pattern, with coverage ≥ 3/6.
+[RESULT ✓] bash: created
+2
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp && timeout 120 /home/ruize/toolchain/verus/verus --crate-type lib vtest.rs 2>&1 | grep -iE "panic|error|verified
+
+[THINKING] Rather than trying to run a standalone verification, I'll test directly in the actual file since that's quicker. My hypothesis is to add the `#[verus_verify]` attribute to the trait and struct while removing `#[verus_spec]` from `as_mut_ptr`, using a minimal allocation spec without `S::STORAGE_SIZE`. But I realize the associated constant issue—where `S::STORAGE_SIZE` isn't supported—is a separate blocker that also prevents the in-bounds clause from working, so I need to tackle that as well.
+
+I can work around this by introducing uninterpreted spec functions for the backend constants, similar to how `base_of::<S>()` already works. I'll add `storage_size_of::<S>() -> int` as an abstract function that doesn't need to numerically equal `S::STORAGE_SIZE`—it just represents an abstract bound, making the in-bounds check `a + N <= base_of::<S>() + storage_size_of::<S>()` meaningful without requiring the associated constant. The real blocker is that the struct declaration itself needs the trait declared first, which causes a panic. Let me isolate this by running verus on a minimal test file to see how to invoke it properly.
+[RESULT ✓] bash: verification results:: 0 verified, 0 errors
+exit: 0
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Minimal repro passes — no panic. The trigger is something else in the crate. Let me grow the repro to match the real structure (Default impl, inherent methods):
+[TOOL] bash: cd /tmp && cat > vtest2.rs <<'EOF'
+use ::vstd::prelude::*;
+verus!{
+pub uninterp spec fn base_of<S: ?Sized>() -> int;
+pub
+
+[THINKING] The minimal repro doesn't trigger the panic, so the issue isn't with the trait, the `as_mut_ptr` spec function, or the struct verification in isolation. Something else in the real crate is causing it — maybe the `Default` implementation, the `new` method, multiple impl blocks, the `Display` impl for `BumpAllocError`, or the test module. I need to expand the repro to include more of what the actual crate has, starting with the impl block that contains `new`, `alloc`, and `alloc_as`.
+
+The "duplicate trait impl" panic suggests the `Default` impl might be getting processed twice, or there's a conflict with another trait implementation. Let me incrementally add the `Default` impl and the inherent impl methods to see what triggers it.
+[RESULT ✓] bash: verification results:: 1 verified, 0 errors
+exit done
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+The repro **works** (1 verified) — the full pattern is fine. The earlier panic was likely spurious incremental-cache corruption. The `self.view()` approach is actually superior because `BumpView.storage_size` is a plain `nat` field (no associated-const problem). Let me restore the `view()` approach and clear the incremental cache:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] The minimal reproduction works fine with all the key components in place, so the panic must be triggered by something specific to the actual crate. I'm comparing what's different — the real crate uses an associated constant in the spec and has additional implementations like Display for BumpAllocError, plus some alignment logic that might be the culprit.
+
+The panic about duplicate trait implementations is most likely from the Display impl getting registered twice when BumpAllocError is marked with `#[verus_verify]`, or possibly from stale incremental compilation cache. Let me clear the cache and retry with the proper fixes in place — using an uninterpreted function for storage size instead of the associated constant, and ensuring all the trait, struct, and enum declarations are properly marked.
+
+Actually, the view() accessor approach is cleaner than using associated constants because BumpView's storage_size field is just a plain nat that's directly readable in specs, which avoids the associated-const problem entirely. That's why the reviewer wanted it. So I'll restore the view() method, re-add the `#[verus_verify]` annotations to the struct and trait, and rebuild after clearing incremental cache to rule out the spurious panic.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Re-add the `view()` accessor and rewrite `alloc` ensures over `self.view()`:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Now clear incremental cache and verify:
+[TOOL] bash: cd /home/ruize/nanvix-phy && rm -rf target/x86-kernel/debug/incremental 2>/dev/null; timeout 300 make verify-bump-alloca

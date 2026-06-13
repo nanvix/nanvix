@@ -188,6 +188,7 @@ impl fmt::Display for BumpAllocError {
 /// - the backing region is exclusively managed by this allocator API, so creating `&'static mut`
 ///   references from slots cannot alias with other mutable references.
 ///
+#[verus_verify]
 pub unsafe trait BssStorage {
     /// Number of fixed-size units that can be allocated.
     const NUM_UNITS: usize;
@@ -214,6 +215,7 @@ pub unsafe trait BssStorage {
 /// - `A`: Unit alignment in bytes.
 /// - `S`: Backing storage provider.
 ///
+#[verus_verify]
 pub struct FixedSizeBumpAllocator<const N: usize, const A: usize, S: BssStorage> {
     /// Atomic bump index for the next available slot.
     next_slot: AtomicUsize,
@@ -266,26 +268,22 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     // raw-memory operation Verus cannot verify without a `PointsTo` permission for
     // the externally-owned `BssStorage` region. Mirrors the `src/libs/raw-array`
     // pattern. Registered in `verus-ai-logs/tcb-allowed.md`.
-    //
-    // The guarantees are stated over the type-level pool constants — `A`
-    // (unit_align), `N` (unit_size), `base_of::<S>()` (the backend base, pinned by
-    // `as_mut_ptr`), and `S::STORAGE_SIZE` — rather than `self.view()`: attaching a
-    // `view()` accessor to the allocator triggers a Verus front-end panic on the
-    // `BssStorage` trait declaration (see turn_002_fixer.md). `BumpView::inv()` and
-    // the cross-call transition remain captured by the proof lemmas.
     #[verus_verify(external_body)]
     #[verus_spec(result =>
+        requires
+            self.view().inv(),
         ensures
             match result {
                 Ok(slot) => {
+                    let v = self.view();
                     let a = slot_ref_addr(slot);
                     // Alignment and in-bounds of the returned slot's address. Cross-call
                     // uniqueness and the `allocated + 1` transition need a ghost token
                     // over the atomic cursor and are deferred to the proving phase
                     // (see `lemma_geometry` / `lemma_alloc_transition`).
-                    &&& a % (A as int) == 0
-                    &&& base_of::<S>() <= a
-                    &&& a + (N as int) <= base_of::<S>() + S::STORAGE_SIZE as int
+                    &&& a % (v.unit_align as int) == 0
+                    &&& v.base <= a
+                    &&& a + (N as int) <= v.base + v.storage_size as int
                 },
                 Err(_) => true,
             },

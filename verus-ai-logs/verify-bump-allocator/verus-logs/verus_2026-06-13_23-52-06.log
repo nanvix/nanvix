@@ -1,0 +1,27 @@
+Timestamp: 2026-06-13_23-52-06
+Mode: cargo
+Crate: bump-allocator
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=1
+  admit=3
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+
+thread 'rustc' (1146887) panicked at vir/src/context.rs:337:13:
+assertion failed: !trait_impl_map.contains_key(&trait_impl.x.impl_path)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: could not compile `bump-allocator` (lib)
+
+Caused by:
+  process didn't exit successfully: `/home/ruize/toolchain/verus/verus /home/ruize/.cargo/bin/rustc --crate-name bump_allocator --edition=2021 src/libs/bump_allocator/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata -C opt-level=3 -C embed-bitcode=no -C codegen-units=1 -C debuginfo=2 --deny=warnings --deny=unexpected_cfgs '--deny=clippy::all' --check-cfg 'cfg(verus_keep_ghost)' --check-cfg 'cfg(verus_keep_ghost_body)' --check-cfg 'cfg(target_os, values("nanvix"))' -C debug-assertions=on --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("default", "std"))' -C metadata=1049ab6acac93875 -C extra-filename=-e575bee21eabf116 --out-dir /home/ruize/nanvix-phy/target/x86-kernel/debug/deps --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json -Zunstable-options -C incremental=/home/ruize/nanvix-phy/target/x86-kernel/debug/incremental -L dependency=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps -L dependency=/home/ruize/nanvix-phy/target/debug/deps --extern 'noprelude,nounused:alloc=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/liballoc-7a9d91d7c8f78543.rlib' --extern 'noprelude,nounused:compiler_builtins=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libcompiler_builtins-87ec5c91af693f29.rlib' --extern 'noprelude,nounused:core=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libcore-0157cf8607007ad3.rlib' --extern vstd=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libvstd-6426b76f2a120f0a.rmeta -Z unstable-options -C relocation-model=static -C prefer-dynamic=no` (exit status: 1)
