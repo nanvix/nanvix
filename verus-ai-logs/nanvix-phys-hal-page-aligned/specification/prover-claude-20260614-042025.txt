@@ -1797,3 +1797,103 @@ Turn 115
 Turn 116
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
+[RESULT ✓] bash: thread 'rustc' (1343411) panicked at vir/src/traits.rs:511:13:
+error: could not compile `kernel` (bin "kernel")
+  process didn't exit successfully: `/home/ruize/toolchain/verus/verus /home/ruize/.cargo/bin/rustc --crate-name kernel --edition=2021 src/kernel/src/kmain.rs --error-format=json --json=di...
+
+────────────────────────────────────────────────────────────
+Turn 117
+────────────────────────────────────────────────────────────
+The trait panic is from `#[verus_verify]` on the `Address` impl. Let me inspect the Verus assertion:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/vir/src; sed -n '480,520p' traits.rs
+
+[THINKING] The panic from `vir/src/traits.rs:511` is surfacing again, this time triggered by `#[verus_verify]` on the `impl<T: Address> Address for PageAligned<T>` trait implementation. This is the same assertion failure about `method_impls` that appeared in the into_inner test, which means the issue isn't specific to into_inner—it's the trait impl verification itself that's causing Verus to panic when it encounters a duplicate method implementation.
+
+My suspicion is that since `Address` has `View` as a supertrait, when Verus processes the `Address for PageAligned` impl, it's also trying to register the `View` methods, and somewhere in that process it's finding a method that's already been registered, triggering the assertion. I need to look at what's happening in `traits.rs:511` to understand exactly what condition is failing.
+[RESULT ✓] bash: The function redirect_calls_in_default_methods patches up termination checking for
+calls made from the bodies of copied methods, since rustc's resolution of these calls
+is in the context of the original trait method, not the context of the inherited copy.
+(It might be cleaner to get rustc to make th...
+
+────────────────────────────────────────────────────────────
+Turn 118
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/vir/src; sed -n '518,540p' traits.rs
+[RESULT ✓] bash: }
+        if let FunctionKind::TraitMethodImpl { impl_path, method, .. } = &f.x.kind {
+            let p = (impl_path, method);
+            assert!(!method_impls.contains(&p));
+            method_impls.insert(p);
+        }
+    }
+
+    for trait_impl in &krate.trait_impls {
+        if !trait_map.conta...
+
+────────────────────────────────────────────────────────────
+Turn 119
+────────────────────────────────────────────────────────────
+The panic is a Verus bug: duplicate `TraitMethodImpl` registration. Let me re-read the caller analysis to confirm what `into_raw_value` actually needs:
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat verus-ai-logs/nanvix-phys-hal-page-aligned/caller_analysis.md
+
+[THINKING] The same trait method implementation is being registered twice in the functions list, which suggests `into_raw_value` from the `Address` impl for `PageAligned` is appearing as a duplicate entry. I'm considering whether this could stem from the supertrait relationship—`Address` has `View<V=int>` as a supertrait, and `PageAligned` implements both `View` and `Address`, though those are separate impl blocks with different method sets.
+
+The more likely culprit is that adding `#[verus_spec]` to `into_raw_value` in the trait declaration creates a spec companion function, and when `PageAligned` implements it, Verus might be generating trait method impls for both the original and the spec version, both with the same method name. This would explain the duplicate. However, this should affect all `Address` implementations like `VirtualAddress` and `PhysicalAddress` in sys too, but those are in a separate crate that would have failed verification if this were the issue. `PhysicalAddress` is actually in the kernel crate, so if it also implements `Address` with `verus_verify`, it should trigger the same problem—unless it doesn't have verification enabled on that impl.
+
+The real issue might be the combination of having a spec on the trait method declaration in sys plus adding `verus_verify` to a generic impl in the kernel. This could be a Verus internal bug triggered by that specific pattern. Let me reconsider whether I actually need to verify `into_raw_value` through the trait at all. The caller in frame.rs has an external_body shim, so I should check whether it actually depends on the spec of `PageAligned::into_raw_value` or if there's another way to satisfy the requirement that `result as int == self@`.
+[RESULT ✓] bash: # Caller Analysis: `PageAligned` (`hal/mem/types/address/aligned/page.rs`)
+
+## Script Output
+
+See: `verus-ai-logs/nanvix-phys-hal-page-aligned/find_callers_lsp_output.md`
+(raw output of `scripts/find_callers_lsp.py`).
+
+Crate: `kernel` (no cross-crate dependents — intra-crate analysis only).
+17 exec ...
+
+────────────────────────────────────────────────────────────
+Turn 120
+────────────────────────────────────────────────────────────
+Let me isolate the panic trigger. First check the current sys trait declaration:
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+
+[THINKING] The `into_raw_value` method needs that spec constraint where the result equals `self@` for the caller in frame.rs to work correctly. The Verus panic about duplicate TraitMethodImpl is blocking progress—it seems to be triggered when `verus_spec` is applied to `into_raw_value` in the sys trait declaration alongside the supertrait and trait spec. I'm testing whether removing the `#[verus_spec]` annotation from `into_raw_value` in the trait declaration eliminates the panic.
+
+If that works, I'll need an alternative approach to give `into_raw_value` its spec contract—maybe by applying `#[verus_spec]` directly to the method implementation in PageAligned's Address impl instead, which should work since `verus_verify` on the impl handles the verification requirement.
+[RESULT ✓] view: 28. //==================================================================================================
+29. 
+30. #[verus_verify]
+31. pub trait Address
+32. where
+33.     Self: core::fmt::Debug + Clone + PartialEq + Eq + PartialOrd + Ord + View<V = int>,
+34. {
+35.     ///
+36.     /// # Description
+37...
+
+────────────────────────────────────────────────────────────
+Turn 121
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "verus_verify\|impl Address for\|into_raw_value" src/libs/sys/src/sys/mm/address/virt
+
+[THINKING] I need to test whether verify-sys passes with this trait spec to isolate whether the panic comes from the trait declaration itself or from a specific implementation. The key question is whether VirtualAddress's Address impl actually has the `#[verus_verify]` attribute — if it doesn't, then sys wouldn't be verifying any trait impl with this spec'd method, which would explain why the panic doesn't surface there.
+[RESULT ✓] bash: 30:#[verus_verify(external_derive)]
+151:impl Address for VirtualAddress {
+237:    fn into_raw_value(self) -> usize {
+<shellId: 82 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 122
+────────────────────────────────────────────────────────────
+Let me test whether removing the trait-decl spec eliminates the panic:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address; cp mod.rs /tmp/mod.rs.bak; python3 - <<'EOF'
+f='mod.rs'
+s=ope
+
+[THINKING] I notice that VirtualAddress's Address implementation at line 151 is missing the `#[verus_verify]` attribute, so the sys module never actually verifies it against the spec'd into_raw_value. I should run verify-sys to confirm the trait declaration spec I added doesn't break anything, but first I need to tackle the immediate issue—the panic from verus_verify on PageAligned's generic Address impl.
+
+Let me test a hypothesis: if I temporarily remove the `#[verus_spec]` from the sys into_raw_value trait declaration while keeping verus_verify on PageAligned's Address impl, and then run verify-kernel, I can see if the panic disappears. That would pinpoint the trait declaration spec as the culprit.
+
+Actually, looking more carefully at the panic message about duplicate `(impl_path, method)` entries, I think the issue is that when PageAligned's impl is marked `#[verus_verify]`, all its methods become TraitMethodImpl entries. The `into_raw_value` method has a spec in the trait declaration, so the macro likely creates both a real implementation and a spec companion function, both with the same method name, causing the duplicate. This pattern wouldn't trigger in VirtualAddress since its impl isn't verified, which explains why sys doesn't panic. The combination of a spec'd trait method plus a verified impl seems to be the problem—possibly a genuine Verus bug, though it's odd that other verified traits in nanvix don't hit this.
+
+Let me reconsider whether the issue is specific to the generic `impl<T>` or the `external_derive` on the struct. I could also try moving the spec off the trait declaration and onto the impl method directly, but I need to check if that's even allowed. The simplest test is just to remove the `#[verus_spec]` from into_raw_value in the trait and see if the panic goes away.
