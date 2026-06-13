@@ -29,3 +29,6 @@ Module: sys-address-mod
 PHASE: view-design
 Module: sys-address-mod
 ============================================================
+[2026-06-14 07:37:49] [PROVER] Running view-design...
+[2026-06-14 07:37:49] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-14 07:40:16]   ↳ prover done in 2m27s (exit=0)
