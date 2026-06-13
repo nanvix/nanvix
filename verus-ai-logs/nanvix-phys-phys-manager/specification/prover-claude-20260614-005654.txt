@@ -3788,3 +3788,13 @@ The resolution is that the admitted lemma `lemma_kernel_alloc_contiguous` inject
 For the user path, the situation is different: `self@` actually changes through the loop via `upool.alloc`, so the postcondition `self@ == g_old.book_all(...)` represents the genuine final state. The lemma `lemma_user_bulk_ok` is admitted but asserts a real relationship, not a contradiction. The loop invariant only tracks `self@.wf()` without accumulating details, and the lemma claims the final relationship from the old state to the new state.
 
 Now I need to check whether the redundant assertions before the loop — specifically `assert(g_old.wf())` — can actually be proven by Verus at that point, since `g_old` is assigned from `old(self)@` right before.
+[RESULT ✓] bash: 19 verified
+  0 errors
+  verification: 19 verified, 0 errors (exit 0)
+<shellId: 109 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 259
+────────────────────────────────────────────────────────────
+0 errors. Let me confirm the full summary and cheating report:
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::phys 2>&1 | sed -n '/=== Summary/,/status/p'
