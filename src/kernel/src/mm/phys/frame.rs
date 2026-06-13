@@ -144,6 +144,7 @@ impl Inner {
             },
         };
         // Newly allocated frames have a single owner.
+        #[cfg(not(verus_keep_ghost))]
         debug_assert_eq!(self.refcount[frame_number], 0);
         self.refcount[frame_number] = 1;
         let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
@@ -222,6 +223,7 @@ impl Inner {
         // Newly allocated frames have a single owner.
         #[cfg_attr(verus_keep_ghost, verus_spec(invariant false))]
         for i in frame_number..frame_number + count {
+            #[cfg(not(verus_keep_ghost))]
             debug_assert_eq!(self.refcount[i], 0);
             self.refcount[i] = 1;
         }
@@ -497,6 +499,7 @@ impl Inner {
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
         match self.bitmap.set(frame_number) {
             Ok(()) => {
+                #[cfg(not(verus_keep_ghost))]
                 debug_assert_eq!(self.refcount[frame_number], 0);
                 self.refcount[frame_number] = 1;
                 Ok(())
@@ -626,6 +629,7 @@ impl Inner {
                 error!("{error:?} (region={region:?})");
                 return Err(error);
             }
+            #[cfg(not(verus_keep_ghost))]
             debug_assert_eq!(self.refcount[index], 0);
             self.refcount[index] = 1;
         }

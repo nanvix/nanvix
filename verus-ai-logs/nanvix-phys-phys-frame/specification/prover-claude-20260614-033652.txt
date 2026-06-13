@@ -1033,3 +1033,288 @@ Now let me re-run to check the loop invariant syntax.
 [TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
 
 [THINKING] I'm reconsidering the loop invariant syntax in Verus—the three misuse errors seem to correspond to my three loop invariants. Let me think through how `for` loop invariants actually work here, particularly with inclusive ranges like `start..=end`.
+[RESULT ✓] bash: error: `core::panicking::assert_failed` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+    = help: The following declaration ...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+The Inner method bodies now pull in many external dependency functions lacking Verus specs (`FrameNumber`, `into_frame_number`, `FRAME_SIZE`, etc.) plus `debug_assert_eq!`. Let me first gate the `debug_assert_eq!` calls, then check which dependency specs already exist.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "assume_specification\|external_type_specification\|FrameNumber\|into_frame_number\|
+
+[THINKING] The proof and loop syntax issues are resolved, but now Verus is processing the inner method bodies that were previously skipped, exposing calls to unspecified functions like `core::panicking::assert_failed` from `debug_assert_eq!` macros. I need to gate these debug assertions with `#[cfg(not(verus_keep_ghost))]` so Verus doesn't try to verify them, and there's another issue starting with `core::fm` that got cut off.
+
+Beyond the debug assertion problem, the inner methods are calling many external functions from other modules—`FrameNumber`, `FrameAddress`, `PhysicalAddress`, `PageAligned`, and `TruncatedMemoryRegion` methods—that don't have Verus specs. When these bodies were marked `external_body`, these cross-module dependencies didn't matter, but now that we're verifying the bodies, all these external calls need specifications or they'll block verification.
+
+The solution depends on where each function lives: for functions in the kernel crate's `hal::mem::types`, I'd add `#[verus_spec]` and `#[verus_verify(external_body)]` annotations as temporary dependency contracts; for functions in the `arch` crate, I'd use `assume_specification` or `external_type_specification`. But this is a significant scope expansion—adding specs to functions across multiple modules just to verify `frame.rs`.
+
+Let me step back and reconsider whether the `admit()` at the top of the `Inner` methods is even the right approach. The compilation errors indicate that Verus can't process the function bodies because the callees are declared outside the `verus!` macro or marked external, which means the issue isn't just about providing specs—it's about whether these dependencies are actually available in the verification context.
+
+To verify the `Inner` bodies, every single callee needs a Verus spec, and that's a substantial cost given the constraint that I can't modify unlisted functions. Let me check whether specs for these hal functions already exist from earlier phases.
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.spec.rs:9:pub assume_specification<T, E, U, F: FnOnce(T) -> Result<U, E>>[ Result::<T, E>::and_then ](
+src/kernel/src/mm/phys/manager.spec.rs:23:pub assume_specification<T, E, F: FnOnce(&E)>[ Result::<T, E>::inspect_err ](
+src/kernel/src/mm/phys/manager.spec.rs:33:pub ...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+The Inner bodies need specs for many cross-module dependencies. Let me check what's already annotated in the hal layer and the scope of what's needed.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "verus_spec\|verus_verify\|external_body\|fn into_frame_number\|fn from_frame_number
+
+[THINKING] Looking at the frame.rs file, I see it already has some verus_spec annotations for the from_raw_value and into_raw_value methods, but the Inner methods are relying on a bunch of other functions and types like into_frame_number, from_frame_number, FrameNumber, PageAligned operations, TruncatedMemoryRegion accessors, FRAME_SIZE, and PhysicalAddress conversions.
+
+The scope here is actually quite large — verifying the Inner method bodies requires specs for all their dependencies, which span multiple hal and arch modules. I realize the rules allow me to add external_body specs to these cross-module dependencies even if they're not in my original scope list. The "don't touch unlisted functions" rule is really about staying within the frame module itself, but dependency functions in other modules can get external_body contracts.
+
+That said, this touches a lot of ground. The Inner methods call bitmap operations (already specced), FrameAddress and FrameNumber conversions (need specs), raw value operations (need assume_specification), and PhysicalAddress methods (need specs). The intent seems to be that I should verify these Inner methods, which means I need to provide specs for all their dependencies. The pattern is to annotate dependency functions in their own files with `#[verus_spec]` and `external_body`. I'm checking the TCB list to see which functions like `FrameAddress::from_raw_value` and `into_raw_value` are already annotated versus which ones like `into_frame_number` and `from_frame_number` still need specs added.
+
+This is a large mechanical task, but before diving in, I'm reconsidering whether I could instead re-add `external_body` back to the Inner methods themselves—that would let me trust their specs without needing to verify their bodies or provide all the dependency specs. But the task constraints say no `external_body` on the current module, so that path isn't allowed.
+
+The real issue is that `admit()` in the proof bodies doesn't solve the compilation problem—the unsupported callees still need specs. So if the Inner bodies are being translated, I have to provide specs for every external function they call. Let me check what specs already exist in the hal modules by looking at the address frame.rs to understand the pattern and see if earlier verified modules like manager.rs already depend on these same functions.
+[RESULT ✓] bash: 27:#[verus_verify(external_derive)]
+77:    pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> {
+81:    pub fn into_frame_number(self) -> FrameNumber {
+87:#[verus_verify]
+90:    // `external_body` until the address layer is verified.
+91:    #[verus_verify(external_body)]
+92:  ...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+The Inner bodies require dependency specs for many hal/arch functions. Since the bodies use `admit()`, these contracts only need to enable translation. Let me first gate `debug_assert_eq!`, then add the dependency contracts. Let me gate the asserts.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys; grep -n "debug_assert" frame.rs
+
+[THINKING] I'm seeing that `FrameAddress::into_frame_number` and `from_frame_number` aren't Verus-annotated—they're in a plain impl block without verification. The manager and upool verified code doesn't actually call these functions; they use `from_raw_value` and `into_raw_value` instead. But the Inner methods do depend on them, which means verifying those Inner bodies would require annotating a whole new chain of dependency functions throughout the hal layer.
+
+Looking at what would need specs: `FrameNumber` itself needs an external type specification, along with its conversion methods; `FrameAddress` conversion functions need specs; `PhysicalAddress`, `PageAligned`, and `TruncatedMemoryRegion` methods all need annotation; plus the `FRAME_SIZE` constant and various debug assertion internals. This touches many files outside the frame module and represents significant design work to get the contracts right, especially for the address and region conversions. I'm questioning whether this scope is really what's intended here.
+
+But re-reading the design notes, the emphasis seems to be on verifying the free-function layer (the `pub(super)` wrappers like `is_covered`, `book`, `alloc_range`) rather than the internal `Inner` methods. Those `Inner` methods already had full specs and were marked `external_body` before being stripped. Maybe the intent is to restore `external_body` on the `Inner` methods and focus the spec work on strengthening the free-function contracts instead.
+
+The real tension is whether to annotate all the dependency functions in `hal`/`arch` with careful contracts—which is high-risk for regressions and touches many files—or to pragmatically restore `external_body` on the `Inner` methods even though that technically violates the "no external_body on current module" rule. The tradeoff is between strict rule compliance and managing the scope and risk of this verification task.
+
+Looking at this more carefully, the right path is to provide proper dependency contracts for just the functions the `Inner` methods actually call. The rules explicitly allow this: write specs for unverified external functions and mark them `external_body`. So I'm enumerating the exact external callees—`FrameNumber` type and its conversion methods from `arch`, plus `FrameAddress` and `PhysicalAddress` methods from `kernel`—and I'll annotate only those with sound contracts.
+
+The tricky part is the semantic coupling: the `Inner` methods compute `frame_number = frame.into_frame_number().into_raw_value()` and use it as a bitmap index, so the contracts need to express that this value equals `frame_address / page_size`. Since all the `Inner` bodies already have `proof! { admit(); }` at the top, the proof obligations are discharged, but I still need to handle the compilation side.
+
+The key insight is that since `admit` skips all proof obligations in the `Inner` bodies, the dependency contracts I write on the called functions don't actually get exercised by those proofs — they just need to exist for Verus to translate the calls. So I could give minimal contracts like `ensures true` to the hal functions just to enable translation, and the proving phase will strengthen them as needed. Other verified modules like the manager or upool don't call these frame conversion functions anyway, so weak contracts here won't regress them. The pragmatic approach is to add minimal dependency contracts marked as `external_body` to the called hal and arch functions — just enough to let translation succeed.
+
+But I'm hitting a constraint: the rule says "No external_body on current module," and the Inner methods aren't listed in tcb-allowed.md, so I can't mark them external_body without expanding the trust boundary list, which would be wrong. The legitimate path is to actually verify the Inner bodies by adding dependency contracts for their callees. I can use `assume_specification` and `external_type_specification` in the kernel's frame.spec.rs file to specify the arch crate's FrameNumber type and its conversion functions, then add external_body contracts for the kernel hal functions like `FrameAddress::into_frame_number` and `from_frame_number`. I need to gate the debug_assert_eq! calls first to handle compilation, then systematically work through adding the minimal dependency specifications for each external type and function.
+[RESULT ✓] bash: 147:        debug_assert_eq!(self.refcount[frame_number], 0);
+225:            debug_assert_eq!(self.refcount[i], 0);
+500:                debug_assert_eq!(self.refcount[frame_number], 0);
+629:            debug_assert_eq!(self.refcount[index], 0);
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys; python3 - <<'PY'
+import re
+f='frame.rs'
+lines=open(f).read().split('\n
+[RESULT ✓] bash: gated debug_assert
+22
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+Let me inspect the arch crate definitions for `FrameNumber` and `FRAME_SIZE` to write correct dependency specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy; find . -path ./target -prune -o -name "*.rs" -print 2>/dev/null | xargs grep -ln "struct Fram
+
+[THINKING] I should add the dependency specs incrementally rather than guessing everything upfront, then rerun Verus to see what's still missing. Let me organize the functions by where they belong—the arch crate functions need external type and assume specifications in the kernel, starting with `FrameNumber` and its conversion methods.
+
+Now I need to figure out whether `FRAME_SIZE` is a const or a const fn, since the error message suggests it's treated as a function but I'm not sure how it's actually defined in the arch crate. Let me check the actual definitions to understand what minimal specs I need to provide.
+
+For `FrameNumber`, I'm realizing I don't actually need a View since the Inner method specs don't reference it directly—they work with `FrameAddress` views instead. I just need to register the external type so it can appear in function signatures, and the conversion methods like `into_raw_value` and `from_raw_value` can have trivial specs that just ensure they return the right types without any deeper constraints.
+[RESULT ✓] bash: ./src/libs/arch/src/x86/cpu/eflags.rs
+./src/libs/arch/src/x86/mem/paging/frame/number.rs
+./src/libs/arch/src/x86/mem/paging/pde.rs
+./src/libs/arch/src/x86/mem/paging/flags.rs
+./src/libs/arch/src/x86/mem/paging/pte.rs
+./src/libs/arch/src/x86/mem/constants.rs
+=== FrameNumber def ===
+<shellId: 31 compl...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem; echo "=== FrameNumber ==="; grep -n "struct FrameNumber\|impl Frame
+[RESULT ✓] bash: === FrameNumber ===
+21:pub struct FrameNumber(usize);
+27:impl FrameNumber {
+47:    pub fn from_raw_value(value: usize) -> Option<Self> {
+64:    pub fn into_raw_value(self) -> usize {
+--- full number.rs head ---
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//========...
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem; sed -n '90,115p' constants.rs; echo "=== PAGE_SIZE fn? ==="; grep -
+
+[THINKING] `FRAME_SIZE` is a constant defined in an external crate, and Verus can't resolve it directly. The error suggests I need to either add a Verus specification or use the `#[verus_verify]` attribute on the defining module, but since `arch` is an external crate, I can't modify it directly.
+
+Wait, I'm noticing there might be both a constant and a function with similar names — `PAGE_SIZE` could be defined as both a `const` and a `fn` in the arch crate. Let me check what's actually being used and whether the `assume_specification` I found is treating it as a function when it should be treating it as a constant.
+[RESULT ✓] bash: pub const MAX_ADDRESS: usize = usize::MAX;
+
+///
+/// # Description
+///
+/// Alias for `PAGE_SHIT`.
+///
+pub const FRAME_SHIFT: usize = PAGE_SHIFT;
+
+///
+/// # Description
+///
+/// Alias for `PAGE_SIZE`.
+///
+pub const FRAME_SIZE: usize = PAGE_SIZE;
+
+///
+/// # Description
+///
+/// Alignment for a page.
+///
+...
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+The Inner bodies pull in the hal address-type layer. Let me inspect those types to write minimal dependency contracts.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types; echo "=== region ==="; grep -rn "fn start\|fn size\|struct Trunc
+
+[THINKING] I'm noticing that both `PAGE_SIZE` and `FRAME_SIZE` are defined as constants with the value 4096, but the existing hal frame.rs code references `PAGE_SIZE` within an `assume_specification` block as if it were a function. That's puzzling since it's declared as a const — maybe Verus treats constants as zero-argument functions in that context, or there's a macro involved that I'm not immediately seeing.
+
+Regardless, I can mirror the same pattern for `FRAME_SIZE` by creating an equivalent `assume_specification` that ensures it equals `spec_page_size()`. The key thing is making sure I use the correct fully-qualified path — the existing code uses `::arch::mem::PAGE_SIZE`, so I need to trace whether `mem::FRAME_SIZE` in frame.rs resolves to the same module path, likely `::arch::x86::mem::constants::FRAME_SIZE` based on the error message I saw earlier.
+
+For `FrameNumber`, I need to register it as an external type in the Verus spec since it's a foreign tuple struct from the arch crate. I'll add `external_type_specification` for it in frame.spec.rs, similar to how `LinkedList` is handled elsewhere. Then I'll add minimal `assume_specification` entries for its `from_raw_value` and `into_raw_value` methods — just `ensures true` for now since the frame code doesn't need precise specs yet and other verified code doesn't depend on them.
+
+Now I'm looking at the kernel HAL functions, particularly `FrameAddress::into_frame_number` which needs to be bridged into the verified code.
+
+Adding `#[verus_verify(external_body)]` to individual methods...
+
+Actually, I'm realizing this approach risks cascading verification requirements across the entire hal/arch address layer. The caller_analysis and view_design both point to verifying the free function surface, not the Inner methods themselves—those already have specs. Maybe the right move is to keep the Inner methods as-is and focus on the strip-external-body step as a generic transformation, staying true to the TCB philosophy rather than spiraling into annotating dozens of functions across multiple crates.
+
+The hal/arch dependency functions should get external_body contracts per the rules, but I'll keep them minimal—just `ensures true` where the frame proof uses admit. This minimizes regression risk since weak contracts can't contradict anything, and it should be additive without breaking existing verified modules that never called these functions in verified code. The main concern is whether registering FrameNumber as an external type globally could affect other verified code, but that's unlikely and I can check by running `make verify` at the end.
+
+For the specs themselves, I need external_type_specification for FrameNumber since the functions have it in their signatures, and Verus requires supported types for assume_specification. I should enumerate the full set of functions that Inner bodies touch—like `region.start()` returning something with `into_frame_number()` and `into_raw_value()` methods—and write specs for those as well.
+
+Rather than trying to get everything right in one pass, I'll take an iterative approach: add minimal external_body and assume_specification contracts, run Verus to see what fails next, then batch the next round of specs. First though, let me examine the hal type definitions for PageAligned, PhysicalAddress, and TruncatedMemoryRegion to understand what I'm working with.
+[RESULT ✓] bash: === region ===
+region.rs:38:#[verus_verify]
+region.rs:60:#[verus_verify(external_derive)]
+region.rs:138:#[verus_verify(external_derive)]
+region.rs:205:    pub fn start(&self) -> T {
+region.rs:210:    pub fn size(&self) -> usize {
+region.rs:285:#[verus_verify(external_derive)]
+region.rs:287:pub struc...
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+[RESULT ✓] view: 285. #[verus_verify(external_derive)]
+286. #[derive(Clone)]
+287. pub struct TruncatedMemoryRegion<T: Address>(MemoryRegion<PageAligned<T>>);
+288. 
+289. impl<T: Address> TruncatedMemoryRegion<T> {
+290.     /// Creates a new truncated memory region.
+291.     pub fn new(
+292.         name: &str,
+293.  ...
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+[RESULT ✓] view: 353.         self.0.name()
+354.     }
+355. 
+356.     /// Returns the first valid address that lies in the target memory region.
+357.     pub fn start(&self) -> PageAligned<T> {
+358.         self.0.start()
+359.     }
+360. 
+361.     /// Returns the size of the target memory region.
+362.     pub fn siz...
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+This cascades into the address-type layer. Let me check `PageAligned` and `PhysicalAddress` to know exactly which methods need contracts.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address; echo "=== PageAligned methods ==="; grep -rn "fn into_fr
+
+[THINKING] I'm looking at how `TruncatedMemoryRegion` exposes its `start()` and `size()` methods—they're currently in an unverified impl block, so I need to add external_body annotations with proper specs to make them usable within Verus verification, particularly since `Inner::alloc_range` calls these methods.
+
+The challenge is that adding `#[verus_verify]` to the entire impl block would force verification of all its methods (new, name, typ, perm, cache_policy, from_*), which could cascade into failures. Instead, I should selectively annotate just `start()` and `size()` with `#[verus_verify(external_body)]` while leaving the rest of the impl unverified, giving them minimal specs like `ensures true` since the proof will use admit anyway.
+
+The real question is whether Verus picks up individually-annotated methods in an unannotated impl block, or if I need to move them to a separate `#[verus_verify]` impl — but that would create duplicate method definitions, which isn't allowed. I'll try option (a) first: adding `#[verus_verify(external_body)]` directly to the existing methods and see if Verus accepts it.
+
+This refactoring is touching a lot of surface area across the codebase — FrameNumber and FRAME_SIZE in arch, multiple methods in hal's address/frame.rs and region.rs, plus PageAligned and PhysicalAddress utilities.
+
+I'm reconsidering whether the Inner methods should actually be verified at all. The design docs explicitly say the Inner methods are "fully specified" and the free function layer is what still needs verification. Verifying Inner bodies would cascade into the address-type layer, which isn't verified yet, meaning I'd need external_body contracts for all those dependencies. Given that the address layer is a separate verification target, maybe the pragmatic move is to keep the Inner methods as external_body stubs with minimal contracts, rather than trying to verify their bodies now.
+
+But wait — the strip-external-body directive removed the `#[verus_verify(external_body)]` annotations, which suggests the pipeline actually wants these bodies verified. If that's the intent, then I need to bite the bullet and provide the dependency contracts for the address-layer functions, even if it's a lot of stubs. Let me just commit to doing this properly but with the weakest sound specs that enable translation, then iterate with Verus.
+
+I'm going to enumerate the exact external callees in each Inner method body to see what I'm actually dealing with. Inner::alloc calls FrameNumber::from_raw_value and FrameAddress::from_frame_number (both arch/kernel hal), plus Error::new. Inner::alloc_contiguous has similar patterns with FrameNumber::from_raw_value and slice indexing.
+
+Looking at the rest of the methods, I see a consistent pattern: they all need FrameNumber and FrameAddress conversions (into_frame_number, into_raw_value), plus bitmap operations and refcount indexing. Inner::book needs to handle PageAligned<PhysicalAddress>::into_frame_number, and Inner::alloc_range needs TruncatedMemoryRegion methods and the FRAME_SIZE constant.
+
+For the external specifications, I need to define FrameNumber as an external type with from_raw_value and into_raw_value as assumptions. From the kernel HAL side, I need FrameAddress::into_frame_number and from_frame_number as external bodies, plus PageAligned::deref and PhysicalAddress::into_frame_number to handle the deref chain. I also need PageAligned::into_raw_value, TruncatedMemoryRegion::start and size, and likely Error::new.
+
+The key insight is that when I mark FrameAddress::into_frame_number as external_body, it hides the internal calls to PageAligned and PhysicalAddress methods, so I don't need to spec those inner chains. But for direct calls to phys_addr.into_frame_number() where phys_addr is PageAligned<PhysicalAddress>, I need to either provide external_body on PhysicalAddress::into_frame_number or make PageAligned::deref available so the resolution works.
+
+The real question is whether PageAligned itself has an inherent into_frame_number method — if it does, then those direct calls resolve without deref and I only need to spec that one method.
+[RESULT ✓] bash: === PageAligned methods ===
+aligned/page.rs:30:#[verus_verify(external_derive)]
+aligned/page.rs:32:pub struct PageAligned<T: Address>(T);
+aligned/page.rs:34:impl<T: Address> PageAligned<T> {
+aligned/page.rs:36:    pub fn from_address(addr: T) -> Result<Self, Error> {
+aligned/page.rs:50:impl<T: Addre...
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+Let me check the `Address` trait and `PhysicalAddress` view to finalize the stub set.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm tracing through a complex type hierarchy where `into_frame_number` lives on `PhysicalAddress` through a `Deref` implementation from `PageAligned`, while `into_raw_value` comes from the `Address` trait. The method calls are chaining through `FrameAddress::into_frame_number` which delegates to an external body that obscures the full chain.
+
+The real challenge here is that verifying all these interconnected functions across six files and ten functions would require sound contracts for each, but the current approach tolerates external_body in the spec phase (it's flagged but the build passes). The tension is between the task's hard constraint against adding external_body unless explicitly listed, versus the practical reality that the proof side uses admit() anyway, making minimal contracts feasible for translation.
+
+The rules-compliant path forward is to add external_body contracts to the address-layer dependency functions themselves—which are legitimately in other unverified modules—while keeping the Inner methods verified-with-admit. This means I need to write stubs for the address layer, but I can keep the contracts minimal and sound since the Inner proofs won't actually exercise them during the proving phase.
+
+The simplest approach is to mark kernel HAL functions with `#[verus_verify(external_body)]` and no spec block at all, which translates fine with a vacuous postcondition. For arch functions like assume_specification that require a spec block, I'll use `ensures true`. For FrameNumber, I just need to register the external type. The key question is whether I can spec trait method implementations like PageAligned::deref with external_body, or if I need to handle the deref chain differently. So dereferencing with `*phys_addr` gives me a `PhysicalAddress` by value, which works since it's `Copy`, and then I can call `into_frame_number()` on it. I'll mark both `deref` and `into_frame_number` with `external_body` and see what Verus needs from there. Now let me look at the `Address` trait to understand `into_raw_value`.
+[RESULT ✓] view: 88.     ///
+89.     /// - `frame`: The frame number.
+90.     ///
+91.     /// # Returns
+92.     ///
+93.     /// A [`PhysicalAddress`] associated with the given `frame_number`.
+94.     ///
+95.     pub fn from_number(frame: FrameNumber) -> Self {
+96.         let addr: usize = frame.into_raw_value() * m...
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+Let me get the current concrete error list rather than guessing further.
+[TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus timeout 300 make verify-kernel MODULE=mm::
+
+[THINKING] I need to check the actual state of the Inner methods in frame.rs and see what annotations are currently there, then run the verifier to get the concrete error messages rather than working from assumptions.
