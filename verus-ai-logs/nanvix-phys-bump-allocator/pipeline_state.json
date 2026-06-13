@@ -6,7 +6,7 @@
   "current_phase_idx": 0,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "adc9e571-7220-40ab-b39e-6fb90c7b0591",
   "completed": false,
   "base_branch": "exp",
   "verus_branch": "verus-ai/bump-allocator",
