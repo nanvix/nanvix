@@ -752,3 +752,153 @@ Scoped CLEAN. Now full `make verify-sys` to check the VirtualAddress impl agains
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-sys 2>&1 | tail -15
 
 [THINKING] Now I'm running the full verification suite without module restrictions to validate the VirtualAddress trait implementation in virt.rs against the updated trait requirements.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+  Detail: verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  2/255 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/ver...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt 2>/dev/null | head -30
+
+[THINKING] I'm noticing a discrepancy in the verification results—the baseline showed cfg_gate=1 with a CLEAN status, but the full system verification is now reporting CHEATING_DETECTED for the same cfg_gate=1 condition, which suggests something changed between the scoped and full runs.
+[RESULT ✓] bash: 
+<shellId: 34 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; find verus-ai-logs/verify-sys -name "cheating-detail.txt" -exec echo {} \; -exec cat {} \; ; 
+[RESULT ✓] bash: verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt
+=== grep cfg_gate in logs ===
+16:  cfg_gate=1
+<shellId: 35 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+The cfg_gate=1 appears pre-existing. Let me confirm by checking my diff and running full verify-sys on a clean baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy; git stash list; echo "=== my diff stat ==="; git --no-pager diff --stat; echo "=== stashing t
+
+[THINKING] The cheating-detail.txt file is empty and grep didn't find anything specific about cfg_gate, so this is likely a pre-existing pattern that the checker flags rather than something I introduced. Let me verify whether cfg_gate came from my changes—my mod.spec.rs modification didn't add any cfg gating, and the `#[cfg(verus_keep_ghost)]` attributes on the include! lines were already there. The cfg_gate detection might be picking up something else entirely.
+
+What's interesting is that the scoped baseline showed `cfg_gate=1` with status CLEAN, while the full run shows the same `cfg_gate=1` but with status CHEATING_DETECTED. This suggests the scoped run only checked the module's files (where there's no cfg_gate issue) while the full run scanned the entire crate and found it elsewhere. Either way, this is pre-existing and not something I introduced. I should git stash my changes and run the full verify-sys to confirm the baseline behavior.
+[RESULT ✓] bash: === my diff stat ===
+ .../prover-claude-20260614-074016.jsonl            | 61 ++++++++++++++++++++++
+ .../prover-claude-20260614-074016.txt              | 35 +++++++++++++
+ 2 files changed, 96 insertions(+)
+=== stashing to baseline ===
+No local changes to save
+<shellId: 36 completed with exit code 0...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; git status --short | head; echo "=== check ignore ==="; git check-ignore src/libs/sys/src/sys
+
+[THINKING] I'm noticing that git diff --stat only shows changes to log files, but my edits to mod.rs and mod.spec.rs aren't appearing — git status says there are no local changes to those files even though I edited them. This suggests the files might be gitignored, in a submodule, or the changes weren't actually saved, so I need to verify the file contents and check git status directly.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-sys-address-mod/specification/prover-claude-20260614-074016.jsonl
+ M verus-ai-logs/nanvix-phys-sys-address-mod/specification/prover-claude-20260614-074016.txt
+=== check ignore ===
+=== actual content check ===
+src/libs/sys/src/sys/mm/address/mod.rs:59:                Err(e...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat .gitmodules 2>/dev/null | head; echo "=== submodule? ==="; git submodule status 2>/dev/nu
+
+[THINKING] The files have my edits but git status isn't showing them as modified, which suggests they might be in a submodule with their own repository, or there's a nested .git directory I haven't checked yet. Let me verify if `src/libs/sys` is actually a separate git repo.
+[RESULT ✓] bash: === submodule? ===
+=== ls-files ===
+src/libs/sys/src/sys/mm/address/mod.rs
+=== is it nested repo ===
+/home/ruize/nanvix-phy
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; git --no-pager diff -- src/libs/sys/src/sys/mm/address/mod.rs | head -40; echo "=== git log r
+
+[THINKING] The file is tracked in git, but `git status` isn't showing it as modified, which suggests the changes might have already been committed earlier in this session. Let me check `git diff` directly on that file to see what's actually there, and compare it against the baseline run that showed the old spec.
+[RESULT ✓] bash: === git log recent ===
+ee883bad1 [verus] verify PASS (cheating detected): sys::all (cached (no recompilation), —, cfg_gate=1)
+a85df8c38 [verus] verify PASS: sys::sys::mm::address (2 verified, 0 errors)
+c9bafe093 [verus] verify PASS: sys::sys::mm::address (2 verified, 0 errors)
+ac0588671 [verus] veri...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+The verify script auto-commits. The `cfg_gate=1` is pre-existing (present at baseline). Let me locate it to confirm it's unrelated to my changes.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "cfg(not(verus_keep_ghost))\|cfg_attr(not(verus_keep_ghost)" src/libs/sys/src/ | hea
+
+[THINKING] The verify.sh script automatically commits changes after each run, which explains why git status shows nothing pending—my modifications were already committed by the script in those three commits. The "cheating detected" message in the final commit corresponds to cfg_gate=1 being set, and I'm trying to understand if this was a pre-existing condition.
+
+Looking back at the commit history, I never actually ran the full sys verify before making my edits, so I can't directly compare. But the scoped baseline run showed cfg_gate=1 with a CLEAN status, which means this flag was already present in the codebase before my changes. Since my edits didn't introduce any cfg-gating themselves, cfg_gate=1 appears to be a pre-existing feature in the sys crate.
+
+Now I need to search through the sys crate to find where this cfg-gating on exec code is actually happening, so I can confirm it's unrelated to my module changes.
+[RESULT ✓] bash: 
+<shellId: 40 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rln "verus_keep_ghost" src/libs/sys/src/ | head; echo "=== how checker counts cfg_gate 
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/mod.rs
+src/libs/sys/src/sys/mm/address/virt.rs
+src/libs/sys/src/sys/mm/alignment.rs
+=== how checker counts cfg_gate ===
+/home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh:472:count_cfg_gates() {
+/home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh:480:cfg_pat = re.com...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '472,530p' /home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh
+
+[THINKING] The cfg_gate regex is matching `#[cfg(verus_keep_ghost)]` and its variants with `not()` and `cfg_attr` forms. The pattern `#\[cfg(_attr)?\((not\()?verus_keep_ghost` captures all these cases, and I'm looking at how these annotations appear in the code.
+
+Now I'm wondering if the `include!("mod.spec.rs")` directives and similar standard includes are being counted in the cfg_gates logic, since those appear in every verus file. Let me check the count_cfg_gates function to see if it's filtering those out.
+[RESULT ✓] bash: count_cfg_gates() {
+    local scan_dir="$1"
+    python3 -c "
+import re, sys
+from pathlib import Path
+
+src_dir = Path('$scan_dir')
+count = 0
+cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+
+for rs_file in sorted(src_dir.glob('**/*.rs')):
+    lines = rs_file.read_text().splitlines()
+...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 -c "
+import re
+from pathlib import Path
+cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\(
+
+[THINKING] The `cfg_gate` counter tracks `#[cfg(verus_keep_ghost)]` attributes that aren't followed by specific keywords like `use`, `include!`, `extern`, `mod`, or derive/feature/debug_assert directives. There's only one instance of this pattern in the sys crate, and I'm trying to locate which one it is.
+
+Looking at the baseline data, this appears to be pre-existing—the scoped baseline already showed `cfg_gate=1` before my changes. Since I only modified mod.rs (adding verus_spec attributes without any cfg directives) and mod.spec.rs (adding a spec function inside an existing verus! block), I shouldn't have introduced this. Let me trace through the counter logic to find the exact location and confirm it's not in my module.
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/alignment.rs 151 -> verus! {
+<shellId: 43 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+The flagged `cfg_gate` is pre-existing in `alignment.rs:151` (an unrelated module's `#[cfg(verus_keep_ghost)] verus! {` block) — not introduced by me and out of scope. Verification itself: **0 errors**. Now the critical check: full `make verify` for kernel regressions (the PhysicalAddress `assume_specification`).
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify 2>&1 | tail -30
+
+[THINKING] The flagged `cfg_gate` in `alignment.rs:151` is a false positive—it's a pre-existing `verus!` block guarded by cfg, which is a normal pattern in the codebase. Since this is in the alignment module and outside my scope, I can safely ignore it.
+
+My own `mod.spec.rs` doesn't add to the cfg count since the `verus!` block isn't separately guarded—it's already wrapped by the include directive's cfg gate. The verification shows 0 errors, which is what matters for the task. Now I need to run the full `make verify` to check for any regressions, particularly around the kernel's assumption for `PhysicalAddress::from_raw_value`.
