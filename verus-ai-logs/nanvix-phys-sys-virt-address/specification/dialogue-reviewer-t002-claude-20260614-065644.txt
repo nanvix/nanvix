@@ -241,3 +241,69 @@ Item 1 is **PASS** via the trait declaration. Now let me confirm cross-module re
 The checklist item about in-scope exec functions having requires/ensures is satisfied because the trait declaration's contract (mod.rs:51-55) binds all implementers including `VirtualAddress`. Even though the impl itself isn't marked for verification, this trait-level contract is the canonical spec location and is accepted as the pattern in this codebase—the same way `PhysicalAddress` is already verified and passing.
 
 Now I need to verify the broader claims: running the full verify and build to confirm the fixer's assertion of 35 verified sys + 60 kernel with zero errors, and checking for any regressions.
+[RESULT ✓] bash: Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-14_06-57-53
+
+    Finished `dev` profile [optimized + debuginfo] ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Full verify exits 0 (no regressions). The kernel's `external_body=14/admit=26` are pre-existing in the kernel crate, not in `virt.*` (which has 0 of all cheating patterns). Now the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 280 ./z build 2>&1 | tail -20; echo "EXIT=${PIPESTATUS[0]}"
+
+[THINKING] The verification passed with no issues in our module, and the cross-module regression check also came through clean. Now I need to run the build to make sure everything compiles correctly.
+[RESULT ✓] bash: [INFO]  Build parameters: 
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked -Zbuild-std=core,alloc -Zjson-target-spec  --target /home/ru...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Build **FAILS** — duplicate `vstd::prelude::*` import (line 8 and line 25) triggers `unused import` under `-D warnings`. The fixer claimed this was "pre-existing in the last PASS commit," but a justification doesn't change that the build is red. Let me check git to determine whether it's pre-existing and what the correct fix is.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== git status ==="; git status --short src/libs/sys/src/sys/mm/address/; echo "=== g
+
+[THINKING] The build is failing because there's a duplicate import of `vstd::prelude::*` at two different lines, and the non-verus build treats the unused one as an error due to the warnings flag. The fixer claimed this was a pre-existing issue unrelated to their changes, but the actual project build is failing because of it.
+
+I need to check whether this duplicate was genuinely pre-existing or introduced by the changes, and whether removing one of the imports is the right fix. Both imports are unconditional, so I should look at git history to understand the baseline and determine what the correct state should be.
+[RESULT ✓] bash: === git status ===
+=== git diff virt.rs (working vs HEAD) ===
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== recent commits touching virt.rs ==="; git --no-pager log --oneline -8 -- src/libs
+
+[THINKING] The working tree is clean with no uncommitted changes, so the duplicate import must already be in the committed code. I should check the git history to see if this issue was introduced when the spec was added during this phase.
+[RESULT ✓] bash: === recent commits touching virt.rs ===
+bc7af9fac [verus] verify PASS: sys::sys::mm::address::virt (2 verified, 0 errors)
+073083d73 [verus] verify FAIL: sys::sys::mm::address::virt (0 verified, compilation/setup error (verus did not run))
+786b1c2e4 [verus] verify FAIL: sys::sys::mm::address::virt (0...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Key finding: the build is **RED**. Blame shows line 8 `use vstd::prelude::*;` was added by **this pipeline** (commit `ca7e88be8`, today) as `include!` scaffolding, colliding with the original line 25 `use ::vstd::prelude::*;` (Jay Lorch, April). So the fixer's "pre-existing and unrelated" claim is false — the pipeline introduced the duplicate. Either way the build must pass. Let me confirm the exact fix works before requesting it.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/libs/sys/src/sys/mm/address/virt.rs /tmp/virt.bak && sed -i '25d' src/libs/sys/src/s
+
+[THINKING] Looking at the git blame, I can see that line 25 with the `::vstd::prelude::*` import is the original one from Jay Lorch, while line 8 with `vstd::prelude::*` was added by Ruize Tang as part of the verus-ai pipeline scaffolding during the caller-analysis work.
+
+So line 8 is the newly introduced duplicate that collides with the pre-existing import at line 25. The scaffolding that includes the `include!` directives for the spec and proof files needs that import unconditionally, but it's creating a duplicate. The build is failing in exec mode with `-D warnings` even though `make verify-sys` passes, and this is a genuine failure in the committed state marked as "verify PASS."
+
+The fix is straightforward — remove one of the duplicate imports. I need to check how sibling files handle this pattern to determine the cleanest approach. The pipeline added an unconditional `use vstd::prelude::*` at line 8, but the original import at line 25 is now flagged as redundant. Since line 8 covers the vstd prelude for both exec and verus modes, removing line 25 fixes the duplicate. However, the cleaner approach might be to guard line 8 with `#[cfg(verus_keep_ghost)]` so it only appears in verus mode, leaving line 25 as the sole unconditional import for exec mode. The build fails due to the `-D warnings` flag treating the duplicate import as an error, so removing line 25 is the fix. As the reviewer, I should verify this solution works before requesting it, so I'll test removing that import and running both the build and verify checks to confirm it passes, then revert so the fixer can apply the change cleanly.
+[RESULT ✓] bash: === removed line 25, now build ===
+
+================================================================================
+SCCACHE Statistics
+================================================================================
+SCCACHE not available or not configured.
+==========================================...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Removing line 25 fixes the build. Let me confirm verify-sys still passes with that change, then revert so the fixer applies it.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-sys 2>&1 | grep -E "verifying module|verification:|cheating:|Exit code|status:"
