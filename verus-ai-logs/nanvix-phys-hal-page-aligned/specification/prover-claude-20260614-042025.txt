@@ -1614,3 +1614,136 @@ The difference: bitmap's `impl` block has `#[verus_verify]`. My inherent impl do
 Turn 102
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
+[RESULT ✓] bash: === Results ===
+  0 verified
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  Unverified functions:
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+<shellId: 70 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; L=verus-ai-logs/verify-kernel/verus-logs/$(ls -t verus-ai-logs/verify-kernel/verus-logs/ | he
+[RESULT ✓] bash: 8:compilation/setup error (verus did not run)
+20:error: `arch::x86::mem::constants::PAGE_ALIGNMENT` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+26:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId:...
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+E0425 resolved. Now Verus rejects `PAGE_ALIGNMENT` (external const). Let me see how already-verified code handles arch constants:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "PAGE_ALIGNMENT\|assume_specification\|external_const\|PAGE_SIZE" src/kernel/src/hal
+
+[THINKING] The E0425 error is resolved, but now Verus is complaining about `PAGE_ALIGNMENT`, a const from the arch module that it doesn't support. Since `from_address`'s body references this constant and the entire inherent impl is now being verified, Verus is trying to process the body and failing because it can't handle exec code using unsupported const items. I need to either add a `proof!{admit();}` block or find another way to handle the `PAGE_ALIGNMENT` reference.
+
+The issue is that `PAGE_ALIGNMENT` is external (from an unverified crate), so Verus rejects it when used in verified exec code. The error message suggests using `assume_specification`, but that's typically for functions. Since this is a const rather than a function, I need to check how other verified kernel code handles arch constants — maybe there's a pattern in frame.rs or elsewhere that shows the right approach for dealing with external constants in verified code.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/test.rs:15:    PAGE_ALIGNMENT,
+src/kernel/src/hal/mem/types/address/test.rs:16:    PAGE_SIZE,
+src/kernel/src/hal/mem/types/address/test.rs:86:    let raw_addr: usize = T::max_addr() & !(PAGE_SIZE - 1);
+src/kernel/src/hal/mem/types/address/test.rs:134:    let raw_...
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 20. //==================================================================================================
+21. 
+22. ///
+23. /// # Description
+24. ///
+25. /// A type that represents a frame address.
+26. ///
+27. #[verus_verify(external_derive)]
+28. #[derive(Clone, Copy)]
+29. pub struct FrameAddress(Page...
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "PAGE_ALIGNMENT\|PAGE_SIZE" src/arch/src/ 2>/dev/null | grep -iE "const|fn |static|p
+
+[THINKING] I'm trying to understand how `PAGE_SIZE` is defined in the architecture module—whether it's a function that returns a value or a constant, since `frame.rs` uses `assume_specification` with it but `test.rs` treats it as a direct value.
+[RESULT ✓] bash: 
+<shellId: 73 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 107
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "PAGE_ALIGNMENT" $(find . -path ./target -prune -o -name "*.rs" -print 2>/dev/null) 
+[RESULT ✓] bash: ./src/kernel/src/hal/mem/types/address/test.rs:320:    let align: Alignment = PAGE_ALIGNMENT;
+./src/kernel/src/hal/mem/types/address/test.rs:377:    let align: Alignment = PAGE_ALIGNMENT;
+./src/kernel/src/hal/mem/types/address/test.rs:442:    let align: Alignment = PAGE_ALIGNMENT;
+./src/kernel/src/h...
+
+────────────────────────────────────────────────────────────
+Turn 108
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[RESULT ✓] view: 95. /// Alias for `PAGE_SHIT`.
+96. ///
+97. pub const FRAME_SHIFT: usize = PAGE_SHIFT;
+98. 
+99. ///
+100. /// # Description
+101. ///
+102. /// Alias for `PAGE_SIZE`.
+103. ///
+104. pub const FRAME_SIZE: usize = PAGE_SIZE;
+105. 
+106. ///
+107. /// # Description
+108. ///
+109. /// Alignment for a page.
+110....
+
+────────────────────────────────────────────────────────────
+Turn 109
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "enum Alignment\|pub enum Alignment\|Align4096" src/libs/ | head; echo "---is_aligne
+
+[THINKING] `PAGE_ALIGNMENT` is a const from an external crate, not a function, which is why Verus can't see its body and rejects it. For external consts, I need to either use `external_const` or find another way to wrap it, since `assume_specification` only works for functions.
+
+The real issue might be that `Alignment` itself isn't recognized by Verus, or the const initializer references something Verus can't evaluate. I should check how frame.rs handles this pattern — whether it actually verifies functions that use `PAGE_ALIGNMENT`, or if it avoids the problem entirely by not calling verified code with that constant.
+
+Since we're the first to verify a function using `PAGE_ALIGNMENT`, I need to make it Verus-compatible. The options are marking it external with a spec const, or ensuring the `Alignment` enum itself is properly recognized by Verus. Let me trace where `Alignment` is defined and whether `is_aligned` has a specification.
+[RESULT ✓] bash: src/libs/arch/src/x86/cpu/cr0.rs:435:pub enum AlignmentMaskFlag {
+src/libs/arch/src/x86/mem/constants.rs:111:pub const PAGE_ALIGNMENT: Alignment = Alignment::Align4096;
+src/libs/sys/src/sys/mm/alignment.rs:41:pub enum Alignment {
+src/libs/sys/src/sys/mm/alignment.rs:63:    Align4096 = 4096,
+src/libs...
+
+────────────────────────────────────────────────────────────
+Turn 110
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned; cat page.spec.rs
+
+[THINKING] The `Alignment` enum lives in `sys::mm::alignment`, but the issue is that `PAGE_ALIGNMENT` from the external arch crate can't be referenced in verified code. I'm thinking the cleanest solution would be to use Verus's `#[verifier::external]` attribute to redeclare the const, similar to how it's handled in frame.rs, though I should reconsider the exact approach.
+
+Actually, since `is_aligned` takes an `Alignment` parameter and the spec only cares about whether the address is aligned, I could decouple the spec from the actual alignment value. The body still needs `PAGE_ALIGNMENT` though, so the real fix is getting Verus to recognize the external const. I'm wondering if I can add an `assume_specification` for `PAGE_ALIGNMENT` treating it like a zero-argument function that returns an `Alignment` value, similar to how `PAGE_SIZE` is handled in frame.rs.
+
+Adding the specification to page.spec.rs...
+[RESULT ✓] bash: verus! {
+
+// Success condition for the validating constructor, stated purely on the abstract
+// address value. `from_address` validates, it does NOT normalize: success requires the
+// *input* to already be page-aligned.
+pub open spec fn spec_aligned(addr_view: int) -> bool {
+    addr_view % spec_pag...
+
+────────────────────────────────────────────────────────────
+Turn 111
+────────────────────────────────────────────────────────────
+is_aligned needs handling, but first let me add an `assume_specification` for `PAGE_ALIGNMENT` mirroring frame.rs's `PAGE_SIZE` pattern:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+
+[THINKING] I need to check if the `is_aligned` method on the Address trait has a Verus specification, since `from_address` calls it and I'll need a spec that relates the boolean result to the alignment check `addr@ % align == 0` for the proof to work later. Right now the trait method doesn't have a spec, so I need to figure out what spec Verus requires during the verification phase.
+
+Since `is_aligned` is a trait method with exec implementations for types like VirtualAddress, Verus will treat the call as returning an unconstrained boolean without a spec—which is manageable with `admit()`. The body should typecheck fine with the `?` operator and the method call. I'm thinking the cleanest approach is to add an `assume_specification` for PAGE_ALIGNMENT similar to how PAGE_SIZE is handled in frame.rs, keeping the ensures minimal at first, then test whether that unblocks the verification.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 112
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
