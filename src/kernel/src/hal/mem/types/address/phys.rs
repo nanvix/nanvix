@@ -128,6 +128,7 @@ impl PhysicalAddress {
     }
 }
 
+#[verus_verify]
 impl Address for PhysicalAddress {
     ///
     /// # Description

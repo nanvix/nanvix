@@ -2015,3 +2015,34 @@ Let me test whether Verus allows an unverified impl of a trait method that has a
 Turn 130
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
+[RESULT ✓] bash: verification results:: 2 verified, 0 errors (partial verification with `--verify-*`)
+=== Results ===
+  verification: 2 verified, 0 errors (exit 0)
+<shellId: 89 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 131
+────────────────────────────────────────────────────────────
+2 verified, 0 errors with the trait-decl spec (into_raw_value inherits it, trusted). But let me try to actually verify the impl. Discriminating test — does a non-generic Address impl (PhysicalAddress) also panic under `#[verus_verify]`?
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "impl Address for PhysicalAddress\|verus_verify\|fn into_raw_value" src/kernel/src/ha
+
+[THINKING] With the trait declaration spec on `into_raw_value` and no verification on PageAligned's Address implementation, the kernel verifies successfully with 2 verified items and 0 errors. The `into_raw_value` spec gets inherited by PageAligned as a trusted specification since the implementation itself isn't verified. This means only `from_address` and `into_inner` are actually counted as verified, while `into_raw_value` remains trusted through the trait spec rather than directly verified. I'm wondering if this approach is acceptable for the use case.
+
+The caller in frame.rs depends on PageAligned's `into_raw_value` spec guaranteeing that `result as int == self@`, and with the trait declaration spec, callers do get this guarantee even though PageAligned's implementation is trusted rather than checked. This is weaker than full verification but still provides the necessary spec to callers. However, the rules seem to require that in-scope target implementations like `into_raw_value` should be verified, not trusted—leaving it unverified is essentially like using `external_body`, which trusts the implementation without checking it. That's morally similar to the forbidden `external_body` pattern unless it's in the tcb-allowed list.
+
+The Verus panic I'm hitting appears to be a genuine tool bug preventing verification of the generic trait implementation. Let me try one more approach to verify the implementation properly before falling back to the trusted spec approach. I'm reconsidering whether the panic stems from the supertrait relationship—when verifying `impl Address for PageAligned`, the Address supertrait View might be causing Verus to generate duplicate trait implementations. The duplicate `into_raw_value` could be coming from how the trait declaration with `#[verus_spec]` uses `split_trait_method_syn`. Let me try a cleaner approach: mark just `into_raw_value` with `verus_spec` inside the implementation to mirror the trait, then verify the whole implementation.
+
+Actually, the macro comment indicates that trait method requirements can only be inherited from the trait declaration, so I shouldn't add `verus_spec` to the implementation method—they're inherited automatically. The implementation just needs `verus_verify` on the block, which is what's panicking. Let me try removing the `#[verus_spec]` from the trait declaration and the supertrait entirely to test whether a bare generic trait implementation can be verified. If even that panics, the issue is with generic trait implementations themselves. I could do a minimal test by removing the supertrait and trait spec, adding `verus_verify` to the PageAligned Address implementation, and temporarily disabling the from_address spec since without the supertrait there's no `@` available.
+
+This is a lot of rework though. Given the time constraints, maybe I should accept the current working configuration where the trait declaration has the spec and the implementation is trusted, then verify whether leaving the Address implementation unverified is actually sound for the ultimate goal. For frame.rs's `external_body` to eventually be discharged, PageAligned's `into_raw_value` needs a verified spec—but if PageAligned's implementation itself is merely trusted rather than verified, that might still be acceptable depending on how the verification chain works.
+
+The real question is whether providing the spec via the trait declaration is sufficient for callers to use it, even if the implementation is trusted. Let me try a more targeted test: remove the `View<V=int>` supertrait and the `@` specs to see if `verus_verify` on the generic Address implementation still panics, or test whether a non-generic implementation like PhysicalAddress's Address impl can be verified without triggering the duplicate panic.
+[RESULT ✓] bash: 35:#[verus_verify(external_derive)]
+131:impl Address for PhysicalAddress {
+226:    fn into_raw_value(self) -> usize {
+<shellId: 90 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 132
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address; cp phys.rs /tmp/phys.rs.bak; sed -i '131i #[verus_verify

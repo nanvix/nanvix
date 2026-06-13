@@ -1,0 +1,44 @@
+Timestamp: 2026-06-14_04-53-19
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=14
+  admit=25
+  trusted=0
+  no_decreases=0
+  cfg_gate=16
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |
+188 |               let _ = write!(
+    |  _____________________^
+189 | |                 &mut crate::klog::Klog::get(
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+...   |
+194 | |                 $($arg)*
+195 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/hal/mem/types/address/phys.rs:168:13
+    |
+168 | /             error!(
+169 | |                 "PhysicalAddress::align_up(): {reason} (addr={:#x}, align={:?})",
+170 | |                 self.0.into_raw_value(),
+171 | |                 align
+172 | |             );
+    | |_____________- in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
