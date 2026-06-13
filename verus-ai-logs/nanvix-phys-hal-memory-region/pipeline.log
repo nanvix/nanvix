@@ -29,3 +29,6 @@ Module: hal-memory-region
 PHASE: view-design
 Module: hal-memory-region
 ============================================================
+[2026-06-14 05:54:58] [PROVER] Running view-design...
+[2026-06-14 05:54:58] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-14 05:59:01]   ↳ prover done in 4m02s (exit=0)
