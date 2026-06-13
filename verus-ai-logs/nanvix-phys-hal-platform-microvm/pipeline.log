@@ -1,0 +1,20 @@
+[PIPELINE] NOTE: spec file missing, creating empty stub: /home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.spec.rs
+[PIPELINE] NOTE: proof file missing, creating empty stub: /home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.proof.rs
+[PIPELINE] NOTE: added 'use vstd::prelude::*;' to /home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.rs
+[PIPELINE] NOTE: added cfg-gated include!(mod.spec.rs, mod.proof.rs) to /home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.rs
+[2026-06-14 06:24:28] [BRANCH] Base: verus-ai/hal-memory-region → Verus: verus-ai/hal-platform-microvm
+[2026-06-14 06:24:28] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/body_removed_source.rs (33732 -> 14398 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: hal-platform-microvm
+Source: /home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.rs
+Crate:  kernel
+Branch: verus-ai/hal-platform-microvm (base: verus-ai/hal-memory-region)
+Phases: caller-analysis → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: caller-analysis
+Module: hal-platform-microvm
+============================================================
