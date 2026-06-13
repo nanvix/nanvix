@@ -236,3 +236,23 @@ trait impl whose trait method carries a `#[verus_spec]`; the analogous non-gener
 (`impl Address for PhysicalAddress`) does not panic. See `bugs.md`. The impl is therefore
 left unverified (trusted) — *not* `external_body` — and its trivial body
 (`self.0.into_raw_value()`) is left for the proving phase / a fixed Verus to discharge.
+
+## Update (turn 1 fix): `from_address` proven without `admit`
+
+`from_address` no longer uses `proof!{admit();}` — it is fully discharged by two added
+dependency specs:
+
+- **`Address::is_aligned` trait spec** (`sys/mm/address/mod.rs`):
+  `result matches Ok(aligned) && aligned == (self@ % spec_align_value(align) == 0)`.
+  Guarantees `Ok` (every concrete impl always returns `Ok`), and relates the boolean to
+  `self@` and the alignment value. Needed so `from_address`'s `Err => !spec_aligned(addr@)`
+  arm holds (an `Err`-able `is_aligned` would let an aligned input propagate `Err`).
+- **`spec_align_value(align: Alignment) -> int`** (`sys/mm/alignment.rs`, concrete `match`
+  over the enum's byte values).
+- **`PAGE_ALIGNMENT` model** (`page.spec.rs`) now links the constant to the page size:
+  `spec_align_value(PAGE_ALIGNMENT) == spec_page_size()`. This is the explicit
+  `PAGE_ALIGNMENT ↔ spec_page_size()` connection that lets `is_aligned(PAGE_ALIGNMENT)`
+  prove `spec_aligned(addr@)`.
+
+Only `into_raw_value` remains trusted (via the `Address` trait-decl spec) due to the
+documented VERUS-TOOL-1 generic-trait-impl panic; `from_address` is now machine-proven.
