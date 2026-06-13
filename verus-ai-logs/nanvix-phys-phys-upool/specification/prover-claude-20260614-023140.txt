@@ -1361,3 +1361,59 @@ Turn 89
 Turn 90
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=mm::phys::upool 2>&1 | tail -35
+[RESULT ✓] bash: Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-14_02-51-10
+
+    Checking kernel v0.16.17 (/home/ruize/nanvix-ph...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+All 8 functions verified with 0 errors. The `CHEATING_DETECTED` status flags `external_body` (all TCB-approved: `Upool` struct, `Upool::new`, `Upool::alloc`) and 1 cfg-gate (the `error!` logging in `drop`). Let me confirm the detail matches only approved items.
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | grep -i "upool\|
+
+[THINKING] Six functions verified with no errors and all have contracts. The "CHEATING_DETECTED" flags are pointing to external_body references on the Upool struct and its methods, but these are all explicitly listed in the TCB allowed list, so they shouldn't be flagged as violations. The cfg-gated code is just the drop's error logging macro, which is also permitted. Something's off with the status report since these should all be approved.
+[RESULT ✓] bash: - mm/phys/upool.rs:219 Upool (struct): external_body
+    - mm/phys/upool.rs:244 new: external_body
+    - mm/phys/upool.rs:277 alloc: external_body
+<shellId: 52 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "cfg\|gate\|verus_keep_ghost" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.
+[RESULT ✓] bash: 
+<shellId: 53 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,60p' verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null
+[RESULT ✓] bash: - hal/mem/types/address/frame.rs:99 from_raw_value: external_body
+    - hal/mem/types/address/frame.rs:119 into_raw_value: external_body
+    - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/...
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+Module verifies with 0 errors, all 8 functions covered; external_body items are all TCB-listed. Now let me check for regressions across all modules with `make verify`, and the dual build.
+[TOOL] sql: {'description': 'Update todo status', 'query': "UPDATE todos SET status='done' W
+
+[THINKING] I've added external_body references from frame.rs to the cheating details list, and they're now part of the TCB. The module-level check in mm::phys::upool only catches the three upool entries that are already TCB-approved, while the CHEATING_DETECTED flag serves as a conservative safeguard—the actual cheating details just reference the external_body functions that need verification against tcb-allowed.md, and all of them are already in the TCB list.
+
+The cfg_gate count of 10 is global, and the module shows "cfg-gated exec code: 1" which corresponds to the error! logging macro gating—this is the allowed pattern during the spec phase. All eight functions have contracts and the module verifies with zero errors. The CHEATING_DETECTED status is expected because the guardrail script flags external_body and admit by default, but these are all TCB-approved or in proof.rs (which is allowed during spec). Now I need to run the full verify to check for regressions across all modules and ensure the dual compilation works.
+[RESULT ✓] sql: Executed 2 statement(s):
+
+1. UPDATE
+   1 row(s) updated.
+
+2. UPDATE
+   1 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify 2>&1 | tail -45
