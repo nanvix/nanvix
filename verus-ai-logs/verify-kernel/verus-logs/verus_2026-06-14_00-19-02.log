@@ -1,0 +1,72 @@
+Timestamp: 2026-06-14_00-19-02
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=8
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=5
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: `alloc::collections::linked_list::Iter` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+  --> src/kernel/src/mm/phys/mod.rs:72:5
+   |
+72 |       for region in physical_memory_regions.iter() {
+   |  _____^             ------------------------------
+73 | |         info!("booking: {:?}", region);
+74 | |         frame::alloc_range(region)?;
+75 | |     }
+   | |_____^
+   |
+   = help: The following declaration may resolve this error:
+           #[verifier::reject_recursive_types(T)]
+           #[verifier::external_type_specification]
+           pub struct ExIter<'a, T>(alloc::collections::linked_list::Iter<'a, T>);
+
+error: `alloc::collections::linked_list::impl&%8::iter` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+  --> src/kernel/src/mm/phys/mod.rs:72:19
+   |
+72 |     for region in physical_memory_regions.iter() {
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: The following declaration may resolve this error:
+           pub assume_specification<T, A> [alloc::collections::LinkedList::<T, A>::iter] (_0: &alloc::collections::LinkedList<T, A>) -> alloc::collections::linked_list::Iter<'_, T>
+           where
+           A: core::alloc::Allocator,;
+
+error: cannot use function `kernel::mm::phys::frame::alloc_range` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+  --> src/kernel/src/mm/phys/mod.rs:74:9
+   |
+74 |         frame::alloc_range(region)?;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: The following declaration may resolve this error:
+           assume_specification [crate::mm::phys::frame::alloc_range] (_0: &crate::hal::mem::types::region::TruncatedMemoryRegion<hal::mem::types::address::phys::PhysicalAddress>) -> core::result::Result<(), sys::error::Error>;
+
+error: `alloc::collections::linked_list::LinkedList` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+  --> src/kernel/src/mm/phys/mod.rs:67:5
+   |
+67 |     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+72 |     for region in physical_memory_regions.iter() {
+   |                   -----------------------
+   |
+   = help: The following declaration may resolve this error:
+           #[verifier::reject_recursive_types(A)]
+           #[verifier::reject_recursive_types(T)]
+           #[verifier::external_type_specification]
+           pub struct ExLinkedList<T, A>(alloc::collections::LinkedList<T, A>)
+           where
+           A: core::alloc::Allocator,;
+
+error: could not compile `kernel` (bin "kernel") due to 4 previous errors

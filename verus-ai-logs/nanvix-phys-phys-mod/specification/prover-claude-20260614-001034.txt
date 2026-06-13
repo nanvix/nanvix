@@ -509,3 +509,224 @@ scripts/verify.sh
 Turn 24
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | ta
+[RESULT ✓] bash: - free_count
+    - free
+    - is_covered
+    - book
+    - alloc_range
+    - share
+    - refcount
+    - new
+    - base
+    - clear
+    - deref
+    - deref_mut
+    - drop
+    - init
+    - get_mut
+    - alloc_many_user_frames
+    - alloc_user_frame
+    - check_user_watermark
+    - alloc_kernel_frame
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | he
+
+[THINKING] I'm checking the baseline verification status and noticing a "CHEATING_DETECTED" flag triggered by external_body methods in frame.rs that shouldn't be there. The tcb-allowed list includes certain kframe and manager methods, but frame.rs appears to have multiple external_body Inner methods that are creating a conflict.
+
+Actually, I think I'm misunderstanding the scope here — this is the baseline state before my changes, and the frame module's external_body methods might be expected temporary placeholders for dependencies. The real metric I should focus on is coverage: 8 out of 44 exec functions currently have contracts, and my job is to add specs to the three mod.rs functions to increase that count. Let me look at verify.sh to clarify what the cheating gate actually checks and whether external_body on dependency functions is acceptable.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== LinkedList in verus context ==="; grep -rn "LinkedList" src/ | grep -iE "iter|verus
+
+[THINKING] The `--module mm::phys` flag verifies the `mm::phys` and `mm::phys::frame` modules, and I'm noticing that the 8 external_body declarations in frame.rs (the Inner methods) are pre-existing and flagged by the cheating detector, but they represent the established trust contracts for the frame Inner—essentially the "external-bottom" layer for raw memory operations. However, these aren't listed in tcb-allowed.md, which only documents frame::init.
+
+This is the baseline state, not something I'm introducing, so my focus should be on specifying the 3 mod.rs functions and getting them verified without making things worse. The frame.rs Inner methods already have rich specs (book, is_covered, alloc_range, etc.), so I don't need to write those. But mod.rs calls the free functions `frame::init`, `frame::book`, `frame::is_covered`, and `frame::alloc_range`, which wrap `instance().method()` calls—and these free functions currently have no specs. To verify mod.rs, I need to spec these free functions, which means I need a global view accessor for the frame singleton that models how the global `INSTANCE` is accessed.
+
+The solution is to define `phys_view()` as the global accessor (uninterpreted, mirroring how bump_view works) that returns a `PhysModView` containing the frame state plus an initialized flag. The frame free functions can then get external_body specs phrased over this global view. Even though marking these functions external_body increases the cheating count, it's justified because they're genuinely global-singleton wrappers whose transitions can't be expressed without a token—the same reasoning as the Inner methods. The task allows writing specs for unlisted functions and marking them external_body when needed, so this approach fits within scope.
+
+For the one-shot initialization soundness issue, I should avoid modeling `frame::init`'s precondition as requiring `!phys_view().initialized`, since that creates a contradiction for callers. Instead, the realistic contract is: `frame::init` returns Ok or Err; on Ok, it ensures `phys_view().initialized && phys_view().frames.wf()`. The one-shot nature is enforced at runtime (returns Err if already initialized), which per spec design means keeping the runtime check and Err return rather than encoding it as a precondition.
+
+With a fixed `phys_view()`, after `frame::init` succeeds, Verus learns `phys_view().initialized == true` as a fact in the proof context without contradiction. Then `book_physical_memory_regions` and `book_mmio_regions` should preserve `initialized && frames.wf()`, and `PhysMemoryManager::init` ensures `manager_ready` while maintaining those invariants, allowing `mod.rs init` to prove `phys_view().live()` on the Ok path.
+
+Now I'm looking at how the loops in `book_physical_memory_regions` and `book_mmio_regions` interact with these invariants. So the proof lemmas with admit() bodies are actually the deliverable for the spec phase, and they encode the rich transition facts that the exec functions can reference in proof blocks. Since phys_view() is fixed, all_reserved(P) is just a constant fact about it, so I can establish the strong postconditions by calling a proof lemma like lemma_book_phys_postcondition() rather than trying to verify it through the loop itself.
+
+The real blocker is that the loop over physical_memory_regions needs to establish region.inv() for each yielded region before calling frame::alloc_range, but without a LinkedList iter spec, Verus can't infer that. I could drop the requires region.inv() from the frame::alloc_range free-fn spec since it's external_body, but that only works if region.inv() is trivially true or always holds for TruncatedMemoryRegion.
+
+Actually, I'm probably overcomplicating this. The spec phase might not require fully proving the loops — maybe the three exec functions should route their hard obligations through admit() instead. But admit() is essentially assume(false), which might be banned or at least problematic for the verification phase.
+
+Wait, I just realized: I can use `proof { admit(); }` blocks inside exec functions during the spec phase as a placeholder. That's allowed per the rules. So I can write strong, meaningful ensures clauses on the three exec functions, give the loops minimal or no invariants, and use admit() to discharge the obligations. Then during the proving phase, I remove the admit() and actually prove everything properly.
+
+The key question is whether Verus requires loop invariants even with admit() in place. The loop body itself still needs to verify its operations — like region.inv() for alloc_range calls — but if I put admit() early enough, it should bypass the requires checks. The cleaner approach though is to keep admit() only in proof functions in mod.proof.rs and have the exec functions call those proof functions instead of embedding admit() directly.
+
+So the architecture is: mod.spec.rs defines PhysModView and the helper impls, mod.proof.rs contains the proof lemmas with admit bodies, and mod.rs has the three exec functions with strong ensures that call those proof lemmas to discharge obligations. The frame/manager/upool free functions need external_body specs since they touch the global INSTANCE singleton, which is genuinely external. This gives me a coherent design that separates concerns cleanly.
+
+But I'm second-guessing the effort and risk — adding external_body to frame free functions increases the cheating count, and while the task doesn't explicitly require cheating to be zero, the baseline already has CHEATING_DETECTED from frame Inner. I need to weigh whether this approach will be acceptable or if I should find a way to avoid those external_body specs.
+
+Actually, let me reconsider whether frame free functions even need specs. If mod.rs calls frame::init() and it has no #[verus_spec] annotation, Verus treats an unannotated exec function as external with a trivial contract. So maybe I don't need to add specs to those functions at all — they'd just be called with default requires/ensures.
+
+The cleanest path forward: put strong ensures on the three mod.rs functions and discharge them through proof lemmas in mod.proof.rs that get called from within the exec functions. This axiomatizes the needed phys_view() facts while keeping the unspecified callees as-is and concentrating all the admit logic in the designated proof module. But I need to verify whether Verus will even allow calling an unannotated function from a verified context, and then tackle the loop invariant requirement in book_physical_memory_regions.
+
+The real blocker might be whether Verus supports iterating over LinkedList with a for loop — vstd likely doesn't provide a ghost iterator implementation for LinkedList, which could prevent the loop from verifying at all. I should test this empirically by adding a minimal spec to book_physical_memory_regions with an admit proof and seeing if the for-loop compiles.
+[RESULT ✓] bash: === LinkedList in verus context ===
+=== for loops in verified kernel code ===
+src/kernel/src/mm/phys/mod.rs:65:    for region in physical_memory_regions.iter() {
+src/kernel/src/mm/phys/mod.rs:79:    for region in mmio_regions.iter() {
+src/kernel/src/mm/virt/manager.rs:304:            for slot in buf...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '170,205p' src/kernel/src/mm/virt/vmem.rs; echo "=== is vmem verified? grep verus_spec
+
+[THINKING] I should check how the mm::virt module handles for loops with iterators and whether they use spec annotations with loop invariants, then look at vmem.rs to understand the verification pattern. Rather than searching through existing code, I'll just write a draft spec directly in mod.rs and run verus to see what errors come up and learn from them.
+[RESULT ✓] bash: })
+    }
+
+    /// Clones the target virtual memory space.
+    pub fn clone(from: &Vmem, pgdir_page: KernelPage) -> Result<Vmem, Error> {
+        // Create a clean page directory backed by a kernel page from the pool.
+        let mut pgdir: PageDirectory<PageDirectoryStorage> =
+            PageDirect...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== frame_addr_of / View for Inner / internal_inv ==="; grep -rn "frame_addr_of\|impl V
+
+[THINKING] I notice that `vmem.rs` has no verification annotations at all, so there's no existing pattern in the codebase for verifying functions that iterate over a LinkedList. This means I need to figure out how Verus handles this case empirically. Let me start by adding a `#[verus_spec]` annotation to `book_physical_memory_regions` with a basic ensures clause and an admitted proof to see what Verus accepts.
+
+My plan is to build the actual deliverable incrementally: first add the View and helper definitions to mod.spec.rs, then add minimal verus_spec annotations to the three functions, then run Verus to learn what works. Before I do that, I need to check the inv() and view definitions in region.rs to understand how to define region_frames correctly, and I should look at the TruncatedMemoryRegion accessors along with the frame_addr_of and View for Inner definitions to make sure region_frames aligns with how frames are computed.
+[RESULT ✓] bash: === frame_addr_of / View for Inner / internal_inv ===
+=== region.rs 480-540 ===
+
+    closed spec fn view(&self) -> MemoryRegionView
+    {
+        self.0@
+    }
+}
+
+impl<T: Address + View<V = int>> TruncatedMemoryRegion<T>
+{
+    pub open spec fn inv(&self) -> bool
+    {
+        &&& self@.start % spec_...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rln "frame_addr_of\|impl View for Inner" src/ ; echo "=== def ==="; grep -rn "frame_add
+
+[THINKING] I need to track down where `frame_addr_of` and the `View` implementation for `Inner` are defined since they're not in frame.rs.
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.proof.rs
+=== def ===
+src/kernel/src/mm/phys/frame.proof.rs:8:pub open spec fn frame_addr_of(i: int) -> int {
+src/kernel/src/mm/phys/frame.proof.rs:12:impl View for Inner {
+src/kernel/src/mm/phys/frame.proof.rs:20:                    && addr == frame_addr_of(i)
+src/kernel...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::FrameAllocView;
+4. use crate::hal::mem::spec_page_size;
+5. use vstd::map::*;
+6. 
+7. /// Helper: convert a bitmap index to a frame (physical) address.
+8. pub open spec fn frame_addr_of(i: int) -> int {
+9.     i * spec_page_size()
+10. }
+11. 
+12. impl View for Inner {
+13. ...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== manager.rs annotations ==="; grep -n "verus_spec\|verus_verify\|external_body\|fn i
+
+[THINKING] I'm settling on the architecture now. I'll create a ghost struct for the physical module view with frame allocation tracking, add a global accessor function, and build out helper implementations to manage frame operations like booking and checking availability across regions.
+
+For the initialization and state management, I'm deciding to keep the exec ensures focused on the core invariants and live facts, then handle the richer transition logic through proof lemmas in a separate module. This avoids over-engineering with too many uninterpreted functions.
+
+On dependencies, rather than spreading external specifications across the frame module, I'll route the strong postconditions through proof lemmas that the exec functions call, keeping the frame function specs minimal while the physical view facts capture the real guarantees.
+
+The key question is whether I can call unspecified frame functions from verified code in mod.rs — Verus should allow this since they're treated as external with no contract. The cleanest approach is to add spec annotations to the frame free functions too, marking them external_body with physical view contracts, which gives mod.rs real callee contracts for honest proofs. This increases the external_body count but it's consistent with the pattern already established for Inner methods accessing global state, and the task explicitly allows this for unverified dependencies.
+
+But there's a fundamental soundness issue: with a fixed global phys_view(), I can't express state transitions like "addr moves from free to allocated" in the frame function specs — I can only state invariant-preserving facts like "initialized stays true." This means frame contracts can't actually specify the reserved-set changes that mod.rs depends on, which defeats the purpose of adding specs in the first place.
+
+I'll go with option (a): keep frame function external_body contracts minimal, stating only invariant preservation and liveness facts, while admitting the actual transition lemmas (like all_reserved) separately in mod.proof.rs. This concentrates the deferred trust in named proof lemmas and keeps the spec phase consistent, even if the frame function specs themselves are weak placeholders.
+
+For mod.rs's own ensures clauses, I'm now writing out what init should guarantee: the invariant holds, the result is Ok, the system is live, all physical memory regions are reserved, and the MMIO set is properly configured.
+
+For book_physical_memory_regions, the contract requires initialized state and ensures it stays that way while marking all physical regions as reserved. Since phys_view() is fixed, manager_ready is automatically unchanged without needing explicit frame conditions.
+
+For book_mmio_regions, similarly I'm ensuring the invariant and initialized state persist, with the success case guaranteeing all MMIO frames are reserved.
+
+Now I need to figure out how to actually discharge these contracts in the exec bodies...
+
+the loops are the tricky part. I'm planning to use proof lemmas with admit() at the end, keeping the external_body frame functions minimal with just phys_view().initialized as a requirement. But the real question is whether Verus will even accept for-loops over LinkedList iterators without explicit loop invariants. I should test this empirically before building out the full implementation.
+
+Let me start by writing the spec file with the View definitions and helper functions, then add minimal annotations to book_physical_memory_regions and run Verus to see what errors come up. I need to define region_frames to map a TruncatedMemoryRegion's start and size into actual frame numbers.
+
+Defining helper spec functions... is understood as exactly the regions' frames. The opacity hides the concrete set, but for the contract it serves as a named abstraction—acceptable for the spec phase, though a concrete definition would be stronger. Without a LinkedList view, I can't define phys_region_frames recursively, so uninterp is the pragmatic choice here, even though it's typically avoided. This feels like a genuine abstraction boundary rather than an escape hatch, similar to how byte_at_address and spec_page_size are uninterp for legitimate reasons.
+
+Actually, let me step back. Maybe I'm overcomplicating this by trying to express region sets at all. The caller only observes Ok/Err and relies on the invariant that booked regions are never allocated, so the meaningful spec might center on phys_view().live() and liveness, with reserved-set properties expressed through opaque region-frame accessors.
+
+I'll go with a pragmatic final design: mod.spec.rs defines PhysModView with initialized state, a FrameAllocView, and manager_ready flag, plus invariants and liveness. phys_view() is an uninterp accessor, and FrameAllocView provides concrete helpers like covers, reserved, all_reserved, all_free, and the booking operations.
+
+For the region-specific parts, I'll keep region_frame_addrs as a concrete function documenting the per-region frame set—it could be referenced in proof lemmas relating list-sets to individual regions. The uninterp list-set accessors phys_regions_frames and mmio_regions_frames represent the opaque frame sets those lists cover, which is a genuine abstraction boundary since LinkedList isn't modeled. The existing codebase already uses uninterp for similar boundaries like spec_page_size and byte_at_address, so this approach is consistent with the established patterns.
+
+For the core expectation "booked ⇒ never allocated," I need to capture it in the ensures clause using the uninterp list-set to express that all reserved frames are never allocated, plus the property that MMIO regions are covered and reserved. Now I need to decide on specs for Upool::new and PhysMemoryManager::init—PhysMemoryManager::init requires a contract establishing manager_ready in the fixed phys_view, while Upool::new can remain unspecified since its result is opaque. The init function's ensures should preserve initialized and frames while establishing manager_ready, and I need to think through what the requires clause should be.
+
+Now I'm checking whether manager.rs and upool.rs are actually being verified by the module scope and what annotations already exist on those files.
+[RESULT ✓] bash: === manager.rs annotations ===
+84:    pub(super) fn init(upool: Upool) -> Result<(), Error> {
+=== upool.rs annotations ===
+44:    pub fn new(addr: FrameAddress) -> Self {
+145:    pub(super) fn new() -> Self {
+158:    pub fn alloc(&mut self) -> Result<UserFrame, Error> {
+=== manager spec files? ===
+=...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Let me empirically test how Verus handles the `for` loop over `LinkedList::iter()` before committing to a design.
+[TOOL] bash: cd /home/ruize/nanvix-phy; cp src/kernel/src/mm/phys/mod.rs /tmp/mod.rs.bak; cp src/kernel/src/mm/phys/mod.spec.rs /tmp/
+
+[THINKING] The core issue is that `manager.rs` and `upool.rs` have no Verus annotations or spec files, making them completely external to verification. When the verified `init` function in `mod.rs` calls the unverified `PhysMemoryManager::init`, I need to understand whether Verus automatically assigns a contract to that external function or treats it as having no guarantees.
+
+I'm considering two approaches: either add a `#[verus_spec(external_body)]` annotation to `PhysMemoryManager::init` with the required contract (which means touching `manager.rs` and wiring in vstd imports), or establish the `manager_ready` postcondition through an admit-lemma in `mod.proof.rs` that's called after the external function returns. The second approach is cleaner—it keeps all the trust concentrated in the proof module without modifying the unverified files, so I'll route all `phys_view()` postconditions through admit-lemmas rather than adding specs to the external frame/manager/upool functions.
+
+The real blocker is the loops: `book_physical_memory_regions` iterates over a `LinkedList` with no View spec, and `book_mmio_regions` has a while loop. I'm not sure if Verus will accept iterating over an unannotated `LinkedList::iter()` or if it requires loop invariants to be explicitly specified for the while loop to type-check.
+
+The loop bodies call various functions like `gva_to_gpa`, `PhysicalAddress::from_mmio_address`, and `frame::book` — if any of these have requires clauses, I'd need to discharge them, but if they're unannotated it should be fine.
+
+I need to test this immediately with a minimal experiment: add a basic `verus_spec` annotation to `book_physical_memory_regions` with trivial ensures and an `admit()` in the body, then run Verus to see if the for-loop over `iter()` is accepted.
+[RESULT ✓] bash: backed up
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
