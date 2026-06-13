@@ -3590,3 +3590,142 @@ Since both `spec.rs` and `proof.rs` are included into `manager.rs` as part of th
 Turn 244
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::phys 2>&1 | tail -20
+[RESULT ✓] bash: - deref_mut
+    - drop
+    - get_mut
+    - test
+    - new
+    - address
+    - leak
+    - share
+    - refcount
+    - drop
+    - new
+
+=== Summary ===
+  verification: 17 verified, 2 errors (exit 101)
+  cheating: assume=0 external_body=24 admit=10 trusted=0 no_decreases=0 cfg_gate=10
+  coverage: 24/45 e...
+
+────────────────────────────────────────────────────────────
+Turn 245
+────────────────────────────────────────────────────────────
+Verus now runs — 17 verified, 2 errors. Let me see them:
+[TOOL] bash: cd /home/ruize/nanvix-phy; L=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); grep -n "error\[\|er
+[RESULT ✓] bash: 41:error: postcondition not satisfied
+50:error: precondition not satisfied
+61:error: postcondition not satisfied
+71:error: could not compile `kernel` (bin "kernel") due to 3 previous errors
+===
+verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_01-54-55.log
+<shellId: 106 completed with exit cod...
+
+────────────────────────────────────────────────────────────
+Turn 246
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_01-54-55.log
+[RESULT ✓] view: 38. 242 | |         }
+39.     | |_________^
+40. 
+41. error: postcondition not satisfied
+42.    --> src/kernel/src/mm/phys/manager.rs:181:17
+43.     |
+44. 181 |                 Ok(()) => {
+45.     |                 ^^^^^^ failed this postcondition
+46. ...
+47. 239 |                     return Err(erro...
+
+────────────────────────────────────────────────────────────
+Turn 247
+────────────────────────────────────────────────────────────
+Now at the proof level — these are real spec/lemma gaps. Let me examine the lemmas and call sites:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] Looking at the proof errors in the manager.rs file — specifically the postcondition failures at the error return path in alloc_many_user_frames. The issue is that when the function returns an Err, the ensures clause for that branch needs to be satisfied, but it seems the error exit isn't properly maintaining the expected state invariant.
+
+For the second error at line 237, the precondition `pre.wf()` isn't being satisfied when calling lemma_user_bulk_err_restored. The lemma expects the pre-state to be well-formed, and while g_old is captured from self@ at entry (where self.inv() guarantees wf()), the loop invariant might not be carrying that property forward, so verus can't verify it holds at the call site.
+
+The third error in alloc_many_kernel_frames is similar — the postcondition requires final(self).inv() but the error path doesn't establish that self remains unchanged. Since the kernel allocation path doesn't modify self.upool, the invariant should still hold, but I need to either add a lemma proving self is unmodified or explicitly establish the invariant in the proof. The real issue is that the exec function's postconditions must be verified using the admitted lemmas, and if those lemmas don't provide enough information, verification fails. For the error path in alloc_many_kernel_frames, I need to establish that final(self)@ equals old(self)@ since self is never actually modified. The problem might be that verus can't trace this connection automatically, so I should add an explicit proof step on the error path to confirm self remains unchanged, or reconsider how the admitted lemmas are structured to properly handle both success and failure cases. On the error path, self isn't modified before reaching line 471, so `final(self)@ == old(self)@` should hold. But verus might not be tracking this through the loop — if the loop invariant doesn't explicitly mention that self remains unchanged, verus could be "havoc-ing" self's state after the loop, losing the connection to the original value even though nothing actually touched it.
+
+Let me look at the actual lemma definitions and where they're being called to understand what's failing with errors 1 and 2.
+[RESULT ✓] view: 82. // User bulk-path transitions
+83. //==================================================================================================
+84. 
+85. /// Effect of a successful bulk user allocation: the `count` handles in `frames` own distinct
+86. /// frames that were all free and become reserved as a...
+
+────────────────────────────────────────────────────────────
+Turn 248
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm working through two verification errors in the `lemma_user_bulk_err_restored` function. The first error is about the precondition `pre.wf()` failing since `pre` equals `g_old`, so I need to establish that `g_old` is well-formed. The second error involves the error path at line 239 where the postcondition requires the final state to match the old state and frames to be empty—I need to verify that the lemma's guarantee `m@ == pre` correctly relates `self@` to `g_old` and `old(self)@`.
+
+Now I'm tracing through the logic: `g_old` is captured as `self@` at entry, which equals `old(self)@`, and since `self.inv()` holds in the requires clause, `self@.wf()` should be derivable. The issue is whether Verus automatically unfolds the `inv()` specification function to access the underlying `wf()` fact, especially since `g_old` is a ghost variable that doesn't change across the loop where the lemma is called. .wf() to be true. The requires clause is `requires self.inv()`, which is `open`, so verus should unfold it and see self@.wf(). So at the proof_decl point, g_old.wf() should be derivable. Unless the issue is that the lemma call happens much later in the function, and verus doesn't carry the fact forward through all the intermediate code. Or maybe I need to explicitly assert g_old.wf() right after the proof_decl to lock it in as a fact. The real issue is that g_old is loop-invariant—it's fixed before the loop starts—so g_old.wf() should remain true throughout, independent of how self mutates. The problem is that inside the loop, when verus needs to verify pre.wf() (where pre is g_old), it can't connect back to the initial self.inv() that established it. I need to either explicitly assert g_old.wf() before entering the loop, or ensure the loop invariant captures this fact so it's available at the point where the precondition is checked.
+
+For error 3, the alloc_many_kernel_frames function doesn't actually modify self—it only modifies the local frames vector and calls free functions—so final(self).inv() should follow directly from old(self).inv() without needing re-establishment, but verus might not be auto-unfolding inv() to recognize this.
+
+The real issue might be that verus doesn't automatically conclude final(self) == old(self) for an unmodified &mut self reference in the new mut-ref model, even though logically it should. Since the task allows using admitted lemmas in exec functions to bridge gaps, I should add an explicit call to lemma_kernel_bulk_err_restored on the error paths to establish that self remains unchanged and satisfies the invariant. I need to verify that `g_old.wf()` is actually known after the loop by adding an explicit assertion right after capturing `g_old`, and if that fails, I'll know the invariant isn't unfolding automatically. Then I'll add the restoration lemma calls at the error paths in both functions to establish that `self` remains unchanged when errors occur.
+[RESULT ✓] view: 411.             },
+412.     )]
+413.     pub fn alloc_many_kernel_frames(
+414.         &mut self,
+415.         count: usize,
+416.         frames: &mut Vec<KernelFrame>,
+417.     ) -> Result<(), Error> {
+418.         proof_decl! {
+419.             let ghost g_old = self@;
+420.         }
+421.         ...
+
+────────────────────────────────────────────────────────────
+Turn 249
+────────────────────────────────────────────────────────────
+Let me look at the user function start to add proof support:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] For error 3, the issue is that after the loop iteration returns Err at line 471, we're still inside the loop body where self hasn't been mutated, so `final(self)` should equal `old(self)`. The Err path needs `final(self).inv()`, which should be satisfied by the `old(self).inv()` from the requires clause, but Verus might not be tracking this correctly since self is never modified in the function.
+
+I'm thinking the root problem is establishing that `g_old.wf()` explicitly — I need to add an assertion right after capturing `g_old` in both bulk functions to confirm it's well-formed, and then call the kernel restoration lemma on the kernel Err path to establish the invariant holds. For the user path, the lemma is already called, but I need to make sure `g_old.wf()` is known before the lemma call. The early returns at 426 and 432 actually pass the postcondition check, which is strange — verus only flagged the error at line 471 inside the loop. This suggests the issue isn't about self being modified or havoced by the loop, since self isn't touched by any of the loop operations. The real difference might be that at 471, the loop invariant context doesn't provide enough information about self's state, even though self should still equal its original value.
+
+Both the kernel error path and the user path ultimately depend on proving `g_old.wf()` from the entry precondition `self.inv()`. Since `inv()` is defined as `self@.wf()` and `g_old` captures `self@` at entry, `g_old.wf()` should be directly provable — but I need to verify this is actually being established in the proof context. So the real issue might be that verus isn't automatically unfolding the wf() predicate to connect g_old.wf() back to the known self.inv() fact at entry. I should add explicit assertions right after the proof declaration to help verus see that g_old equals the captured self state and that its well-formedness follows from the entry invariant, which should force the unfold if needed.
+[RESULT ✓] view: 197.     ) -> Result<(), Error> {
+198.         proof_decl! {
+199.             let ghost g_old = self@;
+200.         }
+201.         if !frames.is_empty() {
+202.             let reason: &str = "frames vector is not empty";
+203.             #[cfg(not(verus_keep_ghost))]
+204.             error!("{reason...
+
+────────────────────────────────────────────────────────────
+Turn 250
+────────────────────────────────────────────────────────────
+This hinges on `g_old.wf()` and `g_old == old(self)@` being available deep in the loop. Let me add explicit proof bindings and the kernel restoration lemma:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] The loop invariant only captures `self@.wf()`, but the lemma at line 237 requires `g_old.wf()` as well. Since `g_old` is constant and established at entry from `self.inv()`, that fact should persist—but Verus only carries facts through the loop body via the stated invariant, so `g_old.wf()` isn't automatically available inside the loop.
+
+The real question is whether Verus knows that `g_old == old(self)@` at line 237. At line 199, before any mutations, `g_old = self@`, which equals `old(self)@`, but Verus might not automatically equate these without an explicit assertion. I'll add a proof block right after the declaration to assert both `g_old == old(self)@` and `g_old.wf()`, which should follow from the precondition `old(self).inv()`.
+
+For the error path in the kernel function, I need to establish the same facts before calling the restoration lemma. The key insight is that even if `g_old.wf()` is hard to prove, the core restoration fact (`final(self)@ == old(self)@`) doesn't logically require it—though keeping it in the spec is cleaner. The chain of reasoning works: the lemma gives `self@ == g_old`, and `g_old == old(self)@`, so `self@ == old(self)@`, which means `final(self)@ == old(self)@` at the return point.
+
+The puzzle is why the early returns at 426 and 432 succeed without any lemma call—verus proves `final(self).inv()` there directly—but the error path at 471 fails. Within the loop, `self` isn't modified, so verus should still know `self == old(self)` and `inv()` should unfold fine. The difference might be how verus handles the loop context or the proof blocks inside it, but rather than debug further, I'll add the restoration lemma call and asserts at 471 and see what happens.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 251
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 252
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 253
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verification:|errors|verified" | tail -5
