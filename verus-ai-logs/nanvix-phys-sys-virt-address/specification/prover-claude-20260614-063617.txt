@@ -894,3 +894,180 @@ Confirmed: only `new`'s `assume_specification` conflicts (it's now superseded by
 Turn 46
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify 2>&1 | tail -25
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+verification results:: 60 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.88s
+
+=== Results ===
+  60 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+Full `make verify`: 60 verified, 0 errors. The "CHEATING_DETECTED" reflects pre-existing `external_body`/`admit` in other in-progress kernel modules — my changes added none. Now checking `make build`:
+[TOOL] bash: cd /home/ruize/nanvix-phy; make build 2>&1 | tail -25
+
+[THINKING] The verification passed with 60 verified and no errors, and I can confirm my changes didn't introduce any new cheating—the existing external_body and admit references are pre-existing placeholders from other modules, while my additions contributed zero of each. Now I'm checking that the sys crate verify also came back clean.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 39 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "^build\|^all:\|\.PHONY: build\|^build:\|run:\|^dev-build\|cargo build\|kernel:" Make
+[RESULT ✓] bash: 411:all: all-nanvix
+624:verify-kernel: ensure-verus
+842:run: image
+916:# otherwise spawn one `cargo build -p <pkg>` per bundled binary, which adds significant
+<shellId: 40 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/sys; cargo build 2>&1 | tail -20
+
+[THINKING] I need to verify that the build still works with my changes. The `make build` target doesn't exist, so I'll test the actual compilation by building the sys crate directly with cargo to confirm the erased compilation is functioning properly.
+[RESULT ✓] bash: Compiling sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+error: unused import: `::vstd::prelude::*`
+  --> src/libs/sys/src/sys/mm/address/virt.rs:25:5
+   |
+25 | use ::vstd::prelude::*;
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `-D unused-imports` implied by `-D warnings`
+   = help: to override...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; git stash list; echo "--- diff stat ---"; git --no-pager diff --stat; echo "--- check origina
+
+[THINKING] I'm noticing there's a duplicate import issue with `use vstd::prelude::*;` appearing on both line 8 and line 25, but this seems to be pre-existing in the original file rather than something my changes introduced. Let me verify whether this was already present before I made any modifications.
+[RESULT ✓] bash: --- diff stat ---
+ .../prover-claude-20260614-063617.jsonl            | 70 ++++++++++++++++++++++
+ .../prover-claude-20260614-063617.txt              | 54 +++++++++++++++++
+ 2 files changed, 124 insertions(+)
+--- check original virt.rs imports via git show HEAD ---
+use vstd::prelude::*;
+use ::vstd::...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; git status --short | head; echo "--- is virt tracked? ---"; git ls-files --error-unmatch src/
+
+[THINKING] The git diff output is only showing log files, not my changes to virt.rs and phys.spec.rs, which is odd — either those files are gitignored or the diff is comparing against a different state. Let me check git status to figure out what's going on.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-sys-virt-address/specification/prover-claude-20260614-063617.jsonl
+ M verus-ai-logs/nanvix-phys-sys-virt-address/specification/prover-claude-20260614-063617.txt
+--- is virt tracked? ---
+src/libs/sys/src/sys/mm/address/virt.rs
+--- diff for virt ---
+<shellId: 43 completed w...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '47,72p' src/libs/sys/src/sys/mm/address/virt.rs; echo "=== git diff full ==="; git --
+
+[THINKING] Something's off with the git tracking — the verify-sys tool confirmed it modified two functions in virt.rs, but git diff shows nothing and git status doesn't list it as changed. I'm wondering if there might be duplicate copies of the source files, or if they're gitignored or in a submodule. Let me check what's actually in the file right now versus what git sees.
+[RESULT ✓] bash: #[verus_verify]
+impl VirtualAddress {
+    #[verus_spec(result =>
+        ensures
+            result@ == value as int,
+    )]
+    pub const fn new(value: usize) -> Self {
+        Self(value)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Instantiates a new [`VirtualAddress`] from a raw value.
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+My spec annotations are erased in normal builds and don't affect compilation. The duplicate `vstd` import warning is pre-existing in HEAD (both imports at lines 8 and 25 existed before my edits). Let me confirm the project's actual build path works:
+[TOOL] bash: cd /home/ruize/nanvix-phy; git --no-pager log --oneline -3; echo "=== does HEAD already contain my edits? ==="; git --no
+
+[THINKING] I'm noticing that my edits are actually in the file, but `git diff HEAD` isn't showing any changes for virt.rs, which is strange. It seems like HEAD might already contain these modifications from a previous commit. Let me verify this by checking the git log and comparing what's in the working tree against HEAD — when I ran `git show HEAD:...virt.rs` earlier, it returned the vstd imports at lines 8 and 25, but those line numbers correspond to the original pre-edit version of the file.
+
+Actually, the duplicate vstd import causing the build failure is pre-existing, not something I introduced. Both imports were there from the start — line 8 has `use vstd::prelude::*;` and line 25 has `use ::vstd::prelude::*;`. Since `git diff HEAD` is empty, the working tree matches HEAD exactly, and HEAD already contains both imports. The real question is whether the actual project builds successfully despite this duplicate import, since the build I ran uses `-D warnings` and default features, but the real build process might use different feature flags or cfg settings that could suppress the warning. I'm realizing the duplicate import issue is actually pre-existing in HEAD — there are two identical `use vstd::prelude::*` statements, and under normal cargo build with strict warnings, one gets flagged as unused. The project's real build probably uses different lint configuration or the `verus_keep_ghost` cfg that handles this differently, which is why it passes CI despite the bare `cargo build` failing here.
+
+Since I haven't touched line 25 and this redundancy existed before my changes, I'm not introducing a regression. Now I need to verify the actual project build still works by checking what the real build mechanism is — either a `make` target or the z.py build script.
+[RESULT ✓] bash: 5d6ebaaad [verus] verify PASS (cheating detected): kernel::all (60 verified, 0 errors, admit=26 external_body=14 cfg_gate=15)
+d1e990f0a [verus] verify PASS (cheating detected): bump-allocator::all (cached (no recompilation), —, admit=3 external_body=2)
+de7f9de9a [verus] verify PASS (cheating detecte...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== parent commit virt.rs imports ==="; git --no-pager show 5d6ebaaad~1:src/libs/sys/sr
+
+[THINKING] The verification harness auto-committed my changes on success, so my edits are already in HEAD and that's why git diff shows nothing. Now I need to check if the `cargo build` duplicate-import error existed before my work by looking at the parent commit's virt.rs file.
+[RESULT ✓] bash: === parent commit virt.rs imports ===
+use vstd::prelude::*;
+use ::vstd::prelude::*;
+=== diff of my work vs parent (virt.rs) ===
+<shellId: 46 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; find . -name "config.toml" -path "*cargo*" 2>/dev/null; echo "--- RUSTFLAGS in env/config ---
+
+[THINKING] I'm noticing the diff for virt.rs between commit 5d6ebaaad and its parent is empty, which means the verus_spec annotations I thought I added aren't actually showing up in that commit. The parent commit already has those annotations, so either my changes went into a different commit or the auto-commit amended things in an unexpected way—I need to trace through the commit history more carefully to figure out what actually happened.
+
+But stepping back, the important facts are clear: `make verify` passed with 60 verified and 0 errors, my spec changes are in the working tree and committed, and the duplicate vstd import is pre-existing in the parent commits. The real question now is whether the normal build works. The bare `cargo build` failed because of the duplicate import triggering `-D warnings`, but the project must build in CI somehow—maybe with different features or lint settings. Let me check if there's a `.cargo/config.toml` forcing warnings-as-errors, and if not, I'll build without that flag to confirm my changes compile cleanly aside from the pre-existing issue.
+[RESULT ✓] bash: --- RUSTFLAGS in env/config ---
+--- build sys allowing warnings ---
+   Compiling static_assert v0.16.17 (/home/ruize/nanvix-phy/src/libs/static_assert)
+   Compiling vstd v0.0.0-2026-05-31-0205
+   Compiling mmio-tag v0.16.17 (/home/ruize/nanvix-phy/src/libs/mmio-tag)
+   Compiling verus_builtin v0.0.0...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+The crate compiles cleanly in normal mode (the duplicate `vstd` import warning is pre-existing). Let me review the final state of my changes:
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '70,80p' src/libs/sys/src/sys/mm/address/virt.rs; echo "=== phys.spec.rs region ==="; 
+
+[THINKING] The compilation succeeds with warnings allowed, so my changes don't introduce any errors. The duplicate `use vstd::prelude::*` import that shows up under `-D warnings` was already there before my work. I'm checking whether the actual project build uses `-D warnings` — the lib.rs has `#![deny(clippy::all)]` but not `#![deny(warnings)]`, so unused imports would just be warnings by default rather than hard errors.
+
+Since the project's HEAD builds successfully and the duplicate import is pre-existing and unrelated to my task, I'm confident my changes are clean. For `into_raw_value`, the trait-level specification in mod.rs already guarantees the caller expectation that `result as int == self@`, so that's covered by the existing trait declaration.
+
+I'm deciding not to attempt full verification of the VirtualAddress impl against the trait since that would require speccing `mm::is_aligned`, which is an unlisted function I can't touch. The trait-level spec adequately covers the caller contract, which is the right scoped approach here.
+
+For the spec.rs and proof.rs files, they can legitimately stay empty since the View already lives in virt.rs (consistent with how phys.rs and frame.rs are structured), and no helper spec functions are needed given the simple equality-based specs.
+
+I'm also reconsidering whether to add the `inv()` function for documentation, but the spec-design rule against floating specs takes precedence, and the view design itself acknowledges minimality, so I'll leave it out.
+
+Now I'm doing a final completeness check on the determinism of each function: `new` maps input `value` to `result@ == value as int`, `from_raw_value` maps to `result@ == raw_addr as int`, and `into_raw_value` maps `self@` to `result as int == self@` — all fully deterministic.
+
+Let me verify the final state and check the source changes one more time to ensure the split between virt.rs and phys.spec.rs is clean, particularly around the impl block boundaries.
+[RESULT ✓] bash: pub fn from_raw_value(raw_addr: usize) -> Self {
+        VirtualAddress::new(raw_addr)
+    }
+}
+
+impl VirtualAddress {
+    ///
+    /// # Description
+    ///
+    /// Aligns the target [`VirtualAddress`] to the provided `alignment`. If the address is already
+    /// aligned, it is returned as is.
+=== p...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::sys::mm::address::virt 2>&1 | grep -A6 "=== Summary"
+
+[THINKING] Running a final verification to confirm the module is in a clean state and check whether bugs.md needs any updates. The end-to-end verification already passed, so I'm just doing a module-level confirmation. I'm also noting that spec.rs and proof.rs remain empty as expected—they don't need to hold the View/inv and proof signatures at this stage.
