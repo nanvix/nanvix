@@ -82,18 +82,4 @@ impl<T: Address + View<V = int>> TruncatedMemoryRegion<T> {
     }
 }
 
-//==================================================================================================
-// Dependency contracts for the not-yet-verified address layer.
-//
-// Cloning a `T: Address` yields an equal abstract address. `Clone::clone` is a
-// std-library trait method ("returns a copy of the value"); view preservation is
-// the abstract consequence of that documented contract. This is a placeholder
-// until the address layer exposes a clone specification of its own.
-//==================================================================================================
-
-pub assume_specification<T: Address>[ <T as Clone>::clone ](a: &T) -> (res: T)
-    ensures
-        res@ == a@,
-;
-
 } // verus!

@@ -586,3 +586,57 @@ Now run module verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=hal::mem::types::region 2>&1 | tail -45
 
 [THINKING] I'm checking whether the getter implementations for `TruncatedMemoryRegion` properly satisfy their contracts—specifically, whether `self@.start` equals `self.0@.start` given that the truncated view is accessible within the module and the underlying `MemoryRegion<PageAligned<T>>` has the right ensures clause.
+[RESULT ✓] bash: === Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::region.
+  Globa...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+There's a compilation error. Let me see the actual error.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -iE "error|warning: unused" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_06-0
+[RESULT ✓] bash: compilation/setup error (verus did not run)
+error: assume_specification cannot be used to specify generic specifications of trait methods; consider using external_trait_specification instead
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 23 completed with exit cod...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+`assume_specification` can't target generic trait methods. I'll defer the clone-view obligation with `proof! { admit(); }` (the same pattern `frame.rs` uses), and remove the assume from the spec file.
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 - <<'PY'
+import re
+p="src/kernel/src/hal/mem/types/region.spec.rs"
+s=open(p).read()
+#
+
+[THINKING] I'm realizing that `assume_specification` won't work for generic trait methods, so I need to find another way to preserve the clone view. I'm considering whether using `proof { admit(); }` in the MemoryRegion::start body would trigger the cheating detection, since the module already shows no cheating detected globally despite having 26 admits elsewhere.
+
+The task says admits in proof bodies are acceptable, so adding one to my module should be fine — the key is that the SPEC phase just needs correct specs with zero errors, and the clone fact genuinely requires a deferred proof. But I'm also exploring whether I can sidestep the clone issue entirely by recognizing that Verus might already be able to prove the result equals the original value without needing an explicit clone contract.
+
+I'm settling on using `proof! { admit(); }` inside the function body to defer the clone-view-preservation obligation, similar to how frame.rs handles deferred proofs. The admit will make the verifier assume false from that point onward, trivially satisfying the postcondition. This feels inelegant since the whole function becomes unverified, so I'm considering whether there's a cleaner way to structure this.
+
+Actually, the key insight is that `size()` verifies completely on its own since it doesn't depend on clone, while `start()` will rely on the admitted contract. When `TruncatedMemoryRegion::start` delegates to `self.0.start()`, it trusts the ensures clause regardless of how the underlying function proves it internally, so the delegation verifies cleanly. The task explicitly allows admit in proof bodies, so this approach should be acceptable. I'm going to go with admit as the solution here. The Address trait requires Clone as a supertrait, but Verus doesn't let me specify trait method specs for supertrait methods without external_trait_specification at the global level, which is out of scope. So I'll remove the assume_specification from region.spec.rs and add an admit to MemoryRegion::start with a clear comment explaining the deferral.
+[RESULT ✓] bash: trimmed
+// Invariants
+//==================================================================================================
+
+impl<T: Address + View<V = int>> MemoryRegion<T> {
+    /// A general memory region carries only the non-empty geometry guarantee.
+    pub open spec fn inv(&self) -> bool {
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=hal::mem::types::region 2>&1 | tail -30
