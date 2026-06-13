@@ -2,23 +2,52 @@
   "module_name": "hal-memory-region",
   "log_name": "nanvix-phys-hal-memory-region",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs",
-  "current_phase": "caller-analysis",
-  "current_phase_idx": 0,
-  "completed_phases": [],
-  "phase_results": {},
+  "current_phase": "view-design",
+  "current_phase_idx": 1,
+  "completed_phases": [
+    "caller-analysis"
+  ],
+  "phase_results": {
+    "caller-analysis": {
+      "phase": "caller-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 133.7,
+      "review_rounds": 0
+    }
+  },
   "prover_session_id": "b03d0640-fd3e-4ccd-8a87-cc720ea2ebc9",
   "completed": false,
   "base_branch": "verus-ai/hal-phys-address",
   "verus_branch": "verus-ai/hal-memory-region",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "caller-analysis": "2daa4352027049413fb8d3b9a07e66c816bc891a"
+  },
   "phase_start_shas": {
-    "caller-analysis": "3a1599bc2d5a930817e0379368c9992db3a999fe"
+    "caller-analysis": "3a1599bc2d5a930817e0379368c9992db3a999fe",
+    "view-design": "2daa4352027049413fb8d3b9a07e66c816bc891a"
   },
   "phase_history": [
     {
       "phase": "caller-analysis",
       "event": "start",
       "sha": "3a1599bc2d5a930817e0379368c9992db3a999fe",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "caller-analysis",
+      "event": "end",
+      "sha": "2daa4352027049413fb8d3b9a07e66c816bc891a",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "start",
+      "sha": "2daa4352027049413fb8d3b9a07e66c816bc891a",
       "rollback_iter": 0
     }
   ],
