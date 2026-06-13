@@ -29,6 +29,7 @@ mod duplicate;
 mod getppid;
 mod mmio_ramfs;
 mod rendezvous;
+mod source_spoofing;
 mod tls;
 
 //==================================================================================================
@@ -70,6 +71,8 @@ pub fn main() -> Result<(), Error> {
     demand_paging::run()?;
 
     rendezvous::run()?;
+
+    source_spoofing::run()?;
 
     // Return an error with the specified exit code.
     // The nvx runtime will convert this to the process exit code.
