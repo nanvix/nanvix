@@ -973,3 +973,56 @@ All pass (exit 0). The CHEATING_DETECTED is the pre-existing admit count in thos
 Turn 54
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/mm/phys/frame.rs && timeout 600 make verify-kernel MODULE=mm::phys::fr
+[RESULT ✓] bash: verification results:: 20 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+  Exit code : 0
+  verification: 20 verified, 0 errors (exit 0)
+<shellId: 44 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+`mm::phys::frame`: 20 verified, 0 errors — no regression. Let me force a full kernel re-verification to be certain nothing else regressed.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls src/kernel/src/main.rs src/kernel/src/lib.rs 2>/dev/null; find src/kernel/src -maxdepth 
+
+[THINKING] The frame module tests passed cleanly with my changes to strengthen the PageAligned specs, so I'm confident there are no regressions there. Now I need to run a full kernel verification with a clean cache to make sure nothing broke elsewhere—the previous run was cached, so I'm invalidating it by modifying a core file. I'm debating whether to force a full cache clear or just run the complete `make verify` as requested. The crate-global assume_spec changes should trigger a full re-verification anyway, but to be absolutely certain there are no regressions, I should run the full verification suite with a generous timeout rather than trying to manually invalidate the cache.
+[RESULT ✓] bash: src/kernel/src/kpanic.rs
+src/kernel/src/kimage.rs
+src/kernel/src/klog.rs
+src/kernel/src/stdio.rs
+src/kernel/src/debug.rs
+src/kernel/src/kargs.rs
+src/kernel/src/kmod.rs
+src/kernel/src/multibin.rs
+src/kernel/src/uart.rs
+src/kernel/src/kmain.rs
+<shellId: 45 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls src/kernel/src/lib.rs src/kernel/src/main.rs 2>&1; grep -rln "verus-ai-logs\|\.fingerpri
+[RESULT ✓] bash: ls: cannot access 'src/kernel/src/lib.rs': No such file or directory
+ls: cannot access 'src/kernel/src/main.rs': No such file or directory
+scripts/verify.sh
+--- look for cache dir ---
+50:  VERUS_EXTRA_CARGO_ARGS Extra cargo arguments (e.g., "-Z build-std=core,alloc --target ...").
+<shellId: 46 compl...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "fn main\|#!\[no_main\|mod " src/kernel/src/*.rs | grep -i "kmain\|main\b" | head;
+[RESULT ✓] bash: src/kernel/src/kmain.rs:22:#![no_main]
+src/kernel/src/kmain.rs:78:mod macros;
+src/kernel/src/kmain.rs:81:mod collections;
+src/kernel/src/kmain.rs:83:mod debug;
+src/kernel/src/kmain.rs:84:mod event;
+src/kernel/src/kmain.rs:85:mod hal;
+src/kernel/src/kmain.rs:86:mod io;
+src/kernel/src/kmain.rs:87:mod ...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/kmain.rs && timeout 700 make verify-kernel 2>&1 | grep -iE "verifying 
