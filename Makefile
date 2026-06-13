@@ -298,7 +298,7 @@ endif
 export VERUS_EXECUTABLE_DIR ?= /home/ruize/toolchain/verus
 
 # List of crates to verify with Verus.
-VERUS_CRATES := bitmap sys nanvix-slab
+VERUS_CRATES := bitmap sys nanvix-slab bump-allocator
 
 # Platform-specific Verus binary name.
 ifeq ($(IS_WINDOWS),yes)

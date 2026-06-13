@@ -95,6 +95,15 @@ use ::core::{
         Ordering,
     },
 };
+use ::vstd::prelude::*;
+
+// Include specifications.
+#[cfg(verus_keep_ghost)]
+include!("lib.spec.rs");
+
+// Include proofs.
+#[cfg(verus_keep_ghost)]
+include!("lib.proof.rs");
 
 //==================================================================================================
 // Traits and Types
