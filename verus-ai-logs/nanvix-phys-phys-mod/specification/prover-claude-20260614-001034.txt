@@ -1861,3 +1861,17 @@ Turn 114
 Turn 115
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
+[RESULT ✓] bash: verification results:: 3 verified, 0 errors (partial verification with `--verify-*`)
+  3 verified
+  0 errors
+  Unverified functions:
+  verification: 3 verified, 0 errors (exit 0)
+<shellId: 65 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 116
+────────────────────────────────────────────────────────────
+Clean. Final full regression + build verification, then cleanup:
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify 2>&1 | grep -iE "Exit code|error
+
+[THINKING] The verification passed with 3 confirmed and no errors, so I'll run the full verification suite once more to make sure the trigger warning edit didn't introduce any regressions, then clean up the temporary backups. Since the only change was to the kernel module spec file and make verify uses caching, I should run it to be safe.
