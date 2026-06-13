@@ -80,3 +80,6 @@ inexpressible against the 0-arg `phys_view()` accessor in the do-not-modify
 mod.spec.rs. Consistent with the already-verified frame layer; recorded in
 view_design.md §8 and bugs.md.
 [2026-06-14 03:08:24] [DIALOGUE] specification ended after 2 turns: RESOLVED (602s)
+[2026-06-14 03:08:24] [PHASE] specification: dialogue-RESOLVED (36m44s)
+[2026-06-14 03:08:24] [SPEC DRIFT] (within specification) Comparing 975741f6 → 034b469d
+[2026-06-14 03:08:24] [SPEC DRIFT] (within specification) No changes detected
