@@ -1,4 +1,4 @@
-# Unverified exec functions: 986/1023
+# Unverified exec functions: 982/1023
   do_debug
   debug
   do_evctrl
@@ -535,11 +535,7 @@
   set_active_guard
   fmt
   drop
-  instance
   init
-  is_covered
-  book
-  alloc_range
   clear
   deref
   deref_mut
