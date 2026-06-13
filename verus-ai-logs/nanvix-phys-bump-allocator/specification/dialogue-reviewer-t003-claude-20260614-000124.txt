@@ -149,3 +149,60 @@ I'll review the fixer's turn 2 changes — verifying whether they applied the ra
 5. Applied the `raw-array` `external_body` + `verus_spec` pattern to `alloc`/`alloc_as`
 6. exactly as requested, with **one mechanical deviation forced by a Verus front-end
 7. panic** (documented below): the abstract view is exposed as a free un...
+[RESULT ✓] bash: === Verus Verification (cargo mode) ===
+  Crate     : bump-allocator
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/libs/bump_allocator/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-targ...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Coverage now 3/6, exit 0. Let me verify the actual code changes and the cheating detail.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt; echo "=== cheat
+[RESULT ✓] bash: # Unverified exec functions: 3/6
+  fmt
+  new
+  default
+=== cheating detail ===
+    - lib.proof.rs:22 lemma_geometry: admit
+    - lib.proof.rs:39 lemma_exhausted_boundary: admit
+    - lib.proof.rs:54 lemma_alloc_transition: admit
+    - lib.rs:286 alloc: external_body
+    - lib.rs:367 alloc_as: extern...
+[RESULT ✓] view: 260.     ///
+261.     /// - [`BumpAllocError::Exhausted`] if storage capacity is exhausted.
+262.     /// - [`BumpAllocError::Overflow`] if internal arithmetic overflows.
+263.     /// - [`BumpAllocError::OutOfBounds`] if computed slot exceeds storage bounds.
+264.     /// - [`BumpAllocError::Misaligne...
+[RESULT ✓] view: 35. //==================================================================================================
+36. // align_up - numeric specification
+37. //==================================================================================================
+38. 
+39. /// Ghost constant: the stable base addre...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Coverage 3/6, `alloc`/`alloc_as` now specified with `external_body` (registered in tcb-allowed.md), exit 0. Let me verify the full `alloc_as` spec, the `bump_view` declaration, and run the cross-module regression + build myself.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[TOOL] grep: bump_view|uninterp
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -25
+
+[THINKING] The fixer applied the raw-array pattern and we're at 3 out of 6 coverage with contracts now in place for alloc and alloc_as. I registered external_body=2 in tcb-allowed.md, and used bump_view as a free function instead of an impl method because the Verus front-end was panicking on the impl version—they provided the exact error which confirms this is the right approach. Now I need to verify the remaining pieces: the full alloc_as spec, the bump_view declaration, the view_design update, and make sure the error arms aren't problematically tautological, particularly that `Err(_) => true` case.
+
+Looking at the error handling more carefully, alloc_as does distinguish between SizeMismatch and AlignmentMismatch with meaningful conditions, while the catch-all Err(_) covers propagated allocation errors like Exhausted, Overflow, OutOfBounds, and Misaligned. For alloc itself though, every error path just collapses to `Err(_) => true`, which is fully tautological. The question is whether we can express something more specific about those error variants. The caller analysis shows they care about Exhausted once NUM_UNITS slots are gone, but without the ghost-token transition to track allocated state, I can't actually state that `allocated == capacity` for Exhausted. Since bump_view is uninterpreted and not connected to the actual atomic, the error semantics genuinely can't be refined beyond what we have—the modeling limitation means we're stuck with this level of abstraction.
+
+This defers to the proving phase as documented in view_design §7, which is acceptable for the spec phase. The bigger question is whether these ensures are even meaningful given that bump_view and slot_ref_addr are uninterpreted. A caller can still use the facts: given inv() holds, the returned slot is aligned and in-bounds relative to the view's base and storage_size. That's a real, non-tautological guarantee for the Ok case, even if it's weaker than full uniqueness or a connection to the actual storage address. The Ok arm facts aren't derivable from inv() alone because the connection between slot_ref_addr and the geometry only comes through the ensures themselves, so they're not subsumed.
+
+Now I need to verify the remaining checklist items: check the bump_view declaration and view_design update, then run the full regression with make verify across all crates and confirm the build passes.
+[RESULT ✓] grep: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs:41:pub uninterp spec fn base_of<S: ?Sized>() -> int;
+/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs:46:/// (only raw pointers expose `.addr()`), so — mirroring `raw-array`'s uninterpreted
+/home/ruize/nanvix-phy/src/libs/b...
+[RESULT ✓] view: 360.                     &&& a + (N as int) <= v.base + (v.storage_size as int)
+361.                 },
+362.                 Err(BumpAllocError::SizeMismatch) => vstd::layout::size_of::<T>() != N as nat,
+363.                 Err(BumpAllocError::AlignmentMismatch) => vstd::layout::align_of::<T>() > A...
