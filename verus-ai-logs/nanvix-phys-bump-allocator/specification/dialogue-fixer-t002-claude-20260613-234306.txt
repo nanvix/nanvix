@@ -326,3 +326,14 @@ Since `BssStorage` is defined in this crate rather than being truly external, I 
 Turn 22
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A6 -iE "does not yet support|error\
+[RESULT ✓] bash: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: could not compile `bump-allocator` (lib)
+
+Caused by:
+  process didn't exit successfully: `/home/ruize/toolchain/verus/verus /home/ruize/.cargo/bin/rustc --crate-name bump_allocator --edition=2021 src/libs/bump_alloc...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+There's an internal error/panic. Let me see the full error from the log:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B3 -A15 -iE "panic|internal|thread '|er
