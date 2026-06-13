@@ -1,4 +1,3 @@
-    - hal/mem/types/address/aligned/page.rs:49 from_address: admit
     - hal/mem/types/address/frame.rs:99 from_raw_value: external_body
     - hal/mem/types/address/frame.rs:119 into_raw_value: external_body
     - mm/phys/frame.rs:136 alloc: admit

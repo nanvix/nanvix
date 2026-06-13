@@ -689,3 +689,65 @@ Turn 35
 Turn 36
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
+[RESULT ✓] bash: |            ^^^^^^^^^^^^ not found in this scope
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+
+=== Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "E0425\|not found\|error\[" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_0
+
+[THINKING] I'm looking at a Rust compilation error where a value isn't in scope—likely `admit` or `spec_aligned`—and I need to check the full error log to see what's actually missing.
+[RESULT ✓] bash: 20:error[E0425]: cannot find function `from_address` in this scope
+24:   |            ^^^^^^^^^^^^ not found in this scope
+26:For more information about this error, try `rustc --explain E0425`.
+===
+13:  admit=25
+24:   |            ^^^^^^^^^^^^ not found in this scope
+<shellId: 24 completed with exit...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,30p' verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_04-27-08.log
+[RESULT ✓] bash: Timestamp: 2026-06-14_04-27-08
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::aligned::page
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=14
+  admit=25
+  trusted=0
+  no_decreases=0
+  cfg_gate=17
+
+--- F...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+Let me isolate — revert `from_address`, keep only `into_raw_value` spec to test trait-method speccing.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] The error seems to be a macro expansion issue where `#[verus_spec]` is generating a recursive helper that's trying to call `from_address`, but it's not finding it in scope — possibly because the `proof! { admit(); }` block or the early return is interfering with how the macro resolves the function name. The issue might be that `#[verus_spec]` is generating a call to `from_address` as a free function when it's actually a method that needs `Self::`. Let me simplify by removing the `proof!{admit();}` and early return logic, then test if the trait method spec works on its own by temporarily reverting `from_address` to see if that's the actual blocker.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
