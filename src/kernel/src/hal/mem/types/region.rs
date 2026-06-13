@@ -212,14 +212,7 @@ impl<T: Address> MemoryRegion<T> {
             result@ == self@.start,
     )]
     pub fn start(&self) -> T {
-        // The postcondition `result@ == self@.start` relies on `T::clone`
-        // preserving the abstract address (`clone(x)@ == x@`). `Clone` is a
-        // supertrait of `Address` with no spec yet, and `assume_specification`
-        // cannot target a generic trait method. This obligation is therefore
-        // discharged once the address layer exposes a clone contract; deferred
-        // here (proving phase).
-        proof! { admit(); }
-        self.start.clone()
+        self.start.clone_address()
     }
 
     /// Returns the size of the target memory region.

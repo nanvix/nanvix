@@ -263,6 +263,10 @@ impl Address for PhysicalAddress {
         self.0.into_raw_value()
     }
 
+    fn clone_address(&self) -> Self {
+        PhysicalAddress(self.0)
+    }
+
     fn as_ptr(&self) -> *const u8 {
         self.0.as_ptr()
     }

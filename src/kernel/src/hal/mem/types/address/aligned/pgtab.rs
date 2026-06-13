@@ -41,6 +41,10 @@ impl<T: Address> Address for PageTableAligned<T> {
         self.0.into_raw_value()
     }
 
+    fn clone_address(&self) -> Self {
+        PageTableAligned(self.0.clone_address())
+    }
+
     ///
     /// # Description
     ///
