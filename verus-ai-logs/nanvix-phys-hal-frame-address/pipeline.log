@@ -63,3 +63,6 @@ Two proving-phase obligations are tracked (not spec defects):
 - Remove the PhysicalAddress::from_raw_value assume_specification once phys's
   Address impl is verified.
 [2026-06-14 07:35:44] [DIALOGUE] specification ended after 1 turns: RESOLVED (372s)
+[2026-06-14 07:35:44] [PHASE] specification: dialogue-RESOLVED (30m00s)
+[2026-06-14 07:35:44] [SPEC DRIFT] (within specification) Comparing 9fa3a31e → 4346a4bb
+[2026-06-14 07:35:44] [SPEC DRIFT] (within specification) No changes detected
