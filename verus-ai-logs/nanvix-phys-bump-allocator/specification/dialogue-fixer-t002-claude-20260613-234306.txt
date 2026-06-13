@@ -337,3 +337,111 @@ Turn 23
 ────────────────────────────────────────────────────────────
 There's an internal error/panic. Let me see the full error from the log:
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B3 -A15 -iE "panic|internal|thread '|er
+[RESULT ✓] bash: Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+
+thread 'rustc' (1144662) panicked at vir/src/context.rs:337:13:
+assertion failed: !trait_impl_map.contains_key(&trait_impl.x.impl_path)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+err...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Verus internal panic (`context.rs:337` duplicate trait-impl) when declaring the trait — a Verus front-end bug triggered by `#[verus_verify]` on a trait that already has a `#[verus_spec]` method. The `self.view()` path forces declaring the struct, which forces declaring the trait → panic. I'll express the same alignment/in-bounds facts using the type-level constants directly (`A`, `N`, `base_of::<S>()`, `S::STORAGE_SIZE`), avoiding the struct/trait declaration. First revert the struct/trait annotations and the `view` accessor:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] I'm looking at a Verus compiler panic that's being triggered by the `#[verus_verify]` attribute on an unsafe trait called `BssStorage` and its implementations. The issue seems to involve duplicate trait impl entries in the compiler's internal map, with multiple backend implementations and a kernel `PageTableBss` impl all conflicting with each other.
+
+The root cause appears to be a combination of factors: the trait has `#[verus_spec]` on the `as_mut_ptr` method, and now `#[verus_verify]` on the trait itself, which is causing the impl to register twice. I'm reconsidering whether I should even use `#[verus_verify]` on the `FixedSizeBumpAllocator` struct at all, since the original reason was to resolve an error about the type being ignored outside the verus! macro. But this creates a circular dependency where declaring the struct requires the trait to be declared, which then triggers the internal panic.
+
+I'm exploring whether I can define the `view` accessor as a free spec function instead of an inherent method, which would avoid needing to declare the struct to Verus — though that still references the type and its bounds, so it might not solve the underlying problem.
+
+Actually, `BumpAllocError` is simple enough that adding `#[verus_verify]` to just that enum shouldn't cause issues. The real blocker is `FixedSizeBumpAllocator`'s `S: BssStorage` bound. But looking back at what the reviewer actually needs — the ensures clause over `self.view()` — I only use a few fields from the view: `unit_align`, `base`, `storage_size`, and `unit_size`. These are all pinned to the type constants `A`, `S::STORAGE_SIZE`, and `N`. So instead of calling `self.view()`, I could express the ensures directly using those constants and helper functions like `base_of::<S>()`, which avoids needing the view method altogether.
+
+For the matching on `Result<&'static mut [u8;N], BumpAllocError>`, using a wildcard on `Err(_)` might not require the enum to be declared, but in `alloc_as` I need to distinguish between specific error variants, so `BumpAllocError` does need `#[verus_verify]`. The strategy is to keep that annotation only on the enum itself, and remove it from both `FixedSizeBumpAllocator` and the `BssStorage` trait to avoid dragging in unnecessary bounds.
+
+For the spec, I should drop the `view(&self) -> BumpView` implementation and instead express the invariant directly using `A`, `N`, `base_of::<S>()`, and `S::STORAGE_SIZE`. The tricky part is the `requires self.view().inv()` precondition — if I keep it, the kernel's allocator call site would need to prove it, which might break verification. Since this is an external_body function, I should either use a trivial precondition or rely only on the ensures clause, letting the kernel pass without additional proof obligations. The panic is likely from the trait declaration itself interacting with the `as_mut_ptr` spec method, causing Verus to register the trait-method impl twice — a compiler bug. Since there are no impls of BssStorage in the lib crate anyway, I can sidestep this entirely by dropping the struct and trait declarations, removing the `#[verus_verify]` annotations from them, and rewriting the alloc ensures using concrete constants and helper functions instead of `view()`.
+
+For the ensures clause, I'll use `S::STORAGE_SIZE as int` and `base_of::<S>()` which are both in scope as type parameters, and `slot_ref_addr(slot)` should typecheck fine since the earlier errors were unrelated to that function. I'll keep `BumpView::inv()` for the proof lemmas but drop the `view()` accessor on the allocator itself, documenting that attaching view() triggers a Verus internal panic.
+
+Before committing to the constants approach, let me try one more thing with view() — maybe the panic comes from `#[verus_verify]` on the struct combined with the trait definition. I'll try removing those attributes and see if that resolves it. If not, the constants approach is solid and actually more concrete than routing through an uninterpreted view anyway.
+
+My plan: remove the `view(&self) -> BumpView` impl block from lib.spec.rs, strip `#[verus_verify]` from both the FixedSizeBumpAllocator struct and BssStorage trait in lib.rs, and implement using the real alignment and size constants instead.
+
+Rewriting the alloc ensures clause with constants...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Let me view the current state to make clean edits:
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "verus_verify\|pub unsafe trait BssStorage\|pub struct FixedSizeBumpAllocator\|pub 
+
+[THINKING] I'm reconsidering whether I can keep `view()` working instead of removing it entirely. The real issue is the panic that happens when declaring the BssStorage trait in Verus. Let me dig deeper into whether that panic is actually unavoidable or if there's a way around it.
+
+The panic fires because the same trait impl path gets inserted twice — likely because both the `as_mut_ptr` spec and the View/inherent impl are creating duplicate entries. Before I added `#[verus_verify]` to the trait, the error was just "cannot find trait T14_BssStorage". That suggests using `#[verus_verify(external_trait_specification)]` might be the documented approach for declaring external traits as bounds, though BssStorage is in-crate so this feels like a workaround for a Verus compiler quirk.
+
+Given the time constraints and that this appears to be a Verus compiler issue, the constants-based approach that avoids declaring the struct and trait altogether is more pragmatic and robust — it gives the reviewer exactly what they need for the Ok arm with concrete alignment and bounds checking, making the `requires self.view().inv()` constraint unnecessary.
+
+I'll implement the constants formulation to actually work, document the exact Verus panic that blocks view() attachment, and keep the BumpView model with inv() and lemmas as the specification layer. This is defensible since I hit a genuine compiler crash when trying to attach view() and delivered the caller-critical facts through an equivalent working approach.
+
+Now I need to check whether declaring just the `BumpAllocError` enum with `#[verus_verify]` causes the same panic, since it has no trait bounds — only derives and a manual Display impl. Let me test that in isolation first, then review the current file state around the trait and struct.
+[RESULT ✓] bash: src/libs/bump_allocator/src/lib.rs:146:#[verus_verify]
+src/libs/bump_allocator/src/lib.rs:147:pub enum BumpAllocError {
+src/libs/bump_allocator/src/lib.rs:191:#[verus_verify]
+src/libs/bump_allocator/src/lib.rs:192:pub unsafe trait BssStorage {
+src/libs/bump_allocator/src/lib.rs:218:#[verus_verify]
+s...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] I'm removing the `#[verus_verify]` attribute from the struct and trait definitions while keeping it on the BumpAllocError enum, then I'll rewrite the ensures clauses.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+[RESULT ✓] view: 148.                 ==> (#[trigger] self.slot_addr(i)) != (#[trigger] self.slot_addr(j)))
+149.     }
+150. 
+151.     /// Abstract transition performed by a successful allocation: one more slot is
+152.     /// consumed, nothing else changes.
+153.     pub open spec fn spec_alloc(self) -> BumpView {
+15...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Now rewrite the `alloc` contract to use type-level constants instead of `self.view()`:
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[RESULT ✓] view: 262.     /// - [`BumpAllocError::Misaligned`] if computed slot is not properly aligned.
+263.     ///
+264.     // SAFETY-SPEC: `external_body` because the success path materializes a
+265.     // `&'static mut [u8; N]` from a backend-provided address (`usize as *mut`), a
+266.     // raw-memory operati...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A6 -iE "does not yet support|panic|
