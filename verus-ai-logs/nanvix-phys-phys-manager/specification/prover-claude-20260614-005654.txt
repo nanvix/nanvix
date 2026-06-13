@@ -2653,3 +2653,382 @@ Turn 170
 [THINKING] I'm checking whether `FrameAddress` has a `View` implementation since `into_raw_value` uses `self@` in its spec, and I need to verify that `fa.inv()` and related operations are properly defined. These should already exist from earlier work, so I'll proceed with re-running the verification, though I'm also noticing some concerns about bare `#[verus_verify]` and `#[verus_spec` attributes that might need attention.
 
 Since the address/frame.rs file already uses bare `#[verus_verify(external_derive)]` on the struct, the macros should be available unconditionally in non-Verus builds. Let me re-run the kernel verification to see if everything compiles correctly.
+[RESULT ✓] bash: - share
+    - refcount
+    - base
+    - clear
+    - deref
+    - deref_mut
+    - drop
+    - get_mut
+    - test
+    - new
+    - address
+    - leak
+    - share
+    - refcount
+    - drop
+    - new
+
+=== Summary ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  cheat...
+
+────────────────────────────────────────────────────────────
+Turn 171
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; L=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); grep -n "error\[\|er
+[RESULT ✓] bash: 20:error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+28:error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+36:error: Unsupported constant type
+56:e...
+
+────────────────────────────────────────────────────────────
+Turn 172
+────────────────────────────────────────────────────────────
+Progress — verus now parses further. New errors are real spec issues. Let me see them:
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_01-44-06.log
+[RESULT ✓] view: 18. --- Full output ---
+19.     Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+20. error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+21.    --> src/kernel/src/mm/phys/manager.rs:178:13
+22.     |
+23. 178 |     ...
+
+────────────────────────────────────────────────────────────
+Turn 173
+────────────────────────────────────────────────────────────
+Verus version requires `&mut self` postconditions to use `old`/`final`. Let me see how existing verified code handles it:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "final(\|ensures" src/kernel/src/mm/phys/frame.rs | head -20
+
+[THINKING] I'm identifying two categories of errors related to postconditions in mutable self functions. For `&mut self` methods, the postcondition needs to reference the final state of self using `final(self)` rather than just `self`, since `self` becomes ambiguous in the ensures clause. I'm checking how the codebase handles this convention elsewhere, like in upool.rs where there's an example using `self@.wf()`.
+
+Looking at the migration documentation, it seems postconditions for `&mut Self` parameters should disambiguate between `old(self)` and `final(self)`, though I'm noticing other Verus codebases sometimes use `self` directly. This might be a version-specific requirement. I should check how the already-verified methods in frame.rs write their ensures clauses to understand the pattern being used here.
+[RESULT ✓] bash: 119:        ensures
+120:            final(self).inv(),
+125:                    &&& final(self)@ == FrameAllocView {
+132:                    &&& final(self)@ == old(self)@
+186:        ensures
+187:            final(self).inv(),
+196:                        &&& final(self)@ == FrameAllocView {
+206:     ...
+
+────────────────────────────────────────────────────────────
+Turn 174
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I need to update the ensures clauses in manager.rs and upool.rs to follow the convention for `&mut self` functions—using `final(self)` for the new value and `old(self)` for the initial state. I'm checking the functions at lines 178, 263, 342, and 396 in manager.rs that have `self.inv()` calls, along with any `self@` references that need fixing.
+
+There's also an issue with the `error!` macro at line 316 in manager.rs—Verus is complaining about an unsupported constant type, likely from `module_path!()` or `KlogLevel::Error` inside the macro expansion. Since this is in the exec code body rather than spec, I need to figure out if wrapping that block or restructuring it will resolve the issue. Let me start by fixing the ensures clauses first, then tackle the error macro problem.
+[RESULT ✓] view: 160.     ///
+161.     /// # Parameters
+162.     ///
+163.     /// - `count`: Number of frames to allocate.
+164.     /// - `frames`: Mutable reference to a pre-allocated vector into which to store those
+165.     ///   frames' addresses. It should have sufficient capacity for `count` entries.
+166.     ...
+
+────────────────────────────────────────────────────────────
+Turn 175
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] In the requires clause, `self.inv()` stays as is, but in the ensures clause I need to wrap references to the final state with `final()` — so `self.inv()` becomes `final(self).inv()`, `self@` becomes `final(self)@`, and `frames@.len()` becomes `final(frames)@.len()`.
+
+Now I should go through all the `&mut self` functions and apply these transformations systematically across the specs.
+[RESULT ✓] view: 245. 
+246.     ///
+247.     /// # Description
+248.     ///
+249.     /// Allocates a single user frame, applying the same kernel watermark check as
+250.     /// [`Self::alloc_many_user_frames`]. This is the single-frame fast path used on
+251.     /// hot paths such as copy-on-write fault resolution, ...
+
+────────────────────────────────────────────────────────────
+Turn 176
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] view: 290.     ///
+291.     /// # Parameters
+292.     ///
+293.     /// - `count`: Number of user frames the caller intends to allocate.
+294.     ///
+295.     /// # Returns
+296.     ///
+297.     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+298.     ///
+299.     #[veru...
+
+────────────────────────────────────────────────────────────
+Turn 177
+────────────────────────────────────────────────────────────
+Now fix `&mut self`/`&mut frames` postconditions to use `final()`. Let me edit each ensures block:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I need to update the ensures clauses across several methods to replace `self.inv()` and field references with `final(self)` and `final(frames)` respectively. I'm going through each affected method—alloc_many_user_frames, alloc_user_frame, alloc_kernel_frame, alloc_many_kernel_frames, and the upool.rs file—to make these corrections systematically.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 178
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 179
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 180
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 181
+────────────────────────────────────────────────────────────
+Now upool.rs:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 182
+────────────────────────────────────────────────────────────
+Now the `error!` macro "Unsupported constant type". Let me check if verified code elsewhere uses logging macros:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "error!\|warn!\|info!\|trace!" src/kernel/src/mm/phys/frame.rs src/kernel/src/mm/phy
+
+[THINKING] Looking at the `error!` macro expansion — it's using `write!()` with `module_path!()` and `KlogLevel::Error`, which Verus is flagging as an unsupported constant type. I should check if other verified functions in the kernel actually use these logging macros successfully, since they're presumably used throughout.
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs:141:                error!("{error:?}");
+src/kernel/src/mm/phys/frame.rs:152:                error!("{reason:?}");
+src/kernel/src/mm/phys/frame.rs:161:                error!("{error:?}");
+src/kernel/src/mm/phys/frame.rs:214:                error!("{error:?} (count={co...
+
+────────────────────────────────────────────────────────────
+Turn 183
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "external_body\|fn \|verus_spec\|verus_verify" src/kernel/src/mm/phys/frame.rs | sed 
+
+[THINKING] Frame.rs uses error! macros successfully in verified code, but manager.rs fails with an "Unsupported constant type" error at line 316. The issue seems to trace back to how the macro expands—specifically the write! call in macros.rs:188 that originates from manager.rs:316, suggesting the problem might be in how the macro is being invoked rather than the macro itself.
+
+Let me check if the functions in frame.rs that use error! are marked as external_body—if they are, Verus would skip verifying their bodies entirely, which would explain why error! never causes verification failures there.
+[RESULT ✓] bash: 81:#[verus_verify]
+103:#[verus_verify]
+115:    #[verus_verify(external_body)]
+116:    #[verus_spec(result =>
+137:    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+181:    #[verus_verify(external_body)]
+182:    #[verus_spec(result =>
+210:    fn alloc_contiguous(&mut self, count: usize) -> Resu...
+
+────────────────────────────────────────────────────────────
+Turn 184
+────────────────────────────────────────────────────────────
+All `error!`-using functions in frame.rs are `external_body`. Verus can't verify the `error!` macro body. Let me check whether any non-external verified function in the kernel uses these macros:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== klog MAX_LEVEL ==="; grep -rn "MAX_LEVEL\|pub.*KlogLevel\|module_path\|extract_func
+
+[THINKING] I'm seeing that all the error-handling macros in frame.rs are confined to external functions that Verus doesn't verify, so they're not a concern. But in manager.rs, there are several functions with actual bodies—`check_user_watermark`, `alloc_kernel_frame`, and `alloc_many_kernel_frames`—that use error! and warn! macros, which Verus needs to handle.
+
+The core issue is that these macros rely on `module_path!()` and `extract_function_name!()` to generate constants that Verus can't model. I could mark these functions as external_body to sidestep the problem, but that defeats the purpose of verifying their actual logic. I'm trying to figure out whether Verus has a way to treat logging statements as opaque or exec-only, or if I need to dig deeper into what exactly is causing the "Unsupported constant type" error—whether it's the string constants, the macro expansion itself, or something else entirely.
+[RESULT ✓] bash: === klog MAX_LEVEL ===
+src/kernel/src/klog.rs:27:pub enum KlogLevel {
+src/kernel/src/klog.rs:41:pub const MAX_LEVEL: KlogLevel = if cfg!(feature = "trace") {
+src/kernel/src/klog.rs:75:    pub fn get(tag: &str, level: KlogLevel, function_name: &str) -> Self {
+src/kernel/src/macros.rs:33:macro_rules! ...
+
+────────────────────────────────────────────────────────────
+Turn 185
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/macros.rs
+
+[THINKING] The bitmap crate doesn't use error or warn macros since it's a library, so there's no existing pattern to follow here. The "Unsupported constant type" error is likely coming from the `extract_function_name!()` macro, so I need to examine that macro definition around line 33.
+[RESULT ✓] view: 33. macro_rules! extract_function_name {
+34.     () => {{
+35.         let closure = || {};
+36.         let closure_type_name: &'static str = ::core::any::type_name_of_val(&closure);
+37. 
+38.         // Parse the function name from the closure type name.
+39.         // Format: "module::function_name:...
+
+────────────────────────────────────────────────────────────
+Turn 186
+────────────────────────────────────────────────────────────
+Let me get the full error context and check what exactly verus rejects:
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_01-44-06.log
+
+[THINKING] The issue is that `extract_function_name!()` relies on `type_name_of_val`, which returns a static string from a closure—a constant type that verus can't verify. This means the error! and warn! macros are fundamentally incompatible with verus verification, so any verified function calling them will fail, including my target functions like `check_user_watermark` and `alloc_kern`.
+
+I'm weighing options: marking these functions `external_body` loses verification of their logic and isn't ideal for target functions; wrapping logging behind external helper functions adds infrastructure I'd rather avoid; or I could search the codebase to see if there's an existing pattern for handling this since this is the first kernel module being verified with non-external_body functions. Given the task constraints around meaningful specs and zero verus errors, I'm leaning toward a pragmatic solution, though I need to think through what that actually looks like. The real issue is that `write!` expands to `format_args!`, which Verus doesn't support. So the logging macros are fundamentally incompatible with verification. I need to either wrap the target functions as external_body (which defeats the verification goal) or refactor the logging into separate external helper functions. Let me check if those unverified wrapper functions in frame.rs actually compile with logging despite having no contracts — that might suggest Verus has a way to handle this I'm missing.
+[RESULT ✓] view: 36. error: Unsupported constant type
+37.    --> src/kernel/src/macros.rs:188:12
+38.     |
+39. 188 |               let _ = write!(
+40.     |  _____________________^
+41. 189 | |                 &mut crate::klog::Klog::get(
+42. 190 | |                     module_path!(),
+43. 191 | |                    ...
+
+────────────────────────────────────────────────────────────
+Turn 187
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] So Verus reported 6 errors total, but only one "Unsupported constant type" error at line 316 in check_user_watermark — the others were `final` errors. Once I fix the `final` issue, re-running might expose more write! errors, or Verus might only flag each type once.
+
+Now I'm checking whether the free-function wrappers in frame.rs (like is_covered, book, etc.) are using error! and compiling successfully — if they work fine with error!, then write! is supported and the issue is something more specific to my code.
+[RESULT ✓] view: 636. fn instance() -> &'static mut Inner {
+637.     if unlikely(!INSTANCE_INIT.load(ORDER)) {
+638.         panic!("frame allocator used before init()");
+639.     }
+640. 
+641.     // SAFETY: `INSTANCE_INIT` is `true`, so `INSTANCE` has been fully written by `init()`.
+642.     // The kernel is single-...
+
+────────────────────────────────────────────────────────────
+Turn 188
+────────────────────────────────────────────────────────────
+In attribute mode, only `#[verus_spec]`/`#[verus_verify]` functions are verified — so my target functions' `error!`/`warn!` bodies get checked and `write!` is unsupported. Let me check the skills for the prescribed approach:
+[TOOL] bash: cd /home/ruize/nanvix-phy; find . -path ./target -prune -o -name "SKILL.md" -print 2>/dev/null | grep -i "verus\|spec\|c
+
+[THINKING] I'm noticing that `instance()` at line 636 lacks a verus annotation and contains a panic, which puts it in the unverified functions list. The question is whether verus actually checks it—in attribute mode (which these files use with `#[verus_verify]` attributes rather than wrapping the whole file in `verus!{}`), functions without annotations are treated differently than in block mode.
+
+In attribute mode, only functions explicitly marked with `#[verus_verify]` or `#[verus_spec]` get processed by verus; unannotated functions are external and ignored. So `instance()` and the free wrappers like `is_covered` and `book` without annotations are external to verus, meaning their error! and panic! calls don't matter for verification.
+
+The real issue is that my target functions have `#[verus_spec]`, so verus does verify their bodies including the error! macros, which call `write!`—an unsupported operation. To fix this, I'd need to either refactor the logging into external helper functions (which changes the code structure significantly and complicates macro argument capture), or find a way to mark parts of a verified body as external. Verus has `#[verus::external_body]` but only for functions, not for blocks within a function. I'm wondering if the actual issue might be something else—maybe verus does support `write!` and the "Unsupported constant type" error is really about `KlogLevel::Error` being a const enum or `MAX_LEVEL`.
+
+The error span points at the `write!` call itself, so the unsupported constant could be `module_path!()` which expands to a `&'static str`, or possibly `type_name_of_val`. Either way, write!-based logging isn't playing well with verus, so I should look for guidance on handling unsupported exec constructs and logging in the spec-design skills.
+[RESULT ✓] bash: benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+<shellId: 87 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 189
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize; find . -path '*/verus-ai/skills/*' -name "*.md" 2>/dev/null | grep -iE "verus-constraint|spec-design" | 
+[RESULT ✓] bash: ---
+EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.py
+docs
+guardrails.py
+logs
+prompts.py
+report.py
+run.py
+scripts
+talk
+target-systems
+tests
+tree-sitter-verus
+tree_sitter_compat.py
+utils.py
+verus
+verus-ai-logs
+verus-ai.toml.example
+vstd
+workflow.py
+/home/ruize/verus...
+
+────────────────────────────────────────────────────────────
+Turn 190
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills; grep -rniE "write!|format|log|macro|unsupported|external|println|print
+[RESULT ✓] bash: 50:**Preserve by default:** exec logic, function signatures, struct definitions,
+60:   functions). If Verus reports that a **syntax construct is unsupported**
+62:   record it in `verus-unsupported.md` with the exact error message and
+64:   `external_body`, or add `assume_specification` to work aroun...
+
+────────────────────────────────────────────────────────────
+Turn 191
+────────────────────────────────────────────────────────────
+The skill explicitly allows cfg-gating logging macros with `#[cfg(not(verus_keep_ghost))]`. Let me find all logging calls in the verified functions:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "error!\|warn!\|info!\|trace!\|debug!" src/kernel/src/mm/phys/manager.rs
+
+[THINKING] Looking at the Verus documentation, the key constraint is that cfg-gating with `#[cfg(not(verus_keep_ghost))]` is only permitted on non-semantic items like derive macros, debug assertions, and logging macros. The solution is to wrap the logging calls with this cfg attribute so they're excluded from verification while keeping the rest of the code intact.
+
+I need to identify all the `error!` and `warn!` calls throughout the verified functions in manager.rs and apply the cfg-gate to each one. This includes calls in `check_user_watermark`, `alloc_kernel_frame`, `alloc_many_kernel_frames`, and any others in the second loop or beyond. For cases where logging is inside closures or complex expressions, I can still place the attribute on the statement itself.
+[RESULT ✓] bash: 202:            error!("{reason}");
+207:            error!("{reason}");
+316:                error!("{reason}");
+321:            error!("{reason}");
+357:            warn!("failed to wrap frame after KernelFrame::new failure: {e:?}");
+359:                warn!("failed to free frame after KernelFrame::...
+
+────────────────────────────────────────────────────────────
+Turn 192
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] view: 200.         if !frames.is_empty() {
+201.             let reason: &str = "frames vector is not empty";
+202.             error!("{reason}");
+203.             return Err(Error::new(ErrorCode::InvalidArgument, reason));
+204.         }
+205.         if frames.capacity() < count {
+206.             let rea...
+
+────────────────────────────────────────────────────────────
+Turn 193
+────────────────────────────────────────────────────────────
+Now I'll cfg-gate each logging statement:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm adding the `#[cfg(not(verus_keep_ghost))]` attribute to each logging statement, matching them by their surrounding context since they all have the same error format but appear in different places.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 194
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 195
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 196
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 197
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 198
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I should check the rest of the `alloc_many_kernel_frames` function after line 460 to see if there's any additional logging or how it returns.
+[RESULT ✓] view: 460.                             lemma_contig_no_overflow(base_raw, j, count);
+461.                         }
+462.                         let leak_raw: usize = base_raw + j * mem::PAGE_SIZE;
+463.                         if let Ok(fa) = FrameAddress::from_raw_value(leak_raw) {
+464.                  ...
+
+────────────────────────────────────────────────────────────
+Turn 199
+────────────────────────────────────────────────────────────
+Now re-run verification:
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::phys 2>&1 | tail -20

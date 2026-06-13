@@ -1,0 +1,430 @@
+Timestamp: 2026-06-14_01-48-04
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=23
+  admit=10
+  trusted=0
+  no_decreases=0
+  cfg_gate=10
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: `config::kernel::KERNEL_WATERMARK` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/phys/manager.spec.rs:47:5
+    |
+ 47 |     config::kernel::KERNEL_WATERMARK as nat
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/mm/phys/manager.rs:314:42
+    |
+314 |         let watermark_threshold: usize = config::kernel::KERNEL_WATERMARK
+    |                                          --------------------------------
+
+error: cannot use type `kernel::mm::phys::manager::PhysMemoryManager` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/manager.spec.rs:89:25
+    |
+ 83 | / impl View for PhysMemoryManager {
+ 84 | |     type V = FrameAllocView;
+    | |     ------------------------
+ 85 | |
+ 86 | |     /// The manager brokers the global physical-frame partition. Its abstract state is exactly
+...   |
+ 89 | |     closed spec fn view(&self) -> FrameAllocView {
+    | |                         ^^^^^
+ 90 | |         self.upool@
+    | |         ----------
+ 91 | |     }
+ 92 | | }
+    | |_-
+...
+101 |       pub open spec fn inv(&self) -> bool {
+    |                            -----
+102 |           self@.wf()
+    |           -----
+    |
+   ::: src/kernel/src/mm/phys/manager.proof.rs:12:37
+    |
+ 12 |   pub proof fn lemma_manager_attached(m: &PhysMemoryManager)
+    |                                       ---------------------
+ 13 |       ensures
+ 14 |           m@ == phys_view().frames,
+    |           --
+...
+107 |   pub proof fn lemma_user_bulk_err_restored(m: &PhysMemoryManager, pre: FrameAllocView)
+    |                                             ---------------------
+...
+111 |           m@ == pre,
+    |           --
+...
+117 |   pub proof fn lemma_kernel_bulk_err_restored(m: &PhysMemoryManager, pre: FrameAllocView)
+    |                                               ---------------------
+...
+121 |           m@ == pre,
+    |           --
+    |
+   ::: src/kernel/src/mm/phys/manager.rs:175:13
+    |
+175 |               self.inv(),
+    |               ----
+...
+178 |               final(self).inv(),
+    |               -----------
+...
+181 |                       &&& (count > 0 ==> old(self)@.user_alloc_ok(count as nat))
+    |                                          ----------
+182 |                       &&& final(frames)@.len() == count
+183 |                       &&& old(self)@.all_free(user_addr_set(final(frames)@))
+    |                           ----------
+184 |                       &&& final(self)@ == old(self)@.book_all(user_addr_set(final(frames)@))
+    |                           ------------    ----------
+...
+187 |                       &&& final(self)@ == old(self)@
+    |                           ------------    ----------
+...
+193 |           &mut self,
+    |           ---------
+...
+198 |               let ghost g_old = self@;
+    |                                 -----
+...
+216 |                   lemma_user_bulk_ok(g_old, self@, frames@, count as nat);
+    |                                             -----
+...
+223 |               lemma_manager_attached(self);
+    |                                      ----
+...
+228 |                   self@.wf(),
+    |                   -----
+...
+231 |               match self.upool.alloc() {
+    |                     ----------
+...
+236 |                           lemma_user_bulk_err_restored(self, g_old);
+    |                                                        ----
+...
+243 |               lemma_user_bulk_ok(g_old, self@, frames@, count as nat);
+    |                                         -----
+...
+263 |               self.inv(),
+    |               ----
+264 |           ensures
+265 |               final(self).inv(),
+    |               -----------
+...
+268 |                       &&& old(self)@.user_alloc_ok(1)
+    |                           ----------
+269 |                       &&& old(self)@.free_frames.contains(uf@)
+    |                           ----------
+270 |                       &&& final(self)@ == old(self)@.alloc_one(uf@)
+    |                           ------------    ----------
+...
+273 |                       &&& final(self)@ == old(self)@
+    |                           ------------    ----------
+274 |                       &&& !old(self)@.user_alloc_ok(1)
+    |                            ----------
+...
+278 |       pub fn alloc_user_frame(&mut self) -> Result<UserFrame, Error> {
+    |                               ---------
+279 |           proof! {
+280 |               lemma_manager_attached(self);
+    |                                      ----
+...
+283 |           self.upool.alloc()
+    |           ----------
+...
+344 |               self.inv(),
+    |               ----
+345 |           ensures
+346 |               final(self).inv(),
+    |               -----------
+...
+349 |                       &&& old(self)@.free_frames.contains(kf@)
+    |                           ----------
+350 |                       &&& final(self)@ == old(self)@.alloc_one(kf@)
+    |                           ------------    ----------
+351 |                   },
+352 |                   Err(_) => final(self)@ == old(self)@,
+    |                             ------------    ----------
+...
+355 |       pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
+    |                                 ---------
+356 |           proof_decl! {
+357 |               let ghost g_old = self@;
+    |                                 -----
+...
+370 |                   lemma_kernel_alloc_one(g_old, self@, result->Ok_0@);
+    |                                                 -----
+...
+398 |               self.inv(),
+    |               ----
+...
+402 |               final(self).inv(),
+    |               -----------
+...
+406 |                       &&& old(self)@.all_free(kernel_addr_set(final(frames)@))
+    |                           ----------
+407 |                       &&& final(self)@ == old(self)@.book_all(kernel_addr_set(final(frames)@))
+    |                           ------------    ----------
+408 |                   },
+409 |                   Err(_) => final(self)@ == old(self)@,
+    |                             ------------    ----------
+...
+413 |           &mut self,
+    |           ---------
+...
+418 |               let ghost g_old = self@;
+    |                                 -----
+...
+475 |               lemma_kernel_alloc_contiguous(g_old, self@, frames@, count as nat);
+    |                                                    -----
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPhysMemoryManager(crate::mm::phys::manager::PhysMemoryManager);
+
+error: cannot use type `kernel::mm::phys::upool::UserFrame` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/manager.spec.rs:111:32
+    |
+111 |   pub open spec fn user_addr_set(frames: Seq<UserFrame>) -> Set<int> {
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^
+112 |       Set::new(|a: int| exists|i: int| 0 <= i < frames.len() && #[trigger] frames[i]@ == a)
+    |                                                 ------------    ---------------------
+    |
+   ::: src/kernel/src/mm/phys/manager.proof.rs:90:5
+    |
+ 90 |       frames: Seq<UserFrame>,
+    |       ----------------------
+...
+ 96 |           frames.len() == count,
+    |           ------------
+ 97 |           post == pre.book_all(crate::mm::phys::manager::user_addr_set(frames)),
+    |                                                                        ------
+ 98 |           pre.all_free(crate::mm::phys::manager::user_addr_set(frames)),
+    |                                                                ------
+    |
+   ::: src/kernel/src/mm/phys/manager.rs:176:13
+    |
+176 |               old(frames)@.len() == 0,
+    |               ------------------
+...
+182 |                       &&& final(frames)@.len() == count
+    |                           --------------------
+183 |                       &&& old(self)@.all_free(user_addr_set(final(frames)@))
+    |                                                             --------------
+184 |                       &&& final(self)@ == old(self)@.book_all(user_addr_set(final(frames)@))
+    |                                                                             --------------
+...
+188 |                       &&& final(frames)@.len() == 0
+    |                           --------------------
+...
+195 |           frames: &mut Vec<UserFrame>,
+    |           ---------------------------
+...
+200 |           if !frames.is_empty() {
+    |               -----------------
+...
+206 |           if frames.capacity() < count {
+    |              -----------------
+...
+216 |                   lemma_user_bulk_ok(g_old, self@, frames@, count as nat);
+    |                                                    -------
+...
+231 |               match self.upool.alloc() {
+    |                     ------------------
+232 |                   Ok(frame) => frames.push(frame),
+    |                   ---------    ------------------
+233 |                   Err(error) => {
+    |                   ----------
+234 |                       frames.clear();
+    |                       --------------
+...
+243 |               lemma_user_bulk_ok(g_old, self@, frames@, count as nat);
+    |                                                -------
+...
+266 |               match result {
+    |                     ------
+267 |                   Ok(uf) => {
+    |                   ------
+268 |                       &&& old(self)@.user_alloc_ok(1)
+269 |                       &&& old(self)@.free_frames.contains(uf@)
+    |                                                           ---
+270 |                       &&& final(self)@ == old(self)@.alloc_one(uf@)
+    |                                                                ---
+271 |                   },
+272 |                   Err(_) => {
+    |                   ------
+...
+278 |       pub fn alloc_user_frame(&mut self) -> Result<UserFrame, Error> {
+    |  ___________________________________________------------------------_-
+279 | |         proof! {
+280 | |             lemma_manager_attached(self);
+281 | |         }
+282 | |         Self::check_user_watermark(1)?;
+    | |         ------------------------------
+283 | |         self.upool.alloc()
+    | |         ------------------
+284 | |     }
+    | |_____-
+    |
+   ::: src/kernel/src/mm/phys/upool.rs:38:1
+    |
+ 38 | / impl View for UserFrame {
+ 39 | |     type V = int;
+    | |     -------------
+ 40 | |
+ 41 | |     closed spec fn view(&self) -> int {
+    | |                         -----
+ 42 | |         self.addr@
+    | |         ---------
+ 43 | |     }
+ 44 | | }
+    | |_-
+...
+197 |               match result {
+    |                     ------
+198 |                   Ok(uf) => {
+    |                   ------
+199 |                       &&& old(self)@.free_frames.contains(uf@)
+    |                                                           ---
+200 |                       &&& final(self)@ == old(self)@.alloc_one(uf@)
+    |                                                                ---
+201 |                   },
+202 |                   Err(_) => {
+    |                   ------
+...
+208 |       pub fn alloc(&mut self) -> Result<UserFrame, Error> {
+    |                                  ------------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExUserFrame(crate::mm::phys::upool::UserFrame);
+
+error: cannot use type `kernel::mm::phys::kframe::KernelFrame` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/kframe.rs:46:25
+    |
+ 43 | /    impl View for KernelFrame {
+ 44 | |        type V = int;
+    | |        -------------
+ 45 | |
+ 46 | |        closed spec fn view(&self) -> int {
+    | |                            ^^^^^
+ 47 | |            self.base@
+    | |            ---------
+ 48 | |        }
+ 49 | |    }
+    | |____-
+...
+ 78 |                  match result {
+    |                        ------
+ 79 |                      Ok(kf) => kf@ == base@,
+    |                      ------    ---
+ 80 |                      Err(_) => true,
+    |                      ------
+...
+ 83 |          pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
+    |                                                   -------------------
+    |
+   ::: src/kernel/src/mm/phys/manager.spec.rs:116:34
+    |
+116 |      pub open spec fn kernel_addr_set(frames: Seq<KernelFrame>) -> Set<int> {
+    |                                       ------------------------
+117 |          Set::new(|a: int| exists|i: int| 0 <= i < frames.len() && #[trigger] frames[i]@ == a)
+    |                                                    ------------    ---------------------
+    |
+   ::: src/kernel/src/mm/phys/manager.proof.rs:52:5
+    |
+ 52 |          frames: Seq<KernelFrame>,
+    |          ------------------------
+...
+ 58 |              frames.len() == count,
+    |              ------------
+ 59 |              post == pre.book_all(crate::mm::phys::manager::kernel_addr_set(frames)),
+    |                                                                             ------
+ 60 |              pre.all_free(crate::mm::phys::manager::kernel_addr_set(frames)),
+    |                                                                     ------
+    |
+   ::: src/kernel/src/mm/phys/manager.rs:347:19
+    |
+347 |                  match result {
+    |                        ------
+348 |                      Ok(kf) => {
+    |                      ------
+349 |                          &&& old(self)@.free_frames.contains(kf@)
+    |                                                              ---
+350 |                          &&& final(self)@ == old(self)@.alloc_one(kf@)
+    |                                                                   ---
+351 |                      },
+352 |                      Err(_) => final(self)@ == old(self)@,
+    |                      ------
+...
+355 |          pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
+    |  ________________________________________________--------------------------_-
+356 | |            proof_decl! {
+357 | |                let ghost g_old = self@;
+358 | |            }
+359 | |            let frame_addr: FrameAddress = frame::alloc()?;
+    | |                                           ---------------
+360 | |            let result: Result<KernelFrame, Error> = KernelFrame::new(frame_addr).inspect_err(|e| {
+    | |   _____________------_______________________________----------------------------
+361 | |  |             #[cfg(not(verus_keep_ghost))]
+362 | |  |             warn!("failed to wrap frame after KernelFrame::new failure: {e:?}");
+363 | |  |             if let Err(free_err) = frame::free(frame_addr) {
+...   |  |
+367 | |  |         });
+    | |  |__________-
+368 | |            proof! {
+369 | |                if result is Ok {
+    | |                   ------
+370 | |                    lemma_kernel_alloc_one(g_old, self@, result->Ok_0@);
+    | |                                                         -------------
+...   |
+373 | |            result
+    | |            ------
+374 | |        }
+    | |________-
+...
+399 |                  old(frames)@.len() == 0,
+    |                  ------------------
+...
+405 |                          &&& final(frames)@.len() == count
+    |                              --------------------
+406 |                          &&& old(self)@.all_free(kernel_addr_set(final(frames)@))
+    |                                                                  --------------
+407 |                          &&& final(self)@ == old(self)@.book_all(kernel_addr_set(final(frames)@))
+    |                                                                                  --------------
+...
+415 |              frames: &mut Vec<KernelFrame>,
+    |              -----------------------------
+...
+421 |              if !frames.is_empty() {
+    |                  -----------------
+...
+427 |              if frames.capacity() < count {
+    |                 -----------------
+...
+446 |                  match FrameAddress::from_raw_value(raw_addr).and_then(KernelFrame::new) {
+    |                        -----------------------------------------------------------------
+447 |                      Ok(kf) => frames.push(kf),
+    |                      ------    ---------------
+448 |                      Err(e) => {
+    |                      ------
+449 |                          // Drop already-wrapped frames (frees them via KernelFrame::Drop).
+450 |                          frames.clear();
+    |                          --------------
+...
+475 |                  lemma_kernel_alloc_contiguous(g_old, self@, frames@, count as nat);
+    |                                                              -------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExKernelFrame(crate::mm::phys::kframe::KernelFrame);
+
+error: could not compile `kernel` (bin "kernel") due to 4 previous errors

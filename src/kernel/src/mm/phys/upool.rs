@@ -193,14 +193,14 @@ impl Upool {
         requires
             old(self)@.wf(),
         ensures
-            self@.wf(),
+            final(self)@.wf(),
             match result {
                 Ok(uf) => {
                     &&& old(self)@.free_frames.contains(uf@)
-                    &&& self@ == old(self)@.alloc_one(uf@)
+                    &&& final(self)@ == old(self)@.alloc_one(uf@)
                 },
                 Err(_) => {
-                    &&& self@ == old(self)@
+                    &&& final(self)@ == old(self)@
                     &&& old(self)@.free_count() == 0
                 },
             },

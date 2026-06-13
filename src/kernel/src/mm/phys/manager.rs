@@ -175,17 +175,17 @@ impl PhysMemoryManager {
             self.inv(),
             old(frames)@.len() == 0,
         ensures
-            self.inv(),
+            final(self).inv(),
             match result {
                 Ok(()) => {
                     &&& (count > 0 ==> old(self)@.user_alloc_ok(count as nat))
-                    &&& frames@.len() == count
-                    &&& old(self)@.all_free(user_addr_set(frames@))
-                    &&& self@ == old(self)@.book_all(user_addr_set(frames@))
+                    &&& final(frames)@.len() == count
+                    &&& old(self)@.all_free(user_addr_set(final(frames)@))
+                    &&& final(self)@ == old(self)@.book_all(user_addr_set(final(frames)@))
                 },
                 Err(_) => {
-                    &&& self@ == old(self)@
-                    &&& frames@.len() == 0
+                    &&& final(self)@ == old(self)@
+                    &&& final(frames)@.len() == 0
                 },
             },
     )]
@@ -199,11 +199,13 @@ impl PhysMemoryManager {
         }
         if !frames.is_empty() {
             let reason: &str = "frames vector is not empty";
+            #[cfg(not(verus_keep_ghost))]
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
         if frames.capacity() < count {
             let reason: &str = "frames vector has insufficient capacity";
+            #[cfg(not(verus_keep_ghost))]
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
@@ -260,15 +262,15 @@ impl PhysMemoryManager {
         requires
             self.inv(),
         ensures
-            self.inv(),
+            final(self).inv(),
             match result {
                 Ok(uf) => {
                     &&& old(self)@.user_alloc_ok(1)
                     &&& old(self)@.free_frames.contains(uf@)
-                    &&& self@ == old(self)@.alloc_one(uf@)
+                    &&& final(self)@ == old(self)@.alloc_one(uf@)
                 },
                 Err(_) => {
-                    &&& self@ == old(self)@
+                    &&& final(self)@ == old(self)@
                     &&& !old(self)@.user_alloc_ok(1)
                 },
             },
@@ -313,11 +315,13 @@ impl PhysMemoryManager {
             .checked_add(count)
             .ok_or_else(|| {
                 let reason: &str = "watermark + count overflow";
+                #[cfg(not(verus_keep_ghost))]
                 error!("{reason}");
                 Error::new(ErrorCode::InvalidArgument, reason)
             })?;
         if frame::free_count() < watermark_threshold {
             let reason: &str = "would breach kernel watermark";
+            #[cfg(not(verus_keep_ghost))]
             error!("{reason}");
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
@@ -339,13 +343,13 @@ impl PhysMemoryManager {
         requires
             self.inv(),
         ensures
-            self.inv(),
+            final(self).inv(),
             match result {
                 Ok(kf) => {
                     &&& old(self)@.free_frames.contains(kf@)
-                    &&& self@ == old(self)@.alloc_one(kf@)
+                    &&& final(self)@ == old(self)@.alloc_one(kf@)
                 },
-                Err(_) => self@ == old(self)@,
+                Err(_) => final(self)@ == old(self)@,
             },
     )]
     pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
@@ -354,8 +358,10 @@ impl PhysMemoryManager {
         }
         let frame_addr: FrameAddress = frame::alloc()?;
         let result: Result<KernelFrame, Error> = KernelFrame::new(frame_addr).inspect_err(|e| {
+            #[cfg(not(verus_keep_ghost))]
             warn!("failed to wrap frame after KernelFrame::new failure: {e:?}");
             if let Err(free_err) = frame::free(frame_addr) {
+                #[cfg(not(verus_keep_ghost))]
                 warn!("failed to free frame after KernelFrame::new failure: {free_err:?}");
             }
         });
@@ -393,14 +399,14 @@ impl PhysMemoryManager {
             old(frames)@.len() == 0,
             count > 0,
         ensures
-            self.inv(),
+            final(self).inv(),
             match result {
                 Ok(()) => {
-                    &&& frames@.len() == count
-                    &&& old(self)@.all_free(kernel_addr_set(frames@))
-                    &&& self@ == old(self)@.book_all(kernel_addr_set(frames@))
+                    &&& final(frames)@.len() == count
+                    &&& old(self)@.all_free(kernel_addr_set(final(frames)@))
+                    &&& final(self)@ == old(self)@.book_all(kernel_addr_set(final(frames)@))
                 },
-                Err(_) => self@ == old(self)@,
+                Err(_) => final(self)@ == old(self)@,
             },
     )]
     pub fn alloc_many_kernel_frames(
@@ -414,11 +420,13 @@ impl PhysMemoryManager {
         // Check if caller-provided vector is not empty.
         if !frames.is_empty() {
             let reason: &str = "frames vector is not empty";
+            #[cfg(not(verus_keep_ghost))]
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
         if frames.capacity() < count {
             let reason: &str = "frames vector has insufficient capacity";
+            #[cfg(not(verus_keep_ghost))]
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
@@ -454,6 +462,7 @@ impl PhysMemoryManager {
                         let leak_raw: usize = base_raw + j * mem::PAGE_SIZE;
                         if let Ok(fa) = FrameAddress::from_raw_value(leak_raw) {
                             if let Err(e) = frame::free(fa) {
+                                #[cfg(not(verus_keep_ghost))]
                                 warn!("failed to free leaked frame {fa:?}: {e:?}");
                             }
                         }
