@@ -1,0 +1,38 @@
+Timestamp: 2026-06-14_02-43-50
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::upool
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=22
+  admit=10
+  trusted=0
+  no_decreases=0
+  cfg_gate=10
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: cannot use function `kernel::mm::phys::upool::Upool::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/mod.rs:185:24
+    |
+185 |     let upool: Upool = Upool::new();
+    |                        ^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            assume_specification [crate::mm::phys::upool::Upool::new] () -> crate::mm::phys::upool::Upool;
+
+error: cannot use function `kernel::mm::phys::upool::UserFrame::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/upool.rs:215:12
+    |
+215 |         Ok(UserFrame::new(addr))
+    |            ^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::mm::phys::upool::UserFrame::new] (_0: crate::hal::mem::types::address::frame::FrameAddress) -> crate::mm::phys::upool::UserFrame;
+
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
