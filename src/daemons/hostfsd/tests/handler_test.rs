@@ -324,6 +324,44 @@ fn test_read_invalid_fd() {
     assert_eq!(resp.bytes_read, -1);
 }
 
+/// Verifies the file-offset sharing contract that makes `fork()` work over hostfs.
+///
+/// After `fork()`, the guest's parent and child share a single remote descriptor in hostfsd's
+/// (global) FD table, backed by one host `File`. Because `vfsd` forwards ordinary reads with a
+/// "use current position" offset (`-1`), the file position lives in that one `File` and advances on
+/// every read regardless of which guest process issued it. This test models that contract at the
+/// daemon boundary: three sequential current-position reads on one descriptor walk three disjoint
+/// windows of a deterministic ramp.
+#[test]
+fn test_fork_shared_offset_across_descriptor() {
+    let (mut handler, tmp) = setup();
+
+    // Deterministic ramp: byte i holds value i.
+    let ramp: Vec<u8> = (0u8..64).collect();
+    fs::write(tmp.path().join("forkfd.dat"), &ramp).unwrap();
+
+    let fd: i32 = open_file(&mut handler, "forkfd.dat", O_RDONLY);
+    assert!(fd > 0, "expected positive fd, got {fd}");
+
+    // Window 1 (parent prelude): bytes 0..16, advancing the shared offset to 16.
+    let payload: [u8; Message::PAYLOAD_SIZE] = make_read_request(fd, 16, -1);
+    let resp: ReadResponse = ReadResponse::decode(&handler.handle_request(&payload).unwrap());
+    assert_eq!(resp.bytes_read, 16);
+    assert_eq!(&resp.data[..16], &ramp[0..16]);
+
+    // Window 2 (child chunk): bytes 16..48 — continues from the offset the prelude advanced.
+    let payload: [u8; Message::PAYLOAD_SIZE] = make_read_request(fd, 32, -1);
+    let resp: ReadResponse = ReadResponse::decode(&handler.handle_request(&payload).unwrap());
+    assert_eq!(resp.bytes_read, 32);
+    assert_eq!(&resp.data[..32], &ramp[16..48]);
+
+    // Window 3 (parent tail): bytes 48..64 — continues from where the child chunk left off.
+    let payload: [u8; Message::PAYLOAD_SIZE] = make_read_request(fd, 16, -1);
+    let resp: ReadResponse = ReadResponse::decode(&handler.handle_request(&payload).unwrap());
+    assert_eq!(resp.bytes_read, 16);
+    assert_eq!(&resp.data[..16], &ramp[48..64]);
+}
+
 //==================================================================================================
 // Tests: Stat
 //==================================================================================================
