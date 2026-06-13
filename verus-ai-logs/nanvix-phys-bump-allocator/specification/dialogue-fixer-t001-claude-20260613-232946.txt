@@ -619,3 +619,11 @@ Turn 45
 ────────────────────────────────────────────────────────────
 Source is clean — only the intended `as_mut_ptr` spec (line 198) and `align_up` (line 126) carry contracts; `alloc`/`alloc_as` are original; no leftover `impl View`. Final confirmation run:
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 200 make verify-bump-allocator 2>&1 | grep -iE "verification results|0 errors|exit 
+[RESULT ✓] bash: Exit code : 0
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.11s
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 200 make verify-bump-allocator 2>&1 | grep -i "verification results"
