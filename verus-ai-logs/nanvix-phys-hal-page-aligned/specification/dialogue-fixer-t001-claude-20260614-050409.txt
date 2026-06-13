@@ -301,3 +301,26 @@ Turn 17
 Only the `PAGE_ALIGNMENT` constant model remains (expected, per reviewer). Now full regression and build:
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus
 touch src/kernel/src/hal/mem/types/address/alig
+[RESULT ✓] bash: === make verify (full regression) ===
+/home/ruize/nanvix-phy/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+verification results:: 4 verified, 0 errors
+verification results:: 0 verified, 0 errors
+verification results:: 70 verified, 0 errors
+  Exit code : 0
+/home/ruize/nanvix...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+All crates exit 0; whole kernel 50 verified, 0 errors. Now the normal dual-compile build:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== ./z build -- check-kernel ==="; timeout 900 ./z build -- check-kernel 2>&1 | grep -
+[RESULT ✓] bash: === ./z build -- check-kernel ===
+{"reason":"compiler-artifact","package_id":"path+file:///home/ruize/nanvix-phy/src/kernel#0.16.17","manifest_path":"/home/ruize/nanvix-phy/src/kernel/Cargo.toml","target":{"kind":["custom-build"],"crate_types":["bin"],"name":"build-script-build","src_path":"/home/ru...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+All checks pass. Let me capture exact output and write the fixer response:
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; echo "=== make verify-kernel (module) final ==
+
+[THINKING] The builds are all passing—both the kernel cross-compile and the host check target, which means the new spec_align_value and is_aligned spec changes don't break anything in the sys crate or its dependents. Now I'm pulling together the exact verification output to include in my response.
