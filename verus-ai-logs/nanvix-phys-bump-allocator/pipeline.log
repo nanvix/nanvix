@@ -1,0 +1,16 @@
+[2026-06-13 22:38:18] [BRANCH] Base: exp → Verus: verus-ai/bump-allocator
+[2026-06-13 22:38:18] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/body_removed_source.rs (14195 -> 10444 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: bump-allocator
+Source: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+Crate:  bump-allocator
+Branch: verus-ai/bump-allocator (base: exp)
+Phases: caller-analysis → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: caller-analysis
+Module: bump-allocator
+============================================================
