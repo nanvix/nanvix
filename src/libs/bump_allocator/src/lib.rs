@@ -188,6 +188,7 @@ impl fmt::Display for BumpAllocError {
 /// - the backing region is exclusively managed by this allocator API, so creating `&'static mut`
 ///   references from slots cannot alias with other mutable references.
 ///
+#[verus_verify]
 pub unsafe trait BssStorage {
     /// Number of fixed-size units that can be allocated.
     const NUM_UNITS: usize;

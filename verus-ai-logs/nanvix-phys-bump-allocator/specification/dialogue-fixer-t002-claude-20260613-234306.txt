@@ -298,3 +298,31 @@ Turn 19
 Turn 20
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A6 -iE "does not yet support|error\
+[RESULT ✓] bash: error: aborting due to 1 previous error
+
+
+error: cannot find trait `T14_BssStorage` in this scope
+   --> src/libs/bump_allocator/src/lib.rs:222:15
+    |
+222 |     _storage: PhantomData<S>,
+    |               ^^^^^^^^^^^^^^
+
+note: This error was found in Verus's Trait-Conflict-Checker
+--
+warning: `b...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+The `BssStorage` trait must be declared to Verus. Let me annotate it:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] The issue is that `BssStorage` is an external trait that Verus doesn't recognize, so I need to either declare it with `#[verus_verify(external_trait_specification)]` or rename it to something like `T14_BssStorage`. There was a warning earlier about not being able to use external traits as bounds without proper declaration.
+
+Since `BssStorage` is defined in this crate rather than being truly external, I should just add `#[verus_verify]` to the trait definition itself to declare it to Verus, even though it's an unsafe trait with associated consts and methods.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A6 -iE "does not yet support|error\
