@@ -1051,3 +1051,50 @@ Exact panic captured. Confirm revert restored the working state:
 [TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "bump_view" src/libs/bump_allocator/src/lib.spec.rs | head -2; timeout 240 make ver
 
 [THINKING] Now I'm verifying that the revert actually fixed the issue and restored the system to a working state.
+[RESULT ✓] bash: 176:/// view via `bump_view(self)` exactly as they would `self.view()`.
+177:pub uninterp spec fn bump_view<const N: usize, const A: usize, S: BssStorage>(
+verification results:: 5 verified, 0 errors
+  Exit code : 0
+  cheating: assume=0 external_body=2 admit=3 trusted=0 no_decreases=0 cfg_gate=0
+  ve...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+Restored and verifying clean. Now write the fixer response and clean up temp files:
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/specification/dialogue/turn_002_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/specification/dialogue/turn_002_fixer.md with 5200 characters
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+[TOOL] bash: rm -f /tmp/vtest*.rs /tmp/lib.rs.bak /tmp/lib.spec.rs.bak /tmp/lib.proof.rs.bak /tmp/spec.good.rs 2>/dev/null; echo clea
+[RESULT ✓] bash: cleaned
+<shellId: 49 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+FIXED. Applied the `raw-array` `external_body` + `verus_spec` pattern to `alloc`/`alloc_as`.
+
+**Key result:**
+- `make verify-bump-allocator` → **5 verified, 0 errors**, exit 0. Coverage **3/6** — `alloc`/`alloc_as` now have real contracts (gone from unverified list).
+- `make verify` → no regressions (kernel + all crates exit 0).
+- `cargo build`/`cargo test` → pass (3 unit + 1 doctest).
+- `external_body=2` (registered in `tcb-allowed.md`), `admit=3` (unchanged).
+
+**One forced deviation, documented with the exact error:** the requested `impl view()`/inherent `view()` crashes the Verus front end of this `include!`-composed crate:
+```
+thread 'rustc' panicked at vir/src/context.rs:337:13:
+assertion failed: !trait_impl_map.contains_key(&trait_impl.x.impl_path)
+```
+A second `impl` block collides with the exec-method `impl`. I used a free uninterpreted `bump_view(self) -> BumpView` (no extra impl block) — identical `self.view()` semantics: `inv()` as `requires`, alignment + in-bounds over `base`/`unit_align`/`storage_size` in `ensures`, plus the `size_of`/`align_of` guard arms on `alloc_as`. The `Ok` arms are non-tautological; only the `allocated+1`/uniqueness transition is deferred to proving (per view-design §7).
+
+Response written to `turn_002_fixer.md`.
+
+
+=== Session End ===
+Session: baff6ad3-857d-40dd-84dd-9fce949c8497
+Duration: 1098.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/specification/dialogue-fixer-t002-claude-20260613-234306.jsonl
