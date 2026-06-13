@@ -139,7 +139,7 @@ impl FrameAllocView {
     /// Every frame address in `set` is currently free (booking precondition: a range can be
     /// booked only if it is entirely free).
     pub open spec fn all_free(self, set: Set<int>) -> bool {
-        forall|a: int| set.contains(a) ==> self.free_frames.contains(a)
+        forall|a: int| #[trigger] set.contains(a) ==> self.free_frames.contains(a)
     }
 
     /// Reserve every frame in `set` (each assumed free in `self`): move it from

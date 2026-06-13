@@ -1842,3 +1842,22 @@ Let me check the exact location of the trigger warning to clean it up:
 [TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
 
 [THINKING] I need to add explicit trigger annotations to the forall statements to clean up the warnings from the verify-kernel run. Looking at the foralls in mod.rs, I'm making sure both have `#[trigger]` on the `.contains(a)` calls, and then checking the ones in mod.spec.rs like `all_reserved`, `all_free`, and `region_frame_addrs` to ensure they're properly annotated.
+[RESULT ✓] bash: note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/mod.spec.rs:142:9
+   --> src/kernel/src/mm/phys/mod.spec.rs:142:24
+   --> src/kernel/src/mm/phys/mod.spec.rs:142:9
+    - mod.rs:73 book_physical_memory_regions: external_body
+    - mod.rs:103 book_mmio_regions: ext...
+
+────────────────────────────────────────────────────────────
+Turn 114
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+
+[THINKING] Looking at line 142, the `all_free` predicate has a low confidence trigger warning since it's currently unused in the booking precondition vocabulary. I can silence this by adding an explicit trigger annotation like `#![trigger set.contains(a)]` to guide the solver. I was also starting to check `all_reserved` on line 136 but got cut off.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 115
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
