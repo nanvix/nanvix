@@ -31,6 +31,7 @@ use ::vstd::prelude::*;
 
 /// A type that represents a kernel frame.
 #[derive(Debug)]
+#[verus_verify(external_derive)]
 pub struct KernelFrame {
     /// Frame address.
     base: FrameAddress,

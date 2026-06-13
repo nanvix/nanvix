@@ -1,0 +1,26 @@
+Timestamp: 2026-06-14_01-53-11
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=24
+  admit=10
+  trusted=0
+  no_decreases=0
+  cfg_gate=10
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: cannot read const with mode exec
+   --> src/kernel/src/mm/phys/frame.rs:732:47
+    |
+732 |                 &&& base@ + (count as int) * (mem::PAGE_SIZE as int) <= usize::MAX as int
+    |                                               ^^^^^^^^^^^^^^
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

@@ -23,6 +23,7 @@ use ::vstd::prelude::*;
 /// A type that represents a user frame.
 ///
 #[derive(Debug)]
+#[verus_verify(external_derive)]
 pub struct UserFrame {
     /// Frame address.
     addr: FrameAddress,

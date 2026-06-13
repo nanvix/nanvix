@@ -13,7 +13,7 @@
     - mm/phys/frame.rs:737 alloc_contiguous: external_body
     - mm/phys/frame.rs:757 free_count: external_body
     - mm/phys/frame.rs:771 free: external_body
-    - mm/phys/kframe.rs:83 new: external_body
+    - mm/phys/kframe.rs:84 new: external_body
     - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
     - mm/phys/manager.proof.rs:21 lemma_free_count_bounded: admit
     - mm/phys/manager.proof.rs:36 lemma_kernel_alloc_one: admit
@@ -22,12 +22,13 @@
     - mm/phys/manager.proof.rs:87 lemma_user_bulk_ok: admit
     - mm/phys/manager.proof.rs:107 lemma_user_bulk_err_restored: admit
     - mm/phys/manager.proof.rs:117 lemma_kernel_bulk_err_restored: admit
-    - mm/phys/manager.rs:104 init: external_body
+    - mm/phys/manager.rs:105 init: external_body
+    - mm/phys/manager.rs:495 kernel_watermark: external_body
     - mm/phys/mod.proof.rs:9 lemma_frame_initialized: admit
     - mm/phys/mod.proof.rs:22 lemma_manager_ready: admit
     - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
     - mm/phys/mod.rs:103 book_mmio_regions: external_body
     - mm/phys/mod.spec.rs:69 ExLinkedList (struct): external_type_spec
-    - mm/phys/upool.rs:159 Upool (struct): external_body
-    - mm/phys/upool.rs:175 new: external_body
-    - mm/phys/upool.rs:208 alloc: external_body
+    - mm/phys/upool.rs:160 Upool (struct): external_body
+    - mm/phys/upool.rs:176 new: external_body
+    - mm/phys/upool.rs:209 alloc: external_body

@@ -3032,3 +3032,391 @@ Turn 199
 ────────────────────────────────────────────────────────────
 Now re-run verification:
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::phys 2>&1 | tail -20
+[RESULT ✓] bash: - deref_mut
+    - drop
+    - get_mut
+    - test
+    - new
+    - address
+    - leak
+    - share
+    - refcount
+    - drop
+    - new
+
+=== Summary ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  cheating: assume=0 external_body=23 admit=10 trusted=0 no_decreases...
+
+────────────────────────────────────────────────────────────
+Turn 200
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; L=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); grep -n "error\[\|er
+[RESULT ✓] bash: 20:error: `config::kernel::KERNEL_WATERMARK` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+31:error: cannot use type `kernel::mm::phys::manager::PhysMemoryManager` which is ignored because it is either declared outside the verus! m...
+
+────────────────────────────────────────────────────────────
+Turn 201
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_01-48-04.log
+
+[THINKING] I'm running into a couple of issues with the Verus verification. The first is that `config::kernel::KERNEL_WATERMARK` isn't recognized — I need to either provide an `assume_specification` or give Verus the actual constant value so it can work with `checked_add` on it. The second problem is that types like `PhysMemoryManager`, `UserFrame`, and `KernelFrame` are being flagged as ignored because they're defined outside the `verus!` macro or marked as external, and I can't use them in the spec signature.
+
+The issue is that these struct definitions need to be annotated with `#[verus_verify(external_body)]` or have an `external_type_specification` so Verus recognizes them as valid types. Since they're declared in attribute mode rather than inside the `verus!` block, I need to check if the struct declarations themselves have the right annotations. The error messages are pointing me toward some help text suggestions in the log that should clarify what annotations are needed.
+[RESULT ✓] view: 18. --- Full output ---
+19.     Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+20. error: `config::kernel::KERNEL_WATERMARK` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+21.    --> src/kernel/src/mm/phys/manager.spec...
+
+────────────────────────────────────────────────────────────
+Turn 202
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== PhysMemoryManager struct ==="; grep -n "struct PhysMemoryManager\|verus_verify\|ver
+
+[THINKING] I'm running into a couple of issues with the kernel watermark constant. The main problem is that `KERNEL_WATERMARK` isn't directly supported in the spec, so I need to figure out how to handle it—either by providing a specification for it, using an uninterpreted function, or declaring it as an axiom since it's a const usize that Verus needs to be aware of.
+
+The second issue is that the struct types like `PhysMemoryManager`, `UserFrame`, and `KernelFrame` are being flagged as ignored because they're not properly annotated for Verus. The `impl View` blocks in the spec require these to be Verus-visible types, which means they need the `#[verus_verify(external_body)]` attribute on their struct definitions, similar to how the `Upool` struct is set up. I need to check which of these structs are missing that annotation and add it where needed.
+[RESULT ✓] bash: === PhysMemoryManager struct ===
+69:pub struct PhysMemoryManager {
+77:#[verus_verify]
+96:    #[verus_verify(external_body)]
+150:#[verus_verify]
+=== UserFrame struct ===
+26:pub struct UserFrame {
+158:#[verus_verify(external_body)]
+174:    #[verus_verify(external_body)]
+191:    #[verus_verify(external...
+
+────────────────────────────────────────────────────────────
+Turn 203
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I'm noticing that several structs are missing the `#[verus_verify(external_body)]` annotation—PhysMemoryManager at line 69, UserFrame at line 26, and KernelFrame at line 34 all need it. Though UserFrame does have a View implementation inside the verus block in upool.rs, so I need to check how that affects the annotation requirement.
+[RESULT ✓] view: 24. ///
+25. #[derive(Debug)]
+26. pub struct UserFrame {
+27.     /// Frame address.
+28.     addr: FrameAddress,
+29. }
+30. 
+31. #[cfg(verus_keep_ghost)]
+32. verus! {
+33. 
+34. use crate::hal::mem::spec_page_size;
+35. use crate::mm::phys::FrameAllocView;
+36. 
+37. /// Abstract view of a user frame: the p...
+
+────────────────────────────────────────────────────────────
+Turn 204
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_01-48-04.log
+
+[THINKING] The issue is that `impl View for UserFrame` is defined inside the verus macro, but the struct itself is declared outside it, so verus can't see the type definition. The error about "cannot use type UserFrame which is ignored" is surfacing now because manager.spec.rs is trying to use these types in a specification context where frames references UserFrame.
+
+The fix would be to mark these structs with `#[verus_verify]` so verus treats them as transparent types with visible fields, which would allow the View implementation to access fields like `self.addr@`. But I need to check how similar structs like FrameAddress are annotated to understand the right approach here.
+[RESULT ✓] view: 180. 413 |           &mut self,
+181.     |           ---------
+182. ...
+183. 418 |               let ghost g_old = self@;
+184.     |                                 -----
+185. ...
+186. 475 |               lemma_kernel_alloc_contiguous(g_old, self@, frames@, count as nat);
+187.     |                 ...
+
+────────────────────────────────────────────────────────────
+Turn 205
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Verus is suggesting `external_type_specification`, but the real issue is that UserFrame and KernelFrame have `impl View` defined with field access like `self.addr@`, yet they're being ignored because they're declared outside the verus!{} block without annotations. The cleanest approach would mirror how Upool handles this—using `#[verus_verify(external_body)]` with an uninterpreted View—but UserFrame and KernelFrame need their views to actually access fields, so I'm trying to figure out how that pattern works in practice. UserFrame wraps a FrameAddress field, and I need to figure out how to make that field accessible in the View implementation. The key question is whether to mark the struct `#[verus_verify]` with transparent visibility or use `external_type_specification` instead. Let me look at how similar structs like the Inner frame type are declared to understand the right pattern here.
+[RESULT ✓] view: 78. static mut REFCOUNT_STORAGE: [u8; NFRAMES] = [0; NFRAMES];
+79. 
+80. /// Private state of the frame allocator singleton.
+81. #[verus_verify]
+82. struct Inner {
+83.     /// A bitmap that keeps track of free/used frames.
+84.     bitmap: Bitmap,
+85.     /// Per-frame reference count. Indexed by fram...
+
+────────────────────────────────────────────────────────────
+Turn 206
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm noticing that `Inner` uses the `#[verus_verify]` attribute with a transparent pattern, and its View implementation accesses fields directly. I should apply the same `#[verus_verify]` transparent marking to UserFrame, KernelFrame, and PhysMemoryManager to match this pattern, though I need to check whether having `#[derive(Debug)]` and Drop implementations alongside this attribute causes any issues.
+
+Looking at FrameAddress, it uses `#[verus_verify(external_derive)]` with `#[derive(Clone, Copy)]`, which tells Verus to treat the derived trait implementations as external. Since UserFrame has `#[derive(Debug)]`, I should probably use `external_derive` as well. But I need to verify whether `external_derive` also makes the struct transparent like the base `#[verus_verify]` does, since FrameAddress's View accesses `self.0` directly.
+
+For PhysMemoryManager specifically, its View accesses `self.upool@`, so it definitely needs field access and should be transparent. It has no derives, so plain `#[verus_verify]` should work. The fact that it contains an `external_body` field type like Upool shouldn't be a problem since Upool has a View defined.
+[RESULT ✓] view: 60. //==================================================================================================
+61. // Structures
+62. //==================================================================================================
+63. 
+64. ///
+65. /// # Description
+66. ///
+67. /// Physical memory manag...
+
+────────────────────────────────────────────────────────────
+Turn 207
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] I'm looking at the KernelFrame struct definition and how its view field reads data, checking the View definitions in the manager test file to understand the relationship.
+[RESULT ✓] view: 28. //==================================================================================================
+29. // Kernel Frame
+30. //==================================================================================================
+31. 
+32. /// A type that represents a kernel frame.
+33. #[derive(Debug...
+
+────────────────────────────────────────────────────────────
+Turn 208
+────────────────────────────────────────────────────────────
+Structs need to be verus-visible (transparent, like `Inner`). Let me annotate them:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm thinking through how to handle the Verus verification attributes for these structs. KernelFrame and UserFrame both have Debug derives with closed views on single fields, so I'll mark those with `#[verus_verify(external_derive)]` to treat the derive as external and keep the struct transparent. PhysMemoryManager has no derive, so it just needs `#[verus_verify]`. I'm still working through whether `external_derive` actually makes the fields visible to the spec layer.
+
+There's also the question of Drop implementations — both KernelFrame and UserFrame have Drop impls that are currently unannotated (external), which should be fine since they're not being verified. The real constraint is that making these structs transparent requires their fields to be Verus types with views, and FrameAddress already has that covered with its own `external_derive` and View. For PhysMemoryManager, making it transparent means modeling its `upool` field, but since `init` constructs it via `MaybeUninit` with an external body, there's no spec construction needed there.
+
+I'll add `#[verus_verify]` to PhysMemoryManager and `#[verus_verify(external_derive)]` to UserFrame and KernelFrame directly on the struct declarations in attribute mode, same as Inner and FrameAddress. Then I need to tackle the KERNEL_WATERMARK const issue separately by looking at the spec file.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 209
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 210
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 18. //==================================================================================================
+19. 
+20. ///
+21. /// # Description
+22. ///
+23. /// A type that represents a user frame.
+24. ///
+25. #[derive(Debug)]
+26. pub struct UserFrame {
+27.     /// Frame address.
+28.     addr: FrameAddre...
+
+────────────────────────────────────────────────────────────
+Turn 211
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 212
+────────────────────────────────────────────────────────────
+Now the `KERNEL_WATERMARK` const. Let me look at its definition and the spec usage:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+[RESULT ✓] view: 38. //==================================================================================================
+39. // Build-time kernel watermark
+40. //==================================================================================================
+41. 
+42. /// The kernel watermark: the number of physic...
+
+────────────────────────────────────────────────────────────
+Turn 213
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "KERNEL_WATERMARK" src/ --include=*.rs | grep -v "spec.rs\|manager.rs" | head
+[RESULT ✓] bash: src/libs/config/build.rs:108:    constants.push_str(&format!("pub const KERNEL_WATERMARK: usize = {val};\n"));
+<shellId: 94 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 214
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "config::\|NFRAMES\|MAX_PROCESSES\|const " src/kernel/src/mm/phys/frame.rs | head -2
+
+[THINKING] The issue is that KERNEL_WATERMARK is a const generated at build time in an external crate, and Verus can't access external crate constants directly. The typical workaround of using assume_specification only works for functions, not consts. I'm exploring alternatives like wrapping the const access in a spec function, though uninterpreted functions are restricted. The skill explicitly bans uninterp spec functions, so I can't use that to abstract away the unknown constant value. But looking at what the spec actually needs — the callers just need consistency in how `spec_kernel_watermark()` relates to the free count, not the concrete value itself. So I could define an exec wrapper function with `external_body` that reads the constant, paired with an uninterp spec function that the exec ensures relates to, letting the verification work without knowing the actual build-time value.
+
+The concern is whether this violates the spirit of the ban — using uninterp to dodge writing a concrete spec. But this feels like a legitimate external-bottom trust assumption, similar to reading hardware or build configuration. The honest model is that some watermark value exists externally, which is exactly what uninterp represents. Let me check if there's a way to make the config crate visible to verus, or if there's an `external_fn_specification` or `when_used_as_spec` attribute that could help here.
+[RESULT ✓] bash: 24:    platform::NFRAMES,
+31:use ::config::constants;
+70:/// most [`config::kernel::MAX_PROCESSES`] (≤ 255) processes can simultaneously share a
+78:static mut REFCOUNT_STORAGE: [u8; NFRAMES] = [0; NFRAMES];
+98:    /// [`config::kernel::MAX_PROCESSES`] (≤ 255), so a frame can be shared by at most 255...
+
+────────────────────────────────────────────────────────────
+Turn 215
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '95,115p' src/libs/config/build.rs; echo "=== generated? ==="; find . -path ./target -
+
+[THINKING] I see that frame.rs uses NFRAMES in unverified code, so there's no precedent for reading config constants in specs. But my situation is different—check_user_watermark is actually verified and reads KERNEL_WATERMARK, which means I need to model it properly in the spec. I'm thinking the cleanest approach is to treat KERNEL_WATERMARK as an external constant and reference it through a spec function.
+
+The right pattern is an external_body helper function that returns the constant and ties it to a spec function via ensures. Since KERNEL_WATERMARK is a genuine cross-crate build-time constant that Verus can't evaluate, using an uninterpreted spec function is the legitimate external-bottom case—not a shortcut to avoid writing a concrete spec. I'll wrap the constant read in a helper function and document it as TCB-allowed, which keeps the exec change minimal while properly modeling the external dependency. I should also check whether uninterp is actually prohibited in the skills or if there's an exception for external constants, and I need to look at the build.rs file to see if the watermark value is available at compile time so I could define the spec function concretely instead.
+[RESULT ✓] bash: constants.push_str(&format!("pub const MEMORY_SIZE: usize = {memory_size_bytes};\n"));
+
+    let val: usize = parse_hex_or_decimal_usize(
+        required_key(&kernel_config_toml, "num_processors"),
+        "num_processors",
+    );
+    constants.push_str(&format!("pub const NUM_PROCESSORS: usize = {v...
+
+────────────────────────────────────────────────────────────
+Turn 216
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills; grep -rniE "external.bottom|external const|build.time|uninterp|constan
+
+[THINKING] KERNEL_WATERMARK is a build-time configuration value that's genuinely external, so spec_kernel_watermark() can't use a hardcoded concrete value—it needs to be an abstract value tied to the external constant. I'll model this as a legitimate external-bottom trust assumption using a wrapper function with the uninterpreted approach, and document it in tcb-allowed.md.
+
+But I should double-check the uninterpreted ban against the spec-design skill's guidance on external-bottom assumptions and build-time constants to make sure this approach aligns with the verification constraints.
+[RESULT ✓] bash: spec-design/SKILL.md:3:description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or reviewing V...
+
+────────────────────────────────────────────────────────────
+Turn 217
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[RESULT ✓] view: 83. - **Constants**: Verus sees the original definition directly. If Verus
+84.   cannot resolve a constant from another workspace module, add
+85.   `#[verus_verify]` to the defining module. Never
+86.   `#[cfg(not(verus_keep_ghost))]` the original constant.
+87. 
+88. **Allowed additions:** `#[verus_sp...
+
+────────────────────────────────────────────────────────────
+Turn 218
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat src/libs/config/src/lib.rs 2>/dev/null | head -40; echo "=== kernel module ==="; grep -rn
+
+[THINKING] The issue is that KERNEL_WATERMARK is generated by build.rs into the constants file, so I can't directly annotate the generated code with `#[verus_verify]`. I need to figure out how the config module exposes this constant and whether there's a way to work around the resolution issue without modifying generated code.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+#![cfg_attr(not(feature = "std"), no_std)]
+
+//==================================================================================================
+// Modules
+//===============================================================...
+
+────────────────────────────────────────────────────────────
+Turn 219
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+
+[THINKING] The const lives in a generated file within the `kernel` module, which comes from including a build artifact, and I can't annotate generated code directly. Since the `config` crate isn't part of the verus verification pipeline, adding `#[verus_verify]` would require converting it to a verus target—something outside the current scope. The standard approach of annotating the defining module doesn't work cleanly here because the const is generated in a non-verus dependency.
+
+I'm considering a wrapper approach: defining a kernel-local const that re-exports the external one, but verus would still fail trying to evaluate the initializer that references the unresolvable external const. So the wrapper needs to hide that const read using an `external_body` pattern—likely an exec function that wraps the external value and ties it to a spec function via ensures clauses. The spec function would need to be defined as uninterpreted to represent this genuine external-bottom value, though that conflicts with the verification constraints I'm working within.
+[RESULT ✓] view: 200.     every (or nearly every) method. A universally required property is an
+201.     invariant — move it to `inv()` and maintain it in `ensures`.
+202. 12. **`uninterp` as Verification Escape** — using `uninterp spec fn` to
+203.     avoid writing a concrete spec definition, then injecting properti...
+
+────────────────────────────────────────────────────────────
+Turn 220
+────────────────────────────────────────────────────────────
+Let me reconsider whether the spec even needs the concrete watermark value. Check the caller analysis:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -niE "watermark|check_user|free_count|spec_kernel" verus-ai-logs/nanvix-phys-phys-manage
+
+[THINKING] The spec prohibits uninterpreted functions for things under our control, but KERNEL_WATERMARK is a build-time external constant, so it falls outside that restriction. The exception allows uninterpreted functions as mechanical consequences of external_body types, so I should model the watermark similarly—treating it as an external constant rather than something we define directly.
+
+The real issue is that Verus can't evaluate the config crate's constant at compile time. I could define a concrete spec function that returns a fixed value, but that would be dishonest if the runtime constant differs. The honest approach is to use an external_body exec wrapper that ties the runtime value to the spec, letting the spec remain abstract while the implementation reads the actual constant.
+
+But before committing to this pattern, I should check whether the callers actually need the exact watermark value in their specs, or if they just care that user allocations are gated by some threshold. Let me look at the caller analysis to see what the specs actually depend on.
+[RESULT ✓] bash: 13:| Private | 1 (`check_user_watermark`) |
+28:| `check_user_watermark` | private | 0 external | called by `alloc_many_user_frames` (L177) and `alloc_user_frame` (L205) |
+43:- `alloc_many_user_frames` → `check_user_watermark(count)` → `frame::free_count`,
+44:  `config::kernel::KERNEL_WATERMARK`, the...
+
+────────────────────────────────────────────────────────────
+Turn 221
+────────────────────────────────────────────────────────────
+Line 121: callers don't care about the watermark value — only that allocation is gated. `KERNEL_WATERMARK` is a build-time generated cross-crate constant (genuinely external-bottom). I'll model it via an `external_body` accessor tied to an abstract spec value — the same mechanism as a View on an external_body type. Let me view the current spec around it and check config import:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "use config\|use ::config\|config::" src/kernel/src/mm/phys/manager.rs | head; echo "
+
+[THINKING] The key insight is that callers don't actually need the concrete value of the watermark threshold—they only care that allocation is gated by some threshold. This means I can model `spec_kernel_watermark()` as an abstract external-bottom value, which is justified since the constant is genuinely external, generated cross-crate, and outside our control.
+
+The approach is to create an external_body accessor function that ties the runtime value to the spec function, making the uninterpreted nature a mechanical consequence of the external boundary. I'll add a `kernel_watermark()` function marked as external_body with an ensures clause connecting it to `spec_kernel_watermark()`, and document this as an external-bottom trust assumption in tcb-allowed.md.
+[RESULT ✓] bash: 292:    /// [`config::kernel::KERNEL_WATERMARK`].
+315:        let watermark_threshold: usize = config::kernel::KERNEL_WATERMARK
+=== spec.rs imports ===
+verus! {
+
+use crate::hal::mem::spec_page_size;
+use crate::mm::phys::FrameAllocView;
+
+// `Result::and_then`: on `Ok`, the closure is applied to the p...
+
+────────────────────────────────────────────────────────────
+Turn 222
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+
+[THINKING] I need to update manager.rs to use the fully-qualified path for the kernel watermark constant, and then change spec_kernel_watermark to uninterp in spec.rs.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 223
+────────────────────────────────────────────────────────────
+Now add the `external_body` accessor and update `check_user_watermark`:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] view: 300.     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+301.     ///
+302.     #[verus_spec(result =>
+303.         ensures
+304.             match result {
+305.                 Ok(()) => crate::mm::phys::phys_view().frames.free_count()
+306.                     >= c...
+
+────────────────────────────────────────────────────────────
+Turn 224
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 225
+────────────────────────────────────────────────────────────
+Now add the accessor as a free function. Let me find a good spot (after the impl blocks or before):
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] view: 479.     }
+480. }
+481. 
+
+────────────────────────────────────────────────────────────
+Turn 226
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 227
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm adding a kernel_watermark accessor function as a free function after the impl block, which doesn't require the verus_spec annotation.
+
+────────────────────────────────────────────────────────────
+Turn 228
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 229
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm noticing a conflict between the skill guidelines and what I see in the actual codebase—the skill says not to wrap `verus_spec` in `cfg_attr`, but I'm seeing loop invariants in manager.rs that do exactly that with `#[cfg_attr(verus_keep_ghost, verus_spec(invariant...))]`.
+
+Looking at how `init` uses bare `#[verus_spec(...)]` and it compiles fine in non-verus builds since the macros erase themselves, I should match that pattern for `kernel_watermark` to stay consistent. The loops are already using `cfg_attr` and compiled past the macro stage, so I'll leave those alone for now and just switch to bare `verus_spec` for the new function.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 230
+────────────────────────────────────────────────────────────
+Now re-run verification:
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::phys 2>&1 | tail -20
