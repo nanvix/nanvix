@@ -51,3 +51,6 @@ Module: sys-address-mod
 [2026-06-14 07:57:44]   ↳ dialogue-reviewer-t1 done in 3m54s (exit=0)
 [2026-06-14 07:57:44] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-06-14 07:57:44] [DIALOGUE] specification ended after 1 turns: RESOLVED (234s)
+[2026-06-14 07:57:44] [PHASE] specification: dialogue-RESOLVED (17m27s)
+[2026-06-14 07:57:44] [SPEC DRIFT] (within specification) Comparing 89c08129 → a9cd1c9b
+[2026-06-14 07:57:44] [SPEC DRIFT] (within specification) No changes detected
