@@ -1087,3 +1087,19 @@ Normal build now passes. Re-verify Verus still passes (full sys + module).
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-sys MODULE=sys::sys::mm::address 2>&1 | grep -A6 "=== Summary"
 
 [THINKING] The build is now clean with no warnings or errors, so I should verify that the verus tests still pass after removing that import.
+[RESULT ✓] bash: === Summary ===
+  verification: 2 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+  coverage: 2/23 exec functions have contracts
+  status: CLEAN
+
+Log written to: verus-ai-logs/verify-sys/verus-logs/verus_2026-06-14_07-52-21.log
+<shellId: 5...
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+Module CLEAN. Now run full `make verify` to confirm whole pipeline (sys full incl. virt, plus kernel) after the import change.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify 2>&1 | grep -E "verification results|=== Results|verified|errors|Exi
+
+[THINKING] The module verification passed cleanly with no errors, so removing that import didn't break anything. Now I need to run the full `make verify` to ensure the entire pipeline—both the system and kernel components—still compiles without issues after modifying mod.rs.
