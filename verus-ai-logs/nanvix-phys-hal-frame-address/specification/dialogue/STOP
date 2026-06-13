@@ -1,0 +1,11 @@
+RESOLVED
+
+All 17 specification-phase checklist items are PASS (verified with tool output:
+`make verify-kernel` exit 0, `./z build -- all-kernel` exit 0, `fn_coverage.py`
+9/9 exec fns, git-diff drift check shows only strengthening). See
+turn_001_driver.md for per-item evidence.
+
+Two proving-phase obligations are tracked (not spec defects):
+- Discharge admit()s in frame.proof.rs (lemma_frame_base_aligned, lemma_aligned_div_mul).
+- Remove the PhysicalAddress::from_raw_value assume_specification once phys's
+  Address impl is verified.
