@@ -232,3 +232,489 @@ Key facts from the script:
 135.     )]
 136.     fn alloc(&mut self) -> Result<FrameAddress, Error> {
 137.         proof! { admit(); ...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null
+
+[THINKING] The kernel verification is passing but flagging cheating violations—the `Inner` methods are using `admit()` calls in their bodies, which violates the no-cheating specification. I need to remove those `admit()` calls from the function implementations to pass the specification phase review.
+[RESULT ✓] view: 400.             Some(n) => n,
+401.             None => {
+402.                 let reason: &str = "frame reference count overflow";
+403.                 #[cfg(not(verus_keep_ghost))]
+404.                 error!("{reason} (frame={frame:?})");
+405.                 return Err(Error::new(ErrorCode::OutO...
+[RESULT ✓] bash: - hal/mem/types/address/frame.rs:99 from_raw_value: external_body
+    - hal/mem/types/address/frame.rs:119 into_raw_value: external_body
+    - mm/phys/frame.rs:136 alloc: admit
+    - mm/phys/frame.rs:213 alloc_contiguous: admit
+    - mm/phys/frame.rs:298 free: admit
+    - mm/phys/frame.rs:379 share:...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,80p' verus-ai-logs/nanvix-phys-phys-frame/view_design.md 2>/dev/null
+
+[THINKING] I need to continue reviewing the rest of frame.rs to see the free function wrappers, then check view_design.md and the fn_coverage.py tool along with the spec-completeness and spec_drift commands, plus locate the bugs file.
+[RESULT ✓] view: 700. // `lemma_frame_initialized`) before any other free function runs.
+701. #[verus_verify(external_body)]
+702. pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
+703.     if unlikely(INSTANCE_INIT.load(ORDER)) {
+704.         return Err(Error::new(ErrorCode::InvalidArgument, "frame al...
+[RESULT ✓] bash: # View Design: `mm::phys::frame`
+
+> Status: the View for this module **already exists** and is on the
+> do-not-modify list (`FrameAllocView` + `View for Inner` in `mod.spec.rs` /
+> `frame.proof.rs`). This document **validates and records** that design against
+> the caller analysis and the body-remov...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls scripts/ verus-ai-logs/ 2>/dev/null; echo "=== fn_coverage ==="; find / -name 'fn_covera
+
+[THINKING] I need to examine the rest of frame.rs to understand the refcount free function, then look at mod.spec.rs for the FrameAllocView definitions and helper functions like covers, reserved, all_reserved, free_count, and region_frame_addrs. I should also track down the tools—fn_coverage.py, spec_drift_cmd, and the spec-completeness skill—and check what's in the scripts directory.
+[RESULT ✓] view: 920.         match result {
+921.             Ok(count) => {
+922.                 &&& crate::mm::phys::phys_view().frames.allocated_frames.contains(frame@)
+923.                 &&& count as int == crate::mm::phys::phys_view().frames.refcounts[frame@]
+924.             },
+925.             Err(_) => !cr...
+[RESULT ✓] bash: scripts/:
+bench
+benchmark.py
+cleanup-nanvixd.sh
+common
+create-release.py
+docker-retry.sh
+generate-l2-initramfs.sh
+generate-l2-snapshot.sh
+generate-manifest.sh
+get-nanvix.sh
+install-containerd.sh
+install-shim.sh
+pipeline.sh
+plot-performance.py
+run-smoke-test.py
+run-uservm.py
+setup
+setup-nanvix.sh
+she...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls /home/ruize/verus-ai-exp/verus-ai/scripts/ 2>/dev/null | grep -E 'coverage|drift|spec'; 
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n 'covers\|reserved\|all_reserved\|free_count\|region_frame_addrs\|fn wf\|spec fn all
+
+[THINKING] I need to run the coverage analysis on the frame module and check the mod.spec.rs file to understand the helper functions that the free function specs depend on, then locate the correct fn_coverage.py script in the verus-ai-exp directory.
+[RESULT ✓] bash: 20:pub struct FrameAllocView
+29:impl FrameAllocView
+31:    pub open spec fn wf(&self) -> bool
+79:/// (`FrameAllocView`) with the two liveness facts the caller depends on.
+84:    /// Abstract frame-allocator state: which physical frames are allocated (reserved) vs.
+85:    /// free, with per-frame ref...
+[RESULT ✓] bash: fn_coverage.py
+refinement_coverage.py
+spec_drift.py
+=== VERUS_AI_DIR ===
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help 2>&1 | head -30
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py --help 2>&1 | head -30
+
+[THINKING] I'm going to run the coverage and drift analysis tools on the frame module to check how well the functions are tested and whether the implementation matches the specification.
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+[RESULT ✓] bash: usage: spec_drift.py [-h] {snapshot,diff,check,git-diff} ...
+
+Spec drift detector for Verus verification.
+
+positional arguments:
+  {snapshot,diff,check,git-diff}
+    snapshot            Extract spec snapshot from files
+    diff                Compare two snapshots
+    check               Check spec ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/kernel/src/mm/phys/fra
+
+[THINKING] I'm realizing fn_coverage.py needs both a source file and a Verus exec file to compare against each other. The issue is that I only have frame.rs available, but the script expects an original body-removed source to compare with the Verus version. The body_removed_source.rs file is in the parent directory, so I could use that as the source file instead of trying to use frame.rs for both inputs.
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/kernel/src/mm/phys/frame.rs`
+- **Verus file:** `src/kernel/src/mm/phys/frame.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy/src/kernel/src`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Source exec fns | 11 |
+| Verus ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check --help 2>&1 | head -2
+
+[THINKING] Looking at the function coverage metrics, I'm seeing 11 top-level functions counted—the free functions like alloc, alloc_contiguous, alloc_range, book, free, free_count, is_covered, refcount, and share, plus init and instance. The Inner methods inside the impl block don't seem to be included in this count.
+
+Checking the specs across these 11 functions: init is marked external_body and excluded, instance has ensures clauses, and the rest have verus_spec annotations. The free function is_covered also has a spec. So every in-scope executable function has the required requires/ensures contracts.
+
+Now I'm running the spec_drift check to see if there are any inconsistencies.
+[RESULT ✓] bash: usage: spec_drift.py check [-h] [--phase PHASE] [--logs-dir LOGS_DIR]
+                           [--before BEFORE] [--after AFTER] [-o OUTPUT]
+                           [--json]
+                           module
+
+positional arguments:
+  module                Module name (e.g. volume_impl)
+
+options:...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check frame 2>&1 | head -80
+[RESULT ✓] bash: Error: pipeline_state.json not found for module 'frame'
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/nanvix-phys-phys-frame/pipeline_state.json 2>/dev/null | head -40; echo "
+
+[THINKING] I need to check where pipeline_state.json is located and switch to using git-diff to compare the original specs against the current state. Let me examine the git status and log to establish a baseline for detecting spec drift.
+[RESULT ✓] bash: {
+  "module_name": "phys-frame",
+  "log_name": "nanvix-phys-phys-frame",
+  "source_path": "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs",
+  "current_phase": "specification",
+  "current_phase_idx": 2,
+  "completed_phases": [
+    "caller-analysis",
+    "view-design"
+  ],
+  "phase_results": {...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 -c "import json;d=json.load(open('verus-ai-logs/nanvix-phys-phys-frame/pipeline_sta
+
+[THINKING] I'm realizing the pipeline_state.json file is in a different directory than where the script is looking for it. I could pass the logs directory as a parameter, or map the script's module reference to the log name. Let me examine the phase_boundary_shas more closely to see if that's a better approach.
+[RESULT ✓] bash: {
+  "caller-analysis": "eac7e9a5eed2aa2f90a0d1d0658491162cd2f13e",
+  "view-design": "97e31408ea7ada8403c40f87f2c785a0161ca80a"
+}
+base_branch verus-ai/phys-kframe
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff --help 2>&1 | head
+
+[THINKING] The spec_drift check validates that the Original guarantees haven't been weakened during the specification phase, using the view-design boundary commit as the baseline. I need to run a git diff on the spec files between that starting point and the current HEAD to see what's changed.
+[RESULT ✓] bash: usage: spec_drift.py git-diff [-h] --before BEFORE [--after AFTER]
+                              [--file-stem FILE_STEM] [-o OUTPUT] [--json]
+                              source
+
+positional arguments:
+  source                Source file path (relative to repo root)
+
+options:
+  -h, --help           ...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/kernel/src/mm/
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 5
+- **Contract drift (⚠ review required): 4**
+  - Ensures removed: 1
+  - Requires added: 3
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+## Contract Drift (⚠ REVIEW REQUIRED)
+
+Each item below is a potential sp...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/kernel/src/mm/
+
+[THINKING] I'm noticing the spec changes during the specification phase are strengthening the postconditions with added ensures clauses, but the preconditions are getting stricter too. Adding requires makes the function harder to call from the caller's perspective, which weakens the overall contract even though it's technically strengthening the function's guarantees. These seem to be dependency-contract specs being filled in as the design progresses.
+[RESULT ✓] bash: **ENSURES ADDED**
+```
+match result {
+            Ok(()) => crate::mm::phys::phys_view().frames.all_reserved(
+                crate::mm::phys::region_frame_addrs(region@.start, region@.size)),
+            Err(_) => true,
+        }
+```
+
+### `book` (exec) — requires added ⚠, ensures added ℹ
+
+File: src/...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n 'fn alloc_kernel_frame\|fn alloc_user_frame\|fn alloc_many\|fn check_user_watermark
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n 'fn alloc\|fn new\|fn share\|fn refcount\|fn drop\|fn leak' src/kernel/src/mm/phys/
+
+[THINKING] I'm checking whether the specification changes maintain or strengthen existing guarantees without weakening anything. The free functions like `alloc`, `alloc_contiguous`, `free`, `book`, and `alloc_range` all have `Err(_) => true` in their ensures clauses, which is actually a tautological ensures—a key issue I need to flag.
+
+The tension here is that while the inner method specs do capture meaningful error behavior (like the allocator state being unchanged when the free pool is empty), the free function wrappers that callers actually see just say `Err(_) => true`. The verification plan includes these free functions in scope, so their error specs being tautological is a failure against the checklist items for meaningful ensures and no tautological ensures. Some callers do propagate errors with `?` and don't care about the details, but that doesn't justify leaving the spec empty—the spec should still capture what the implementation guarantees. is justified by caller analysis. For the other error paths in `alloc`, `alloc_contiguous`, `book`, and `alloc_range`, they're all `true`, and the callers propagate with `?`. The real question is whether those callers' own specs can actually be proven given those tautological error ensures. I need to look at what the actual external callers in manager.rs and upool are specifying to see if they need the error postcondition, but many of those are themselves external_body with admits right now. The key point for the review: I should identify the clearest FAIL item first — the tautological error ensures on these caller-facing functions are the strongest candidate since they don't capture any meaningful state constraints on failure. The real question is whether the manager's caller specs actually require the Err postcondition—if `alloc_kernel_frame` asserts the manager view is unchanged on error and depends on `frame::alloc` preserving `phys_view`, then `Err(_) => true` is genuinely insufficient. I need to check the actual specs in manager.rs and upool.rs to see if this is a real failure or if the callers truly don't consume that guarantee.
+[RESULT ✓] bash: 193:    pub fn alloc_many_user_frames(
+285:    pub fn alloc_user_frame(&mut self) -> Result<UserFrame, Error> {
+317:    fn check_user_watermark(count: usize) -> Result<(), Error> {
+362:    pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
+423:    pub fn alloc_many_kernel_frames(
+<...
+[RESULT ✓] bash: 86:    pub fn new(addr: FrameAddress) -> Self {
+126:    pub fn leak(self) -> FrameAddress {
+163:    pub fn share(&self) -> Result<UserFrame, Error> {
+190:    pub fn refcount(&self) -> Result<u8, Error> {
+201:    fn drop(&mut self) {
+246:    pub(super) fn new() -> Self {
+279:    pub fn alloc(&mut sel...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 330.             let reason: &str = "would breach kernel watermark";
+331.             #[cfg(not(verus_keep_ghost))]
+332.             error!("{reason}");
+333.             return Err(Error::new(ErrorCode::OutOfMemory, reason));
+334.         }
+335.         Ok(())
+336.     }
+337. 
+338.     ///
+339.     ...
+[RESULT ✓] view: 246.     pub(super) fn new() -> Self {
+247.         Self { _private: () }
+248.     }
+249. 
+250.     ///
+251.     /// # Description
+252.     ///
+253.     /// Allocates a single user frame from the user frame pool.
+254.     ///
+255.     /// # Returns
+256.     ///
+257.     /// Upon success, a user fram...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,60p' verus-ai-logs/tcb-allowed.md 2>/dev/null; echo "=== grep frame/hal entries =
+
+[THINKING] I've found a critical issue in `manager.rs::alloc_kernel_frame` — it has a verified spec claiming that on error, the manager's state remains unchanged, but the implementation calls `frame::alloc()?` which returns early on failure. The problem is that to satisfy this invariant on the error path, the caller would need proof that `frame::alloc()` doesn't modify the manager's observable state when it fails.
+
+The key insight is that `frame::alloc()` takes no arguments and only mutates global state through the singleton instance, while the manager's `self` is a `&mut self` that isn't passed to `frame::alloc()`. Since Verus sees that `self` isn't borrowed by the call, it assumes `self` remains unchanged across the `frame::alloc()` invocation — which is exactly what the postcondition requires. The manager's view (`self@`) is derived from `phys_view()`, and even though `frame::alloc()` modifies the global frames, Verus can't connect that change back to the manager's state without explicit reasoning about the invariant linking them. So `alloc_kernel_frame` actually does verify without being marked external_body, which means the Err path constraint `final(self)@ == old(self)@` is being proven directly by Verus. This suggests either the manager's view doesn't depend on `phys_view()` in a way that `frame::alloc` can disturb, or `phys_view()` is modeled such that functions not explicitly taking that state can't modify it. Even though it verifies, a strict review would flag the `Err(_) => true` ensures on several functions as tautological and lacking meaningful error semantics — but the real question is whether the caller's proof that state remains unchanged on error actually depends on `frame::alloc` explicitly saying so, or if it's derived from the manager's independence from the allocation state.
+
+Since there's no admit in the Err path, the `Err(_) => true` must be sufficient for callers, which points to a ghost token / global state design where `phys_view()` reads a global that Verus treats as modifiable by any call. Functions that mutate it describe the pre/post relationship, but without `old()` in a free function's ensures, a statement like `phys_view().frames.allocated_frames.contains(frame@)` only constrains the post-state.
+
+On the Err path, callers need to prove the manager's state is unchanged, but `Err(_) => true` says nothing about whether `phys_view()` changed. The verification does pass globally (47 verified, 0 errors), so the specs are mutually consistent—either Verus treats `phys_view()` as unchanged-by-default when not mentioned, or the caller proofs rely on lemmas like `lemma_kernel_alloc_one` to bridge the gap. Strictly speaking, the free functions' `Err(_) => true` is the anti-pattern flagged, even though callers only propagate errors and the underlying unchanged fact can't be expressed without `old()` at the boundary.
+
+But actually, a meaningful Err ensures IS possible: instead of `Err(_) => true`, I could write `Err(_) => phys_view().frames.free_frames.is_empty()`. On Err the state is unchanged, so the post-state free pool is empty (matching the pre-state), which is both expressible and something callers could actually use—the manager's watermark checks rely on free_count. So this isn't just a documentation gap; the spec can be strengthened to something non-tautological and caller-relevant.
+
+The same pattern applies to `book`, `alloc_range`, and `alloc_contiguous`: their Inner Err ensures capture meaningful post-state facts (frame not in pool, region not fully free, state unchanged) that could be expressed at the free-fn level. For `alloc_contiguous` there's no extra post-state fact beyond "unchanged," which is inexpressible, so `Err(_) => true` might be unavoidable there. But the others are legitimate fixes.
+
+Since the free fns use `proof! { admit(); }`, adding stronger Err ensures won't break anything—admit will discharge them. But I need to check whether the non-admit functions like `is_covered`, `share`, and `refcount` would be affected.
+
+Actually, stepping back: the real issue is that the free functions are the caller-facing boundary, and they're missing the meaningful error-path ensures that the Inner methods capture and that callers expect based on the documentation. That's the cleanest FAIL to lead with. But I should also reconsider the broader framing—the verification plan covers both Inner methods and free functions, and the admits scattered throughout are specification-phase placeholders. The checklist warns against admits in the module's own functions, but in this pipeline, specs are written with admitted bodies and proofs come later. So flagging "remove all admits" as a spec-phase fix would be out of scope.
+
+The real specification-quality issue is the weak error-path ensures on the caller-facing functions. Let me check if this is actually a defect or intentional. The caller analysis documents that callers expect `free_frames.is_empty()` on Err, but the free function spec only gives `Err(_) => true`. However, looking at the actual verified callers—upool::alloc is external_body with its own spec, and alloc_kernel_frame doesn't need the free_frames empty fact. So no current verified caller actually consumes that stronger Err postcondition from frame::alloc.
+
+But that's the problem: strengthening frame::alloc's Err to include `free_frames.is_empty()` would let upool::alloc eventually drop external_body, making it a spec-completeness improvement. The documented caller expectation and upool's own spec both need that fact, so frame::alloc should provide it. This is a concrete failure—the free function's Err ensures are weaker than both the documented caller expectation and what the inner implementation provides, forcing the caller to remain external_body.
+
+Looking at each free function's Err arm, alloc and book both have this pattern where the spec gives `Err(_) => true` but the inner implementation provides stronger guarantees that the documented callers expect. I need to flag the assume_specification usage on workspace-internal code like `crate::hal::mem::FrameAddress::from_frame_number` — that's in the same kernel crate, not an external dependency, which violates the checklist rule unless tcb-allowed.md explicitly permits it. I also notice the loop invariants in alloc_contiguous and alloc_range are set to `invariant false`, which is a red flag that needs investigation. The off-by-one mismatch between the body's inclusive loop and the spec's exclusive range is a potential latent bug I should flag, even though the body is admitted and not currently checked. I'm wrapping up the verification checks — the cross-module build passes, and I need to confirm the kernel build doesn't break. Given the multiple FAILs I've found, I'll write the full checklist review with a focused fix request targeting the first failure, then stop and wait for the fixer's response rather than proceeding further.
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<Inner>` singleton (guarded by `INSTAN...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '60,140p' verus-ai-logs/tcb-allowed.md 2>/dev/null
+
+[THINKING] I need to check the rest of tcb-allowed.md to see the assume_specification list and verify whether those entries are documented.
+[RESULT ✓] bash: cleanup; no precondition, no abstract postcondition (callers ignore the outcome).
+- `src/kernel/src/mm/phys/frame.rs::share` — singleton wrapper around `Inner::share` (the CoW
+  reference-count bump). `requires frame.inv()`, `ensures Ok(()) => the frame is allocated in
+  `phys_view().frames``. The p...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn 'build' .github/skills/build/SKILL.md 2>/dev/null | grep -iE 'z build|make|cargo' 
+
+[THINKING] I'm noticing that the tcb-allowed.md file doesn't explicitly include several `assume_specification` declarations from frame.spec.rs—specifically those for FRAME_SIZE, the FrameNumber conversion methods, FrameAddress conversions, PhysicalAddress frame number conversion, TruncatedMemoryRegion properties, and PageAligned operations.
+
+The tension here is that checklist item #7 flags `assume_specification` on workspace-internal code as an anti-pattern, yet these declarations are temporary placeholders for not-yet-verified intra-crate dependencies in the hal module. While the spec file justifies them as cross-module placeholders that will be superseded once the underlying modules are verified, the hal module is technically workspace-internal rather than external. I should flag this as a concern—these `assume_specification` declarations on `crate::hal::mem::*` should ideally be replaced with real specifications or external_body annotations on the actual functions in the hal module itself, or at minimum documented in tcb-allowed.md.
+
+Several of these functions (FrameAddress::from_frame_number, into_frame_number, PhysicalAddress::into_frame_number, TruncatedMemoryRegion start/size, PageAligned into_raw_value/deref) aren't currently listed in tcb-allowed.md, so they need to be recorded in the TCB list. This is a secondary concern but still needs addressing.
+
+The main fix request I'm taking forward is to strengthen the error-path ensures on the free functions alloc, book, and alloc_range to match what callers expect and what the Inner Err postconditions document. I'll write up the review now and kick off a build check in the background to verify the code compiles.
+[RESULT ✓] bash: 35:./z build -- all
+42:./z build -- kernel
+44:./z build -- all-nanvixd
+46:./z build -- all-uservm
+69:./z build -- all RELEASE=yes LOG_LEVEL=error
+76:./z build -- all
+78:./z build -- all RELEASE=yes LOG_LEVEL=panic
+80:./z build -- all RELEASE=yes LOG_LEVEL=panic TIMESTAMP_MSG=yes
+123:./z build -- for...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 ./z build -- kernel 2>&1 | tail -25
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '20,70p' .github/skills/build/SKILL.md
+
+[THINKING] I'm checking the build target syntax — `./z build -- kernel` should work according to the skill definition, but it's throwing a "No rule to make target" error, so maybe there are feature flags or configuration I'm missing in the build skill around that section.
+[RESULT ✓] bash: Before building on Windows, ensure:
+
+1. **Windows Hypervisor Platform** is enabled (`Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All`, then reboot).
+2. **Developer Mode** is on (Settings > Privacy & Security > For developers).
+3. **GNU Make** is on PATH (`winget install ez...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 ./z build -- all 2>&1 | tail -20
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.16s
+cp -f --preserve /home/ruize/nanvix-phy/target/debug/nanvix-test /home/ruize/nanvix-phy/bin/nanvix-test.elf
+/home/ruize/nanvix-phy/bin/mkramfs.elf -o /home/ruize/nanvix-phy/bin/test-kernel-ramfs.img /home/ruize/nanvix-phy/bin/test-ker...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Build passes. I have full evidence. Writing the review and bug note.
+[TOOL] report_intent: Writing turn 1 review
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/ 2>/dev/null; ls verus-ai-lo
+
+[THINKING] The build is working, so I can now write the comprehensive review document for turn_001_driver.md. I need to go through each assessment item and determine whether it passes or fails—I won't mark anything as STOP since there are actual failures to document. I'm also noting the off-by-one issue in alloc_range for the bugs file. Starting with function coverage, which passes since all 11 top-level functions are covered and inner methods are properly specified, with init excluded as expected. Now I'm evaluating caller coverage, which is failing because the error arms of the free function aren't fully covered.
+
+Continuing through the assessments: view consistency passes, but tautological ensures fail because the error branches in alloc, alloc_contiguous, book, and alloc_range all use trivial true conditions. Subsumed ensures are mostly fine but I'm marking them as advisory with a note since refcount checks are technically subsumed by the well-formedness invariant. Error paths are failing for the same reason as the tautological ensures—they're not meaningful. The assume_specification check fails because crate::hal::mem functions aren't in the TCB list despite being used internally. vstd dependencies pass since they're architecture-specific. Specs for callers fail due to the error weakness issue. Trait obligations pass with no unwind or invariant violations. Loop invariants are failing because alloc_contiguous and alloc_range use stub invariants marked as false. The admit count is significant—24 total admits across frame.rs and manager.proof, with 14 external_body declarations, which I'm flagging as placeholders for the proof phase. Finally, no specs have been weakened, only strengthened or kept consistent with caller expectations.
+
+I'm also noting a potential off-by-one bug in alloc_range where the body uses inclusive range syntax but the spec expects exclusive bounds, and cross-module regression testing shows 47 verified items with no errors. The overall status is marked as CHEATING_DETECTED due to the admits, though verification and build both pass. The main fix needed is addressing the weak and tautological error-path ensures in alloc, book, and alloc_range. I'll create both the detailed report and a bugs file to track these issues.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 24 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue && echo ok
+[RESULT ✓] bash: ok
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_driver.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_driver.md with 10746 characters
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat > verus-ai-logs/nanvix-phys-phys-frame/bugs.md <<'EOF'
+# Bugs / Suspicious code — `mm::
+
+[THINKING] I'm creating the bugs.md file to document the off-by-one issue with alloc_range.
+[RESULT ✓] bash: written
+-rw-rw-r-- 1 ruize ruize 1498 Jun 14 04:10 verus-ai-logs/nanvix-phys-phys-frame/bugs.md
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Turn 1 review complete. No `STOP` file created (FAILs remain).
+
+## Summary
+
+Ran `make verify-kernel` (47 verified, 0 errors, but `CHEATING_DETECTED`), `fn_coverage.py`, `spec_drift.py git-diff`, `./z build -- all` (OK), and read all three source files + caller/view-design context.
+
+**Full checklist verdicts written to** `turn_001_driver.md`:
+
+| Item | Verdict |
+|---|---|
+| #1 fn-coverage | PASS (11/11) |
+| #2 caller-coverage | **FAIL** — weak `Err` arms vs documented expectations |
+| #3 view-consistency | PASS |
+| #4 no-tautological-ensures | **FAIL** — `Err(_)=>true` in `alloc`/`alloc_contiguous`/`book`/`alloc_range` |
+| #5 subsumed | PASS (advisory: `refcount` Ok) |
+| #6 error-paths-meaningful | **FAIL** (same) |
+| #7 no-assume_spec-internal | **FAIL** — `crate::hal::mem::*` not in TCB list |
+| #8 vstd-first | PASS |
+| #9 specs-for-caller | **FAIL** (tied to #4) |
+| #10 trait-obligations | PASS (`free` no_unwind/opens_invariants none) |
+| #12 loop-invariants | **FAIL** — `invariant false` stubs |
+| #13 cheating counts | reported (admit=24, external_body=14) — proof-phase debt |
+| #14 no-specs-weakened | PASS (only strengthening) |
+| #15 bug-awareness | recorded `alloc_range` off-by-one in `bugs.md` |
+| #16 cross-module | PASS |
+| #17 verify+build | PASS |
+
+**Lead fix request (#4/#6):** strengthen the `Err` arms of `alloc`, `book`, `alloc_range` to the expressible post-state facts their `Inner` callees already prove (e.g. `alloc` → `free_frames.is_empty()`), unblocking `Upool::alloc`. `alloc_contiguous` may stand only with tool evidence. Verify with `make verify-kernel` + `spec_drift git-diff`.
+
+Also logged the `Inner::alloc_range` inclusive-vs-exclusive range discrepancy to `bugs.md` for the proving phase.
+
+[THINKING] I've finished the first-turn review and won't create a STOP file since there are still unresolved FAIL items that need attention.
+
+
+=== Session End ===
+Session: b24f3a87-590a-4517-b4f0-c2b5c8d89077
+Duration: 423.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue-reviewer-t001-claude-20260614-040319.jsonl
