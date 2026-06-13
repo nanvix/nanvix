@@ -61,6 +61,7 @@ impl<T: Address> PageAligned<T> {
     }
 }
 
+#[verus_verify]
 impl<T: Address> Address for PageAligned<T> {
     fn into_raw_value(self) -> usize {
         self.0.into_raw_value()
@@ -217,7 +218,7 @@ verus! {
 
 use crate::hal::mem::spec_page_size;
 
-impl<T: Address + View<V = int>> PageAligned<T>
+impl<T: Address> PageAligned<T>
 {
     pub open spec fn inv(&self) -> bool
     {
@@ -229,7 +230,7 @@ impl<T: Address + View<V = int>> PageAligned<T>
 
 verus! {
 
-impl<T: Address + View<V = int>> View for PageAligned<T>
+impl<T: Address> View for PageAligned<T>
 {
     type V = int;
 

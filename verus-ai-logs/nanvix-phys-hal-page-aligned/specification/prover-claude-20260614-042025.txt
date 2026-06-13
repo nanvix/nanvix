@@ -2046,3 +2046,65 @@ The real question is whether providing the spec via the trait declaration is suf
 Turn 132
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address; cp phys.rs /tmp/phys.rs.bak; sed -i '131i #[verus_verify
+[RESULT ✓] bash: #[verus_verify]
+impl Address for PhysicalAddress {
+    ///
+error: Unsupported constant type
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+=== Results ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  verification: 0 verified, compilat...
+
+────────────────────────────────────────────────────────────
+Turn 133
+────────────────────────────────────────────────────────────
+Confirmed: the panic is specific to the **generic** trait impl (non-generic PhysicalAddress didn't panic — it hit an unrelated const error). This is a Verus bug with generic trait impls whose trait method has a spec. The trait-decl spec approach (into_raw_value inherits its contract, impl trusted) is the viable path. Let me revert phys.rs and record the bug:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address; cp /tmp/phys.rs.bak phys.rs; echo "reverted phys.rs"; gr
+
+[THINKING] The panic is specific to the generic `impl<T: Address>` block for PageA, not the non-generic Address implementation—that one hit a different error about unsupported constant types but didn't crash. This suggests the issue is tied to how generics interact with the const handling in that particular impl block.
+
+I'm realizing the trait-decl approach is the way forward: the Address trait declares the spec for into_raw_value (`result as int == self@`), and PageAligned's generic impl stays unverified due to this Verus limitation with generic trait impls. Since the body is just delegating to the underlying into_raw_value call, trusting it is pragmatic—it's effectively what external_body would do, but without needing that annotation. The spec contract is enforced at the trait level for callers, even if the impl itself can't be verified.
+
+I should document this Verus bug and the workaround decision, then revert phys.rs and run the full verification suite to confirm everything still works together. Since the trait method spec automatically applies to all implementations in Verus, the unverified Address impl will still give callers the contract that `result as int == self@` — the impl being trusted just means Verus assumes it satisfies the spec rather than proving it. Let me revert the physical memory changes and run the full verification to confirm everything works together.
+[RESULT ✓] bash: reverted phys.rs
+1
+<shellId: 92 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 134
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat verus-ai-logs/nanvix-phys-hal-page-aligned/bugs.md 2>/dev/null | head -20; echo "=== END 
+[RESULT ✓] bash: === END ===
+<shellId: 93 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 135
+────────────────────────────────────────────────────────────
+Let me make one targeted attempt to verify the impl: align the `View` impl bound to exactly `T: Address` (matching the Address impl bound) and re-enable `#[verus_verify]`, in case the bound mismatch causes the duplicate:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned; python3 - <<'EOF'
+f='page.rs'
+s=open(f).read()
+#
+
+[THINKING] I'm reconsidering whether to document this as a bug—the bug-reporting skill is meant for code issues in the project itself, not limitations of the Verus tool. But it might still be worth capturing the Verus constraint. Let me think about whether I can actually verify `into_raw_value` without relying on the "trusted" annotation, since that feels like it sidesteps the whole verification goal.
+
+The panic is happening in the `inherit_default_bodies` pass when it finds duplicate `(impl_path, into_raw_value)` entries. The Address trait has no default bodies, so why is this method being processed twice? The `#[verus_spec]` annotation on the trait declaration might be creating a spec companion that also gets treated as a TraitMethodImpl during monomorphization. I could try removing the spec from the trait declaration and expressing it through a separate mechanism like a broadcast lemma, but trait method ensures need to live on the declaration itself. Earlier attempts showed that removing the trait spec doesn't actually prevent the panic—even a generic impl without any method specs still panics when verified. That suggests this is a more fundamental Verus bug with generic trait impl verification, not something tied to the spec companion.
+
+Actually, wait—generic trait impls are common in Verus, so this can't be a universal bug. It's probably something specific to the supertrait relationship. The Address impl has `T: Address` as its bound, while the View impl has `T: Address + View<V=int>`. These different bounds might be causing Verus to see two distinct impls that resolve to the same method path. Let me try simplifying the View impl bound to just `T: Address` since that already implies the View bound through the supertrait. If both impls have identical bounds, maybe that eliminates the duplicate.
+
+Actually, I'm not even sure if the duplicate is coming from the View impl or something else entirely. The error is about `into_raw_value` from the Address impl, not from View. I should stop speculating and just test: align the View impl bound to `T: Address` and re-add `verus_verify` on the Address impl. If that doesn't work, I'll accept this as a Verus limitation and document it—the trait spec already provides the necessary guarantees for callers anyway.
+[RESULT ✓] bash: done
+40:impl<T: Address> PageAligned<T> {
+65:impl<T: Address> Address for PageAligned<T> {
+163:impl<T: Address> core::fmt::Debug for PageAligned<T> {
+169:impl<T: Address> Deref for PageAligned<T> {
+177:impl<T: Address> PartialEq for PageAligned<T> {
+183:impl<T: Address> Eq for PageAligned<T> {}
+185:...
+
+────────────────────────────────────────────────────────────
+Turn 136
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned; sed -n '63,66p' page.rs; echo "---"; cd /home/ru
+
+[THINKING] I'm checking whether the `verus_verify` attribute was properly re-added to line 65 where the Address impl is defined.
