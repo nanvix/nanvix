@@ -177,3 +177,24 @@ exit=1
 
 **✅ No contract drift detected.**
 <shellId: ...
+[RESULT ✓] bash: note: verifying module hal::mem::types::address::phys
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=14 admit=26 trusted=0 no_decreases=0 cfg_ga...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Fix verified independently: tautology gone (grep exit 1), drift clean, `make verify-kernel` exit 0. Let me confirm the build and that the new contract genuinely re-verified (not stale cache) by forcing a clean module verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/hal/mem/types/address/phys.rs && make verify-kernel 2>&1 | grep -A3 "v
+
+[THINKING] The fixer claims verification passed, but the output shows it's cached without recompilation. I'm wondering if I should force a clean verification to confirm the new contract is actually being proven rather than relying on cached results. Though thinking about it more, the cache is based on file content, so if the file changed, it would have re-verified—the cached result should be valid.
+
+Let me trust that the cache key is content-based, which it is for Verus. Since the current file has the new spec and verification exited cleanly, the new ensures do verify. Now I should do a final pass through the checklist to confirm everything is resolved: the tautological issue is gone, error paths are now meaningful with the `Ok` result, and the caller now has the invariant it needs. Let me run a build check to make sure nothing regressed.
