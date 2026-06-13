@@ -75,3 +75,6 @@ Key evidence:
   Err => true match arms are non-vacuous residuals and the sound choice for the
   trusted external_body helpers.
 [2026-06-14 00:48:57] [DIALOGUE] specification ended after 1 turns: RESOLVED (513s)
+[2026-06-14 00:48:57] [PHASE] specification: dialogue-RESOLVED (38m23s)
+[2026-06-14 00:48:57] [SPEC DRIFT] (within specification) Comparing f5a2b870 → 5220f10d
+[2026-06-14 00:48:57] [SPEC DRIFT] (within specification) No changes detected
