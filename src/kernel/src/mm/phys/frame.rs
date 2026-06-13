@@ -134,7 +134,7 @@ impl Inner {
             },
     )]
     fn alloc(&mut self) -> Result<FrameAddress, Error> {
-        proof { admit(); }
+        proof! { admit(); }
         let frame_number: usize = match self.bitmap.alloc() {
             Ok(index) => index,
             Err(error) => {
@@ -210,7 +210,7 @@ impl Inner {
             },
     )]
     fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
-        proof { admit(); }
+        proof! { admit(); }
         let frame_number: usize = match self.bitmap.alloc_range(count) {
             Ok(index) => index,
             Err(error) => {
@@ -294,7 +294,7 @@ impl Inner {
             },
     )]
     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
-        proof { admit(); }
+        proof! { admit(); }
         let frame_number: usize = frame.into_frame_number().into_raw_value();
 
         if frame_number >= self.refcount.len() {
@@ -375,7 +375,7 @@ impl Inner {
             },
     )]
     fn share(&mut self, frame: FrameAddress) -> Result<(), Error> {
-        proof { admit(); }
+        proof! { admit(); }
         let frame_number: usize = frame.into_frame_number().into_raw_value();
 
         if frame_number >= self.refcount.len() {
@@ -438,7 +438,7 @@ impl Inner {
             },
     )]
     fn refcount(&self, frame: FrameAddress) -> Result<u8, Error> {
-        proof { admit(); }
+        proof! { admit(); }
         let frame_number: usize = frame.into_frame_number().into_raw_value();
 
         if frame_number >= self.refcount.len() {
@@ -493,7 +493,7 @@ impl Inner {
             },
     )]
     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
-        proof { admit(); }
+        proof! { admit(); }
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
         match self.bitmap.set(frame_number) {
             Ok(()) => {
@@ -530,7 +530,7 @@ impl Inner {
             ),
     )]
     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
-        proof { admit(); }
+        proof! { admit(); }
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
         frame_number < self.bitmap.number_of_bits()
     }
@@ -581,7 +581,7 @@ impl Inner {
         &mut self,
         region: &TruncatedMemoryRegion<PhysicalAddress>,
     ) -> Result<(), Error> {
-        proof { admit(); }
+        proof! { admit(); }
         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
         let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
 
@@ -777,7 +777,7 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
         },
 )]
 pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
-    proof { admit(); }
+    proof! { admit(); }
     instance().alloc_contiguous(count)
 }
 
@@ -798,7 +798,7 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
         result as nat == crate::mm::phys::phys_view().frames.free_count(),
 )]
 pub(super) fn free_count() -> usize {
-    proof { admit(); }
+    proof! { admit(); }
     let inner = instance();
     inner.bitmap.number_of_bits() - inner.bitmap.usage()
 }
@@ -816,7 +816,7 @@ pub(super) fn free_count() -> usize {
     no_unwind
 )]
 pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
-    proof { admit(); }
+    proof! { admit(); }
     instance().free(frame)
 }
 

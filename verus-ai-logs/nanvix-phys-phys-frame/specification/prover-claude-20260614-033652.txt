@@ -992,3 +992,44 @@ Turn 53
 ────────────────────────────────────────────────────────────
 Now let me run the module verification to see where we stand.
 [TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | ta
+[RESULT ✓] bash: - frame.rs:671 instance: external_body
+    - frame.rs:698 init: external_body
+    - frame.rs:779 alloc_contiguous: admit
+    - frame.rs:800 free_count: admit
+    - frame.rs:818 free: admit
+    - kframe.rs:94 new: external_body
+    - manager.proof.rs:12 lemma_manager_attached: admit
+    - manager.pro...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+Still a compilation error. Let me check the log.
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -iE "^error|error\[
+
+[THINKING] I need to look at the actual verus compiler output to see what's causing the compilation failure.
+[RESULT ✓] bash: error: expected one of `,`, `:`, or `}`, found `(`
+error: expected `;`, found keyword `let`
+error: expected one of `,`, `:`, or `}`, found `(`
+error: expected `;`, found keyword `let`
+error: expected one of `,`, `:`, or `}`, found `(`
+error: expected `;`, found keyword `let`
+error: expected one of `...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+The syntax is `proof! { }` (with bang) in attribute style, not `proof { }`. Let me fix all occurrences.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys; sed -i 's/proof { admit(); }/proof! { admit(); }/g' frame.rs; grep -c 
+
+[THINKING] I need to use the `proof!` macro syntax instead of `proof { }` in the attribute-based style — the correct form is `proof! { admit(); }`. The parsing errors I'm seeing are because the compiler is misinterpreting the struct-like syntax, so switching to the macro form should resolve both the semicolon error and the `#[verus_spec]` misuse warning. I should prioritize fixing the `proof!` macro syntax issue first since that's causing the bulk of the errors, then re-run to see if the loop invariant issues are real or just cascading failures.
+[RESULT ✓] bash: 11
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+Now let me re-run to check the loop invariant syntax.
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
+
+[THINKING] I'm reconsidering the loop invariant syntax in Verus—the three misuse errors seem to correspond to my three loop invariants. Let me think through how `for` loop invariants actually work here, particularly with inclusive ranges like `start..=end`.

@@ -1,0 +1,286 @@
+Timestamp: 2026-06-14_03-50-56
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=13
+  admit=21
+  trusted=0
+  no_decreases=0
+  cfg_gate=13
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: `core::panicking::assert_failed` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/phys/frame.rs:147:9
+    |
+147 |         debug_assert_eq!(self.refcount[frame_number], 0);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+225 |             debug_assert_eq!(self.refcount[i], 0);
+    |             -------------------------------------
+...
+500 |                 debug_assert_eq!(self.refcount[frame_number], 0);
+    |                 ------------------------------------------------
+...
+629 |             debug_assert_eq!(self.refcount[index], 0);
+    |             -----------------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T, U> [core::panicking::assert_failed] (_0: core::panicking::AssertKind, _1: &T, _2: &U, _3: core::option::Option<core::fmt::Arguments<'_>>) -> !
+            where
+            T: core::marker::MetaSized + core::fmt::Debug + ?Sized,
+            U: core::marker::MetaSized + core::fmt::Debug + ?Sized,;
+
+error: `core::fmt::Arguments` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/phys/frame.rs:147:9
+    |
+147 |         debug_assert_eq!(self.refcount[frame_number], 0);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+225 |             debug_assert_eq!(self.refcount[i], 0);
+    |             -------------------------------------
+...
+500 |                 debug_assert_eq!(self.refcount[frame_number], 0);
+    |                 ------------------------------------------------
+...
+629 |             debug_assert_eq!(self.refcount[index], 0);
+    |             -----------------------------------------
+
+error: `arch::x86::mem::paging::frame::number::FrameNumber` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute)
+   --> src/kernel/src/mm/phys/frame.rs:149:13
+    |
+149 |            let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
+    |  ______________^^^^^^^^^^^^________________-     -----------------------------------------
+150 | |              Some(frame_number) => frame_number,
+    | |              ------------------    ------------
+151 | |              None => {
+    | | _____________----____-
+152 | ||                 let reason: &str = "frame number is out of bounds";
+153 | ||                 #[cfg(not(verus_keep_ghost))]
+154 | ||                 error!("{reason:?}");
+155 | ||                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
+156 | ||             },
+    | ||_____________-
+157 | |          };
+    | |__________-
+...
+160 |            match FrameAddress::from_frame_number(frame_number) {
+    |                                                  ------------
+...
+228 |            let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
+    |   _____________------------________________-     -----------------------------------------
+    |   _________________________________________|
+    |  |
+229 |  |             Some(frame_number) => frame_number,
+    |  |             ------------------    ------------
+230 |                None => {
+    |   _____________----____-
+231 |                    let reason: &str = "frame number is out of bounds";
+232 |                    #[cfg(not(verus_keep_ghost))]
+233 |                    error!("{reason:?}");
+234 |                    return Err(Error::new(ErrorCode::OutOfMemory, reason));
+235 |  |             },
+    |  |_____________-
+236 |  |         };
+    |  |_________-
+    |  |_________|
+    |
+237 |
+238 |  |         match FrameAddress::from_frame_number(frame_number) {
+    |  |                                               ------------
+...    |
+298 |  |         let frame_number: usize = frame.into_frame_number().into_raw_value();
+    |  |                                   -------------------------
+...    |
+379 |  |         let frame_number: usize = frame.into_frame_number().into_raw_value();
+    |  |                                   -------------------------
+...    |
+442 |  |         let frame_number: usize = frame.into_frame_number().into_raw_value();
+    |  |                                   -------------------------
+...    |
+497 |  |         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+    |  |                                   -----------------------------
+...    |
+534 |  |         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+    |  |                                   -----------------------------
+...    |
+585 |  |         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+    |  |                                         ----------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExFrameNumber(arch::mem::paging::FrameNumber);
+
+error: `arch::x86::mem::paging::frame::number::impl&%0::from_raw_value` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/phys/frame.rs:149:47
+    |
+149 |         let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
+    |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+228 |         let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
+    |                                               -----------------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::mem::paging::FrameNumber::from_raw_value] (_0: usize) -> core::option::Option<arch::mem::paging::FrameNumber>;
+
+error: cannot use function `kernel::hal::mem::types::address::frame::FrameAddress::from_frame_number` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/frame.rs:160:15
+    |
+160 |         match FrameAddress::from_frame_number(frame_number) {
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+238 |         match FrameAddress::from_frame_number(frame_number) {
+    |               ---------------------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::hal::mem::types::address::frame::FrameAddress::from_frame_number] (_0: arch::mem::paging::FrameNumber) -> core::result::Result<hal::mem::types::address::frame::FrameAddress, sys::error::Error>;
+
+error: `arch::x86::mem::paging::frame::number::impl&%0::into_raw_value` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/phys/frame.rs:298:35
+    |
+298 |         let frame_number: usize = frame.into_frame_number().into_raw_value();
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+379 |         let frame_number: usize = frame.into_frame_number().into_raw_value();
+    |                                   ------------------------------------------
+...
+442 |         let frame_number: usize = frame.into_frame_number().into_raw_value();
+    |                                   ------------------------------------------
+...
+497 |         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+    |                                   ----------------------------------------------
+...
+534 |         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+    |                                   ----------------------------------------------
+...
+585 |         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+    |                                         ---------------------------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::mem::paging::FrameNumber::into_raw_value] (_0: arch::mem::paging::FrameNumber) -> usize;
+
+error: cannot use function `kernel::hal::mem::types::address::frame::FrameAddress::into_frame_number` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/frame.rs:298:35
+    |
+298 |         let frame_number: usize = frame.into_frame_number().into_raw_value();
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+379 |         let frame_number: usize = frame.into_frame_number().into_raw_value();
+    |                                   -------------------------
+...
+442 |         let frame_number: usize = frame.into_frame_number().into_raw_value();
+    |                                   -------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::hal::mem::types::address::frame::FrameAddress::into_frame_number] (_0: crate::hal::mem::types::address::frame::FrameAddress) -> arch::mem::paging::FrameNumber;
+
+error: cannot use function `kernel::hal::mem::types::address::phys::PhysicalAddress::into_frame_number` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/frame.rs:497:35
+    |
+497 |         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+534 |         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+    |                                   -----------------------------
+...
+585 |         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+    |                                         ----------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::hal::mem::types::address::phys::PhysicalAddress::into_frame_number] (_0: crate::hal::mem::types::address::phys::PhysicalAddress) -> arch::mem::paging::FrameNumber;
+
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::deref` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/frame.rs:497:35
+    |
+497 |         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+    |                                   ^^^^^^^^^
+...
+534 |         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+    |                                   ---------
+...
+585 |         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+    |                                         --------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [<crate::hal::mem::types::address::aligned::page::PageAligned<T> as core::ops::Deref>::crate::deref] (_0: &crate::hal::mem::types::address::aligned::page::PageAligned<T>) -> &<hal::mem::types::address::aligned::page::PageAligned<T> as core::ops::Deref>::Target
+            where
+            T: sys::mm::Address,;
+
+error: cannot use function `kernel::hal::mem::types::region::TruncatedMemoryRegion::start` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/frame.rs:585:41
+    |
+585 |         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+    |                                         ^^^^^^^^^^^^^^
+...
+607 |                     let region_start: usize = region.start().into_raw_value();
+    |                                               --------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [crate::hal::mem::types::region::TruncatedMemoryRegion::<T>::start] (_0: &crate::hal::mem::types::region::TruncatedMemoryRegion<T>) -> crate::hal::mem::types::address::aligned::page::PageAligned<T>
+            where
+            T: sys::mm::Address,;
+
+error: cannot use function `kernel::hal::mem::types::region::TruncatedMemoryRegion::size` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/frame.rs:586:60
+    |
+586 |         let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
+    |                                                            ^^^^^^^^^^^^^
+...
+608 |                     let region_end: usize = region_start.saturating_add(region.size());
+    |                                                                         -------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [crate::hal::mem::types::region::TruncatedMemoryRegion::<T>::size] (_0: &crate::hal::mem::types::region::TruncatedMemoryRegion<T>) -> usize
+            where
+            T: sys::mm::Address,;
+
+error: `arch::x86::mem::constants::FRAME_SIZE` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/phys/frame.rs:586:76
+    |
+586 |         let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
+    |                                                                            ^^^^^^^^^^^^^^^
+...
+597 |                 let uncovered_addr: usize = index * mem::FRAME_SIZE;
+    |                                                     ---------------
+...
+606 |                     let conflicting_addr: usize = index * mem::FRAME_SIZE;
+    |                                                           ---------------
+
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/frame.rs:607:47
+    |
+607 |                     let region_start: usize = region.start().into_raw_value();
+    |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [<crate::hal::mem::types::address::aligned::page::PageAligned<T> as sys::mm::Address>::crate::into_raw_value] (_0: crate::hal::mem::types::address::aligned::page::PageAligned<T>) -> usize
+            where
+            T: sys::mm::Address,;
+
+error: `core::panicking::AssertKind` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/phys/frame.rs:147:9
+    |
+147 |         debug_assert_eq!(self.refcount[frame_number], 0);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+225 |             debug_assert_eq!(self.refcount[i], 0);
+    |             -------------------------------------
+...
+500 |                 debug_assert_eq!(self.refcount[frame_number], 0);
+    |                 ------------------------------------------------
+...
+629 |             debug_assert_eq!(self.refcount[index], 0);
+    |             -----------------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExAssertKind(core::panicking::AssertKind);
+
+error: could not compile `kernel` (bin "kernel") due to 14 previous errors
