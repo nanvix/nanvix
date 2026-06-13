@@ -436,3 +436,30 @@ Actually, let me step back and consider a simpler, more robust strategy: make th
 The challenge is handling early returns from the ? operator — on error, the ensures must still hold, but we can't easily inject proof before the early return.
 
 I realize now that frame::alloc actually needs a spec to make this work. The ? operator early-returns the Err, and to prove the function's Err-arm ensures at that point, Verus needs to know from frame::alloc's Err ensures that self@ is unchanged and free_count is zero. So I do need to spec the frame free functions after all, but I can keep the changes minimal and sound. Let me run a baseline verification on the manager module first to make sure the tooling works and see the timing.
+[RESULT ✓] bash: Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module mm::phys::manag...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Baseline has a compilation error. Let me check the log.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -iE "error|panic|cannot|expected" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-1
+
+[THINKING] There's a compilation error happening even with the baseline setup, so I need to check what the actual error message is in the logs.
+[RESULT ✓] bash: compilation/setup error (verus did not run)
+error: could not find module mm::phys::manager specified by --verify-module or --verify-only-module
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -25
+
+[THINKING] The module path might need the full crate prefix `kernel::mm::phys::manager`, or maybe just `mm::phys` as the task suggested — let me check what the actual error is saying about the module not being found.
