@@ -44,7 +44,8 @@ impl<T: Address> PageAligned<T> {
     )]
     pub fn from_address(addr: T) -> Result<Self, Error> {
         // Check if `addr` is not aligned to a page boundary.
-        if !addr.is_aligned(PAGE_ALIGNMENT)? {
+        let aligned: bool = addr.is_aligned(PAGE_ALIGNMENT)?;
+        if !aligned {
             return Err(Error::new(ErrorCode::BadAddress, "unaligned virtual address"));
         }
 

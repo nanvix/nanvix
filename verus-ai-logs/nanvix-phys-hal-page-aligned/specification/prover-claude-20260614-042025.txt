@@ -1397,3 +1397,21 @@ Wait, I'm wondering if the issue is that `?` inside an `if` condition expression
 Turn 88
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
+[RESULT ✓] bash: error[E0425]: cannot find function `from_address` in this scope
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+=== Results ===
+  0 verified
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  Unverified functions:
+  verification: 0 verified,...
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+Even trivial ensures fails — it's the body structure. Let me test if `?` inside the `if` condition is the trigger:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned; python3 - <<'EOF'
+f='page.rs'
+s=open(f).read()
+s
+
+[THINKING] The issue isn't the macro itself but how the body is structured—specifically, the `?` operator inside the `if` condition is triggering the error, whereas the bitmap version uses `?` in `proof!` blocks and on `let` bindings instead. I'm going to restructure it to use a let binding pattern to see if that resolves it.
