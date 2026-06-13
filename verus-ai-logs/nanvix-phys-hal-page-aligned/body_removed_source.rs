@@ -39,24 +39,13 @@ pub struct PageAligned<T: Address>(T);
 
 impl<T: Address> PageAligned<T> {
     /// Constructs a page address from an aligned virtual address.
-    pub fn from_address(addr: T) -> Result<Self, Error> {
-        // Check if `addr` is not aligned to a page boundary.
-        if !addr.is_aligned(PAGE_ALIGNMENT)? {
-            return Err(Error::new(ErrorCode::BadAddress, "unaligned virtual address"));
-        }
+    pub fn from_address(addr: T) -> Result<Self, Error> { ... }
 
-        Ok(Self(addr))
-    }
-
-    pub fn into_inner(self) -> T {
-        self.0
-    }
+    pub fn into_inner(self) -> T { ... }
 }
 
 impl<T: Address> Address for PageAligned<T> {
-    fn into_raw_value(self) -> usize {
-        self.0.into_raw_value()
-    }
+    fn into_raw_value(self) -> usize { ... }
 
     ///
     /// # Description
@@ -72,9 +61,7 @@ impl<T: Address> Address for PageAligned<T> {
     /// - `Ok(Self)`: The new address.
     /// - `Err(Error::BadAddress)`: If the provided address is invalid.
     ///
-    fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
-        Self::from_address(T::from_raw_value(raw_addr)?)
-    }
+    fn from_raw_value(raw_addr: usize) -> Result<Self, Error> { ... }
 
     ///
     /// # Description
@@ -90,9 +77,7 @@ impl<T: Address> Address for PageAligned<T> {
     ///
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
-    fn align_up(&self, align: Alignment) -> Result<Self, Error> {
-        Self::from_address(self.0.align_up(align)?)
-    }
+    fn align_up(&self, align: Alignment) -> Result<Self, Error> { ... }
     ///
     /// # Description
     ///
@@ -107,9 +92,7 @@ impl<T: Address> Address for PageAligned<T> {
     ///
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
-    fn align_down(&self, align: Alignment) -> Result<Self, Error> {
-        Self::from_address(self.0.align_down(align)?)
-    }
+    fn align_down(&self, align: Alignment) -> Result<Self, Error> { ... }
 
     ///
     /// # Description
@@ -125,9 +108,7 @@ impl<T: Address> Address for PageAligned<T> {
     /// Upon success, `true` is returned if the address is aligned, otherwise `false`. Upon failure,
     /// an error is returned instead.
     ///
-    fn is_aligned(&self, align: Alignment) -> Result<bool, Error> {
-        self.0.is_aligned(align)
-    }
+    fn is_aligned(&self, align: Alignment) -> Result<bool, Error> { ... }
 
     ///
     /// # Description
@@ -138,66 +119,45 @@ impl<T: Address> Address for PageAligned<T> {
     ///
     /// The maximum [`PageAligned`].
     ///
-    fn max_addr() -> usize {
-        T::max_addr()
-    }
+    fn max_addr() -> usize { ... }
 
-    fn as_ptr(&self) -> *const u8 {
-        self.0.as_ptr()
-    }
+    fn as_ptr(&self) -> *const u8 { ... }
 
-    fn as_mut_ptr(&self) -> *mut u8 {
-        self.0.as_mut_ptr()
-    }
+    fn as_mut_ptr(&self) -> *mut u8 { ... }
 }
 
 impl<T: Address> core::fmt::Debug for PageAligned<T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "{:?}", self.0)
-    }
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result { ... }
 }
 
 impl<T: Address> Deref for PageAligned<T> {
     type Target = T;
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+    fn deref(&self) -> &Self::Target { ... }
 }
 
 impl<T: Address> PartialEq for PageAligned<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.eq(other)
-    }
+    fn eq(&self, other: &Self) -> bool { ... }
 }
 
 impl<T: Address> Eq for PageAligned<T> {}
 
 impl<T: Address> PartialOrd for PageAligned<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> { ... }
 }
 
 impl<T: Address> Ord for PageAligned<T> {
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.0.cmp(other)
-    }
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering { ... }
 }
 
 impl PageAligned<VirtualAddress> {
     /// Converts a page-aligned virtual address to a page-aligned physical address.
-    pub fn into_physical_address(self) -> Result<PageAligned<PhysicalAddress>, Error> {
-        PageAligned::from_address(PhysicalAddress::from_raw_value(self.into_raw_value())?)
-    }
+    pub fn into_physical_address(self) -> Result<PageAligned<PhysicalAddress>, Error> { ... }
 }
 
 impl PageAligned<PhysicalAddress> {
     /// Converts a page-aligned physical address to a page-aligned virtual address.
-    pub fn into_virtual_address(self) -> PageAligned<VirtualAddress> {
-        // Safety: the following unwrap is safe because the address is already page-aligned.
-        PageAligned::from_address(self.0.into_virtual_address()).unwrap()
-    }
+    pub fn into_virtual_address(self) -> PageAligned<VirtualAddress> { ... }
 }
 
 //==================================================================================================
