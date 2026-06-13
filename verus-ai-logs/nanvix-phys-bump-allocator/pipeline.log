@@ -25,3 +25,6 @@ Module: bump-allocator
 PHASE: view-design
 Module: bump-allocator
 ============================================================
+[2026-06-13 23:00:53] [PROVER] Running view-design...
+[2026-06-13 23:00:53] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-13 23:05:41]   ↳ prover done in 4m47s (exit=0)
