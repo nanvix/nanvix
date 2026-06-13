@@ -154,7 +154,10 @@ impl UserFrame {
                     &&& uf.inv()
                     &&& crate::mm::phys::phys_view().frames.allocated_frames.contains(self@)
                 },
-                Err(_) => true,
+                Err(_) => {
+                    ||| !crate::mm::phys::phys_view().frames.allocated_frames.contains(self@)
+                    ||| crate::mm::phys::phys_view().frames.refcounts[self@] >= 255
+                },
             },
     )]
     pub fn share(&self) -> Result<UserFrame, Error> {

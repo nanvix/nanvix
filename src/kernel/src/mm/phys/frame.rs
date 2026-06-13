@@ -810,7 +810,8 @@ pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Re
     ensures
         match result {
             Ok(()) => crate::mm::phys::phys_view().frames.allocated_frames.contains(frame@),
-            Err(_) => true,
+            Err(_) => !crate::mm::phys::phys_view().frames.allocated_frames.contains(frame@)
+                || crate::mm::phys::phys_view().frames.refcounts[frame@] >= 255,
         },
 )]
 pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
