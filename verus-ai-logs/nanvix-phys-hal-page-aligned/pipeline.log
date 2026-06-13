@@ -18,3 +18,6 @@ Phases: caller-analysis → cheating-elimination + final-review
 PHASE: caller-analysis
 Module: hal-page-aligned
 ============================================================
+[2026-06-14 04:16:19] [PROVER] Running caller-analysis...
+[2026-06-14 04:16:19] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-14 04:18:38]   ↳ prover done in 2m19s (exit=0)

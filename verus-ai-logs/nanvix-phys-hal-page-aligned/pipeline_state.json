@@ -6,7 +6,7 @@
   "current_phase_idx": 0,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "67d61fb3-731a-4971-81eb-95e2888f3490",
   "completed": false,
   "base_branch": "verus-ai/phys-frame",
   "verus_branch": "verus-ai/hal-page-aligned",
