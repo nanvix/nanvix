@@ -270,11 +270,11 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     // pattern. Registered in `verus-ai-logs/tcb-allowed.md`.
     #[verus_verify(external_body)]
     #[verus_spec(result =>
-        requires bump_view(self).inv(),
+        requires self.view().inv(),
         ensures
             match result {
                 Ok(slot) => {
-                    let v = bump_view(self);
+                    let v = self.view();
                     let a = slot_ref_addr(slot);
                     &&& a % (v.unit_align as int) == 0
                     &&& v.base <= a
@@ -347,11 +347,11 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     // contract caller-visible. Registered in `verus-ai-logs/tcb-allowed.md`.
     #[verus_verify(external_body)]
     #[verus_spec(result =>
-        requires bump_view(self).inv(),
+        requires self.view().inv(),
         ensures
             match result {
                 Ok(slot) => {
-                    let v = bump_view(self);
+                    let v = self.view();
                     let a = slot_ref_addr(slot);
                     &&& vstd::layout::size_of::<T>() == N as nat
                     &&& vstd::layout::align_of::<T>() <= A as nat

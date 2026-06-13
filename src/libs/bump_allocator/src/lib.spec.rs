@@ -174,9 +174,10 @@ impl BumpView {
 /// front-end lowering of this crate (`include!`-composed spec/proof modules) and
 /// triggers a duplicate-impl-path panic (`vir/src/context.rs`). Callers read the
 /// view via `bump_view(self)` exactly as they would `self.view()`.
-pub uninterp spec fn bump_view<const N: usize, const A: usize, S: BssStorage>(
-    a: &FixedSizeBumpAllocator<N, A, S>,
-) -> BumpView;
+impl<const N: usize, const A: usize, S: BssStorage> View for FixedSizeBumpAllocator<N, A, S> {
+    type V = BumpView;
+    uninterp spec fn view(&self) -> BumpView;
+}
 
 } // verus!
 

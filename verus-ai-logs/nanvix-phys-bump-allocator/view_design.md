@@ -68,9 +68,14 @@ pub ghost struct BumpView {
 }
 ```
 
-Attachment (later phase): `impl View for FixedSizeBumpAllocator<N, A, S> { type V = BumpView; ... }`.
-`base`, `unit_size`, `unit_align`, `capacity`, `storage_size`, `stride` are pinned by
-`inv()` to the type-level constants; `allocated` abstracts the atomic cursor.
+Attachment: `pub uninterp spec fn bump_view<const N, const A, S: BssStorage>(a: &FixedSizeBumpAllocator<N, A, S>) -> BumpView;`
+(a free uninterpreted accessor, used in place of `impl View`/inherent `spec fn view`).
+A second `impl` block on `FixedSizeBumpAllocator` alongside the exec-method block crashes
+the Verus front end of this `include!`-composed crate with a duplicate-impl-path panic
+(`vir/src/context.rs`); the free function is the panic-free analog and is read by callers
+exactly like `self.view()`. `base`, `unit_size`, `unit_align`, `capacity`, `storage_size`,
+`stride` are pinned by `inv()` to the type-level constants; `allocated` abstracts the
+atomic cursor.
 
 ### 2.1 Derived spec helpers
 
