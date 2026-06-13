@@ -1071,3 +1071,39 @@ Turn 57
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::sys::mm::address::virt 2>&1 | grep -A6 "=== Summary"
 
 [THINKING] Running a final verification to confirm the module is in a clean state and check whether bugs.md needs any updates. The end-to-end verification already passed, so I'm just doing a module-level confirmation. I'm also noting that spec.rs and proof.rs remain empty as expected—they don't need to hold the View/inv and proof signatures at this stage.
+[RESULT ✓] bash: === Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+  coverage: 2/23 exec functions have contracts
+  status: CLEAN
+
+Log written to: verus-ai-logs/verify-sys/verus-logs/verus_2026-06-14_06-47-12.log
+<sh...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+Done. Summary of work:
+
+## Specs added to `VirtualAddress` (`virt.rs`)
+
+- **`new`** — `#[verus_spec(... ensures result@ == value as int)]` (total `const` constructor, identity wrap).
+- **inherent `from_raw_value`** — `#[verus_spec(... ensures result@ == raw_addr as int)]`.
+- **`into_raw_value`** — its contract (`result as int == self@`) is already declared on the `Address` trait (`mod.rs`); callers rely on that trait-level spec. Verifying the concrete impl would force the *entire* `Address` impl (Verus rule), which pulls in unlisted `is_aligned`/`align_up`/`align_down` and their un-specced `mm::*` dependencies — out of scope per the hard rules, so the impl is left to the trait spec (the same approach used for `PhysicalAddress`/`PageAligned`).
+
+To make `#[verus_spec]` legal, the inherent `impl` block was split: a `#[verus_verify]` block holding only `new`/`from_raw_value`, and a plain block keeping the unlisted methods **unchanged** (no body/signature edits).
+
+## Cross-module fix
+Removed the now-superseded `assume_specification[VirtualAddress::new]` from `phys.spec.rs` (it would otherwise be a duplicate spec); the real spec is identical, so no guarantee was weakened.
+
+## Verification results
+- `make verify-sys` (module `sys::sys::mm::address::virt`): **CLEAN, 0 errors**, `new`+`from_raw_value` verified, no `assume`/`external_body`/`admit`.
+- `make verify` (all crates + kernel): **60 verified, 0 errors**. The `CHEATING_DETECTED` label is from pre-existing `admit`/`external_body` in other in-progress kernel modules — my changes add none.
+- Normal `cargo build` of `sys` compiles (Verus annotations erased). `spec.rs`/`proof.rs` need no helpers/lemmas and remain empty; the `int` View stays as designed. No bugs found.
+
+
+=== Session End ===
+Session: e9dee7fd-d738-41f0-a5a7-07d6737f8920
+Duration: 672.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/specification/prover-claude-20260614-063617.jsonl
