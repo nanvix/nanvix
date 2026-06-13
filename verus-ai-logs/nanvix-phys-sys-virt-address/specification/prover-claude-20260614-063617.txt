@@ -710,3 +710,50 @@ Looking at page.rs, I see that mixed annotated and unannotated methods in the sa
 Turn 34
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::sys::mm::address::virt 2>&1 | tail -30
+[RESULT ✓] bash: - align_up
+    - align_down
+    - is_aligned
+    - checked_add
+    - checked_sub
+    - from_raw_value
+    - align_up
+    - align_down
+    - is_aligned
+    - max_addr
+    - into_raw_value
+    - clone_address
+    - as_ptr
+    - as_mut_ptr
+    - fmt
+    - add
+    - add_assign
+    - from
+    - from
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '17,70p' verus-ai-logs/verify-sys/verus-logs/verus_2026-06-14_06-41-58.log
+[RESULT ✓] bash: --- Full output ---
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+error: In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.
+   --> src/libs/sys/src/sys/mm/address/virt.rs:166:1
+    |
+166 | / impl Ad...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+The trait impl can't be partially verified. Let me revert the `into_raw_value` annotation since verifying the whole `Address` impl would require speccing unlisted dependency functions (`mm::is_aligned`):
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] The inherent block error is resolved with the `#[verus_verify]` annotation, but now I'm facing a constraint with the trait implementation — I can't selectively verify just `into_raw_value` because Verus requires the entire `impl Address for VirtualAddress` block to be verified together. This means proving `into_raw_value` also requires proving `is_aligned`, which has its own specification that the result must equal `self@`.
+
+The issue is that `is_aligned` calls `mm::is_aligned`, a dependency function with no spec. To satisfy the trait postcondition, I'd need to add a spec to that dependency function, which feels like it's expanding beyond the four target functions. But since `into_raw_value` is explicitly listed as a target, I'm reconsidering whether I should either leave it unverified (treating it as external) or add specs to the dependency functions using `external_body` — though that's a gray area with the "don't touch unlisted functions" constraint. I'm realizing the trait spec for `into_raw_value` already exists at the trait level in mod.rs, so consumers are relying on that guarantee. The question is whether I need to verify the impl body itself in this phase or if the trait-level spec is sufficient as a placeholder. Let me check the verification plan to see which functions are actually targeted and whether the full Address impl is in scope, or if I should just provide specs for the dependencies like `mm::is_aligned` that the impl methods call. I'm realizing the core issue: the task explicitly lists `into_raw_value` as a verification target, but adding `#[verus_verify]` to the trait impl forces me to spec `mm::is_aligned`, which isn't listed and violates the constraint. Looking at how `phys` and `page` handle this—they leave their Address impls unverified and rely on the trait-level spec—I think the intended approach is the same: remove the `#[verus_verify]` attribute and let the trait declaration in mod.rs provide the contract that callers depend on, keeping the concrete impl verification deferred like the other address types. assume_specification stays in place and doesn't conflict. So I'll remove the two assume_specifications for VirtualAddress::new (since it now has a real spec) but leave the one for into_raw_value untouched, since I'm not adding a concrete impl spec there. I need to respect the constraint about not touching unlisted functions, so I'll remove the `#[verus_verify]` annotation from `into_raw_value` and revert it back.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::sys::mm::address::virt 2>&1 | tail -22

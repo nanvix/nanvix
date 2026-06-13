@@ -1,0 +1,47 @@
+Timestamp: 2026-06-14_06-43-07
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: sys::mm::address::virt
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=1
+
+--- Full output ---
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+error: cannot use function `sys::sys::mm::alignment::align_down` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/sys/src/sys/mm/address/virt.rs:108:29
+    |
+108 |         VirtualAddress::new(mm::align_down(self.0, align))
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::sys::mm::alignment::align_down] (_0: usize, _1: crate::sys::mm::alignment::Alignment) -> usize;
+
+error: cannot use function `sys::sys::mm::alignment::is_aligned` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/sys/src/sys/mm/address/virt.rs:126:9
+    |
+126 |         mm::is_aligned(self.0, align)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::sys::mm::alignment::is_aligned] (_0: usize, _1: crate::sys::mm::alignment::Alignment) -> bool;
+
+error: cannot use function `sys::sys::mm::alignment::align_up` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+  --> src/libs/sys/src/sys/mm/address/virt.rs:90:9
+   |
+90 |         mm::align_up(self.0, align).map(VirtualAddress::new)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: The following declaration may resolve this error:
+           pub assume_specification [crate::sys::mm::alignment::align_up] (_0: usize, _1: crate::sys::mm::alignment::Alignment) -> core::option::Option<usize>;
+
+error: could not compile `sys` (lib) due to 3 previous errors
