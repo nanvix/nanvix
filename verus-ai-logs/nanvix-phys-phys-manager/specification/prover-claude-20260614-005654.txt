@@ -2135,3 +2135,376 @@ Turn 134
 Turn 135
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -50
+[RESULT ✓] bash: - manager.proof.rs:49 lemma_kernel_alloc_contiguous: admit
+    - manager.proof.rs:70 lemma_contig_no_overflow: admit
+    - manager.proof.rs:87 lemma_user_bulk_ok: admit
+    - manager.proof.rs:107 lemma_user_bulk_err_restored: admit
+    - manager.proof.rs:117 lemma_kernel_bulk_err_restored: admit
+   ...
+
+────────────────────────────────────────────────────────────
+Turn 136
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error\[\|error:
+[RESULT ✓] bash: 20:error[E0425]: cannot find function `init` in this scope
+90:error[E0425]: cannot find function `from_raw_value` in this scope
+96:error[E0425]: cannot find function `new` in this scope
+102:error[E0425]: cannot find function `check_user_watermark` in this scope
+109:error: could not compile `kernel` ...
+
+────────────────────────────────────────────────────────────
+Turn 137
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '18,108p'
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0425]: cannot find function `init` in this scope
+    --> src/kernel/src/mm/phys/manager.rs:103:19
+     |
+ 103 |     pub(super) fn init(upool: Upool) -> Result<(), Error> {
+     |                   ^^^^
+     |...
+
+────────────────────────────────────────────────────────────
+Turn 138
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+
+[THINKING] I'm seeing a macro expansion issue where four functions decorated with `#[verus_verify(external_body)]` and `#[verus_spec(...)]` attributes are throwing "cannot find function" errors at their definitions. Three of them (`init`, `from_raw_value`, and `kframe::new`) use the external_body pattern, while `check_user_watermark` only has the spec attribute but still fails similarly.
+
+The key difference might be in how the spec clauses reference external names—like `crate::mm::phys::phys_view()` or `spec_kernel_watermark()`—and whether those resolve correctly during macro expansion, or if there's a proc_macro hygiene issue causing the generated code to fail when it tries to call the original function by name. I should look at how the working external_body functions are declared in mod.rs to see if there's a pattern I'm missing with the spec and result binding.
+[RESULT ✓] view: 55. //==================================================================================================
+56. // Standalone Functions
+57. //==================================================================================================
+58. 
+59. #[verus_verify(external_body)]
+60. #[verus_spec(resul...
+
+────────────────────────────────────────────────────────────
+Turn 139
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm noticing the pattern now—the failing cases are all methods inside `impl` blocks like `manager::init` and `kframe::new`, while free functions work fine with the `#[verus_verify(external_body)]` and `#[verus_spec]` attributes. But wait, `alloc_user_frame` is also a method in the `PhysMemoryManager` impl and that's working, so it's not simply about being a method versus a free function.
+
+Looking at what's actually common: three of the four failing functions use `external_body`, but `check_user_watermark` doesn't and still fails, while `book_physical_memory_regions` uses `external_body` and works fine. So `external_body` isn't the root cause either. I'm wondering if this is a cascade of errors where one real failure is triggering multiple reported errors, or if the issue is that these functions are calling unqualified functions that can't be resolved during macro expansion.
+[RESULT ✓] view: 91.     // TCB: bringing up the manager singleton writes a `MaybeUninit` static behind an
+92.     // `AtomicBool` flag — raw-memory/atomics operations outside Verus's model. On success the
+93.     // manager layer becomes ready (`phys_view().manager_ready`); the frame partition is
+94.     // untouch...
+
+────────────────────────────────────────────────────────────
+Turn 140
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '170,215p' src/kernel/src/mm/phys/upool.rs
+
+[THINKING] The `init` function call is missing from the manager module, but these four errors across three files might all be cascading from a single macro failure rather than independent issues. I should look at the beginning of the error log to find the root cause—there's likely a macro panic or compilation error that's triggering all these downstream "cannot find function" messages.
+
+Looking at what changed: I added `external_body` to new functions like `manager::init`, `from_raw_value`, and `kframe::new`, while the existing `book_*` functions in mod.rs already worked fine. The difference is that the working functions use bare `#[verus_verify(external_body)]` followed by `#[verus_spec(...)]`, whereas I initially tried wrapping with `cfg_attr`. But even the bare annotations on the new functions are failing, so the `cfg_attr` wrapping isn't the sole culprit here.
+
+Now looking at `check_user_watermark` — it's not even using `external_body`, just has a proof block, yet it's also failing with "cannot find function". The rustc suggestion to import `init` is interesting because it implies a bare `init` identifier is appearing in generated code somewhere. I'm wondering if the issue is that these functions are being referenced through verus-generated spec twins with incorrect path resolution, or if having both a `verus!{}` block and attribute-style functions is causing some kind of conflict in how the specifications are being processed.
+
+Actually, I think I've found it. These four failing functions — `init`, `new`, `from_raw_value`, `check_user_watermark` — are all associated functions without a `self` receiver. The verus attribute macro is probably generating bare function calls like `init(upool)` instead of `Self::init(upool)`, which works fine for free functions like `book_physical_memory_regions` but fails for associated functions that need the `Self::` prefix. Methods with `&mut self` like `alloc_user_frame` don't error because the macro can generate `self.alloc_user_frame()` correctly. The macro needs to distinguish between methods with receivers and associated functions without them. Upool::new works without errors even though it's an associated function without self, so there's something different about how it's handled compared to kframe::new. Let me check the actual annotation and signature for Upool::new to understand why one succeeds where the other fails.
+[RESULT ✓] bash: /// # Returns
+    ///
+    /// A user frame pool.
+    ///
+    #[verus_verify(external_body)]
+    pub(super) fn new() -> Self {
+        Self { _private: () }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Allocates a single user frame from the user frame pool.
+    ///
+    /// # Returns
+    ///
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 141
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "verus_spec\|verus_verify\|pub fn\|fn new\|impl " src/libs/bitmap/src/lib.rs | grep 
+
+[THINKING] I'm noticing a pattern here: `Upool::new` has `#[verus_verify(external_body)]` without `#[verus_spec]` and doesn't error, while the four failing functions all share the same trait—they're associated functions without a `self` receiver combined with `#[verus_spec(...)]`. The common denominator appears to be that specific combination of having no `self` parameter and the `#[verus_spec]` attribute.
+
+The issue might be in how the `verus_spec` macro generates its proof wrapper for associated functions—it could be calling the function without the `Self::` prefix when there's no `self` receiver. I should test whether commenting out the spec on one of these functions eliminates the error, or investigate whether the real problem is that the spec itself references something like `crate::mm::phys::phys_view()` that fails to resolve.
+
+Let me search the Verus test suite for examples of `verus_spec` on associated functions without `self` to see the correct pattern, or check if the impl block itself needs `#[verus_verify]` to make attribute-mode specs work properly.
+[RESULT ✓] bash: 89:    #[verus_spec(result =>
+100:    pub fn new(number_of_bits: usize) -> Result<Self, Error> {
+153:    #[verus_spec(result =>
+168:    pub fn from_raw_array(array: RawArray<u8>) -> Result<Self, Error> {
+=== search repo for verus_spec on self-less assoc fn ===
+src/kernel/src/hal/mem/types/address/fr...
+
+────────────────────────────────────────────────────────────
+Turn 142
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bitmap/src/lib.rs
+
+[THINKING] I was wrong about my hypothesis—the `Bitmap::new` function shows that `verus_spec` attributes actually do work on self-less associated functions, so I need to examine the exact implementation at lines 89-100 to understand what's different from my earlier assumption.
+[RESULT ✓] view: 85.     /// # Returns
+86.     ///
+87.     /// Upon success, a new bitmap is returned. Upon failure, an error is returned instead.
+88.     ///
+89.     #[verus_spec(result =>
+90.         ensures
+91.             result matches Ok(bitmap) ==> {
+92.                 &&& bitmap.inv()
+93.                 &&...
+
+────────────────────────────────────────────────────────────
+Turn 143
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "^impl\|^#\[verus\|verus_verify\|verus! {" src/libs/bitmap/src/lib.rs | head -20; ech
+
+[THINKING] I'm noticing that `bitmap::new` uses a pattern matching approach with `result matches` and binds the result, while my failing functions use `match result` inside the ensures clause. But the book's free functions also use `match result` and those work fine, so the issue isn't with `match` itself.
+
+The real distinction seems to be that `bitmap::new` is a self-less associated function using the `matches` form, whereas my four failing functions are self-less associated functions in an impl block using `match result`. Let me try rewriting the ensures to use the `result matches Ok(x) ==> {...}` style instead and see if that resolves it.
+
+Actually, looking at the error more carefully — "cannot find function `init` in this scope" at the definition line suggests the generated spec code is calling `init(...)` as a bare function rather than `Self::init(...)`. This could mean the macro isn't properly qualifying self-less associated function calls within the spec. Let me check whether these are actually four independent errors or cascading failures by examining each function's context — `check_user_watermark` has `proof!` and uses the `?` operator, while the others use `external_body`, which might trigger different code generation paths.
+
+The real question is whether the `#[verus_verify]` macro needs to be applied at the `impl` block level for associated functions to be properly scoped in the generated spec code.
+[RESULT ✓] bash: 55:#[verus_verify]
+56://#[verus_verify(ext_equal)] // TODO - Restore when supported by Verus PR #2239
+57:#[verus_verify(external_derive)]
+74:#[verus_verify]
+75:impl Bitmap {
+735:impl ::core::ops::Deref for Bitmap {
+=== kframe impl context ===
+40:verus! {
+43:impl View for KernelFrame {
+51:} // verus!...
+
+────────────────────────────────────────────────────────────
+Turn 144
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; awk 'NR>=74 && NR<=735 && (/pub fn|pub\(crate\) fn|fn |#\[verus_spec|#\[verus_verify|#\[verif
+
+[THINKING] I'm noticing that Bitmap has the `#[verus_verify]` attribute on both the struct and impl block, but KernelFrame's impl block is missing it. That's probably why the associated functions marked with `#[verus_spec]` aren't being processed correctly — the impl block needs that attribute so the macro can properly handle the `Self::` references and generate the right verification context.
+
+I should add `#[verus_verify]` to the impl blocks in manager.rs, kframe.rs, and the second FrameAddress impl in address/frame.rs since they all contain self-less spec'd functions. The free functions in frame.rs don't need it since they're not in an impl block, and the Inner impl methods probably already have the attribute since they worked before. I'm a bit concerned about whether adding `#[verus_verify]` to PhysMemoryManager's impl will try to verify non-spec'd methods like get_mut, but the attribute should only affect methods that have spec annotations or are marked for verification. I'm realizing the pattern: self-less associated functions with specs require their enclosing impl to have `#[verus_verify]`, whereas free functions don't. So for kframe::new and manager::new, I'd need to add `#[verus_verify]` to their impl blocks, but that forces all methods in those impls to have specs or be marked external — which gets messy with methods like get_mut that are already in the skip list. Let me think if there's a per-function attribute instead of an impl-level one.
+[RESULT ✓] bash: #[verus_verify]
+    #[verus_spec(result =>
+    pub fn new(number_of_bits: usize) -> Result<Self, Error> {
+    #[verus_spec(result =>
+    pub fn from_raw_array(array: RawArray<u8>) -> Result<Self, Error> {
+    #[verus_spec(result =>
+    pub fn number_of_bits(&self) -> usize {
+    #[verus_spec(result ...
+
+────────────────────────────────────────────────────────────
+Turn 145
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "^impl\|#\[verus_verify\]\|verus!\|fn \|#\[verus_spec\|#\[verus_verify(" src/kernel/s
+
+[THINKING] I'm realizing that adding `#[verus_verify]` to the impl block might not be necessary—Verus could handle verification on individual methods instead. The real issue is that get_mut needs to stay unverified, but I should check whether the impl-level attribute actually forces every method to have specs or if methods can be handled independently.
+
+Looking at the pattern: bitmap's impl has `#[verus_verify]` and all its methods have specs, while my manager impl doesn't have the attribute. The check_user_watermark method fails even though it has a spec, but bitmap::new works with a spec. The key difference seems to be whether the impl itself is marked for verification. Since the entire compile failed earlier, I can't tell if methods were actually being verified or just not erroring—I need to test whether adding `#[verus_verify]` to the impl is what's actually required here.
+
+I could split the impl into two blocks: one with `#[verus_verify]` for the spec'd functions and a plain one for get_mut to avoid the mutable reference issue. Or I could mark get_mut with `#[verus_verify(external_body)]` since it's a raw static access that's already in the skip list, though the instructions say not to add external_body unless necessary.
+
+Actually, let me step back and reconsider whether the impl annotation is even required, or if there's a different approach to how the verus_spec macro handles associated functions that I'm missing.
+
+The core issue is that the macro generates a bare `init(args)` call instead of `Self::init(args)` for associated functions. The `#[verus_verify]` on the impl block signals to the macro that these are associated functions and it should use the qualified path. Without it, the macro defaults to bare function calls.
+
+So I do need `#[verus_verify]` on the impl blocks. For `get_mut`, the cleanest solution is to move it into its own separate plain impl block — that way it stays unverified and doesn't get pulled into the verification pipeline, avoiding any classification issues with the TCB rules.
+
+The restructuring plan is to split the impl into three parts: one `#[verus_verify]` impl for `init`, a plain impl for `get_mut`, and another `#[verus_verify]` impl for the remaining five functions. This adds a couple of closing braces and impl headers but keeps everything organized and avoids touching `get_mut`'s current status.
+
+But I'm realizing I need to understand how `#[verus_verify]` actually handles methods without specs — whether they're treated as external/opaque or if they cause verification failures. Looking at frame.rs to see if there's an impl with `#[verus_verify]` that contains unspecced methods would clarify this, since that would tell me whether my split approach is even necessary or if I can just add the attribute to the whole impl block.
+[RESULT ✓] bash: 81:#[verus_verify]
+103:#[verus_verify]
+104:impl Inner {
+115:    #[verus_verify(external_body)]
+116:    #[verus_spec(result =>
+137:    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+181:    #[verus_verify(external_body)]
+182:    #[verus_spec(result =>
+210:    fn alloc_contiguous(&mut self, coun...
+
+────────────────────────────────────────────────────────────
+Turn 146
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] I'm noticing that `#[verus_verify]` appears on both the impl block for Inner (line 103) and likely on the struct definition itself (line 81). All the methods in Inner have specs with external_body and verus_spec annotations, and they're all instance methods taking `&self` or `&mut self`, so this doesn't actually test self-less associated functions. The pattern here seems to be placing `#[verus_verify]` on impl blocks that contain specs.
+
+Now I'm thinking about where to put the annotation for my self-less spec'd functions across the different types. The challenge is that if I put `#[verus_verify]` on an impl block, the codebase convention appears to require all methods in that block to be spec'd — and I have plenty of unspecced sibling methods like `get_mut`, `KernelFrame::base`, and various `FrameAddress` methods that are out of scope. Rather than spec everything, I could create separate `#[verus_verify]` impl blocks just for the spec'd associated functions, leaving the unspecced methods in plain impl blocks.
+
+The real question is whether `#[verus_verify]` on the impl is actually the fix. Looking at the pattern in the codebase — every working spec'd associated function like `bitmap::new` and the `Inner` methods are in `#[verus_verify]` impls, while my failing ones are in non-annotated impls. Free functions work fine without impl annotation, but methods seem to need it. Before I restructure everything, this evidence is pretty strong that the annotation is what's missing. I'm debating whether to split the impl or just add `#[verus_verify]` to the existing one with `get_mut` marked as `external_body`. The task says get_mut should be excluded/skipped, not trusted, so keeping it in a separate unannotated impl block is more faithful. Let me test the cheapest approach first: annotate just the KernelFrame impl and see if `#[verus_verify]` tolerates unspecced sibling methods, which would let me avoid splitting altogether.
+[RESULT ✓] view: 95.         Ok(Self { base })
+96.     }
+97. 
+98.     ///
+99.     /// # Description
+100.     ///
+101.     /// Returns the base address of the target kernel frame.
+102.     ///
+103.     /// # Returns
+104.     ///
+105.     /// The base address of the target kernel frame.
+106.     ///
+107.     pub fn ba...
+
+────────────────────────────────────────────────────────────
+Turn 147
+────────────────────────────────────────────────────────────
+The fix is to put spec'd self-less associated functions in a `#[verus_verify]` impl. Let me restructure. First KernelFrame:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] Looking at the KernelFrame implementation, I need to figure out which methods require specs or external_body annotations. The clear method is listed in the tcb-allowed set as external_body, but it currently has no annotation, so I'll need to add that. The base method has no spec and isn't being called in the current scope, but it's used elsewhere, so I need to determine if it needs a spec or external_body designation before adding the verify attribute to the impl block.
+
+My approach is to split the implementations so each `#[verus_verify]` block contains only the spec'd functions, leaving everything else in plain impls that get ignored. For KernelFrame, I'll move new into its own verified impl and keep base and clear in the existing plain impl. I'll do the same for FrameAddress and PhysMemoryManager, moving their spec'd methods into verified blocks and leaving the rest. Rather than testing incrementally, I'll do the full restructure and run a build to validate the hypothesis.
+[RESULT ✓] view: 52. 
+53. impl KernelFrame {
+54.     ///
+55.     /// # Description
+56.     ///
+57.     /// Instantiates a kernel frame.
+58.     ///
+59.     /// # Parameters
+60.     ///
+61.     /// - `base`: Frame address.
+62.     ///
+63.     /// # Returns
+64.     ///
+65.     /// Upon success, a kernel frame is retur...
+
+────────────────────────────────────────────────────────────
+Turn 148
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 149
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 150
+────────────────────────────────────────────────────────────
+Now FrameAddress — move the two spec'd methods into a `#[verus_verify]` impl:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I need to reorganize the FrameAddress implementation by moving the `from_raw_value` and `into_raw_value` methods into a separate `#[verus_verify]` impl block, so let me check where those methods currently are in the code.
+[RESULT ✓] view: 60. //==================================================================================================
+61. // Implementations
+62. //==================================================================================================
+63. 
+64. impl FrameAddress {
+65.     pub fn new(address: PageAligne...
+
+────────────────────────────────────────────────────────────
+Turn 151
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 152
+────────────────────────────────────────────────────────────
+Now PhysMemoryManager — split `get_mut` out and annotate the impl. Let me view the structure:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I need to add the `#[verus_verify]` attribute to the PhysMemoryManager impl block and restructure it so get_mut is in a separate plain impl. Let me check the current layout around the init and get_mut methods to figure out where to place this.
+[RESULT ✓] view: 77. impl PhysMemoryManager {
+78.     ///
+79.     /// # Description
+80.     ///
+81.     /// Initializes the physical memory manager singleton.
+82.     ///
+83.     /// # Parameters
+84.     ///
+85.     /// - `upool`: User page pool.
+86.     ///
+87.     /// # Errors
+88.     ///
+89.     /// Returns `Inva...
+
+────────────────────────────────────────────────────────────
+Turn 153
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] view: 116. 
+117.     ///
+118.     /// # Description
+119.     ///
+120.     /// Gets a mutable reference to the physical memory manager.
+121.     ///
+122.     /// # Panics
+123.     ///
+124.     /// Panics if the physical memory manager is not initialized.
+125.     ///
+126.     /// # Safety
+127.     ///
+128....
+
+────────────────────────────────────────────────────────────
+Turn 154
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I need to restructure the code by adding the `#[verus_verify]` attribute before the impl block, then splitting it so that the `get_mut` method lives in a separate plain impl, with the rest of the verified code in another `#[verus_verify]` impl block after it.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 155
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 156
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 157
+────────────────────────────────────────────────────────────
+Let me check the Upool impl block and add `#[verus_verify]` for consistency:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "^impl\|#\[verus_verify\|verus! {\|impl Upool\|impl View\|impl UserFrame" src/kernel/
+
+[THINKING] I'm noticing that Upool::alloc takes `&mut self` as a method, while Upool::new doesn't, so I need to verify whether the impl block for Upool is properly annotated with `#[verus_verify]` to ensure the alloc method gets verified correctly. I'm uncertain whether adding `#[verus_verify]` to impl Upool is necessary since it currently compiles without errors, but to match the pattern used elsewhere in the codebase and ensure alloc's spec actually attaches for manager's verification, I should probably add it anyway—though if Upool::new breaks due to lacking a spec, I'll need to handle that. Let me examine the impl Upool structure to decide.
+[RESULT ✓] bash: 32:verus! {
+38:impl View for UserFrame {
+50:impl View for Upool {
+58:impl UserFrame {
+139:impl Drop for UserFrame {
+158:#[verus_verify(external_body)]
+164:impl Upool {
+174:    #[verus_verify(external_body)]
+191:    #[verus_verify(external_body)]
+<shellId: 74 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 158
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 158. #[verus_verify(external_body)]
+159. pub struct Upool {
+160.     /// Private field prevents external construction.
+161.     _private: (),
+162. }
+163. 
+164. impl Upool {
+165.     ///
+166.     /// # Description
+167.     ///
+168.     /// Instantiates a user frame pool.
+169.     ///
+170.     /// # R...
+
+────────────────────────────────────────────────────────────
+Turn 159
+────────────────────────────────────────────────────────────
+Upool is fine (self-methods attach specs without impl annotation). Let me re-run verification:
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+
+[THINKING] I'm realizing that `impl Upool` sits outside the verus block, so the `new` method with its external_body and no spec is fine. The `alloc` method is a self-method with a spec, and since the previous run didn't error on it, self-methods apparently work without explicit verus_verify on the impl block. But I need to verify whether alloc's spec will actually be available for the manager to use. Let me look at how frame.rs structures its Inner impl — it has `#[verus_verify]` on the impl itself, so I should check if that's required.

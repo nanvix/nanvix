@@ -81,10 +81,13 @@ impl FrameAddress {
     pub fn into_frame_number(self) -> FrameNumber {
         self.0.into_frame_number()
     }
+}
 
-    // Dependency contract for the manager layer: succeeds only for page-aligned inputs, so the
-    // resulting frame address satisfies `inv()`. `external_body` until the address layer is
-    // verified.
+// Dependency contract for the manager layer: raw-value conversions of a frame address.
+#[cfg_attr(verus_keep_ghost, verus_verify)]
+impl FrameAddress {
+    // Succeeds only for page-aligned inputs, so the resulting frame address satisfies `inv()`.
+    // `external_body` until the address layer is verified.
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
         ensures

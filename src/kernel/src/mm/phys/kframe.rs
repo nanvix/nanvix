@@ -50,6 +50,9 @@ impl View for KernelFrame {
 
 } // verus!
 
+// Dependency contract for the manager layer: wrapping a `FrameAddress` produces a handle whose
+// abstract address is the same physical frame.
+#[verus_verify]
 impl KernelFrame {
     ///
     /// # Description
@@ -94,6 +97,9 @@ impl KernelFrame {
 
         Ok(Self { base })
     }
+}
+
+impl KernelFrame {
 
     ///
     /// # Description

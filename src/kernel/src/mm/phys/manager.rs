@@ -74,6 +74,7 @@ pub struct PhysMemoryManager {
 // Implementations
 //==================================================================================================
 
+#[verus_verify]
 impl PhysMemoryManager {
     ///
     /// # Description
@@ -113,7 +114,9 @@ impl PhysMemoryManager {
         PHYS_MEMORY_MANAGER_INIT.store(true, ORDER);
         Ok(())
     }
+}
 
+impl PhysMemoryManager {
     ///
     /// # Description
     ///
@@ -142,7 +145,10 @@ impl PhysMemoryManager {
         // SAFETY: the physical memory manager has been initialized, so the value is valid.
         PHYS_MEMORY_MANAGER.assume_init_mut()
     }
+}
 
+#[verus_verify]
+impl PhysMemoryManager {
     ///
     /// # Description
     ///
