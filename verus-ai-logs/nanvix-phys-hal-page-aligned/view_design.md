@@ -192,3 +192,47 @@ can eventually be discharged.
   over-specification: no caller inspects the variant (all propagate with `?`).
   Pinning it would couple callers to an implementation detail and fail the
   substitution test.
+
+## Implementation note: `Address: View<V = int>` supertrait (added this phase)
+
+To state `@`-based specs on generic functions over `T: Address` (e.g.
+`from_address`'s `addr@`, and `into_raw_value`'s `result as int == self@`), the
+generic parameter must satisfy `T: View<V = int>`. Adding that bound only on the
+`impl Address for PageAligned<T>` block cascades and breaks generic users such as
+`MemoryRegion<PageAligned<T>>` in `region.rs`. The only non-cascading fix is to make
+`View<V = int>` a **supertrait** of `Address`:
+
+```rust
+pub trait Address
+where
+    Self: core::fmt::Debug + Clone + PartialEq + Eq + PartialOrd + Ord + View<V = int>,
+```
+
+Consequences (all applied this phase):
+- Every `Address` implementor must also implement `View<V = int>` in **normal**
+  (non-Verus) builds, because the supertrait bound is a real Rust bound. `int`
+  (`verus_builtin::int`, re-exported via `vstd::prelude::*`) is a real type in normal
+  builds and the `verus!{}` View bodies are erased, so this compiles in both modes.
+  - `VirtualAddress` (sys): already had a plain `verus!{}` `View` impl.
+  - `PhysicalAddress` (kernel): `View` impl un-gated from `#[cfg(verus_keep_ghost)]`
+    to a plain `verus!{}` block.
+  - `PageAligned` (kernel): `View` impl in a plain `verus!{}` block; `inv()` stays
+    gated (it references `spec_page_size()`, a ghost-only `uninterp spec fn`).
+  - `PageTableAligned` (kernel): new plain `verus!{}` `View` impl + `external_derive`.
+- `into_raw_value`'s contract (`result as int == self@`) is declared once, on the
+  `Address` trait method in `sys`, so every implementor inherits it.
+
+## Implementation note: `into_raw_value` verification is tool-blocked (trusted via trait spec)
+
+`PageAligned::into_raw_value` is the `Address` trait method. Its contract
+`result as int == self@` lives on the trait declaration in `sys` and is therefore
+inherited by `PageAligned`'s impl, giving callers (frame.rs, elf.rs) the guarantee.
+
+We could not additionally *verify* `PageAligned`'s impl body against that contract:
+marking `impl<T: Address> Address for PageAligned<T>` with `#[verus_verify]` triggers a
+Verus internal panic (`vir/src/traits.rs:511: assertion failed: !method_impls.contains(&p)`,
+duplicate `TraitMethodImpl` for `into_raw_value`). The panic is specific to a **generic**
+trait impl whose trait method carries a `#[verus_spec]`; the analogous non-generic impl
+(`impl Address for PhysicalAddress`) does not panic. See `bugs.md`. The impl is therefore
+left unverified (trusted) — *not* `external_body` — and its trivial body
+(`self.0.into_raw_value()`) is left for the proving phase / a fixed Verus to discharge.
