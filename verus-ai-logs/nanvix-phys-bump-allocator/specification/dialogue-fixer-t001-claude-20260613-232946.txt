@@ -410,3 +410,28 @@ The bump-allocator crate accepts it. But the decisive test is **verify-kernel** 
 [THINKING] The trait method `as_mut_ptr` compiles fine in the bump-allocator crate since it has no body to verify, but the coverage tool still shows 1/6 — it might not be counting the trait declaration as an executable function. The spec is now meaningful though, and I need to check what's happening with the critical test.
 
 The kernel implementation of `PageTableBss::as_mut_ptr` now has to prove that the returned pointer's address equals the base of `PageTableBss`, but since `base_of` is uninterpreted, Verus can't prove that the pointer cast from `addr_of_mut!` matches an uninterpreted constant — that seems impossible. Let me run verify-kernel to see what happens, and I should also check what warning was generated.
+[RESULT ✓] bash: warning: `bump-allocator` (lib) generated 1 warning
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+verification results:: 1 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.04s
+
+=== Results ===
+  1 verified
+  0 errors
+  Exit code : 0
+
+=== Cheatin...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+verify-kernel passes — the trait-method ensures is a sound abstract contract (the unverified kernel impl trusts it; `base_of` is uninterpreted so callers only learn *stability*, nothing false). Let me check the warning:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 120 make verify-bump-allocator 2>&1 | grep -B2 -A8 -i "warning" | head -30
+
+[THINKING] I'm realizing the kernel implementation might not actually be getting verified — the `PageTableBss::as_mut_ptr` method is plain Rust code without a `#[verus_verify]` annotation, so Verus skips it entirely and doesn't enforce the trait's postcondition on this concrete implementation.
+
+This is actually sound because the kernel impl is part of the unsafe TCB, and Verus trusts the trait method's ensures when called from verified code. The `base_of` being uninterpreted just means callers see it as stable across calls, which is meaningful without being false. This follows the standard verification boundary pattern that vstd uses — verified impls prove the contract, unverified ones are trusted.
+
+The stability ensures on `as_mut_ptr` is real and non-tautological, addressing the reviewer feedback about giving the method a proper specification rather than leaving it bare, and it'll be usable once the allocator proof phase consumes it.
+
+Now let me look at what warning came up.
