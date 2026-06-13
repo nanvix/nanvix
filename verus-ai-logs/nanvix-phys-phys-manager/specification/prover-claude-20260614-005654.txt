@@ -3420,3 +3420,173 @@ Turn 230
 ────────────────────────────────────────────────────────────
 Now re-run verification:
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::phys 2>&1 | tail -20
+[RESULT ✓] bash: - deref_mut
+    - drop
+    - get_mut
+    - test
+    - new
+    - address
+    - leak
+    - share
+    - refcount
+    - drop
+    - new
+
+=== Summary ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  cheating: assume=0 external_body=24 admit=10 trusted=0 no_decreases...
+
+────────────────────────────────────────────────────────────
+Turn 231
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; L=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); grep -n "error\[\|er
+[RESULT ✓] bash: 20:error: cannot read const with mode exec
+26:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 102 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 232
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_01-53-11.log
+[RESULT ✓] view: 18. --- Full output ---
+19.     Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+20. error: cannot read const with mode exec
+21.    --> src/kernel/src/mm/phys/frame.rs:732:47
+22.     |
+23. 732 |                 &&& base@ + (count as int) * (mem::PAGE_SIZE as int) <= usize::MAX as int
+24....
+
+────────────────────────────────────────────────────────────
+Turn 233
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] There's a new compilation error in frame.rs where I'm using `mem::PAGE_SIZE` in a spec context, but that's an exec const that Verus can't access in spec mode. I need to switch to using `spec_page_size()` instead, which should be available from the spec module.
+[RESULT ✓] view: 720. /// Returns the base `FrameAddress` of the contiguous range.
+721. ///
+722. // Dependency contract: thin singleton wrapper around `Inner::alloc_contiguous`. The base
+723. // address is page-aligned on success. `external_body` until the free-function layer is verified.
+724. #[verus_verify(externa...
+
+────────────────────────────────────────────────────────────
+Turn 234
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "spec_page_size" src/kernel/src/hal/mem/ src/kernel/src/mm/phys/frame.rs | head; ech
+
+[THINKING] I need to swap out `mem::PAGE_SIZE as int` for `spec_page_size()` in frame.rs. Let me verify that `spec_page_size` is properly imported from `crate::hal::mem` and check what type it returns.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/page.rs:204:use crate::hal::mem::spec_page_size;
+src/kernel/src/hal/mem/types/address/aligned/page.rs:220:        self@ % spec_page_size() == 0
+src/kernel/src/hal/mem/types/address/frame.rs:34:pub uninterp spec fn spec_page_size() -> int;
+src/kernel/src/h...
+
+────────────────────────────────────────────────────────────
+Turn 235
+────────────────────────────────────────────────────────────
+`spec_page_size()` is the existing uninterp spec for PAGE_SIZE (already used in frame.rs). Let me use it:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I see that `spec_page_size()` is already an uninterpreted function used in the existing frame.rs spec, so it's the right choice here and it's typed as `int`. Since it's already imported and used elsewhere in the file, this aligns with the established pattern where `spec_page_size` represents the address layer's external boundary (PAGE_SIZE). My watermark uninterpreted function should follow the same convention.
+
+Now I need to replace `mem::PAGE_SIZE as int` with `spec_page_size()` at frame.rs:732. The function is imported at the top level since it's used at lines 193 and 543, so it should be in scope for the `#[verus_spec]` attribute on the free function `alloc_contiguous`. Let me make the replacement and test it.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 236
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "PAGE_SIZE\|spec_page_size" src/kernel/src/mm/phys/manager.rs src/kernel/src/mm/phys
+
+[THINKING] I'm noticing the same issue in manager.rs where the loop invariants around lines 431 and 447 are using `mem::PAGE_SIZE as int` in spec contexts, which will cause the same error. I need to import `spec_page_size` into manager.rs since manager.spec.rs already has that import available, then update those invariants to use the correct spec version.
+
+Now I should check if proof.rs has similar issues with PAGE_SIZE usage, particularly in the lemma_contig_no_overflow function.
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.rs:440:                base_raw as int + (count as int) * (mem::PAGE_SIZE as int) <= usize::MAX as int,
+src/kernel/src/mm/phys/manager.rs:446:            let raw_addr: usize = base_raw + i * mem::PAGE_SIZE;
+src/kernel/src/mm/phys/manager.rs:456:                        ...
+
+────────────────────────────────────────────────────────────
+Turn 237
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I'm noticing there's a distinction between spec contexts and exec code across these files. In manager.rs, lines 440 and 456 need spec_page_size() since they're in invariant contexts, while lines 446 and 463 use the raw exec computation with mem::PAGE_SIZE. Similarly, proof.rs lines 73, 75, and 76 are in requires/ensures clauses so they need the spec version. There's a subtle issue though—the exec code calculates addresses using the actual PAGE_SIZE value, which might differ from what the spec assumes.
+
+Looking at frame.rs, there's an uninterpreted spec function spec_page_size() with an ensures clause that ties it to some result, likely from an exec accessor that returns PAGE_SIZE. But the exec code in manager.rs uses mem::PAGE_SIZE directly as a raw constant, not through that accessor, so Verus can't automatically connect the two. The real problem is that overflow checks on exec arithmetic still need to be verified by Verus, even though the proof bodies are currently admit().
+[RESULT ✓] view: 30. 
+31. #[cfg(verus_keep_ghost)]
+32. verus! {
+33. 
+34. pub uninterp spec fn spec_page_size() -> int;
+35. 
+36. pub assume_specification[ ::arch::mem::PAGE_SIZE ] -> (result: usize)
+37.     ensures
+38.         result == spec_page_size(),
+39. ;
+40. 
+41. impl View for FrameAddress
+42. {
+43.     type V ...
+
+────────────────────────────────────────────────────────────
+Turn 238
+────────────────────────────────────────────────────────────
+`mem::PAGE_SIZE` in spec contexts must use `spec_page_size()`; exec uses are fine (verus knows `PAGE_SIZE == spec_page_size()` via the existing assume_specification). Let me fix the spec-context uses:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm seeing how Verus handles the `PAGE_SIZE` constant through an `assume_specification` — it treats reading the const as returning a result that equals `spec_page_size()`, which is an interesting way to connect a concrete constant value to its specification.
+
+The key insight is that in spec contexts (like ensures, requires, invariants), I can't use the exec const directly; I need to call `spec_page_size()` instead. But in exec contexts, `mem::PAGE_SIZE` is fine because Verus knows through the assume_specification that it equals the spec value. So I need to go through the codebase and replace the spec-context uses of `mem::PAGE_SIZE` with `spec_page_size()` — that's in the invariants at lines 440 and 456 in manager.rs, the requires/ensures in proof.rs, and the frame.rs line that's already been fixed.
+
+I should also verify that `spec_page_size` is properly imported in all the files where I'm making these changes, particularly in manager.spec.rs and proof.rs.
+[RESULT ✓] view: 436.         let base_raw: usize = base_addr.into_raw_value();
+437.         #[cfg_attr(verus_keep_ghost, verus_spec(
+438.             invariant
+439.                 base_raw as int == base_addr@,
+440.                 base_raw as int + (count as int) * (mem::PAGE_SIZE as int) <= usize::MAX as int,
+44...
+
+────────────────────────────────────────────────────────────
+Turn 239
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 240
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 241
+────────────────────────────────────────────────────────────
+Now proof.rs:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::mm::phys::phys_view;
+4. 
+5. //==================================================================================================
+6. // Global-token attachment (deferred to the proving phase)
+7. //==========================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 242
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs
+[RESULT ✓] view: 66. /// The base address returned by a contiguous allocation, advanced by any in-range frame index,
+67. /// stays within the address space — `frame::alloc_contiguous` guarantees the whole `count`-frame
+68. /// span fits a `usize`, so no intermediate offset overflows. Admitted here; the proving phase...
+
+────────────────────────────────────────────────────────────
+Turn 243
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I'm realizing that `proof.rs` references `mem::PAGE_SIZE` in specification contexts, so I need to create a `spec_page_size()` function and make sure it's properly imported. Looking at the current imports in `proof.rs`, I see only `phys_view` is brought in, so I'll need to add the import for `spec_page_size` from the hal module. There's a question about whether it might already be available indirectly through the include chain, but I should verify the import structure carefully.
+
+Since both `spec.rs` and `proof.rs` are included into `manager.rs` as part of the same module, and `spec.rs` already has the `use` statement for `spec_page_size` at module level, that import should be visible to `proof.rs` content as well. To keep things clean and avoid any potential scoping issues, I'll go ahead and replace the problematic lines that reference `PAGE_SIZE` with the spec version.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 244
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::phys 2>&1 | tail -20

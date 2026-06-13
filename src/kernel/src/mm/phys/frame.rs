@@ -729,7 +729,7 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
         match result {
             Ok(base) => {
                 &&& base.inv()
-                &&& base@ + (count as int) * (mem::PAGE_SIZE as int) <= usize::MAX as int
+                &&& base@ + (count as int) * spec_page_size() <= usize::MAX as int
             },
             Err(_) => true,
         },

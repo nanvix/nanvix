@@ -70,10 +70,10 @@ pub proof fn lemma_kernel_alloc_contiguous(
 pub proof fn lemma_contig_no_overflow(base_raw: usize, idx: usize, count: usize)
     requires
         idx < count,
-        base_raw as int + (count as int) * (mem::PAGE_SIZE as int) <= usize::MAX as int,
+        base_raw as int + (count as int) * spec_page_size() <= usize::MAX as int,
     ensures
-        (idx as int) * (mem::PAGE_SIZE as int) <= usize::MAX as int,
-        base_raw as int + (idx as int) * (mem::PAGE_SIZE as int) <= usize::MAX as int,
+        (idx as int) * spec_page_size() <= usize::MAX as int,
+        base_raw as int + (idx as int) * spec_page_size() <= usize::MAX as int,
 {
     admit();
 }

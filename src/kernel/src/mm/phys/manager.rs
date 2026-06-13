@@ -437,7 +437,7 @@ impl PhysMemoryManager {
         #[cfg_attr(verus_keep_ghost, verus_spec(
             invariant
                 base_raw as int == base_addr@,
-                base_raw as int + (count as int) * (mem::PAGE_SIZE as int) <= usize::MAX as int,
+                base_raw as int + (count as int) * spec_page_size() <= usize::MAX as int,
         ))]
         for i in 0..count {
             proof! {
@@ -453,7 +453,7 @@ impl PhysMemoryManager {
                     #[cfg_attr(verus_keep_ghost, verus_spec(
                         invariant
                             base_raw as int == base_addr@,
-                            base_raw as int + (count as int) * (mem::PAGE_SIZE as int)
+                            base_raw as int + (count as int) * spec_page_size()
                                 <= usize::MAX as int,
                     ))]
                     for j in i..count {
