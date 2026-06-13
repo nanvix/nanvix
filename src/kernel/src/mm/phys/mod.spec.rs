@@ -65,6 +65,7 @@ use ::core::alloc::Allocator;
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
+#[verifier::reject_recursive_types(A)]
 pub struct ExLinkedList<T, A: Allocator>(::alloc::collections::LinkedList<T, A>);
 
 //==================================================================================================

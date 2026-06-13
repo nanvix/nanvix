@@ -1246,3 +1246,29 @@ Turn 61
 [THINKING] I'm tracking down where `union_prefer_right` is defined and how it's being accessed across the codebase. It's in `map_lib.rs` but being used in `frame.rs` through what looks like a wildcard import from `vstd::map`, so I need to verify that `map_lib` is properly re-exported to make it accessible.
 
 For `mod.spec.rs`, I should add explicit imports for both `set_lib` and `map_lib` to ensure all the methods I'm using—like `.map()`, `.filter()`, and `.union_prefer_right()`—are available. Since these are inherent methods on the types themselves, they should work once the types are in scope, but I'll add the imports defensively. The free function `set_int_range` I've already fully-qualified, so that's covered. Let me update the imports and test the compilation.
+[RESULT ✓] bash: error: in external_body datatype, each type parameter must be one of: #[verifier::reject_recursive_types], #[verifier::reject_recursive_types_in_ground_variants], #[verifier::accept_recursive_types] (reject_recursive_types is always safe to use)
+error: could not compile `kernel` (bin "kernel") due t...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize; sed -n '14,20p' /home/ruize/verus-ai-exp/verus-ai/vstd/std_specs/vecdeque.rs
+
+[THINKING] I need to add the `reject_recursive_types` annotation to the second type parameter A in ExLinkedList, similar to how ExVecDeque handles it. Let me check what attributes ExVecDeque uses to make sure I'm applying the right annotation.
+[RESULT ✓] bash: #[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+#[verifier::reject_recursive_types(A)]
+pub struct ExVecDeque<T, A: Allocator>(VecDeque<T, A>);
+<shellId: 43 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
