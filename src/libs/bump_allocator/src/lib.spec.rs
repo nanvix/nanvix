@@ -142,4 +142,21 @@ impl BumpView {
     }
 }
 
+impl<const N: usize, const A: usize, S: BssStorage> View for FixedSizeBumpAllocator<N, A, S> {
+    type V = BumpView;
+
+    open spec fn view(&self) -> BumpView {
+        BumpView {
+            base: S::as_mut_ptr() as int,
+            stride: align_up_spec(N as nat, A as nat).unwrap(),
+            unit_size: N as nat,
+            unit_align: A as nat,
+            capacity: S::NUM_UNITS as nat,
+            storage_size: S::STORAGE_SIZE as nat,
+            allocated: self.next_slot.load() as nat,
+        }
+    }
+}
+
 } // verus!
+

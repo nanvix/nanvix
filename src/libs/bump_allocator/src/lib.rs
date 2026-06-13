@@ -257,10 +257,6 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     /// - [`BumpAllocError::OutOfBounds`] if computed slot exceeds storage bounds.
     /// - [`BumpAllocError::Misaligned`] if computed slot is not properly aligned.
     ///
-    #[verus_spec(result =>
-        ensures
-            true,
-    )]
     pub fn alloc(&self) -> Result<&'static mut [u8; N], BumpAllocError> {
         // Reserve a slot index via compare-and-swap to avoid overshooting the counter.
         let mut idx: usize = 0;

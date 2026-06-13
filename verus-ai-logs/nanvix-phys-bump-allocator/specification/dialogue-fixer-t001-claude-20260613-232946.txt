@@ -206,3 +206,42 @@ The rewritten version assigns the current value to a mutable variable before bre
 Turn 12
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A6 -iE "does not yet support|error\
+[RESULT ✓] bash: Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+error: Verus does not support this cast: `usize` to `*mut [u8; N/#0]`
+   --> src/libs/bump_allocator/src/lib.rs:301:27
+    |
+301 |         Ok(unsafe { &mut *(ptr as *mut [u8; N]) })
+    |                           ^^^^...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+**Blocker 2 confirmed** (`usize as *mut [u8; N]` → "Verus does not support this cast"). This is the unsafe raw-pointer materialization. Let me now isolate the **View-attachment** blocker the reviewer specifically asked about. I'll remove the body contract (so the body is skipped) and try attaching `impl View` reading the atomic.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] The break statement fixed the compilation error, and surprisingly the loop compiled without requiring an invariant—maybe Verus handles loops with explicit returns or breaks differently, or perhaps invariants are only enforced when proof reasoning is needed past the loop. The code got past line 301, so it seems to be progressing through the type checking.
+
+Now I'm hitting the real blocker: the raw pointer cast from `usize` to `*mut [u8; N]` isn't supported in Verus. This is the fundamental unsafe memory materialization step, and to make it work I'd need `vstd::raw_ptr` with proper `PointsTo` permissions for the backend memory. But since the address comes from an external backend function (`S::as_mut_ptr()`), there's no `PointsTo` token available—that's the unsafe boundary we can't cross. Without either `external_body` (which isn't allowed since this isn't in the TCB list) or a way to soundly fabricate permissions for externally-provided memory, this body simply cannot be verified in Verus.
+
+Let me verify the TCB allowlist and also check whether the atomic operations have specs, but the raw-pointer error is the fundamental blocker that no view-design change can address. The reviewer asked me to report back with concrete errors if the View/allocated approach fails, but this is a deeper issue—the exec body itself has an unsupported cast. I should also demonstrate the atomic and `as_mut_ptr` blockers to be thorough, then reconsider what I can actually accomplish within the five parts of the request. For `as_mut_ptr` specifically, since it's a trait method with no body, I might be able to add a meaningful spec using an uninterpreted ghost function like `base_of::<Self>()` to express stability, even though the full alignment spec requires constants not available at the trait level. should revert the break rewrite to keep the diff focused on what's actually achievable. The core issue is that alloc and alloc_as can't get real contracts because they materialize mutable references from raw integers without any permission tokens available — that's a fundamental blocker requiring external_body, which isn't allowed here. So the honest path is to deliver a real spec for as_mut_ptr, revert the exploratory changes to alloc, and document exactly why alloc/alloc_as need to be added to the TCB list to proceed.
+
+Let me verify whether as_mut_ptr can even express a contract in Verus — specifically whether I can cast a `*mut u8` result to an integer and reason about it. I should also try capturing the View attachment error explicitly since the reviewer asked about it, then structure the remaining experiments to test these specific blockers.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Now add an `impl View` attachment reading the atomic, to capture that specific blocker:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A6 -iE "does not yet support|error\
