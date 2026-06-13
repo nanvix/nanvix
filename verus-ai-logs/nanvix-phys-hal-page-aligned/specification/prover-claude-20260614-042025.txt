@@ -1305,3 +1305,39 @@ Now mark the `impl Address for PageAligned` block for verification so `into_raw_
 Turn 81
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
+[RESULT ✓] bash: error[E0425]: cannot find function `from_address` in this scope
+48 |     pub fn from_address(addr: T) -> Result<Self, Error> {
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+=== Results ===
+  0 verified
+  c...
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; L=verus-ai-logs/verify-kernel/verus-logs/$(ls -t verus-ai-logs/verify-kernel/verus-logs/ | he
+
+[THINKING] The `#[verus_spec]` attribute on `from_address` combined with `proof! { admit(); }` as the first statement before the `?` operator might be causing the macro to expand incorrectly, or it could be the early `return Err(...)` that's interfering. Let me examine the full error context to pinpoint what's happening.
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0425]: cannot find function `from_address` in this scope
+  --> src/kernel/src/hal/mem/types/address/aligned/page.rs:48:12
+   |
+48 |     pub fn from_address(addr: T) -> Result<Self, Error> {
+   |            ^^...
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] The error points to the `from_address` method — the `#[verus_spec]` macro is likely generating a call to `from_address` as a free function instead of a method call on `Self`, possibly due to how it's desugaring the `?` operator or handling the early return.
+
+The key difference from `into_raw_value` is that `from_address` has the `?` operator combined with `proof! { admit(); }` at the start, which might be confusing the macro's parsing. Let me test by removing the `admit()` call first to see if that's the culprit, or if it's the interaction between the spec attribute, the `?` operator, and the early return that's causing the issue.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
