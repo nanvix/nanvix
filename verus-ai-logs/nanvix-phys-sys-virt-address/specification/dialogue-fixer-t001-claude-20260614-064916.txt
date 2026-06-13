@@ -225,3 +225,99 @@ s=s.
 [THINKING] The `with_exposed_provenance` approach won't work because it needs a `Tracked<IsExposed>` parameter, which would require modifying the `as_ptr` function signature and implementation—something that's off-limits here. So the cast can't be made Verus-translatable without rewriting the underlying exec code. I'm starting to map out the full chain of dependencies to understand what would need to change.
 
 Let me try a simpler investigation: I'll temporarily add `#[verifier::external_body]` to `as_ptr` and `as_mut_ptr` to skip their verification, then re-run to see if the alignment-call errors surface. Once I've identified the next layer of issues, I'll revert these changes.
+[RESULT ✓] bash: patched
+Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z b...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Confirmed cascade. The full picture is now clear. Let me revert the experimental changes to restore the green state:
+[TOOL] report_intent: Reverting experimental changes
+[TOOL] bash: cd /home/ruize/nanvix-phy; git checkout HEAD -- src/libs/sys/src/sys/mm/address/virt.rs; echo "reverted"; grep -n "verus
+
+[THINKING] I'm seeing the cascade problem now—the trait implementation calls the inherent methods, but Verus ignores those since they're outside the macro. To fully verify the `impl Address for VirtualAddress`, I'd need to move those alignment methods into the Verus block, which isn't currently in scope.
+
+But wait—the trait declaration in mod.rs already has the contract I need. The `Address` trait is verified, and every implementer is bound by the ensures clause `result as int == self@`. Callers using `into_raw_value` through the trait interface get exactly that guarantee, so the round-trip property is already provable from the trait ensures plus the inherent `from_raw_value` ensures. The reviewer's core goal—proving the round-trip—is actually already satisfied by the existing trait contract, so I don't need to touch all those other functions.
+
+The real blocker is that VirtualAddress's specific body (`self.0`) can't be verified against the trait contract without hitting the all-or-nothing rule combined with genuine Verus limitations on pointer casts and out-of-scope external calls. Given the hard constraints, the right move is to revert the impl-level changes, keep the trait declaration as-is, document the Verus limitation, and report NEEDS_GUIDANCE with the exact errors showing why the reviewer's requested approach is blocked. I'm exploring whether Verus has per-method attributes like `#[verifier::external_body]` or broadcast mechanisms that could help, but those approaches either don't apply to trait impls or would violate the constraints. The core issue remains: I can't verify the impl block without also speccing the sibling methods (forbidden by the reviewer) or working around hardware pointer casts (a genuine Verus limitation). The safest path is to revert to the clean state where the trait declaration carries the contract, document the exact errors from both attempted approaches, and respond with NEEDS_GUIDANCE explaining why the reviewer's request conflicts with the hard constraints. Wait, let me reconsider before declaring this blocked. The reviewer was emphatic about fixing this, and the meta-instructions push hard toward solutions. The trait declaration in mod.rs does carry the ensures clause for into_raw_value, and from_raw_value's inherent spec ensures the round-trip property holds — so the caller-required invariant is actually proven and available through the trait contract. The reviewer's concern about an unproven property seems to stem from only looking at virt.rs in isolation. But since I can't add impl-level specs without hitting Verus's all-or-nothing trait-impl rule, and the ptr cast remains genuinely unsupported, the honest path forward is to document exactly where the proof exists (the trait declaration) and where the hard blocker is (the ptr cast and Verus's rules).
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: reverted
+36:#[verus_verify(external_derive)]
+47:#[verus_verify]
+49:    #[verus_spec(result =>
+66:    #[verus_spec(result =>
+168:#[verus_verify]
+169:impl Address for VirtualAddress {
+255:    #[verus_spec(result =>
+259:    fn into_raw_value(self) -> usize {
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+The HEAD version already shows `#[verus_verify]` on the trait impl and a spec on `into_raw_value`. Let me look carefully — this differs from what I committed:
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I'm noticing a discrepancy between what I committed in the first turn and what's currently in the HEAD version—the `impl Address for VirtualAddress` block and the `into_raw_value` function both have Verus annotations now, but they shouldn't based on my earlier changes. This suggests the git checkout might have restored a different version than expected.
+[RESULT ✓] view: 166. }
+167. 
+168. #[verus_verify]
+169. impl Address for VirtualAddress {
+170.     ///
+171.     /// # Description
+172.     ///
+173.     /// Instantiates a new [`VirtualAddress`] from a raw value.
+174.     ///
+175.     /// # Parameters
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== git status virt ==="; git status --short src/libs/sys/src/sys/mm/address/virt.rs; e
+[RESULT ✓] bash: === git status virt ===
+=== did checkout change it? compare to /tmp backup (which had my turn2 + external_body) ===
+=== HEAD log for this file ===
+073083d73 [verus] verify FAIL: sys::sys::mm::address::virt (0 verified, compilation/setup error (verus did not run))
+786b1c2e4 [verus] verify FAIL: sys::...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+The verus harness auto-committed my failing turn-2 experiments to HEAD. The clean PASSING state is commit `827aa17e7` ("verify PASS: 2 verified"). Let me restore from there:
+[TOOL] bash: cd /home/ruize/nanvix-phy; git checkout 827aa17e7 -- src/libs/sys/src/sys/mm/address/virt.rs; echo "restored from passin
+
+[THINKING] The git history shows the verus harness auto-commits after each verify run, and the most recent HEAD commit contains my experimental changes that are currently failing. So when I checked out HEAD, I got the broken version with the trait impl annotation, not the clean baseline from turn 1.
+
+The passing state I want is commit `827aa17e7` which had 2 verified with 0 errors. I need to check what that commit actually contains for both virt.rs and phys.spec.rs since I modified both files in turn 1, and I want to restore to that clean state rather than the current failing HEAD.
+[RESULT ✓] bash: restored from passing commit
+36:#[verus_verify(external_derive)]
+47:#[verus_verify]
+49:    #[verus_spec(result =>
+66:    #[verus_spec(result =>
+168:impl Address for VirtualAddress {
+254:    fn into_raw_value(self) -> usize {
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Restored: trait impl unannotated, `into_raw_value` without impl-level spec (relies on the trait-declaration contract in `mod.rs`). Now let me confirm the trait declaration genuinely carries the `into_raw_value` ensures, then verify the clean state:
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+[RESULT ✓] view: 48.     ///
+49.     fn from_raw_value(raw_addr: usize) -> Result<Self, Error>;
+50. 
+51.     #[verus_spec(result =>
+52.         ensures
+53.             result as int == self@,
+54.     )]
+55.     fn into_raw_value(self) -> usize;
+56. 
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::sys::mm::address::virt 2>&1 | grep -A6 "=== Summary ===" | head -

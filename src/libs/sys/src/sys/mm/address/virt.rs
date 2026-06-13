@@ -165,7 +165,6 @@ impl VirtualAddress {
     }
 }
 
-#[verus_verify]
 impl Address for VirtualAddress {
     ///
     /// # Description
@@ -252,10 +251,6 @@ impl Address for VirtualAddress {
         usize::MAX
     }
 
-    #[verus_spec(result =>
-        ensures
-            result as int == self@,
-    )]
     fn into_raw_value(self) -> usize {
         self.0
     }
@@ -264,12 +259,10 @@ impl Address for VirtualAddress {
         VirtualAddress(self.0)
     }
 
-    #[verifier::external_body]
     fn as_ptr(&self) -> *const u8 {
         self.0 as *const u8
     }
 
-    #[verifier::external_body]
     fn as_mut_ptr(&self) -> *mut u8 {
         self.0 as *mut u8
     }
