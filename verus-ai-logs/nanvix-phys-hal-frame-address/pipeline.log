@@ -49,3 +49,17 @@ Module: hal-frame-address
 [2026-06-14 07:29:31] [DIALOGUE] Reviewer turn 1 (remaining: 7200s)...
 [2026-06-14 07:29:31] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-14 07:35:44]   ↳ dialogue-reviewer-t1 done in 6m12s (exit=0)
+[2026-06-14 07:35:44] [DIALOGUE] Reviewer created STOP file: RESOLVED
+[2026-06-14 07:35:44] [DIALOGUE] STOP detail:
+RESOLVED
+
+All 17 specification-phase checklist items are PASS (verified with tool output:
+`make verify-kernel` exit 0, `./z build -- all-kernel` exit 0, `fn_coverage.py`
+9/9 exec fns, git-diff drift check shows only strengthening). See
+turn_001_driver.md for per-item evidence.
+
+Two proving-phase obligations are tracked (not spec defects):
+- Discharge admit()s in frame.proof.rs (lemma_frame_base_aligned, lemma_aligned_div_mul).
+- Remove the PhysicalAddress::from_raw_value assume_specification once phys's
+  Address impl is verified.
+[2026-06-14 07:35:44] [DIALOGUE] specification ended after 1 turns: RESOLVED (372s)
