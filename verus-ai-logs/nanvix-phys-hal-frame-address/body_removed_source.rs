@@ -68,25 +68,15 @@ impl FrameAddress {
 //==================================================================================================
 
 impl FrameAddress {
-    pub fn new(address: PageAligned<PhysicalAddress>) -> Self {
-        Self(address)
-    }
+    pub fn new(address: PageAligned<PhysicalAddress>) -> Self { ... }
 
-    pub fn into_physical_address(self) -> PageAligned<PhysicalAddress> {
-        self.0
-    }
+    pub fn into_physical_address(self) -> PageAligned<PhysicalAddress> { ... }
 
-    pub fn into_page_address(self) -> PageAddress {
-        PageAddress::new(PageAligned::into_virtual_address(self.0))
-    }
+    pub fn into_page_address(self) -> PageAddress { ... }
 
-    pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> {
-        Ok(Self(PageAligned::from_address(PhysicalAddress::from_number(frame_number))?))
-    }
+    pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> { ... }
 
-    pub fn into_frame_number(self) -> FrameNumber {
-        self.0.into_frame_number()
-    }
+    pub fn into_frame_number(self) -> FrameNumber { ... }
 }
 
 // Dependency contract for the manager layer: raw-value conversions of a frame address.
@@ -102,9 +92,7 @@ impl FrameAddress {
                 Err(_) => true,
             },
     )]
-    pub fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
-        Ok(Self(PageAligned::from_address(PhysicalAddress::from_raw_value(raw_addr)?)?))
-    }
+    pub fn from_raw_value(raw_addr: usize) -> Result<Self, Error> { ... }
 
     ///
     /// # Description
@@ -122,19 +110,13 @@ impl FrameAddress {
         ensures
             result as int == self@,
     )]
-    pub fn into_raw_value(self) -> usize {
-        self.0.into_raw_value()
-    }
+    pub fn into_raw_value(self) -> usize { ... }
 }
 
 impl core::fmt::Debug for FrameAddress {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "FrameAddress({:#010x})", self.into_raw_value())
-    }
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result { ... }
 }
 
 impl PartialEq for FrameAddress {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
+    fn eq(&self, other: &Self) -> bool { ... }
 }
