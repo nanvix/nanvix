@@ -51,10 +51,9 @@ impl PhysicalAddress {
 // verified, their real specifications will supersede these.
 // =================================================================================================
 
-pub assume_specification[ ::sys::mm::VirtualAddress::new ](value: usize) -> (result: VirtualAddress)
-    ensures
-        result@ == value as int,
-;
+// Note: `VirtualAddress::new` now carries its own verified `#[verus_spec]` in the `sys` crate
+// (`result@ == value as int`), so its placeholder `assume_specification` was removed — the real
+// specification supersedes it.
 
 pub assume_specification[ <::sys::mm::VirtualAddress as ::sys::mm::Address>::into_raw_value ](
     addr: VirtualAddress,

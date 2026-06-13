@@ -873,3 +873,24 @@ Turn 44
 
 Since the kernel code currently compiles as-is, I'll leave that alone. Let me run make verify without preemptively removing anything, so I can see exactly what breaks and make only the necessary fixes.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: verification results:: 35 verified, 0 errors
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: duplicate specification for `sys::sys::mm::address::virt::impl&%17::new`
+  --> src/libs/sys/src/sys/mm/address/virt.rs:53:5
+   |
+53 |     pub const fn new(value: usize) -> Self {
+   |...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Confirmed: only `new`'s `assume_specification` conflicts (it's now superseded by the real spec). Removing it:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+
+[THINKING] There's only one actual conflict with `new`'s assume_specification, so I'll remove just that from phys.spec.rs while keeping into_raw_value's assume_specification intact since the trait spec and that assumption coexist fine. I should update the comment to reflect that VirtualAddress::new is now verified, leaving only FrameNumber and FRAME_SHIFT as the remaining unverified dependencies.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify 2>&1 | tail -25
