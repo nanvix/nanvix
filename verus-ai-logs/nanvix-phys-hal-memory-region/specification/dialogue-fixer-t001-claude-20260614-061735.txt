@@ -325,3 +325,43 @@ Turn 21
 ────────────────────────────────────────────────────────────
 Build passes. Now the full `make verify` to ensure no cross-crate regressions (the `Address` trait lives in the shared `sys` crate).
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 3000 make verify >/tmp/verify_all_fix.log 2>&1; echo "MAKE EXIT=$?"; grep -iE "Exit c
+[RESULT ✓] bash: MAKE EXIT=0
+  Exit code : 0
+  Exit code : 0
+  Exit code : 0
+  Exit code : 0
+  Exit code : 0
+=== tail ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=14 admit=26 trusted=0 no_decreases=0 cfg_gate=15
+  coverage: 49/1026 exec functions have contracts
+  statu...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+All crates pass (exit 0), no regressions. Now write the fixer response.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/specification/dialogue/turn_001_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/specification/dialogue/turn_001_fixer.md with 4451 characters
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+**FIXED.** 
+
+The reviewer's item-13 failure (`admit()` in `MemoryRegion::start`) is resolved by adding a view-preserving clone contract to the `Address` trait and proving it in every impl:
+
+- **`Address` trait** (`sys/.../mod.rs`): new `fn clone_address(&self) -> Self` with `ensures result@ == self@`.
+- **4 impls**: `VirtualAddress`/`PhysicalAddress` reconstruct from their `Copy` field; `PageAligned<T>`/`PageTableAligned<T>` recurse via the inner `T`'s contract (so `T` need not be `Copy`). All proven, no `admit`.
+- **`region.rs`**: `start()` now calls `self.start.clone_address()`; the `proof! { admit(); }` and deferral comment are deleted.
+
+I avoided the literal `self.clone()` suggested, since `Clone::clone` is `external_derive` (no spec) and would have forced another `admit` — the reconstruct/recurse form is the provable equivalent, with no `assume_specification` on `Clone`.
+
+Verification: `make verify-kernel` → 0 errors, region `admit` gone (count 27→26); full `make verify` → all crates exit 0 (no regressions, including the changed address layer); `./z build` → OK.
+
+
+=== Session End ===
+Session: cbf87cec-8cbe-4cc2-a2ea-f96fcfbfca45
+Duration: 294.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/specification/dialogue-fixer-t001-claude-20260614-061735.jsonl
