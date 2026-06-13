@@ -28,20 +28,18 @@ pub assume_specification[ ::arch::mem::FRAME_SIZE ] -> (result: usize)
         result == crate::hal::mem::spec_page_size(),
 ;
 
-pub assume_specification[ crate::hal::mem::FrameAddress::from_frame_number ](
-    _f: ::arch::mem::paging::FrameNumber,
-) -> Result<crate::hal::mem::FrameAddress, ::sys::error::Error>;
-
-pub assume_specification[ crate::hal::mem::FrameAddress::into_frame_number ](
-    _a: crate::hal::mem::FrameAddress,
-) -> ::arch::mem::paging::FrameNumber;
-
 pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::PageAligned<T> as ::sys::mm::Address>::into_raw_value ](
-    _a: crate::hal::mem::PageAligned<T>,
-) -> usize;
+    a: crate::hal::mem::PageAligned<T>,
+) -> (result: usize)
+    ensures
+        result as int == a@,
+;
 
 pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::deref ](
-    _a: &crate::hal::mem::PageAligned<T>,
-) -> &<crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::Target;
+    a: &crate::hal::mem::PageAligned<T>,
+) -> (result: &<crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::Target)
+    ensures
+        (*result)@ == a@,
+;
 
 }
