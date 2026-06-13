@@ -131,7 +131,7 @@ the `int` view), not View transitions:
 |---|---|---|
 | `into_raw_value(self) -> usize` | query | `result as int == self@` *(pre-existing)* |
 | `from_raw_value(usize) -> Result<Self,_>` | constructor | `Ok(fa) ⇒ fa.inv() && fa@ == raw_addr as int`; `Err ⇒` nothing produced *(pre-existing ensures keeps only `Ok ⇒ inv()`; add `fa@ == raw_addr`)* |
-| `into_frame_number(self) -> FrameNumber` | query | `result.into_raw_value() as int * spec_page_size() == self@` (inverse of `from_frame_number`) |
+| `into_frame_number(self) -> FrameNumber` | query | **requires** `self.inv()` and `spec_frame_number(self@) <= spec_max_frame_number()` (frame-representability, inherited from `PhysicalAddress::into_frame_number`); **ensures** `spec_frame_raw_value(result) == spec_frame_number(self@)` and `spec_from_number(spec_frame_raw_value(result)) == self@` (inverse of `from_frame_number`) |
 | `from_frame_number(FrameNumber) -> Result<Self,_>` | constructor | `Ok(fa) ⇒ fa.inv() && fa@ == frame_number.into_raw_value() as int * spec_page_size()`; `Err ⇒` nothing produced |
 
 Round-trip identities the callers depend on (also spec-phase ensures, not
@@ -143,6 +143,14 @@ transitions):
 The frame number is a **derived** quantity (`self@ / spec_page_size()`), so it is
 expressed through `FrameNumber`'s own view in the ensures rather than stored as a
 second View field — keeping the View minimal (single `int`).
+
+**Note on the `into_frame_number` precondition.** `into_frame_number` delegates to
+`PhysicalAddress::into_frame_number`, whose contract requires the address be
+frame-representable (`spec_frame_number(self@) <= spec_max_frame_number()`). This is
+*not* derivable from page-alignment (`inv()`) alone, so it is exposed as an explicit
+`requires` on `FrameAddress::into_frame_number` rather than folded into `inv()`.
+Folding it into `inv()` was rejected because it would strengthen the invariant used
+by already-verified `mm/phys` callers and contradicts the minimal-View design.
 
 ---
 
