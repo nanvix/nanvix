@@ -133,3 +133,37 @@ upool verifies (6 verified, 0 errors). Now re-verify the frame module and run th
 [TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== frame module ==="; timeout 400 make verify-kernel MODULE=mm::phys::frame 2>&1 | gre
 
 [THINKING] I need to verify that the frame module still compiles correctly after the Err arm changes, particularly checking that the frame::share external_body contract holds up—since external_body means the wrapper's body isn't verified against the ensures clause, I need to confirm the Inner::share ensures still imply the right properties. Let me re-verify the frame module and run the build.
+[RESULT ✓] bash: === frame module ===
+  Exit code : 0
+=== build ===
+SCCACHE Statistics
+================================================================================
+SCCACHE not available or not configured.
+================================================================================
+
+[OK]    Build complete.
+<s...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Both pass. Let me capture the share spec block and verify tail for evidence, then write the fixer response.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== UserFrame::share spec ==="; sed -n '147,163p' src/kernel/src/mm/phys/upool.rs; echo
+[RESULT ✓] bash: === UserFrame::share spec ===
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            match result {
+                Ok(uf) => {
+                    &&& uf@ == self@
+                    &&& uf.inv()
+                    &&& crate::mm::phys::phys_view().frames.a...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+The two remaining `Err(_) => true` are unrelated functions (frame.rs:707/734, not `share`), out of scope. The `share` tautology is removed in both files. Let me record the verify tail and write the response.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 400 make verify-kernel MODULE=mm::phys::upool 2>&1 | grep -E "verifying module|verifi
+
+[THINKING] I've confirmed those remaining error cases at frame.rs are in different functions outside the scope of what the reviewer asked about, so I can move forward with writing the fixer response.
