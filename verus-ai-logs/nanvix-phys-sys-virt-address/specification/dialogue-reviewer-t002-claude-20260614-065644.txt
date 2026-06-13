@@ -160,3 +160,84 @@ I'll verify the fixer's turn 1 changes. Let me read their report and re-run veri
 176.     /// - `raw_addr`: The raw value.
 177.     ///
 178.     /// # Retu...
+[RESULT ✓] bash: Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/libs/sys/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp ...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The fixer reverted and claims the contract already lives on the trait declaration in `mod.rs`. I must verify this claim, not trust it — and verify the compile-failure claim too.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== verus_verify / verus_spec in mod.rs ==="; grep -n "verus_verify\|verus_spec\|trai
+
+[THINKING] The fixer reverted the change, arguing that Verus doesn't support the trait implementation as written—the trait is all-or-nothing, and the sibling methods like `as_ptr` and `as_mut_ptr` rely on unsupported casts while the align methods delegate to inherent functions outside the trait's scope. The fixer also claims the `into_raw_value` contract is already specified in the trait declaration with an ensures clause that validates the result matches the original value, so I need to check if that's actually there.
+
+If the trait declaration does carry that specification and `Address` is marked for verification, then the contract would be established at the trait level—implementers would inherit it. This would be a legitimate verification approach rather than just a dodge. I should verify whether the trait spec actually exists in the code, whether `Address` is properly marked for verification, and whether the reviewer's requested change genuinely fails to compile due to the cast issues they mentioned.
+[RESULT ✓] bash: === verus_verify / verus_spec in mod.rs ===
+30:#[verus_verify]
+31:pub trait Address
+51:    #[verus_spec(result =>
+52:        ensures
+53:            result as int == self@,
+55:    fn into_raw_value(self) -> usize;
+72:    #[verus_spec(result =>
+73:        ensures
+123:    #[verus_spec(result =>
+124:   ...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Fixer's claim verified: trait `Address` is `#[verus_verify]` (mod.rs:30) and `into_raw_value` carries `ensures result as int == self@` at the declaration (mod.rs:51-55). My turn-1 grep only scanned `virt.rs` and missed this. Now let me verify (a) the compile-failure claim is real, and (b) how the already-verified sibling `PhysicalAddress` handles the same trait impl — to confirm this is the established pattern, not a dodge.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== sibling phys.rs Address impl annotation ==="; grep -rn "impl Address for\|verus_v
+
+[THINKING] The trait `Address` is marked with `#[verus_verify]` and its `into_raw_value` method has a postcondition ensuring the result equals `self@` as an integer. In Verus, trait method contracts declared at the trait level are automatically binding on all implementers, so `VirtualAddress` doesn't need to re-declare it, and callers using the trait get that guarantee.
+
+However, there's a subtle soundness issue: the impl block for `VirtualAddress` isn't marked `#[verus_verify]`, which means Verus doesn't actually check that the implementation body (`self.0`) satisfies the trait's postcondition. Verus treats unverified implementations as external, assuming they satisfy the contract without verification — but that's a gap if the body doesn't actually match the contract.
+
+The fixer's attempt to annotate the impl with `#[verus_verify]` fails because the other methods in the impl use unsupported casts and delegate to out-of-scope functions. This creates an all-or-nothing constraint: either verify the entire impl or none of it.
+
+For the checklist, the key distinction is specification versus proof. The `into_raw_value` function does have an ensures clause at the trait declaration — which is the correct place to specify contracts for trait methods. Whether the implementation is actually verified to meet that contract is a separate concern, and Verus's current handling assumes unverified impls satisfy their trait contracts.
+
+Let me check how the sibling modules handle this same pattern to see if it's an established, accepted approach across the verified address tower.
+[RESULT ✓] bash: === sibling phys.rs Address impl annotation ===
+=== find phys.rs location ===
+./src/kernel/src/hal/mem/types/address/phys.rs
+<shellId: 2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== phys.rs Address impl + into_raw_value ==="; grep -n "impl Address for\|impl.*Addr
+[RESULT ✓] bash: === phys.rs Address impl + into_raw_value ===
+40:#[verus_verify(external_derive)]
+48:impl PhysicalAddress {
+90:#[verus_verify]
+91:impl PhysicalAddress {
+167:impl Address for PhysicalAddress {
+262:    fn into_raw_value(self) -> usize {
+270:    fn as_ptr(&self) -> *const u8 {
+271:        self.0.as_ptr...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Confirmed: sibling `PhysicalAddress` (already verified) uses the **identical** pattern — `impl Address for PhysicalAddress` at line 167 is **unannotated**, and its `into_raw_value` (line 262) has no per-impl spec; the contract lives solely on the trait declaration. My turn-1 fix request was wrong: annotating the impl forces all-or-nothing verification including the Verus-unsupported `usize as *const u8` casts. The fixer correctly identified this and the trait-declaration contract satisfies the caller requirement.
+
+Item 1 is **PASS** via the trait declaration. Now let me confirm cross-module regression and build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -25
+
+[THINKING] Looking at the `PhysicalAddress` implementation, I can see it follows the same pattern as the trait—the `impl Address` block has no `#[verus_verify]` attribute, and the `into_raw_value` method doesn't have a per-impl `#[verus_spec]` annotation. The contract is defined at the trait level, which is the consistent approach used throughout this verified address hierarchy, so the fixer's approach is correct.
+
+The checklist item about in-scope exec functions having requires/ensures is satisfied because the trait declaration's contract (mod.rs:51-55) binds all implementers including `VirtualAddress`. Even though the impl itself isn't marked for verification, this trait-level contract is the canonical spec location and is accepted as the pattern in this codebase—the same way `PhysicalAddress` is already verified and passing.
+
+Now I need to verify the broader claims: running the full verify and build to confirm the fixer's assertion of 35 verified sys + 60 kernel with zero errors, and checking for any regressions.
