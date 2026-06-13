@@ -181,3 +181,28 @@ Now let me run the genuine experiments. **Experiment 1**: add a `#[verus_spec]` 
 Turn 10
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -A6 -iE "error|does not yet support|veri
+[RESULT ✓] bash: error: The verifier does not yet support the following Rust feature: complex break expressions
+   --> src/libs/bump_allocator/src/lib.rs:277:17
+    |
+277 |                 break current;
+    |                 ^^^^^^^^^^^^^
+
+error: could not compile `bump-allocator` (lib) due to 1 previous error
+
+===...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+**Blocker 1 confirmed** (`break current;` → "complex break expressions"). This is behavior-preservingly fixable. Let me rewrite the CAS loop to avoid break-with-value, then probe the next blocker.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] I've identified the first blocker with the `break` statement using complex expressions, which is something I can fix by restructuring the loop. Let me rewrite the CAS loop to eliminate the break-with-value pattern and then test again to uncover the next issue.
+
+The rewritten version assigns the current value to a mutable variable before breaking, which preserves the exact same behavior. However, Verus loops require an `invariant` clause, and I'm uncertain whether Verus has specifications for the atomic operations like `load` and `compare_exchange` — I may need to use `assume_specification` to work around that. Let me test this change and see what errors surface next.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A6 -iE "does not yet support|error\

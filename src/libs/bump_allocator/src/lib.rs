@@ -263,7 +263,8 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     )]
     pub fn alloc(&self) -> Result<&'static mut [u8; N], BumpAllocError> {
         // Reserve a slot index via compare-and-swap to avoid overshooting the counter.
-        let idx: usize = loop {
+        let mut idx: usize = 0;
+        loop {
             let current: usize = self.next_slot.load(Ordering::Acquire);
             if current >= S::NUM_UNITS {
                 return Err(BumpAllocError::Exhausted);
@@ -274,9 +275,10 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
                 .compare_exchange(current, next, Ordering::AcqRel, Ordering::Acquire)
                 .is_ok()
             {
-                break current;
+                idx = current;
+                break;
             }
-        };
+        }
 
         let stride: usize = align_up(N, A).ok_or(BumpAllocError::Overflow)?;
         let offset: usize = idx.checked_mul(stride).ok_or(BumpAllocError::Overflow)?;
