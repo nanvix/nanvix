@@ -4,10 +4,17 @@
 // FixedSizeBumpAllocator - Specifications
 //
 // This file contains the abstract View (`BumpView`), its invariant and geometry
-// helpers, the numeric specification of `align_up`, and the contracts that the
-// exec functions in `lib.rs` reference. See
+// helpers, the numeric specification of `align_up`, and the proof-lemma targets
+// that encode the caller expectations. See
 // `verus-ai-logs/nanvix-phys-bump-allocator/view_design.md` for the design
 // rationale.
+//
+// NOTE: Attaching `BumpView` as the `View` of `FixedSizeBumpAllocator` is a later
+// phase (view_design.md, end of section 2). It requires an atomic-ghost / PointsTo
+// token to model the interior-mutable `AtomicUsize` cursor, because the raw atomic
+// value is not readable in spec (vstd: "NO support for reasoning about the values
+// inside the atomics"). Until then `BumpView` is referenced by the proof lemmas in
+// `lib.proof.rs`, which state the caller-facing guarantees over the abstract pool.
 
 verus! {
 

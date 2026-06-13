@@ -929,3 +929,69 @@ Turn 46
 ────────────────────────────────────────────────────────────
 Now run to confirm the crate compiles with alloc/alloc_as unannotated and align_up + lemmas verify:
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-bump-allocator 2>&1 | sed -n '/Checking bump/,/Log written/p' | hea
+[RESULT ✓] bash: Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+verification results:: 4 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.75s
+
+=== Results ===
+  4 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: ass...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+Excellent — **4 verified, 0 errors**. `align_up` is fully verified (real proof) and the 3 lemmas verify with `admit()` placeholders (expected for the spec phase). The `CHEATING_DETECTED` status is solely the `admit=3` in proof bodies, which the task explicitly permits.
+
+`alloc`/`alloc_as` hit genuine Verus front-end limitations. Per **verus-constraints**, I must record these (not work around). Let me update the spec header and create the required log files.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+
+[THINKING] I've got 4 verified items total—align_up with a real proof and 3 lemmas that rely on admits. The coverage is limited to just align_up since as_mut_ptr doesn't count toward the contract. The cheating status is flagged because of those 3 admits in the lemma bodies, which the spec phase allows but still registers as admitted code.
+
+For alloc_as, the real blocker is that final raw pointer dereference line, but I'm reconsidering whether the raw-array precedent actually justifies using external_body with a spec if I list it in tcb-allowed.md. The task's hard rule explicitly permits external_body for functions listed there, and alloc/alloc_as do contain genuinely unverifiable unsafe operations—that's a legitimate trust boundary, just like raw-array handled it as a trusted shim.
+
+But there's a genuine conflict: the verus-constraints skill says "must be fully verified OR ELIMINATED," and these functions can't be either. If I can't verify them and can't remove them, they're stuck—unless the task's permission mechanism (listing in tcb-allowed.md) is the intended escape hatch. The coverage gain would be significant (1/6 → 3/6 with real contracts), which aligns with the task's ultimate goal of meaningful specs covering caller expectations.
+
+However, re-reading the hard rules: the sanctioned path for unverifiable, non-TCB functions is to record them in verification-todo.md and verus-unsupported.md, not to add external_body or edit tcb-allowed.md. So approach (B)—leaving them unannotated—is the compliant one, even though it means the kernel gets no spec for alloc_as when it's verified later. That's a future-phase concern; the bump_allocator module verifies cleanly now, which is this phase's goal.
+
+The real blockers are the raw pointer dereferences: `&mut *(slot.as_mut_ptr() as *mut MaybeUninit<T>)` in alloc_as and the cast-and-deref in alloc itself. There's no safe Verus way around these without a rewrite, so (B) is confirmed. Now I need to finalize the documentation in verification-todo.md and verus-unsupported.md.
+
+On as_mut_ptr: adding a strong contract like "ensures stability/alignment" would impose unprovable obligations on the kernel impl and could break verification later, so I shouldn't add one. A tautological contract like "ensures true" is just an anti-pattern.
+
+Actually, keeping as_mut_ptr bare with #[verus_spec] is fine—it marks it as in-scope with no provable contract, which is a TCB duty. The trait compiled without errors, so it's accepted. I'll keep it bare but add a doc comment noting the contract is a TCB/unsafe responsibility.
+
+For the lemmas with admit: they're pure arithmetic about BumpView and genuinely provable, so proving them would remove the CHEATING_DETECTED status and give a clean result.  But the task explicitly scopes this as the specification phase where admit placeholders are expected—the success criterion is "0 Verus errors," which I have. I'll leave them as admit per the task's instruction and move on to updating the documentation files and running the regression tests.
+
+Let me verify all the spec functions are properly connected through the lemmas: slot_addr feeds into geometry_ok which is ensured by lemma_geometry; inv is required by all three lemmas; has_capacity and is_consumed are used in the transition lemmas; spec_alloc is referenced in lemma_alloc_transition; and align_up_spec ties into the invariant and alignment ensures. Everything's connected.
+
+Now I need to update the spec.rs module documentation to clarify that it defines the contracts referenced by the exec functions, then create the deferred documentation files and run the verification and build checks.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/verus-unsupported.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/verus-unsupported.md with 2266 characters
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/verification-todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/verification-todo.md with 1975 characters
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/bugs.md
+
+[THINKING] I should create a bugs.md file documenting that no bugs were found during the specification review—the code handles overflow correctly with checked arithmetic, has no off-by-one errors, and the alignment logic is sound. Then I'll run the verification and build commands to ensure everything compiles and passes regression tests.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/bugs.md with 808 characters
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+Now run regression checks — `make verify` (all modules) and `make build` (dual compilation):
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 make verify 2>&1 | grep -iE "verified|error|status|crate|Summary|cheating|cover
