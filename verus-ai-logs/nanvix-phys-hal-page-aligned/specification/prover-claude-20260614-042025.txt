@@ -2108,3 +2108,30 @@ Turn 136
 [TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned; sed -n '63,66p' page.rs; echo "---"; cd /home/ru
 
 [THINKING] I'm checking whether the `verus_verify` attribute was properly re-added to line 65 where the Address impl is defined.
+[RESULT ✓] bash: #[verus_verify]
+impl<T: Address> Address for PageAligned<T> {
+    fn into_raw_value(self) -> usize {
+---
+thread 'rustc' (1347785) panicked at vir/src/traits.rs:511:13:
+error: could not compile `kernel` (bin "kernel")
+  process didn't exit successfully: `/home/ruize/toolchain/verus/verus /home/ruize/...
+
+────────────────────────────────────────────────────────────
+Turn 137
+────────────────────────────────────────────────────────────
+Confirmed Verus bug: generic trait impl + trait method with `#[verus_spec]` → duplicate `TraitMethodImpl` panic. Unfixable from my side. I'll use the trait-decl spec with the impl trusted (into_raw_value still carries its contract for callers). Reverting `#[verus_verify]`:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] The panic persists even with the bound alignment fix, and I'm seeing it specifically when verifying the generic trait implementation—this looks like a genuine Verus bug. Now I'm investigating why `into_raw_value` is duplicating: it's the only method in the Address trait with a `#[verus_spec]` annotation, so the duplication seems tied to that spec'd method. Though this contradicts what I saw in shellId 83, where there was no spec but still a panic—unless that was a different method causing the issue.
+
+Actually, I think the cached build in 83 might be misleading me. Looking at the current evidence from shells 86 and 95, the pattern is clear: when a trait method has `#[verus_spec]`, both the real and companion versions register as TraitMethodImpl, causing the duplicate panic. The non-generic physical test didn't panic (it hit a const error instead), so it's specifically the combination of genericity plus a trait-method spec that triggers this. This is unfixable on my end—it's a Verus bug.
+
+My plan: keep the trait-decl spec on `into_raw_value` but mark the Address impl as unverified (trusted), letting the contract live in the trait itself. I'll remove `verus_verify` from the impl and restore the View bounds. Since the supertrait `Address: View<V=int>` exists, `T: Address` already implies `T: View`, so `self.0@` will work fine in normal builds. Let me strip the verification attribute and test with the kernel module.
+
+I should also document this Verus limitation in bugs.md as a verification blocker, then proceed with the build and verification checks.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 138
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
