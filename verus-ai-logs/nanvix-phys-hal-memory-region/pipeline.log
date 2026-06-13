@@ -57,3 +57,6 @@ Module: hal-memory-region
 [2026-06-14 06:24:28]   ↳ dialogue-reviewer-t2 done in 1m58s (exit=0)
 [2026-06-14 06:24:28] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-06-14 06:24:28] [DIALOGUE] specification ended after 2 turns: RESOLVED (694s)
+[2026-06-14 06:24:28] [PHASE] specification: dialogue-RESOLVED (25m26s)
+[2026-06-14 06:24:28] [SPEC DRIFT] (within specification) Comparing e86b4566 → 879c2a7a
+[2026-06-14 06:24:28] [SPEC DRIFT] (within specification) No changes detected
