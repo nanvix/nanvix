@@ -188,7 +188,9 @@ impl PhysMemoryManager {
         count: usize,
         frames: &mut Vec<UserFrame>,
     ) -> Result<(), Error> {
-        let ghost g_old = self@;
+        proof_decl! {
+            let ghost g_old = self@;
+        }
         if !frames.is_empty() {
             let reason: &str = "frames vector is not empty";
             error!("{reason}");
@@ -341,7 +343,9 @@ impl PhysMemoryManager {
             },
     )]
     pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
-        let ghost g_old = self@;
+        proof_decl! {
+            let ghost g_old = self@;
+        }
         let frame_addr: FrameAddress = frame::alloc()?;
         let result: Result<KernelFrame, Error> = KernelFrame::new(frame_addr).inspect_err(|e| {
             warn!("failed to wrap frame after KernelFrame::new failure: {e:?}");
@@ -398,7 +402,9 @@ impl PhysMemoryManager {
         count: usize,
         frames: &mut Vec<KernelFrame>,
     ) -> Result<(), Error> {
-        let ghost g_old = self@;
+        proof_decl! {
+            let ghost g_old = self@;
+        }
         // Check if caller-provided vector is not empty.
         if !frames.is_empty() {
             let reason: &str = "frames vector is not empty";

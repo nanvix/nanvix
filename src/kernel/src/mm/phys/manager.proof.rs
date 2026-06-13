@@ -1,12 +1,6 @@
 verus! {
 
-use crate::mm::phys::{
-    phys_view,
-    FrameAllocView,
-};
-use crate::mm::phys::upool::UserFrame;
-use crate::mm::phys::kframe::KernelFrame;
-use ::arch::mem;
+use crate::mm::phys::phys_view;
 
 //==================================================================================================
 // Global-token attachment (deferred to the proving phase)

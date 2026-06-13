@@ -32,7 +32,7 @@ pub struct UserFrame {
 verus! {
 
 use crate::hal::mem::spec_page_size;
-use crate::mm::phys::manager::FrameAllocView;
+use crate::mm::phys::FrameAllocView;
 
 /// Abstract view of a user frame: the physical address of the owned frame.
 impl View for UserFrame {

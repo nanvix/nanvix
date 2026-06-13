@@ -3,10 +3,6 @@ verus! {
 use crate::hal::mem::spec_page_size;
 use crate::mm::phys::FrameAllocView;
 
-//==================================================================================================
-// Standard-library specifications used by the manager exec functions
-//==================================================================================================
-
 // `Result::and_then`: on `Ok`, the closure is applied to the payload (its precondition must hold);
 // on `Err`, the error is forwarded unchanged. Mirrors `core`'s implementation. vstd ships no
 // specification for it.
@@ -110,9 +106,6 @@ impl PhysMemoryManager {
 //==================================================================================================
 // Handle-set helpers
 //==================================================================================================
-
-use crate::mm::phys::upool::UserFrame;
-use crate::mm::phys::kframe::KernelFrame;
 
 /// The set of physical frame addresses owned by a sequence of user-frame handles.
 pub open spec fn user_addr_set(frames: Seq<UserFrame>) -> Set<int> {

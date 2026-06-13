@@ -1861,3 +1861,277 @@ Turn 115
 ────────────────────────────────────────────────────────────
 Now let me run verification. First the module scope:
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -60
+[RESULT ✓] bash: - frame.rs:565 alloc_range: external_body
+    - frame.rs:657 init: external_body
+    - frame.rs:710 alloc: external_body
+    - frame.rs:737 alloc_contiguous: external_body
+    - frame.rs:757 free_count: external_body
+    - frame.rs:771 free: external_body
+    - kframe.rs:80 new: external_body
+    - ...
+
+────────────────────────────────────────────────────────────
+Turn 116
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error\[\|error:
+
+[THINKING] I need to check the compilation error logs to see what went wrong with the Verus compilation.
+[RESULT ✓] bash: 20:error: expected one of `:`, `;`, `=`, `@`, or `|`, found `g_old`
+26:error: expected one of `:`, `;`, `=`, `@`, or `|`, found `g_old`
+32:error: expected one of `:`, `;`, `=`, `@`, or `|`, found `g_old`
+38:error: Misuse of #[verus_spec]
+44:error: Misuse of #[verus_spec]
+50:error: Misuse of #[verus_...
+
+────────────────────────────────────────────────────────────
+Turn 117
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '18,60p'
+
+[THINKING] I'm running into a syntax issue with ghost variable declarations outside the verus! macro context. The `let ghost` syntax isn't being recognized in attribute-style code, and I need to figure out whether to use the `proof!` macro instead or find the correct syntax for declaring ghost variables in this context.
+
+There are also duplicate imports causing conflicts—both the spec and proof files are re-importing types like UserFrame and KernelFrame that are already imported in the main manager.rs file, and since they're textually included into the same module scope, I'm getting E0252 errors. I need to deduplicate these imports.
+
+Additionally, there's a missing function error for `init` that might be stemming from macro expansion, and FrameAllocView is showing as private when I try to import it from the mm::phys module.
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: expected one of `:`, `;`, `=`, `@`, or `|`, found `g_old`
+   --> src/kernel/src/mm/phys/manager.rs:191:19
+    |
+191 |         let ghost g_old = self@;
+    |                   ^^^^^ expected one of `:`, `;`, `...
+
+────────────────────────────────────────────────────────────
+Turn 118
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "verus_spec\|verus_verify\|let ghost\|proof!\|fn init\|fn book\b" src/kernel/src/mm/p
+
+[THINKING] The `let ghost g_old = self@;` syntax isn't being recognized because the verus_spec macro isn't transforming the function body. The error "Misuse of #[verus_spec]" suggests I might need `#[verus_verify]` alongside it, or the macro transformation requires `proc_macro_hygiene` to properly handle the verus-specific constructs in the body.
+
+Let me look at how verified functions in the codebase actually declare their specs and bodies—checking mod.rs for examples of functions with proof code that compile successfully.
+[RESULT ✓] bash: 59:#[verus_verify(external_body)]
+60:#[verus_spec(result =>
+87:#[verus_verify(external_body)]
+88:#[verus_spec(result =>
+149:#[verus_spec(result =>
+167:pub fn init(
+176:    proof!{
+190:    proof!{
+<shellId: 58 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 119
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+[RESULT ✓] view: 149. #[verus_spec(result =>
+150.     requires
+151.         phys_view().inv(),
+152.     ensures
+153.         phys_view().inv(),
+154.         match result {
+155.             Ok(_) => {
+156.                 &&& phys_view().live()
+157.                 &&& phys_view().frames.all_reserved(
+158.           ...
+
+────────────────────────────────────────────────────────────
+Turn 120
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "let ghost\|Ghost(\|Ghost::new\|let tracked\|let mut ghost" src/kernel/src src/libs 
+
+[THINKING] I'm seeing that `mod.rs` uses `#[verus_spec(...)]` with `proof!{}` blocks successfully, so that pattern works fine. The actual parse error is triggered by `let ghost` declarations—specifically `let ghost g_old = self@;`—and the "Misuse of #[verus_spec]" errors are appearing on the three functions that contain `let ghost` statements.
+
+The issue is that `let ghost` is special syntax that only the `verus!` macro or the `verus_spec` body-rewriter handles, but the `#[verus_spec]` attribute apparently doesn't rewrite the body to transform `let ghost` into valid Rust. Since the rustc parser is choking on it before the macro can intervene, I need to use `Ghost` instead—wrapping the snapshot like `let g_old = Ghost(self@);` to make it work in attribute-style code.
+
+But I'm realizing `Ghost::new` is spec-only, so that won't work in the exec body. The real issue is that `old(self)@` is only available in `ensures` clauses, not in the function body, so I need a snapshot to pass to lemmas. The idiomatic approach in attribute-style might be to wrap things in a `proof!` block or check if adding `#[verus_verify]` alongside `#[verus_spec]` enables `let ghost` syntax—I should search the repo for examples of `let ghost` in attribute-style functions to see how it's actually done.
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.rs:191:        let ghost g_old = self@;
+src/kernel/src/mm/phys/manager.rs:344:        let ghost g_old = self@;
+src/kernel/src/mm/phys/manager.rs:401:        let ghost g_old = self@;
+src/libs/bitmap/src/lib.test.rs:436:        let ghost initial_bits: int = bitmap@.num_b...
+
+────────────────────────────────────────────────────────────
+Turn 121
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '540,556p' src/libs/bitmap/src/lib.rs; echo "=== look back for fn attribute ==="; awk 
+
+[THINKING] I see that `bitmap/src/lib.rs` actually does use the `let ghost` syntax in attribute style, so it should be supported — but it's failing for me, which suggests the issue might be with how the function is annotated. I'm wondering if functions need `#[verus_verify]` on the function body itself for the rewriting to work, whereas I only have `#[verus_spec]`. Let me look at how the bitmap function around line 554 is annotated to figure out what's different.
+[RESULT ✓] bash: },
+            },
+    )]
+    pub fn set(&mut self, index: usize) -> Result<(), Error> {
+        // TODO: remove this runtime check once all callers are verified and we add a
+        // precondition to this function requiring the bit to already be cleared.
+
+        // Check if the bit is already set....
+
+────────────────────────────────────────────────────────────
+Turn 122
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '552,600p' src/libs/bitmap/src/lib.rs | grep -n "old_self\|proof_decl\|proof!\|invaria
+
+[THINKING] I see that `let ghost` declarations need to be wrapped inside the `proof_decl!` macro block to make them visible in the outer exec scope, rather than placed directly in the execution body. So I should structure it as declaring the ghost variable within `proof_decl! { ... }` and then reference it later.
+
+Now I'm checking whether ghost variables declared inside `proof_decl!` remain accessible in subsequent `proof!` blocks and throughout the loop body, similar to how `old_self` is used in the bitmap example.
+[RESULT ✓] bash: 2:        proof_decl! {
+3:            let ghost old_self = *self;
+4:            assert(!old_self@.set_bits.contains(index as int));
+9:        proof! {
+10:            old_self.lemma_set_bit_preserves_inv(self, word as int, bit as int, index as int);
+<shellId: 61 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 123
+────────────────────────────────────────────────────────────
+The `let ghost` needs `proof_decl!` wrapper, and imports are duplicated. Let me fix both:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "FrameAllocView\|pub use\|mod manager\|pub mod\|include!" src/kernel/src/mm/phys/mod
+
+[THINKING] I'm noticing that ghost bindings declared in `proof_decl!` are accessible in subsequent `proof!` blocks, so I need to wrap the `let ghost g_old = self@;` declaration in a `proof_decl!` macro to ensure it's properly scoped and available to the loop invariant.
+
+Now I'm looking at the duplicate imports across manager.spec.rs and manager.proof.rs — both files are importing UserFrame, KernelFrame, and other types that are already imported in manager.rs. Since these files are included textually into the same module, the imports collide. I should remove those duplicate imports from the spec and proof files rather than re-importing them.
+
+But I need to be careful: manager.rs imports UserFrame and KernelFrame, but not FrameAllocView or spec_page_size, so those should stay in spec.rs. The tricky part is that FrameAllocView is being imported in both spec.rs and proof.rs, creating a duplicate import error, and there's also a visibility issue where FrameAllocView might not be properly exported from the mm::phys module.
+
+The cleanest solution is to consolidate: keep the shared imports (UserFrame, KernelFrame, mem, FrameAddress, frame, Error, ErrorCode) in manager.rs, put spec_page_size and FrameAllocView only in spec.rs, and remove the duplicate imports from proof.rs since they'll all be in the same module after includes anyway. The spec.rs helpers that use UserFrame and KernelFrame will resolve through manager.rs's imports, so that's fine. The assume_specification for Vec::capacity using `::core::alloc::Allocator` is also okay. Most of the remaining "cannot find function" errors are likely cascading from the parse failures — once I fix the `let ghost` syntax by wrapping those three statements in `proof_decl!` blocks and deduplicate the imports across spec.rs and proof.rs, those should clear up. I should also verify how FrameAllocView is exposed in mod.rs to understand the E0603 privacy error.
+[RESULT ✓] bash: 12:mod manager;
+41:include!("mod.spec.rs");
+43:include!("mod.proof.rs");
+49:pub use self::{
+<shellId: 62 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 124
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+[RESULT ✓] view: 41. include!("mod.spec.rs");
+42. #[cfg(verus_keep_ghost)]
+43. include!("mod.proof.rs");
+44. 
+45. //==================================================================================================
+46. // Exports
+47. //=================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 125
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '205,250p'
+
+[THINKING] I'm noticing that mod.spec.rs gets included unconditionally without any cfg guards, which means FrameAllocView is always defined in the mm::phys module. The question is whether the verus! macro still emits the struct definition in non-verus builds, or if it gets stripped out entirely.
+[RESULT ✓] bash: = and 7 other candidates
+
+error[E0603]: struct import `FrameAllocView` is private
+  --> src/kernel/src/mm/phys/upool.rs:35:31
+   |
+35 | use crate::mm::phys::manager::FrameAllocView;
+   |                               ^^^^^^^^^^^^^^ private struct import
+   |
+note: the struct import `FrameAllocView` ...
+
+────────────────────────────────────────────────────────────
+Turn 126
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] I need to fix the import in upool.rs to reference FrameAllocView directly from the phys module rather than going through the manager submodule. The compilation errors about missing functions are appearing at their definition lines, which suggests there's an issue with how these functions are being declared or exported. I'm wondering if these "cannot find function" errors are cascading from the upstream issues like the duplicate imports and parse failures, or if they're real problems with the new external_body specs I added to frame.rs and kframe.rs. The `#[verus_spec]` macro might be generating code that references the function at module level, but since these are methods in impl blocks or free functions in non-verus contexts, the generated wrapper can't find them. I should check whether these annotations ever compiled successfully before — this is the first verify run with them — and whether the macro requires the function to be in a specific scope or context.
+[RESULT ✓] view: 60.     ///
+61.     /// - `base`: Frame address.
+62.     ///
+63.     /// # Returns
+64.     ///
+65.     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
+66.     ///
+67.     // Dependency contract: wrapping a frame goes through `mm::virt::identity_map_page`, wh...
+
+────────────────────────────────────────────────────────────
+Turn 127
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+
+[THINKING] The `external_body` attribute means the function body isn't formally verified but still gets compiled, so the issue with "cannot find function `new`" is puzzling. Looking at how `kf@ == base@` references KernelFrame's View, which is defined as returning `self.base@` — that requires FrameAddress to have a View implementation, which should be fine. But something's off with the function resolution itself.
+
+Actually, I think these "cannot find function" errors are cascading from the parse failures in manager.rs with the `let ghost` syntax. When a module fails to parse, rustc's name resolution gets confused across the entire crate, producing spurious errors at unrelated definitions. This is a common pattern — one parse error triggers a cascade of resolution failures elsewhere.
+
+Let me fix the immediate issues: convert the three `let ghost` declarations to use `proof_decl!`, clean up duplicate imports in spec.rs and proof.rs, and fix the upool.rs FrameAllocView import to use a direct path. Once those parse errors clear, the cascading resolution errors should disappear too.
+
+For the imports, I need to be careful about visibility within the `verus!{}` blocks and the `include!` macro. Since all `use` statements land in the manager module, duplicates across the three files will conflict. The strategy is to keep each name imported exactly once: manager.rs handles `mem`, `UserFrame`, and `KernelFrame`; spec.rs keeps `FrameAllocView` and `spec_page_size`; proof.rs keeps `phys_view`. Since `FrameAllocView` is used in both spec.rs and proof.rs but they're in the same module, importing it once in spec.rs is fine.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 128
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+
+[THINKING] I need to check the current state of spec.rs since I accidentally removed the comment header while the assume_spec block is still there—let me view the file to see what needs to be fixed.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::hal::mem::spec_page_size;
+4. use crate::mm::phys::FrameAllocView;
+5. 
+6. // `Result::and_then`: on `Ok`, the closure is applied to the payload (its precondition must hold);
+7. // on `Err`, the error is forwarded unchanged. Mirrors `core`'s implementation. vstd ships no
+...
+
+────────────────────────────────────────────────────────────
+Turn 129
+────────────────────────────────────────────────────────────
+Now remove the duplicate `UserFrame`/`KernelFrame` imports in spec.rs:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+[RESULT ✓] view: 105. 
+106. //==================================================================================================
+107. // Handle-set helpers
+108. //==================================================================================================
+109. 
+110. use crate::mm::phys::upool::UserFrame;
+111. ...
+
+────────────────────────────────────────────────────────────
+Turn 130
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+
+[THINKING] I'm noticing that manager.rs and spec.rs are both importing UserFrame and KernelFrame from the same path in the upool module, so these are redundant imports in spec.rs that should be removed.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 131
+────────────────────────────────────────────────────────────
+Now dedupe proof.rs imports:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 132
+────────────────────────────────────────────────────────────
+Now fix the three `let ghost` statements with `proof_decl!`:
+[TOOL] bash: cd /home/ruize/nanvix-phy; perl -0pi -e 's/        let ghost g_old = self\@;\n/        proof_decl! {\n            let gh
+
+[THINKING] I'm checking where proof.rs gets its type imports from—FrameAllocView comes directly from spec.rs in the same module, while UserFrame and KernelFrame are being pulled in from manager.rs.
+
+Now I need to convert those three `let ghost` declarations to `proof_decl!` macros and fix the FrameAllocView import in upool.rs.
+[RESULT ✓] bash: 191:        proof_decl! {
+192:            let ghost g_old = self@;
+346:        proof_decl! {
+347:            let ghost g_old = self@;
+405:        proof_decl! {
+406:            let ghost g_old = self@;
+<shellId: 64 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 133
+────────────────────────────────────────────────────────────
+Now fix the upool.rs FrameAllocView import:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "FrameAllocView\|use crate::mm::phys" src/kernel/src/mm/phys/upool.rs | head
+[RESULT ✓] bash: 35:use crate::mm::phys::manager::FrameAllocView;
+51:    type V = FrameAllocView;
+53:    uninterp spec fn view(&self) -> FrameAllocView;
+<shellId: 65 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 134
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 135
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -50
