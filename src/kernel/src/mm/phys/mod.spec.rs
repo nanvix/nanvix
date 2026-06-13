@@ -47,5 +47,139 @@ impl FrameAllocView
     }
 }
 
+//==================================================================================================
+// LinkedList standard-library shim
+//==================================================================================================
+//
+// `vstd` does not (yet) provide a specification for `alloc::collections::LinkedList`
+// or its iterator, so iterating one in a `for` loop is rejected by the Verus
+// front-end. The following block supplies the missing stdlib specification, mirroring
+// the `VecDeque` shim shipped in `vstd::std_specs::vecdeque` (both expose an
+// `Iter<'a, T>` yielding `&'a T`). This is an external-bottom trust boundary on the
+// standard library, identical in spirit to the existing vstd iterator shims.
+
+use ::alloc::collections::linked_list::Iter as LinkedListIter;
+use ::alloc::collections::LinkedList;
+use ::core::alloc::Allocator;
+use vstd::pervasive::ForLoopGhostIterator;
+use vstd::pervasive::ForLoopGhostIteratorNew;
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct ExLinkedList<T, A: Allocator>(LinkedList<T, A>);
+
+impl<T, A: Allocator> View for LinkedList<T, A> {
+    type V = Seq<T>;
+
+    uninterp spec fn view(&self) -> Seq<T>;
+}
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct ExLinkedListIter<'a, T: 'a>(LinkedListIter<'a, T>);
+
+impl<'a, T: 'a> View for LinkedListIter<'a, T> {
+    type V = (int, Seq<T>);
+
+    uninterp spec fn view(self: &LinkedListIter<'a, T>) -> (int, Seq<T>);
+}
+
+pub assume_specification<'a, T>[ LinkedListIter::<'a, T>::next ](
+    elements: &mut LinkedListIter<'a, T>,
+) -> (r: Option<&'a T>)
+    ensures
+        ({
+            let (old_index, old_seq) = old(elements)@;
+            match r {
+                None => {
+                    &&& elements@ == old(elements)@
+                    &&& old_index >= old_seq.len()
+                },
+                Some(element) => {
+                    let (new_index, new_seq) = elements@;
+                    &&& 0 <= old_index < old_seq.len()
+                    &&& new_seq == old_seq
+                    &&& new_index == old_index + 1
+                    &&& element == old_seq[old_index]
+                },
+            }
+        }),
+;
+
+pub struct LinkedListIterGhostIterator<'a, T> {
+    pub pos: int,
+    pub elements: Seq<T>,
+    pub phantom: Option<&'a T>,
+}
+
+impl<'a, T> ForLoopGhostIteratorNew for LinkedListIter<'a, T> {
+    type GhostIter = LinkedListIterGhostIterator<'a, T>;
+
+    open spec fn ghost_iter(&self) -> LinkedListIterGhostIterator<'a, T> {
+        LinkedListIterGhostIterator { pos: self@.0, elements: self@.1, phantom: None }
+    }
+}
+
+impl<'a, T: 'a> ForLoopGhostIterator for LinkedListIterGhostIterator<'a, T> {
+    type ExecIter = LinkedListIter<'a, T>;
+
+    type Item = T;
+
+    type Decrease = int;
+
+    open spec fn exec_invariant(&self, exec_iter: &LinkedListIter<'a, T>) -> bool {
+        &&& self.pos == exec_iter@.0
+        &&& self.elements == exec_iter@.1
+    }
+
+    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
+        init matches Some(init) ==> {
+            &&& init.pos == 0
+            &&& init.elements == self.elements
+            &&& 0 <= self.pos <= self.elements.len()
+        }
+    }
+
+    open spec fn ghost_ensures(&self) -> bool {
+        self.pos == self.elements.len()
+    }
+
+    open spec fn ghost_decrease(&self) -> Option<int> {
+        Some(self.elements.len() - self.pos)
+    }
+
+    open spec fn ghost_peek_next(&self) -> Option<T> {
+        if 0 <= self.pos < self.elements.len() {
+            Some(self.elements[self.pos])
+        } else {
+            None
+        }
+    }
+
+    open spec fn ghost_advance(
+        &self,
+        _exec_iter: &LinkedListIter<'a, T>,
+    ) -> LinkedListIterGhostIterator<'a, T> {
+        Self { pos: self.pos + 1, ..*self }
+    }
+}
+
+impl<'a, T> View for LinkedListIterGhostIterator<'a, T> {
+    type V = Seq<T>;
+
+    open spec fn view(&self) -> Seq<T> {
+        self.elements.take(self.pos)
+    }
+}
+
+pub assume_specification<'a, T, A: Allocator>[ LinkedList::<T, A>::iter ](
+    v: &'a LinkedList<T, A>,
+) -> (r: LinkedListIter<'a, T>)
+    ensures
+        r@ == (0int, v@),
+;
+
 } // end verus!
 

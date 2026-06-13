@@ -730,3 +730,254 @@ Turn 33
 Turn 34
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
+[RESULT ✓] bash: error: `alloc::collections::linked_list::Iter` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+72 |       for...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize; grep -rln "LinkedList" /home/ruize/toolchain/verus/vstd/ /home/ruize/verus-ai-exp/verus-ai/vstd/ 2>/dev/
+
+[THINKING] I'm seeing concrete errors now — Verus doesn't support `LinkedList::iter()`, the `Iter` type, or `LinkedList` directly without external type specifications. Verus is even suggesting the wrapper declarations I need, like creating an `ExIter` struct that wraps the standard library's iterator type.
+
+The bigger issue is that calling external unannotated functions from verified code fails — Verus errors with "cannot use function ... which is ignored because it is ... external." This means my plan to leave callees unannotated won't work. Every function called from the verified `mod.rs` functions needs either a `#[verus_spec]` annotation or an `assume_specification`. So I need to add specs for `frame::init`, `frame::alloc_range`, `frame::book`, `frame::is_covered`, `Upool::new`, `PhysMemoryManager::init`, the LinkedList types, and various region/address conversion methods.
+
+The LinkedList iteration is particularly thorny — supporting `for` loops over LinkedList in Verus requires external type specifications for LinkedList and Iter, plus assume_specification for `iter()`, and even then the desugared loop needs ghost iterator support with `ForLoopGhostIterator`. That's a substantial amount of work. I'm weighing whether to fully spec out the iterator machinery or mark the loop-containing helper functions as `external_body` instead. So the skill actually carves out "missing spec for a stdlib function" from the "record and don't fix" rule — meaning I should provide the specs via external_type_specification and assume_specification for LinkedList's iterator. But making a for loop work over LinkedList requires the iterator type to implement Verus's ForLoopGhostIterator trait, which vstd provides for Vec but not LinkedList, and that's a much deeper problem than just adding specs. I'm hitting a realistic limit on what can be delivered here.
+
+Let me check if the project already has LinkedList specs somewhere or if vstd has added support I'm not aware of.
+[RESULT ✓] bash: === ExIter / ForLoopGhostIterator in vstd ===
+/home/ruize/verus-ai-exp/verus-ai/vstd/pervasive.rs
+/home/ruize/verus-ai-exp/verus-ai/vstd/std_specs/btree.rs
+/home/ruize/verus-ai-exp/verus-ai/vstd/std_specs/core.rs
+/home/ruize/verus-ai-exp/verus-ai/vstd/std_specs/hash.rs
+/home/ruize/verus-ai-exp/verus...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize; sed -n '1,120p' /home/ruize/verus-ai-exp/verus-ai/vstd/std_specs/slice.rs
+
+[THINKING] LinkedList isn't supported in vstd, so building it from scratch would require defining the external type specification, iterator, and ghost loop iterator—a significant and fragile undertaking. The real blocker is that two helper functions contain LinkedList for-loops, which means I need to reconsider the whole approach given the guidance to document unsupported syntax rather than rewrite executable code.
+
+I'm thinking through whether providing a minimal ghost iterator infrastructure is feasible by looking at how vstd handles simpler collections like slice iterators, since LinkedList::Iter is conceptually similar—both yield references to elements. The question is whether I can satisfy Verus by providing an assume_specification for the iter() method plus the necessary type and ghost iterator definitions, without fully verifying the loop bodies themselves.
+[RESULT ✓] bash: use super::super::prelude::*;
+use super::super::slice::SliceIndexSpec;
+use super::core::{IndexSetTrustedSpec, IndexSpec, TrustedSpecSealed};
+
+use core::ops::{Index, Range};
+use core::slice::{Iter, SliceIndex};
+
+use verus as verus_;
+
+verus_! {
+
+impl<T, const N: usize> TrustedSpecSealed for [T; N] {}
+...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize; sed -n '120,210p' /home/ruize/verus-ai-exp/verus-ai/vstd/std_specs/slice.rs
+[RESULT ✓] bash: ensures
+        ({
+            let (old_index, old_seq) = old(elements)@;
+            match r {
+                None => {
+                    &&& elements@ == old(elements)@
+                    &&& old_index >= old_seq.len()
+                },
+                Some(element) => {
+                    l...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; for f in "fn start" "fn size" "fn into_raw_value" "fn from_mmio_address" "fn from_raw_value" 
+
+[THINKING] To support iterating over a `LinkedList` with a `for` loop, I'd need to implement a whole set of specifications and ghost iterator machinery for the `Iter` type—external type specs, view implementations, assumptions about the `next` method, ghost iterator traits, and corresponding view definitions for the iterator itself.
+
+This is a substantial, self-contained piece of work that mirrors what's already done for slices, but it's risky and needs to live somewhere both the main module and frame utilities can access it. The real question is whether building a full LinkedList ghost-iterator shim is the right scope for a spec-writing phase, or if I should treat LinkedList iteration as a known limitation and focus on what's actually achievable. The skill says missing stdlib specs should be added, and Verus does suggest this approach, but the magnitude is significant—I need to decide whether to commit to building it or record it as a constraint. I'm realizing the LinkedList shim is unavoidable since the private helpers need specs, and they can't be external_body because they're in the current module. So I need to commit to building the shim by mirroring slice.rs. Now I'm enumerating all the external callees that need specs — starting with the ones in book_physical_memory_regions like frame::alloc_range, and I need to figure out whether logging macros expand to function calls that Verus will see.
+
+For book_mmio_regions, the callees include the LinkedList iterator, region accessors, gva_to_gpa, address constructors, frame operations, and arithmetic. And in init itself, I'm calling frame::init, the two helper functions, Upool::new, and PhysMemoryManager::init. Each unspecced callee triggers an error, so I need to provide specs or assume_specification for all of them — the frame functions, Upool::new, PhysMemoryManager::init, the region methods, the address conversion functions, and gva_to_gpa.
+
+Let me go through the HAL functions to see which ones already have annotations and figure out how to handle the logging macros.
+[RESULT ✓] bash: ### fn start
+src/kernel/src/hal/arch/shared/cpu/interrupt/xapic.rs:245:    pub fn start_core(
+src/kernel/src/hal/arch/shared/cpu/interrupt/controller.rs:222:    pub fn start_core(
+src/kernel/src/hal/cpu/interrupt/manager.rs:88:    pub fn start_core(
+### fn size
+src/kernel/src/hal/arch/x86/cpu/tss.rs...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "verus_spec\|verus_verify\|pub fn start\|pub fn size\|fn into_raw_value\|external" sr
+
+[THINKING] The scope here is substantial—most of these HAL functions lack verus annotations and are external, so each one would need either a formal spec or an assume_specification directive for the verified module to safely call them. The `book_mmio_regions` function is particularly affected since it relies on numerous external HAL calls like TruncatedMemoryRegion's start and size methods, along with address conversion functions. I'm now looking more closely at how region.start and size work specifically.
+[RESULT ✓] bash: 38:#[verus_verify]
+60:#[verus_verify(external_derive)]
+138:#[verus_verify(external_derive)]
+205:    pub fn start(&self) -> T {
+210:    pub fn size(&self) -> usize {
+285:#[verus_verify(external_derive)]
+357:    pub fn start(&self) -> PageAligned<T> {
+362:    pub fn size(&self) -> usize {
+=== phys.rs ...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize; sed -n '210,320p' /home/ruize/verus-ai-exp/verus-ai/vstd/std_specs/slice.rs
+
+[THINKING] Looking at the `TruncatedMemoryRegion::start` and `size` fields in region.rs around lines 205-210, I need to check whether they're inside a `#[verus_verify]` impl block. The struct definition at line 38 has the annotation, so these methods are being verified, but they likely have default `ensures true` specifications since they don't have individual verus_spec attributes.
+
+Now I'm realizing the bigger problem: functions like `from_mmio_address`, `gva_to_gpa`, `into_raw_value`, `from_address`, and `from_raw_value` aren't Verus-annotated at all, which means calling them from verified code triggers "external function" errors. To fully verify `book_mmio_regions`, I'd need assume_specification entries for at least 5-6 HAL functions, plus the LinkedList shim, plus frame manager specs — that's a massive scope touching multiple HAL files.
+
+I'm starting to question whether attempting full verification of `book_mmio_regions` with all these external dependencies is realistic in this session, given the LinkedList iteration blocker and the number of assume_specifications required.
+
+But re-reading the rules: missing specs for stdlib functions (like LinkedList iteration) should be fixed by adding the spec, not worked around with external_body or assume_specification. So the intended path is probably to build the LinkedList shim properly and add specs to all the callees. It's a big job, but I should commit to it methodically and test incrementally.
+
+To reduce risk, I can be strategic about how much each function's spec needs to prove — for compilation, every external function just needs *some* spec, even if minimal.  For HAL helpers that don't affect my postconditions, I can use assume_specification with empty ensures (just matching the signature) to satisfy the "not external" requirement. But for workspace-internal code like the frame functions, the skill forbids assume_specification entirely — I need to use #[verus_spec] with external_body and actually specify the behavior.
+
+This means adding external_body annotations to frame functions, manager::init, and upool::new, which requires importing vstd in those files. That's spreading the annotations across multiple modules, but it's the correct approach for workspace-internal code. The cheating gate will report around 14 external_body declarations, which is legitimate since they're at dependency boundaries.
+
+For the HAL helpers like gva_to_gpa and from_mmio_address, I need to use external_body annotations rather than assume_specification, since they're workspace-internal, not third-party. This means touching more HAL functions, which is getting unwieldy.
+
+Given the scope and complexity, I should focus on a more incremental approach: build the LinkedList shim properly first, then verify book_physical_memory_regions (which only needs frame::alloc_range and logging), test that works, then tackle book_mmio_regions with its HAL calls, and finally init. Let me start by testing whether the info! macro causes verification issues and getting the LinkedList shim working.
+[RESULT ✓] bash: pub broadcast proof fn axiom_spec_slice_iter<'a, T>(s: &'a [T])
+    ensures
+        (#[trigger] spec_slice_iter(s))@ == (0int, s@),
+{
+    admit();
+}
+
+#[verifier::when_used_as_spec(spec_slice_iter)]
+pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>)
+    ensures
+        ...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize; grep -n "into_iter\|IntoIterator\|ForLoopGhostIteratorNew\|when_used_as_spec" /home/ruize/verus-ai-exp/v
+
+[THINKING] I see the pattern now—to make `for region in list.iter()` work, I need to implement the same iterator trait structure for `LinkedList` and its `Iter` type, along with a `View` wrapper that exposes `LinkedList` as a `Seq<T>`. The tricky part is ensuring `Iter` implements `IntoIterator` such that calling `into_iter()` returns itself, matching how the standard library handles this.
+
+Looking at how Verus desugars for-loops, it uses `ForLoopGhostIteratorNew` on the iterator type directly rather than relying on a separate `IntoIterator` impl. Since `list.iter()` returns `Iter`, implementing `ForLoopGhostIteratorNew for Iter` should make it work, similar to how `Vec`'s iteration works through `slice::Iter`. Rather than getting bogged down in the details of every trait requirement, I should mirror the slice.rs implementation closely and build the LinkedList shim efficiently.
+[RESULT ✓] bash: 112:pub trait ExIntoIterator {
+113:    type ExternalTraitSpecificationFor: core::iter::IntoIterator;
+165:pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
+169:#[verifier::when_used_as_spec(iter_into_iter_spec)]
+170:pub assume_specification<I: Iterator>[ <I as IntoIterator>::into_iter ](...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize; sed -n '160,185p' /home/ruize/verus-ai-exp/verus-ai/vstd/std_specs/core.rs
+[RESULT ✓] bash: #[verifier::external_type_specification]
+#[verifier::accept_recursive_types(T)]
+#[verifier::reject_recursive_types_in_ground_variants(E)]
+pub struct ExResult<T, E>(core::result::Result<T, E>);
+
+pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
+    i
+}
+
+#[verifier::when_used_as_spec(iter...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize; grep -rln "book_physical_memory_regions\|ExLinkedList\|linked_list::Iter\|LinkedList::.*iter\|ForLoopGho
+
+[THINKING] I see that `into_iter` is already generically handled by vstd for any `Iterator`, so I just need to make `linked_list::Iter` a recognized type with the `Iterator` trait and a `ForLoopGhostIteratorNew` implementation plus the `next` method. For the LinkedList shim itself, I need an `external_type_specification` for `LinkedList<T,A>` where A is the allocator type parameter with a default of Global.
+
+I'll create a wrapper `ExLinkedList<T,A>` and define a `View` that maps LinkedList to `Seq<T>` using an uninterpreted spec function, then set up the corresponding `external_type_specification` for `Iter<'a,T>` with its own `View` mapping to a pair of index and sequence. The `assume_specification` for `Iter::next` mirrors the slice pattern, and I'll need to implement the ghost iterator structs and axioms the same way. Finally, I need to mark LinkedList as accepting recursive types.
+
+Actually, I'm going deep into mechanical boilerplate here and should step back—let me check if there's already a reference implementation in the backup directories or phys-mm work that handles LinkedList for-loops, since this might be a solved problem I can reuse.
+[RESULT ✓] bash: /home/ruize/verus-ai-improve/vstd/std_specs/hash.rs
+/home/ruize/verus-ai-improve/vstd/std_specs/range.rs
+/home/ruize/verus-ai-improve/vstd/std_specs/slice.rs
+/home/ruize/verus-ai-improve/vstd/std_specs/vec.rs
+/home/ruize/verus-ai-improve/vstd/std_specs/vecdeque.rs
+/home/ruize/verus-ai-improve/vstd/s...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-improve/target-systems/nanvix-slab0331; echo "=== mod.rs ==="; grep -n "verus_spec\|book_physica
+
+[THINKING] I should check that reference file to see if there's already a verified spec for these functions and a LinkedList shim I can use as a template.
+[RESULT ✓] bash: === mod.rs ===
+31:use ::alloc::collections::LinkedList;
+64:fn book_physical_memory_regions(
+66:    physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
+71:    for region in physical_memory_regions.iter() {
+79:fn book_mmio_regions(
+81:    mmio_regions: &LinkedList<TruncatedMem...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize; grep -n "ExVecDeque\|external_type_specification\|impl.*View for VecDeque\|assume_specification\|ExIter\
+
+[THINKING] The reference I found is outdated and doesn't help. There's no existing LinkedList for-loop implementation in this codebase, so I need to build it from scratch. Given the scope and complexity, I'm weighing a pragmatic approach to maximize compliance and value while acknowledging the real risk of not reaching zero errors with reasonable effort.
+
+The core blocker is that the three in-scope functions must compile and verify under Verus. The LinkedList for-loop is the critical gating issue. My plan is to build a LinkedList stdlib shim mirroring the slice.rs pattern, provide specs for all callees, and discharge postconditions using admit-lemmas. I'll start with the simplest loop function to validate the shim and the frame::alloc_range handling, then iterate from there.
+
+I need to set up the LinkedList shim in mod.spec.rs with proper type specifications for both the generic type T and allocator parameter A, handling the Iter type which only has a lifetime and T parameter.
+
+Let me check vecdeque.rs since it also has an allocator parameter and will be a closer analog than slice.rs for understanding the accept_recursive_types syntax and bounds.
+[RESULT ✓] bash: 5:use alloc::collections::vec_deque::Iter;
+7:use core::alloc::Allocator;
+15:#[verifier::external_type_specification]
+17:#[verifier::accept_recursive_types(T)]
+19:pub struct ExVecDeque<T, A: Allocator>(VecDeque<T, A>);
+21:impl<T, A: Allocator> View for VecDeque<T, A> {
+27:impl<T: DeepView, A: Allocat...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize; sed -n '260,390p' /home/ruize/verus-ai-exp/verus-ai/vstd/std_specs/vecdeque.rs
+
+[THINKING] I can use VecDeque's iterator implementation as a template since it already has the allocator parameter I need. The LinkedList iterator structure matches VecDeque's exactly—both are generic over a lifetime and element type, yielding references. I'll adapt the VecDeque shim by swapping the module and type names, but I need to watch out for naming conflicts with vstd's existing iterator definitions like `ExIter` and `IterGhostIterator`.
+
+Since these impls target different iterator types (vec_deque::Iter vs linked_list::Iter vs slice::Iter), there's no actual conflict—they're on distinct types. I'll namespace my wrapper structs locally as `ExLinkedListIter` and `LinkedListIterGhostIterator` to keep things clean. Now I need to pull the full VecDeque iterator section to copy the pattern exactly.
+[RESULT ✓] bash: // The `iter` method of a `VecDeque` returns an iterator of type `Iter`,
+// so we specify that type here.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct ExIter<'a, T: 'a>(Iter<'a, T>);
+
+impl<'a, T: 'a> View for Iter<'a, T> {
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+This is a large task gated by Verus's lack of `LinkedList` iteration support. Let me set up a todo plan and build the required stdlib shim.
+[TOOL] sql: {'description': 'Create task todos', 'query': "INSERT INTO todos (id, title, des
+
+[THINKING] Now I'm setting up the LinkedList shim in the spec file, deciding whether to keep it isolated or add it directly to mod.spec.rs within the verus block. I'm running into a question about using admit() inside a broadcast proof function—the existing slice and vecdeque implementations do this in their axiom specs, so I need to verify that pattern works here too.
+
+The key insight is that these are trusted stdlib axioms (external-bottom trust), mirroring vstd's own approach, so the admit() is acceptable even though it increases the admit count. I could avoid it by skipping the broadcast axiom and spec_iter entirely, relying only on the assume_specification's ensures clause to establish the relationship between the exec iter and its view—this would matter for how iter() behaves in spec position versus in a for-loop desugaring.
+
+I need LinkedList to have an uninterpreted View mapping to Seq<T>, since the iter() ensures clause references v@ (the LinkedList's view). Now I'm setting up the shim module with the external type specifications for LinkedList and its iterator.
+
+Writing the shim code... I'm realizing there's a potential orphan rule violation here — I can't normally implement an external trait like `ForLoopGhostIterator` from vstd on an external type like `linked_list::Iter` from alloc. vstd gets away with this for vec_deque and slice iterators, but I need to figure out if that's because of Verus's `external_type_specification` mechanism creating a proxy type, or if there's special permission involved. Let me just try implementing it and see what the compiler says — if the orphan rules block it, I'll need to find another approach, maybe moving the shim to a different crate or using a wrapper type instead.
+
+Now I'm going to add the shim implementation to mod.spec.rs and test it with the for-loop on book_physical_memory_regions.
+[RESULT ✓] sql: 6 row(s) inserted. Last inserted row ID: 6.
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr

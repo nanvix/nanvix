@@ -1,0 +1,34 @@
+Timestamp: 2026-06-14_00-24-11
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=10
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=5
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0252]: the name `LinkedList` is defined multiple times
+  --> src/kernel/src/mm/phys/mod.spec.rs:62:5
+   |
+62 | use ::alloc::collections::LinkedList;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `LinkedList` reimported here
+   |
+  ::: src/kernel/src/mm/phys/mod.rs:32:5
+   |
+32 | use ::alloc::collections::LinkedList;
+   |     -------------------------------- previous import of the type `LinkedList` here
+   |
+   = note: `LinkedList` must be defined only once in the type namespace of this module
+
+For more information about this error, try `rustc --explain E0252`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
