@@ -29,3 +29,6 @@ Module: hal-phys-address
 PHASE: view-design
 Module: hal-phys-address
 ============================================================
+[2026-06-14 05:16:54] [PROVER] Running view-design...
+[2026-06-14 05:16:54] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-14 05:21:00]   ↳ prover done in 4m06s (exit=0)
