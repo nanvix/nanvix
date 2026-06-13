@@ -538,3 +538,55 @@ Turn 27
 [THINKING] I'm working through the module path structure here. The address module is at `sys::mm::address`, and since there's a `mod virt;` declaration inside it, that creates `sys::mm::address::virt`. I need to figure out the correct module path to use, keeping in mind that the crate root re-exports everything with `pub use sys::*`, which affects how the paths resolve at the crate level.
 
 Let me try running the baseline test again with `MODULE=sys::mm::address` to see if that's the right path the verify-module tool expects.
+[RESULT ✓] bash: - try_from
+    - fmt
+    - from
+    - from
+    - from
+    - from
+    - try_from
+    - fmt
+    - new
+    - seconds
+    - nanoseconds
+    - checked_sub
+    - checked_add_duration
+    - checked_sub_duration
+    - partial_cmp
+    - cmp
+
+=== Summary ===
+  verification: 0 verified, compilation/setup error...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; L=verus-ai-logs/verify-sys/verus-logs/$(ls -t verus-ai-logs/verify-sys/verus-logs/*.log | hea
+[RESULT ✓] bash: 8:compilation/setup error (verus did not run)
+20:error: could not find module mm::address specified by --verify-module or --verify-only-module
+28:error: could not compile `sys` (lib) due to 1 previous error
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls verus-ai-logs/verification-plan.json 2>/dev/null && python3 /home/ruize/verus-ai-exp/verus
+
+[THINKING] The verify.sh script might be stripping the `sys::` prefix when it processes the module argument, or the crate root's re-export of `pub use sys::*` could be affecting how the module path is resolved. I should check how verify.sh handles the module argument relative to the crate root to understand why it's showing "mm::address" instead of the full "sys::mm::address" path.
+[RESULT ✓] bash: verus-ai-logs/verification-plan.json
+No matching modules found.
+Available modules:
+=== grep plan for address ===
+"kernel::hal::mem::types::address::aligned::page"
+"kernel::hal::mem::types::address::frame"
+"kernel::hal::mem::types::address::phys"
+"sys::sys::mm::address"
+"sys::sys::mm::address::virt"
+...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-sys MODULE=sys::sys::mm::address 2>&1 | tail -20
+
+[THINKING] I'm trying to figure out the correct module path format for the verify script. The crate is named `sys` and there's a nested module also called `sys`, so the full path is `sys::sys::mm::address`. But when I pass this to the script, it strips the crate prefix and only shows `mm::address`. It seems the `--verify-module` flag expects just the module path without the crate name, so I should be passing `sys::mm::address` to get the right module reference.
