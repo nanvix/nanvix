@@ -51,3 +51,6 @@ Module: phys-kframe
 [2026-06-14 03:30:26]   ↳ dialogue-reviewer-t1 done in 5m00s (exit=0)
 [2026-06-14 03:30:26] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-06-14 03:30:26] [DIALOGUE] specification ended after 1 turns: RESOLVED (301s)
+[2026-06-14 03:30:26] [PHASE] specification: dialogue-RESOLVED (16m13s)
+[2026-06-14 03:30:26] [SPEC DRIFT] (within specification) Comparing 72d3bf00 → 7cf6779e
+[2026-06-14 03:30:26] [SPEC DRIFT] (within specification) No changes detected
