@@ -1,0 +1,25 @@
+RESOLVED
+
+All specification-phase checklist items for hal-page-aligned are PASS or FIXED.
+
+Turn-1 FAIL (admit in PageAligned::from_address) is FIXED:
+- proof! { admit(); } removed from src/.../aligned/page.rs.
+- Dependency specs added (strengthening, not trust-surface):
+  - sys/mm/alignment.rs: concrete `spec fn spec_align_value(Alignment) -> int`.
+  - sys/mm/address/mod.rs: `Address::is_aligned` ensures
+    `result matches Ok(aligned) && aligned == (self@ % spec_align_value(align) == 0)`
+    (faithful: every concrete impl returns Ok; bitmask == modulo for power-of-two alignments).
+  - page.spec.rs: PAGE_ALIGNMENT model ensures `spec_align_value(result) == spec_page_size()`.
+- from_address verifies with UNCHANGED ensures and no admit.
+
+Evidence:
+- make verify-kernel: Exit 0, admit 25 -> 24, no `aligned/page` entry in cheating-detail.txt.
+- Fresh (non-cached) kernel::all: 50 verified, 0 errors (commit 0827f3f53).
+- make verify (full): bitmap, sys, nanvix-slab, bump-allocator, kernel all Exit 0.
+- ./z build -- check-kernel: build-finished success:true.
+- spec_drift git-diff (before verus-ai/phys-frame, after HEAD): 0 contract drift on
+  page.rs and sys/mm/address/mod.rs; all changes additive.
+
+Residual whole-crate CHEATING_DETECTED (admit=24, external_body=14) is pre-existing
+placeholders in mm/phys/* and FrameAddress shims — none in this module's own functions
+(VERUS-TOOL-1 for into_raw_value documented in bugs.md). Out of scope for hal-page-aligned.

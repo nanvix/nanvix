@@ -304,3 +304,83 @@ For `PAGE_ALIGNMENT`, it's an external arch constant so using assume_specificati
 [RESULT ✓] bash: 35:#[verus_verify(external_derive)]
 === any Address impl verus_verify'd? ===
 <shellId: 7 completed with exit code 0>
+[RESULT ✓] bash: /home/ruize/nanvix-phy/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+=== Verus Verification (cargo mode) ===
+  Crate     : bitmap
+=== Results ===
+  Exit code : 0
+=== Cheating Pattern Check ===
+=== Function Coverage ===
+=== Summary ===
+/home/ruize/nanvix-phy/scripts/verify.s...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+All five crates pass (exit 0). Cross-module regression confirmed. Let me confirm the normal build still compiles (the checklist's `build_cmd`).
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- check-kernel 2>&1 | tail -8
+
+[THINKING] All the crates are passing their tests with exit code 0, and the cross-module regression checks out fine. The trait spec changes for `is_aligned` haven't introduced any breaking changes. Now I need to verify that the normal build still compiles since the sys trait modifications could impact host crates—the fixer reported success, but I should double-check given that the supertrait `View<V=int>` and the new specs might affect non-verus compilation.
+
+The new additions are spec_align_value (marked as ghost in cfg) and is_aligned with the verus_spec attribute, both of which get erased during normal builds. Let me confirm the build still works to be thorough on the build_cmd requirement.
+[RESULT ✓] bash: {"reason":"compiler-artifact","package_id":"path+file:///home/ruize/nanvix-phy/src/libs/elf#0.16.17","manifest_path":"/home/ruize/nanvix-phy/src/libs/elf/Cargo.toml","target":{"kind":["lib"],"crate_types":["lib"],"name":"elf","src_path":"/home/ruize/nanvix-phy/src/libs/elf/src/lib.rs","edition":"202...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+All items pass. Let me update tracking and write the final review + STOP.
+[TOOL] sql: {'description': 'Update checklist final verdicts', 'query': "UPDATE checklist SE
+
+[THINKING] The build is complete with all checklist items passing or fixed. I'm updating the checklist table and writing the turn_002_driver.md file, then I'll create a STOP with RESOLVED status. Running through the final review of all 18 items—function coverage, caller coverage, view consistency, meaningful error paths, and the ensure specifications all check out.
+[RESULT ✓] sql: Executed 3 statement(s):
+
+1. UPDATE
+   1 row(s) updated.
+
+2. UPDATE
+   1 row(s) updated.
+
+3. UPDATE
+   1 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-page-aligned/specification/dialogue/turn_002_driver.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-page-aligned/specification/dialogue/turn_002_driver.md with 5481 characters
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-page-aligned/specification/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-page-aligned/specification/dialogue/STOP with 1474 characters
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Turn 2 complete — **RESOLVED**.
+
+## Verdict
+
+The Turn-1 FAIL (`admit` in `from_address`) is **FIXED**, verified independently:
+
+- **`admit` removed** from `page.rs`; only the `PAGE_ALIGNMENT` constant model remains. `cheating-detail.txt` has no `aligned/page` entry; admit count 25→24.
+- **Dependency specs added (strengthening, not trust):**
+  - `spec_align_value(Alignment) -> int` — concrete `match`, not `uninterp`.
+  - `Address::is_aligned` ensures `Ok(aligned) && aligned == (self@ % spec_align_value(align) == 0)`.
+  - `PAGE_ALIGNMENT` model links `spec_align_value(result) == spec_page_size()`.
+- **Faithfulness checked**: all four concrete `is_aligned` impls return `Ok`; bitmask `& (align-1)` equals `% align` for power-of-two alignments. No `Address` impl is `#[verus_verify]`, so the trusted contract isn't re-proven and can't break callers.
+- **`from_address` verifies without `admit`**, ensures unchanged: fresh `kernel::all` 50 verified, 0 errors.
+- **Cross-module**: full `make verify` → bitmap, sys, nanvix-slab, bump-allocator, kernel all exit 0.
+- **Build**: `check-kernel` success. **Drift**: 0 on both files, all additive.
+
+All 17 checklist items PASS/FIXED. Wrote `turn_002_driver.md` and `STOP` = `RESOLVED`.
+
+Residual whole-crate `CHEATING_DETECTED` is pre-existing `mm/phys/*` and `FrameAddress` placeholders — outside this module's scope.
+
+
+=== Session End ===
+Session: 15809416-ccbd-48d8-9625-99461d3415fd
+Duration: 174.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-page-aligned/specification/dialogue-reviewer-t002-claude-20260614-051158.jsonl
