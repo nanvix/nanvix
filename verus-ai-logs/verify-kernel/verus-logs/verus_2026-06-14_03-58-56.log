@@ -1,0 +1,293 @@
+Timestamp: 2026-06-14_03-58-56
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=14
+  admit=21
+  trusted=0
+  no_decreases=0
+  cfg_gate=17
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:28:36
+   |
+28 |         result == crate::hal::mem::types::address::frame::spec_page_size(),
+   |                                    ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this function through its public re-export instead
+   |
+28 -         result == crate::hal::mem::types::address::frame::spec_page_size(),
+28 +         result == crate::mm::phys::spec_page_size(),
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:39:30
+   |
+39 | ) -> Result<crate::hal::mem::types::address::frame::FrameAddress, ::sys::error::Error>;
+   |                              ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this struct through its public re-export instead
+   |
+39 - ) -> Result<crate::hal::mem::types::address::frame::FrameAddress, ::sys::error::Error>;
+39 + ) -> Result<crate::hal::mem::FrameAddress, ::sys::error::Error>;
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:37:44
+   |
+37 | pub assume_specification[ crate::hal::mem::types::address::frame::FrameAddress::from_frame_number ](
+   |                                            ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this struct through its public re-export instead
+   |
+37 - pub assume_specification[ crate::hal::mem::types::address::frame::FrameAddress::from_frame_number ](
+37 + pub assume_specification[ crate::hal::mem::FrameAddress::from_frame_number ](
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:42:26
+   |
+42 |     _a: crate::hal::mem::types::address::frame::FrameAddress,
+   |                          ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this struct through its public re-export instead
+   |
+42 -     _a: crate::hal::mem::types::address::frame::FrameAddress,
+42 +     _a: crate::hal::mem::FrameAddress,
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:41:44
+   |
+41 | pub assume_specification[ crate::hal::mem::types::address::frame::FrameAddress::into_frame_number ](
+   |                                            ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this struct through its public re-export instead
+   |
+41 - pub assume_specification[ crate::hal::mem::types::address::frame::FrameAddress::into_frame_number ](
+41 + pub assume_specification[ crate::hal::mem::FrameAddress::into_frame_number ](
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:46:26
+   |
+46 |     _a: crate::hal::mem::types::address::phys::PhysicalAddress,
+   |                          ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this struct through its public re-export instead
+   |
+46 -     _a: crate::hal::mem::types::address::phys::PhysicalAddress,
+46 +     _a: crate::mm::PhysicalAddress,
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:45:44
+   |
+45 | pub assume_specification[ crate::hal::mem::types::address::phys::PhysicalAddress::into_frame_number ](
+   |                                            ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this struct through its public re-export instead
+   |
+45 - pub assume_specification[ crate::hal::mem::types::address::phys::PhysicalAddress::into_frame_number ](
+45 + pub assume_specification[ crate::mm::PhysicalAddress::into_frame_number ](
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:50:27
+   |
+50 |     _r: &crate::hal::mem::types::region::TruncatedMemoryRegion<T>,
+   |                           ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this struct through its public re-export instead
+   |
+50 -     _r: &crate::hal::mem::types::region::TruncatedMemoryRegion<T>,
+50 +     _r: &crate::TruncatedMemoryRegion<T>,
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:51:23
+   |
+51 | ) -> crate::hal::mem::types::address::aligned::page::PageAligned<T>;
+   |                       ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this struct through its public re-export instead
+   |
+51 - ) -> crate::hal::mem::types::address::aligned::page::PageAligned<T>;
+51 + ) -> crate::mm::phys::PageAligned<T>;
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:49:67
+   |
+49 | pub assume_specification<T: ::sys::mm::Address>[ crate::hal::mem::types::region::TruncatedMemoryRegion::<T>::start ](
+   |                                                                   ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this struct through its public re-export instead
+   |
+49 - pub assume_specification<T: ::sys::mm::Address>[ crate::hal::mem::types::region::TruncatedMemoryRegion::<T>::start ](
+49 + pub assume_specification<T: ::sys::mm::Address>[ crate::TruncatedMemoryRegion::<T>::start ](
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:54:27
+   |
+54 |     _r: &crate::hal::mem::types::region::TruncatedMemoryRegion<T>,
+   |                           ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this struct through its public re-export instead
+   |
+54 -     _r: &crate::hal::mem::types::region::TruncatedMemoryRegion<T>,
+54 +     _r: &crate::TruncatedMemoryRegion<T>,
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:53:67
+   |
+53 | pub assume_specification<T: ::sys::mm::Address>[ crate::hal::mem::types::region::TruncatedMemoryRegion::<T>::size ](
+   |                                                                   ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this struct through its public re-export instead
+   |
+53 - pub assume_specification<T: ::sys::mm::Address>[ crate::hal::mem::types::region::TruncatedMemoryRegion::<T>::size ](
+53 + pub assume_specification<T: ::sys::mm::Address>[ crate::TruncatedMemoryRegion::<T>::size ](
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:58:26
+   |
+58 |     _a: crate::hal::mem::types::address::aligned::page::PageAligned<T>,
+   |                          ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this struct through its public re-export instead
+   |
+58 -     _a: crate::hal::mem::types::address::aligned::page::PageAligned<T>,
+58 +     _a: crate::mm::phys::PageAligned<T>,
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:57:68
+   |
+57 | pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::types::address::aligned::page::PageAligned<T> as ::sys::mm::Addre...
+   |                                                                    ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this struct through its public re-export instead
+   |
+57 - pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::types::address::aligned::page::PageAligned<T> as ::sys::mm::Address>::into_raw_value ](
+57 + pub assume_specification<T: ::sys::mm::Address>[ <crate::mm::phys::PageAligned<T> as ::sys::mm::Address>::into_raw_value ](
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:62:27
+   |
+62 |     _a: &crate::hal::mem::types::address::aligned::page::PageAligned<T>,
+   |                           ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this struct through its public re-export instead
+   |
+62 -     _a: &crate::hal::mem::types::address::aligned::page::PageAligned<T>,
+62 +     _a: &crate::mm::phys::PageAligned<T>,
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.spec.rs:61:68
+   |
+61 | pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::types::address::aligned::page::PageAligned<T> as ::core::ops::Der...
+   |                                                                    ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this struct through its public re-export instead
+   |
+61 - pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::types::address::aligned::page::PageAligned<T> as ::core::ops::Deref>::deref ](
+61 + pub assume_specification<T: ::sys::mm::Address>[ <crate::mm::phys::PageAligned<T> as ::core::ops::Deref>::deref ](
+   |
+
+For more information about this error, try `rustc --explain E0603`.
+error: could not compile `kernel` (bin "kernel") due to 16 previous errors
