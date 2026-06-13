@@ -157,7 +157,7 @@ impl PhysicalAddress {
         let raw_addr: usize = self.0.into_raw_value();
         // Bind `FRAME_SHIFT` once so the proof relates the shift below to the same value.
         let shift: usize = mem::FRAME_SHIFT;
-        assert(shift < 64);
+        proof! { assert(shift < 64); }
         let frame_number: usize = raw_addr >> shift;
         proof! { lemma_frame_index(self, raw_addr, shift, frame_number); }
         // Safety: the following unwrap is safe because a physical address has a valid frame number.

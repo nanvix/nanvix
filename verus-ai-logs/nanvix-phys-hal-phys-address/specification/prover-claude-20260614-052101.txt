@@ -1043,3 +1043,23 @@ Turn 54
 Turn 55
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus; timeout 1200 make verify-kernel MODU
+[RESULT ✓] bash: 16:error[E0423]: expected function, found macro `assert`
+19:160 |         assert(shift < 64);
+24:328 | pub fn assert_(_: bool) {
+25:    | ----------------------- similarly named function `assert_` defined here
+29:160 |         assert!(shift < 64);
+33:160 |         assert_(shift < 64);
+37:  8 + use v...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I need to wrap the assertion in a `proof!` block since this is Verus code, so I'm changing it to `proof! { assert(shift < 64); }` for the attribute-style exec syntax.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus; timeout 1200 make verify-kernel MODU
