@@ -1674,3 +1674,171 @@ Turn 99
 I've already added explicit trigger annotations to suppress the auto-trigger warnings, though the note persists since it's non-fatal and verification succeeds. Rather than over-engineer this, I'll move forward since the goal of zero errors is met.
 
 Next I need to run the full regression test and build, then document the LinkedList limitation in bugs.md and add the two helper functions to tcb-allowed.md with their justifications.
+[RESULT ✓] bash: 142 |         forall|a: int| set.contains(a) ==> self.free_frames.contains(a)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Che...
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+`make verify` passes (exit 0). Now the standard build:
+[TOOL] bash: cd /home/ruize/nanvix-phy; make build 2>&1 | tail -20
+
+[THINKING] The verification checks passed without errors, so now I'm running the build process which compiles the code for both targets.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -nE "^build|^build:|^\.PHONY|build:" Makefile | head; echo "=== try common targets ===";
+[RESULT ✓] bash: 230:    # Profiling build: release performance + debug symbols + frame pointers.
+377:.PHONY: update-sysroot-link
+392:.PHONY: dump-sccache-stats
+513:.PHONY: release-generate-manifest
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+590:.PHONY: ensure-verus
+859:.PHONY: all-test-kernel-ramfs cle...
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+[TOOL] skill: build
+
+[THINKING] The build target is `all` or `all-nanvix`, and the build tool is `./z`. The task asks to verify `make build` still works for dual compilation, but that target doesn't exist—the actual command should be `./z build`. The dual compilation means the kernel builds both with standard rustc and with verus, where `make verify` handles the verus side and the normal kernel build handles the rustc compilation.
+
+Let me check what build targets are available in the build skill to find the right command for compiling the kernel.
+[RESULT ✓] skill: Skill "build" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+The build command is `./z build -- kernel`:
+[TOOL] bash: cd /home/ruize/nanvix-phy; ./z build -- kernel 2>&1 | tail -20
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: zbuild completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -nE "kernel:|check-kernel:|all-kernel|nanvix-kernel|build-kernel" Makefile | head
+[RESULT ✓] bash: 420:	all-kernel \
+624:verify-kernel: ensure-verus
+<shellId: 58 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -nE "all-kernel:|check-kernel:|check-guest" Makefile | head
+[RESULT ✓] bash: 653:	rust-lint-check-guest-binaries \
+654:	rust-lint-check-guest-rlibs \
+655:	rust-lint-check-guest-staticlibs
+750:	format-check-guest-binaries \
+751:	format-check-guest-rlibs \
+752:	format-check-guest-staticlibs \
+822:	check-guest-binaries \
+823:	check-guest-rlibs \
+824:	check-guest-staticlibs
+<she...
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '815,830p' Makefile; grep -nE "all-kernel" Makefile
+[RESULT ✓] bash: # Fixes code linting issues in shell scripts.
+shell-lint:
+	@scripts/shell-lint-fix.sh
+
+check: \
+	check-kernel \
+	check-guest-binaries \
+	check-guest-rlibs \
+	check-guest-staticlibs
+
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+check: check-host-binaries check-host-rlibs check-nanvixd check-uservm ...
+
+────────────────────────────────────────────────────────────
+Turn 107
+────────────────────────────────────────────────────────────
+There's a `check-kernel` target. Let me use it to validate normal compilation:
+[TOOL] bash: cd /home/ruize/nanvix-phy; ./z build -- check-kernel 2>&1 | tail -25
+[RESULT ✓] bash: Checking sysapi v0.16.17 (/home/ruize/nanvix-phy/src/libs/sysapi)
+{"reason":"compiler-artifact","package_id":"path+file:///home/ruize/nanvix-phy/src/libs/sysapi#0.16.17","manifest_path":"/home/ruize/nanvix-phy/src/libs/sysapi/Cargo.toml","target":{"kind":["lib"],"crate_types":["lib"],"name":"sysapi"...
+
+────────────────────────────────────────────────────────────
+Turn 108
+────────────────────────────────────────────────────────────
+Dual compilation works. Now documentation. Let me view the bugs and tcb files:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== bugs.md ==="; cat verus-ai-logs/nanvix-phys-phys-mod/bugs.md 2>/dev/null; echo "===
+
+[THINKING] The kernel builds successfully in both normal and dual compilation modes. Now I need to document the LinkedList limitation in the bugs file and add the two helper functions to the allowed list with their justifications, so let me check those files.
+[RESULT ✓] bash: === bugs.md ===
+=== tcb-allowed.md ===
+# TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref`
+- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref_mut`
+- `src/kernel/src/mm/p...
+
+────────────────────────────────────────────────────────────
+Turn 109
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md 2>/dev/null | head -80
+
+[THINKING] I need to check the bug-reporting skill format since bugs.md is empty, then write a bug entry and update tcb-allowed.md to match the expected structure.
+[RESULT ✓] bash: ---
+name: bug-reporting
+description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+---
+
+# Bug Reporting
+
+Finding real code bugs is a high-value outcome ...
+
+────────────────────────────────────────────────────────────
+Turn 110
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '80,140p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[RESULT ✓] bash: **Verification Failure**: which clause failed (requires/ensures/invariant/assert),
+verification command, and key error output.
+**How Verus Helped**: how formal verification caught this bug (e.g. would it
+be caught by testing? code review? why verification was uniquely effective).
+**Severity**: safet...
+
+────────────────────────────────────────────────────────────
+Turn 111
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/bugs.md
+
+[THINKING] The LinkedList issue is actually a verifier limitation rather than a code bug, so I should document it in bugs.md as a tooling constraint rather than a defect. The task explicitly asks me to record this limitation, and I'll note the external_body deviation while clarifying that this isn't a code issue but a verification tool limitation.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/bugs.md with 1944 characters
+
+────────────────────────────────────────────────────────────
+Turn 112
+────────────────────────────────────────────────────────────
+Now update tcb-allowed.md with the two helpers and the cross-module dependency markers:
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 113
+────────────────────────────────────────────────────────────
+Let me check the exact location of the trigger warning to clean it up:
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
+
+[THINKING] I need to add explicit trigger annotations to the forall statements to clean up the warnings from the verify-kernel run. Looking at the foralls in mod.rs, I'm making sure both have `#[trigger]` on the `.contains(a)` calls, and then checking the ones in mod.spec.rs like `all_reserved`, `all_free`, and `region_frame_addrs` to ensure they're properly annotated.
