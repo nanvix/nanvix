@@ -1954,3 +1954,64 @@ Turn 126
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus RUST_BACKTRACE=full
 # run verus directly to get
+[RESULT ✓] bash: thread 'rustc' (1345567) panicked at vir/src/traits.rs:511:13:
+assertion failed: !method_impls.contains(&p)
+  11:     0x5688afa0fdd9 - vir[ac364ee6229eeebd]::traits::inherit_default_bodies
+    - into_raw_value
+<shellId: 86 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 127
+────────────────────────────────────────────────────────────
+Backtrace points to `into_raw_value`. The trait-decl-spec generates a companion that duplicates. Let me search for any existing verified trait-method pattern in the codebase to find the correct idiom:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rln "verus_verify" src/libs src/kernel --include=*.rs | xargs grep -l "trait\b" 2>/dev/
+
+[THINKING] The backtrace points to `into_raw_value` being duplicated in the PageAligned Address impl—there are two TraitMethodImpl entries for the same method. The macro is likely processing the method twice, and since the trait declaration has `#[verus_spec]`, the impl method gets duplicated during the macro's visit phase.
+
+But I tested without the trait declaration spec and it still panicked, so I need to figure out what was actually duplicating in that case—it might have been a different method entirely, or maybe the duplicate persisted for another reason. Let me focus on understanding how the supertrait interaction with `verus_verify` could be causing this.
+
+When Verus verifies the `Address` impl for `PageAligned`, it needs to satisfy the supertrait obligation that `PageAligned: View`. The question is whether it's synthesizing a `view` method impl automatically, which would conflict with the explicit `impl View for PageAligned` I already have. But the backtrace points to `into_raw_value` duplicating, not `view`, which brings me back to the trait declaration spec companion theory.
+
+Given how tangled this is getting, maybe the pragmatic move is to remove the `#[verus_spec]` from the trait declaration so there's no spec companion being generated, and then figure out a different way to spec `into_raw_value`—or reconsider whether I actually need `verus_verify` on the `PageAligned` impl at all.
+
+The trait method spec lives on the `Address` trait declaration, so it applies to all impls including `PageAligned`. If I leave the impl unverified, callers would still inherit the spec (treating it as trusted), which might sidestep the panic. The tradeoff is that `into_raw_value` wouldn't be formally verified, but it would avoid the tool bug entirely while still giving the spec to callers.
+
+Let me explore whether adding `#[verus_spec]` directly to the impl method (matching the trait) could bypass the companion duplicate issue that's triggering the panic. I should also check how other parts of the codebase handle verified trait method impls to see if there's an existing pattern I can follow.
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/mod.rs
+src/libs/bump_allocator/src/lib.rs
+=== traits with verus_spec methods ===
+<shellId: 87 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 128
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "verus_verify\|verus_spec\|trait \|impl .* for \|fn " src/libs/bump_allocator/src/lib
+[RESULT ✓] bash: 13://! - [`BssStorage`] — unsafe trait implemented by the backing store provider.
+52://! unsafe impl BssStorage for MyBackend {
+56://!     fn as_mut_ptr() -> *mut u8 {
+126:#[verus_spec(result =>
+133:pub const fn align_up(value: usize, alignment: usize) -> Option<usize> {
+146:#[verus_verify]
+162:impl...
+
+────────────────────────────────────────────────────────────
+Turn 129
+────────────────────────────────────────────────────────────
+The panic comes from verifying the generic trait impl. Let me test whether the trait-decl spec alone (without verifying PageAligned's impl) gives a clean result:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] Looking at the BssStorage trait definition with its `as_mut_ptr` method marked as spec, I'm checking whether the concrete implementations for BackendA and other types in the test modules are actually being verified by Verus.
+
+Since those impls are in `#[cfg(test)]` blocks, they're likely not being verified at all — which means there's no existing working example of a trait with a spec method that's actually implemented and verified. The Address trait would be the first, and it's hitting the panic.
+
+This really points to a Verus bug with this specific pattern. Let me think strategically about which experiments to run next, since each verification takes 2-4 minutes. The panic could stem from the trait-level spec declaration, the generic impl itself, or the supertrait View. I'll test removing the trait-level spec first to see if that's the culprit, then isolate whether it's the generic nature of the impl or the supertrait causing the duplicate.
+
+Actually, wait — maybe I'm overcomplicating this. The real insight is that `into_raw_value` just delegates to `self.0.into_raw_value()`, and since PageAligned's view equals the inner value's view, the spec should follow automatically. I don't actually need to verify the trait impl itself if I can express this relationship differently.
+
+Let me test whether Verus allows an unverified impl of a trait method that has a spec in the trait declaration — essentially treating PageAligned's implementation as trusted without checking it. That would give me the spec for callers while avoiding the verification panic entirely. Let me run the test with that change and see what happens.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 130
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
