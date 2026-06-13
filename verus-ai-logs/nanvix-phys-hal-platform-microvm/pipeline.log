@@ -51,3 +51,6 @@ Module: hal-platform-microvm
 [2026-06-14 06:32:29]   ↳ dialogue-reviewer-t1 done in 1m49s (exit=0)
 [2026-06-14 06:32:29] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-06-14 06:32:29] [DIALOGUE] specification ended after 1 turns: RESOLVED (110s)
+[2026-06-14 06:32:29] [PHASE] specification: dialogue-RESOLVED (4m07s)
+[2026-06-14 06:32:29] [SPEC DRIFT] (within specification) Comparing e7fe2d2c → 367edfad
+[2026-06-14 06:32:29] [SPEC DRIFT] (within specification) No changes detected
