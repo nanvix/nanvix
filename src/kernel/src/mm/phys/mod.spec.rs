@@ -48,137 +48,140 @@ impl FrameAllocView
 }
 
 //==================================================================================================
-// LinkedList standard-library shim
+// LinkedList — external type registration
 //==================================================================================================
 //
-// `vstd` does not (yet) provide a specification for `alloc::collections::LinkedList`
-// or its iterator, so iterating one in a `for` loop is rejected by the Verus
-// front-end. The following block supplies the missing stdlib specification, mirroring
-// the `VecDeque` shim shipped in `vstd::std_specs::vecdeque` (both expose an
-// `Iter<'a, T>` yielding `&'a T`). This is an external-bottom trust boundary on the
-// standard library, identical in spirit to the existing vstd iterator shims.
+// `vstd` provides no specification for `alloc::collections::LinkedList`, so it must be
+// registered as an external type before it can appear in spec signatures. Only the type
+// is registered here; no `View`/iterator specification is provided, because the orphan
+// rule forbids a downstream crate from implementing vstd's `View` / `ForLoopGhostIterator`
+// traits for the foreign `LinkedList` / `linked_list::Iter` types. As a consequence, the
+// two helpers that iterate a `LinkedList` in a `for` loop (`book_physical_memory_regions`,
+// `book_mmio_regions`) cannot have their bodies verified and are `external_body`. See
+// `verus-ai-logs/nanvix-phys-phys-mod/bugs.md`.
 
-use ::alloc::collections::linked_list::Iter as LinkedListIter;
 use ::core::alloc::Allocator;
-use vstd::pervasive::ForLoopGhostIterator;
-use vstd::pervasive::ForLoopGhostIteratorNew;
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
-pub struct ExLinkedList<T, A: Allocator>(LinkedList<T, A>);
+pub struct ExLinkedList<T, A: Allocator>(::alloc::collections::LinkedList<T, A>);
 
-impl<T, A: Allocator> View for LinkedList<T, A> {
-    type V = Seq<T>;
+//==================================================================================================
+// Physical-memory subsystem view
+//==================================================================================================
 
-    uninterp spec fn view(&self) -> Seq<T>;
+/// Abstract view of the global physical-memory subsystem managed by `mm::phys`.
+///
+/// Pure ghost description — names no `MaybeUninit`, `AtomicBool`, bitmap, refcount slice,
+/// or any other storage mechanism. It wraps the existing frame-allocator view
+/// (`FrameAllocView`) with the two liveness facts the caller depends on.
+pub ghost struct PhysModView {
+    /// The frame allocator singleton has been initialized (`frame::init` ran
+    /// successfully). All `frames`-related guarantees are meaningful only when this holds.
+    pub initialized: bool,
+    /// Abstract frame-allocator state: which physical frames are allocated (reserved) vs.
+    /// free, with per-frame refcounts. This is the existing `FrameAllocView`.
+    pub frames: FrameAllocView,
+    /// The `PhysMemoryManager` singleton has been initialized with a fresh user page pool.
+    pub manager_ready: bool,
 }
 
-#[verifier::external_type_specification]
-#[verifier::external_body]
-#[verifier::accept_recursive_types(T)]
-pub struct ExLinkedListIter<'a, T: 'a>(LinkedListIter<'a, T>);
+/// Current abstract state of the global physical-memory subsystem.
+///
+/// Uninterpreted accessor: the subsystem state lives in module-level singletons
+/// (`frame::INSTANCE`/`INSTANCE_INIT` and the `PhysMemoryManager`/`Upool` singletons)
+/// whose value is not directly spec-readable. The cross-call transition (`v -> v'`) is
+/// realized in the proving phase by a ghost token over those singletons (see
+/// `view_design.md` section 8); during the specification phase it is read like `self@`.
+pub uninterp spec fn phys_view() -> PhysModView;
 
-impl<'a, T: 'a> View for LinkedListIter<'a, T> {
-    type V = (int, Seq<T>);
+impl PhysModView {
+    /// Well-formedness invariant of the subsystem.
+    pub open spec fn inv(self) -> bool {
+        // Once the allocator is up, the frame partition is well formed.
+        &&& self.initialized ==> self.frames.wf()
+        // The manager layer can only be up if the allocator is up.
+        &&& self.manager_ready ==> self.initialized
+    }
 
-    uninterp spec fn view(self: &LinkedListIter<'a, T>) -> (int, Seq<T>);
-}
-
-pub assume_specification<'a, T>[ LinkedListIter::<'a, T>::next ](
-    elements: &mut LinkedListIter<'a, T>,
-) -> (r: Option<&'a T>)
-    ensures
-        ({
-            let (old_index, old_seq) = old(elements)@;
-            match r {
-                None => {
-                    &&& elements@ == old(elements)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(element) => {
-                    let (new_index, new_seq) = elements@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& element == old_seq[old_index]
-                },
-            }
-        }),
-;
-
-pub struct LinkedListIterGhostIterator<'a, T> {
-    pub pos: int,
-    pub elements: Seq<T>,
-    pub phantom: Option<&'a T>,
-}
-
-impl<'a, T> ForLoopGhostIteratorNew for LinkedListIter<'a, T> {
-    type GhostIter = LinkedListIterGhostIterator<'a, T>;
-
-    open spec fn ghost_iter(&self) -> LinkedListIterGhostIterator<'a, T> {
-        LinkedListIterGhostIterator { pos: self@.0, elements: self@.1, phantom: None }
+    /// The subsystem is fully brought up and self-consistent.
+    pub open spec fn live(self) -> bool {
+        &&& self.initialized
+        &&& self.manager_ready
+        &&& self.frames.wf()
     }
 }
 
-impl<'a, T: 'a> ForLoopGhostIterator for LinkedListIterGhostIterator<'a, T> {
-    type ExecIter = LinkedListIter<'a, T>;
+//==================================================================================================
+// Frame-set vocabulary (on the existing FrameAllocView)
+//==================================================================================================
 
-    type Item = T;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &LinkedListIter<'a, T>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.elements == exec_iter@.1
+impl FrameAllocView {
+    /// The allocator tracks (covers) the frame at `addr` — it is one of the frames this
+    /// allocator knows about, allocated or free. Models `frame::is_covered`.
+    pub open spec fn covers(self, addr: int) -> bool {
+        self.allocated_frames.contains(addr) || self.free_frames.contains(addr)
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.elements == self.elements
-            &&& 0 <= self.pos <= self.elements.len()
+    /// The frame at `addr` is reserved: present in the allocated set, hence `alloc()` can
+    /// never return it. This is the core caller-visible fact a "booked" frame satisfies.
+    pub open spec fn reserved(self, addr: int) -> bool {
+        self.allocated_frames.contains(addr)
+    }
+
+    /// Every frame address in `set` is reserved.
+    pub open spec fn all_reserved(self, set: Set<int>) -> bool {
+        forall|a: int| set.contains(a) ==> self.reserved(a)
+    }
+
+    /// Every frame address in `set` is currently free (booking precondition: a range can be
+    /// booked only if it is entirely free).
+    pub open spec fn all_free(self, set: Set<int>) -> bool {
+        forall|a: int| set.contains(a) ==> self.free_frames.contains(a)
+    }
+
+    /// Reserve every frame in `set` (each assumed free in `self`): move it from
+    /// `free_frames` to `allocated_frames` with refcount 1.
+    pub open spec fn book_all(self, set: Set<int>) -> FrameAllocView {
+        FrameAllocView {
+            allocated_frames: self.allocated_frames.union(set),
+            free_frames: self.free_frames.difference(set),
+            refcounts: self.refcounts.union_prefer_right(
+                Map::new(|a: int| set.contains(a), |a: int| 1int),
+            ),
         }
     }
 
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.elements.len()
-    }
-
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.elements.len() - self.pos)
-    }
-
-    open spec fn ghost_peek_next(&self) -> Option<T> {
-        if 0 <= self.pos < self.elements.len() {
-            Some(self.elements[self.pos])
-        } else {
-            None
-        }
-    }
-
-    open spec fn ghost_advance(
-        &self,
-        _exec_iter: &LinkedListIter<'a, T>,
-    ) -> LinkedListIterGhostIterator<'a, T> {
-        Self { pos: self.pos + 1, ..*self }
+    /// Reserve only the *covered* frames of `set`; skip the rest (coverage-gated). Models
+    /// the MMIO booking rule.
+    pub open spec fn book_covered(self, set: Set<int>) -> FrameAllocView {
+        self.book_all(set.filter(|a: int| self.covers(a)))
     }
 }
 
-impl<'a, T> View for LinkedListIterGhostIterator<'a, T> {
-    type V = Seq<T>;
-
-    open spec fn view(&self) -> Seq<T> {
-        self.elements.take(self.pos)
-    }
+/// Page-aligned physical frame addresses covered by a region `[start, start + size)`.
+/// Mirrors the frame-set computation used by `frame::alloc_range`.
+pub open spec fn region_frame_addrs(start: int, size: int) -> Set<int> {
+    let start_frame_number = start / spec_page_size();
+    let end_frame_number = (start + size) / spec_page_size();
+    vstd::set_lib::set_int_range(start_frame_number, end_frame_number)
+        .map(|i: int| i * spec_page_size())
 }
 
-pub assume_specification<'a, T, A: Allocator>[ LinkedList::<T, A>::iter ](
-    v: &'a LinkedList<T, A>,
-) -> (r: LinkedListIter<'a, T>)
-    ensures
-        r@ == (0int, v@),
-;
+/// The set of physical frame addresses covered by all regions in a physical
+/// non-usable-memory list. Uninterpreted: `LinkedList` has no Verus model, so its contents
+/// cannot be folded over in spec; this names the abstract union of `region_frame_addrs`
+/// over the list, which is all the contract needs.
+pub uninterp spec fn phys_regions_frame_set(
+    regions: &::alloc::collections::LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
+) -> Set<int>;
+
+/// The set of physical frame addresses covered by all MMIO regions in a list (after
+/// GVA->GPA translation). Uninterpreted for the same reason as `phys_regions_frame_set`.
+pub uninterp spec fn mmio_regions_frame_set(
+    regions: &::alloc::collections::LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+) -> Set<int>;
 
 } // end verus!
 

@@ -1,0 +1,26 @@
+Timestamp: 2026-06-14_00-33-07
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=9
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=5
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: in external_body datatype, each type parameter must be one of: #[verifier::reject_recursive_types], #[verifier::reject_recursive_types_in_ground_variants], #[verifier::accept_recursive_types] (reject_recursive_types is always safe to use)
+  --> src/kernel/src/mm/phys/mod.spec.rs:68:24
+   |
+68 | pub struct ExLinkedList<T, A: Allocator>(::alloc::collections::LinkedList<T, A>);
+   |                        ^^^^^^^^^^^^^^^^^
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
