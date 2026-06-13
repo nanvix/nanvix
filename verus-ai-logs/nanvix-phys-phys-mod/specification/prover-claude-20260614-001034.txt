@@ -1617,3 +1617,41 @@ Turn 93
 Turn 94
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
+[RESULT ✓] bash: error: cannot use type `kernel::mm::phys::upool::Upool` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+ 86 |     pub(super) fn init(upool: Upool) -> Result<(), Error> {
+    = help: The following declaration may resolve this error:
+error: could ...
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "pub struct Upool\|struct Upool\|pub(super) struct Upool\|impl Upool" src/kernel/src/
+
+[THINKING] The issue is that `Upool` is declared outside the `verus!` macro, so Verus doesn't recognize it as a type when I use `#[verus_verify(external_body)]` on the `init` function. I need to either register `Upool` as an external type or mark the struct itself with the external_body attribute so Verus can see it.
+[RESULT ✓] bash: 131:pub struct Upool {
+136:impl Upool {
+<shellId: 55 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 125. /// # Description
+126. ///
+127. /// Thin facade over the module-level [`frame`](super::frame) allocator. Exists as a distinct type
+128. /// so user-frame allocation has its own entry point ([`Upool::alloc`] returning [`UserFrame`]).
+129. ///
+130. #[derive(Debug)]
+131. pub struct Upool {
+132.   ...
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
