@@ -1,0 +1,31 @@
+Timestamp: 2026-06-14_04-02-51
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 0
+47 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=14
+  admit=24
+  trusted=0
+  no_decreases=0
+  cfg_gate=17
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+verification results:: 47 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.54s

@@ -1818,3 +1818,19 @@ Turn 105
 [TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus timeout 560 make verify 2>&1 | grep -E "ve
 
 [THINKING] I'm keeping alloc_contiguous as-is since the existing invariants on base and the overflow bound are sufficient for the manager's needs, and the per-frame reservation constraint is difficult to express formally anyway. Now I'll run the verification suite to make sure this change doesn't break anything.
+[RESULT ✓] bash: verification: cached (no recompilation), — (exit 0)
+  status: CHEATING_DETECTED
+  verification: cached (no recompilation), — (exit 0)
+  status: CLEAN
+  verification: cached (no recompilation), — (exit 0)
+  status: CHEATING_DETECTED
+  verification: cached (no recompilation), — (exit 0)
+  status: CHEA...
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+It says "cached" — let me force a fresh verify-kernel to confirm the latest `alloc` edit verifies.
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/mm/phys/frame.rs && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus t
+
+[THINKING] The "cached" message is making me wonder if my edits actually got picked up by the verify step. The count went from 47 to 48 verified items, which is odd, but the caching behavior suggests the verification might not have rerun against my latest changes. I should force a clean verify-kernel specifically for the mm::phys module to confirm my allocation edit is actually being validated.
