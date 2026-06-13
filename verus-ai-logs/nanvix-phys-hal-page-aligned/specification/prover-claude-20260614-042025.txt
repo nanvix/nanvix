@@ -751,3 +751,55 @@ Let me isolate — revert `from_address`, keep only `into_raw_value` spec to tes
 Turn 40
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
+[RESULT ✓] bash: === tail ===
+    | |_^
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; L=verus-ai-logs/verify-kernel/verus-logs/$(ls -t verus-ai-logs/verify-kernel/verus-logs/ | he
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:56:1
+    |
+ 5...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+The issue is clear: trait-impl methods require the whole impl verified, and `self@` needs `T: View<V=int>`. Let me probe the exact behavior by marking the whole impl and testing.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I see the constraint with trait implementations in Verus — if I want to verify even one method like `into_raw_value`, the entire `impl Address for PageAligned<T>` block needs to be wrapped in the `verus!` macro, which means all the other methods in that impl (from_raw_value, align_up, align_down, is_aligned, max_addr, as_ptr, as_mut_ptr) would also need verification, but they're unlisted functions that probably can't be verified.
+
+The real issue is that some of these methods call external trait methods or functions that might require specs themselves — like `as_ptr` returning a raw pointer, or methods calling `T::max_addr()` — which could create a cascading verification requirement that conflicts with the "don't touch unlisted functions" constraint.
+
+So I'm looking at whether I can mark the entire impl for verification but only add specs to `into_raw_value`, letting the other methods pass through with minimal or no contracts. The real issue is that `self@` in the spec requires `T: View<V=int>`, but the impl only bounds `T: Address`. All the methods call trait methods on `T` without specs, which is fine since there are no contracts to verify — Verus just checks they don't panic and type-checks in ghost mode. The solution is to add `View<V=int>` as a supertrait to `Address` in the sys crate, then write per-method specs there, which should be allowed since the task permits specs for not-yet-verified dependency functions.
+
+But there's a catch: adding a real supertrait bound breaks normal builds since `VirtualAddress` only implements `View` inside `verus!{}` blocks. I need to test whether the normal build actually works with the current setup, then verify whether adding the `View` supertrait would break it or if the `verus!{}` macro somehow preserves the impl in normal builds.
+
+Actually, I'm realizing the core issue: in a generic context like `impl<T: Address>`, I can't use `self.0@` without `T: View` being a bound. But what if instead of relying on the vstd `View` trait, I add a spec method directly to the `Address` trait itself—something like `spec fn addr_view(&self) -> int`—and have `PageAligned`'s view implementation call that? That would sidestep the supertrait problem entirely while still giving me the semantic I need.
+
+The catch is that the current code already declares `impl<T: Address + View<V=int>> View for PageAligned<T>`, and changing that means modifying the view design, which the existing documentation actually endorses. But I'm stuck because no other module has faced this yet—`frame.rs` only verified a concrete `FrameAddress`, and `region.rs` isn't verified at all. So `page.rs` is the first to try specifying a generic-over-Address function, and there's no precedent to follow.
+
+Given the time constraints and the hard Verus requirement that the entire trait impl must be verified, I'm going to make a pragmatic call: add `View<V = int>` as a supertrait to the `Address` trait itself and test empirically whether that breaks the normal build. So `int` is a Verus-only type, which means I can't use `View<V = int>` as a supertrait in plain Rust code — the trait definition itself would fail to compile. This rules out the supertrait approach entirely since the Address trait needs to live in normal code.
+
+That leaves the option of declaring a spec method directly in the trait, but again, a `spec fn` keyword inside a plain Rust trait won't compile in normal builds. So the trait body itself would need to be gated or duplicated under Verus, which isn't allowed.
+
+Looking at the existing design, the `impl<T: Address + View<V = int>> View for PageAligned<T>` already works because it's entirely gated behind `#[cfg(verus_keep_ghost)]` and `verus!{}` — it never touches normal builds. This suggests that the View/inv machinery is fundamentally a Verus-only construct, so any generic function relying on those bounds would also need to be Verus-only.
+
+The core problem is that the `Address` trait itself is defined outside `verus!{}` with just `#[verus_verify]`, so I can't add `View<V=int>` as a supertrait or bound without breaking normal compilation. Fixing this properly would require moving the trait definition into a `verus!{}` block — a significant cross-crate change that's beyond the current scope.
+
+Given the task is specifically to add `#[verus_spec]` annotations to exec functions in page.rs, maybe the intended scope is narrower than I've been assuming.
+
+Let me just test empirically: I'll mark the entire `impl Address for PageAligned<T>` block with `#[verus_verify]` and keep the `#[verus_spec]` on `into_raw_value` with `self@` to see what error Verus actually produces.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me

@@ -1,0 +1,45 @@
+Timestamp: 2026-06-14_04-29-20
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::aligned::page
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=14
+  admit=24
+  trusted=0
+  no_decreases=0
+  cfg_gate=17
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0599]: the method `view` exists for struct `hal::mem::types::address::aligned::page::PageAligned<T>`, but its trait bounds were not satisfied
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:60:34
+    |
+ 38 | pub struct PageAligned<T: Address>(T);
+    | ---------------------------------- method `view` not found for this struct because it doesn't satisfy `_: View`
+...
+ 60 |             result as int == self@,
+    |                                  ^ method cannot be called due to unsatisfied trait bounds
+    |
+note: the following trait bounds were not satisfied:
+      `<T as vstd::string::View>::V = vstd::prelude::int`
+      `T: vstd::string::View`
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:217:19
+    |
+217 | impl<T: Address + View<V = int>> View for PageAligned<T>
+    |                   ^^^^^^^^^^^^^  ----     --------------
+    |                   |    |
+    |                   |    unsatisfied trait bound introduced here
+    |                   unsatisfied trait bound introduced here
+help: consider restricting the type parameters to satisfy the trait bounds
+    |
+ 38 | pub struct PageAligned<T: Address>(T) where <T as vstd::string::View>::V = vstd::prelude::int, T: vstd::string::View;
+    |                                       ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
