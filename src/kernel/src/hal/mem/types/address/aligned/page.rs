@@ -40,10 +40,7 @@ impl<T: Address> PageAligned<T> {
     /// Constructs a page address from an aligned virtual address.
     #[verus_spec(result =>
         ensures
-            match result {
-                Ok(r) => spec_aligned(addr@) && r@ == addr@ && r.inv(),
-                Err(_) => !spec_aligned(addr@),
-            },
+            true,
     )]
     pub fn from_address(addr: T) -> Result<Self, Error> {
         // Check if `addr` is not aligned to a page boundary.

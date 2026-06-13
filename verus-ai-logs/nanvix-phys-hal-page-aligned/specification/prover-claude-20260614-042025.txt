@@ -1341,3 +1341,59 @@ The key difference from `into_raw_value` is that `from_address` has the `?` oper
 Turn 84
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
+[RESULT ✓] bash: error[E0425]: cannot find function `from_address` in this scope
+48 |     pub fn from_address(addr: T) -> Result<Self, Error> {
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+=== Results ===
+  0 verified
+  c...
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+The `?` operator in a `verus_spec` body may be the trigger. Let me check the official syntax example and search for `?`-using specced functions.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; grep -rn "?" docs/skills/verus-syntax/syntax_attr.rs | grep -iE "verus_spec|fn .*R
+
+[THINKING] The `#[verus_spec]` macro is likely generating a `from_address` function call when the `?` operator is used in the function body, and the early return combined with the macro's transformation is causing the scope issue where that generated function isn't visible.
+
+Let me check if the problem is specific to the `?` operator and early returns in verus_spec functions, or if I can work around it by restructuring the logic without changing the semantics — maybe testing with a simpler function first to understand how the macro handles these constructs. I'm wondering if the real issue is that the `#[verus_spec]` macro generates code that references `from_address` as a free function, but since it's defined inside an `impl` block, the generated spec code can't find it in scope. Let me look for a working example in the Verus repo where `verus_spec` is applied to a method that uses `?` to understand how this should be structured.
+[RESULT ✓] bash: === search target-systems for verus_spec + ? non-external ===
+target-systems/nanvix/doc/verus-for-kernel-maintainers.md
+target-systems/nanvix/src/libs/bitmap/src/lib.rs
+target-systems/nanvix/src/libs/raw-array/src/lib.rs
+target-systems/nanvix/src/libs/slab/src/lib.rs
+target-systems/nanvix/verus-ai-l...
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/src/libs/bitmap/src; sed -n '100,130p' lib.rs
+
+[THINKING] I'm checking how the `?` operator is actually used within verus_spec functions by looking at a concrete example in the bitmap library around line 120.
+[RESULT ✓] bash: )]
+    pub fn new(number_of_bits: usize) -> Result<Self, Error> {
+        // Check if the length is invalid.
+        if number_of_bits == 0 || number_of_bits >= u32::MAX as usize {
+            let reason: &str = "invalid length";
+            return Err(Error::new(ErrorCode::InvalidArgument, reason))...
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+`?` works elsewhere. Let me isolate by testing a trivial spec on the original body:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned; python3 - <<'EOF'
+import re
+f='page.rs'
+s=open(f
+
+[THINKING] The `?` operator works fine in verus_spec functions with early returns when it's an inherent method, so that's not the issue with my `from_address`. The real difference is that I removed `proof!` but I'm still getting the E0425 error—the `?` is being applied to `addr.is_aligned(PAGE_ALIGNMENT)`, which suggests the method call itself might be the problem.
+
+Wait, I'm wondering if the issue is that `?` inside an `if` condition expression behaves differently than a standalone `let x = ...?;` statement like in the bitmap example. Or maybe the macro is transforming `from_address` in a way that breaks the internal references—when other methods in the impl call `Self::from_address`, the macro might be renaming it or changing how it's resolved. The error message says "cannot find function `from_address`" at the definition itself, not at a call site, which is strange. Let me think through what the full macro expansion actually produces.
+[RESULT ✓] bash: patched
+<shellId: 57 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
