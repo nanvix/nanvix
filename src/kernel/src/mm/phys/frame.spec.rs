@@ -36,14 +36,6 @@ pub assume_specification[ crate::hal::mem::FrameAddress::into_frame_number ](
     _a: crate::hal::mem::FrameAddress,
 ) -> ::arch::mem::paging::FrameNumber;
 
-pub assume_specification<T: ::sys::mm::Address>[ crate::hal::mem::TruncatedMemoryRegion::<T>::start ](
-    _r: &crate::hal::mem::TruncatedMemoryRegion<T>,
-) -> crate::hal::mem::PageAligned<T>;
-
-pub assume_specification<T: ::sys::mm::Address>[ crate::hal::mem::TruncatedMemoryRegion::<T>::size ](
-    _r: &crate::hal::mem::TruncatedMemoryRegion<T>,
-) -> usize;
-
 pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::PageAligned<T> as ::sys::mm::Address>::into_raw_value ](
     _a: crate::hal::mem::PageAligned<T>,
 ) -> usize;

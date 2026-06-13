@@ -640,3 +640,60 @@ Turn 37
 Turn 38
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=hal::mem::types::region 2>&1 | tail -30
+[RESULT ✓] bash: - new
+    - name
+    - typ
+    - perm
+    - cache_policy
+    - set_cache_policy
+    - eq
+    - partial_cmp
+    - cmp
+    - new
+    - new_mmio
+    - from_memory_region
+    - name
+    - typ
+    - perm
+    - cache_policy
+    - eq
+    - partial_cmp
+    - cmp
+    - fmt
+    - from_virtual_memory_region
+
+=...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -iE "error" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_06-06-57.log | head 
+[RESULT ✓] bash: compilation/setup error (verus did not run)
+error: duplicate specification for `kernel::hal::mem::types::region::TruncatedMemoryRegion::start`
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Now the expected duplicate from `frame.spec.rs`. Remove the superseded assume_specs.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs
+
+[THINKING] I need to remove the duplicate definitions of `start` and `size` for `TruncatedMemoryRegion` from frame.spec.rs.
+[RESULT ✓] view: 38. 
+39. pub assume_specification<T: ::sys::mm::Address>[ crate::hal::mem::TruncatedMemoryRegion::<T>::start ](
+40.     _r: &crate::hal::mem::TruncatedMemoryRegion<T>,
+41. ) -> crate::hal::mem::PageAligned<T>;
+42. 
+43. pub assume_specification<T: ::sys::mm::Address>[ crate::hal::mem::TruncatedMemory...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=hal::mem::types::region 2>&1 | tail -12
