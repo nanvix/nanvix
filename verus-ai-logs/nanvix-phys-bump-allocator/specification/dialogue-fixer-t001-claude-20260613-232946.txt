@@ -245,3 +245,127 @@ Turn 15
 Turn 16
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A6 -iE "does not yet support|error\
+[RESULT ✓] bash: Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+error[E0061]: this method takes 1 argument but 0 arguments were supplied
+    --> src/libs/bump_allocator/src/lib.spec.rs:156:39
+     |
+ 156 |             allocated: self.next_slot.load() as nat,
+     |                 ...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+**Blocker 3 confirmed** (`core::sync::atomic::AtomicUsize` value not spec-readable — `load` is exec-only, no spec accessor). Let me confirm there's genuinely no spec projection for the atomic, then revert the exploratory View change.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "AtomicUsize\|spec.*atomic\|reasoning about the values" /home/ruize/verus-ai-exp/v
+
+[THINKING] The real problem is that `load()` requires an Ordering argument and it's an exec function anyway, so it can't be called from spec context. There's no spec-level accessor for reading the atomic's value at all.
+
+Let me verify this by checking what spec methods actually exist on AtomicUsize — I suspect there are none. The vstd documentation confirms that `core::sync::atomic::AtomicUsize` has zero spec support for reasoning about atomic values; the ghost atomic machinery is separate. So the fundamental blocker is that the `allocated` field can't be read from a spec `view()` function because the underlying type has no spec representation. Fixing this would require replacing the standard atomic with vstd's ghost atomic types, but that introduces a different problem: the ghost state lives behind an AtomicInvariant that can only be opened in proof or exec contexts, not in a pure spec function, so even that wouldn't give us a deterministic view.
+
+Now I'm identifying the three core blockers: the `break <value>` statement in the alloc body is fixable through rewriting, the raw pointer cast from `usize` to `*mut [u8;N]` can't be fixed without external_body or vstd's PointsTo machinery (which has no permission source), and the atomic read in the View function is fundamentally impossible without replacing the entire atomic infrastructure. So adding contracts to alloc and alloc_as is blocked. I should focus on what's achievable instead — maybe I can give as_mut_ptr a meaningful spec by using a ghost `base_of` relation without needing a body implementation.
+
+Let me reconsider the raw pointer cast one more time. Even if I used vstd's raw_ptr utilities or PointsTo with expose_provenance, the backend would need to hand out a permission token, which would require redesigning the trait to return tracked permissions and splitting them per-slot — that's full verification machinery, not spec-phase work. And for as_mut_ptr specifically, I can state that the returned pointer equals the pool base via a ghost constant and is stable, but the alignment requirement can't be expressed on the trait method itself since the trait has no alignment generic. I'll implement the base-equals and stability parts using a ghost `base_of` function.
+
+Now I'm thinking through whether to attach a real spec to as_mut_ptr at all. If I add an ensures clause, the trait impls would need to prove it, but the test and kernel impls use concrete pointer arithmetic. With an uninterpreted `base_of` function, the impls can't prove equality to a concrete pointer without circular reasoning — they'd fail verification unless they're not being verified in the first place.
+
+The kernel's BssStorage impl is verified, so adding an unprovable ensures would break `make verify`. I should test whether a stability spec on as_mut_ptr actually holds without regressing the kernel verification, and keep it only if it doesn't break things.
+
+My plan: revert the exploratory changes to get back to a known-good state, genuinely test the as_mut_ptr stability spec against kernel verification, and then report what's achievable versus what needs guidance on the alloc/alloc_as contracts — those three specific errors are genuinely blocked by Verus limitations.
+
+The core issue is whether external_body can be permitted for raw-pointer materialization helpers, or whether the atomic_ghost structural rewrite should be approved for the proof phase. Adding functions to tcb-allowed.md is a trust decision I shouldn't make unilaterally, so that's a guidance question for the reviewer. But the reviewer wants concrete error messages from every approach I've tried, not just explanations of why it's hard.
+
+I've captured errors from three approaches so far: contracting alloc directly, rewriting the break with a contract, and attempting to read the atomic via View. Let me verify the as_mut_ptr spec approach works against the kernel, then clean up by reverting the failed attempts and showing what actually compiles.
+[RESULT ✓] bash: 5:    AtomicU32, AtomicUsize, Ordering,
+73:            pub open spec fn is_for(&self, patomic: $at_ident) -> bool {
+123:            pub open spec fn is_for(&self, patomic: $at_ident <T>) -> bool {
+545:    PAtomicUsize,
+548:    AtomicUsize,
+---core atomic support---
+/home/ruize/verus-ai-exp/verus-ai/...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize && sed -n '1,40p' /home/ruize/verus-ai-exp/verus-ai/vstd/std_specs/atomic.rs
+[RESULT ✓] bash: #![allow(unused_imports)]
+use super::super::prelude::*;
+use core::sync::atomic::*;
+
+// Supports the core::sync::atomic functions
+// This provides NO support for reasoning about the values inside the atomics.
+// If you need to do that, see `vstd::atomic` or `vstd::atomic_ghost` instead.
+
+#[verifier::...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+All three blockers empirically confirmed with exact errors. vstd source confirms `core::sync::atomic` has **no** value-reasoning support. Let me revert the exploratory changes to restore the known-good state.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+
+[THINKING] I've confirmed from the vstd source that `core::sync::atomic` doesn't support reasoning about values inside atomics, so I can't read `allocated` from `self.next_slot` without switching to `vstd::atomic` or `vstd::atomic_ghost` — which would require a structural redesign. Now that I have all three blockers identified, I'm going to revert my exploratory changes back to the known-good state and focus on the one improvement that's actually achievable.
+
+I need to add a meaningful `as_mut_ptr` spec and verify it doesn't break the kernel, then revert the `impl View` and break rewrite.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+[RESULT ✓] edit: No changes made: old_str and new_str are the same
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Now revert the break rewrite (no benefit since `alloc` stays unannotated):
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] I'm reconsidering whether to revert the `alloc` annotation to keep the diff minimal, but the reviewer's asking for a real fix. Let me try implementing a meaningful `as_mut_ptr` spec that addresses their concerns and verify it doesn't break the kernel verification.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Now let me genuinely attempt the one potentially-achievable win — a meaningful `as_mut_ptr` spec. First check who implements `BssStorage` (impls must prove any ensures I add):
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "impl BssStorage\|impl .*BssStorage for\|BssStorage" src/ --include=*.rs | grep -v
+
+[THINKING] I'm going to try adding an uninterpreted spec function for `base_of` to lib.spec.rs and then give `as_mut_ptr` an `ensures` clause to see if it compiles and whether the trait implementations can satisfy it. But I'm realizing that `as_mut_ptr` is a trait method with existing implementations, so adding an `ensures` might create a conflict.
+
+The issue is that if I add an `ensures` to the trait method declaration, every implementation would need to prove it. The kernel implementation gets verified by `make verify`, and the test implementations would also need to satisfy it. But `base_of` is uninterpreted—it has no definition—so an implementation returning a concrete pointer can't prove that `result as int == base_of::<Self>()` without an axiom linking them. That means verify-kernel would break because the implementations can't discharge the proof obligation.
+
+I could mark the trait method as `#[verus_spec]` with the ensures, but that doesn't solve the fundamental problem: a meaningful, implementation-provable spec for `as_mut_ptr` is impossible because its true meaning—returning the backend base stably and aligned—is exactly the unsafe TCB contract that Rust's type system can't verify. Let me empirically test this by adding the ensures and running verify-kernel to confirm whether the kernel even implements `Bss` and whether the proof actually fails.
+[RESULT ✓] bash: src/kernel/src/mm/virt/page_table_allocator.rs:25:    BssStorage,
+src/kernel/src/mm/virt/page_table_allocator.rs:70:struct PageTableBssStorage {
+src/kernel/src/mm/virt/page_table_allocator.rs:74:::static_assert::assert_eq_align!(PageTableBssStorage, mem::PAGE_SIZE);
+src/kernel/src/mm/virt/page_table...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/page_table_allocator.rs
+[RESULT ✓] view: 60. 
+61. // Ensure that the kernel memory size is a multiple of a page table size.
+62. ::static_assert::assert_eq!(config::kernel::MEMORY_SIZE.is_multiple_of(mem::PGTAB_SIZE));
+63. 
+64. //==================================================================================================
+65. // Page T...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Let me empirically test whether `as_mut_ptr` can carry a meaningful (non-tautological) spec, given the kernel impl must prove it. I'll add a ghost `base_of` + stability ensures:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+
+[THINKING] I'm realizing that adding an `ensures` clause to the trait method's `as_mut_ptr` would require the kernel implementation to prove the result equals the base address, but since `base_of` is uninterpreted, the kernel can't discharge that proof. This would break verify-kernel. Let me test this hypothesis by running verify-bump-allocator first to confirm my suspicion.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A6 -iE "does not yet support|error\

@@ -36,6 +36,10 @@ pub assume_specification [ <usize>::div_ceil ](x: usize, y: usize) -> (result: u
 // align_up - numeric specification
 //==================================================================================================
 
+/// Ghost constant: the stable base address revealed by a backend `S`'s
+/// `as_mut_ptr()`. Uninterpreted because a static's address is opaque to Verus.
+pub uninterp spec fn base_of<S: BssStorage>() -> int;
+
 /// Least multiple of `alignment` that is `>= value`; `None` when `alignment == 0`
 /// or when that multiple does not fit in a `usize`.
 ///
@@ -139,22 +143,6 @@ impl BumpView {
     /// consumed, nothing else changes.
     pub open spec fn spec_alloc(self) -> BumpView {
         BumpView { allocated: (self.allocated + 1) as nat, ..self }
-    }
-}
-
-impl<const N: usize, const A: usize, S: BssStorage> View for FixedSizeBumpAllocator<N, A, S> {
-    type V = BumpView;
-
-    open spec fn view(&self) -> BumpView {
-        BumpView {
-            base: S::as_mut_ptr() as int,
-            stride: align_up_spec(N as nat, A as nat).unwrap(),
-            unit_size: N as nat,
-            unit_align: A as nat,
-            capacity: S::NUM_UNITS as nat,
-            storage_size: S::STORAGE_SIZE as nat,
-            allocated: self.next_slot.load() as nat,
-        }
     }
 }
 
