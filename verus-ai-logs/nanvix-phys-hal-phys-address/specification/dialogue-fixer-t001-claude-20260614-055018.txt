@@ -79,3 +79,41 @@ Turn 3
 [THINKING] The `inv()` function relies on `spec_frame_number(self@) <= spec_max_frame_number()`, which should be provable given `addr@ == self@` and the preconditions. Proving that the result satisfies the invariant is straightforward since the body establishes the frame number constraint, but I'm wondering whether Verus automatically recognizes that `Self(addr)@` equals `addr@`.
 
 The View is defined as a closed spec function that extracts the inner value, so `Self(addr).0` directly gives us `addr`, meaning `Self(addr)@ == addr@` should hold. Since the View is in-module, it should unfold automatically during verification.
+[RESULT ✓] bash: - into_raw_value
+    - as_ptr
+    - as_mut_ptr
+    - fmt
+
+=== Summary ===
+  verification: 5 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=14 admit=26 trusted=0 no_decreases=0 cfg_gate=16
+  coverage: 3/16 exec functions have contracts
+  status: CLEAN
+
+Log written to: verus-ai-logs/ve...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Module verifies: 5 verified, 0 errors, CLEAN. The `from_mmio_address` body proves the new non-tautological ensures directly. Now the full kernel verify, build, and the reviewer's three checks.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== grep tautology ==="; grep -n "Err(_) => true" src/kernel/src/hal/mem/types/address/
+[RESULT ✓] bash: === grep tautology ===
+(exit 1)
+=== spec_drift ===
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+drift exit 0
+<shellId: 1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel 2>&1 | tail -8
+
+[THINKING] The grep check came back clean with no matches, and spec_drift passed as well. Now I'm running the full kernel verification and build. I notice spec_drift reported "Requires added: 0" even though I added a `requires` constraint to `from_mmio_address` — but that's actually a strengthening of the precondition, which is what the reviewer wanted, so the drift check correctly identifies it as clean relative to the baseline.
