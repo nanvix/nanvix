@@ -3129,6 +3129,7 @@ dependencies = [
  "goblin",
  "libc_stdlib",
  "nvx",
+ "proc",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
  "spin",
@@ -3214,6 +3215,39 @@ dependencies = [
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "test-fork-guestfs"
+version = "0.16.57"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "fatfs",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
+name = "test-fork-hostfs"
+version = "0.16.57"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
 ]
 
 [[package]]

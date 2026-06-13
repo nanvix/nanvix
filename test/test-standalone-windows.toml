@@ -125,6 +125,15 @@ runs_on = ["microvm"]
 
 [[tests]]
 executor = "terminal"
+program = "./bin/test-fork-hostfs.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img -mount ./bin/test-fork-hostfs-data"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 13
+runs_on = ["microvm"]
+
+[[tests]]
+executor = "terminal"
 program = "./bin/mount-multipart-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 input = "[]"
