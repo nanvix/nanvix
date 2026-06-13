@@ -1040,3 +1040,248 @@ Full kernel: **66 verified, 0 errors**. Admit count went 26→28 (exactly my two
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 make verify 2>&1 | grep -iE "verifying|verified, |errors|Exit code|crate|FAILED
 
 [THINKING] The full kernel verification passed with 66 verified items and no errors, so there are no regressions. The CHEATING_DETECTED flags come from pre-existing counts in the admit, external_body, and cfg_gate categories across the in-progress modules and my new admit lemmas. Looking at the numbers, the admit count increased from 26 to 28 compared to the baseline, while the other categories stayed the same, so the impact is minimal.
+[RESULT ✓] bash: /home/ruize/nanvix-phy/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+  Crate     : bitmap
+verification results:: 6 verified, 0 errors
+verification results:: 0 verified, 0 errors
+verification results:: 70 verified, 0 errors
+  0 errors
+  Exit code : 0
+  verification: 70 verif...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+All crates pass (exit 0, no errors). Now verify dual compilation with `make build`:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 make build 2>&1 | tail -25
+
+[THINKING] All the crate verifications passed without any regressions, and the kernel was already cached. Now I'm running a final `make build` to confirm that the standard cargo build still works properly with my changes.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 50 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^build|^all|^build-kernel|kernel:" Makefile | head -20
+[RESULT ✓] bash: 411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+624:verify-kernel: ensure-verus
+860:all-test-kernel-ramfs: $(TEST_KE...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+Let me confirm normal (non-Verus) compilation works using the project's build tooling.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls z z.ps1 2>/dev/null; echo "=== build skill ==="; sed -n '1,40p' .github/skills/build/SKI
+
+[THINKING] The `make build` target doesn't exist, so I need to verify that the normal `cargo build` process still works when the Verus ghost code is erased through the `verus_keep_ghost` flag. Let me check what the actual build command is—the skill mentions using `./z` to build the kernel.
+[RESULT ✓] bash: z
+z.ps1
+=== build skill ===
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+# Build Nanvix
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+cover...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,60p' .github/skills/build/SKILL.md | grep -nE "\./z |z build|cargo|kernel" | head
+[RESULT ✓] bash: 35:./z build -- all
+42:./z build -- kernel
+44:./z build -- all-nanvixd
+46:./z build -- all-uservm
+<shellId: 53 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 700 ./z build -- kernel 2>&1 | tail -25
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 54 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '30,50p' .github/skills/build/SKILL.md
+[RESULT ✓] bash: ### Preferred Build Commands (using `z` utility)
+
+```bash
+# Build everything with the local toolchain.
+./z build -- all
+```
+
+### Building Individual Components
+
+```bash
+# Kernel only.
+./z build -- kernel
+# Nanvixd only.
+./z build -- all-nanvixd
+# UserVM only.
+./z build -- all-uservm
+```
+
+### Build P...
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^[a-z].*kernel.*:|^all-test-kernel|^test-kernel|kernel-bin|^build-" Makefile | he
+
+[THINKING] The build command failed because the target name doesn't match what I'm using. I need to check the Makefile to see what kernel-related build targets are actually available.
+[RESULT ✓] bash: 624:verify-kernel: ensure-verus
+860:all-test-kernel-ramfs: $(TEST_KERNEL_RAMFS_IMG)
+869:clean-test-kernel-ramfs:
+<shellId: 56 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "kernel" Makefile | grep -iE "\.elf|build|cargo|: |target" | head -20
+[RESULT ✓] bash: 222:export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
+234:    #   - kernel.elf retains .symtab (resolvable by the guest profiler)
+262:# Kernel cargo commands explicitly unset RUSTC_WRAPPER to disable sccache.  The kernel uses a custom
+424:all-nanvix: all-host-binaries all-n...
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^[a-zA-Z0-9_.-]+:" build/make/kernel.mk | head -20
+[RESULT ✓] bash: 10:all-kernel: init
+26:check-kernel:
+29:format-kernel:
+32:format-check-kernel:
+35:clean-kernel:
+39:rust-lint-kernel:
+42:rust-lint-check-kernel:
+51:all-test-kernel: init
+61:run-kernel-tests: all-test-kernel all-uservm
+67:check-test-kernel:
+70:clean-test-kernel:
+<shellId: 58 completed with exit code 0...
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+The target is `all-kernel`. Let me build it:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 700 ./z build -- all-kernel 2>&1 | tail -25
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+A normal-build error surfaced: duplicate `use ::vstd::prelude::*` at line 22 (line 8 already imports it). Let me check whether this pre-existed my changes.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git stash list; echo "=== diff of frame.rs imports region ==="; git --no-pager diff src/ker
+
+[THINKING] There's a duplicate import issue in frame.rs where both line 8 and line 22 import `vstd::prelude::*`, and the compiler is now flagging line 22 as unused. I'm trying to figure out if this was already present before my changes or if something I did caused it to become redundant. Let me check if the build was actually passing before my changes.
+[RESULT ✓] bash: === diff of frame.rs imports region ===
+<shellId: 60 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short; echo "=== is frame.rs tracked? ==="; git ls-files src/kernel/src/hal/me
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-frame-address/specification/prover-claude-20260614-070543.jsonl
+ M verus-ai-logs/nanvix-phys-hal-frame-address/specification/prover-claude-20260614-070543.txt
+=== is frame.rs tracked? ===
+src/kernel/src/hal/mem/types/address/frame.rs
+<shellId: 61 completed with exit c...
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager log --oneline -3; echo "=== diff HEAD for my files ==="; git --no-pager diff
+
+[THINKING] I'm noticing that git status shows frame.rs isn't modified, even though I edited it — which suggests the changes might already be committed to the repository, or there's something unusual about the working tree state matching HEAD despite my edits.
+[RESULT ✓] bash: b2e6abf49 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=28 external_body=12 cfg_gate=15)
+917dd933d [verus] verify PASS (cheating detected): bump-allocator::all (cached (no recompilation), —, admit=3 external_body=2)
+bb5d3c878 [verus] verify PASS (cheating ...
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+The verify script auto-commits, so my changes are already in HEAD. Let me check whether this duplicate-import build error pre-existed my work by inspecting frame.rs history.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager log --oneline -- src/kernel/src/hal/mem/types/address/frame.rs | head -10
+
+[THINKING] The verify script auto-commits after each run, so my changes to frame.rs are already committed—that's why git diff shows nothing. Looking at the duplicate `use ::vstd::prelude::*` imports at lines 8 and 22, this was pre-existing in the original file before my edits.
+
+The real question is whether the normal build (without verus_keep_ghost) passed before my changes. Under normal compilation, the verus blocks and macros are erased, so the duplicate import at line 22 shouldn't be used—unless the verus macros themselves reference vstd internally. Since this duplicate existed in the original file, either the build was already failing (which contradicts the task requirement), or my changes somehow altered how the imports are consumed.
+
+The simplest explanation is that this is a pre-existing redundancy that the normal build with `-D warnings` now flags as an error. Both line 8 and line 22 import the same thing (`vstd::prelude::*`), so removing the duplicate at line 22 should fix it without breaking anything.
+[RESULT ✓] bash: 18128c03d [verus] verify PASS (cheating detected): kernel::hal::mem::types::address::frame (6 verified, 0 errors, admit=28 external_body=12 cfg_gate=15)
+b7a988312 [verus-ai] specification strip-external-body: hal-frame-address (2)
+38885545d [verus-ai] caller-analysis START: hal-frame-address
+8b38382...
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== frame.rs imports at 38885545d (before spec work) ==="; git --no-pager show 388855
+
+[THINKING] I'm checking the frame.rs file from an earlier commit to see if the duplicate vstd import was already present and whether the code compiled at that point.
+[RESULT ✓] bash: === frame.rs imports at 38885545d (before spec work) ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================...
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+The duplicate `use ::vstd::prelude::*` (line 22) is pre-existing (present before my work). Let me compare with sibling `phys.rs` which builds fine, to find the right fix.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address && echo "=== phys.rs vstd imports ==="; grep -n "vstd::pr
+
+[THINKING] I'm noticing that the duplicate import statements existed before my changes at that earlier commit. The real question is whether the build actually succeeded back then. The issue is that under a normal build, rustc complains about the unused glob imports, but something must have been different before that allowed it to pass.
+
+The key is that the verus macros expand during compilation rather than disappearing entirely, and they need the prelude imports to resolve. After expansion, if nothing from the prelude is actually used in the final code, rustc flags it as unused. My changes likely removed the last reference to the prelude under normal build mode, which is why it's failing now. I need to figure out what was actually using the prelude before and whether this ever built successfully at those intermediate commits.
+
+Actually, the simplest fix is to remove the redundant duplicate import on line 22 — both line 8 and line 22 are identical `use vstd::prelude::*;` statements. The verus build doesn't complain about the duplicate (maybe it doesn't run with warnings-as-errors), but the normal build does. Removing the redundant one fixes the normal build without affecting the verus build, since line 8 still provides the prelude import. The real issue is that in normal build mode, the verus-specific imports become unused since those code paths are gated out, but rustc only flags line 22 as the redundant duplicate. Removing line 22 should fix the warning, though I need to verify that line 8 won't then be flagged as unused in normal mode since the prelude isn't actually needed when all the verus code is compiled out.
+
+Let me check how other address modules like phys.rs handle this same pattern — if they have a single `use vstd::prelude::*` that builds fine in normal mode, that tells me whether the import is conventionally kept or if there's an allow directive somewhere.
+[RESULT ✓] bash: === phys.rs vstd imports ===
+8:use vstd::prelude::*;
+=== page.rs (aligned) vstd imports ===
+8:use vstd::prelude::*;
+=== frame.rs vstd imports ===
+8:use vstd::prelude::*;
+22:use ::vstd::prelude::*;
+<shellId: 65 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+Sibling modules have only the single line-8 import. The line-22 `use ::vstd::prelude::*;` is a redundant duplicate that breaks the `-D warnings` normal build. Let me remove it.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I see the issue now—frame.rs has a duplicate import statement. Line 8 has `use vstd::prelude::*;` which matches what the sibling modules use, but line 22 adds a redundant `use ::vstd::prelude::*;` that shouldn't be there. Removing line 22 should fix the problem since the single import at line 8 is already sufficient.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 700 ./z build -- all-kernel 2>&1 | tail -20
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+Normal build passes now. Let me re-run the module verify to confirm the import removal didn't break the Verus build, then record the fix in bugs.md.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 700 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -25

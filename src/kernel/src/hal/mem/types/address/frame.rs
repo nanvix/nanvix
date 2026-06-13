@@ -19,7 +19,6 @@ use crate::hal::mem::types::address::{
 };
 use ::arch::mem::paging::FrameNumber;
 use ::sys::error::Error;
-use ::vstd::prelude::*;
 
 //==================================================================================================
 // Structures
