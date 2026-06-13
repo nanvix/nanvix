@@ -1547,3 +1547,73 @@ Turn 87
 ────────────────────────────────────────────────────────────
 Now let me run verification:
 [TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
+[RESULT ✓] bash: error: expected one of `,`, `:`, or `}`, found `(`
+error: expected `;`, found `book_physical_memory_regions`
+error: expected one of `,`, `:`, or `}`, found `(`
+error: expected `;`, found `Ok`
+error: Misuse of #[verus_spec]
+error: could not compile `kernel` (bin "kernel") due to 5 previous errors
+  0...
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "proof!\|proof_decl\|proof_with\|proof {" src/kernel/src/ | head; echo "=== search t
+
+[THINKING] The issue is that `proof { ... }` blocks aren't being parsed correctly when using the `#[verus_spec]` attribute macro on a plain Rust function, rather than the full `verus!{}` macro wrapper. The parser is choking on the function call inside the proof block, expecting a comma instead of the opening parenthesis.
+
+In the attribute-macro form, I need to use the `proof!` macro to invoke ghost code — so it should be `proof!{ lemma_frame_initialized(); }` instead of a bare `proof { ... }` block. Let me search through the codebase to see how this pattern is actually used.
+[RESULT ✓] bash: src/kernel/src/mm/phys/mod.rs:176:    proof {
+src/kernel/src/mm/phys/mod.rs:190:    proof {
+=== search toolchain examples for verus_spec + proof! ===
+/home/ruize/toolchain/verus/vstd/prelude.rs
+/home/ruize/toolchain/verus/libverus_builtin_macros.so
+/home/ruize/toolchain/verus/builtin_macros/src/lib....
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize; grep -rn "proof!\s*{\|proof_with\|proof_decl" /home/ruize/toolchain/verus/builtin_macros/src/lib.rs | he
+[RESULT ✓] bash: 350:/// proof_with add ghost input/output to the next function call.
+352:/// Using proof_with! to tell #[verus_spec] to add ghost input/output.
+353:/// Using proof_with outside of #[verus_spec] does not have any side effects.
+355:pub fn proof_with(_: proc_macro::TokenStream) -> proc_macro::TokenStre...
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize; grep -n "pub fn proof\b\|fn proof(" /home/ruize/toolchain/verus/builtin_macros/src/lib.rs; sed -n '330,4
+[RESULT ✓] bash: 361:pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+// When compiling code with verus:
+// #[verus_verify] annotates the item with verifier::verify
+// #[verus_verify(external_body)] annotates the item with verifier::external_body
+// When compiling code with standard rust too...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+
+[THINKING] I need to switch from the `proof { ... }` syntax to the `proof!{ ... }` macro syntax, which is available through the vstd prelude.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "vstd::prelude\|use vstd\|use ::vstd" src/kernel/src/mm/phys/mod.rs | head
+
+[THINKING] I need to check whether the `proof!` macro is available in scope by verifying that mod.rs imports `vstd::prelude::*`.
+[RESULT ✓] bash: 8:use vstd::prelude::*;
+37:use ::vstd::prelude::*;
+<shellId: 53 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
