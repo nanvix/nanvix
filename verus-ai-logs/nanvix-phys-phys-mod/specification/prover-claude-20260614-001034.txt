@@ -1655,3 +1655,22 @@ Turn 97
 Turn 98
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
+[RESULT ✓] bash: note: verifying module mm::phys
+note: verifying module mm::phys::frame
+note: verifying module mm::phys::manager
+note: verifying module mm::phys::upool
+note: automatically chose triggers for this expression:
+note:   trigger 1 of 1:
+note: Verus printed one or more automatically chosen quantifier trigg...
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+3 verified, 0 errors. Now full regression and build:
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify 2>&1 | tail -25
+
+[THINKING] The verification checks are passing with all three items confirmed and no errors. I need to clean up a trigger warning on a forall statement that checks whether memory regions are properly reserved across the frame set.
+
+I've already added explicit trigger annotations to suppress the auto-trigger warnings, though the note persists since it's non-fatal and verification succeeds. Rather than over-engineer this, I'll move forward since the goal of zero errors is met.
+
+Next I need to run the full regression test and build, then document the LinkedList limitation in bugs.md and add the two helper functions to tcb-allowed.md with their justifications.
