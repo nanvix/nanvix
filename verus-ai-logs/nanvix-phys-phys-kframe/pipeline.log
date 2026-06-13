@@ -18,3 +18,6 @@ Phases: caller-analysis → cheating-elimination + final-review
 PHASE: caller-analysis
 Module: phys-kframe
 ============================================================
+[2026-06-14 03:08:25] [PROVER] Running caller-analysis...
+[2026-06-14 03:08:25] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-14 03:10:16]   ↳ prover done in 1m50s (exit=0)
