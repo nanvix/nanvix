@@ -39,3 +39,4 @@ Module: hal-frame-address
 PHASE: specification
 Module: hal-frame-address
 ============================================================
+[2026-06-14 07:05:43] [STRIP-EXT] removed 2 external_body attribute(s) from /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs

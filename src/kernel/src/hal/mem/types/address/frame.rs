@@ -94,7 +94,6 @@ impl FrameAddress {
 impl FrameAddress {
     // Succeeds only for page-aligned inputs, so the resulting frame address satisfies `inv()`.
     // `external_body` until the address layer is verified.
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             match result {
@@ -117,7 +116,6 @@ impl FrameAddress {
     ///
     // Dependency contract: the raw value is the abstract frame address. `external_body` until the
     // address layer is verified.
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             result as int == self@,
