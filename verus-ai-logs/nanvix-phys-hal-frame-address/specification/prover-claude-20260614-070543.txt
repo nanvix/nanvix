@@ -849,3 +849,73 @@ Turn 45
 ────────────────────────────────────────────────────────────
 Now let me run the module verification to see how it goes.
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -45
+[RESULT ✓] bash: PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targ...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+Module verifies (6 verified, 0 errors) and the real proof for `into_frame_number` worked. But there's a "cfg-gated exec code: 1" flag. Let me inspect.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | grep -i -A3 "f
+
+[THINKING] The verification passed with 6 checks and no errors, covering the four in-scope functions with contracts while correctly leaving the out-of-scope ones unverified. There's a "CHEATING_DETECTED" flag showing cfg-gated exec code, which I need to investigate to see if it's a legitimate issue or a false positive.
+[RESULT ✓] bash: - hal/mem/types/address/frame.proof.rs:13 lemma_frame_base_aligned: admit
+    - hal/mem/types/address/frame.proof.rs:22 lemma_aligned_div_mul: admit
+    - hal/mem/types/address/phys.proof.rs:6 lemma_from_number_no_overflow: admit
+    - hal/mem/types/address/phys.proof.rs:16 lemma_frame_index: admit
+...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "cfg" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt | head; echo "=== 
+
+[THINKING] The admit counts for the frame and external_body are already part of the larger crate structure, and my two new lemmas are admits as expected during the specification phase. I need to track down what's triggering that cfg-gated exec code flag in the frame module specifically.
+[RESULT ✓] bash: === section headers ===
+<shellId: 37 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,60p' verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+[RESULT ✓] bash: - hal/mem/types/address/frame.proof.rs:13 lemma_frame_base_aligned: admit
+    - hal/mem/types/address/frame.proof.rs:22 lemma_aligned_div_mul: admit
+    - hal/mem/types/address/phys.proof.rs:6 lemma_from_number_no_overflow: admit
+    - hal/mem/types/address/phys.proof.rs:16 lemma_frame_index: admit
+...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+The cfg-gate flag is pre-existing (it appeared in the baseline too). Let me confirm what it flags in frame.rs.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "cfg" src/kernel/src/hal/mem/types/address/frame.rs; echo "=== cfg_gate detail loc
+
+[THINKING] I'm looking at the global admit/external_body list and trying to track down where the "cfg-gated exec code: 1" count comes from in the module summary. The global cfg_gate count is 15, but the frame module shows a separate count of 1 for cfg-gated exec code. I need to check what the frame module's actual cfg-gate value is and whether this might be related to existing patterns like `#[verus_verify(external_derive)]` combined with `#[cfg_attr]` attributes.
+
+Looking at the baseline results, the frame module already reported "cfg-gated exec code: 1" in the initial run, so this is pre-existing and not something I introduced. I should search the script's detection logic or grep through frame.rs to understand what's being flagged.
+[RESULT ✓] bash: 9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+37:#[cfg(verus_keep_ghost)]
+=== cfg_gate detail location ===
+cheating-detail.txt
+coverage-unverified.txt
+verus_2026-06-13_23-26-35.log
+verus_2026-06-13_23-35-50.log
+verus_2026-06-13_23-37-13.log
+verus_2026-06-13_23-59-01.log
+verus_2026-06-13_23-...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+The cfg-gate flag is pre-existing (present in baseline) — it's the legitimate `#[cfg(verus_keep_ghost)]` on the ghost-only View/inv block at line 37, which I must keep. My changes added no exec cfg-gating. The module verifies: **6 verified, 0 errors**.
+
+Now the critical regression check — full `make verify` (I modified `mm/phys/frame.spec.rs`):
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel 2>&1 | tail -35
+
+[THINKING] Looking at the cfg usage in frame.rs, the standard `#[cfg(verus_keep_ghost)]` annotations on the include statements and the verus! block are legitimate gates for spec and proof code. The heuristic flagging one cfg-gated exec code instance is picking up that verus! block on line 37, though it actually contains spec functions and View definitions rather than executable code.
+
+Since this cfg-gate was already present in the baseline run with the same count (1 instance, 15 total gates), I haven't introduced any regression. The "CHEATING_DETECTED" status appears to be a false positive from the detector misidentifying the pre-existing, legitimate cfg-gated ghost material. My changes didn't add any cfg-gating of actual exec code, and verification shows 6 verified with 0 errors.
+
+Now I need to run the full verification suite to confirm no regressions in the mm/phys module I modified, and check whether removing the FrameAddress assume_specs while strengthening the PageAligned ones affects downstream verification.
