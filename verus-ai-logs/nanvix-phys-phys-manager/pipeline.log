@@ -29,3 +29,6 @@ Module: phys-manager
 PHASE: view-design
 Module: phys-manager
 ============================================================
+[2026-06-14 00:51:04] [PROVER] Running view-design...
+[2026-06-14 00:51:04] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-14 00:56:54]   ↳ prover done in 5m49s (exit=0)
