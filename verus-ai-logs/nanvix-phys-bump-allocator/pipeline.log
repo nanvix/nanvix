@@ -83,3 +83,6 @@ without a ghost token because AtomicUsize's value is not spec-readable.
 - external_body=2 (alloc, alloc_as) — registered in tcb-allowed.md
 These are the legitimate hand-off to the proving phase, not spec-phase violations.
 [2026-06-14 00:03:28] [DIALOGUE] specification ended after 3 turns: RESOLVED (2171s)
+[2026-06-14 00:03:28] [PHASE] specification: dialogue-RESOLVED (57m47s)
+[2026-06-14 00:03:28] [SPEC DRIFT] (within specification) Comparing eede1a8c → 306e2252
+[2026-06-14 00:03:28] [SPEC DRIFT] (within specification) No changes detected
