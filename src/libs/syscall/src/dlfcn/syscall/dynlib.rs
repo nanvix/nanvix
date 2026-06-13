@@ -123,6 +123,12 @@ pub struct DynamicLibrary {
     dynplt: Option<RelocationTable>,
     /// Relocation table for global variables.
     dynrel: Option<RelocationTable>,
+    /// Absolute address of the `.init_array` section and the number of entries.
+    init_array: Option<(usize, usize)>,
+    /// Absolute address of the `.fini_array` section and the number of entries.
+    fini_array: Option<(usize, usize)>,
+    /// `DT_RUNPATH` directories of this library, already split on `:`.
+    runpaths: Vec<String>,
 }
 
 impl DynamicLibrary {
@@ -290,6 +296,23 @@ impl DynamicLibrary {
                     Self::get_dynplt(&section_headers, load_address);
                 let dynrel: Option<RelocationTable> =
                     Self::get_dynrel(&section_headers, load_address);
+                let init_array: Option<(usize, usize)> =
+                    Self::get_init_array(&section_headers, load_address);
+                let fini_array: Option<(usize, usize)> =
+                    Self::get_fini_array(&section_headers, load_address);
+
+                // Collect `DT_RUNPATH` entries (goblin exposes them already
+                // resolved against `.dynstr`). Each entry may be a colon-
+                // separated list of directories; split here so the search
+                // path probe can iterate them directly.
+                let mut runpaths: Vec<String> = Vec::new();
+                for raw in elf.runpaths.iter() {
+                    for component in raw.split(':') {
+                        if !component.is_empty() {
+                            runpaths.push(component.to_string());
+                        }
+                    }
+                }
 
                 Ok(DynamicLibrary {
                     filename,
@@ -301,6 +324,9 @@ impl DynamicLibrary {
                     dynstr,
                     dynplt,
                     dynrel,
+                    init_array,
+                    fini_array,
+                    runpaths,
                 })
             },
             Err(error) => {
@@ -442,6 +468,44 @@ impl DynamicLibrary {
         } else {
             None
         }
+    }
+
+    /// Looks up a function-pointer array section (`.init_array` / `.fini_array`)
+    /// by name, returning the absolute address of the first entry and the
+    /// number of `usize`-sized entries it contains.
+    ///
+    /// Returns `None` when the section is missing or empty. Entries are
+    /// always 4 bytes on i386; if `sh_size` is not a multiple of `usize`
+    /// the trailing bytes are silently truncated (a well-formed ELF should
+    /// never trigger this).
+    fn get_function_pointer_array(
+        section_headers: &BTreeMap<String, SectionHeader>,
+        load_address: VirtualAddress,
+        section_name: &str,
+    ) -> Option<(usize, usize)> {
+        let header: &SectionHeader = section_headers.get(section_name)?;
+        let count: usize = (header.sh_size as usize) / mem::size_of::<usize>();
+        if count == 0 {
+            return None;
+        }
+        let base: usize = load_address.into_raw_value() + header.sh_addr as usize;
+        Some((base, count))
+    }
+
+    /// Gets the `.init_array` section descriptor, if present.
+    fn get_init_array(
+        section_headers: &BTreeMap<String, SectionHeader>,
+        load_address: VirtualAddress,
+    ) -> Option<(usize, usize)> {
+        Self::get_function_pointer_array(section_headers, load_address, ".init_array")
+    }
+
+    /// Gets the `.fini_array` section descriptor, if present.
+    fn get_fini_array(
+        section_headers: &BTreeMap<String, SectionHeader>,
+        load_address: VirtualAddress,
+    ) -> Option<(usize, usize)> {
+        Self::get_function_pointer_array(section_headers, load_address, ".fini_array")
     }
 
     /// Finds a symbol in the dynamic library.
@@ -927,15 +991,130 @@ impl DynamicLibrary {
         }
     }
 
-    /// Takes all dependencies of the dynamic library.
+    /// Detaches and returns all bound dependencies of the dynamic library.
+    ///
+    /// Each returned dependency edge is removed from this library, so the
+    /// `Arc` references it held are released to the caller. `dlclose` relies
+    /// on this to drop a dependent's hold on its dependencies before deciding
+    /// whether those dependencies have become unreferenced and can be
+    /// unloaded.
     pub fn take_dependencies(&mut self) -> Vec<(String, Arc<Mutex<Self>>)> {
         let mut dependencies: Vec<(String, Arc<Mutex<Self>>)> = Vec::new();
-        for (name, library) in self.dependencies.iter() {
-            if let Some(library) = library {
-                dependencies.push((name.clone(), library.clone()));
+        for (name, library) in self.dependencies.iter_mut() {
+            if let Some(library) = library.take() {
+                dependencies.push((name.clone(), library));
             }
         }
         dependencies
+    }
+
+    /// Returns the `DT_RUNPATH` directories of the library, split on `:`.
+    pub fn runpaths(&self) -> &[String] {
+        &self.runpaths
+    }
+
+    /// Returns the loaded `.init_array` descriptor as `(base_address,
+    /// entry_count)`, or `None` if the library has no constructors.
+    ///
+    /// Callers should snapshot this under the library's mutex, drop the
+    /// mutex, and then invoke the entries via [`invoke_init_array`]. The
+    /// descriptor remains valid for as long as the owning
+    /// `Arc<Mutex<DynamicLibrary>>` is alive.
+    pub fn init_array_descriptor(&self) -> Option<(usize, usize)> {
+        self.init_array
+    }
+
+    /// Returns the loaded `.fini_array` descriptor as `(base_address,
+    /// entry_count)`, or `None` if the library has no destructors.
+    ///
+    /// See [`init_array_descriptor`](Self::init_array_descriptor) for the
+    /// expected lock-handling pattern.
+    pub fn fini_array_descriptor(&self) -> Option<(usize, usize)> {
+        self.fini_array
+    }
+
+    /// Invokes every function pointer in the supplied `.init_array`
+    /// descriptor in order, as required by the System V ABI for shared-
+    /// object constructor execution.
+    ///
+    /// `name` is purely for diagnostic logging.
+    ///
+    /// # Locking
+    ///
+    /// This function must be called with **no** dlfcn locks held — neither
+    /// `DYNAMIC_LIBRARY_REGISTRY` nor the per-library mutex. Constructors
+    /// may legally call `dlsym` (and, in a future relaxation, `dlopen`),
+    /// both of which would otherwise re-enter the same locks and deadlock.
+    ///
+    /// # Safety
+    ///
+    /// The caller must guarantee that `descriptor` was produced by
+    /// [`init_array_descriptor`](Self::init_array_descriptor) from a
+    /// `DynamicLibrary` whose memory segments are still mapped, that
+    /// `resolve_all` has already applied any `R_386_RELATIVE` patches to
+    /// the section, and that the holding `Arc` lives until this call
+    /// returns. Entry values equal to `0` or `usize::MAX` are treated as
+    /// sentinels and skipped, matching the glibc loader behaviour.
+    pub unsafe fn invoke_init_array(descriptor: Option<(usize, usize)>, name: &str) {
+        let (base, count): (usize, usize) = match descriptor {
+            Some(range) => range,
+            None => return,
+        };
+        ::syslog::debug!("invoke_init_array(): library={:?} entries={}", name, count);
+        for index in 0..count {
+            // SAFETY: `base` points to the loaded `.init_array` section of
+            // the originating library and `count` is the number of
+            // `usize`-sized entries it contains.
+            let entry_ptr: *const usize = (base + index * mem::size_of::<usize>()) as *const usize;
+            let entry: usize = unsafe { entry_ptr.read_unaligned() };
+            if entry == 0 || entry == usize::MAX {
+                continue;
+            }
+            // SAFETY: the .init_array entry is a function pointer with C
+            // calling convention and no arguments per the System V ABI.
+            let func: extern "C" fn() = unsafe { mem::transmute::<usize, extern "C" fn()>(entry) };
+            func();
+        }
+    }
+
+    /// Invokes every function pointer in the supplied `.fini_array`
+    /// descriptor in reverse order, as required by the System V ABI for
+    /// shared-object destructor execution. Must be called before the
+    /// library's memory segments are unmapped.
+    ///
+    /// `name` is purely for diagnostic logging.
+    ///
+    /// # Locking
+    ///
+    /// This function must be called with **no** dlfcn locks held -- neither
+    /// `DYNAMIC_LIBRARY_REGISTRY` nor the per-library mutex of the
+    /// originating library. The current `dlclose()` caller removes every
+    /// library it is going to unload from the registry and then releases
+    /// `DYNAMIC_LIBRARY_REGISTRY` before invoking any destructor, so a
+    /// destructor may legally call back into `dlopen`/`dlclose`/`dlsym`
+    /// without deadlocking. One caveat remains: `dlsym(self_handle, ...)`
+    /// fails with `NoSuchEntry` rather than succeeding, because the closing
+    /// library has already been removed from the registry.
+    ///
+    /// # Safety
+    ///
+    /// See [`invoke_init_array`](Self::invoke_init_array).
+    pub unsafe fn invoke_fini_array(descriptor: Option<(usize, usize)>, name: &str) {
+        let (base, count): (usize, usize) = match descriptor {
+            Some(range) => range,
+            None => return,
+        };
+        ::syslog::debug!("invoke_fini_array(): library={:?} entries={}", name, count);
+        for index in (0..count).rev() {
+            // SAFETY: see `invoke_init_array`.
+            let entry_ptr: *const usize = (base + index * mem::size_of::<usize>()) as *const usize;
+            let entry: usize = unsafe { entry_ptr.read_unaligned() };
+            if entry == 0 || entry == usize::MAX {
+                continue;
+            }
+            let func: extern "C" fn() = unsafe { mem::transmute::<usize, extern "C" fn()>(entry) };
+            func();
+        }
     }
 }
 
