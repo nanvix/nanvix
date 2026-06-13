@@ -1,0 +1,26 @@
+Timestamp: 2026-06-13_23-19-12
+Mode: cargo
+Crate: bump-allocator
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=3
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+error: struct literals are not allowed here; try surrounding the struct literal with parentheses
+  --> src/libs/bump_allocator/src/lib.proof.rs:64:27
+   |
+64 |         v.spec_alloc() == BumpView { allocated: v.spec_alloc().allocated, ..v },
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: could not compile `bump-allocator` (lib) due to 1 previous error

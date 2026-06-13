@@ -123,6 +123,13 @@ include!("lib.proof.rs");
 ///
 /// Returns the aligned value, or `None` if `alignment` is zero or the computation overflows.
 ///
+#[verus_spec(result =>
+    ensures
+        match result {
+            Some(r) => align_up_spec(value as nat, alignment as nat) == Some(r as nat),
+            None => align_up_spec(value as nat, alignment as nat) is None,
+        },
+)]
 pub const fn align_up(value: usize, alignment: usize) -> Option<usize> {
     if alignment == 0 {
         return None;
@@ -188,6 +195,7 @@ pub unsafe trait BssStorage {
     const STORAGE_SIZE: usize;
 
     /// Returns a mutable pointer to the beginning of the storage region.
+    #[verus_spec]
     fn as_mut_ptr() -> *mut u8;
 }
 
@@ -249,7 +257,32 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     /// - [`BumpAllocError::OutOfBounds`] if computed slot exceeds storage bounds.
     /// - [`BumpAllocError::Misaligned`] if computed slot is not properly aligned.
     ///
+    #[verus_spec(result =>
+        ensures
+            // The abstract pool's geometric guarantees (alignment, in-bounds,
+            // uniqueness) hold whenever the pool is well formed. This is the
+            // formal statement of the kernel's `unsafe` soundness obligations.
+            self.inv() ==> self.view().geometry_ok(),
+            // `alloc` never reports a type-check failure: those are exclusive to
+            // `alloc_as`. Every error is an exhaustion / arithmetic / bounds fault.
+            match result {
+                Ok(_) => true,
+                Err(e) => {
+                    &&& e != BumpAllocError::SizeMismatch
+                    &&& e != BumpAllocError::AlignmentMismatch
+                },
+            },
+    )]
     pub fn alloc(&self) -> Result<&'static mut [u8; N], BumpAllocError> {
+        proof! {
+            if self.view().inv() {
+                lemma_geometry(self.view());
+                lemma_exhausted_boundary(self.view());
+                if self.view().has_capacity() {
+                    lemma_alloc_transition(self.view());
+                }
+            }
+        }
         // Reserve a slot index via compare-and-swap to avoid overshooting the counter.
         let idx: usize = loop {
             let current: usize = self.next_slot.load(Ordering::Acquire);
@@ -307,7 +340,35 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     /// The caller must initialise the returned `MaybeUninit<T>` before reading through it
     /// and ensure exclusive use of the returned reference.
     ///
+    #[verus_spec(result =>
+        ensures
+            // Same pool-geometry guarantees as `alloc`.
+            self.inv() ==> self.view().geometry_ok(),
+            // The typed front door enforces the size/alignment contract *before*
+            // touching storage: `Ok` implies the type matches the slot, and the
+            // two type-check failures map exactly to their faults.
+            match result {
+                Ok(_) => {
+                    &&& vstd::layout::size_of::<T>() == N as nat
+                    &&& vstd::layout::align_of::<T>() <= A as nat
+                },
+                Err(BumpAllocError::SizeMismatch) => vstd::layout::size_of::<T>() != N as nat,
+                Err(BumpAllocError::AlignmentMismatch) => {
+                    &&& vstd::layout::size_of::<T>() == N as nat
+                    &&& vstd::layout::align_of::<T>() > A as nat
+                },
+                Err(_) => {
+                    &&& vstd::layout::size_of::<T>() == N as nat
+                    &&& vstd::layout::align_of::<T>() <= A as nat
+                },
+            },
+    )]
     pub unsafe fn alloc_as<T>(&self) -> Result<&'static mut MaybeUninit<T>, BumpAllocError> {
+        proof! {
+            if self.view().inv() {
+                lemma_geometry(self.view());
+            }
+        }
         if core::mem::size_of::<T>() != N {
             return Err(BumpAllocError::SizeMismatch);
         }

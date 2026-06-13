@@ -1,0 +1,2 @@
+    - lib.proof.rs:22 lemma_geometry: admit
+    - lib.proof.rs:39 lemma_exhausted_boundary: admit
