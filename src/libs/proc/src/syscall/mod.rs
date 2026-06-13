@@ -11,6 +11,7 @@ mod getgid;
 mod getuid;
 mod lookup;
 mod signup;
+mod wait;
 
 //==================================================================================================
 // Exports
@@ -22,3 +23,7 @@ pub use getgid::getgid;
 pub use getuid::getuid;
 pub use lookup::lookup;
 pub use signup::signup;
+pub use wait::{
+    wait,
+    WaitOutcome,
+};

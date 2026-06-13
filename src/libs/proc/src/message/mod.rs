@@ -11,6 +11,7 @@ mod lookup;
 mod process_exit;
 mod shutdown;
 mod signup;
+mod wait;
 
 //==================================================================================================
 // Exports
@@ -22,6 +23,7 @@ pub use lookup::*;
 pub use process_exit::*;
 pub use shutdown::*;
 pub use signup::*;
+pub use wait::*;
 
 //==================================================================================================
 // Imports
@@ -58,7 +60,11 @@ pub enum ProcessManagementMessageHeader {
     Lookup = 4,
     /// Lookup response.
     LookupResponse = 5,
-    // Discriminants 6-9 are reserved for future core process-management operations so that the
+    /// Wait operation (a parent asks the process manager daemon to wait for and reap a child).
+    Wait = 6,
+    /// Wait response (the process manager daemon reports a reaped child's pid and status).
+    WaitResponse = 7,
+    // Discriminants 8-9 are reserved for future core process-management operations so that the
     // fork-related variants below remain grouped in a stable, contiguous block.
     /// Fork-clone operation (used to notify other daemons to clone a parent's resources onto a
     /// freshly forked child).
@@ -84,6 +90,8 @@ impl TryFrom<u8> for ProcessManagementMessageHeader {
             3 => Ok(ProcessManagementMessageHeader::SignupResponse),
             4 => Ok(ProcessManagementMessageHeader::Lookup),
             5 => Ok(ProcessManagementMessageHeader::LookupResponse),
+            6 => Ok(ProcessManagementMessageHeader::Wait),
+            7 => Ok(ProcessManagementMessageHeader::WaitResponse),
             10 => Ok(ProcessManagementMessageHeader::ForkClone),
             11 => Ok(ProcessManagementMessageHeader::ForkSync),
             12 => Ok(ProcessManagementMessageHeader::ForkSyncAck),
@@ -101,6 +109,8 @@ impl From<&ProcessManagementMessageHeader> for u8 {
             ProcessManagementMessageHeader::SignupResponse => 3,
             ProcessManagementMessageHeader::Lookup => 4,
             ProcessManagementMessageHeader::LookupResponse => 5,
+            ProcessManagementMessageHeader::Wait => 6,
+            ProcessManagementMessageHeader::WaitResponse => 7,
             ProcessManagementMessageHeader::ForkClone => 10,
             ProcessManagementMessageHeader::ForkSync => 11,
             ProcessManagementMessageHeader::ForkSyncAck => 12,
