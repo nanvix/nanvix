@@ -18,3 +18,6 @@ Phases: caller-analysis → cheating-elimination + final-review
 PHASE: caller-analysis
 Module: phys-upool
 ============================================================
+[2026-06-14 02:24:38] [PROVER] Running caller-analysis...
+[2026-06-14 02:24:38] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-14 02:26:36]   ↳ prover done in 1m57s (exit=0)
