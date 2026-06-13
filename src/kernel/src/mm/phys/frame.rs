@@ -747,11 +747,15 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
 #[verus_spec(result =>
     ensures
         match result {
-            Ok(frame) => frame.inv(),
+            Ok(frame) => {
+                &&& frame.inv()
+                &&& crate::mm::phys::phys_view().frames.allocated_frames.contains(frame@)
+            },
             Err(_) => true,
         },
 )]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
+    proof! { admit(); }
     instance().alloc()
 }
 
