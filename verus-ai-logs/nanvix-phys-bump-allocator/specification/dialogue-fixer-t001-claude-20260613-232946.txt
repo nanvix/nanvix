@@ -501,3 +501,20 @@ Confirmed: `alloc`/`alloc_as` are not in the TCB allowlist (external_body forbid
 Turn 35
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A5 -iE "does not yet support|error\
+[RESULT ✓] bash: Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+error: The verifier does not yet support the following Rust feature: dereferencing a raw pointer. Currently, Verus only supports raw pointers through the permissioned raw_ptr interface: https://verus-lang.github.io/ver...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+Confirmed `alloc_as` blocker (raw-pointer deref). Now revert the exploratory contract on `alloc_as`:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] I've identified the blocker in `alloc_as` — it's the unsafe pointer dereference when casting the slot pointer. Now I need to revert the trivial contract changes on that function.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Now run the final verification of the kept changes (`as_mut_ptr` stability spec) plus full regression + build:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -A3 -iE "verification results|=== Summar

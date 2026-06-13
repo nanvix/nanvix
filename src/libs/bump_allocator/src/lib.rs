@@ -318,10 +318,6 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     /// The caller must initialise the returned `MaybeUninit<T>` before reading through it
     /// and ensure exclusive use of the returned reference.
     ///
-    #[verus_spec(result =>
-        ensures
-            true,
-    )]
     pub unsafe fn alloc_as<T>(&self) -> Result<&'static mut MaybeUninit<T>, BumpAllocError> {
         if core::mem::size_of::<T>() != N {
             return Err(BumpAllocError::SizeMismatch);
