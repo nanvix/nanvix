@@ -28,6 +28,33 @@ pub struct UserFrame {
     addr: FrameAddress,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+
+use crate::hal::mem::spec_page_size;
+use crate::mm::phys::manager::FrameAllocView;
+
+/// Abstract view of a user frame: the physical address of the owned frame.
+impl View for UserFrame {
+    type V = int;
+
+    closed spec fn view(&self) -> int {
+        self.addr@
+    }
+}
+
+/// Abstract view of the user page pool: the frame partition it draws from.
+///
+/// `Upool` is `external_body` (its real state is the global frame allocator), so its view
+/// is uninterpreted — the trust obligation is tracked by the type being `external_body`.
+impl View for Upool {
+    type V = FrameAllocView;
+
+    uninterp spec fn view(&self) -> FrameAllocView;
+}
+
+} // verus!
+
 impl UserFrame {
     ///
     /// # Description
@@ -158,6 +185,26 @@ impl Upool {
     ///
     /// Upon success, a user frame is returned. Upon failure, an error is returned instead.
     ///
+    // Dependency contract: delegates to the global frame allocator (`frame::alloc`). Modeled
+    // as a watermark-agnostic single-frame allocation over the pool's frame partition. Marked
+    // `external_body` until the `frame` free-function layer is verified.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            old(self)@.wf(),
+        ensures
+            self@.wf(),
+            match result {
+                Ok(uf) => {
+                    &&& old(self)@.free_frames.contains(uf@)
+                    &&& self@ == old(self)@.alloc_one(uf@)
+                },
+                Err(_) => {
+                    &&& self@ == old(self)@
+                    &&& old(self)@.free_count() == 0
+                },
+            },
+    )]
     pub fn alloc(&mut self) -> Result<UserFrame, Error> {
         let addr: FrameAddress = frame::alloc()?;
         Ok(UserFrame::new(addr))

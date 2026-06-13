@@ -1,0 +1,249 @@
+Timestamp: 2026-06-14_01-33-06
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=23
+  admit=10
+  trusted=0
+  no_decreases=0
+  cfg_gate=14
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: expected one of `:`, `;`, `=`, `@`, or `|`, found `g_old`
+   --> src/kernel/src/mm/phys/manager.rs:191:19
+    |
+191 |         let ghost g_old = self@;
+    |                   ^^^^^ expected one of `:`, `;`, `=`, `@`, or `|`
+
+error: expected one of `:`, `;`, `=`, `@`, or `|`, found `g_old`
+   --> src/kernel/src/mm/phys/manager.rs:344:19
+    |
+344 |         let ghost g_old = self@;
+    |                   ^^^^^ expected one of `:`, `;`, `=`, `@`, or `|`
+
+error: expected one of `:`, `;`, `=`, `@`, or `|`, found `g_old`
+   --> src/kernel/src/mm/phys/manager.rs:401:19
+    |
+401 |         let ghost g_old = self@;
+    |                   ^^^^^ expected one of `:`, `;`, `=`, `@`, or `|`
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/phys/manager.rs:186:5
+    |
+186 |     pub fn alloc_many_user_frames(
+    |     ^^^
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/phys/manager.rs:343:5
+    |
+343 |     pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
+    |     ^^^
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/phys/manager.rs:396:5
+    |
+396 |     pub fn alloc_many_kernel_frames(
+    |     ^^^
+
+error[E0252]: the name `UserFrame` is defined multiple times
+   --> src/kernel/src/mm/phys/manager.spec.rs:114:5
+    |
+114 | use crate::mm::phys::upool::UserFrame;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `UserFrame` reimported here
+    |
+   ::: src/kernel/src/mm/phys/manager.rs:21:13
+    |
+ 21 |             UserFrame,
+    |             --------- previous import of the type `UserFrame` here
+    |
+    = note: `UserFrame` must be defined only once in the type namespace of this module
+
+error[E0252]: the name `KernelFrame` is defined multiple times
+   --> src/kernel/src/mm/phys/manager.spec.rs:115:5
+    |
+115 | use crate::mm::phys::kframe::KernelFrame;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `KernelFrame` reimported here
+    |
+   ::: src/kernel/src/mm/phys/manager.rs:18:9
+    |
+ 18 |         kframe::KernelFrame,
+    |         ------------------- previous import of the type `KernelFrame` here
+    |
+    = note: `KernelFrame` must be defined only once in the type namespace of this module
+
+error[E0252]: the name `FrameAllocView` is defined multiple times
+ --> src/kernel/src/mm/phys/manager.proof.rs:5:5
+  |
+5 |     FrameAllocView,
+  |     ^^^^^^^^^^^^^^-
+  |     |
+  |     `FrameAllocView` reimported here
+  |     help: remove unnecessary import
+  |
+ ::: src/kernel/src/mm/phys/manager.spec.rs:4:5
+  |
+4 | use crate::mm::phys::FrameAllocView;
+  |     ------------------------------- previous import of the type `FrameAllocView` here
+  |
+  = note: `FrameAllocView` must be defined only once in the type namespace of this module
+
+error[E0252]: the name `UserFrame` is defined multiple times
+  --> src/kernel/src/mm/phys/manager.proof.rs:7:5
+   |
+ 7 | use crate::mm::phys::upool::UserFrame;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `UserFrame` reimported here
+   |
+  ::: src/kernel/src/mm/phys/manager.rs:21:13
+   |
+21 |             UserFrame,
+   |             --------- previous import of the type `UserFrame` here
+   |
+   = note: `UserFrame` must be defined only once in the type namespace of this module
+
+error[E0252]: the name `KernelFrame` is defined multiple times
+  --> src/kernel/src/mm/phys/manager.proof.rs:8:5
+   |
+ 8 | use crate::mm::phys::kframe::KernelFrame;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `KernelFrame` reimported here
+   |
+  ::: src/kernel/src/mm/phys/manager.rs:18:9
+   |
+18 |         kframe::KernelFrame,
+   |         ------------------- previous import of the type `KernelFrame` here
+   |
+   = note: `KernelFrame` must be defined only once in the type namespace of this module
+
+error[E0252]: the name `mem` is defined multiple times
+  --> src/kernel/src/mm/phys/manager.proof.rs:9:5
+   |
+ 9 | use ::arch::mem;
+   |     ^^^^^^^^^^^ `mem` reimported here
+   |
+  ::: src/kernel/src/mm/phys/manager.rs:26:5
+   |
+26 | use ::arch::mem;
+   |     ----------- previous import of the module `mem` here
+   |
+   = note: `mem` must be defined only once in the type namespace of this module
+
+error[E0425]: cannot find function `init` in this scope
+    --> src/kernel/src/mm/phys/manager.rs:103:19
+     |
+ 103 |     pub(super) fn init(upool: Upool) -> Result<(), Error> {
+     |                   ^^^^
+     |
+    ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin-0.0.0-2026-05-17-0151/src/lib.rs:650:1
+     |
+ 650 | pub struct int;
+     | -------------- similarly named unit struct `int` defined here
+     |
+note: these functions exist but are inaccessible
+    --> src/kernel/src/event/manager.rs:1159:1
+     |
+1159 |   pub fn init() -> Result<(), Error> {
+     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `crate::event::manager::init`: not accessible
+     |
+    ::: src/kernel/src/hal/arch/x86/cpu/../../shared/cpu/fpu.rs:143:1
+     |
+ 143 |   pub unsafe fn init() {
+     |   ^^^^^^^^^^^^^^^^^^^^ `crate::hal::arch::x86::cpu::fpu::init`: not accessible
+     |
+    ::: src/kernel/src/hal/arch/x86/cpu/interrupt/mod.rs:189:1
+     |
+ 189 | / pub fn init(
+ 190 | |     ioports: &mut IoPortAllocator,
+ 191 | |     ioaddresses: &mut IoMemoryAllocator,
+ 192 | |     madt: &Option<MadtInfo>,
+...    |
+ 337 | | }
+     | |_^ `crate::hal::arch::x86::cpu::interrupt::init`: not accessible
+     |
+    ::: src/kernel/src/hal/platform/microvm/mod.rs:876:1
+     |
+ 876 | / pub fn init(
+ 877 | |     ioports: &mut IoPortAllocator,
+ 878 | |     ioaddresses: &mut IoMemoryAllocator,
+ 879 | |     _memory_regions: &mut LinkedList<MemoryRegion<VirtualAddress>>,
+...    |
+ 982 | |     })
+ 983 | | }
+     | |_^ `crate::klog::buffer::platform::init`: not accessible
+     |
+    ::: src/kernel/src/mm/virt/identity_map.rs:115:1
+     |
+ 115 | / pub(crate) fn init(
+ 116 | |     kernel_pd_paddr: PageDirectoryAddress,
+ 117 | |     kernel_cr3: Cr3Register,
+ 118 | | ) -> Result<(), Error> {
+...    |
+ 136 | |     Ok(())
+ 137 | | }
+     | |_^ `crate::mm::virt::identity_map::init`: not accessible
+help: a unit struct with a similar name exists
+     |
+ 103 -     pub(super) fn init(upool: Upool) -> Result<(), Error> {
+ 103 +     pub(super) fn int(upool: Upool) -> Result<(), Error> {
+     |
+help: consider importing one of these functions
+     |
+   8 + use crate::event::init;
+     |
+   8 + use crate::hal::arch::x86::cpu::idt::init;
+     |
+   8 + use crate::hal::arch::x86::cpu::init;
+     |
+   8 + use crate::hal::arch::x86::init;
+     |
+     = and 7 other candidates
+
+error[E0603]: struct import `FrameAllocView` is private
+  --> src/kernel/src/mm/phys/upool.rs:35:31
+   |
+35 | use crate::mm::phys::manager::FrameAllocView;
+   |                               ^^^^^^^^^^^^^^ private struct import
+   |
+note: the struct import `FrameAllocView` is defined here...
+  --> src/kernel/src/mm/phys/manager.spec.rs:4:5
+   |
+ 4 | use crate::mm::phys::FrameAllocView;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: ...and refers to the struct `FrameAllocView` which is defined here
+  --> src/kernel/src/mm/phys/mod.spec.rs:20:1
+   |
+20 | pub struct FrameAllocView
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^ you could import this directly
+help: import `FrameAllocView` through the re-export
+   |
+35 - use crate::mm::phys::manager::FrameAllocView;
+35 + use mm::phys::FrameAllocView;
+   |
+
+error[E0425]: cannot find function `from_raw_value` in this scope
+  --> src/kernel/src/hal/mem/types/address/frame.rs:96:12
+   |
+96 |     pub fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+   |            ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `new` in this scope
+  --> src/kernel/src/mm/phys/kframe.rs:80:19
+   |
+80 |     pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
+   |                   ^^^ not found in this scope
+
+error[E0425]: cannot find function `check_user_watermark` in this scope
+   --> src/kernel/src/mm/phys/manager.rs:300:8
+    |
+300 |     fn check_user_watermark(count: usize) -> Result<(), Error> {
+    |        ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+Some errors have detailed explanations: E0252, E0425, E0603.
+For more information about an error, try `rustc --explain E0252`.
+error: could not compile `kernel` (bin "kernel") due to 17 previous errors

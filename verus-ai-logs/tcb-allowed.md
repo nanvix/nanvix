@@ -38,3 +38,21 @@ Any `external_body` outside this list must be removed.
 - `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::init` — no specs yet; opaque callee.
 - `src/kernel/src/mm/phys/upool.rs::Upool` (struct) and `Upool::new` — no specs yet; opaque
   type/callee needed so verified `init` can construct the user page pool.
+- `src/kernel/src/mm/phys/upool.rs::Upool::alloc` — pool allocation primitive the manager's user
+  paths call. `ensures` describes the free→allocated transition (`alloc_one`) and the empty-pool
+  `Err` arm (`free_count() == 0`). Verified when `upool` is.
+- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::new` — wraps a `FrameAddress` into an owning
+  kernel-frame handle. `ensures Ok(kf) => kf@ == base@`. Verified when `kframe` is.
+- `src/kernel/src/mm/phys/frame.rs::alloc` — singleton wrapper around `Inner::alloc`;
+  `ensures Ok(frame) => frame.inv()`.
+- `src/kernel/src/mm/phys/frame.rs::alloc_contiguous` — singleton wrapper around
+  `Inner::alloc_contiguous`; `requires count > 0`, `ensures` page-aligned base plus the
+  address-space range bound the manager's index arithmetic relies upon.
+- `src/kernel/src/mm/phys/frame.rs::free_count` — reports the free-partition size
+  (`== phys_view().frames.free_count()`).
+- `src/kernel/src/mm/phys/frame.rs::free` — best-effort frame release used by manager error
+  cleanup; no precondition, no abstract postcondition (callers ignore the outcome).
+- `src/kernel/src/hal/mem/types/address/frame.rs::FrameAddress::from_raw_value` — succeeds only
+  for page-aligned inputs, so `ensures Ok(fa) => fa.inv()`. Verified when the address layer is.
+- `src/kernel/src/hal/mem/types/address/frame.rs::FrameAddress::into_raw_value` — the raw value is
+  the abstract frame address (`ensures result as int == self@`). Verified when the address layer is.

@@ -696,6 +696,17 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
 }
 
 /// Allocate a frame.
+// Dependency contract for the manager layer: thin singleton wrapper around `Inner::alloc`.
+// `external_body` until the `frame` free-function layer is verified; the manager bridges the
+// returned address into its own abstract frame partition via a proof lemma.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        match result {
+            Ok(frame) => frame.inv(),
+            Err(_) => true,
+        },
+)]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
     instance().alloc()
 }
@@ -708,6 +719,21 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
 ///
 /// Returns the base `FrameAddress` of the contiguous range.
 ///
+// Dependency contract: thin singleton wrapper around `Inner::alloc_contiguous`. The base
+// address is page-aligned on success. `external_body` until the free-function layer is verified.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        count > 0,
+    ensures
+        match result {
+            Ok(base) => {
+                &&& base.inv()
+                &&& base@ + (count as int) * (mem::PAGE_SIZE as int) <= usize::MAX as int
+            },
+            Err(_) => true,
+        },
+)]
 pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
     instance().alloc_contiguous(count)
 }
@@ -721,12 +747,27 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
 ///
 /// The number of free frames in the system.
 ///
+// Dependency contract: reports the size of the free partition of the global frame allocator.
+// `external_body` until the free-function layer is verified.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        result as nat == crate::mm::phys::phys_view().frames.free_count(),
+)]
 pub(super) fn free_count() -> usize {
     let inner = instance();
     inner.bitmap.number_of_bits() - inner.bitmap.usage()
 }
 
 /// Free a frame previously returned by [`alloc`].
+// Dependency contract: best-effort release of a frame. Callers (the manager's error-cleanup
+// paths) ignore the outcome, so no precondition is imposed and no abstract postcondition is
+// promised. `external_body` until the free-function layer is verified.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        true,
+)]
 pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
     instance().free(frame)
 }

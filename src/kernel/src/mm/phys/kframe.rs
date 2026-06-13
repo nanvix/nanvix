@@ -23,6 +23,7 @@ use ::core::ops::{
     DerefMut,
 };
 use ::sys::error::Error;
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Kernel Frame
@@ -34,6 +35,20 @@ pub struct KernelFrame {
     /// Frame address.
     base: FrameAddress,
 }
+
+#[cfg(verus_keep_ghost)]
+verus! {
+
+/// Abstract view of a kernel frame: the physical address of the owned frame.
+impl View for KernelFrame {
+    type V = int;
+
+    closed spec fn view(&self) -> int {
+        self.base@
+    }
+}
+
+} // verus!
 
 impl KernelFrame {
     ///
@@ -49,6 +64,19 @@ impl KernelFrame {
     ///
     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
     ///
+    // Dependency contract: wrapping a frame goes through `mm::virt::identity_map_page`, which
+    // is outside the verification scope of `mm::phys`. On success the returned handle owns the
+    // same physical frame that was passed in.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            base.inv(),
+        ensures
+            match result {
+                Ok(kf) => kf@ == base@,
+                Err(_) => true,
+            },
+    )]
     pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
         // Ensure the frame is identity-mapped in the kernel address space so that
         // Deref/DerefMut can safely access it. This lazily installs a page

@@ -82,6 +82,17 @@ impl FrameAddress {
         self.0.into_frame_number()
     }
 
+    // Dependency contract for the manager layer: succeeds only for page-aligned inputs, so the
+    // resulting frame address satisfies `inv()`. `external_body` until the address layer is
+    // verified.
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures
+            match result {
+                Ok(fa) => fa.inv(),
+                Err(_) => true,
+            },
+    ))]
     pub fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
         Ok(Self(PageAligned::from_address(PhysicalAddress::from_raw_value(raw_addr)?)?))
     }
@@ -95,6 +106,13 @@ impl FrameAddress {
     ///
     /// The raw value of the target [`FrameAddress`].
     ///
+    // Dependency contract: the raw value is the abstract frame address. `external_body` until the
+    // address layer is verified.
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures
+            result as int == self@,
+    ))]
     pub fn into_raw_value(self) -> usize {
         self.0.into_raw_value()
     }
