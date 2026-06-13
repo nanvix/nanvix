@@ -1,0 +1,478 @@
+=== Copilot Session ===
+Timestamp: 2026-06-14T07:40:16.992391
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are adding formal specifications to /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs using Verus, in-place.
+Spec and proof files sit alongside the source file.
+
+== PROJECT CONTEXT ==
+
+File: `src/libs/sys/src/sys/mm/address/mod.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`is_aligned`, `into_raw_value`, `from_raw_value`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+
+
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+
+
+
+Caller analysis: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/caller_analysis.md
+View design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/view_design.md
+Source file: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+Spec file:  /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.spec.rs
+Proof file: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.proof.rs
+Verus command: make verify-sys
+
+== SKILLS ==
+
+Follow strictly:
+- **spec-design** — MUST follow: primary methodology for this phase
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns
+- **verification-order** — MUST follow: write specs in dependency order
+- **spec-completeness** — SHOULD follow: determinism-based completeness check (best-effort)
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai/scripts/
+- Source directory: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai/vstd/
+
+== TASK ==
+
+**Planning**: Before writing any specs, read all functions in the module
+and plan the order to write specs (leaves first, callers last).
+
+If `/home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json` exists, use it as a starting point:
+```
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json     -m "YOUR_MODULE"
+```
+
+**Read the caller analysis and View design first.** Read /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/caller_analysis.md
+to understand what callers expect from each function — these expectations define
+the guarantees your specs must provide. If /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/view_design.md exists, use the
+View type defined there — do not redesign from scratch. If the file does not
+exist, design the View following the **view-design** skill.
+If you need to modify the View (e.g. add fields, adjust inv()), follow
+the **view-design** skill's principles and update /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/view_design.md accordingly.
+
+The project structure (spec/proof files, Cargo.toml) is already set up.
+Work in-place on:
+1. **/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.spec.rs** — View types, invariants, helper predicates,
+   spec transition functions. Every caller expectation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/caller_analysis.md
+   must map to at least one `requires`, `ensures`, `invariant`, or lemma signature.
+2. **/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.proof.rs** — Proof function signatures only
+   (requires/ensures). Leave bodies as `admit()` — proving phase fills them in.
+3. **/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs** — The primary work: add `#[verus_spec]` annotations
+   (requires/ensures) to every exec function. Also add cfg-gated includes.
+
+Follow the **spec-design** skill's Exec Binding Rules strictly.
+
+**Handling dependency functions:**
+- **Already verified** (has specs): reference the existing specs
+  directly — do not rewrite them.
+- **Not yet verified** (no specs): write a spec for it and mark the function
+  `external_body`. These will be eliminated when that module is verified later.
+
+Goal: meaningful specs covering every caller expectation from
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/caller_analysis.md and every View operation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/view_design.md.
+0 Verus errors (`admit()` in proof bodies is fine).
+
+**ULTIMATE GOAL**: The verification target is not just this module in isolation.
+The end goal is that `make verify` (all verified modules) passes with 0 errors.
+Existing ensures/requires clauses inherited from upstream modules are caller
+dependencies — they must not be weakened or removed. In this phase, proof bodies
+use `admit()`, so proving difficulty is not a factor — write the correct spec that
+describes what the function actually does, without concern for proof complexity.
+If an existing spec seems unsatisfiable, determine whether the spec is incorrect
+(it describes behavior the code cannot have) or the code is wrong (a code bug).
+Correct whichever is broken; do not weaken the guarantee.
+
+**Bug awareness**: If you encounter code that cannot have a correct spec
+(e.g., logic that is always wrong, impossible error paths, arithmetic that
+always overflows), follow the **bug-reporting** skill. For auto-fixable bugs
+(overflow, off-by-one, missing bounds check), fix them directly and record
+in /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/bugs.md. For complex bugs, record only — proving phase will validate.
+
+Run `make verify-sys` to confirm 0 errors.
+Then run `make verify` to ensure no regressions in other modules.
+Verify `make build` still works (dual compilation).
+
+
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by reading the skills and context files.
+[TOOL] skill: spec-design
+[TOOL] report_intent: Reading skills and context
+
+[THINKING] I'm starting by loading the relevant skills and examining the caller analysis, view design, and source files to understand the context.
+[RESULT ✓] report_intent: Intent logged
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The skills are external. Let me find them.
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/scripts/ 2>/dev/null; echo "---SKILLS---"; find /home/ruize/verus-ai-exp -iname "*s
+[TOOL] bash: cat /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/caller_analysis.md
+
+[THINKING] I need to look for the spec-design skill in the verus-ai scripts directory since it's not showing up in the available skills list.
+[RESULT ✓] bash: # Caller Analysis: `mm::address::mod` (`Address` trait)
+
+## Script Output
+
+The automated finder (`find_callers_lsp.py`) was run on
+`src/libs/sys/src/sys/mm/address/mod.rs`:
+
+```
+Total exec functions: 0
+Public / trait-pub: 0
+Private: 0
+Types: 0
+*No public functions found.*
+```
+
+**Why zero functions w...
+[RESULT ✓] bash: __pycache__
+add_verification.py
+ai_residue.py
+ast_consistency.py
+cascade_analysis.py
+check_proof_blocks.py
+compute_scope.py
+dummy_probe.py
+dummy_probe_report.py
+eb_diagnose.py
+find_callers_lsp.py
+find_deps_lsp.py
+fn_coverage.py
+groundtruth_diff.py
+inject_verus_verify.py
+llm_fix_suggest.py
+llm_review...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Let me read the skills and the view design, source, spec, and proof files.
+[TOOL] bash: for s in spec-design verus-constraints verification-order spec-completeness bug-reporting view-design; do echo "===== $s
+[RESULT ✓] bash: Output too large to read at once (52.2 KB). Saved to: /tmp/copilot-tool-output-1781394033897-6kuxlb.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781394033897-6kuxlb.txt
+[RESULT ✓] view: File too large to read at once (52.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781394033897-6kuxlb.txt
+[RESULT ✓] view: 1. ===== spec-design =====
+2. ---
+3. name: spec-design
+4. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforceme...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp; awk '/^===== verus-constraints =====/{f=1} /^===== verification-order =====/{f=0} f' copilot-tool-output-178139
+
+[THINKING] I'm moving on to examine the remaining sections on verus constraints, view design, and verus syntax.
+[RESULT ✓] bash: ===== verus-constraints =====
+---
+name: verus-constraints
+description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp; awk '/^===== view-design =====/{f=1} f' copilot-tool-output-1781394033897-6kuxlb.txt | head -200; echo "=======
+
+[THINKING] I'm going to review the view-design and verus-syntax skills along with their associated documentation files to understand the structure and requirements.
+[RESULT ✓] bash: ===== view-design =====
+---
+name: view-design
+description: "How to design a View type that represents abstract state from the caller's perspective. Input: caller analysis + property concepts. Must NOT see implementation code."
+---
+
+# View Design Methodology
+
+Design a `View` type that captures the **...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Now let me read the view design, source, spec, and proof files.
+[TOOL] bash: cat /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+[RESULT ✓] bash: # View Design: `mm::address::mod` (`Address` trait)
+
+## Abstract Resource
+
+To the outside world an `Address` is **a single machine address modeled as a
+mathematical integer**. A caller treats any implementor (`VirtualAddress`,
+`PhysicalAddress`, `PageAligned<T>`, `PageTableAligned<T>`) purely as the...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Now let me read the spec/proof files and check existing helpers.
+[TOOL] bash: echo "=== mod.spec.rs ==="; cat /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.spec.rs 2>/dev/null; echo "==
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "spec_align_value\|spec_max_addr\|max_addr" src/libs/sys/src/sys/mm/ | head -40
+
+[THINKING] I'm looking at this trait file and need to examine the existing spec and proof files to understand what `spec_align_value` and `spec_max_addr` are, and check which types currently implement them.
+[RESULT ✓] bash: === mod.spec.rs ===
+verus! { } // verus!
+=== mod.proof.rs ===
+verus! { } // verus!
+=== tcb-allowed ===
+# TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut...
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/mod.rs:132:                && aligned == (self@ % crate::mm::spec_align_value(align) == 0),
+src/libs/sys/src/sys/mm/address/mod.rs:145:    fn max_addr() -> usize;
+src/libs/sys/src/sys/mm/address/virt.rs:249:    fn max_addr() -> usize {
+src/libs/sys/src/sys/mm/alignmen...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Let me look at virt.rs to understand the implementor and existing specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls src/libs/sys/src/sys/mm/address/; echo "=== virt.rs ==="; cat src/libs/sys/src/sys/mm/addr
+
+[THINKING] I need to examine the virt.rs file to understand how from_raw_value, max_addr, and spec_max_addr work together, and what the existing specifications look like.
+[RESULT ✓] bash: mod.proof.rs
+mod.rs
+mod.spec.rs
+virt.proof.rs
+virt.rs
+virt.spec.rs
+=== virt.rs ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//========================...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Let me examine the Error type and how other specs reference error codes, plus check the implementors and tests.
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,120p' src/libs/sys/src/sys/error.rs 2>/dev/null | head -160; echo "=== grep error s
+
+[THINKING] I'm examining the scope of the task, which focuses on the `Address` trait in `mod.rs` and its methods `is_aligned`, `into_raw_value`, and `from_raw_value`. The first two already have specifications, but `from_raw_value` is missing one. There's also a design issue with the View that involves `spec_max_addr::<T>()` and something related to address handling that's being cut off.
+
+Looking at how `VirtualAddress` implements `from_raw_value` - it always returns Ok, and the proposed spec ensures that either the result is Ok with a valid address, or Err with BadAddress when the address is invalid. Since `VirtualAddress` has `max_addr() == usize::MAX`, the validity check `0 <= raw <= spec_max_addr::<VirtualAddress>()` is always true for any usize, making the error case vacuous. The real problem is that I need to define `spec_max_addr::<T>()` as a spec companion function for the trait method `max_addr()`, but this function doesn't exist yet and I'm trying to figure out how to create it.
+
+The issue is that `max_addr()` is outside the scope of functions I can modify, so I can't add an ensures clause to it. A generic free spec function `spec_max_addr<T>()` can't dispatch to per-type implementations without some mechanism. I'm realizing I might need to step back and focus on the minimal spec that covers the caller's actual expectations - mainly that `from_raw_value` returns Ok with the raw value preserved as the address's internal representation. The key insight is that the trait spec must be satisfiable by all implementors, and for VirtualAddress the inherent `from_raw_value` always succeeds, so the spec needs to capture that the Ok case preserves the raw value as an integer. The error path specifying BadAddress is complete enough for both arms of the match. The real challenge is expressing the range condition bidirectionally without access to `spec_max_addr`, which would require modifying the trait itself—but I'm exploring whether adding a spec function to the trait is the cleanest solution without touching the exec `max_addr` function. For VirtualAddress, `max_addr()` equals `usize::MAX`, so `from_raw_value` always succeeds since any `usize` input is valid. PhysicalAddress might have a smaller max and could hit the error path, but that's outside this module's scope. Since VirtualAddress is the only implementor in `sys`, I need a trait spec that's satisfiable for it and forms a valid contract for others — round-trip plus error code seems like the right balance without requiring per-type max specs. Now I need to check whether Error has a spec accessor for the error code.
+[RESULT ✓] bash: === grep error specs ===
+=== error.spec.rs ===
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; find src/libs/sys -path "*error*"; echo "---"; grep -rn "pub struct Error\|pub enum ErrorCode
+[RESULT ✓] bash: ---
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rln "pub struct Error\b\|pub enum ErrorCode" src/libs/sys/ ; echo "==="; find src/libs/
+[RESULT ✓] bash: ===
+<shellId: 11 completed with exit code 123>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rln "ErrorCode" src/libs/sys/src/ | head; echo "=== error mod ==="; grep -rn "mod error
+[RESULT ✓] bash: src/libs/sys/src/sys/event/exception.rs
+src/libs/sys/src/sys/event/information.rs
+src/libs/sys/src/sys/event/interrupt.rs
+src/libs/sys/src/sys/event/mod.rs
+src/libs/sys/src/sys/event/request.rs
+src/libs/sys/src/sys/event/scheduling/event.rs
+src/libs/sys/src/sys/ipc/message/system.rs
+src/libs/sys/src...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; find . -path ./target -prune -o -name "*.rs" -print | xargs grep -ln "pub enum ErrorCode" 2>/
+
+[THINKING] I need to track down where the `error` crate is coming from since it's being referenced as an external dependency.
+[RESULT ✓] bash: ./src/libs/error/src/lib.rs
+./src/libs/nanvix-http/src/message.rs
+=== find error crate ===
+./src/libs/error
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "pub struct Error\|pub enum ErrorCode\|BadAddress\|pub fn new\|pub fn code\|verus_spe
+[RESULT ✓] bash: 31:pub enum ErrorCode {
+59:    BadAddress = EFAULT,
+319:            EFAULT => Ok(ErrorCode::BadAddress),
+454:pub struct Error {
+460:    pub fn new(code: ErrorCode, reason: &'static str) -> Self {
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/error/src/lib.rs
+[RESULT ✓] view: 450.     }
+451. }
+452. 
+453. #[derive(Debug)]
+454. pub struct Error {
+455.     pub code: ErrorCode,
+456.     pub reason: &'static str,
+457. }
+458. 
+459. impl Error {
+460.     pub fn new(code: ErrorCode, reason: &'static str) -> Self {
+461.         Self { code, reason }
+462.     }
+463. }
+464. 
+465. /...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "ErrorCode::BadAddress\|\.code ==\|code: ErrorCode\|matches Err" --include=*.spec.rs
+
+[THINKING] I'm working through how to handle the `Error` struct in Verus specs. Since `Error` has a public `code` field of type `ErrorCode`, I can directly compare it in spec code like `e.code == ErrorCode::BadAddress`. The `ErrorCode` enum derives `PartialEq`, so as long as it's visible to Verus, the equality comparison should work fine even though the error crate itself doesn't have Verus specifications.
+
+Let me search through the existing specs in the repo to see how `Error` is already being used in other Verus code.
+[RESULT ✓] bash: === Error in verus_spec ensures ===
+src/kernel/src/hal/mem/types/address/frame.spec.rs:21:    -> (result: Result<PhysicalAddress, ::sys::error::Error>)
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,80p' src/kernel/src/hal/mem/types/address/frame.spec.rs
+[RESULT ✓] bash: // Spec helpers for `FrameAddress` are shared with the `phys` sibling module: a frame's abstract
+// state is the physical address (`int`), its frame number is `self@ / spec_page_size()`, and its
+// base address is `frame_index * spec_page_size()`.
+use crate::hal::mem::types::address::phys::{
+    spe...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Let me check whether the error crate is Verus-modeled and how `make verify-sys` is wired.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "verus\|vstd" src/libs/error/src/lib.rs | head; echo "=== Cargo error deps ==="; gre
+
+[THINKING] I'm seeing there's already a specification contract for `PhysicalAddress::from_raw_value` in the kernel that callers depend on, which ensures the result either matches the input value or is an error. The note indicates this is a temporary placeholder that should be replaced once the actual Address implementation has its own specification. Now I'm realizing that when I add a `#[verus_spec]` attribute to the trait method itself, there's a critical interaction to consider with this existing contract.
+
+The trait specification becomes the contract that all implementors must satisfy, and callers using the generic `T: Address` interface get that trait-level guarantee. But the kernel's `assume_specification` is a separate override for the concrete `PhysicalAddress` instance. For verification to pass without regression, my trait spec needs to be compatible with both `VirtualAddress` (which always succeeds with `a@ == raw`) and the existing kernel contract for `PhysicalAddress`. The key question is whether the trait spec needs to be weaker than or consistent with what the kernel already assumes, and how Verus handles the interaction between trait-level specs and concrete `assume_specification` overrides. The key insight is that if the PhysicalAddress impl isn't annotated with `#[verus_verify]`, Verus won't check it against the trait spec — it stays external and relies on the existing `assume_specification`. But VirtualAddress is in the verify-sys scope, so it will need to satisfy whatever trait ensures I write. I need to check that the VirtualAddress impl can actually meet the spec I'm proposing for `from_raw_value`.
+
+For the error arm, the view_design wants to express that an error occurs only when the address is invalid, but that requires `spec_max_addr` which I haven't introduced yet. I'm weighing whether to add that spec function or find a simpler formulation that still captures the intent. I'm weighing whether strengthening the error case to require `BadAddress` codes is safe given the kernel's existing `assume_specification` that just says `Err(_) => true`. If Verus requires concrete implementations to refine the trait spec, the kernel build could fail since its weaker assumption wouldn't satisfy a stricter trait contract. The safest approach is matching what's already assumed, though that creates tension between avoiding regressions and having a complete spec.
+
+I'll take an empirical approach: write the spec with the `BadAddress` error requirement and run verification to see if it conflicts with the kernel's assumption. For the helper specs, I can define `spec_addr_is_aligned` since it wraps the existing `is_aligned` spec, but `spec_addr_valid` requires `spec_max_addr` which is out of scope, so I'll focus on just adding the spec to `from_raw_value` itself.
+
+My minimal plan: keep `into_raw_value` and `is_aligned` as-is (already properly specified), add the spec to `from_raw_value` with the `Ok` and `Err` arms, and introduce `spec_addr_is_aligned` as a helper that I'll use in `is_aligned` to align with the view_design documentation. I need to verify that `ErrorCode` is comparable in the spec context before finalizing.
+[RESULT ✓] bash: 526:#[cfg(verus_keep_ghost)]
+527:use ::vstd::prelude::*;
+529:#[cfg(verus_keep_ghost)]
+530:verus! {
+545:} // verus!
+=== Cargo error deps ===
+src/libs/sys/src/sys/mm/address/mod.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/mod.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/add...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/error/src/lib.rs
+[RESULT ✓] view: 524. //==================================================================================================
+525. 
+526. #[cfg(verus_keep_ghost)]
+527. use ::vstd::prelude::*;
+528. 
+529. #[cfg(verus_keep_ghost)]
+530. verus! {
+531. 
+532. #[verifier::external_type_specification]
+533. pub struct ExError(cra...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '575,640p' Makefile 2>/dev/null || sed -n '575,640p' makefile 2>/dev/null; echo "=== V
+
+[THINKING] I can reference `e.code` and `ErrorCode::BadAddress` in the spec since `Error` and `ErrorCode` are defined via external type specifications, and `Error::new` has an assume that guarantees `result.code == code`. This means the error arm pattern matching on `e.code == ErrorCode::BadAddress` is expressible in the specification. Now I need to look at how verify-sys is defined and what gets included in VERUS_CRATES, so let me check the make targets.
+[RESULT ✓] bash: @echo "  DEPLOYMENT_MODE standalone, single-process, multi-process, l2"
+	@echo "  MACHINE         microvm"
+	@echo "  TARGET          x86, x86_64"
+	@echo "  RELEASE         yes, no"
+	@echo "  LOG_LEVEL       trace, debug, info, warn, error, panic"
+	@echo "  PROFILER        yes, no"
+	@echo "  MAKE_NO_...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "VERUS_EXECUTABLE_DIR=$VERUS_EXECUTABLE_DIR"; grep -n "VERUS_EXECUTABLE_DIR\|VERUS_AI_DI
+
+[THINKING] I need to verify that the VERUS_EXECUTABLE_DIR environment variable is actually set so the verification process can run properly.
+[RESULT ✓] bash: VERUS_EXECUTABLE_DIR=
+298:export VERUS_EXECUTABLE_DIR ?= /home/ruize/toolchain/verus
+314:# On Windows, convert VERUS_EXECUTABLE_DIR to a Unix-style path for the MSYS2 shell
+316:  VERUS_PATH_PREFIX = $$(cygpath -u '$(VERUS_EXECUTABLE_DIR)')
+318:  VERUS_PATH_PREFIX = $(VERUS_EXECUTABLE_DIR)
+325:export...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls -la /home/ruize/toolchain/verus 2>/dev/null && echo "VERUS PRESENT" || echo "no default path"; ls /home/ruize/toolcha
+[RESULT ✓] bash: total 111128
+drwxr-xr-x 1 ruize ruize      450 May 24 11:12 .
+drwxrwxr-x 1 ruize ruize       10 Jun  9 16:48 ..
+-rw-r--r-- 1 ruize ruize      155 May 24 11:12 .vstd-fingerprint
+drwxr-xr-x 1 ruize ruize       26 May 24 11:12 builtin
+drwxr-xr-x 1 ruize ruize       26 May 24 11:12 builtin_macros
+-rwxr-...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Verus is present. Let me establish a baseline by running the module verification before changes.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-sys MODULE=mm::address 2>&1 | tail -40
+
+[THINKING] Verus is already set up at the default path, so the Makefile will find it when I run make. I should start by establishing a baseline with `make verify-sys` to see the current state before making any changes.

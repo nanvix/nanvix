@@ -39,3 +39,6 @@ Module: sys-address-mod
 PHASE: specification
 Module: sys-address-mod
 ============================================================
+[2026-06-14 07:40:16] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+[2026-06-14 07:40:16] [PROVER] Running specification...
+[2026-06-14 07:40:16] [COPILOT] Running: copilot --model claude-opus-4.8 ...
