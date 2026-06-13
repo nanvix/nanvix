@@ -57,3 +57,29 @@ Module: bump-allocator
 [2026-06-14 00:01:24] [DIALOGUE] Reviewer turn 3 (remaining: 5152s)...
 [2026-06-14 00:01:24] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-14 00:03:28]   ↳ dialogue-reviewer-t3 done in 2m03s (exit=0)
+[2026-06-14 00:03:28] [DIALOGUE] Reviewer created STOP file: RESOLVED
+[2026-06-14 00:03:28] [DIALOGUE] STOP detail:
+RESOLVED
+
+All specification-phase checklist items are PASS or FIXED with tool-verified evidence.
+
+Key evidence (turn 3):
+- make verify-bump-allocator: exit 0, 5 verified, 0 errors, coverage 3/6
+  (in-scope alloc, alloc_as, as_mut_ptr, align_up all specified; remaining
+  fmt/new/default are out of scope per caller_analysis.md).
+- alloc/alloc_as specified via the in-tree raw-array external_body + verus_spec
+  pattern; Ok arms carry real alignment + in-bounds facts over bump_view(self),
+  alloc_as adds size/align guard arms. Registered in verus-ai-logs/tcb-allowed.md.
+- as_mut_ptr trait spec: result as int == base_of::<Self>().
+- Cross-module regression: make verify (bitmap, sys, nanvix-slab, bump-allocator,
+  kernel) all exit 0, 0 errors.
+- cargo build + cargo test (3 unit + 1 doctest) pass.
+
+Deferred to the proving phase (intentional, documented in view_design.md section 7,
+captured by lib.proof.rs lemmas): the v -> v' transition (allocated+1), cross-call
+uniqueness, and the Exhausted boundary, none of which are expressible over &self
+without a ghost token because AtomicUsize's value is not spec-readable.
+- admit=3 (lemma_geometry, lemma_exhausted_boundary, lemma_alloc_transition)
+- external_body=2 (alloc, alloc_as) — registered in tcb-allowed.md
+These are the legitimate hand-off to the proving phase, not spec-phase violations.
+[2026-06-14 00:03:28] [DIALOGUE] specification ended after 3 turns: RESOLVED (2171s)
