@@ -11,7 +11,10 @@
 // Imports
 //==================================================================================================
 
-use crate::NetworkingMode;
+use crate::{
+    HostFilter,
+    NetworkingMode,
+};
 
 //==================================================================================================
 // Structures
@@ -41,6 +44,9 @@ pub struct StandaloneConfig {
     kernel_args: Option<String>,
     /// Networking mode (disabled or enabled).
     networking_mode: NetworkingMode,
+    /// Host egress filter applied to guest `connect()` destinations. Only
+    /// meaningful when `networking_mode` is enabled.
+    host_filter: HostFilter,
     /// Optional GDB server port for debugging the guest.
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
@@ -76,6 +82,7 @@ impl StandaloneConfig {
     /// - `mount_directory`: Optional host directory to mount on the guest.
     /// - `kernel_args`: Optional kernel arguments written to guest control registers.
     /// - `networking_mode`: Networking mode for host networking.
+    /// - `host_filter`: Host egress filter applied to guest connections.
     /// - `gdb_port`: Optional GDB server port.
     ///
     #[allow(clippy::too_many_arguments)]
@@ -87,6 +94,7 @@ impl StandaloneConfig {
         mount_directory: Option<String>,
         kernel_args: Option<String>,
         networking_mode: NetworkingMode,
+        host_filter: HostFilter,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
         gateway_sockaddr: Option<String>,
     ) -> Self {
@@ -98,6 +106,7 @@ impl StandaloneConfig {
             mount_directory,
             kernel_args,
             networking_mode,
+            host_filter,
             #[cfg(feature = "gdb")]
             gdb_port,
             gateway_sockaddr,
@@ -137,6 +146,11 @@ impl StandaloneConfig {
     /// Returns the networking mode.
     pub fn networking_mode(&self) -> NetworkingMode {
         self.networking_mode
+    }
+
+    /// Returns the host egress filter.
+    pub fn host_filter(&self) -> HostFilter {
+        self.host_filter.clone()
     }
 
     /// Returns the optional GDB server port.

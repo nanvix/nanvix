@@ -11,6 +11,7 @@ use ::log::{
 };
 use ::net_backend::{
     error::NetError,
+    HostFilter,
     NetBackend,
 };
 use ::sys::{
@@ -24,29 +25,32 @@ use ::sys::{
     pm::ThreadIdentifier,
 };
 use ::syscall::{
-    sys::socket::message::{
-        AcceptSocketRequest,
-        AcceptSocketResponse,
-        BindSocketRequest,
-        BindSocketResponse,
-        ConnectSocketRequest,
-        ConnectSocketResponse,
-        CreateSocketPairRequest,
-        CreateSocketPairResponse,
-        CreateSocketRequest,
-        CreateSocketResponse,
-        GetPeerNameRequest,
-        GetPeerNameResponse,
-        GetSockNameRequest,
-        GetSockNameResponse,
-        ListenSocketRequest,
-        ListenSocketResponse,
-        ReceiveSocketRequest,
-        ReceiveSocketResponse,
-        SendSocketRequest,
-        SendSocketResponse,
-        ShutdownSocketRequest,
-        ShutdownSocketResponse,
+    sys::socket::{
+        message::{
+            AcceptSocketRequest,
+            AcceptSocketResponse,
+            BindSocketRequest,
+            BindSocketResponse,
+            ConnectSocketRequest,
+            ConnectSocketResponse,
+            CreateSocketPairRequest,
+            CreateSocketPairResponse,
+            CreateSocketRequest,
+            CreateSocketResponse,
+            GetPeerNameRequest,
+            GetPeerNameResponse,
+            GetSockNameRequest,
+            GetSockNameResponse,
+            ListenSocketRequest,
+            ListenSocketResponse,
+            ReceiveSocketRequest,
+            ReceiveSocketResponse,
+            SendSocketRequest,
+            SendSocketResponse,
+            ShutdownSocketRequest,
+            ShutdownSocketResponse,
+        },
+        SocketAddr,
     },
     unistd::message::{
         CloseRequest,
@@ -102,6 +106,7 @@ pub fn is_networking_header(header: &SystemCallMessageHeader) -> bool {
 ///
 pub fn dispatch_message(
     backend: &NetBackend,
+    filter: &HostFilter,
     source: MessageSender,
     syscall_msg: SystemCallMessage,
 ) -> Option<Vec<Message>> {
@@ -129,7 +134,7 @@ pub fn dispatch_message(
         SystemCallMessageHeader::ConnectSocketRequest => {
             let request: ConnectSocketRequest =
                 ConnectSocketRequest::from_bytes(syscall_msg.payload);
-            Some(vec![do_connect(backend, tid, request)])
+            Some(vec![do_connect(backend, filter, tid, request)])
         },
         SystemCallMessageHeader::CreateSocketPairRequest => {
             let request: CreateSocketPairRequest =
@@ -237,10 +242,41 @@ fn do_bind(backend: &NetBackend, tid: ThreadIdentifier, request: BindSocketReque
 
 fn do_connect(
     backend: &NetBackend,
+    filter: &HostFilter,
     tid: ThreadIdentifier,
     request: ConnectSocketRequest,
 ) -> Message {
     trace!("networkd::connect(): tid={tid:?}, request={request:?}");
+    // Enforce host egress policy before performing the real connect. The guest
+    // never makes the syscall itself, so refusing here is an unbypassable
+    // boundary.
+    //
+    // IPv4 destinations are matched against the filter. Any non-IPv4 destination
+    // (e.g. AF_UNIX, which would otherwise let a guest reach host-local sockets)
+    // or an unparsable address cannot be evaluated by the IPv4 filter, so it is
+    // denied whenever a filter is active and permitted only under `AllowAll`
+    // (preserving unrestricted behavior when no policy is set).
+    //
+    // Connections to the DNS port are exempted in allowlist mode so name
+    // resolution works for the allowed hosts (see `HostFilter::permits_connection`).
+    //
+    // Reject sockaddrs too short to hold a `sockaddr` before parsing. `socklen`
+    // is copied out of the packed request first so the trace below does not take
+    // a reference to an unaligned field; `size_of_val` reuses the in-scope
+    // `sockaddr` value to avoid naming its (private) type path.
+    let socklen: usize = request.socklen as usize;
+    if socklen < core::mem::size_of_val(&request.sockaddr) {
+        trace!("networkd::connect(): invalid sockaddr length (socklen={socklen})");
+        return build_error(tid, ErrorCode::InvalidArgument);
+    }
+    let permitted: bool = match SocketAddr::try_from(&request.sockaddr) {
+        Ok(SocketAddr::V4(addr)) => filter.permits_connection(addr.addr().octets(), addr.port()),
+        _ => filter.is_allow_all(),
+    };
+    if !permitted {
+        trace!("networkd::connect(): destination denied by host egress filter");
+        return build_error(tid, ErrorCode::PermissionDenied);
+    }
     match backend.connect(to_host_fd(request.sockfd), &request.sockaddr, request.socklen) {
         Ok(()) => ConnectSocketResponse::build(tid),
         Err(NetError::Interrupted) => build_error(tid, ErrorCode::Interrupted),

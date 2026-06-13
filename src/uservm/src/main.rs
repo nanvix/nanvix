@@ -24,7 +24,10 @@ use ::log::{
     error,
     info,
 };
-use ::nanvix_sandbox_config::NetworkingMode;
+use ::nanvix_sandbox_config::{
+    HostFilter,
+    NetworkingMode,
+};
 #[cfg(target_os = "linux")]
 use ::std::str::FromStr;
 use ::std::{
@@ -203,6 +206,7 @@ async fn run_standalone(
         snapshot_path,
         None,
         NetworkingMode::Disabled,
+        HostFilter::AllowAll,
         #[cfg(feature = "gdb")]
         gdb_port,
     );

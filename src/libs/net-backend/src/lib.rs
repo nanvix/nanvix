@@ -6,11 +6,17 @@
 //==================================================================================================
 
 pub mod error;
+pub mod filter;
 pub mod io;
 pub(crate) mod platform;
 pub mod query;
 pub mod socket;
 mod types;
+
+pub use filter::{
+    HostFilter,
+    Ipv4Cidr,
+};
 
 //==================================================================================================
 // NetBackend

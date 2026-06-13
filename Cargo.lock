@@ -1995,6 +1995,7 @@ version = "0.16.59"
 dependencies = [
  "hwloc",
  "linuxd",
+ "net-backend",
  "syscomm",
 ]
 
