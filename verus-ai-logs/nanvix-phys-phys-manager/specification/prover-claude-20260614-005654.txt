@@ -2577,3 +2577,79 @@ Turn 164
 Turn 165
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::phys 2>&1 | tail -30
+[RESULT ✓] bash: - instance
+    - init
+    - is_covered
+    - book
+    - alloc_range
+    - share
+    - refcount
+    - base
+    - clear
+    - deref
+    - deref_mut
+    - drop
+    - get_mut
+    - test
+    - new
+    - address
+    - leak
+    - share
+    - refcount
+    - drop
+    - new
+
+=== Summary ===
+  verification: 0 ...
+
+────────────────────────────────────────────────────────────
+Turn 166
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; L=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); echo $L; grep -n "er
+[RESULT ✓] bash: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_01-43-08.log
+20:error[E0425]: cannot find function `from_raw_value` in this scope
+27:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 79 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 167
+────────────────────────────────────────────────────────────
+from_raw_value uses `cfg_attr` wrappers while init/kframe use bare annotations. Let me confirm:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== manager init annotations ==="; sed -n '95,100p' src/kernel/src/mm/phys/manager.rs; 
+
+[THINKING] The bare `#[verus_verify]` annotation is still causing failures, so it's not about the impl form. The `kframe::new` function works fine—it takes a base address and returns Self directly with a spec using `result =>`. But `from_raw_value` is different: it returns a `Result<Self, Error>` and has an external_body, and I'm getting an error that the function can't be found, which suggests the issue might be in how the function is being generated or resolved.
+
+Looking at the error more carefully, it's happening at the definition line itself, which is strange. When I look back at the previous compilation, there were 4 "cannot find function" errors but now only 1, so something did get fixed. The question is whether `kframe::new` actually got fixed or if the error reporting just changed. Let me think about what's different between these two functions and whether there's something about how `from_raw_value` is being called—maybe within a derive macro or somewhere else in the code that's causing the resolution issue. I'm noticing the key difference now: `init` uses bare `#[verus_verify(external_body)]` annotations directly, while `from_raw_value` wraps them in `#[cfg_attr(verus_keep_ghost, ...)]`. That cfg_attr wrapper might be preventing verus from properly processing the function in the impl block, even though it's marked as verus_verify.
+[RESULT ✓] bash: === manager init annotations ===
+    // untouched. Listed in `verus-ai-logs/tcb-allowed.md`.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        ensures
+            match result {
+                Ok(_) => crate::mm::phys::phys_view().manager_ready,
+=== kframe new ===
+#[verus_verify...
+
+────────────────────────────────────────────────────────────
+Turn 168
+────────────────────────────────────────────────────────────
+Confirmed — switch `from_raw_value`/`into_raw_value` to bare annotations like the working examples:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I'm noticing that kframe and manager use bare attribute macros while from_raw_value uses a conditional compilation wrapper, but since this shared file compiles in both verus and non-verus modes and the struct itself uses bare `#[verus_verify(external_derive)]`, I should switch to using bare attributes consistently.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 169
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 170
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::phys 2>&1 | tail -25
+
+[THINKING] I'm checking whether `FrameAddress` has a `View` implementation since `into_raw_value` uses `self@` in its spec, and I need to verify that `fa.inv()` and related operations are properly defined. These should already exist from earlier work, so I'll proceed with re-running the verification, though I'm also noticing some concerns about bare `#[verus_verify]` and `#[verus_spec` attributes that might need attention.
+
+Since the address/frame.rs file already uses bare `#[verus_verify(external_derive)]` on the struct, the macros should be available unconditionally in non-Verus builds. Let me re-run the kernel verification to see if everything compiles correctly.

@@ -1,0 +1,80 @@
+Timestamp: 2026-06-14_01-44-06
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=23
+  admit=10
+  trusted=0
+  no_decreases=0
+  cfg_gate=10
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+   --> src/kernel/src/mm/phys/manager.rs:178:13
+    |
+178 |             self.inv(),
+    |             ^^^^
+    |
+    = help: For information on the new mutable reference support, see: https://github.com/verus-lang/verus/blob/main/source/docs/migration-mut-ref.md
+
+error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+   --> src/kernel/src/mm/phys/manager.rs:263:13
+    |
+263 |             self.inv(),
+    |             ^^^^
+    |
+    = help: For information on the new mutable reference support, see: https://github.com/verus-lang/verus/blob/main/source/docs/migration-mut-ref.md
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |
+188 |               let _ = write!(
+    |  _____________________^
+189 | |                 &mut crate::klog::Klog::get(
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+...   |
+194 | |                 $($arg)*
+195 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/phys/manager.rs:316:17
+    |
+316 |                   error!("{reason}");
+    |                   ------------------ in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+   --> src/kernel/src/mm/phys/manager.rs:342:13
+    |
+342 |             self.inv(),
+    |             ^^^^
+    |
+    = help: For information on the new mutable reference support, see: https://github.com/verus-lang/verus/blob/main/source/docs/migration-mut-ref.md
+
+error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+   --> src/kernel/src/mm/phys/manager.rs:396:13
+    |
+396 |             self.inv(),
+    |             ^^^^
+    |
+    = help: For information on the new mutable reference support, see: https://github.com/verus-lang/verus/blob/main/source/docs/migration-mut-ref.md
+
+error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+   --> src/kernel/src/mm/phys/upool.rs:196:13
+    |
+196 |             self@.wf(),
+    |             ^^^^
+    |
+    = help: For information on the new mutable reference support, see: https://github.com/verus-lang/verus/blob/main/source/docs/migration-mut-ref.md
+
+error: could not compile `kernel` (bin "kernel") due to 6 previous errors
