@@ -6,7 +6,7 @@
   "current_phase_idx": 0,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "04b57084-61fa-4ee9-8e6b-d83d425a1cc5",
   "completed": false,
   "base_branch": "verus-ai/sys-address-mod",
   "verus_branch": "verus-ai/arch-frame-number",
