@@ -820,3 +820,56 @@ Turn 40
 Turn 41
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::sys::mm::address::virt 2>&1 | tail -15
+[RESULT ✓] bash: - fmt
+    - add
+    - add_assign
+    - from
+    - from
+    - from
+    - from
+
+=== Summary ===
+  verification: 2 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+  coverage: 2/23 exec functions have contracts
+  status: CLEAN
+
+Log written to:...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+Now let me check for cross-module conflicts before running the full `make verify`. The real spec on `new` may clash with upstream `assume_specification`s:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "assume_specification\[.*VirtualAddress::new\|assume_specification\[.*VirtualAddress
+
+[THINKING] I've got two functions verified and clean so far. Now I'm looking at `into_raw_value`, which depends on the full Address implementation—I could verify it by speccing out `mm::is_aligned`, but I'm weighing whether that violates the rule against touching unlisted functions versus the guidance on handling dependencies.
+
+The core issue is that these mm functions aren't even processed by Verus yet since they're plain exec functions outside the macro. To call them from verified code, they'd need `#[verus_spec]` annotations. Since they're workspace-internal, I'd have to add the spec and actually prove the bodies—particularly the bitwise-to-modulo equivalence in `is_aligned`, which is nontrivial. For exec functions I can't just use `admit()`, so I'd either need to prove it properly or mark it `external_body`, but that's forbidden for non-TCB functions. This is pushing me toward significantly expanding scope just to verify one function, which feels like the wrong direction.
+
+So I'm leaving `into_raw_value` unverified in the impl and relying on the trait-level spec instead, which matches how `phys` and `page` handle their Address impls. The caller contract is already covered there. Now I need to check whether adding `#[verus_spec]` to `VirtualAddress::new` creates any regressions with the existing `assume_specification` calls in `phys.spec.rs` and elsewhere in the codebase.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.spec.rs:54:pub assume_specification[ ::sys::mm::VirtualAddress::new ](value: usize) -> (result: VirtualAddress)
+src/kernel/src/hal/mem/types/address/phys.spec.rs:59:pub assume_specification[ <::sys::mm::VirtualAddress as ::sys::mm::Address>::into_raw_value ]...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+
+[THINKING] I'm noticing there are two `assume_specification` declarations in phys.spec.rs that need careful handling. The first one on `VirtualAddress::new` conflicts with my new real spec attribute, so that needs adjustment. The second one references the trait-level spec for `into_raw_value` that already exists in mod.rs—since this coexisted before during verification, I should leave it untouched to preserve that working state. I'll be surgical about this: remove only the `new` assume_specification since it directly conflicts with the real spec I just added, and let `make verify` tell me whether `into_raw_value`'s assume_specification is still needed. The `new` spec is identical to what I'm verifying, and tcb-allowed.md explicitly says it's superseded once the address layer is verified — which it now is. Since the kernel will see the real `#[verus_spec]` from the sys crate, phys doesn't need the assume_specification anymore. Let me remove it from phys.spec.rs.
+[RESULT ✓] view: 44. 
+45. // =================================================================================================
+46. // Dependency contracts for not-yet-verified modules.
+47. //
+48. // `VirtualAddress` (the `sys` crate) and `FrameNumber`/`FRAME_SHIFT` (the `arch` crate) are not yet
+49. // verified. The...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Checking full-verify regressions
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify 2>&1 | tail -40
+
+[THINKING] I'm about to run the verification to see what conflicts come up, though it might take a while. But first I need to think through the `into_raw_value` method — the trait already has a specification defined, so I'm wondering if adding an `assume_specification` to the concrete implementation for `VirtualAddress` is even allowed, or if Verus will reject it.
+
+Since the kernel code currently compiles as-is, I'll leave that alone. Let me run make verify without preemptively removing anything, so I can see exactly what breaks and make only the necessary fixes.
+[RESULT ✓] report_intent: Intent logged
