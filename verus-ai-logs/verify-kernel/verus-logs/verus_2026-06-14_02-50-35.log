@@ -1,0 +1,54 @@
+Timestamp: 2026-06-14_02-50-35
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::upool
+Exit code: 101
+5 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=26
+  admit=10
+  trusted=0
+  no_decreases=0
+  cfg_gate=10
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+note: verifying module mm::phys::upool
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/upool.rs:199:5
+    |
+199 |     fn drop(&mut self) {
+    |     ^^^^^^^^^^^^^^^^^^
+
+error: callee may open invariants that caller cannot
+   --> src/kernel/src/mm/phys/frame.rs:771:1
+    |
+771 | pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ invariants opened by callee
+    |
+   ::: src/kernel/src/mm/phys/upool.rs:196:26
+    |
+196 |         opens_invariants none
+    |                          ^^^^ invariants opened by caller
+...
+200 |         if let Err(e) = frame::free(self.addr) {
+    |                         ^^^^^^^^^^^^^^^^^^^^^^ at this call-site
+
+error: cannot show this call will not unwind, in function marked 'no_unwind'
+   --> src/kernel/src/mm/phys/upool.rs:200:25
+    |
+200 |         if let Err(e) = frame::free(self.addr) {
+    |                         ^^^^^^^^^^^^^^^^^^^^^^ call to kernel::mm::phys::frame::free might unwind
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:771:1
+    |
+771 | pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+    | ------------------------------------------------------------ perhaps you need to mark this function as 'no_unwind'?
+
+verification results:: 5 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

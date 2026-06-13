@@ -1219,3 +1219,100 @@ The second issue is an E0425 error where the `new` function can't be found at th
 Turn 78
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=mm::phys::upool 2>&1 | tail -50
+[RESULT ✓] bash: Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-14_02-49-35
+
+    Checking kernel v0.16.17 (/home/ruize/nanvix-ph...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+Let me look at how `KernelFrame::new` (also a TCB `new`) is annotated, since it verifies.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "fn new\|verus_spec\|verus_verify" src/kernel/src/mm/phys/kframe.rs | head; echo "===
+
+[THINKING] The import issue is resolved, but now I'm hitting an error where the `new` functions can't be found in scope at those specific lines in upool.rs. It seems like the `#[verus_spec]` macro combined with `#[verus_verify(external_body)]` on `Upool::new` might be causing the compiler to generate a recursive or proxy call that's breaking the function lookup.
+
+But wait — `UserFrame::new` at line 86 doesn't have `external_body`, just `#[verus_spec]`, so that theory doesn't fully explain both errors. I'm wondering if this is a known issue with how the macro expands when the function is named `new`, or if there's something about how the verifier generates proxies that's causing an unqualified call to `new` that can't resolve in the current scope.
+
+Let me check how `KernelFrame::new` is annotated in kframe.rs to see if there's a pattern I'm missing.
+[RESULT ✓] bash: 34:#[verus_verify(external_derive)]
+56:#[verus_verify]
+74:    #[verus_verify(external_body)]
+75:    #[verus_spec(result =>
+84:    pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
+=== context ===
+    ///
+    /// Instantiates a kernel frame.
+    ///
+    /// # Parameters
+    ///
+    /// -...
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '54,58p' src/kernel/src/mm/phys/kframe.rs; echo "=== upool impl blocks ==="; grep -n "
+
+[THINKING] I'm noticing that the `impl KernelFrame` block at line 56 needs the `#[verus_verify]` attribute to work properly with the verification system.
+[RESULT ✓] bash: // Dependency contract for the manager layer: wrapping a `FrameAddress` produces a handle whose
+// abstract address is the same physical frame.
+#[verus_verify]
+impl KernelFrame {
+    ///
+=== upool impl blocks ===
+45:impl View for UserFrame {
+57:impl View for Upool {
+65:impl UserFrame {
+192:impl Drop...
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+The impl blocks need `#[verus_verify]` (like `KernelFrame`'s). Let me add it.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I'm noticing that the `impl UserFrame` and `impl Upool` blocks are missing the `#[verus_verify]` attribute, while `KernelFrame`'s impl block has it — that's likely why the verus_spec methods aren't being processed and `Self::new` can't be resolved. The macro needs that attribute to handle the methods properly.
+
+I should add `#[verus_verify]` to both impl blocks and possibly the Drop impl as well to be safe, then re-run to see if that resolves the error.
+[RESULT ✓] view: 63. } // verus!
+64. 
+65. impl UserFrame {
+66.     ///
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 192. 
+193. impl Drop for UserFrame {
+194.     #[verus_spec(
+195.         opens_invariants none
+196.         no_unwind
+197.     )]
+198.     fn drop(&mut self) {
+199.         if let Err(e) = frame::free(self.addr) {
+200.             #[cfg(not(verus_keep_ghost))]
+201.             error!("failed to free...
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=mm::phys::upool 2>&1 | tail -50
