@@ -57,3 +57,6 @@ Module: hal-phys-address
 [2026-06-14 05:52:44]   ↳ dialogue-reviewer-t2 done in 1m12s (exit=0)
 [2026-06-14 05:52:44] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-06-14 05:52:44] [DIALOGUE] specification ended after 2 turns: RESOLVED (419s)
+[2026-06-14 05:52:44] [PHASE] specification: dialogue-RESOLVED (31m43s)
+[2026-06-14 05:52:44] [SPEC DRIFT] (within specification) Comparing 88d41fe6 → cd00b57d
+[2026-06-14 05:52:44] [SPEC DRIFT] (within specification) No changes detected
