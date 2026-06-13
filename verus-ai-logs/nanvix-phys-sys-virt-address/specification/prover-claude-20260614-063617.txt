@@ -1,0 +1,422 @@
+=== Copilot Session ===
+Timestamp: 2026-06-14T06:36:17.732934
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are adding formal specifications to /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs using Verus, in-place.
+Spec and proof files sit alongside the source file.
+
+== PROJECT CONTEXT ==
+
+File: `src/libs/sys/src/sys/mm/address/virt.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`VirtualAddress::into_raw_value`, `VirtualAddress::from_raw_value`, `VirtualAddress::new`, `VirtualAddress`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+
+
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+
+
+
+Caller analysis: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/caller_analysis.md
+View design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/view_design.md
+Source file: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+Spec file:  /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs
+Proof file: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.proof.rs
+Verus command: make verify-sys
+
+== SKILLS ==
+
+Follow strictly:
+- **spec-design** — MUST follow: primary methodology for this phase
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns
+- **verification-order** — MUST follow: write specs in dependency order
+- **spec-completeness** — SHOULD follow: determinism-based completeness check (best-effort)
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai/scripts/
+- Source directory: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai/vstd/
+
+== TASK ==
+
+**Planning**: Before writing any specs, read all functions in the module
+and plan the order to write specs (leaves first, callers last).
+
+If `/home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json` exists, use it as a starting point:
+```
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json     -m "YOUR_MODULE"
+```
+
+**Read the caller analysis and View design first.** Read /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/caller_analysis.md
+to understand what callers expect from each function — these expectations define
+the guarantees your specs must provide. If /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/view_design.md exists, use the
+View type defined there — do not redesign from scratch. If the file does not
+exist, design the View following the **view-design** skill.
+If you need to modify the View (e.g. add fields, adjust inv()), follow
+the **view-design** skill's principles and update /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/view_design.md accordingly.
+
+The project structure (spec/proof files, Cargo.toml) is already set up.
+Work in-place on:
+1. **/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs** — View types, invariants, helper predicates,
+   spec transition functions. Every caller expectation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/caller_analysis.md
+   must map to at least one `requires`, `ensures`, `invariant`, or lemma signature.
+2. **/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.proof.rs** — Proof function signatures only
+   (requires/ensures). Leave bodies as `admit()` — proving phase fills them in.
+3. **/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs** — The primary work: add `#[verus_spec]` annotations
+   (requires/ensures) to every exec function. Also add cfg-gated includes.
+
+Follow the **spec-design** skill's Exec Binding Rules strictly.
+
+**Handling dependency functions:**
+- **Already verified** (has specs): reference the existing specs
+  directly — do not rewrite them.
+- **Not yet verified** (no specs): write a spec for it and mark the function
+  `external_body`. These will be eliminated when that module is verified later.
+
+Goal: meaningful specs covering every caller expectation from
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/caller_analysis.md and every View operation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/view_design.md.
+0 Verus errors (`admit()` in proof bodies is fine).
+
+**ULTIMATE GOAL**: The verification target is not just this module in isolation.
+The end goal is that `make verify` (all verified modules) passes with 0 errors.
+Existing ensures/requires clauses inherited from upstream modules are caller
+dependencies — they must not be weakened or removed. In this phase, proof bodies
+use `admit()`, so proving difficulty is not a factor — write the correct spec that
+describes what the function actually does, without concern for proof complexity.
+If an existing spec seems unsatisfiable, determine whether the spec is incorrect
+(it describes behavior the code cannot have) or the code is wrong (a code bug).
+Correct whichever is broken; do not weaken the guarantee.
+
+**Bug awareness**: If you encounter code that cannot have a correct spec
+(e.g., logic that is always wrong, impossible error paths, arithmetic that
+always overflows), follow the **bug-reporting** skill. For auto-fixable bugs
+(overflow, off-by-one, missing bounds check), fix them directly and record
+in /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/bugs.md. For complex bugs, record only — proving phase will validate.
+
+Run `make verify-sys` to confirm 0 errors.
+Then run `make verify` to ensure no regressions in other modules.
+Verify `make build` still works (dual compilation).
+
+
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reading context and skills
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/view_design.md
+
+[THINKING] I need to check what skills are actually available and look for the referenced ones in the filesystem, since the task mentions spec-design, verus-constraints, and others that don't match the Nanvix project skills list.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. # Caller Analysis: `mm::address::virt` (`VirtualAddress`)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-sys-virt-address/find_callers_lsp_output.md`
+5. (raw output of `scripts/find_callers_lsp.py`).
+6. 
+7. Scope (verification-order target functions):
+8. `VirtualAddress::into_raw_valu...
+[RESULT ✓] view: 1. # View Design: `VirtualAddress` (`src/libs/sys/src/sys/mm/address/virt.rs`)
+2. 
+3. > Phase output. Designs the abstract `View` boundary for `VirtualAddress`.
+4. > Built **only** from `caller_analysis.md` and the body-removed public API
+5. > (`body_removed_source.rs`); implementation bodies were n...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs; echo "=====PROOF====="; cat /home/ruize/nanvix-
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/scripts/ 2>/dev/null; echo "---skills---"; find /home/ruize/verus-ai-exp/verus-ai -
+
+[THINKING] I need to locate and review the skills files that contain the guidelines I should follow.
+[RESULT ✓] bash: verus! { } // verus!
+=====PROOF=====
+verus! { } // verus!
+<shellId: 0 completed with exit code 0>
+[RESULT ✓] bash: __pycache__
+add_verification.py
+ai_residue.py
+ast_consistency.py
+cascade_analysis.py
+check_proof_blocks.py
+compute_scope.py
+dummy_probe.py
+dummy_probe_report.py
+eb_diagnose.py
+find_callers_lsp.py
+find_deps_lsp.py
+fn_coverage.py
+groundtruth_diff.py
+inject_verus_verify.py
+llm_fix_suggest.py
+llm_review...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+
+[THINKING] I'm reviewing the key skills needed for this verification task—spec-design, verus-constraints, verification-order, spec-completeness, and bug-reporting—and looking at how a similar already-verified module like PhysicalAddress handles these patterns.
+[RESULT ✓] bash: Output too large to read at once (23.2 KB). Saved to: /tmp/copilot-tool-output-1781390194238-t4hewv.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '1,200p' /tmp/copilot-tool-output-1781390194238-t4hewv.txt
+[RESULT ✓] bash: ---
+name: spec-design
+description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or reviewing Ve...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '200,400p' /tmp/copilot-tool-output-1781390194238-t4hewv.txt
+[RESULT ✓] bash: every (or nearly every) method. A universally required property is an
+    invariant — move it to `inv()` and maintain it in `ensures`.
+12. **`uninterp` as Verification Escape** — using `uninterp spec fn` to
+    avoid writing a concrete spec definition, then injecting properties
+    via `external_bod...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/; echo "---"; find /home/ruize/nanvix-phy/src -path "*address*
+
+[THINKING] I should look at how other verified modules in this codebase use `#[verus_spec]` annotations on exec functions to match the exact syntax patterns.
+[RESULT ✓] bash: mod.rs
+virt.proof.rs
+virt.rs
+virt.spec.rs
+---
+/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs
+---phys sibling---
+/home/ruize/n...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: echo "=====PHYS.RS====="; sed -n '1,120p' /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs; echo "===
+[RESULT ✓] bash: =====PHYS.RS=====
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls verus-ai-logs/verification-plan.json 2>/dev/null && python3 /home/ruize/verus-ai-exp/verus
+
+[THINKING] I see that the upstream specs for `VirtualAddress::new` and `into_raw_value` are already established in phys.spec.rs, and my specs need to align with those contracts exactly — `new` should produce `result@ == value as int` and `into_raw_value` should produce `result as int == addr@`. Now I'm ready to add the actual specs to `VirtualAddress::new` while ensuring they don't weaken these existing assumptions. I need to verify the module in isolation first with `make verify-sys`, then check for regressions with the full `make verify`. If there's a conflict between the real spec and the existing `assume_specification`, I'll need to remove the redundant one from phys.spec.rs. Let me review the verification order and constraints before writing the specs.
+[RESULT ✓] bash: verus-ai-logs/verification-plan.json
+No matching modules found.
+Available modules:
+---constraints---
+---
+name: verus-constraints
+description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. M...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "trait Address" src/libs/sys/src/ ; echo "---"; find src/libs/sys/src/sys/mm -name "
+
+[THINKING] I need to understand how `#[verus_spec]` works with trait method implementations, particularly for `into_raw_value` in the `Address` trait. Let me look at the verus-syntax documentation and check how `external_body` is used for dependency functions, then examine the page.spec.rs and aligned/page.rs files to see the pattern.
+
+The four targets I'm focusing on are `VirtualAddress::new` (inherent const fn), `VirtualAddress::from_raw_value` (inherent), `Address::into_raw_value` for `VirtualAddress` (trait method), and the `VirtualAddress` type itself. Since `new` is pure, `from_raw_value` just calls `new`, and `into_raw_value` simply returns `self.0`, there are no external dependencies to worry about. But I need to figure out whether I can add `#[verus_spec]` to just the impl method when the `Address` trait itself isn't annotated — let me find where the trait is defined to check if it already has specs.
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/mod.rs:31:pub trait Address
+---
+src/libs/sys/src/sys/mm/address/mod.rs
+src/libs/sys/src/sys/mm/address/virt.rs
+src/libs/sys/src/sys/mm/address/virt.spec.rs
+src/libs/sys/src/sys/mm/address/virt.proof.rs
+src/libs/sys/src/sys/mm/mmio.rs
+src/libs/sys/src/sys/mm/mod.rs
+src...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "impl Address for\|verus_verify\|verus_spec\|into_raw_value\|fn from_raw_value\|#\[ve
+
+[THINKING] The `Address` trait already specifies the contract for `into_raw_value` with `ensures result as int == self@`, so the implementation in virt.rs needs to satisfy this spec. Since the trait is marked with `#[verus_verify]`, the impl method inherits the trait's specification and doesn't need its own separate spec annotation—Verus handles the verification automatically.
+
+I should check how the impl block is currently marked. The `impl Address for VirtualAddress` block might need `#[verus_verify]` to ensure the implementation is verified against the trait contract. Let me look at how phys.rs and other files handle their trait implementations to understand the annotation patterns.
+[RESULT ✓] bash: 40:#[verus_verify(external_derive)]
+79:        let raw_addr: usize = frame_addr.into_raw_value() << mem::FRAME_SHIFT;
+84:        let raw_addr: usize = frame_addr.into_raw_value() << mem::FRAME_SHIFT;
+90:#[verus_verify]
+112:    #[verus_spec(result =>
+138:    #[verus_spec(result =>
+144:        let add...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '160,270p' src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] bash: let frame_number: usize = raw_addr >> shift;
+        proof! { lemma_frame_index(self, raw_addr, shift, frame_number); }
+        // Safety: the following unwrap is safe because a physical address has a valid frame number.
+        FrameNumber::from_raw_value(frame_number).unwrap()
+    }
+}
+
+impl Addres...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "impl View for" src/kernel/src/hal/mem/types/address/ ; echo "---page.rs tail---"; g
+
+[THINKING] I'm noticing that the `PhysicalAddress` impl block doesn't have a `#[verus_verify]` attribute, and neither do its individual methods, yet the implementation still gets verified. This makes me wonder how `into_raw_value` actually gets checked against the trait specification — does Verus automatically verify impl methods against a `#[verus_verify]` trait's specs during impl processing, or does the impl block itself need the attribute? The real specs on `VirtualAddress::new` and `into_raw_value` will conflict with the assume_specifications in phys.spec.rs, so those placeholders need to be removed when the address layer gets verified. The task notes that assume_specifications are temporary stand-ins that get superseded once the actual implementations are verified.
+
+For virt.spec.rs, I need to decide whether to add an `inv()` function returning true. The view design specifies it should be there, but if nothing actually uses it, it becomes a floating spec with no connection to any exec contract. I'm leaning toward skipping it for minimality unless it's actually referenced somewhere.
+
+The meaningful specs are already in place: `new` and `from_raw_value` establish that the view equals the integer value, and `into_raw_value` is inherited from the trait. The View itself currently lives in virt.rs inside a verus block, and I should probably leave it there rather than moving it to the spec file.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/frame.rs:41:impl View for FrameAddress
+src/kernel/src/hal/mem/types/address/phys.rs:291:impl View for PhysicalAddress
+---page.rs tail---
+42:    #[verus_spec(ret =>
+63:impl<T: Address> Address for PageAligned<T> {
+64:    fn into_raw_value(self) -> usize {
+65:     ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '38,70p;215,245p' src/kernel/src/hal/mem/types/address/aligned/page.rs; echo "=====pag
+
+[THINKING] I'm seeing the pattern now—View implementations and inv() methods stay in the .rs files themselves, while spec functions and assumptions go in the .spec.rs files. VirtualAddress already has its View defined in virt.rs, so I'll add the inv() there if needed and check what page.rs requires.
+[RESULT ✓] bash: #[verus_verify]
+impl<T: Address> PageAligned<T> {
+    /// Constructs a page address from an aligned virtual address.
+    #[verus_spec(ret =>
+        ensures
+            match ret {
+                Ok(r) => spec_aligned(addr@) && r@ == addr@ && r.inv(),
+                Err(_) => !spec_aligned(addr@),...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '80,220p' src/libs/sys/src/sys/mm/address/mod.rs
+
+[THINKING] I'm realizing that the `impl Address for PageAligned` doesn't have `#[verus_verify]` and its `into_raw_value` method lacks `#[verus_spec]`, so it inherits the trait specification. This means `VirtualAddress`'s implementation will automatically inherit the trait's postcondition without needing explicit annotation. I'm wondering whether the impl block itself gets verified against the trait's declared spec.
+
+In Verus, when a trait is marked `#[verus_verify]`, the impl block methods are checked against the trait's spec without needing their own attribute. So `into_raw_value` for `VirtualAddress` will verify that the body `self.0` satisfies the postcondition `self.0 as int == self@`, which holds because the view is visible within the module.
+
+Now I'm distinguishing between two `from_raw_value` methods: the inherent one returning `Self` and the trait one returning `Result`. The target is the inherent version, which calls `VirtualAddress::new(raw_addr)`. To prove the result's view equals the raw address, I need `new`'s spec. Since both are in the same module, that's accessible.
+
+I'm planning to add `#[verus_spec]` annotations to both `new` and the inherent `from_raw_value`, while leaving the `impl Address for VirtualAddress` block without its own `#[verus_verify]` attribute since the trait impl methods inherit verification from the trait itself.
+
+But I'm realizing I need to check whether the impl block is already being verified and what specs the trait methods actually require, so I should examine the full `Address` trait definition to understand what postconditions the impl must satisfy.
+[RESULT ✓] bash: ///  Aligns the target [`Address`] to the provided `alignment`. If the address is already
+    /// aligned, it is returned as is.
+    ///
+    /// # Parameters
+    ///
+    /// - `alignment`: The alignment to align the target address to.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the align...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat Makefile 2>/dev/null | grep -n "verify-sys\|verify-kernel\|verify:" | head; echo "---"; l
+
+[THINKING] The Address trait specifies three key behaviors: `into_raw_value` should return the address as an integer, `clone_address` should preserve the address value, and `is_aligned` should check if the address is properly aligned. The other methods like `from_raw_value`, `align_up`, and `align_down` don't have formal specifications, so when I verify the `VirtualAddress` implementation, I need to ensure it satisfies those three core specs.
+
+The complication is that `is_aligned` calls into `mm::is_aligned`, which itself needs a specification to prove the trait obligation. Since the task only lists four targets to verify, I should check what the actual verification errors are by running the baseline to see what Verus is currently checking.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+---
+total 396
+drwxrwxr-x 1 ruize ruize   760 Jun 13 23:53 .
+drwxr-x--- 1 ruize ruize  3190 Jun 14 02:...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '580,640p' Makefile
+[RESULT ✓] bash: @echo "  PROFILER        yes, no"
+	@echo "  MAKE_NO_PRINT   yes, no"
+
+# Verifies all Verus-annotated crates.
+.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+
+# Ensures the correct Verus version is installed before verification.
+# When VE...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat verus-ai.toml; echo "---env---"; echo "VERUS_EXECUTABLE_DIR=$VERUS_EXECUTABLE_DIR"; grep 
+
+[THINKING] I'll check the verus-ai.toml configuration and the VERUS_EXECUTABLE_DIR environment variable, then run the make verify-sys command to establish a baseline.
+[RESULT ✓] bash: # Auto-generated from verification-plan-phys.json.
+# Regenerate with scripts/generate_nanvix_phys_verus_configs.py.
+
+[project]
+background = """File: `src/libs/sys/src/sys/mm/address/virt.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`VirtualAddress::into_raw...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls /home/ruize/toolchain/verus/ 2>/dev/null | head; echo "exit:$?"; ls -la toolchain/verus 2>
+[RESULT ✓] bash: builtin
+builtin_macros
+cargo-verus
+libverus_builtin.rlib
+libverus_builtin_macros.so
+libverus_state_machines_macros.so
+libvstd.rlib
+rust_verify
+state_machines_macros
+version.json
+exit:0
+total 110700
+drwxr-xr-x  6 ruize ruize     4096 May 13 17:08 .
+drwxr-xr-x 12 ruize ruize     4096 Mar 30 15:13 ..
+-...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running baseline verify-sys
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=mm::address::virt 2>&1 | tail -40
+
+[THINKING] The verus binary is available, and even though the VERUS_EXECUTABLE_DIR environment variable isn't set, the Makefile has a default path configured, so I'll proceed with running the baseline verification.
+[RESULT ✓] report_intent: Intent logged

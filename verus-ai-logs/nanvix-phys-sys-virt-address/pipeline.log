@@ -39,3 +39,6 @@ Module: sys-virt-address
 PHASE: specification
 Module: sys-virt-address
 ============================================================
+[2026-06-14 06:36:17] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[2026-06-14 06:36:17] [PROVER] Running specification...
+[2026-06-14 06:36:17] [COPILOT] Running: copilot --model claude-opus-4.8 ...
