@@ -729,3 +729,26 @@ Now run the scoped verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-sys MODULE=sys::sys::mm::address 2>&1 | tail -15
 
 [THINKING] The `ErrorCode` is already accessible through the fully-qualified path in the module, so I don't need to add any imports. Now I'm running the scoped verify-sys to check everything.
+[RESULT ✓] bash: - fmt
+    - add
+    - add_assign
+    - from
+    - from
+    - from
+    - from
+
+=== Summary ===
+  verification: 2 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+  coverage: 2/23 exec functions have contracts
+  status: CLEAN
+
+Log written to:...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Scoped CLEAN. Now full `make verify-sys` to check the VirtualAddress impl against the new trait contract.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-sys 2>&1 | tail -15
+
+[THINKING] Now I'm running the full verification suite without module restrictions to validate the VirtualAddress trait implementation in virt.rs against the updated trait requirements.
