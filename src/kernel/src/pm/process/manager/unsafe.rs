@@ -914,6 +914,44 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Computes the quantum that the next thread to run should start with when the scheduler
+    /// switches away from a thread of process `previous_pid` to a thread of process `next_pid`.
+    ///
+    /// # Parameters
+    ///
+    /// - `next_pid`: Process identifier of the next thread to run.
+    /// - `previous_pid`: Process identifier of the thread that is being switched out.
+    /// - `remaining`: Quantum that remained for the thread that is being switched out.
+    ///
+    /// # Returns
+    ///
+    /// The quantum that the next thread should start running with.
+    ///
+    pub(super) fn next_thread_quantum(
+        next_pid: ProcessIdentifier,
+        previous_pid: ProcessIdentifier,
+        remaining: usize,
+    ) -> usize {
+        // Reset the quantum to a full slice on a cross-process switch, and also on an intra-process
+        // switch when the outgoing thread had already exhausted its quantum (i.e. it was preempted
+        // through tick()/giveup()). The latter prevents the incoming thread from inheriting an
+        // exhausted quantum and being immediately preempted on the next tick, which would otherwise
+        // starve it relative to its sibling threads.
+        //
+        // Otherwise, on an intra-process switch where the outgoing thread still had quantum to
+        // spare (e.g. a voluntary yield through sleep()/exit()), the incoming thread inherits the
+        // remaining quantum so that a process cannot accumulate more than its fair share of CPU
+        // time across its threads.
+        if next_pid != previous_pid || remaining == 0 {
+            SCHEDULER_FREQ
+        } else {
+            remaining
+        }
+    }
+
+    ///
+    /// # Description
+    ///
     /// Switches the execution to another thread.
     ///
     /// # Parameters
@@ -954,11 +992,11 @@ impl ProcessManager {
             // We need to perform a context switch.
             PERF_SCHED_HARD_CONTEXT_SWITCHES.fetch_add(1, ORDER);
 
-            // Check whether we need to reset the quantum for the next thread.
-            if next_pid != previous_pid {
-                REMAINING_QUANTUM.store(SCHEDULER_FREQ, ORDER);
-                CURRENT_PID.store(next_pid.into(), ORDER);
-            }
+            // Reset the quantum for the next thread, as required.
+            let remaining: usize = REMAINING_QUANTUM.load(ORDER);
+            REMAINING_QUANTUM
+                .store(Self::next_thread_quantum(next_pid, previous_pid, remaining), ORDER);
+            CURRENT_PID.store(next_pid.into(), ORDER);
             CURRENT_TID.store(next_tid.into(), ORDER);
 
             ContextInformation::switch(from, to, user_tda);

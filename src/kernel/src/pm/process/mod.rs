@@ -26,5 +26,8 @@ pub use manager::{
 /// Runs all in-kernel unit tests for the process module.
 #[cfg(feature = "test")]
 pub(super) fn test() -> bool {
-    state::test()
+    let mut passed: bool = true;
+    passed &= manager::test();
+    passed &= state::test();
+    passed
 }
