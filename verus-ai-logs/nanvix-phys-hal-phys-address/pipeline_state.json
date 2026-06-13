@@ -2,23 +2,52 @@
   "module_name": "hal-phys-address",
   "log_name": "nanvix-phys-hal-phys-address",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs",
-  "current_phase": "caller-analysis",
-  "current_phase_idx": 0,
-  "completed_phases": [],
-  "phase_results": {},
+  "current_phase": "view-design",
+  "current_phase_idx": 1,
+  "completed_phases": [
+    "caller-analysis"
+  ],
+  "phase_results": {
+    "caller-analysis": {
+      "phase": "caller-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 120.7,
+      "review_rounds": 0
+    }
+  },
   "prover_session_id": "83f5427a-96ac-4d11-bbc3-67c4bb5c8dd3",
   "completed": false,
   "base_branch": "verus-ai/hal-page-aligned",
   "verus_branch": "verus-ai/hal-phys-address",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "caller-analysis": "6bd43dd14d92038bf902067a0f52ce4fe4e5bcbe"
+  },
   "phase_start_shas": {
-    "caller-analysis": "71f41775413fad711e3de374788a70d98f0845b6"
+    "caller-analysis": "71f41775413fad711e3de374788a70d98f0845b6",
+    "view-design": "6bd43dd14d92038bf902067a0f52ce4fe4e5bcbe"
   },
   "phase_history": [
     {
       "phase": "caller-analysis",
       "event": "start",
       "sha": "71f41775413fad711e3de374788a70d98f0845b6",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "caller-analysis",
+      "event": "end",
+      "sha": "6bd43dd14d92038bf902067a0f52ce4fe4e5bcbe",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "start",
+      "sha": "6bd43dd14d92038bf902067a0f52ce4fe4e5bcbe",
       "rollback_iter": 0
     }
   ],
