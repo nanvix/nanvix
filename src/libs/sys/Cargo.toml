@@ -15,7 +15,7 @@ verify = true
 
 [dependencies]
 config = { workspace = true }
-error = { workspace = true }
+error = { workspace = true, features = ["verus"] }
 static_assert = { workspace = true }
 core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { workspace = true, optional = true }
