@@ -13,6 +13,8 @@ use crate::{
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
     SignupMessage,
+    WaitMessage,
+    WaitTarget,
 };
 use ::alloc::{
     collections::btree_map::BTreeMap,
@@ -50,6 +52,13 @@ use ::sys::{
 // Structures
 //==================================================================================================
 
+/// `WNOHANG` wait option carried in the `options` field of a `Wait` protocol message. A request
+/// carrying this flag makes `waitpid()` poll without blocking. This is the daemon's local copy of
+/// the wire-protocol flag; its value is POSIX-compatible (matching the `WNOHANG` constant exposed
+/// to user space), kept in sync by convention rather than by a shared definition, as this crate
+/// does not depend on the user-space API crate.
+const WNOHANG: i32 = 1;
+
 ///
 /// # Description
 ///
@@ -69,6 +78,9 @@ struct ProcessRecord {
     /// Used to acknowledge a fork-sync request regardless of whether it races ahead of the
     /// process-creation event.
     fork_clone_done: bool,
+    /// Termination status once the process has terminated and is awaiting reap by `waitpid()`.
+    /// `Some(status)` marks a zombie; `None` marks a live (or not-yet-terminated) process.
+    zombie: Option<i32>,
 }
 
 impl ProcessRecord {
@@ -80,8 +92,43 @@ impl ProcessRecord {
             parent,
             children: Vec::new(),
             fork_clone_done: false,
+            zombie: None,
         }
     }
+}
+
+///
+/// # Description
+///
+/// Selects which child(ren) a blocked waiter is waiting for.
+///
+enum WaitSelector {
+    /// Any child of the waiter.
+    Any,
+    /// A specific child of the waiter.
+    Pid(ProcessIdentifier),
+}
+
+impl WaitSelector {
+    /// Returns `true` if `child` matches this selector.
+    fn matches(&self, child: ProcessIdentifier) -> bool {
+        match self {
+            WaitSelector::Any => true,
+            WaitSelector::Pid(pid) => *pid == child,
+        }
+    }
+}
+
+///
+/// # Description
+///
+/// A parent process blocked in a `Wait` operation, awaiting a deferred reply.
+///
+struct BlockedWaiter {
+    /// Process identifier of the blocked waiter.
+    waiter: ProcessIdentifier,
+    /// Children that the waiter is waiting for.
+    selector: WaitSelector,
 }
 
 //==================================================================================================
@@ -101,6 +148,18 @@ pub struct ProcessDaemon {
     /// used rather than a map because only a handful of fork operations are ever pending
     /// concurrently, so a linear scan is cheaper than the overhead of an ordered map.
     pending_fork_syncs: Vec<(ProcessIdentifier, ProcessIdentifier)>,
+    /// Parents currently blocked in a `Wait` operation. A blocking `waitpid()` is parked here and
+    /// answered later, when a `ProcessTermination` event for a matching child arrives.
+    blocked: Vec<BlockedWaiter>,
+    /// Terminations observed before the corresponding process-creation event, stored as
+    /// `(pid, status)` pairs. The kernel publishes a process's termination event ahead of its
+    /// creation event when both are queued (the `ProcessTermination` scheduling slot is drained
+    /// before `ProcessCreation`), so procd can learn that a child died while the child is still
+    /// unknown. The status is buffered here and replayed once the creation event records the
+    /// child's lineage, so the exit status is never dropped and a parent blocked in `waitpid()` is
+    /// always answered. A `Vec` suffices because only a handful of terminations are ever pending
+    /// reconciliation at once.
+    early_terminations: Vec<(ProcessIdentifier, i32)>,
 }
 
 impl ProcessDaemon {
@@ -129,6 +188,8 @@ impl ProcessDaemon {
             processes: BTreeMap::new(),
             init_proc: None,
             pending_fork_syncs: Vec::new(),
+            blocked: Vec::new(),
+            early_terminations: Vec::new(),
         })
     }
 
@@ -266,6 +327,29 @@ impl ProcessDaemon {
             }
         }
 
+        // Replay a termination that was observed before this creation event. The kernel publishes
+        // terminations ahead of creations, so procd may have seen this child die while it was still
+        // unknown and buffered the exit status. Now that the child's lineage is recorded and its
+        // fork-clone has been dispatched to the filesystem daemon above, reclaim its filesystem
+        // state (ordered after the fork-clone, so the snapshot is taken before it is torn down) and
+        // finalize the termination, so a parent blocked in `waitpid()` receives the exit status
+        // instead of blocking forever on a child that can never terminate again.
+        if let Some(pos) = self
+            .early_terminations
+            .iter()
+            .position(|(p, _)| *p == child)
+        {
+            let (_, status) = self.early_terminations.swap_remove(pos);
+            ::syslog::info!(
+                "reconciling buffered termination (child={:?}, status={:?})",
+                child,
+                status
+            );
+            self.pending_fork_syncs.retain(|(c, _)| *c != child);
+            self.notify_process_exit(child);
+            self.finalize_forked_child_termination(child, status)?;
+        }
+
         Ok(())
     }
 
@@ -293,6 +377,48 @@ impl ProcessDaemon {
         let status: i32 = i32::from_le_bytes(message.payload[4..8].try_into().unwrap());
         ::syslog::info!("process terminated (pid={:?}, status={:?})", pid, status);
 
+        // The kernel publishes a process's termination event before its creation event when both
+        // are queued (the `ProcessTermination` scheduling slot is drained ahead of
+        // `ProcessCreation`), so this termination can arrive while the child's lineage is still
+        // unknown. This happens not only when the child is entirely unknown, but also when it sent
+        // its `Signup` before its creation event was processed: such a record exists (with its
+        // name) yet still has no recorded parent, so re-parenting, reaping, and waking a blocked
+        // waiter cannot be resolved correctly yet, and processing the termination immediately would
+        // let the later creation event recreate the record with no buffered status to replay.
+        // Buffer the `(pid, status)` and defer every side effect — filesystem-state reclamation,
+        // re-parenting, reaping, and waking a blocked waiter — until the creation event records the
+        // child's lineage and `handle_process_creation_event()` replays it. This guarantees the
+        // exit status is never dropped and a parent blocked in `waitpid()` is always answered. The
+        // creation event is guaranteed to follow: the kernel buffers it at fork time and the main
+        // loop re-publishes it until it is delivered. Deferring the filesystem-exit notification
+        // also keeps it ordered after the fork-clone that the creation handler dispatches, so the
+        // child's filesystem snapshot is taken before it is reclaimed.
+        //
+        // A process whose identity is already established without lineage is exempt: the init
+        // process (tracked in `init_proc`) and daemons (identified by name) make their termination
+        // decisions — shutdown and deregistration — without a recorded parent, so they are handled
+        // immediately rather than buffered.
+        let lineage_pending: bool = match self.processes.get(&pid) {
+            None => true,
+            Some(record) => {
+                record.parent.is_none()
+                    && self.init_proc != Some(pid)
+                    && !Self::is_daemon(&record.name)
+            },
+        };
+        if lineage_pending {
+            ::syslog::info!(
+                "termination observed before creation (pid={:?}, status={:?}) — buffering",
+                pid,
+                status
+            );
+            // Replace any stale entry for this pid before recording the new status, preserving an
+            // at-most-one-entry-per-pid invariant across pid reuse.
+            self.early_terminations.retain(|(p, _)| *p != pid);
+            self.early_terminations.push((pid, status));
+            return Ok(None);
+        }
+
         // Drop any stale fork-sync bookkeeping and notify the filesystem daemon to reclaim the
         // process's per-process state (open file descriptors and working directory). Unlike the
         // fork-clone notification — which is skipped for kernel-spawned processes that have no
@@ -301,6 +427,10 @@ impl ProcessDaemon {
         // state must be reclaimed too. The notification is a no-op in the filesystem daemon for a
         // process that never registered any state, so the extra message is harmless.
         self.pending_fork_syncs.retain(|(child, _)| *child != pid);
+        // Drop any blocked-wait bookkeeping owned by the terminating process. A process that was
+        // itself parked in `waitpid()` can never be answered once it is gone, so leaving its entry
+        // behind would leak memory and strand a stale waiter.
+        self.blocked.retain(|waiter| waiter.waiter != pid);
         self.notify_process_exit(pid);
 
         // Look up the terminating process in the registry.
@@ -341,38 +471,76 @@ impl ProcessDaemon {
                 return Ok(Some(status));
             }
 
-            // A forked child terminated. Re-parent its surviving children to the init
-            // process (orphan adoption by init), then drop its bookkeeping. Without
-            // `waitpid()` there is no reaping step, so the record is removed immediately.
-            let parent: Option<ProcessIdentifier> = record.parent;
-
-            self.reparent_children(pid);
-
-            if let Some(parent) = parent {
-                if let Some(record) = self.processes.get_mut(&parent) {
-                    record.children.retain(|child| *child != pid);
-                }
-            }
-            self.processes.remove(&pid);
+            // A forked child terminated. Finalize it through the shared helper, which auto-reaps
+            // its zombie children, re-parents its live children, and either retains it as a reapable
+            // zombie (waking a blocked parent) or drops it. The same finalization runs when a
+            // child's creation event is observed only after its termination event, so it lives in a
+            // shared helper rather than being duplicated here.
+            self.finalize_forked_child_termination(pid, status)?;
 
             return Ok(None);
         }
 
-        // The terminating process is unknown to the registry: its process-creation event was never
-        // observed. This is always a transient forked child, never the init process, so it is
-        // reaped without triggering shutdown. The init process is spawned directly by the kernel
-        // before any user workload runs, and procd subscribes to scheduling events at startup, so
-        // init's creation event (recorded with parent == KERNEL) is always observed long before
-        // init can terminate. Init therefore always terminates as a *known* process, handled by the
-        // lineage check above. An unknown process, by contrast, can only be a child that forked and
-        // exited before its creation event was processed; with no `waitpid()` to reap it, the event
-        // is simply ignored. Treating it as init here would spuriously shut the whole system down.
-        ::syslog::info!(
-            "unregistered process terminated (pid={:?}, status={:?}) — ignoring",
-            pid,
-            status
-        );
+        // Unreachable in practice: the early-termination buffer check at the top of this function
+        // returns for any pid that is not yet in the registry, so a process reaching this point is
+        // always known and was handled by one of the branches above. Return without action as a
+        // safe guard rather than panicking.
         Ok(None)
+    }
+
+    /// Finalizes the termination of a forked child `pid` whose lineage is known. Auto-reaps any of
+    /// its own children that are already zombies (only this terminating process could ever have
+    /// reaped them, so re-homing them to init — which never calls `waitpid()` — would leak them
+    /// until shutdown), re-parents its surviving live children to the init process, then decides
+    /// reapability: if a live parent can still reap it, it is retained as a zombie and a parent
+    /// already blocked in `waitpid()` is woken; otherwise it is dropped rather than left as an
+    /// unreapable zombie. Shared by the termination handler and the early-termination reconciliation
+    /// in `handle_process_creation_event()`.
+    fn finalize_forked_child_termination(
+        &mut self,
+        pid: ProcessIdentifier,
+        status: i32,
+    ) -> Result<(), Error> {
+        let parent: Option<ProcessIdentifier> =
+            self.processes.get(&pid).and_then(|record| record.parent);
+
+        self.reap_zombie_children(pid);
+        self.reparent_children(pid);
+
+        // Determine whether any live process can ever reap this one. Only a parent that is still
+        // alive and has not itself terminated can call `waitpid()`, so a process whose parent is
+        // unknown, is the kernel (which never waits), is gone, or is already a zombie can never
+        // be reaped. Retaining such a process as a zombie would leak it forever — precisely what
+        // happens to grandchildren when `init_proc` is unset and orphan adoption is a no-op — so
+        // auto-reap it instead.
+        let reaper: Option<ProcessIdentifier> = parent.filter(|parent| {
+            *parent != ProcessIdentifier::KERNEL
+                && self
+                    .processes
+                    .get(parent)
+                    .map(|record| record.zombie.is_none())
+                    .unwrap_or(false)
+        });
+
+        match reaper {
+            // A live parent may reap it: retain it as a zombie (clearing its now re-parented
+            // children list) and wake the parent if it is already blocked in `waitpid()`, which
+            // reaps the zombie immediately. Otherwise the zombie is kept until a future
+            // `waitpid()` collects it.
+            Some(parent) => {
+                if let Some(record) = self.processes.get_mut(&pid) {
+                    record.children.clear();
+                    record.zombie = Some(status);
+                }
+                self.wake_waiter(parent, pid, status)?;
+            },
+            // No live process can ever reap it: drop it rather than leak an unreapable zombie.
+            None => {
+                self.processes.remove(&pid);
+            },
+        }
+
+        Ok(())
     }
 
     /// Re-parents the surviving children of `pid` to the init process.
@@ -402,6 +570,141 @@ impl ProcessDaemon {
                 }
             }
         }
+    }
+
+    /// Auto-reaps the zombie children of a terminating process `pid`. A zombie can only be reaped by
+    /// its parent, but `pid` is itself terminating and will never call `waitpid()`, so its zombie
+    /// children would otherwise linger until shutdown (re-homing them to init does not help, as init
+    /// never reaps). A process clears its own children list when it becomes a zombie, so a zombie
+    /// has no descendants and dropping it orphans nothing.
+    fn reap_zombie_children(&mut self, pid: ProcessIdentifier) {
+        let children: Vec<ProcessIdentifier> = match self.processes.get(&pid) {
+            Some(record) => record.children.clone(),
+            None => return,
+        };
+
+        for child in children {
+            let is_zombie: bool = self
+                .processes
+                .get(&child)
+                .map(|record| record.zombie.is_some())
+                .unwrap_or(false);
+            if is_zombie {
+                self.reap(pid, child);
+            }
+        }
+    }
+
+    /// Handles a `Wait` request from `caller` selecting `(pid, options)`. Returns
+    /// `Ok(Some(reply))` for an immediate reply, or `Ok(None)` when the waiter blocks (the reply is
+    /// then produced later by the process-termination handler).
+    fn handle_wait(
+        &mut self,
+        caller: ProcessIdentifier,
+        message: WaitMessage,
+    ) -> Result<Option<Message>, Error> {
+        let options: i32 = message.options;
+
+        // Resolve the strongly-typed selector. The wire encoding folds the POSIX process-group
+        // selectors (`pid == 0` and `pid < -1`) into `WaitTarget::Any` because Nanvix has no
+        // process groups yet (see the `waitpid()` limitations). Since only parent/child lineage is
+        // tracked, every eligible child is already a child of the caller, so this is a harmless
+        // superset.
+        let selector: WaitSelector = match message.target() {
+            WaitTarget::Any => WaitSelector::Any,
+            WaitTarget::Pid(pid) => WaitSelector::Pid(pid),
+        };
+
+        // Enumerate the eligible children of the caller.
+        let children: Vec<ProcessIdentifier> = match self.processes.get(&caller) {
+            Some(record) => record
+                .children
+                .iter()
+                .copied()
+                .filter(|child| selector.matches(*child))
+                .collect(),
+            None => Vec::new(),
+        };
+
+        // The caller has no eligible children: report `ECHILD`.
+        if children.is_empty() {
+            let reply: Message = message::wait_response(
+                caller,
+                ProcessIdentifier::from(0),
+                0,
+                ErrorCode::NoChildProcess.get(),
+            )?;
+            return Ok(Some(reply));
+        }
+
+        // Look for a ready zombie among the eligible children (lowest pid for determinism).
+        let mut zombies: Vec<(ProcessIdentifier, i32)> = children
+            .iter()
+            .filter_map(|child| {
+                self.processes
+                    .get(child)
+                    .and_then(|record| record.zombie.map(|status| (*child, status)))
+            })
+            .collect();
+        zombies.sort_by_key(|(child, _)| *child);
+
+        if let Some((child, status)) = zombies.first().copied() {
+            // Reap the zombie and reply immediately.
+            self.reap(caller, child);
+            let reply: Message = message::wait_response(caller, child, status, 0)?;
+            return Ok(Some(reply));
+        }
+
+        // No zombie is ready.
+        if options & WNOHANG != 0 {
+            // Non-blocking poll: report that no child is ready (child pid of zero, no error).
+            let reply: Message = message::wait_response(caller, ProcessIdentifier::from(0), 0, 0)?;
+            return Ok(Some(reply));
+        }
+
+        // Block the waiter; the reply is deferred until a matching child terminates.
+        // Keep at most one blocked wait per waiter to avoid unbounded growth / stale deferred replies.
+        self.blocked.retain(|w| w.waiter != caller);
+        self.blocked.push(BlockedWaiter {
+            waiter: caller,
+            selector,
+        });
+
+        Ok(None)
+    }
+
+    /// Wakes a parent blocked in `waitpid()` that is waiting for `child` (a child of `parent`) and
+    /// reaps the zombie. If no waiter is blocked, the zombie is left in place until a future
+    /// `waitpid()` reaps it.
+    fn wake_waiter(
+        &mut self,
+        parent: ProcessIdentifier,
+        child: ProcessIdentifier,
+        status: i32,
+    ) -> Result<(), Error> {
+        if let Some(index) = self
+            .blocked
+            .iter()
+            .position(|waiter| waiter.waiter == parent && waiter.selector.matches(child))
+        {
+            let waiter_pid: ProcessIdentifier = self.blocked[index].waiter;
+            let reply: Message = message::wait_response(waiter_pid, child, status, 0)?;
+            ::sys::kcall::ipc::__kcall_send(&reply)?;
+
+            self.blocked.swap_remove(index);
+            self.reap(parent, child);
+        }
+
+        Ok(())
+    }
+
+    /// Reaps a zombie `child` of `parent`, removing it from the registry and from the parent's list
+    /// of children.
+    fn reap(&mut self, parent: ProcessIdentifier, child: ProcessIdentifier) {
+        if let Some(record) = self.processes.get_mut(&parent) {
+            record.children.retain(|c| *c != child);
+        }
+        self.processes.remove(&child);
     }
 
     /// Returns `true` if `name` belongs to a system daemon that should not trigger shutdown.
@@ -442,6 +745,14 @@ impl ProcessDaemon {
                 ProcessManagementMessageHeader::ForkSync => {
                     let message: ForkSyncMessage = ForkSyncMessage::from_bytes(message.payload);
                     self.handle_fork_sync(destination, message.child);
+                },
+                ProcessManagementMessageHeader::Wait => {
+                    let message: WaitMessage = WaitMessage::from_bytes(message.payload);
+                    // The reply is deferred (no send here) when the waiter blocks; it is produced
+                    // later by the process-termination handler.
+                    if let Some(reply) = self.handle_wait(destination, message)? {
+                        ::sys::kcall::ipc::__kcall_send(&reply)?;
+                    }
                 },
                 // Ignore all other messages.
                 _ => {},
@@ -727,8 +1038,14 @@ impl ProcessDaemon {
             },
         };
 
-        // Search the registry for a process whose name matches the requested name.
+        // Search the registry for a live process whose name matches the requested name. Zombies are
+        // skipped: a terminated process awaiting reap is not a valid lookup target, and a forked
+        // zombie still carries its parent's inherited name, which would otherwise alias the parent.
         for (pid, record) in self.processes.iter() {
+            if record.zombie.is_some() {
+                continue;
+            }
+
             ::syslog::info!("looking up process (name={:?}, pname={:?})", name, record.name);
 
             if record.name == name {
@@ -749,7 +1066,9 @@ impl ProcessDaemon {
         ::syslog::info!("shutting down process manager daemon...");
 
         // Drop bookkeeping for forked children: only live daemons need to be shut down cleanly,
-        // and dead processes will never produce further termination events.
+        // and dead processes will never produce further termination events. Any parent still
+        // blocked in `waitpid()` is torn down with the VM, so its blocked-waiter entry is dropped.
+        self.blocked.clear();
         self.processes
             .retain(|_pid, record| Self::is_daemon(&record.name));
 
