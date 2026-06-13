@@ -1193,3 +1193,29 @@ Turn 75
 Turn 76
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=mm::phys::upool 2>&1 | tail -50
+[RESULT ✓] bash: |
+   = note: `spec_page_size` must be defined only once in the value namespace of this module
+
+error[E0425]: cannot find function `new` in this scope
+  --> src/kernel/src/mm/phys/upool.rs:86:12
+   |
+86 |     pub fn new(addr: FrameAddress) -> Self {
+   |            ^^^ not found in this scope
+
+error[...
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+Two issues: duplicate `spec_page_size` import (spec.rs + upool.rs), and a cascade. Let me fix the spec.rs import by using the full path.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.spec.rs
+
+[THINKING] There's a naming conflict where `spec_page_size` is being imported in both spec.rs and upool.rs, but since spec.rs gets included directly into upool.rs via the `include!` macro, the duplicate import causes an E0252 error. I need to figure out which import to remove and ensure the symbol is still accessible to both the spec and upool verus blocks.
+
+The second issue is an E0425 error where the `new` function can't be found at the definition site in upool.rs, which suggests a problem with how the `#[verus_spec]` macro is expanding or resolving function names.  This is likely cascading from the duplicate import breaking the macro expansion. Let me fix the import conflict in spec.rs first and see if that resolves both errors.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=mm::phys::upool 2>&1 | tail -50

@@ -1,7 +1,5 @@
 verus! {
 
-use crate::hal::mem::spec_page_size;
-
 impl UserFrame {
     /// Well-formedness of a user-frame handle: its owned physical address is page aligned.
     ///
@@ -12,7 +10,7 @@ impl UserFrame {
     /// frame partition. Surfaced so the refcount-affecting methods can discharge the frame
     /// layer's `frame.inv()` precondition.
     pub open spec fn inv(&self) -> bool {
-        self@ % spec_page_size() == 0
+        self@ % crate::hal::mem::spec_page_size() == 0
     }
 }
 

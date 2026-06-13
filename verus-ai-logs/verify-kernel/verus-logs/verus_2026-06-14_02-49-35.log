@@ -1,0 +1,33 @@
+Timestamp: 2026-06-14_02-49-35
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::upool
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=26
+  admit=10
+  trusted=0
+  no_decreases=0
+  cfg_gate=10
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0425]: cannot find function `new` in this scope
+  --> src/kernel/src/mm/phys/upool.rs:86:12
+   |
+86 |     pub fn new(addr: FrameAddress) -> Self {
+   |            ^^^ not found in this scope
+
+error[E0425]: cannot find function `new` in this scope
+   --> src/kernel/src/mm/phys/upool.rs:241:19
+    |
+241 |     pub(super) fn new() -> Self {
+    |                   ^^^ not found in this scope
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
