@@ -1,0 +1,51 @@
+{
+  "module_name": "hal-phys-address",
+  "log_name": "nanvix-phys-hal-phys-address",
+  "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs",
+  "current_phase": "caller-analysis",
+  "current_phase_idx": 0,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_session_id": null,
+  "completed": false,
+  "base_branch": "verus-ai/hal-page-aligned",
+  "verus_branch": "verus-ai/hal-phys-address",
+  "phase_boundary_shas": {},
+  "phase_start_shas": {
+    "caller-analysis": "71f41775413fad711e3de374788a70d98f0845b6"
+  },
+  "phase_history": [
+    {
+      "phase": "caller-analysis",
+      "event": "start",
+      "sha": "71f41775413fad711e3de374788a70d98f0845b6",
+      "rollback_iter": 0
+    }
+  ],
+  "rollback_counts": {},
+  "rollback_context": "",
+  "tcb_entry_points": null,
+  "tcb_auto_approve": false,
+  "tcb_skip_probe": false,
+  "tcb_use_make": false,
+  "tcb_probe_timeout": 900,
+  "tcb_enable_probe_v3": false,
+  "tcb_probe_v3_include_root": null,
+  "tcb_probe_v3_include_roots": null,
+  "tcb_probe_v3_limit": null,
+  "tcb_probe_v3_baseline_filter": false,
+  "tcb_probe_v3_workers": 1,
+  "tcb_enable_ai_residue": false,
+  "tcb_ai_residue_model": "gpt-5.4",
+  "tcb_dummy_probe_full_verify": false,
+  "tcb_dummy_probe_inject_verus_verify": false,
+  "tcb_dummy_probe_layered": true,
+  "tcb_dummy_probe_seal_untyped_fns": false,
+  "tcb_dummy_probe_auto_seal_stdlib_deps": null,
+  "tcb_dummy_probe_vstd_root": null,
+  "tcb_no_call_tree_filter": false,
+  "tcb_reachability_depth": 0,
+  "tcb_reachability_timeout": 600,
+  "tcb_no_ast_limitations": false,
+  "tcb_no_leaf_tcb_scan": false
+}
