@@ -36,6 +36,7 @@ use ::sys::{
 #[derive(Clone, Copy)]
 pub struct PageAligned<T: Address>(T);
 
+#[verus_verify]
 impl<T: Address> PageAligned<T> {
     /// Constructs a page address from an aligned virtual address.
     #[verus_spec(ret =>

@@ -1544,3 +1544,73 @@ s=open(f).read()
 [THINKING] I'm looking at how the `#[verus_spec]` macro works, particularly the special handling in impl blocks where it adds a marker attribute to methods that are tagged with `#[verus_spec]` when the impl block itself is processed by `verus_verify`.
 
 But when `#[verus_spec]` appears on a method in an impl block that doesn't have `#[verus_verify]` (like the `PageAligned<T>` impl), the macro processes it standalone instead, which is where the error is coming from. The `from_address` method is in a non-verus_verify impl, so its spec is being handled by the standalone processing path around line 681, and that's generating the E0425 error when it references `from_address`. I need to isolate this by removing all the extra pieces—no `#[verus_verify]` on the Address impl, just a minimal `#[verus_spec]` on `from_address` alone—to see exactly which error surfaces.
+[RESULT ✓] bash: done
+error[E0425]: cannot find function `from_address` in this scope
+=== Results ===
+  0 verified
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  Unverified functions:
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+<shellId: 66...
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; L=verus-ai-logs/verify-kernel/verus-logs/$(ls -t verus-ai-logs/verify-kernel/verus-logs/ | he
+
+[THINKING] I'm seeing that using a trivial `verus_spec` on `from_address` in a non-`verus_verify` generic inherent impl triggers an E0425 error. Let me look at the full error message with its span and notes to pinpoint exactly where `from_address` is being referenced.
+[RESULT ✓] bash: 20:error[E0425]: cannot find function `from_address` in this scope
+26:For more information about this error, try `rustc --explain E0425`.
+===
+error[E0425]: cannot find function `from_address` in this scope
+  --> src/kernel/src/hal/mem/types/address/aligned/page.rs:45:12
+   |
+45 |     pub fn from_add...
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src; sed -n '620,720p' attr_rewrite.rs
+
+[THINKING] The macro is generating code that calls `from_address` as a free function rather than a method, which happens when `verus_spec` wraps a function body containing `?` for early-return handling. The key difference is that `bitmap::new` works because it's defined in a concrete, non-generic impl block, whereas `from_address` is in a generic impl, and that's likely where the issue stems from.
+[RESULT ✓] bash: }
+            }
+
+            // Update function signature based on verus_spec.
+            let spec_stmts =
+                syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, is_impl_fn, false);
+
+            if erase.erase() {
+                // In erase mode, just return the stub functions.
+   ...
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/bitmap/src; grep -n "verus_verify\|verus_spec\|impl Bitmap\|verus!\|impl<" lib.rs | h
+
+[THINKING] I'm trying to understand how the macro distinguishes between different function types—specifically whether a method parses as `AnyFnOrLoop::Fn` versus `AnyFnOrLoop::TraitMethod`. When `#[verus_spec]` is applied to a method in a non-verus impl block, it gets parsed as a free function syntactically, so it routes to the `Fn` arm, which then calls into the signature specs attribute handler.
+
+The real issue is that `is_impl_fn` might be set incorrectly—if the macro doesn't realize the function is actually inside an impl block, it could generate the wrong kind of spec code or proxy. I need to check whether bitmap's impl block is wrapped in `verus_verify` or `verus!` to understand why it works there, versus how the current code is structured.
+[RESULT ✓] bash: 5:// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+55:#[verus_verify]
+56://#[verus_verify(ext_equal)] // TODO - Restore when supported by Verus PR #2239
+57:#[verus_verify(external_derive)]
+74:#[verus_verify]
+75:impl Bitmap {
+89:    #[verus_spec(result =>
+153:    ...
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+The difference: bitmap's `impl` block has `#[verus_verify]`. My inherent impl doesn't. Let me add it:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] The `#[verus_verify]` attribute on the impl block at line 74 is what makes the difference—it causes the macro to process the entire impl and use `visit_impl_item_fn_mut` to mark each verus_spec method appropriately, which then triggers the correct handling path for impl methods. So the solution is to ensure the impl block gets wrapped with verus_verify.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
