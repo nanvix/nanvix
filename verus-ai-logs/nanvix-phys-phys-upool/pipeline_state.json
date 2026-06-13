@@ -2,23 +2,52 @@
   "module_name": "phys-upool",
   "log_name": "nanvix-phys-phys-upool",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs",
-  "current_phase": "caller-analysis",
-  "current_phase_idx": 0,
-  "completed_phases": [],
-  "phase_results": {},
+  "current_phase": "view-design",
+  "current_phase_idx": 1,
+  "completed_phases": [
+    "caller-analysis"
+  ],
+  "phase_results": {
+    "caller-analysis": {
+      "phase": "caller-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 117.7,
+      "review_rounds": 0
+    }
+  },
   "prover_session_id": "d7132c20-45c4-4e74-a93f-449f6d8cf684",
   "completed": false,
   "base_branch": "verus-ai/phys-manager",
   "verus_branch": "verus-ai/phys-upool",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "caller-analysis": "08f28ddc4a9dabb11089132686659736abc4f5b6"
+  },
   "phase_start_shas": {
-    "caller-analysis": "3667d3886950b0d5c9d89085e5130f9597892998"
+    "caller-analysis": "3667d3886950b0d5c9d89085e5130f9597892998",
+    "view-design": "08f28ddc4a9dabb11089132686659736abc4f5b6"
   },
   "phase_history": [
     {
       "phase": "caller-analysis",
       "event": "start",
       "sha": "3667d3886950b0d5c9d89085e5130f9597892998",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "caller-analysis",
+      "event": "end",
+      "sha": "08f28ddc4a9dabb11089132686659736abc4f5b6",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "start",
+      "sha": "08f28ddc4a9dabb11089132686659736abc4f5b6",
       "rollback_iter": 0
     }
   ],
