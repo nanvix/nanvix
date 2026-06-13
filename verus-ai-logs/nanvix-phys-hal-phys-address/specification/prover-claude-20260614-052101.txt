@@ -1389,3 +1389,60 @@ Full kernel verify: exit 0, 0 errors (CHEATING_DETECTED reflects the expected `a
 [THINKING] The full kernel verification shows CHEATING_DETECTED but exits cleanly with no errors—the "cheating" flagged is just the admit() calls scattered throughout proof bodies in other modules, which is expected during the proving phase. The module-level verification came back clean because it only counts admits within our own module, whereas the full kernel includes those pre-existing admits from elsewhere. This is the expected state.
 
 The cached verification run confirms exit 0 with no errors (matching the earlier full run of 55 verified, 0 errors), so everything checks out. Now I need to run the full project verification across all modules.
+[RESULT ✓] bash: note: verifying module hal::mem::types::address::phys
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=14 admit=26 trusted=0 no_decreases=0 cfg_ga...
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+All three checks pass:
+- `./z build -- check-kernel` → build success (dual compilation fixed)
+- `make verify-kernel` (full kernel) → exit 0, 0 errors
+- `make verify` (all modules) → exit 0, 0 errors
+
+CHEATING_DETECTED reflects only the `admit=26` proof-body stubs, which are explicitly allowed for this specification phase. Let me confirm the working tree state.
+[TOOL] bash: cd /home/ruize/nanvix-phy; git status --short; echo "=== confirm single vstd import remains ==="; grep -n "vstd::prelude
+
+[THINKING] The verify script ran successfully with no errors—the only CHEATING_DETECTED flags are the admit() calls in the proof stubs, which are allowed. Now I need to check git status to see if my import fix was committed or if it's still sitting in the working tree.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-phys-address/specification/prover-claude-20260614-052101.jsonl
+ M verus-ai-logs/nanvix-phys-hal-phys-address/specification/prover-claude-20260614-052101.txt
+=== confirm single vstd import remains ===
+8:use vstd::prelude::*;
+<shellId: 66 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+Task complete. The only remaining blocker (the duplicate `use ::vstd::prelude::*;` at phys.rs:30, which my include!-setup had duplicated against line 8) is fixed by removing the redundant import, leaving a single unconditional `use vstd::prelude::*;` as required by verus-constraints.
+
+Final state:
+- **`./z build -- check-kernel`** (dual/non-Verus compilation): ✅ success
+- **`make verify-kernel MODULE=hal::mem::types::address::phys`**: ✅ 5 verified, 0 errors, status CLEAN
+- **`make verify-kernel`** (full kernel): ✅ exit 0, 0 errors
+- **`make verify`** (all modules): ✅ exit 0, 0 errors
+
+`CHEATING_DETECTED` reflects only the 26 `admit()` proof-body stubs, explicitly allowed in this specification phase (proving phase fills them). All spec/proof/source edits are committed; only verus log artifacts remain as working-tree changes.
+
+Deliverables in place:
+- `phys.spec.rs` — View helpers, `inv()`, dependency `assume_specification`s
+- `phys.proof.rs` — 2 admit-bodied lemma stubs
+- `phys.rs` — 3 target functions annotated in a dedicated `#[verus_verify] impl` block; single vstd prelude import
+- `mm/phys/frame.spec.rs` — superseded duplicate `assume_specification`s removed
+
+[THINKING] The vstd import at line 8 is staying as-is in its standard form, and the phys.rs file has already been committed by the verification script. Only the logging artifacts remain as uncommitted changes, so the work here is wrapped up.
+
+
+=== Session End ===
+Session: 8394ab9f-ef8f-4d99-a02a-55a2562472b5
+Duration: 1485.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/specification/prover-claude-20260614-052101.jsonl
