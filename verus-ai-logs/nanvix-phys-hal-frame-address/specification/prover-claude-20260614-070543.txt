@@ -966,3 +966,10 @@ All pass (exit 0). The CHEATING_DETECTED is the pre-existing admit count in thos
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys::frame 2>&1 | grep -E "verification results|
 
 [THINKING] All the exit codes came back clean, so the verification passed. The "CHEATING_DETECTED" flags I'm seeing are just leftover admit counts from those modules' own spec phases, not actual issues. I need to dig into the actual verification counts to make sure they're not zero, so let me pull more detailed information on one of them.
+[RESULT ✓] bash: Unverified functions:
+<shellId: 43 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/mm/phys/frame.rs && timeout 600 make verify-kernel MODULE=mm::phys::fr
