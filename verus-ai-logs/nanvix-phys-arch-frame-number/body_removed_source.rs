@@ -50,13 +50,7 @@ impl FrameNumber {
     /// - `Some(`[`FrameNumber`]`)`: Upon success.
     /// - `None`: If the value is greater than [`Self::MAX`].
     ///
-    pub fn from_raw_value(value: usize) -> Option<Self> {
-        if value > Self::MAX {
-            return None;
-        }
-
-        Some(Self(value))
-    }
+    pub fn from_raw_value(value: usize) -> Option<Self> { ... }
 
     ///
     /// # Description
@@ -67,9 +61,7 @@ impl FrameNumber {
     ///
     /// The raw value of the target [`FrameNumber`].
     ///
-    pub fn into_raw_value(self) -> usize {
-        self.0
-    }
+    pub fn into_raw_value(self) -> usize { ... }
 }
 
 //==================================================================================================
@@ -78,16 +70,8 @@ impl FrameNumber {
 
 /// Tests if [`FrameNumber::from_raw_value()`] successfully constructs frame zero.
 #[test]
-fn test_frame_number_from_raw_value_zero() {
-    let raw_value: usize = 0;
-    let frame_number: FrameNumber = FrameNumber::from_raw_value(raw_value).unwrap();
-    assert_eq!(frame_number.into_raw_value(), raw_value);
-}
+fn test_frame_number_from_raw_value_zero() { ... }
 
 /// Tests if [`FrameNumber::from_raw_value()`] successfully constructs the maximum frame number.
 #[test]
-fn test_frame_number_from_raw_value_max() {
-    let raw_value: usize = FrameNumber::MAX;
-    let frame_number: FrameNumber = FrameNumber::from_raw_value(raw_value).unwrap();
-    assert_eq!(frame_number.into_raw_value(), raw_value);
-}
+fn test_frame_number_from_raw_value_max() { ... }

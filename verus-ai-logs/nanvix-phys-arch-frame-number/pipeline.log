@@ -1,0 +1,20 @@
+[PIPELINE] NOTE: spec file missing, creating empty stub: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+[PIPELINE] NOTE: proof file missing, creating empty stub: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.proof.rs
+[PIPELINE] NOTE: added 'use vstd::prelude::*;' to /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[PIPELINE] NOTE: added cfg-gated include!(number.spec.rs, number.proof.rs) to /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[2026-06-14 07:57:45] [BRANCH] Base: verus-ai/sys-address-mod → Verus: verus-ai/arch-frame-number
+[2026-06-14 07:57:45] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/body_removed_source.rs (2843 -> 2382 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: arch-frame-number
+Source: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+Crate:  arch
+Branch: verus-ai/arch-frame-number (base: verus-ai/sys-address-mod)
+Phases: caller-analysis → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: caller-analysis
+Module: arch-frame-number
+============================================================
