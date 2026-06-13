@@ -282,3 +282,46 @@ Turn 18
 ────────────────────────────────────────────────────────────
 Now verify the region module. Since the `Address` trait changed, I'll run full `make verify-kernel` (no MODULE) to ensure address modules still pass too.
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1800 make verify-kernel >/tmp/vk_fix.log 2>&1; echo "MAKE EXIT=$?"; grep -iE "verifie
+[RESULT ✓] bash: MAKE EXIT=0
+verification results:: 4 verified, 0 errors
+verification results:: 0 verified, 0 errors
+verification results:: 70 verified, 0 errors
+verification results:: 35 verified, 0 errors
+verification results:: 59 verified, 0 errors
+  cheating: assume=0 external_body=14 admit=26 trusted=0 no_decre...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Admit count dropped 27→26. Let me confirm the region `admit` is gone and check cheating detail.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== grep admit in region.rs ==="; grep -n "admit" src/kernel/src/hal/mem/types/region.r
+
+[THINKING] The admit count is now 27 down to 26 after removing one entry, so I need to verify it's been deleted from cheating-detail.txt and confirm there's no corresponding admit in region.rs.
+[RESULT ✓] bash: === grep admit in region.rs ===
+NO MATCHES
+=== region in cheating-detail ===
+    - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
+    - mm/phys/mod.rs:103 book_mmio_regions: external_body
+=== cheating check section ===
+=== Cheating Pattern Check ===
+<shellId: 5 completed with exit cod...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+The `region.rs ... start: admit` entry is gone, no `admit` in region.rs. Now run `make build` (dual compilation) and the full `make verify`.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 2400 ./z build >/tmp/build_fix.log 2>&1; echo "BUILD EXIT=$?"; tail -6 /tmp/build_fix
+[RESULT ✓] bash: BUILD EXIT=0
+SCCACHE Statistics
+================================================================================
+SCCACHE not available or not configured.
+================================================================================
+
+[OK]    Build complete.
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Build passes. Now the full `make verify` to ensure no cross-crate regressions (the `Address` trait lives in the shared `sys` crate).
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 3000 make verify >/tmp/verify_all_fix.log 2>&1; echo "MAKE EXIT=$?"; grep -iE "Exit c
