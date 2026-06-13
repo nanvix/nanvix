@@ -230,6 +230,8 @@ impl PhysMemoryManager {
 
         #[cfg_attr(verus_keep_ghost, verus_spec(
             invariant
+                g_old == old(self)@,
+                g_old.wf(),
                 self@.wf(),
         ))]
         for _ in 0..count {
@@ -444,6 +446,9 @@ impl PhysMemoryManager {
         let base_raw: usize = base_addr.into_raw_value();
         #[cfg_attr(verus_keep_ghost, verus_spec(
             invariant
+                g_old == old(self)@,
+                g_old.wf(),
+                self@ == g_old,
                 base_raw as int == base_addr@,
                 base_raw as int + (count as int) * spec_page_size() <= usize::MAX as int,
         ))]
@@ -460,6 +465,9 @@ impl PhysMemoryManager {
                     // Free remaining un-wrapped frames from the contiguous allocation.
                     #[cfg_attr(verus_keep_ghost, verus_spec(
                         invariant
+                            g_old == old(self)@,
+                            g_old.wf(),
+                            self@ == g_old,
                             base_raw as int == base_addr@,
                             base_raw as int + (count as int) * spec_page_size()
                                 <= usize::MAX as int,
@@ -475,9 +483,6 @@ impl PhysMemoryManager {
                                 warn!("failed to free leaked frame {fa:?}: {e:?}");
                             }
                         }
-                    }
-                    proof! {
-                        lemma_kernel_bulk_err_restored(self, g_old);
                     }
                     return Err(e);
                 },
