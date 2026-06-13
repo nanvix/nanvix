@@ -6,7 +6,7 @@
   "current_phase_idx": 0,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "40f5721e-b442-47c0-b566-5ce2edfdd006",
   "completed": false,
   "base_branch": "verus-ai/hal-platform-microvm",
   "verus_branch": "verus-ai/sys-virt-address",
