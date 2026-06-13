@@ -1446,3 +1446,195 @@ Turn 97
 [TOOL] bash: cd /home/ruize/nanvix-phy; for m in mm::phys::manager mm::phys mm::phys::kframe; do echo "=== $m ==="; timeout 400 make 
 
 [THINKING] The frame module passed verification, so now I need to check the modules that depend on upool—specifically mm::phys::manager and mm::phys itself. Let me run a clean verification pass on those key dependents to see the overall status.
+[RESULT ✓] bash: === mm::phys::manager ===
+  Exit code : 0
+=== mm::phys ===
+  Exit code : 0
+=== mm::phys::kframe ===
+  Exit code : 0
+<shellId: 57 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+All dependent modules verify cleanly. Now the dual-compilation `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 make build 2>&1 | tail -25
+
+[THINKING] All the dependent modules are passing their checks, so now I'm running the build command to verify that the standard compilation still works without the Verus integration.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 58 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+`make build` is a no-op target. Let me find the correct build command (likely `./z` or a cargo build) to confirm normal compilation.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -nE "^build:|^all:|^kernel:|^[a-z-]+:.*kernel" Makefile | head; echo "=== z script? ==="
+
+[THINKING] The `make build` target isn't producing anything, so I need to figure out what the actual build command is. The custom instructions mention using `./z` to build, so let me check what that script does instead.
+[RESULT ✓] bash: 411:all: all-nanvix
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+458:clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-test clean-test-kernel-ramfs standalone-images-clean
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kerne...
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,40p' z | grep -nE "build|usage|case|help" | head -30
+
+[THINKING] I need to figure out the right build command for this project. The standard approach seems to be `./z build`, but let me check what that script does or just run a straightforward kernel cargo build to verify the basic compilation works first.
+[RESULT ✓] bash: 7:# Thin wrapper that delegates to the unified Python build backend (z.py).
+9:# Run './z help' for more information on how to use this utility.
+<shellId: 60 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ./z help 2>&1 | grep -iE "build|kernel|verify" | head -20
+[RESULT ✓] bash: Main Build Targets
+  all          Build everything (default target)
+  clean        Remove build artifacts and intermediate files
+  install         Install build artifacts in the sysroot directory
+  verify          Run Verus formal verification on annotated crates
+  image    Build system image for de...
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+The build command is `./z build` (dual compilation, Verus constructs erased).
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 ./z build 2>&1 | tail -30
+[RESULT ✓] bash: Compiling type-safe v0.16.17 (/home/ruize/nanvix-phy/src/libs/type-safe)
+   Compiling koptions v0.16.17 (/home/ruize/nanvix-phy/src/libs/koptions)
+   Compiling no_fail v0.16.17 (/home/ruize/nanvix-phy/src/libs/no_fail)
+   Compiling cmdline v0.16.17 (/home/ruize/nanvix-phy/src/libs/cmdline)
+   Compil...
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+Normal build flags the `vstd` import as unused (it's only used under Verus). Let me see how other modules gate it.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] There's an unused import issue in upool.rs where `::vstd::prelude::*` is only needed in verus mode but causing compilation failures in normal mode. I need to check how other files like frame.rs and manager.rs handle conditional imports with cfg-gating to apply the same pattern here.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== frame.rs head ==="; sed -n '1,25p' src/kernel/src/mm/phys/frame.rs | grep -nE "vstd
+
+[THINKING] I notice there are two imports of `vstd::prelude::*` in the file—one on line 8 and a duplicate on line 20 that I probably added by mistake. The standard import is on line 8, so line 20 is redundant and would trigger an unused import warning during a normal build.
+[RESULT ✓] bash: === frame.rs head ===
+=== manager.rs head ===
+8:#[cfg(verus_keep_ghost)]
+9:include!("manager.spec.rs");
+10:#[cfg(verus_keep_ghost)]
+11:include!("manager.proof.rs");
+<shellId: 63 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== frame.rs vstd usage ==="; grep -nE "use .*vstd|verus!|cfg\(verus" src/kernel/src/mm
+[RESULT ✓] bash: === frame.rs vstd usage ===
+47:use ::vstd::prelude::*;
+49:#[cfg(verus_keep_ghost)]
+52:#[cfg(verus_keep_ghost)]
+=== manager.rs vstd usage ===
+38:use ::vstd::prelude::*;
+<shellId: 64 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+Two `vstd::prelude::*` imports exist (lines 8 and 20). Let me check git to see which is original.
+[TOOL] bash: cd /home/ruize/nanvix-phy; git --no-pager diff -- src/kernel/src/mm/phys/upool.rs | grep -nE "^\+.*vstd|^-.*vstd|^\+use 
+
+[THINKING] I'm realizing that siblings don't trigger unused-import errors because they actually use items from vstd::prelude in their non-ghost code, even though the `verus_verify` attribute macro becomes a no-op during normal builds.
+
+The real problem with upool.rs is that it has two imports of vstd::prelude — one at line 8 without the leading `::` and another at line 20 with it — making one redundant. Since the original file had the import at line 8, I should remove the duplicate I added at line 20 to match the single-import pattern that siblings use successfully.
+[RESULT ✓] bash: 
+<shellId: 65 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 107
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; git --no-pager show HEAD:src/kernel/src/mm/phys/upool.rs 2>/dev/null | sed -n '1,22p' | grep 
+[RESULT ✓] bash: 8:use vstd::prelude::*;
+9:#[cfg(verus_keep_ghost)]
+10:include!("upool.spec.rs");
+11:#[cfg(verus_keep_ghost)]
+12:include!("upool.proof.rs");
+14:use crate::{
+18:use ::core::mem::ManuallyDrop;
+19:use ::sys::error::Error;
+20:use ::vstd::prelude::*;
+exit: 0
+<shellId: 66 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 108
+────────────────────────────────────────────────────────────
+Both imports existed in HEAD. Let me check whether HEAD's upool had any vstd usage in non-ghost code, and whether the duplicate is the real trigger now.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== HEAD verus markers ==="; git --no-pager show HEAD:src/kernel/src/mm/phys/upool.rs 2
+
+[THINKING] I'm noticing that both duplicate imports were already in the original file, so this isn't something I introduced. The original had the vstd import twice, but it apparently built before — though maybe the original upool.rs file had no `verus!` content on line 8, which could explain why the duplicate didn't cause issues then.
+
+Actually, I think I see the real issue now: with `-D warnings`, having two glob imports of the same path means one gets flagged as unused, which becomes an error. The duplicate existed in HEAD, but something must have been using vstd in the normal build back then. My changes added `#[verus_verify]` attributes and verus_spec code, but those are ghost-gated and shouldn't affect the normal build path. Let me just test whether this was already broken in the baseline or if something else is going on.
+[RESULT ✓] bash: === HEAD verus markers ===
+18:use ::core::mem::ManuallyDrop;
+32:#[verus_verify(external_derive)]
+39:verus! {
+45:impl View for UserFrame {
+57:impl View for Upool {
+63:} // verus!
+65:#[verus_verify]
+80:    #[verus_spec(result =>
+100:    #[verus_spec(result =>
+120:    #[verus_spec(result =>
+=== current...
+
+────────────────────────────────────────────────────────────
+Turn 109
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; git --no-pager status --short | head -20; echo "=== diff stat ==="; git --no-pager diff --sta
+
+[THINKING] I'm noticing a contradiction here — HEAD already contains verus_spec annotations and other Verus-related code in upool.rs, but the summary claims spec.rs and proof.rs were originally just empty placeholders. This suggests HEAD might be a work-in-progress commit that was already partially modified, which would explain why some of these elements are already present.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-upool/specification/prover-claude-20260614-023140.jsonl
+ M verus-ai-logs/nanvix-phys-phys-upool/specification/prover-claude-20260614-023140.txt
+=== diff stat ===
+ .../prover-claude-20260614-023140.jsonl            | 213 +++++++++++++++++++++
+ .../prover-claude-202606...
+
+────────────────────────────────────────────────────────────
+Turn 110
+────────────────────────────────────────────────────────────
+My committed changes contain a duplicate `vstd` import (lines 8 and 20) — that's what `-D warnings` flags in the normal build. Siblings use a single import. Remove the duplicate.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] So my committed code has duplicate vstd imports on lines 8 and 20 — one using the wildcard form and one with the full path — and the normal build fails because the compiler treats the redundant import as an unused one when warnings are treated as errors.
+
+Looking at the sibling files, they each have just a single `use ::vstd::prelude::*;` import and build fine, which confirms that one import isn't flagged as unused. The fix is straightforward: remove the duplicate on line 20 and keep line 8 at the top with the other includes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 111
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 ./z build 2>&1 | tail -20
+[RESULT ✓] bash: Compiling indicatif v0.18.4
+   Compiling syslog v0.16.17 (/home/ruize/nanvix-phy/src/libs/syslog)
+   Compiling hostfsd v0.16.17 (/home/ruize/nanvix-phy/src/daemons/hostfsd)
+   Compiling uservm v0.16.17 (/home/ruize/nanvix-phy/src/uservm)
+   Compiling nanvix-sandbox v0.16.17 (/home/ruize/nanvix-phy/s...
+
+────────────────────────────────────────────────────────────
+Turn 112
+────────────────────────────────────────────────────────────
+Build passes. Re-verify the upool module after the import edit to confirm Verus still passes.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 400 make verify-kernel MODULE=mm::phys::upool 2>&1 | grep -E "verified, .* errors|Exi
+
+[THINKING] The build succeeded, so now I need to verify that the verus kernel build still passes after removing that duplicate import line. Since the original import statement is still there, it shouldn't cause any issues, but I'll run the verification to confirm there are no errors.
