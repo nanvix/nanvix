@@ -803,3 +803,58 @@ Let me just test empirically: I'll mark the entire `impl Address for PageAligned
 Turn 43
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
+[RESULT ✓] bash: error[E0599]: the method `view` exists for struct `hal::mem::types::address::aligned::page::PageAligned<T>`, but its trait bounds were not satisfied
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  0 verifi...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== sys View impls gating ==="; grep -rn "cfg(verus_keep_ghost)\|verus! {" src/libs/sys
+
+[THINKING] The issue is that `self@`/`view` needs `T: View<V=int>` to be in scope, but I can't add it to the exec impl without breaking the normal build. The solution has to live at the trait level, and there's already an impl for `PageAligned<T>` with that bound that might be the key.
+
+I'm wondering if I can move the entire `Address` trait into a `verus!{}` block and make it require `View<V=int>` as a supertrait. Since `verus!{}` strips ghost constructs in normal builds, the `int`-based View supertrait would be erased during compilation, leaving only the exec methods intact. That's how the sys crate's View impl for VirtualAddress works across both builds.
+
+The real question is whether testing this approach is worth the risk of modifying the sys crate significantly. Instead, I should focus on a more targeted solution: making the View impl for PageAligned available with just `T: Address` as the bound, without needing to change the Address trait itself. I should search through the verus-ai logs and sys crate to see if there's already a planned approach for specifying the Address trait with View semantics.
+[RESULT ✓] bash: === sys View impls gating ===
+src/libs/sys/src/sys/mm/address/virt.rs:299:verus! {
+=== does normal build keep verus! View? check builtin macro behavior ===
+=== any address trait design in logs ===
+verify-sys
+verus-ai-logs/nanvix-phys-bump-allocator/view-design
+verus-ai-logs/nanvix-phys-bump-allocato...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Let me test whether adding the `View<V=int>` bound to the exec impls satisfies Verus's typecheck.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned; sed -i 's/^impl<T: Address> PageAligned<T> {/imp
+
+[THINKING] I'm trying to figure out whether the `verus!{}` macro preserves the `impl View for VirtualAddress` with the `int` type in normal builds, since that affects whether this approach is even viable. I need to check how vstd defines the `int` type and how the verus macro expands code during a standard cargo build.
+
+So in normal builds, `verus!{}` does translate spec code with `spec fn` bodies becoming `unimplemented!()` stubs, and `int` is a real zero-cost type from builtin — which means the `impl View for VirtualAddress` with `view -> int` actually does exist in normal builds. That's why the sys crate uses plain `verus!{}` without gating.
+
+But the kernel files gate their View impls with `#[cfg(verus_keep_ghost)]`, which removes them from normal builds entirely. This inconsistency suggests either the kernel build config is different or the authors were being cautious about pulling `int` into the kernel binary. Since the kernel's View impls are gated out, I can't rely on them for normal-build bounds, but that's only a problem if I try to put `View<V=int>` bounds in EXEC signatures — which I'm trying to avoid anyway. The cleanest approach is to keep any `View<V=int>` bounds only where they're already gated, and figure out how to add the `into_raw_value`/`from_address` specs through the trait in a way that works around this constraint.
+
+The real decision point is whether to add `View<V=int>` as a supertrait to the `Address` trait itself. That would require all implementors to have View in normal builds, which means un-gating the PhysicalAddress and PageAligned View impls. But the kernel authors deliberately gated those, possibly for good reasons like binary size or `no_std` compatibility, so making that change is risky and broader than ideal.
+
+Actually, stepping back—the error is just that the bound `T: View<V=int>` isn't satisfied in the impl block. Since the View impls are already cfg-gated to verus_keep_ghost and visible during verus compilation, I could potentially add the bound in a way that's also cfg-gated so normal builds don't see it. The trick would be to keep the impl block itself ungated but somehow conditionally add the where-clause bound, though that's tricky since you can't partially cfg a where-clause.
+
+The cleaner approach might be to modify the `Address` trait itself to include `View<V = int>` as a supertrait, then ensure PhysicalAddress and PageAligned implement View in normal builds too—not just under verus_keep_ghost. This would make the bound available everywhere and align with how VirtualAddress is already handled in the sys crate. Let me test my hypothesis by adding the `View<V=int>` bound to the exec impl blocks in page.rs and running verus to see if that's the only missing piece. If verus passes, then I know the solution is just un-gating the View impls for the normal build to work.
+[RESULT ✓] bash: 40:impl<T: Address + View<V = int>> PageAligned<T> {
+57:impl<T: Address + View<V = int>> Address for PageAligned<T> {
+159:impl<T: Address> core::fmt::Debug for PageAligned<T> {
+165:impl<T: Address> Deref for PageAligned<T> {
+173:impl<T: Address> PartialEq for PageAligned<T> {
+179:impl<T: Address> Eq...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
+
+[THINKING] I'm noticing there are now two separate `impl` blocks for `PageAligned<T>` with the same trait bounds — one in the exec section with `from_address` and `into_inner`, and another in the verus block with the invariant. The utility methods like `from_raw_value` and `align_up` have moved into the `impl Address` block instead.
+
+Adding the stricter `View<V=int>` bound to the exec impl could break the normal build since `int` isn't a real type outside verus and `View` isn't implemented for arbitrary types. But since this is a trait impl with a more restrictive bound than the trait requires, it should be fine — `PageAligned<PhysicalAddress>` will satisfy it under verus since `PhysicalAddress` implements `View`. Let me run verus to confirm it typechecks.

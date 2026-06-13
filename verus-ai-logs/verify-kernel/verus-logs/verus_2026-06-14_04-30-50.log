@@ -1,0 +1,502 @@
+Timestamp: 2026-06-14_04-30-50
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::aligned::page
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=14
+  admit=24
+  trusted=0
+  no_decreases=0
+  cfg_gate=17
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0277]: the trait bound `T: vstd::string::View` is not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:287:46
+    |
+287 | pub struct TruncatedMemoryRegion<T: Address>(MemoryRegion<PageAligned<T>>);
+    |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `vstd::string::View` is not implemented for `T`
+    |
+note: required for `hal::mem::types::address::aligned::page::PageAligned<T>` to implement `sys::mm::Address`
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:57:34
+    |
+ 57 | impl<T: Address + View<V = int>> Address for PageAligned<T> {
+    |                   -------------  ^^^^^^^     ^^^^^^^^^^^^^^
+    |                   |
+    |                   unsatisfied trait bound introduced here
+note: required by a bound in `hal::mem::types::region::MemoryRegion`
+   --> src/kernel/src/hal/mem/types/region.rs:140:28
+    |
+140 | pub struct MemoryRegion<T: Address> {
+    |                            ^^^^^^^ required by this bound in `MemoryRegion`
+help: consider further restricting type parameter `T` with trait `View`
+    |
+287 | pub struct TruncatedMemoryRegion<T: Address + vstd::string::View>(MemoryRegion<PageAligned<T>>);
+    |                                             ++++++++++++++++++++
+
+error[E0277]: the trait bound `T: vstd::string::View` is not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:287:46
+    |
+286 | #[derive(Clone)]
+    |          ----- in this derive macro expansion
+287 | pub struct TruncatedMemoryRegion<T: Address>(MemoryRegion<PageAligned<T>>);
+    |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `vstd::string::View` is not implemented for `T`
+    |
+note: required for `hal::mem::types::address::aligned::page::PageAligned<T>` to implement `sys::mm::Address`
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:57:34
+    |
+ 57 | impl<T: Address + View<V = int>> Address for PageAligned<T> {
+    |                   -------------  ^^^^^^^     ^^^^^^^^^^^^^^
+    |                   |
+    |                   unsatisfied trait bound introduced here
+note: required for `MemoryRegion<PageAligned<T>>` to implement `core::clone::Clone`
+   --> src/kernel/src/hal/mem/types/region.rs:140:12
+    |
+139 | #[derive(Debug, Clone)]
+    |                 ----- in this derive macro expansion
+140 | pub struct MemoryRegion<T: Address> {
+    |            ^^^^^^^^^^^^    ------- unsatisfied trait bound
+    = help: consider manually implementing `core::clone::Clone` to avoid undesired bounds
+    = note: the full name for the type has been written to '/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/kernel-82efa172c573a61e.long-type-14926148491391666689.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: consider further restricting type parameter `T` with trait `View`
+    |
+287 | pub struct TruncatedMemoryRegion<T: Address + vstd::string::View>(MemoryRegion<PageAligned<T>>);
+    |                                             ++++++++++++++++++++
+
+error[E0277]: the trait bound `T: vstd::string::View` is not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:304:17
+    |
+304 |         Ok(Self(MemoryRegion::new(name, start, size, typ, perm)?))
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `vstd::string::View` is not implemented for `T`
+    |
+note: required for `hal::mem::types::address::aligned::page::PageAligned<T>` to implement `sys::mm::Address`
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:57:34
+    |
+ 57 | impl<T: Address + View<V = int>> Address for PageAligned<T> {
+    |                   -------------  ^^^^^^^     ^^^^^^^^^^^^^^
+    |                   |
+    |                   unsatisfied trait bound introduced here
+note: required by a bound in `hal::mem::types::region::MemoryRegion`
+   --> src/kernel/src/hal/mem/types/region.rs:140:28
+    |
+140 | pub struct MemoryRegion<T: Address> {
+    |                            ^^^^^^^ required by this bound in `MemoryRegion`
+help: consider further restricting type parameter `T` with trait `View`
+    |
+289 | impl<T: Address + vstd::string::View> TruncatedMemoryRegion<T> {
+    |                 ++++++++++++++++++++
+
+error[E0277]: the trait bound `T: vstd::string::View` is not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:304:17
+    |
+304 |         Ok(Self(MemoryRegion::new(name, start, size, typ, perm)?))
+    |                 ^^^^^^^^^^^^ the trait `vstd::string::View` is not implemented for `T`
+    |
+note: required for `hal::mem::types::address::aligned::page::PageAligned<T>` to implement `sys::mm::Address`
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:57:34
+    |
+ 57 | impl<T: Address + View<V = int>> Address for PageAligned<T> {
+    |                   -------------  ^^^^^^^     ^^^^^^^^^^^^^^
+    |                   |
+    |                   unsatisfied trait bound introduced here
+note: required by a bound in `hal::mem::types::region::MemoryRegion`
+   --> src/kernel/src/hal/mem/types/region.rs:140:28
+    |
+140 | pub struct MemoryRegion<T: Address> {
+    |                            ^^^^^^^ required by this bound in `MemoryRegion`
+help: consider further restricting type parameter `T` with trait `View`
+    |
+289 | impl<T: Address + vstd::string::View> TruncatedMemoryRegion<T> {
+    |                 ++++++++++++++++++++
+
+error[E0277]: the trait bound `T: vstd::string::View` is not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:304:17
+    |
+304 |         Ok(Self(MemoryRegion::new(name, start, size, typ, perm)?))
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `vstd::string::View` is not implemented for `T`
+    |
+note: required for `hal::mem::types::address::aligned::page::PageAligned<T>` to implement `sys::mm::Address`
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:57:34
+    |
+ 57 | impl<T: Address + View<V = int>> Address for PageAligned<T> {
+    |                   -------------  ^^^^^^^     ^^^^^^^^^^^^^^
+    |                   |
+    |                   unsatisfied trait bound introduced here
+note: required by a bound in `hal::mem::types::region::MemoryRegion`
+   --> src/kernel/src/hal/mem/types/region.rs:140:28
+    |
+140 | pub struct MemoryRegion<T: Address> {
+    |                            ^^^^^^^ required by this bound in `MemoryRegion`
+help: consider further restricting type parameter `T` with trait `View`
+    |
+289 | impl<T: Address + vstd::string::View> TruncatedMemoryRegion<T> {
+    |                 ++++++++++++++++++++
+
+error[E0599]: the method `set_cache_policy` exists for struct `MemoryRegion<PageAligned<T>>`, but its trait bounds were not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:333:18
+    |
+140 | pub struct MemoryRegion<T: Address> {
+    | ----------------------------------- method `set_cache_policy` not found for this struct
+...
+333 |         region.0.set_cache_policy(cache_policy);
+    |                  ^^^^^^^^^^^^^^^^ method cannot be called on `MemoryRegion<PageAligned<T>>` due to unsatisfied trait bounds
+    |
+   ::: src/kernel/src/hal/mem/types/address/aligned/page.rs:38:1
+    |
+ 38 | pub struct PageAligned<T: Address>(T);
+    | ---------------------------------- doesn't satisfy `_: Address`
+    |
+note: trait bound `T: vstd::string::View` was not satisfied
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:57:19
+    |
+ 57 | impl<T: Address + View<V = int>> Address for PageAligned<T> {
+    |                   ^^^^^^^^^^^^^  -------     --------------
+    |                   |
+    |                   unsatisfied trait bound introduced here
+    = note: the full name for the type has been written to '/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/kernel-82efa172c573a61e.long-type-14926148491391666689.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: consider restricting the type parameter to satisfy the trait bound
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:38:38
+    |
+ 38 | pub struct PageAligned<T: Address>(T) where T: vstd::string::View;
+    |                                       +++++++++++++++++++++++++++
+
+error[E0277]: the trait bound `T: vstd::string::View` is not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:340:63
+    |
+340 |         let start: PageAligned<T> = PageAligned::from_address(start)?;
+    |                                     ------------------------- ^^^^^ the trait `vstd::string::View` is not implemented for `T`
+    |                                     |
+    |                                     required by a bound introduced by this call
+    |
+note: required by a bound in `hal::mem::types::address::aligned::page::PageAligned::<T>::from_address`
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:40:19
+    |
+ 40 | impl<T: Address + View<V = int>> PageAligned<T> {
+    |                   ^^^^^^^^^^^^^ required by this bound in `PageAligned::<T>::from_address`
+ 41 |     /// Constructs a page address from an aligned virtual address.
+ 42 |     pub fn from_address(addr: T) -> Result<Self, Error> {
+    |            ------------ required by a bound in this associated function
+help: consider further restricting type parameter `T` with trait `View`
+    |
+289 | impl<T: Address + vstd::string::View> TruncatedMemoryRegion<T> {
+    |                 ++++++++++++++++++++
+
+error[E0599]: the method `set_cache_policy` exists for struct `MemoryRegion<PageAligned<T>>`, but its trait bounds were not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:347:25
+    |
+140 | pub struct MemoryRegion<T: Address> {
+    | ----------------------------------- method `set_cache_policy` not found for this struct
+...
+347 |             truncated.0.set_cache_policy(policy);
+    |                         ^^^^^^^^^^^^^^^^ method cannot be called on `MemoryRegion<PageAligned<T>>` due to unsatisfied trait bounds
+    |
+   ::: src/kernel/src/hal/mem/types/address/aligned/page.rs:38:1
+    |
+ 38 | pub struct PageAligned<T: Address>(T);
+    | ---------------------------------- doesn't satisfy `_: Address`
+    |
+note: trait bound `T: vstd::string::View` was not satisfied
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:57:19
+    |
+ 57 | impl<T: Address + View<V = int>> Address for PageAligned<T> {
+    |                   ^^^^^^^^^^^^^  -------     --------------
+    |                   |
+    |                   unsatisfied trait bound introduced here
+    = note: the full name for the type has been written to '/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/kernel-82efa172c573a61e.long-type-14926148491391666689.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: consider restricting the type parameter to satisfy the trait bound
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:38:38
+    |
+ 38 | pub struct PageAligned<T: Address>(T) where T: vstd::string::View;
+    |                                       +++++++++++++++++++++++++++
+
+error[E0599]: the method `name` exists for struct `MemoryRegion<PageAligned<T>>`, but its trait bounds were not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:353:16
+    |
+140 | pub struct MemoryRegion<T: Address> {
+    | ----------------------------------- method `name` not found for this struct
+...
+353 |         self.0.name()
+    |                ^^^^ field, not a method
+    |
+   ::: src/kernel/src/hal/mem/types/address/aligned/page.rs:38:1
+    |
+ 38 | pub struct PageAligned<T: Address>(T);
+    | ---------------------------------- doesn't satisfy `_: Address`
+    |
+note: trait bound `T: vstd::string::View` was not satisfied
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:57:19
+    |
+ 57 | impl<T: Address + View<V = int>> Address for PageAligned<T> {
+    |                   ^^^^^^^^^^^^^  -------     --------------
+    |                   |
+    |                   unsatisfied trait bound introduced here
+    = note: the full name for the type has been written to '/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/kernel-82efa172c573a61e.long-type-14926148491391666689.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: consider restricting the type parameter to satisfy the trait bound
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:38:38
+    |
+ 38 | pub struct PageAligned<T: Address>(T) where T: vstd::string::View;
+    |                                       +++++++++++++++++++++++++++
+help: remove the arguments
+    |
+353 -         self.0.name()
+353 +         self.0.name
+    |
+
+error[E0599]: the method `start` exists for struct `MemoryRegion<PageAligned<T>>`, but its trait bounds were not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:358:16
+    |
+140 | pub struct MemoryRegion<T: Address> {
+    | ----------------------------------- method `start` not found for this struct
+...
+358 |         self.0.start()
+    |                ^^^^^ field, not a method
+    |
+   ::: src/kernel/src/hal/mem/types/address/aligned/page.rs:38:1
+    |
+ 38 | pub struct PageAligned<T: Address>(T);
+    | ---------------------------------- doesn't satisfy `_: Address`
+    |
+note: trait bound `T: vstd::string::View` was not satisfied
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:57:19
+    |
+ 57 | impl<T: Address + View<V = int>> Address for PageAligned<T> {
+    |                   ^^^^^^^^^^^^^  -------     --------------
+    |                   |
+    |                   unsatisfied trait bound introduced here
+    = note: the full name for the type has been written to '/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/kernel-82efa172c573a61e.long-type-14926148491391666689.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: consider restricting the type parameter to satisfy the trait bound
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:38:38
+    |
+ 38 | pub struct PageAligned<T: Address>(T) where T: vstd::string::View;
+    |                                       +++++++++++++++++++++++++++
+help: remove the arguments
+    |
+358 -         self.0.start()
+358 +         self.0.start
+    |
+
+error[E0599]: the method `size` exists for struct `MemoryRegion<PageAligned<T>>`, but its trait bounds were not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:363:16
+    |
+140 | pub struct MemoryRegion<T: Address> {
+    | ----------------------------------- method `size` not found for this struct
+...
+363 |         self.0.size()
+    |                ^^^^ field, not a method
+    |
+   ::: src/kernel/src/hal/mem/types/address/aligned/page.rs:38:1
+    |
+ 38 | pub struct PageAligned<T: Address>(T);
+    | ---------------------------------- doesn't satisfy `_: Address`
+    |
+note: trait bound `T: vstd::string::View` was not satisfied
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:57:19
+    |
+ 57 | impl<T: Address + View<V = int>> Address for PageAligned<T> {
+    |                   ^^^^^^^^^^^^^  -------     --------------
+    |                   |
+    |                   unsatisfied trait bound introduced here
+    = note: the full name for the type has been written to '/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/kernel-82efa172c573a61e.long-type-14926148491391666689.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: consider restricting the type parameter to satisfy the trait bound
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:38:38
+    |
+ 38 | pub struct PageAligned<T: Address>(T) where T: vstd::string::View;
+    |                                       +++++++++++++++++++++++++++
+help: remove the arguments
+    |
+363 -         self.0.size()
+363 +         self.0.size
+    |
+
+error[E0599]: the method `typ` exists for struct `MemoryRegion<PageAligned<T>>`, but its trait bounds were not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:368:16
+    |
+140 | pub struct MemoryRegion<T: Address> {
+    | ----------------------------------- method `typ` not found for this struct
+...
+368 |         self.0.typ()
+    |                ^^^ field, not a method
+    |
+   ::: src/kernel/src/hal/mem/types/address/aligned/page.rs:38:1
+    |
+ 38 | pub struct PageAligned<T: Address>(T);
+    | ---------------------------------- doesn't satisfy `_: Address`
+    |
+note: trait bound `T: vstd::string::View` was not satisfied
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:57:19
+    |
+ 57 | impl<T: Address + View<V = int>> Address for PageAligned<T> {
+    |                   ^^^^^^^^^^^^^  -------     --------------
+    |                   |
+    |                   unsatisfied trait bound introduced here
+    = note: the full name for the type has been written to '/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/kernel-82efa172c573a61e.long-type-14926148491391666689.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: consider restricting the type parameter to satisfy the trait bound
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:38:38
+    |
+ 38 | pub struct PageAligned<T: Address>(T) where T: vstd::string::View;
+    |                                       +++++++++++++++++++++++++++
+help: remove the arguments
+    |
+368 -         self.0.typ()
+368 +         self.0.typ
+    |
+
+error[E0599]: the method `perm` exists for struct `MemoryRegion<PageAligned<T>>`, but its trait bounds were not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:373:16
+    |
+140 | pub struct MemoryRegion<T: Address> {
+    | ----------------------------------- method `perm` not found for this struct
+...
+373 |         self.0.perm()
+    |                ^^^^ field, not a method
+    |
+   ::: src/kernel/src/hal/mem/types/address/aligned/page.rs:38:1
+    |
+ 38 | pub struct PageAligned<T: Address>(T);
+    | ---------------------------------- doesn't satisfy `_: Address`
+    |
+note: trait bound `T: vstd::string::View` was not satisfied
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:57:19
+    |
+ 57 | impl<T: Address + View<V = int>> Address for PageAligned<T> {
+    |                   ^^^^^^^^^^^^^  -------     --------------
+    |                   |
+    |                   unsatisfied trait bound introduced here
+    = note: the full name for the type has been written to '/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/kernel-82efa172c573a61e.long-type-14926148491391666689.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: consider restricting the type parameter to satisfy the trait bound
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:38:38
+    |
+ 38 | pub struct PageAligned<T: Address>(T) where T: vstd::string::View;
+    |                                       +++++++++++++++++++++++++++
+help: remove the arguments
+    |
+373 -         self.0.perm()
+373 +         self.0.perm
+    |
+
+error[E0599]: the method `cache_policy` exists for struct `MemoryRegion<PageAligned<T>>`, but its trait bounds were not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:386:16
+    |
+140 | pub struct MemoryRegion<T: Address> {
+    | ----------------------------------- method `cache_policy` not found for this struct
+...
+386 |         self.0.cache_policy()
+    |                ^^^^^^^^^^^^ field, not a method
+    |
+   ::: src/kernel/src/hal/mem/types/address/aligned/page.rs:38:1
+    |
+ 38 | pub struct PageAligned<T: Address>(T);
+    | ---------------------------------- doesn't satisfy `_: Address`
+    |
+note: trait bound `T: vstd::string::View` was not satisfied
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:57:19
+    |
+ 57 | impl<T: Address + View<V = int>> Address for PageAligned<T> {
+    |                   ^^^^^^^^^^^^^  -------     --------------
+    |                   |
+    |                   unsatisfied trait bound introduced here
+    = note: the full name for the type has been written to '/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/kernel-82efa172c573a61e.long-type-14926148491391666689.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: consider restricting the type parameter to satisfy the trait bound
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:38:38
+    |
+ 38 | pub struct PageAligned<T: Address>(T) where T: vstd::string::View;
+    |                                       +++++++++++++++++++++++++++
+help: remove the arguments
+    |
+386 -         self.0.cache_policy()
+386 +         self.0.cache_policy
+    |
+
+error[E0369]: binary operation `==` cannot be applied to type `MemoryRegion<PageAligned<T>>`
+   --> src/kernel/src/hal/mem/types/region.rs:392:16
+    |
+392 |         self.0 == other.0
+    |         ------ ^^ ------- MemoryRegion<PageAligned<T>>
+    |         |
+    |         MemoryRegion<PageAligned<T>>
+    |
+    = note: the full name for the type has been written to '/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/kernel-82efa172c573a61e.long-type-14926148491391666689.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: consider further restricting type parameter `T` with trait `View`
+    |
+390 | impl<T: Address + vstd::string::View> PartialEq for TruncatedMemoryRegion<T> {
+    |                 ++++++++++++++++++++
+
+error[E0599]: the method `cmp` exists for struct `MemoryRegion<PageAligned<T>>`, but its trait bounds were not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:406:16
+    |
+140 | pub struct MemoryRegion<T: Address> {
+    | ----------------------------------- method `cmp` not found for this struct because it doesn't satisfy `_: Iterator` or `_: Ord`
+...
+406 |         self.0.cmp(&other.0)
+    |                ^^^ method cannot be called on `MemoryRegion<PageAligned<T>>` due to unsatisfied trait bounds
+    |
+   ::: src/kernel/src/hal/mem/types/address/aligned/page.rs:38:1
+    |
+ 38 | pub struct PageAligned<T: Address>(T);
+    | ---------------------------------- doesn't satisfy `_: Address`
+    |
+note: trait bound `hal::mem::types::address::aligned::page::PageAligned<T>: sys::mm::Address` was not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:270:9
+    |
+270 | impl<T: Address> Ord for MemoryRegion<T> {
+    |         ^^^^^^^  ---     ---------------
+    |         |
+    |         unsatisfied trait bound introduced here
+    = note: the following trait bounds were not satisfied:
+            `hal::mem::types::region::MemoryRegion<hal::mem::types::address::aligned::page::PageAligned<T>>: core::iter::Iterator`
+            which is required by `&mut hal::mem::types::region::MemoryRegion<hal::mem::types::address::aligned::page::PageAligned<T>>: core::iter::Iterator`
+note: the traits `core::iter::Iterator` and `sys::mm::Address` must be implemented
+   --> /home/ruize/.rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:41:1
+    |
+ 41 | pub const trait Iterator {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/libs/sys/src/sys/mm/address/mod.rs:31:1
+    |
+ 31 | pub trait Address
+    | ^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is implemented and in scope
+    = note: the following traits define an item `cmp`, perhaps you need to implement one of them:
+            candidate #1: `core::cmp::Ord`
+            candidate #2: `core::iter::Iterator`
+            candidate #3: `vstd::std_specs::cmp::ExOrd`
+    = note: the full name for the type has been written to '/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/kernel-82efa172c573a61e.long-type-14926148491391666689.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0277]: the trait bound `T: vstd::string::View` is not satisfied
+  --> src/kernel/src/mm/phys/frame.spec.rs:57:51
+   |
+57 | pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::PageAligned<T> as ::sys::mm::Address>::into_raw_value ](
+   |                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `vstd::string::View` is not implemented for `T`
+   |
+note: required for `hal::mem::types::address::aligned::page::PageAligned<T>` to implement `sys::mm::Address`
+  --> src/kernel/src/hal/mem/types/address/aligned/page.rs:57:34
+   |
+57 | impl<T: Address + View<V = int>> Address for PageAligned<T> {
+   |                   -------------  ^^^^^^^     ^^^^^^^^^^^^^^
+   |                   |
+   |                   unsatisfied trait bound introduced here
+help: consider further restricting type parameter `T` with trait `View`
+   |
+57 | pub assume_specification<T: ::sys::mm::Address + vstd::string::View>[ <crate::hal::mem::PageAligned<T> as ::sys::mm::Address>::into_raw_value ](
+   |                                                ++++++++++++++++++++
+
+Some errors have detailed explanations: E0277, E0369, E0599.
+For more information about an error, try `rustc --explain E0277`.
+error: could not compile `kernel` (bin "kernel") due to 18 previous errors

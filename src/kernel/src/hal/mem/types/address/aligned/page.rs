@@ -37,7 +37,7 @@ use ::vstd::prelude::*;
 #[derive(Clone, Copy)]
 pub struct PageAligned<T: Address>(T);
 
-impl<T: Address> PageAligned<T> {
+impl<T: Address + View<V = int>> PageAligned<T> {
     /// Constructs a page address from an aligned virtual address.
     pub fn from_address(addr: T) -> Result<Self, Error> {
         // Check if `addr` is not aligned to a page boundary.
@@ -54,7 +54,7 @@ impl<T: Address> PageAligned<T> {
 }
 
 #[verus_verify]
-impl<T: Address> Address for PageAligned<T> {
+impl<T: Address + View<V = int>> Address for PageAligned<T> {
     #[verus_spec(result =>
         ensures
             result as int == self@,
