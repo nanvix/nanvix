@@ -2,23 +2,52 @@
   "module_name": "hal-platform-microvm",
   "log_name": "nanvix-phys-hal-platform-microvm",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.rs",
-  "current_phase": "caller-analysis",
-  "current_phase_idx": 0,
-  "completed_phases": [],
-  "phase_results": {},
+  "current_phase": "view-design",
+  "current_phase_idx": 1,
+  "completed_phases": [
+    "caller-analysis"
+  ],
+  "phase_results": {
+    "caller-analysis": {
+      "phase": "caller-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 93.7,
+      "review_rounds": 0
+    }
+  },
   "prover_session_id": "a9467369-d723-4d78-801a-3bc09df261e6",
   "completed": false,
   "base_branch": "verus-ai/hal-memory-region",
   "verus_branch": "verus-ai/hal-platform-microvm",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "caller-analysis": "12e3e1f3388bb3ba540b02bc3c89679dd5890a9f"
+  },
   "phase_start_shas": {
-    "caller-analysis": "f0aef56b8289f937a43509a3cc190f1fc4a304c3"
+    "caller-analysis": "f0aef56b8289f937a43509a3cc190f1fc4a304c3",
+    "view-design": "12e3e1f3388bb3ba540b02bc3c89679dd5890a9f"
   },
   "phase_history": [
     {
       "phase": "caller-analysis",
       "event": "start",
       "sha": "f0aef56b8289f937a43509a3cc190f1fc4a304c3",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "caller-analysis",
+      "event": "end",
+      "sha": "12e3e1f3388bb3ba540b02bc3c89679dd5890a9f",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "start",
+      "sha": "12e3e1f3388bb3ba540b02bc3c89679dd5890a9f",
       "rollback_iter": 0
     }
   ],
