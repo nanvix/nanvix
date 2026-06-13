@@ -1434,3 +1434,15 @@ Full `make verify` exited 0. Let me confirm no module reported verification erro
 [THINKING] The kernel verification completed with exit code 0, though it looks like only the mm::phys::upool module was explicitly noted in the output—possibly due to caching. The important thing is there were no errors reported, but the full output got cut off so I need to check whether all modules actually verified successfully.
 
 I'm concerned that my frame.rs changes (the no_unwind attribute on free and the specs on share/refcount) might not have been re-verified if the build system cached results from the earlier upool run. Even though `make verify` claims to run all modules, the "cached (no recompilation)" message is worrying. I should explicitly run verification on the frame and manager modules to confirm my edits didn't break anything.
+[RESULT ✓] bash: === any nonzero errors in any verus log? ===
+--- exit codes across crates (from make verify tail not captured); re-verify dependent modules explicitly ---
+  Exit code : 0
+  Unverified functions:
+<shellId: 56 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; for m in mm::phys::manager mm::phys mm::phys::kframe; do echo "=== $m ==="; timeout 400 make 
+
+[THINKING] The frame module passed verification, so now I need to check the modules that depend on upool—specifically mm::phys::manager and mm::phys itself. Let me run a clean verification pass on those key dependents to see the overall status.
