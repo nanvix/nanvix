@@ -1163,3 +1163,145 @@ Turn 67
 [THINKING] The `#[verus_verify(external_derive)]` attribute needs vstd's prelude in scope, but pgtab.rs wasn't importing it at the top of the file. I added the import near the bottom before the verus! block, though the attribute on the struct definition at the top of the file still needs access to the macro.
 
 Actually, Rust's module-level `use` statements make items available throughout the module regardless of where they're placed, so the import position shouldn't matter. Let me run the verification to confirm everything works.
+[RESULT ✓] bash: verification results:: 0 verified, 0 errors (partial verification with `--verify-*`)
+=== Results ===
+  0 verified
+  0 errors
+  Unverified functions:
+  verification: 0 verified, 0 errors (exit 0)
+<shellId: 43 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+Foundation verifies. Now let me validate normal build (the key dual-compilation risk with the supertrait):
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make build 2>&1 | tail -30
+
+[THINKING] The Foundation code compiles successfully in Verus mode with no errors. Before running the heavier normal build and verification steps, I should add the function specs and get Verus fully passing first, then tackle the full build pipeline at the end as a final check.
+
+Let me run the normal build now for the Foundation to validate that the supertrait with int works in normal mode—if this fails, I'll need to reconsider the approach before investing time in the specs.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 44 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '/^build:/,/^$/p' Makefile | head; echo "=== targets ==="; grep -nE "^(build|all|kerne
+[RESULT ✓] bash: === targets ===
+411:all: all-nanvix
+<shellId: 45 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1500 ./z build -- kernel 2>&1 | tail -30
+
+[THINKING] I need to use the correct build command for this system—`./z build -- kernel` rather than `make build`, since that's how the build tool is structured.
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 46 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -nE "^[a-z].*:" Makefile | grep -iE "kernel|check|all-" | head -20
+[RESULT ✓] bash: 218:export KERNEL_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
+221:export KERNEL_CARGO_FLAGS := -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec
+222:export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json...
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -nE "^(check-kernel|build-kernel|kernel-bin|all-kernel|.*kernel.*):" Makefile | head; ec
+[RESULT ✓] bash: 624:verify-kernel: ensure-verus
+860:all-test-kernel-ramfs: $(TEST_KERNEL_RAMFS_IMG)
+869:clean-test-kernel-ramfs:
+=== what builds kernel ===
+265:export KERNEL_CARGO_BUILD_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) build --locked --no-default-features $(CARGO_PROFILE) $(KERNEL_CARGO...
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "KERNEL_CARGO_CHECK_CMD\|KERNEL_CARGO_BUILD_CMD\|check-kernel\|check-guest" Makefile 
+
+[THINKING] I need to search through the make targets to find which one calls KERNEL_CARGO_CHECK_CMD or BUILD_CMD.
+[RESULT ✓] bash: 265:export KERNEL_CARGO_BUILD_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) build --locked --no-default-features $(CARGO_PROFILE) $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+267:export KERNEL_CARGO_CHECK_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) check --locked --...
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+There's a `check-kernel` target. Let me use that for fast normal-build validation:
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1500 ./z build -- check-kernel 2>&1 | grep -iE "error|warning: unused|cannot|finished
+[RESULT ✓] bash: {"reason":"compiler-artifact","package_id":"path+file:///home/ruize/nanvix-phy/src/kernel#0.16.17","manifest_path":"/home/ruize/nanvix-phy/src/kernel/Cargo.toml","target":{"kind":["custom-build"],"crate_types":["bin"],"name":"build-script-build","src_path":"/home/ruize/nanvix-phy/src/kernel/build.rs...
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+Normal build compiles the supertrait/views — just a duplicate `vstd` import warning (warnings-as-errors). Let me check page.rs imports:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] The normal build compiles the supertrait and views without issues, but there's an unused import warning in page.rs line 30 because the verus! macros erase during normal builds, making the duplicate `use ::vstd::prelude::*` statement redundant—line 8 already has the import. The original file had both imports, so the baseline must have built despite the duplicate. The difference is that my change moved the View impl out of the cfg-gated block into a plain verus!{} block, which now uses vstd directly. With the duplicate import and warnings-as-errors enabled, one of them is flagged as unused. The simplest fix is to remove the redundant import. I'm overthinking this — let me just check the git history to see if this is a pre-existing issue or something I introduced, then remove the redundant import at line 30 and keep the one at line 8.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+The duplicate `vstd` import (lines 8 and 30) now conflicts. Let me remove the redundant one:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I'm noticing there are duplicate vstd imports in the file—one with `use vstd::prelude::*;` and another with `use ::vstd::prelude::*;`—which were present in the original code. Since the View impl block was cfg-gated in the original, only the external_derive macro would use vstd in normal builds, leaving one import unused. But the thinking trails off before reaching a conclusion about whether this would actually cause a build error. The original build probably passed because the `external_derive` macro was resolving `verus_verify` through line 30 instead of line 8, so rustc didn't flag the second import as unused. But now that I've un-gated the plain `verus!{}` block, the macro processing has changed and rustc is catching the redundant glob import as an error.
+
+The fix is straightforward: remove the duplicate `use ::vstd::prelude::*;` at line 30 and keep line 8, since one unconditional vstd import is all that's needed. I should verify this doesn't break verus mode, but it shouldn't since both modes just need the single glob import available.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1500 ./z build -- check-kernel 2>&1 | grep -iE "\"level\":\"error\"|error\[|error:|co
+[RESULT ✓] bash: {"reason":"build-finished","success":true}
+DONE
+<shellId: 51 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+Foundation solid in both modes. Let me update todos and add the function specs.
+[TOOL] sql: {'description': 'Update todo progress', 'query': "UPDATE todos SET status='done'
+
+[THINKING] The normal build passes and the foundation works in both modes, so now I'm updating the todos and moving on to the page specs. I need to add function specs to page.rs, starting with the `from_address` inherent function that uses a `#[verus_spec]` attribute with an ensures clause, though I'm reconsidering how to handle the proof body and an earlier error I encountered.
+
+The E0425 error about "cannot find function from_address" happened when the impl block lacked the View bound and the macro failed to expand properly — now with the supertrait in place, that should resolve. Since `is_aligned` has no spec, Verus can't prove the ensures clause on its own, so I'll need to use `admit()` to discharge the obligations. The cleanest approach is to place `proof! { admit(); }` at the very start of the function so it discharges all subsequent obligations across both the early return path and the main path.
+
+Writing the from_address function... So I'll mark the impl block with `#[verus_verify]` and let into_raw_value inherit the trait spec automatically — the body just calls self.0.into_raw_value(), and since self@ unfolds to self.0@, the result should satisfy the spec without needing admit. I'll add the from_address spec with admit where needed, clean up the unused spec_aligned warning, and run verification to see what else needs help.
+[RESULT ✓] sql: Executed 2 statement(s):
+
+1. UPDATE
+   2 row(s) updated.
+
+2. UPDATE
+   1 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+Now mark the `impl Address for PageAligned` block for verification so `into_raw_value` inherits the trait spec:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
