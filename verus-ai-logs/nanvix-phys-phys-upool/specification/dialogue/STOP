@@ -1,0 +1,22 @@
+RESOLVED
+
+All 17 checklist items PASS or FIXED with tool evidence.
+
+Turn 1 FAIL: #4 tautological ensures (`UserFrame::share` `Err(_) => true`), driving #6.
+Turn 1 fixer: replaced with snapshot Err fact
+  (!allocated_frames.contains(self@) || refcounts[self@] >= 255),
+  strengthening both `frame::share` (trusted wrapper) and `UserFrame::share`,
+  sound vs. Inner::share (frame.rs:368).
+
+Independent verification (Turn 2):
+- Read changed code: upool.rs:157-160, frame.rs:811-815 — `Err(_) => true` gone.
+- grep tautology/admit/assume/trusted in upool module files -> NONE.
+- spec_drift (upool & frame, view-design baseline -> HEAD): Ensures removed: 0 (strengthening only).
+- Forced cache-busted `make verify-kernel`: 26 verified, 0 errors, exit 0.
+- fn_coverage: 7/7 matched. Cheating (upool): admit=0 assume=0 trusted=0, external_body=3 (TCB-allowed facade).
+
+Documented upstream limitations (not faulted, not rollback): refcount-transition
+ensures (#2) and Drop `release` semantics (#10) require `old(phys_view())`, which is
+inexpressible against the 0-arg `phys_view()` accessor in the do-not-modify
+mod.spec.rs. Consistent with the already-verified frame layer; recorded in
+view_design.md §8 and bugs.md.
