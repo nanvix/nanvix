@@ -7,7 +7,6 @@
     - mm/phys/frame.rs:517 is_covered: external_body
     - mm/phys/frame.rs:565 alloc_range: external_body
     - mm/phys/frame.rs:657 init: external_body
-    - mm/phys/manager.rs:86 init: external_body
     - mm/phys/mod.proof.rs:9 lemma_frame_initialized: admit
     - mm/phys/mod.proof.rs:22 lemma_manager_ready: admit
     - mm/phys/mod.rs:73 book_physical_memory_regions: external_body

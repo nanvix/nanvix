@@ -1,0 +1,31 @@
+Timestamp: 2026-06-14_01-00-54
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::manager
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=14
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=5
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: could not find module mm::phys::manager specified by --verify-module or --verify-only-module
+       available modules are:
+       - hal::mem::types::address::aligned::page
+       - hal::mem::types::address::frame
+       - hal::mem::types::address::phys
+       - hal::mem::types::region
+       - mm::phys
+       - mm::phys::frame
+       - mm::phys::upool
+       or use --verify-root
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
