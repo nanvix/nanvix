@@ -50,7 +50,11 @@ pub fn dlopen(filename: &str, global: bool) -> Result<DlHandle, Error> {
     // of the caller's CWD. As a consequence, "/lib/libc.so" and
     // "lib/libc.so" are distinct keys in the already-loaded-library lookup
     // below (matching the as-supplied path rather than a canonical form).
-    let resolved: String = super::resolve_library_path(filename);
+    //
+    // A direct `dlopen()` has no loading-library context, so no `DT_RUNPATH`
+    // entries are supplied here; only the configured default search paths are
+    // consulted for bare names.
+    let resolved: String = super::resolve_library_path(filename, None);
     let filename: &str = resolved.as_str();
 
     let mut registry: MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>> =
@@ -84,37 +88,68 @@ pub fn dlopen(filename: &str, global: bool) -> Result<DlHandle, Error> {
     // Load dependencies and resolve symbols. If either step fails, remove all
     // entries that were added during this call (the library itself and any
     // transitive dependencies) so subsequent dlopen calls start fresh.
-    match load_all_dependencies(&mut registry, new_dlfile)
-        .and_then(|_| resolve_all_symbols(&mut registry, &handles_before))
-    {
-        Ok(()) => {
-            // If RTLD_GLOBAL was requested, publish the library's exported
-            // symbols into the global symbol table so subsequently loaded
-            // libraries can resolve them.
-            if global {
-                if let Some(dlfile) = registry.get(&handle) {
-                    super::register_library_in_global_scope(dlfile);
+    let init_order: Vec<Arc<Mutex<DynamicLibrary>>> =
+        match load_all_dependencies(&mut registry, new_dlfile)
+            .and_then(|_| resolve_all_symbols(&mut registry, &handles_before))
+        {
+            Ok(order) => {
+                // If RTLD_GLOBAL was requested, publish the library's exported
+                // symbols into the global symbol table so subsequently loaded
+                // libraries can resolve them.
+                if global {
+                    if let Some(dlfile) = registry.get(&handle) {
+                        super::register_library_in_global_scope(dlfile);
+                    }
                 }
-            }
-            Ok(handle)
-        },
-        Err(e) => {
-            let new_handles: Vec<DlHandle> = registry
-                .keys()
-                .filter(|h| !handles_before.contains(h))
-                .copied()
-                .collect();
-            ::syslog::warn!(
-                "dlopen(): rolling back {} entries after failure (error={:?})",
-                new_handles.len(),
-                e
-            );
-            for h in new_handles {
-                registry.remove(&h);
-            }
-            Err(e)
-        },
+                order
+            },
+            Err(e) => {
+                let new_handles: Vec<DlHandle> = registry
+                    .keys()
+                    .filter(|h| !handles_before.contains(h))
+                    .copied()
+                    .collect();
+                ::syslog::warn!(
+                    "dlopen(): rolling back {} entries after failure (error={:?})",
+                    new_handles.len(),
+                    e
+                );
+                for h in new_handles {
+                    registry.remove(&h);
+                }
+                return Err(e);
+            },
+        };
+
+    // Drop the registry lock before invoking `.init_array` constructors so a
+    // constructor may legally call `dlsym` (and, in a future relaxation,
+    // `dlopen`) without deadlocking on `DYNAMIC_LIBRARY_REGISTRY`.
+    drop(registry);
+
+    // Invoke `.init_array` constructors in dependency order (leaves first).
+    // The Arc list was built while the registry was locked, so each entry is
+    // guaranteed to still point to a loaded library.
+    //
+    // Snapshot the constructor descriptor and library name under a short
+    // per-library lock, then drop the lock before invoking constructors.
+    // Holding the per-library lock during constructor execution would
+    // deadlock any constructor that calls `dlsym(self_handle, ...)`, because
+    // `dlsym` re-locks the same library to look up symbols.
+    for dlfile in init_order.iter() {
+        let (descriptor, name): (Option<(usize, usize)>, String) = {
+            let lib: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
+            (lib.init_array_descriptor(), String::from(lib.name()))
+        };
+        // SAFETY: `descriptor` was produced under the per-library lock for
+        // a library still held alive by `init_order`'s `Arc`; relocations
+        // have been applied by `resolve_all_symbols`; no dlfcn locks are
+        // held across this call.
+        unsafe {
+            DynamicLibrary::invoke_init_array(descriptor, &name);
+        }
     }
+
+    Ok(handle)
 }
 
 /// Recursively loads all transitive dependencies of a newly opened library.
@@ -133,6 +168,12 @@ fn load_all_dependencies(
         new_dlhandle: &DlHandle,
         new_dlfile: &mut MutexGuard<'_, DynamicLibrary>,
     ) -> Result<(), Error> {
+        // Snapshot the loader's `DT_RUNPATH` entries so they are visible to
+        // `resolve_library_path` while probing every dependency below. The
+        // `DynamicLibrary` mutex is borrowed throughout, so this avoids
+        // re-borrowing it per call.
+        let runpaths: Vec<String> = new_dlfile.runpaths().to_vec();
+
         // Collect the name of all dependencies.
         let mut dependencies: Vec<String> = new_dlfile
             .dependencies()
@@ -144,7 +185,7 @@ fn load_all_dependencies(
         dependencies.retain(|dependency| {
             // Resolve bare name so we can match against loaded libraries
             // that were opened with a full path.
-            let resolved_dep: String = super::resolve_library_path(dependency);
+            let resolved_dep: String = super::resolve_library_path(dependency, Some(&runpaths));
             for (dlhandle, dlfile) in dlfiles.iter() {
                 // Check if need to skip the dynamic library itself.
                 if dlhandle == new_dlhandle {
@@ -180,7 +221,7 @@ fn load_all_dependencies(
         // Load remaining dependencies.
         while let Some(dependency) = dependencies.pop() {
             // Resolve bare library names to full paths using search directories.
-            let resolved_dep: String = super::resolve_library_path(&dependency);
+            let resolved_dep: String = super::resolve_library_path(&dependency, Some(&runpaths));
 
             // Open and pre-load the dynamic library file.
             let dep_dlfile: DynamicLibrary = DynamicLibrary::open(&resolved_dep)?;
@@ -209,15 +250,17 @@ fn load_all_dependencies(
     Ok(())
 }
 
-/// Resolves all relocations for libraries added during this `dlopen` call.
+/// Resolves all relocations for libraries added during this `dlopen` call and
+/// returns them in dependency order (leaves first, root last) so the caller
+/// can invoke `.init_array` constructors in the correct sequence.
 ///
-/// Libraries are resolved in dependency order (leaves first, root last).
-/// This ensures that when a library's relocations reference symbols from
-/// its dependencies, those dependencies are already fully resolved.
+/// Libraries are resolved in dependency order. This ensures that when a
+/// library's relocations reference symbols from its dependencies, those
+/// dependencies are already fully resolved.
 fn resolve_all_symbols(
     dlfiles: &mut MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>>,
     handles_before: &BTreeSet<DlHandle>,
-) -> Result<(), Error> {
+) -> Result<Vec<Arc<Mutex<DynamicLibrary>>>, Error> {
     ::syslog::trace!("resolve_all_symbols()");
 
     // Collect all newly added libraries.
@@ -295,11 +338,13 @@ fn resolve_all_symbols(
     }
 
     // Resolve in dependency order (leaves first).
+    let mut init_order: Vec<Arc<Mutex<DynamicLibrary>>> = Vec::with_capacity(ordered.len());
     for handle in ordered {
         if let Some(dlfile) = dlfiles.get(&handle) {
             dlfile.lock().resolve_all()?;
+            init_order.push(dlfile.clone());
         }
     }
 
-    Ok(())
+    Ok(init_order)
 }

@@ -91,9 +91,18 @@ static DLINIT_ONCE: Once = Once::new();
 /// `LD_LIBRARY_PATH` and are passed straight through to `open()`.
 ///
 /// If `filename` is a bare name (no `/`), the function tries each directory in
-/// [`LIBRARY_SEARCH_PATHS`] in order, returning the first path for which the
-/// file exists. If no match is found the bare name is returned so that the
-/// subsequent `open_regular_file` call produces the appropriate error.
+/// the following order, returning the first path for which the file exists:
+///
+/// 1. The directories listed in `runpaths` (caller-supplied, typically the
+///    `DT_RUNPATH` entries of the library whose dependency is being resolved).
+///    `$ORIGIN` inside an entry is substituted with `"."` (the current
+///    working directory). This is a temporary approximation; the System V
+///    `ld.so` convention is to substitute the directory of the loading
+///    library, which Nanvix does not yet track per-library.
+/// 2. The directories in [`LIBRARY_SEARCH_PATHS`] (currently just `"lib/"`).
+///
+/// If no match is found the bare name is returned so that the subsequent
+/// `open_regular_file` call produces the appropriate error.
 ///
 /// # Absolute paths must stay absolute
 ///
@@ -111,7 +120,11 @@ static DLINIT_ONCE: Once = Once::new();
 /// candidate path. The matched file is re-opened by `DynamicLibrary::open()`.
 /// This double-open is accepted for simplicity; a stat-based probe would
 /// avoid it but is not currently available in the Nanvix VFS API.
-pub(super) fn resolve_library_path(filename: &str) -> String {
+///
+/// `DT_RPATH` (the predecessor to `DT_RUNPATH`) is intentionally not consulted:
+/// it is deprecated by the System V gABI and modern toolchains emit
+/// `DT_RUNPATH` instead.
+pub(super) fn resolve_library_path(filename: &str, runpaths: Option<&[String]>) -> String {
     // If the original filename contains a path separator, the caller provided
     // an explicit path (absolute or relative with directory). Normalize it
     // but do NOT search configured directories — matching Linux behavior
@@ -132,30 +145,106 @@ pub(super) fn resolve_library_path(filename: &str) -> String {
         return String::from(normalized);
     }
 
-    // Bare library name (no path separator) — search configured directories.
+    // Bare library name (no path separator) — search runpaths first, then
+    // the configured default directories.
+    if let Some(runpaths) = runpaths {
+        for dir in runpaths.iter() {
+            let dir: String = substitute_origin(dir);
+            let candidate: String = join_dir(&dir, filename);
+            if probe_exists(&candidate) {
+                // Apply the same canonicalization as the explicit-path
+                // branch above so callers that compare against already-
+                // loaded library names (which are stored canonically)
+                // don't see duplicates like `"./libfoo.so"` vs
+                // `"libfoo.so"`. A single leading "./" is stripped, but a
+                // leading "/" is preserved so that an absolute DT_RUNPATH
+                // entry (e.g. `"/usr/lib"`) keeps resolving against the
+                // filesystem root rather than the caller's CWD.
+                let canonical: String = canonicalize(&candidate);
+                ::syslog::debug!(
+                    "resolve_library_path(): resolved '{}' via DT_RUNPATH -> '{}'",
+                    filename,
+                    canonical
+                );
+                return canonical;
+            }
+        }
+    }
+
     // Clone the path list under the lock, then release it before probing
     // the filesystem (which involves I/O and should not hold a spinlock).
     let search_paths: Vec<String> = LIBRARY_SEARCH_PATHS.lock().clone();
     for dir in search_paths.iter() {
-        let candidate: String = alloc::format!("{}{}", dir, filename);
-        // Probe whether the file exists by attempting to open it.
-        if let Ok(_fd) = crate::safe::FileSystem::open_regular_file(
-            // FileSystemPath::new can fail for invalid names; skip on error.
-            &match crate::safe::FileSystemPath::new(&candidate) {
-                Ok(p) => p,
-                Err(_) => continue,
-            },
-            &crate::safe::RegularFileOpenFlags::read_only(),
-            None,
-        ) {
-            ::syslog::debug!("resolve_library_path(): resolved '{}' -> '{}'", filename, candidate);
-            return candidate;
+        let candidate: String = join_dir(dir, filename);
+        if probe_exists(&candidate) {
+            let canonical: String = canonicalize(&candidate);
+            ::syslog::debug!("resolve_library_path(): resolved '{}' -> '{}'", filename, canonical);
+            return canonical;
         }
     }
 
     // Fall back to the original name (will produce a clear error at open time).
     ::syslog::debug!("resolve_library_path(): no match for '{}', using as-is", filename);
     String::from(filename)
+}
+
+/// Normalizes a resolved candidate path to the canonical form used throughout
+/// the dlfcn layer (e.g. `"lib/libc.so"`), matching the explicit-path branch of
+/// [`resolve_library_path`]: a single leading `./` is stripped, but a leading
+/// `/` is preserved so that absolute paths (such as those produced from an
+/// absolute `DT_RUNPATH` entry) stay absolute and resolve against the
+/// filesystem root regardless of the caller's CWD. Returns the input unchanged
+/// if normalization would yield an empty string.
+fn canonicalize(path: &str) -> String {
+    let stripped: &str = match path.strip_prefix("./") {
+        Some(rest) => rest.trim_start_matches('/'),
+        None => path,
+    };
+    if stripped.is_empty() {
+        String::from(path)
+    } else {
+        String::from(stripped)
+    }
+}
+
+/// Joins a directory and filename without introducing duplicate separators.
+fn join_dir(dir: &str, filename: &str) -> String {
+    if dir.is_empty() {
+        return String::from(filename);
+    }
+    if dir.ends_with('/') {
+        alloc::format!("{}{}", dir, filename)
+    } else {
+        alloc::format!("{}/{}", dir, filename)
+    }
+}
+
+/// Substitutes `$ORIGIN` in a runpath entry. Nanvix has no per-process loader
+/// directory concept yet, so `$ORIGIN` is currently expanded to `"."` (the
+/// current working directory). This is a temporary approximation: the System V
+/// `ld.so` convention is to expand `$ORIGIN` to the directory containing the
+/// loading library, which Nanvix does not yet track per-library. Keeping a
+/// well-formed substitution (rather than the empty string) avoids producing
+/// invalid paths like `"//lib"` from entries such as `"$ORIGIN/lib"`.
+fn substitute_origin(entry: &str) -> String {
+    if !entry.contains("$ORIGIN") {
+        return String::from(entry);
+    }
+    entry.replace("$ORIGIN", ".")
+}
+
+/// Returns `true` if a regular file exists at `candidate`.
+fn probe_exists(candidate: &str) -> bool {
+    let path: crate::safe::FileSystemPath = match crate::safe::FileSystemPath::new(candidate) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    crate::safe::FileSystem::open_regular_file(
+        &path,
+        &crate::safe::RegularFileOpenFlags::read_only(),
+        None,
+    )
+    .is_ok()
 }
 
 /// Populates `GLOBAL_SYMBOL_TABLE` from the executable's `.dynsym`/`.dynstr`
