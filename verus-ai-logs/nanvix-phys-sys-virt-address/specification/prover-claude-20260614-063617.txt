@@ -757,3 +757,66 @@ The issue is that `is_aligned` calls `mm::is_aligned`, a dependency function wit
 Turn 37
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::sys::mm::address::virt 2>&1 | tail -22
+[RESULT ✓] bash: - is_aligned
+    - max_addr
+    - into_raw_value
+    - clone_address
+    - as_ptr
+    - as_mut_ptr
+    - fmt
+    - add
+    - add_assign
+    - from
+    - from
+    - from
+    - from
+
+=== Summary ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  cheating: assume=0...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '17,60p' verus-ai-logs/verify-sys/verus-logs/verus_2026-06-14_06-43-07.log
+[RESULT ✓] bash: --- Full output ---
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+error: cannot use function `sys::sys::mm::alignment::align_down` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/sys/src/sys/mm/address/virt.rs:1...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+Blanket-verifying the inherent block pulls in unlisted methods. I'll split the impl block (the phys.rs pattern): scoped functions in a `#[verus_verify]` block, unlisted ones in a plain block.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] The issue is that adding `#[verus_verify]` to the entire inherent impl block forces verification of the align_up, align_down, and is_aligned methods, but these call unverified functions from outside the verus! macro that have no specs, causing Verus to reject them as unusable in verified code.
+
+The fix is to split the impl block into two: one `#[verus_verify]` block containing only `new` and `from_raw_value`, and a separate plain impl block for the out-of-scope methods like align_up, align_down, is_aligned, checked_add, and checked_sub. This follows the same pattern used in phys.rs and keeps the unlisted functions untouched while allowing the scoped methods to be verified.
+[RESULT ✓] view: 47. #[verus_verify]
+48. impl VirtualAddress {
+49.     #[verus_spec(result =>
+50.         ensures
+51.             result@ == value as int,
+52.     )]
+53.     pub const fn new(value: usize) -> Self {
+54.         Self(value)
+55.     }
+56. 
+57.     ///
+58.     /// # Description
+59.     ///
+60.     /// I...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I need to restructure the impl blocks by closing the `#[verus_verify]` section after the `from_raw_value` method and then opening a new plain impl block for the remaining methods like `align_up`.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::sys::mm::address::virt 2>&1 | tail -15
