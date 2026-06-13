@@ -208,11 +208,19 @@ impl<T: Address> MemoryRegion<T> {
     }
 
     /// Returns the first valid address that lies in the target memory region.
+    #[verus_spec(result =>
+        ensures
+            result@ == self@.start,
+    )]
     pub fn start(&self) -> T {
         self.start.clone()
     }
 
     /// Returns the size of the target memory region.
+    #[verus_spec(result =>
+        ensures
+            result as int == self@.size,
+    )]
     pub fn size(&self) -> usize {
         self.size
     }
@@ -360,11 +368,19 @@ impl<T: Address> TruncatedMemoryRegion<T> {
     }
 
     /// Returns the first valid address that lies in the target memory region.
+    #[verus_spec(result =>
+        ensures
+            result@ == self@.start,
+    )]
     pub fn start(&self) -> PageAligned<T> {
         self.0.start()
     }
 
     /// Returns the size of the target memory region.
+    #[verus_spec(result =>
+        ensures
+            result as int == self@.size,
+    )]
     pub fn size(&self) -> usize {
         self.0.size()
     }
@@ -449,54 +465,6 @@ impl TruncatedMemoryRegion<PhysicalAddress> {
 //==================================================================================================
 // Material for verification
 //==================================================================================================
-
-#[cfg(verus_keep_ghost)]
-verus! {
-
-use crate::hal::mem::spec_page_size;
-
-pub struct MemoryRegionView
-{
-    pub start: int,
-    pub size: int,
-    pub typ: MemoryRegionType,
-    pub perm: AccessPermission,
-    pub cache_policy: Option<MmioCachePolicy>,
-}
-
-impl<T: Address + View<V = int>> View for MemoryRegion<T>
-{
-    type V = MemoryRegionView;
-
-    closed spec fn view(&self) -> MemoryRegionView
-    {
-        MemoryRegionView{
-            start: self.start@,
-            size: self.size as int,
-            typ: self.typ,
-            perm: self.perm,
-            cache_policy: self.cache_policy,
-        }
-    }
-}
-
-impl<T: Address + View<V = int>> View for TruncatedMemoryRegion<T>
-{
-    type V = MemoryRegionView;
-
-    closed spec fn view(&self) -> MemoryRegionView
-    {
-        self.0@
-    }
-}
-
-impl<T: Address + View<V = int>> TruncatedMemoryRegion<T>
-{
-    pub open spec fn inv(&self) -> bool
-    {
-        &&& self@.start % spec_page_size() == 0
-        &&& self@.size % spec_page_size() == 0
-    }
-}
-
-} // end verus!
+//
+// The View types, invariants, and dependency contracts live in `region.spec.rs`,
+// included at the top of this file. Proof material lives in `region.proof.rs`.
