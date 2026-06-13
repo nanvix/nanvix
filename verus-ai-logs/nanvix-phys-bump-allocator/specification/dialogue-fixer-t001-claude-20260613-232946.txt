@@ -455,3 +455,49 @@ I'm considering removing the `BssStorage` bound from `base_of` entirely since it
 Turn 32
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A4 -iE "warning|error|verification 
+[RESULT ✓] bash: Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+verification results:: 4 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.73s
+
+=== Results ===
+  4 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: ass...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+`as_mut_ptr` now carries a meaningful stability spec, 0 errors, kernel unaffected. Now confirm `alloc`/`alloc_as` cannot be specified under the hard rules. Let me verify the TCB allowlist excludes them:
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/tcb-allowed.md 2>/dev/null | head -60; echo "=== grep bump ==="; grep -in
+
+[THINKING] The warning's resolved and `as_mut_ptr` now has a proper stability specification. The remaining blockers are the alloc and alloc_as contracts that need documentation. I'm noticing the coverage is still at 1/6 though — the tool might not be counting trait method declarations like `as_mut_ptr`, but the reviewer needs at least 4 contracts covered.
+
+I'm hitting a fundamental wall with alloc and alloc_as: the raw pointer cast from `usize` to `*mut [u8;N]` can't be reasoned about in the verification system. I've considered refactoring into a helper function, using vstd's raw pointer utilities, or adding an external_body contract, but none of these actually solve the underlying permission problem — there's no way to establish ownership over the backend memory. Let me check what's actually allowed in the tcb-allowed list to be thorough about this.
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref`
+- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref_mut`
+- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::clear`
+
+## ...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Confirmed: `alloc`/`alloc_as` are not in the TCB allowlist (external_body forbidden). Let me capture `alloc_as`'s specific blocker error for the report:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] The bump_allocator functions aren't in the allowed list, so I can't use external_body for them, and their implementations have unsupported raw pointer casts anyway. Let me verify this holds across different approaches by testing the vstd::raw_ptr method on alloc and adding a contract to alloc_as as well.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A5 -iE "does not yet support|error\

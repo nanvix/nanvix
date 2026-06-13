@@ -1,0 +1,26 @@
+Timestamp: 2026-06-13_23-36-52
+Mode: cargo
+Crate: bump-allocator
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=3
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+error: The verifier does not yet support the following Rust feature: dereferencing a raw pointer. Currently, Verus only supports raw pointers through the permissioned raw_ptr interface: https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html
+   --> src/libs/bump_allocator/src/lib.rs:335:26
+    |
+335 |         Ok(unsafe { &mut *(slot.as_mut_ptr() as *mut MaybeUninit<T>) })
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: could not compile `bump-allocator` (lib) due to 1 previous error
