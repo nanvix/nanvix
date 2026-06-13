@@ -1,0 +1,160 @@
+Timestamp: 2026-06-14_03-38-40
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=10
+  trusted=0
+  no_decreases=0
+  cfg_gate=10
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |
+188 |               let _ = write!(
+    |  _____________________^
+189 | |                 &mut crate::klog::Klog::get(
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+...   |
+194 | |                 $($arg)*
+195 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:140:17
+    |
+140 |                   error!("{error:?}");
+    |                   ------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |
+188 |               let _ = write!(
+    |  _____________________^
+189 | |                 &mut crate::klog::Klog::get(
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+...   |
+194 | |                 $($arg)*
+195 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:212:17
+    |
+212 |                   error!("{error:?} (count={count})");
+    |                   ----------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |
+188 |               let _ = write!(
+    |  _____________________^
+189 | |                 &mut crate::klog::Klog::get(
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+...   |
+194 | |                 $($arg)*
+195 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:292:13
+    |
+292 |               error!("{reason} (frame={frame:?})");
+    |               ------------------------------------ in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |
+188 |               let _ = write!(
+    |  _____________________^
+189 | |                 &mut crate::klog::Klog::get(
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+...   |
+194 | |                 $($arg)*
+195 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:369:13
+    |
+369 |               error!("{reason} (frame={frame:?})");
+    |               ------------------------------------ in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |
+188 |               let _ = write!(
+    |  _____________________^
+189 | |                 &mut crate::klog::Klog::get(
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+...   |
+194 | |                 $($arg)*
+195 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:428:13
+    |
+428 |               error!("{reason} (frame={frame:?})");
+    |               ------------------------------------ in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |
+188 |               let _ = write!(
+    |  _____________________^
+189 | |                 &mut crate::klog::Klog::get(
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+...   |
+194 | |                 $($arg)*
+195 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:484:17
+    |
+484 |                   error!("{error:?} (phys_addr={phys_addr:?})");
+    |                   --------------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |
+188 |               let _ = write!(
+    |  _____________________^
+189 | |                 &mut crate::klog::Klog::get(
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+...   |
+194 | |                 $($arg)*
+195 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:574:17
+    |
+574 |                   error!("{} (frame={:#010x}, region={:?})", reason, uncovered_addr, region);
+    |                   -------------------------------------------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: could not compile `kernel` (bin "kernel") due to 7 previous errors
