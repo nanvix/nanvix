@@ -1,0 +1,30 @@
+RESOLVED
+
+All 17 specification-phase checklist items are PASS or FIXED with evidence
+(see turn_003_driver.md).
+
+Key resolutions across the dialogue:
+- Fix A: init Err arm `Err(_) => true` → `Err(_) => phys_view().manager_ready`
+  (sound; Err only on double-init). Tautology removed.
+- Fix B: alloc_many_kernel_frames restored physical contiguity
+  (kernel_frames_contiguous) and Err no-leak (frames@.len()==0); backing lemma
+  strengthened.
+- Fix C: alloc_many_user_frames restored frame distinctness
+  (user_addr_set(frames).len()==count); backing lemma strengthened; OBS-2 recorded.
+- Fix D2: alloc_kernel_frame — the unsound Err clause `old(self)@.free_count()==0`
+  and its unconditionally-false admitted lemma lemma_kernel_alloc_err_empty were
+  removed; Err arm is now the strongest sound statement `final(self)@ == old(self)@`
+  (the free_count==0 liveness fact is inexpressible at FrameAllocView because the
+  KernelFrame::new wrap-failure Err mode is invisible to the view). OBS-3 resolved.
+
+Final verification (reviewer-run, not trusted from fixer):
+- make verify-kernel: Exit 0; all phys modules verified.
+- cheating: assume=0 external_body=24 (2 in manager, both TCB-allowed) admit=10
+  (8 in manager.proof.rs, all deferred-but-TRUE; per-lemma soundness audited in
+  turn 3) trusted=0.
+- ./z build -- check-kernel: build-finished success:true, Exit 0.
+- grep "free_count() == 0" manager.rs: no match.
+- grep lemma_kernel_alloc_err_empty: no match (lemma + both call sites gone).
+
+No remaining FAIL items. Bugs recorded in bugs.md (OBS-1, OBS-2 as proving-phase
+obligations; OBS-3 resolved in spec phase).

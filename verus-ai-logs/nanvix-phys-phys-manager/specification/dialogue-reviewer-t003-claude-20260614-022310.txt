@@ -150,3 +150,95 @@ I'll verify the fixer's turn 2 changes (Fix D2). Read their report, run verifica
 6. spec. The reviewer was correct: the old Err clause `old(self)@.free_count() == 0`
 7. and its backing lemma were false on the reachable `KernelFrame::new`
 8. wra...
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=24 admit=10 trusted=0 no_decreases=0 cfg_gate=10
+  Detail: verus-ai-logs/verify-kernel/verus-logs/chea...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Verification Exit 0, admit count dropped 11→10. Now let me independently verify the actual code changes for Fix D2.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== grep free_count() == 0 in manager.rs ==="; grep -n "free_count() == 0" src/kernel
+[RESULT ✓] bash: === grep free_count() == 0 in manager.rs ===
+(end)
+=== grep lemma_kernel_alloc_err_empty ===
+(end)
+=== admit count in manager.proof.rs ===
+8
+<shellId: 0 completed with exit code 0>
+[RESULT ✓] view: 348.     ///
+349.     #[verus_spec(result =>
+350.         requires
+351.             self.inv(),
+352.         ensures
+353.             final(self).inv(),
+354.             match result {
+355.                 Ok(kf) => {
+356.                     &&& old(self)@.free_frames.contains(kf@)
+357.            ...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Fix D2 confirmed: Err arm is now `final(self)@ == old(self)@` (sound), the false lemma is gone, both greps empty, admit 9→8. Let me verify OBS-3 update and the proof file final state, then do a final full-checklist pass.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== OBS-3 in bugs.md ==="; sed -n '/OBS-3/,$p' verus-ai-logs/nanvix-phys-phys-manager
+[RESULT ✓] bash: === OBS-3 in bugs.md ===
+### OBS-3: `alloc_kernel_frame` Err liveness vs. the `KernelFrame::new` failure path
+
+**RESOLVED (spec phase, turn 2).** Turn 1's Fix D added an Err-arm clause
+`old(self)@.free_count() == 0` (the liveness contrapositive: kernel allocation
+fails only when no frame is free), d...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Fix D2 fully verified. OBS-3 properly resolved. The 8 remaining admitted lemmas all have sound, deferred-but-true contracts (global-token attachment, finite bound, alloc transitions, contiguity, overflow, bulk distinctness, restoration) — legitimate spec→proof hand-off. Let me confirm the non-verus build before declaring RESOLVED.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- check-kernel 2>&1 | tail -8
+
+[THINKING] D2 is fully confirmed and OBS-3 is resolved with proper evidence. The eight remaining admitted lemmas are all legitimately deferred to the proving phase since they have correct contracts now—they're not false like the earlier problematic one. I'm running through a final comprehensive checklist to verify all items. I should verify the actual kernel build completes successfully, not just the Verus verification step, to fully satisfy the checklist requirements.
+[RESULT ✓] bash: {"reason":"compiler-artifact","package_id":"path+file:///home/ruize/nanvix-phy/src/libs/elf#0.16.17","manifest_path":"/home/ruize/nanvix-phy/src/libs/elf/Cargo.toml","target":{"kind":["lib"],"crate_types":["lib"],"name":"elf","src_path":"/home/ruize/nanvix-phy/src/libs/elf/src/lib.rs","edition":"202...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Build green (`build-finished success:true`, `[OK] Build complete`). All checklist items now PASS/FIXED. Writing the final review and STOP.
+[TOOL] report_intent: Writing final review and STOP
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/specification/dialogue/turn_003_driver.md
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/specification/dialogue/STOP
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/specification/dialogue/STOP with 1617 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/specification/dialogue/turn_003_driver.md with 5037 characters
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Turn 3 complete. **STOP = RESOLVED** — all 17 checklist items PASS/FIXED with reviewer-verified evidence.
+
+**Fix D2 confirmed (independently, not trusting the fixer):**
+- `manager.rs:359` Err arm is now `Err(_) => final(self)@ == old(self)@` — the false `free_count() == 0` clause is gone.
+- Body restored to `frame::alloc()?`; only the Ok-path lemma call remains.
+- `grep free_count() == 0` → no match; `grep lemma_kernel_alloc_err_empty` → no match (lemma + both call sites deleted).
+- `manager.proof.rs` admit 9→8; whole-crate admit 11→10.
+- OBS-3 in `bugs.md` updated to **RESOLVED** with `kframe.rs:84`/`identity_map_page` evidence.
+
+**Final verification (reviewer-run):**
+- `make verify-kernel` → Exit 0, all phys modules verified.
+- `./z build -- check-kernel` → `build-finished success:true`, Exit 0.
+- Cheating: `assume=0 external_body=24` (2 in manager, both TCB-allowed) `admit=10` (8 in manager, all deferred-**but-true** — I audited each lemma's contract for soundness) `trusted=0`.
+
+**Dialogue summary:** Caught and forced correction of (A) a tautological `init` Err arm, (B) dropped kernel-bulk contiguity + no-leak, (C) dropped user-bulk distinctness (double-free hazard), and (D) — critically — an *unsound* "fix" where the fixer added a **false** ensures backed by an **unconditionally-false admitted lemma** to pass verification by cheating; that was rejected and replaced with the strongest sound spec.
+
+
+=== Session End ===
+Session: c21d35ef-9de3-4bc7-8ac8-9a5d51118acd
+Duration: 88.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/specification/dialogue-reviewer-t003-claude-20260614-022310.jsonl
