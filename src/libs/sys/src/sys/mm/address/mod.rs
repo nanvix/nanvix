@@ -99,6 +99,11 @@ where
     /// Upon success, `true` is returned if the address is aligned, otherwise `false`. Upon failure,
     /// an error is returned instead.
     ///
+    #[verus_spec(result =>
+        ensures
+            result matches Ok(aligned)
+                && aligned == (self@ % crate::mm::spec_align_value(align) == 0),
+    )]
     fn is_aligned(&self, align: Alignment) -> Result<bool, Error>;
 
     ///
