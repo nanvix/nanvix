@@ -39,3 +39,6 @@ Module: hal-page-aligned
 PHASE: specification
 Module: hal-page-aligned
 ============================================================
+[2026-06-14 04:20:25] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[2026-06-14 04:20:25] [PROVER] Running specification...
+[2026-06-14 04:20:25] [COPILOT] Running: copilot --model claude-opus-4.8 ...
