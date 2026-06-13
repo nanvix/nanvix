@@ -701,3 +701,203 @@ Now let me run the verification for `mm::phys`.
 [THINKING] I'm looking at how the `drop` method handles the `e` binding when `verus_keep_ghost` is enabled — the error logging gets cfg-gated out, leaving `e` unused in that branch. UserFrame has the same pattern, and while it compiles fine, there might be an unused variable warning depending on how the cfg gates interact with the binding.
 
 Now I need to verify the same pattern in mm::phys.
+[RESULT ✓] bash: - frame.rs:817 share: external_body
+    - frame.rs:838 refcount: external_body
+    - kframe.rs:95 new: external_body
+    - manager.proof.rs:12 lemma_manager_attached: admit
+    - manager.proof.rs:21 lemma_free_count_bounded: admit
+    - manager.proof.rs:36 lemma_kernel_alloc_one: admit
+    - manager...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Verification passes: **27 verified, 0 errors**. `base` and `drop` are now verified; `new` is `external_body` (listed in tcb-allowed.md). The `CHEATING_DETECTED` status reflects the pre-existing `admit()`/`external_body` items (all tcb-approved) — expected during the spec phase. Let me confirm my additions are all tcb-approved and check the detail.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -iE "kframe" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null
+
+[THINKING] All 27 items are now verified with no errors—`base` and `drop` have been cleared from the unverified list, and `new` is properly marked as external_body which is allowed in the trusted code base. The "CHEATING_DETECTED" status is a false positive triggered by pre-existing external_body and admit counts from other modules that are already approved. not a failure condition. The task explicitly allows admits in proofs, and all my additions (the new external_body and cfg_gate for logging) are pre-approved in tcb-allowed.md. I should verify the cheating-detail doesn't flag anything unapproved, then run the full verification and build to confirm everything passes. I should double-check one detail to be safe, then proceed with running the build and full verification.
+[RESULT ✓] bash: - mm/phys/kframe.rs:95 new: external_body
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Only `new: external_body` (tcb-approved). Now let me verify dual compilation with `make build` and run the full `make verify` for regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make build 2>&1 | tail -25
+
+[THINKING] The only kframe entry flagged is `new: external_body` which is already in the allowed list, and the cfg_gate for drop's error isn't causing issues either. Now I'm running the build to confirm dual compilation works, then I'll run the full regression verification.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: build1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^build:|^all:|^build-kernel|kernel.*:" Makefile | grep -iE "build" | head
+[RESULT ✓] bash: 
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^[a-zA-Z0-9_-]+:" Makefile | grep -iE "build|kernel|all" | head -20
+[RESULT ✓] bash: 411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+458:clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanv...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,60p' .github/skills/build/SKILL.md
+
+[THINKING] I need to check the build skill to understand how the actual compilation works—there's no plain `make build` target, so the real build must be happening through `./z build` or cargo directly. Let me look at what the build skill does to verify the dual compilation setup.
+[RESULT ✓] bash: ---
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+Let me build the kernel (normal compilation, confirming Verus erasure) via `./z build -- kernel`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 ./z build -- kernel 2>&1 | tail -30
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: build2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^[a-zA-Z0-9_./-]+:" Makefile | grep -iE "kernel" | head -20
+[RESULT ✓] bash: 424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+458:clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-test clean-test-kernel-ramfs standalone-images-clean
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel:...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "build-kernel|KERNEL_BIN|kernel:|all-kernel|nanvix-kernel" Makefile | head; echo "
+[RESULT ✓] bash: 420:	all-kernel \
+624:verify-kernel: ensure-verus
+---z help---
+
+Main Build Targets
+  all          Build everything (default target)
+  clean        Remove build artifacts and intermediate files
+  distclean    Cleans everything
+  help         Show this help message
+  test         Run unit and system t...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 ./z build -- all-kernel 2>&1 | tail -30
+
+[THINKING] I'll build the `all-kernel` target to verify the compilation works as expected.
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+A duplicate `vstd::prelude` import (lines 14 and 32) errors under `-D warnings`. Let me check if this is pre-existing by testing the baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git stash list; echo "---diff stat---"; git --no-pager diff --stat; echo "---stash & build 
+
+[THINKING] I'm noticing there are duplicate imports—one at line 14 using `vstd::prelude::*` and another at line 32 using `::vstd::prelude::*`—and the compiler is now flagging the second one as unused. This might be related to how the `error!` macro was previously being used before it got cfg-gated out. Let me check the baseline build to see if this duplicate import issue existed before my changes. I'll stash my modifications and rebuild to confirm whether the error is pre-existing or something I introduced. Looking back at the original file structure, line 14 has `use vstd::prelude::*;` and line 32 appears to have another import — I need to verify exactly what was there and whether the baseline build actually passed with these duplicate imports. Before making any changes, I should verify whether this build failure is pre-existing or something I introduced. Let me stash my changes and run the baseline build to confirm the actual state.
+[RESULT ✓] bash: ---diff stat---
+ .../prover-claude-20260614-031413.jsonl            | 181 +++++++++++++++++++++
+ .../prover-claude-20260614-031413.txt              | 116 +++++++++++++
+ 2 files changed, 297 insertions(+)
+---stash & build baseline---
+No local changes to save
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short src/kernel/src/mm/phys/ ; echo "---is kframe tracked?---"; git ls-files 
+
+[THINKING] The kframe.rs and kframe.spec.rs changes aren't showing up in the diff, which suggests they might not be tracked by git or are already committed. I should check the git status directly to see what's happening with those files.
+[RESULT ✓] bash: ---is kframe tracked?---
+src/kernel/src/mm/phys/kframe.rs
+---check ignored---
+<shellId: 31 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager diff src/kernel/src/mm/phys/kframe.rs | head -20; echo "=== HEAD vs working 
+
+[THINKING] The kframe.rs file is tracked, but git status shows no changes in the phys directory even though I edited it—that doesn't add up. Let me check the actual file content and run git diff to see what's really going on.
+[RESULT ✓] bash: === HEAD vs working ===
+=== grep duplicate import ===
+14:use vstd::prelude::*;
+32:use ::vstd::prelude::*;
+<shellId: 32 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager log --oneline -5; echo "=== show new at line 95 ==="; sed -n '90,106p' src/k
+
+[THINKING] I'm noticing that `git diff` shows no changes even though I edited the file, which is strange. The duplicate import that's showing up was already in HEAD, so that's not from my changes. Let me check if my edits to kframe.rs actually persisted by viewing the file directly around the new/base/drop section.
+
+Actually, wait — if `git diff` shows nothing for the phys directory but my verify run picked up the changes I made (base/drop verified, new external_body at line 95), then my edits must be in the working tree. Could the repo have been auto-committed? Let me check the recent commit history.
+[RESULT ✓] bash: 3d36c5197 [verus] verify PASS (cheating detected): kernel::mm::phys (27 verified, 0 errors, admit=10 external_body=26 cfg_gate=10)
+6c3f804d9 [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+6c041f40d [verus-ai] specification strip-external-body: phys-kf...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+The verify script auto-commits, so my changes are committed. The duplicate `vstd::prelude` import (lines 14 and 32) is pre-existing and breaks the normal build under `-D warnings`. The sibling `upool.rs` has only a single import. Let me remove the redundant duplicate.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] The verify script auto-commits after each run, so my changes are already committed in that last verification pass. That explains why git diff shows nothing. Now I'm hitting a duplicate import issue during the build — there's an unused import of `::vstd::prelude::*` at line 32 that mirrors line 14. I need to check if this was already failing before my changes by looking at the baseline commit.
+
+Actually, the duplicate import existed in the original file before my spec work started. The question is whether the baseline build passed despite this duplicate. Since Rust deduplicates imports but flags the second one as unused, this would likely fail at baseline too unless the kernel was never compiled with warnings-as-errors. The simplest fix is to remove the redundant line 32 import — it's identical to line 14, so removing it is a safe cleanup with no semantic impact. Actually, I realize the real issue: in normal build, the `verus` attribute macro processes the vstd import differently. Other modules like upool.rs have the same unconditional `use vstd::prelude::*;` but don't error because the verus macro handles it. So the duplicate at line 32 is what's causing the redundancy warning. I should remove just that one line to fix the build while keeping the required unconditional import at line 14. The duplicate import was already there at baseline, so fixing it is necessary for the build to work. I'll delete line 32 now.
+[RESULT ✓] view: 26. use ::arch::mem;
+27. use ::core::ops::{
+28.     Deref,
+29.     DerefMut,
+30. };
+31. use ::sys::error::Error;
+32. use ::vstd::prelude::*;
+33. 
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 ./z build -- all-kernel 2>&1 | tail -20
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+Normal build passes. Let me re-verify `mm::phys` (the duplicate-import removal shouldn't affect Verus since line 14 remains), then run the full `make verify`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+
+[THINKING] The normal build is passing, so I should verify that removing the duplicate import didn't break the verus verification. Since upool.rs works fine with a single vstd import, keeping just line 14 should be safe—let me run the verify command for mm::phys to confirm, then proceed with the full make verify.
