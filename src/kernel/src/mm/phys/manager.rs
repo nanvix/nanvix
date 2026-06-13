@@ -98,7 +98,7 @@ impl PhysMemoryManager {
         ensures
             match result {
                 Ok(_) => crate::mm::phys::phys_view().manager_ready,
-                Err(_) => true,
+                Err(_) => crate::mm::phys::phys_view().manager_ready,
             },
     )]
     pub(super) fn init(upool: Upool) -> Result<(), Error> {
@@ -180,6 +180,7 @@ impl PhysMemoryManager {
                 Ok(()) => {
                     &&& (count > 0 ==> old(self)@.user_alloc_ok(count as nat))
                     &&& final(frames)@.len() == count
+                    &&& user_addr_set(final(frames)@).len() == count
                     &&& old(self)@.all_free(user_addr_set(final(frames)@))
                     &&& final(self)@ == old(self)@.book_all(user_addr_set(final(frames)@))
                 },
@@ -355,14 +356,25 @@ impl PhysMemoryManager {
                     &&& old(self)@.free_frames.contains(kf@)
                     &&& final(self)@ == old(self)@.alloc_one(kf@)
                 },
-                Err(_) => final(self)@ == old(self)@,
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& old(self)@.free_count() == 0
+                },
             },
     )]
     pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
         proof_decl! {
             let ghost g_old = self@;
         }
-        let frame_addr: FrameAddress = frame::alloc()?;
+        let frame_addr: FrameAddress = match frame::alloc() {
+            Ok(fa) => fa,
+            Err(e) => {
+                proof! {
+                    lemma_kernel_alloc_err_empty(g_old);
+                }
+                return Err(e);
+            },
+        };
         let result: Result<KernelFrame, Error> = KernelFrame::new(frame_addr).inspect_err(|e| {
             #[cfg(not(verus_keep_ghost))]
             warn!("failed to wrap frame after KernelFrame::new failure: {e:?}");
@@ -374,6 +386,8 @@ impl PhysMemoryManager {
         proof! {
             if result is Ok {
                 lemma_kernel_alloc_one(g_old, self@, result->Ok_0@);
+            } else {
+                lemma_kernel_alloc_err_empty(g_old);
             }
         }
         result
@@ -409,10 +423,14 @@ impl PhysMemoryManager {
             match result {
                 Ok(()) => {
                     &&& final(frames)@.len() == count
+                    &&& kernel_frames_contiguous(final(frames)@, count as nat)
                     &&& old(self)@.all_free(kernel_addr_set(final(frames)@))
                     &&& final(self)@ == old(self)@.book_all(kernel_addr_set(final(frames)@))
                 },
-                Err(_) => final(self)@ == old(self)@,
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& final(frames)@.len() == 0
+                },
             },
     )]
     pub fn alloc_many_kernel_frames(

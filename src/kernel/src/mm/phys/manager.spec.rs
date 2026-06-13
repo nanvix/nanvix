@@ -119,4 +119,14 @@ pub open spec fn kernel_addr_set(frames: Seq<KernelFrame>) -> Set<int> {
     Set::new(|a: int| exists|i: int| 0 <= i < frames.len() && #[trigger] frames[i]@ == a)
 }
 
+/// The first `count` kernel-frame handles in `frames` occupy a physically contiguous, page-aligned
+/// run: there is a page-aligned `base` such that handle `i` owns `base + i * page_size`. This is the
+/// identity-map contiguity guarantee that kernel-stack callers (`alloc_kpages`) depend on.
+pub open spec fn kernel_frames_contiguous(frames: Seq<KernelFrame>, count: nat) -> bool {
+    exists|base: int|
+        #![trigger crate::mm::phys::region_frame_addrs(base, (count * spec_page_size()) as int)]
+        base % spec_page_size() == 0 && forall|i: int|
+            0 <= i < count ==> #[trigger] frames[i]@ == base + i * spec_page_size()
+}
+
 } // verus!

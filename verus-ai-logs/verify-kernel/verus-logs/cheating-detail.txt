@@ -17,13 +17,14 @@
     - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
     - mm/phys/manager.proof.rs:21 lemma_free_count_bounded: admit
     - mm/phys/manager.proof.rs:36 lemma_kernel_alloc_one: admit
-    - mm/phys/manager.proof.rs:49 lemma_kernel_alloc_contiguous: admit
-    - mm/phys/manager.proof.rs:70 lemma_contig_no_overflow: admit
-    - mm/phys/manager.proof.rs:87 lemma_user_bulk_ok: admit
-    - mm/phys/manager.proof.rs:107 lemma_user_bulk_err_restored: admit
-    - mm/phys/manager.proof.rs:117 lemma_kernel_bulk_err_restored: admit
+    - mm/phys/manager.proof.rs:54 lemma_kernel_alloc_err_empty: admit
+    - mm/phys/manager.proof.rs:65 lemma_kernel_alloc_contiguous: admit
+    - mm/phys/manager.proof.rs:87 lemma_contig_no_overflow: admit
+    - mm/phys/manager.proof.rs:104 lemma_user_bulk_ok: admit
+    - mm/phys/manager.proof.rs:125 lemma_user_bulk_err_restored: admit
+    - mm/phys/manager.proof.rs:135 lemma_kernel_bulk_err_restored: admit
     - mm/phys/manager.rs:104 init: external_body
-    - mm/phys/manager.rs:510 kernel_watermark: external_body
+    - mm/phys/manager.rs:528 kernel_watermark: external_body
     - mm/phys/mod.proof.rs:9 lemma_frame_initialized: admit
     - mm/phys/mod.proof.rs:22 lemma_manager_ready: admit
     - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
