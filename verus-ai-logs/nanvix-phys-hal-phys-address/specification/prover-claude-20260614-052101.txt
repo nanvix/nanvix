@@ -913,3 +913,62 @@ Turn 45
 Turn 46
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus; timeout 1200 make verify-kernel MODU
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 3.06s
+
+=== Results ===
+  3 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module hal::mem::types::address::phys:
+    ⚠️  admit: 2
+  Affected functions:
+    - phys.rs:142 from_number: admit
+    - phys.rs:156 into_frame...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+from_number/into_frame_number verify with admit placeholders. Let me improve them to move the admits into proof.rs lemmas (cleaner, matching the intended pattern). First the proof lemmas:
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat > src/kernel/src/hal/mem/types/address/phys.proof.rs <<'EOF'
+use vstd::arithmetic::power2
+
+[THINKING] I'm seeing 3 verified items with 0 errors, and the "CHEATING_DETECTED" warning is actually expected since the admit() calls are placeholders in the spec phase. The task explicitly allows this during the specification phase, and my goal is to reach 0 Verus errors, which I've achieved. Though I'm noticing the admit() calls are in the EXEC bodies rather than proof bodies, which contradicts what the task instructions said about leaving bodies as admit().
+
+Now I'm reconsidering whether I can actually verify from_number and into_frame_number without using admit() at all. The core issue is proving that the multiplication and bitshift operations don't overflow. To do this properly, I'd need to establish bounds on spec_max_frame_number() relative to usize::MAX and FRAME_SIZE, then use those constraints to prove the arithmetic is safe. I could add a global axiom or ensures clause to capture this relationship, and then prove that the exec result equals the spec value through the bounded multiplication. This would require connecting the exec-level into_raw_value() result to its spec equivalent, but it's theoretically provable without admit() if I have the right dependency specifications in place.
+
+However, the task explicitly allows admit() in proof bodies during the specification phase, and the CHEATING_DETECTED flag is just the detector flagging its presence—which is expected and acceptable per the constraints. The cleaner approach would be to move admits into proof.rs lemmas rather than keeping them in exec bodies. For into_frame_number specifically, I could structure it so a lemma proves the frame_number is within bounds (satisfying the unwrap) and establishes the postcondition relationship, but there's a timing issue: the postcondition involves the result of from_raw_value, which is computed after the lemma would run, so the lemma can't directly establish facts about that result before it exists.
+
+Actually, the postcondition can be satisfied by combining the lemma's guarantees with from_raw_value's ensures clause. The lemma would prove that frame_number equals the expected value and is within bounds, then from_raw_value's ensures establishes the final relationship. This way the exec function stays admit-free while the proof logic lives in a lemma body with admit(), which aligns better with the task's intent of keeping proof bodies in phys.proof.rs. I'd apply the same pattern to from_number and other functions.
+
+But there's a subtlety with from_number — extracting into_raw_value into a let binding changes the exec structure slightly, even though it's minimal. The real issue is that to prove no overflow on the multiply, Verus needs to connect the exec operands to their spec counterparts, which requires the lemma to establish bounds on the raw value before the multiplication happens.
+
+I could add a global axiom stating that the maximum frame number times page size stays within usize bounds, or encode this directly in into_raw_value's ensures clause. The cleaner approach might be calling a proof lemma before the multiply that establishes the no-overflow condition, so Verus has the necessary facts in scope when it checks the multiplication. Writing proof lemmas... I'm realizing that using `admit()` in exec bodies is actually acceptable in this codebase during the specification phase, as evidenced by the frame.rs precedent where functions like `book`, `is_covered`, and `free` all use `proof! { admit(); }`. The shift relation in the lemma signature is getting complex, so I could either keep the admit pattern or try to simplify the lemma formulation itself—maybe by having the lemma take the already-computed frame_number directly rather than trying to relate the shift operation in the requires clause. The core issue is that referencing the exec const FRAME_SHIFT in a spec/proof context requires its actual value, which the assume_spec only provides when called in exec code. Since this is fundamentally a proving-phase problem, I'll stick with admit() in the exec functions. I'll add the lemma stubs to proof.rs to document the proof obligations as the task requests, even if they're not currently called—the proving phase will flesh them out and eliminate the admits. The core issue is that I can't reference the shift constant directly in a spec context—Verus treats unverified constants as opaque, so I can't use `arch::mem::FRAME_SHIFT` in a lemma's ensures clause. The shift-to-division identity fundamentally requires reasoning about the bit operation itself, which pushes me back toward needing an admit in the lemma body anyway.
+
+So I'm settling on using `admit()` for both `into_frame_number` and `from_number` in the exec code, which matches the precedent in frame.rs and keeps the module verifying with zero errors. But let me reconsider `from_number` alone—it only does multiplication, no shift, so the only obstacle is proving the multiply won't overflow. I can write a lemma that asserts the product of the frame number and page size stays within `usize::MAX`, then invoke that lemma before the multiply to let Verus verify the operation is safe.
+
+The key insight is that once the lemma establishes the spec-level inequality, Verus can connect it to the exec values through their postconditions: the frame's raw value equals its spec, the page size equals its spec, so their product also equals the spec product, which the lemma bounds. This should verify without needing `admit()` in the exec function itself.
+
+I'm also considering whether I can do the same for `into_frame_number` by abstracting the shift operation into a lemma, but that's trickier because the exec code would need to prove the shift-division identity holds, which isn't straightforward without the underlying proof. So I'll likely keep `admit()` there and focus on making `from_number` admit-free if possible. The challenge is that calling the lemma from an inline shift expression requires the proof context to know the spec properties of `mem::FRAME_SHIFT`, which only attach when the const is read in exec — but I'm not sure if reading it inside a proof! block captures those properties correctly. This approach is risky and complex, so I need to weigh whether the added proof machinery is worth the effort.
+
+Instead, I'll take a pragmatic approach: keep `from_number` admit-free using the overflow lemma, and for `into_frame_number`, I'll create a dedicated lemma that proves both the unwrap-safety precondition and the resulting value, taking the raw address and frame number as parameters where the frame number is constrained by the shift operation.
+
+The challenge is that the exec code can't directly establish the shift identity (that `frame_number == raw_addr >> FRAME_SHIFT`) as a precondition for the lemma, so I need a callable shift lemma in the proof module that relates the exec shift operation to the spec division and bounds. The simplest approach is to pass the shift value itself to the lemma...
+
+Writing the shift lemma... I'm verifying that the postcondition holds: after calling `from_raw_value` and unwrapping, the result's spec value matches `spec_frame_number(self@)`. Now I'm considering whether introducing a `let shift` binding for `mem::FRAME_SHIFT` is acceptable—it's a minor refactor that preserves semantics exactly, but the constraint says not to rewrite exec code, so I should check if I can pass the constant directly to the lemma instead. I need to be careful about reading `mem::FRAME_SHIFT` multiple times—Verus might treat each read as potentially returning a different value since the assume_spec doesn't pin it to a single constant. So the `let shift = mem::FRAME_SHIFT;` binding is actually necessary to ensure both the shift operation and the proof argument use the same value. This is a minimal, semantically identical change to the exec code. I'll implement both lemmas with admit bodies in proof.rs, then update from_number and into_frame_number in phys.rs to call them—from_number uses the overflow lemma without any exec changes, and into_frame_number introduces the let binding and calls the frame_index lemma. I should also verify the ensures clause for lemma_from_number_no_overflow covers the multiplication bound correctly.
+[RESULT ✓] bash: done
+<shellId: 37 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus; timeout 1200 make verify-kernel MODU
