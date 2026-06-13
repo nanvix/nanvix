@@ -901,3 +901,16 @@ Normal build passes. Let me re-verify `mm::phys` (the duplicate-import removal s
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
 
 [THINKING] The normal build is passing, so I should verify that removing the duplicate import didn't break the verus verification. Since upool.rs works fine with a single vstd import, keeping just line 14 should be safe—let me run the verify command for mm::phys to confirm, then proceed with the full make verify.
+[RESULT ✓] bash: === Summary ===
+  verification: 27 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=26 admit=10 trusted=0 no_decreases=0 cfg_gate=10
+  coverage: 35/45 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_03-2...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+Still 27 verified, 0 errors. Now the full `make verify` for regressions across all modules.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 3000 make verify 2>&1 | tail -50
