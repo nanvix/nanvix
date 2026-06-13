@@ -746,3 +746,29 @@ Just a struct-literal parenthesization issue. Coverage shows 3/6 (align_up, allo
 Turn 34
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-bump-allocator 2>&1 | sed -n '/Checking bump/,/Log written/p' | hea
+[RESULT ✓] bash: Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+error[E0308]: mismatched types
+    --> src/libs/bump_allocator/src/lib.spec.rs:41:44
+     |
+  41 |         let m = ((value + alignment - 1) / alignment) * alignment;
+     |                  --------------------------^^...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Verus `nat - nat` yields `int`. Let me fix the type handling:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+
+[THINKING] I'm running into type mismatches between nat and int in the `align_up_spec` function. The issue is that when I subtract 1 from alignment (which is a nat), Verus handles it with saturating subtraction, but then the whole expression `value + alignment - 1` stays as nat type. When I divide by alignment and multiply back, the type system is getting confused about what the result should be. I see the issue now — in Verus, `nat - nat` produces `int` to handle potential negativity, so `value + alignment - 1` becomes `int`. That means the whole expression `((value + alignment - 1) / alignment) * alignment` evaluates to `int`, not `nat`. I need to compute everything in `int` and then cast the final result back to `nat` with `Some(m as nat)`, since the value will be non-negative anyway. For the modulo check in `inv()`, I also need to cast `stride` to `int` before the modulo operation so both operands match — `(self.stride as int) % (self.unit_align as int) == 0` — ensuring the comparison works correctly.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-bump-allocator 2>&1 | sed -n '/Checking bump/,/Log written/p' | hea

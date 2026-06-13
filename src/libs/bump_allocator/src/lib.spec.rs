@@ -38,11 +38,11 @@ pub open spec fn align_up_spec(value: nat, alignment: nat) -> Option<nat> {
     if alignment == 0 {
         None
     } else {
-        let m = ((value + alignment - 1) / alignment) * alignment;
-        if m > usize::MAX as nat {
+        let m: int = ((value + alignment - 1) / (alignment as int)) * (alignment as int);
+        if m > usize::MAX as int {
             None
         } else {
-            Some(m)
+            Some(m as nat)
         }
     }
 }
@@ -101,7 +101,7 @@ impl BumpView {
         // (b) Stride is the up-alignment of the unit size to the unit alignment,
         //     and every slot start inherits `unit_align` from an aligned base.
         &&& align_up_spec(self.unit_size, self.unit_align) == Some(self.stride)
-        &&& self.stride % (self.unit_align as int) == 0
+        &&& (self.stride as int) % (self.unit_align as int) == 0
         &&& self.base % (self.unit_align as int) == 0
         // (c) The pool fits inside the backing region.
         &&& (self.capacity as int) * (self.stride as int) <= self.storage_size as int
