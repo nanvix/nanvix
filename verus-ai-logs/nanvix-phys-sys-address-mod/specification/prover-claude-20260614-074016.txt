@@ -476,3 +476,65 @@ Verus is present. Let me establish a baseline by running the module verification
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-sys MODULE=mm::address 2>&1 | tail -40
 
 [THINKING] Verus is already set up at the default path, so the Makefile will find it when I run make. I should start by establishing a baseline with `make verify-sys` to see the current state before making any changes.
+[RESULT ✓] bash: - from
+    - default
+    - to_ne_bytes
+    - from_ne_bytes
+    - from
+    - from
+    - from
+    - try_from
+    - try_from
+    - try_from
+    - try_from
+    - from
+    - try_from
+    - try_from
+    - try_from
+    - try_from
+    - fmt
+    - from
+    - from
+    - from
+    - from
+    - try_from
+    - fm...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls -t verus-ai-logs/verify-sys/verus-logs/ | head -3; echo "==="; grep -n "error\|Error\|cfg_
+
+[THINKING] There's a compilation error with verus exiting with code 101, and I'm seeing a cfg-gate flag along with very low coverage at 2/255. Let me check the full log to understand what's happening with the module scoping or if there's a pre-existing compile issue.
+[RESULT ✓] bash: verus_2026-06-14_07-43-50.log
+cheating-detail.txt
+verus_2026-06-14_07-28-19.log
+===
+8:compilation/setup error (verus did not run)
+16:  cfg_gate=1
+20:error: could not find module mm::address specified by --verify-module or --verify-only-module
+28:error: could not compile `sys` (lib) due to 1 previous...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,40p' src/libs/sys/src/lib.rs; echo "=== sys/mod ==="; grep -n "pub mod\|mod " src/l
+
+[THINKING] I need to figure out the correct module path for the verify-module. The file is located at `src/libs/sys/src/sys/mm/address/mod.rs`, so the full module path should be `sys::mm::address` since the crate is `sys` and the module hierarchy flows through `lib.rs` into the `sys` module, then down to `mm` and `address`.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Configuration
+//==================================================================================================
+
+#...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-sys MODULE=sys::mm::address 2>&1 | tail -25
+
+[THINKING] I'm working through the module path structure here. The address module is at `sys::mm::address`, and since there's a `mod virt;` declaration inside it, that creates `sys::mm::address::virt`. I need to figure out the correct module path to use, keeping in mind that the crate root re-exports everything with `pub use sys::*`, which affects how the paths resolve at the crate level.
+
+Let me try running the baseline test again with `MODULE=sys::mm::address` to see if that's the right path the verify-module tool expects.
