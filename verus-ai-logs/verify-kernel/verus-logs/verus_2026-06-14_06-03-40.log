@@ -1,0 +1,23 @@
+Timestamp: 2026-06-14_06-03-40
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::region
+Exit code: 0
+1 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=14
+  admit=26
+  trusted=0
+  no_decreases=0
+  cfg_gate=16
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+note: verifying module hal::mem::types::region
+
+verification results:: 1 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.51s
