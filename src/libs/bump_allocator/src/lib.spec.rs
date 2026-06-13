@@ -146,5 +146,21 @@ impl BumpView {
     }
 }
 
+//==================================================================================================
+// FixedSizeBumpAllocator - view accessor
+//==================================================================================================
+
+impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A, S> {
+    /// Abstract view of the allocator's slot pool.
+    ///
+    /// Uninterpreted (mirrors `raw-array`'s `uninterp spec fn view`): the dynamic
+    /// `allocated` field abstracts the interior-mutable `AtomicUsize` cursor, whose
+    /// value is not spec-readable. `inv()` pins `base/stride/unit_size/unit_align/
+    /// capacity/storage_size` to the type-level constants. The `v -> v'` transition
+    /// (cross-call uniqueness, `allocated + 1`) needs a ghost token and is deferred
+    /// to the proving phase (see `lemma_alloc_transition`, view_design.md section 7).
+    pub uninterp spec fn view(&self) -> BumpView;
+}
+
 } // verus!
 

@@ -260,6 +260,30 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     /// - [`BumpAllocError::OutOfBounds`] if computed slot exceeds storage bounds.
     /// - [`BumpAllocError::Misaligned`] if computed slot is not properly aligned.
     ///
+    // SAFETY-SPEC: `external_body` because the success path materializes a
+    // `&'static mut [u8; N]` from a backend-provided address (`usize as *mut`), a
+    // raw-memory operation Verus cannot verify without a `PointsTo` permission for
+    // the externally-owned `BssStorage` region. Mirrors the `src/libs/raw-array`
+    // pattern. Registered in `verus-ai-logs/tcb-allowed.md`.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            self.view().inv(),
+        ensures
+            match result {
+                Ok(slot) => {
+                    let v = self.view();
+                    // Alignment and in-bounds of the returned slot. Cross-call
+                    // uniqueness and the `allocated + 1` transition need a ghost
+                    // token over the atomic cursor and are deferred to the proving
+                    // phase (see `lemma_geometry` / `lemma_alloc_transition`).
+                    &&& (slot as int) % (v.unit_align as int) == 0
+                    &&& v.base <= slot as int
+                    &&& slot as int + (N as int) <= v.base + v.storage_size as int
+                },
+                Err(_) => true,
+            },
+    )]
     pub fn alloc(&self) -> Result<&'static mut [u8; N], BumpAllocError> {
         // Reserve a slot index via compare-and-swap to avoid overshooting the counter.
         let idx: usize = loop {
