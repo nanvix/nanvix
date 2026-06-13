@@ -1,0 +1,24 @@
+RESOLVED
+
+All 17 specification-phase checklist items PASS or are acceptable-with-evidence
+(verified turn 1). See turn_001_driver.md for per-item evidence.
+
+Key evidence:
+- fn_coverage.py: 4/4 exec fns matched, 0 missing, 0 extra; all 3 in-scope fns have
+  requires/ensures (init, book_physical_memory_regions, book_mmio_regions).
+- spec_drift.py check phys-mod: 0 contract drift (no ensures removed, no requires added).
+- make verify-kernel MODULE=mm::phys: exit 0, 0 errors.
+- make verify-kernel (all modules, cross-module regression): exit 0, 0 errors.
+- make check-kernel (build): build-finished success:true, exit 0.
+- Cheating: assume=0, trusted=0. In-scope sites individually challenged:
+    * book_physical_memory_regions / book_mmio_regions = external_body — allowed
+      (tcb-allowed.md; no vstd LinkedList model, orphan rule — bugs.md).
+    * lemma_frame_initialized / lemma_manager_ready = admit — stand-ins for the
+      postconditions of external_body, out-of-scope callees frame::init and
+      PhysMemoryManager::init (verified: both external_body with no verus_spec),
+      deferred to the proof phase per view_design.md section 8.
+- Caller coverage (kernel_vas::init) fully satisfied by init's Ok ensures
+  (live(), all_reserved(P), MMIO covered=>reserved, unconditional inv()).
+- Error paths carry meaningful unconditional inv()/initialized guarantees; the
+  Err => true match arms are non-vacuous residuals and the sound choice for the
+  trusted external_body helpers.
