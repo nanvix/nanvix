@@ -1008,3 +1008,38 @@ Turn 51
 Turn 52
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus; timeout 1200 make verify-kernel MODU
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::address::phys.
+  Global: assume=0 external_body=14 admit=26 trusted=0 cfg_gate=16
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  3/16 exec functions have contracts.
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n -B2 -A15 "error:" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_05-39-10.lo
+
+[THINKING] I'm checking the verification results—most tests are passing but there's one error I need to investigate in the proof file.
+[RESULT ✓] bash: 20-note: verifying module hal::mem::types::address::phys
+21-
+22:error: possible bit shift underflow/overflow
+23-   --> src/kernel/src/hal/mem/types/address/phys.rs:160:35
+24-    |
+25-160 |         let frame_number: usize = raw_addr >> shift;
+26-    |                                   ^^^^^^^^^^^^^^^...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm trying to figure out whether Verus is properly capturing the `shift < 64` constraint from the assume_spec ensures clause when I bind `shift` to `mem::FRAME_SHIFT`. The overflow error suggests the constraint might not be propagating to the shift operation, or there's something about how the shift needs to be annotated that I'm missing. Maybe the issue is that `mem::FRAME_SHIFT` isn't being recognized as the same constant I wrote the assume_specification for — let me verify the full path is `::arch::mem::FRAME_SHIFT` and check if it's properly re-exported. I could add an assertion to confirm the ensures clause is actually being applied to the shift value, since the `>>` operator requires `shift < 64` and I should have that constraint from the assume_spec. I'm looking at the assume_specification syntax for FRAME_SHIFT to verify it's correct — the ensures clause should bind `result < 64` to the shift variable. The issue might be that Verus is constant-folding the literal 12 and bypassing the assume_spec entirely, or the let-binding isn't propagating the ensures to the shift operation. Let me test by adding an explicit assertion right after the let to see if the constraint is actually available.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus; timeout 1200 make verify-kernel MODU
