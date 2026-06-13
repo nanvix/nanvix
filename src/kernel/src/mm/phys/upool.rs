@@ -178,7 +178,6 @@ impl Upool {
     ///
     /// A user frame pool.
     ///
-    #[verus_verify(external_body)]
     pub(super) fn new() -> Self {
         Self { _private: () }
     }
@@ -195,7 +194,6 @@ impl Upool {
     // Dependency contract: delegates to the global frame allocator (`frame::alloc`). Modeled
     // as a watermark-agnostic single-frame allocation over the pool's frame partition. Marked
     // `external_body` until the `frame` free-function layer is verified.
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self)@.wf(),
