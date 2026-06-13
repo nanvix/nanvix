@@ -44,22 +44,6 @@ pub proof fn lemma_kernel_alloc_one(pre: FrameAllocView, post: FrameAllocView, a
     admit();
 }
 
-/// Liveness contrapositive for the kernel single-frame path: when `frame::alloc` fails, the
-/// brokered partition had no free frame at all (the kernel allocator never self-limits, so the
-/// only failure cause on that path is exhaustion). Discharging this in the proving phase requires
-/// `frame::alloc`'s `Err` spec to expose `phys_view().frames.free_count() == 0` (the recorded
-/// cross-module obligation). NOTE: the `KernelFrame::new` wrapping-failure branch returns `Err`
-/// after a *successful* `frame::alloc`, where `pre.free_count() >= 1`; that branch is the
-/// open contradiction tracked as OBS-3 in `bugs.md`.
-pub proof fn lemma_kernel_alloc_err_empty(pre: FrameAllocView)
-    requires
-        pre.wf(),
-    ensures
-        pre.free_count() == 0,
-{
-    admit();
-}
-
 /// Effect of a contiguous kernel-frame allocation: `frames` owns `count` physically contiguous
 /// frames starting at some page-aligned `base`, all of which were free and become reserved.
 pub proof fn lemma_kernel_alloc_contiguous(

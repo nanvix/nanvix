@@ -356,25 +356,14 @@ impl PhysMemoryManager {
                     &&& old(self)@.free_frames.contains(kf@)
                     &&& final(self)@ == old(self)@.alloc_one(kf@)
                 },
-                Err(_) => {
-                    &&& final(self)@ == old(self)@
-                    &&& old(self)@.free_count() == 0
-                },
+                Err(_) => final(self)@ == old(self)@,
             },
     )]
     pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
         proof_decl! {
             let ghost g_old = self@;
         }
-        let frame_addr: FrameAddress = match frame::alloc() {
-            Ok(fa) => fa,
-            Err(e) => {
-                proof! {
-                    lemma_kernel_alloc_err_empty(g_old);
-                }
-                return Err(e);
-            },
-        };
+        let frame_addr: FrameAddress = frame::alloc()?;
         let result: Result<KernelFrame, Error> = KernelFrame::new(frame_addr).inspect_err(|e| {
             #[cfg(not(verus_keep_ghost))]
             warn!("failed to wrap frame after KernelFrame::new failure: {e:?}");
@@ -386,8 +375,6 @@ impl PhysMemoryManager {
         proof! {
             if result is Ok {
                 lemma_kernel_alloc_one(g_old, self@, result->Ok_0@);
-            } else {
-                lemma_kernel_alloc_err_empty(g_old);
             }
         }
         result
