@@ -301,6 +301,89 @@ impl pthread_once_t {
 
     /// Size of `pthread_once_t` structure.
     pub const SIZE: usize = Self::SIZE_OF_IS_INITIALIZED + Self::SIZE_OF_INIT_EXECUTED;
+
+    /// Sentinel value of `is_initialized` set by `PTHREAD_ONCE_INIT`.
+    pub const IS_INITIALIZED_VALUE: c_int = 1;
+
+    /// Statically-initialized `pthread_once_t`, equivalent to POSIX `PTHREAD_ONCE_INIT`.
+    ///
+    /// `is_initialized` is set to the sentinel recognized by `pthread_once()`, and `init_executed`
+    /// is `0`, meaning the initializer has not yet run (the `ONCE_NEVER_RUN` state).
+    pub const INIT: pthread_once_t = pthread_once_t {
+        is_initialized: Self::IS_INITIALIZED_VALUE,
+        init_executed: 0,
+    };
+
+    ///
+    /// # Description
+    ///
+    /// Reads the `is_initialized` field through a raw pointer without constructing a Rust reference
+    /// to `pthread_once_t`.
+    ///
+    /// `is_initialized` is set to `1` by `PTHREAD_ONCE_INIT`.  A non-`1` value indicates that the
+    /// caller forgot to use `PTHREAD_ONCE_INIT` and the `pthread_once_t` is uninitialized.
+    ///
+    /// This is provided as an associated function on `*const Self` (rather than `&self`) so callers
+    /// like `pthread_once()` can inspect the field without ever materialising a Rust reference.
+    /// Materialising a `&mut pthread_once_t` and then re-entering `pthread_once()` recursively on
+    /// the same control word would create a second `&mut` to the same object, which is
+    /// Stacked-Borrows UB even though the implementation explicitly handles the recursive case.
+    ///
+    /// # Parameters
+    ///
+    /// `once` - A pointer to the `pthread_once_t` to read.
+    ///
+    /// # Returns
+    ///
+    /// The value of the `is_initialized` field, which is `1` if the `pthread_once_t` is initialized
+    /// and a non-`1` value if it is uninitialized.
+    ///
+    /// # Safety
+    ///
+    /// `once` must be non-null and point to a valid `pthread_once_t`.
+    ///
+    pub unsafe fn is_initialized_raw(once: *const pthread_once_t) -> c_int {
+        // SAFETY: caller guarantees `once` is valid.  `read_unaligned` is used because
+        // `pthread_once_t` is `#[repr(C, packed)]`, so `addr_of!` produces an alignment-1 pointer
+        // from Rust's perspective.
+        unsafe { ::core::ptr::addr_of!((*once).is_initialized).read_unaligned() }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a mutable raw pointer to the `init_executed` field without constructing a Rust
+    /// reference to `pthread_once_t`.
+    ///
+    /// `pthread_once()` uses this pointer with `ptr::read_unaligned` / `ptr::write_unaligned` to
+    /// implement the state-machine transitions without the compiler optimising the loads or stores
+    /// away.  Unaligned accessors are used because `pthread_once_t` is `#[repr(C, packed)]`, so
+    /// this pointer has alignment 1 from Rust's perspective even though the underlying address is
+    /// usually naturally aligned; `volatile` reads/writes would be UB on a (potentially) unaligned
+    /// pointer.  Concurrent transitions are serialized by the process-global kernel mutex that
+    /// `pthread_once()` holds while it reads and writes this word, so plain unaligned loads and
+    /// stores -- rather than atomics -- are sufficient here.
+    ///
+    /// See `is_initialized_raw()` for why this is a raw-pointer function rather than a method on
+    /// `&mut self`.
+    ///
+    /// # Parameters
+    ///
+    /// - `once` - A pointer to the `pthread_once_t` to access.
+    ///
+    /// # Returns
+    ///
+    /// A mutable raw pointer to the `init_executed` field of the `pthread_once_t`.
+    ///
+    /// # Safety
+    ///
+    /// `once` must be non-null and point to a valid `pthread_once_t`
+    /// whose lifetime exceeds the use of the returned pointer.
+    ///
+    pub unsafe fn init_executed_ptr_raw(once: *mut pthread_once_t) -> *mut c_int {
+        // SAFETY: caller guarantees `once` is valid.  No Rust reference is constructed.
+        unsafe { ::core::ptr::addr_of_mut!((*once).init_executed) }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

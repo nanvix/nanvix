@@ -14,6 +14,7 @@
 use crate::sys_types::{
     pthread_cond_t,
     pthread_mutex_t,
+    pthread_once_t,
     pthread_rwlock_t,
     pthread_t,
 };
@@ -30,6 +31,9 @@ pub const PTHREAD_COND_INITIALIZER: pthread_cond_t = 0xffffffff;
 
 /// Used to initialize a mutex statically.
 pub const PTHREAD_MUTEX_INITIALIZER: pthread_mutex_t = 0xffffffff;
+
+/// Used to initialize a once-control variable statically.
+pub const PTHREAD_ONCE_INIT: pthread_once_t = pthread_once_t::INIT;
 
 /// Type of mutex in [`crate::sys::types::pthread_mutexattr_t`].
 pub mod pthread_mutex_type {
