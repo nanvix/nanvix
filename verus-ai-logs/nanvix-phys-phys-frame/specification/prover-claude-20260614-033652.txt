@@ -1502,3 +1502,57 @@ Now I'll add the dependency contracts to frame.spec.rs.
 Turn 81
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus timeout 300 make verify-kernel MODULE=mm::
+[RESULT ✓] bash: - mod.spec.rs:69 ExLinkedList (struct): external_type_spec
+    - upool.rs:221 Upool (struct): external_body
+    - upool.rs:246 new: external_body
+    - upool.rs:279 alloc: external_body
+  Global: assume=0 external_body=14 admit=21 trusted=0 cfg_gate=17
+  Detail: verus-ai-logs/verify-kernel/verus-log...
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -E "^error|is not
+[RESULT ✓] bash: error[E0603]: module `types` is private
+error[E0603]: module `types` is private
+error[E0603]: module `types` is private
+error[E0603]: module `types` is private
+error[E0603]: module `types` is private
+error[E0603]: module `types` is private
+error[E0603]: module `types` is private
+error[E0603]: module...
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+`types` module is private. Let me find the public re-export paths.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm running into a visibility issue with the types module—it's private but I need to access FrameAddress and PhysicalAddress through the public API. Let me trace through how frame.rs imports from hal to find the correct public path.
+[RESULT ✓] view: 17. use crate::hal::{
+18.     mem::{
+19.         FrameAddress,
+20.         PageAligned,
+21.         PhysicalAddress,
+22.         TruncatedMemoryRegion,
+23.     },
+24.     platform::NFRAMES,
+25. };
+26. use ::arch::mem::{
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -i 's#crate::hal::mem::types::address::frame::FrameAddress#crate::hal::mem::FrameAddres
+
+[THINKING] I'm checking which types are publicly exported from the memory module and tracing where `spec_page_size` is actually defined and referenced, since it appears to be used in region.rs but I need to verify its visibility and import path.
+[RESULT ✓] bash: 28:        result == crate::hal::mem::spec_page_size(),
+37:pub assume_specification[ crate::hal::mem::FrameAddress::from_frame_number ](
+39:) -> Result<crate::hal::mem::FrameAddress, ::sys::error::Error>;
+41:pub assume_specification[ crate::hal::mem::FrameAddress::into_frame_number ](
+42:    _a: cra...
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus timeout 300 make verify-kernel MODULE=mm::

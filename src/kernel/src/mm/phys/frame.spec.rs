@@ -25,7 +25,7 @@ pub struct ExFrameNumber(::arch::mem::paging::FrameNumber);
 
 pub assume_specification[ ::arch::mem::FRAME_SIZE ] -> (result: usize)
     ensures
-        result == crate::hal::mem::types::address::frame::spec_page_size(),
+        result == crate::hal::mem::spec_page_size(),
 ;
 
 pub assume_specification[ ::arch::mem::paging::FrameNumber::from_raw_value ](_v: usize)
@@ -34,32 +34,32 @@ pub assume_specification[ ::arch::mem::paging::FrameNumber::from_raw_value ](_v:
 pub assume_specification[ ::arch::mem::paging::FrameNumber::into_raw_value ](_f: ::arch::mem::paging::FrameNumber)
     -> usize;
 
-pub assume_specification[ crate::hal::mem::types::address::frame::FrameAddress::from_frame_number ](
+pub assume_specification[ crate::hal::mem::FrameAddress::from_frame_number ](
     _f: ::arch::mem::paging::FrameNumber,
-) -> Result<crate::hal::mem::types::address::frame::FrameAddress, ::sys::error::Error>;
+) -> Result<crate::hal::mem::FrameAddress, ::sys::error::Error>;
 
-pub assume_specification[ crate::hal::mem::types::address::frame::FrameAddress::into_frame_number ](
-    _a: crate::hal::mem::types::address::frame::FrameAddress,
+pub assume_specification[ crate::hal::mem::FrameAddress::into_frame_number ](
+    _a: crate::hal::mem::FrameAddress,
 ) -> ::arch::mem::paging::FrameNumber;
 
-pub assume_specification[ crate::hal::mem::types::address::phys::PhysicalAddress::into_frame_number ](
-    _a: crate::hal::mem::types::address::phys::PhysicalAddress,
+pub assume_specification[ crate::hal::mem::PhysicalAddress::into_frame_number ](
+    _a: crate::hal::mem::PhysicalAddress,
 ) -> ::arch::mem::paging::FrameNumber;
 
-pub assume_specification<T: ::sys::mm::Address>[ crate::hal::mem::types::region::TruncatedMemoryRegion::<T>::start ](
-    _r: &crate::hal::mem::types::region::TruncatedMemoryRegion<T>,
-) -> crate::hal::mem::types::address::aligned::page::PageAligned<T>;
+pub assume_specification<T: ::sys::mm::Address>[ crate::hal::mem::TruncatedMemoryRegion::<T>::start ](
+    _r: &crate::hal::mem::TruncatedMemoryRegion<T>,
+) -> crate::hal::mem::PageAligned<T>;
 
-pub assume_specification<T: ::sys::mm::Address>[ crate::hal::mem::types::region::TruncatedMemoryRegion::<T>::size ](
-    _r: &crate::hal::mem::types::region::TruncatedMemoryRegion<T>,
+pub assume_specification<T: ::sys::mm::Address>[ crate::hal::mem::TruncatedMemoryRegion::<T>::size ](
+    _r: &crate::hal::mem::TruncatedMemoryRegion<T>,
 ) -> usize;
 
-pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::types::address::aligned::page::PageAligned<T> as ::sys::mm::Address>::into_raw_value ](
-    _a: crate::hal::mem::types::address::aligned::page::PageAligned<T>,
+pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::PageAligned<T> as ::sys::mm::Address>::into_raw_value ](
+    _a: crate::hal::mem::PageAligned<T>,
 ) -> usize;
 
-pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::types::address::aligned::page::PageAligned<T> as ::core::ops::Deref>::deref ](
-    _a: &crate::hal::mem::types::address::aligned::page::PageAligned<T>,
+pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::deref ](
+    _a: &crate::hal::mem::PageAligned<T>,
 ) -> &T;
 
 }
