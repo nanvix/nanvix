@@ -112,7 +112,6 @@ impl Inner {
     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -178,7 +177,6 @@ impl Inner {
     /// Upon success, the base `FrameAddress` of the contiguous range is returned. Upon failure,
     /// an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -251,7 +249,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -336,7 +333,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -408,7 +404,6 @@ impl Inner {
     /// Upon success, the current reference count is returned. Upon failure, an error is
     /// returned instead (out-of-bounds address, or the frame is not currently allocated).
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             self.inv(),
@@ -456,7 +451,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -502,7 +496,6 @@ impl Inner {
     ///
     /// `true` if the frame allocator tracks the frame at `phys_addr`, `false` otherwise.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(ret =>
         requires
             self.inv(),
@@ -532,7 +525,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -653,7 +645,6 @@ fn instance() -> &'static mut Inner {
 ///
 /// Must be called exactly once during boot, before any other function
 /// in this module.
-#[verus_verify(external_body)]
 pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
     if unlikely(INSTANCE_INIT.load(ORDER)) {
         return Err(Error::new(ErrorCode::InvalidArgument, "frame allocator already initialized"));
@@ -699,7 +690,6 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
 // Dependency contract for the manager layer: thin singleton wrapper around `Inner::alloc`.
 // `external_body` until the `frame` free-function layer is verified; the manager bridges the
 // returned address into its own abstract frame partition via a proof lemma.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         match result {
@@ -721,7 +711,6 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
 ///
 // Dependency contract: thin singleton wrapper around `Inner::alloc_contiguous`. The base
 // address is page-aligned on success. `external_body` until the free-function layer is verified.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         count > 0,
@@ -749,7 +738,6 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
 ///
 // Dependency contract: reports the size of the free partition of the global frame allocator.
 // `external_body` until the free-function layer is verified.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         result as nat == crate::mm::phys::phys_view().frames.free_count(),
@@ -764,7 +752,6 @@ pub(super) fn free_count() -> usize {
 // paths) ignore the outcome, so no precondition is imposed and no abstract postcondition is
 // promised. `opens_invariants none`/`no_unwind` so it is callable from `UserFrame::drop`.
 // `external_body` until the free-function layer is verified.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         true,
@@ -803,7 +790,6 @@ pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Re
 // allocated; the per-frame reference-count increment lives in the global partition and is pinned
 // to `phys_view().frames` in the proving phase. `external_body` until the free-function layer is
 // verified.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         frame.inv(),
@@ -822,7 +808,6 @@ pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
 // Dependency contract: singleton wrapper around `Inner::refcount`. Reads the current reference
 // count of the frame from the global partition (`phys_view().frames`); pure, no mutation.
 // `external_body` until the free-function layer is verified.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         frame.inv(),
