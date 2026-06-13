@@ -1063,3 +1063,64 @@ Turn 56
 Turn 57
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus; timeout 1200 make verify-kernel MODU
+[RESULT ✓] bash: 18:error: possible bit shift underflow/overflow
+24:verification results:: 4 verified, 1 errors (partial verification with `--verify-*`)
+25:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+28:  4 verified
+29:  1 errors
+33:  verification: 4 verified, 1 errors (exit 101)
+43:  Un...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); grep -n -A12 "erro
+[RESULT ✓] bash: 22:error: possible bit shift underflow/overflow
+23-   --> src/kernel/src/hal/mem/types/address/phys.rs:161:35
+24-    |
+25-161 |         let frame_number: usize = raw_addr >> shift;
+26-    |                                   ^^^^^^^^^^^^^^^^^
+27-
+28-verification results:: 4 verified, 1 errors (partia...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn ">>\|<<" src/kernel/src/ src/libs/sys/src src/libs/bitmap/src 2>/dev/null --include=
+
+[THINKING] The assert passed since shift is confirmed to be less than 64, yet Verus is still flagging a potential overflow on the right shift operation itself—which shouldn't overflow in the first place. I'm wondering if Verus's shift validation has additional constraints beyond just checking the shift amount, maybe related to the operand types or some other safety requirement. Maybe the shift check in Verus requires the bound to be expressed as `usize::BITS` specifically rather than just a numeric constant, or perhaps I need to ensure the bound is proven at the exact point where the shift operation occurs. Let me search through the codebase to see how other verified code handles shifts with Verus, since there might be a pattern or annotation I'm missing for making the verifier accept the shift operation.
+[RESULT ✓] bash: src/kernel/src/event/manager.rs:409:                    if (interrupts & (1 << i)) != 0 {
+src/kernel/src/event/manager.rs:428:                    if (exceptions & (1 << i)) != 0 {
+src/kernel/src/event/manager.rs:454:                    if (scheduling & (1 << i)) != 0 {
+src/kernel/src/event/manager.r...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "KERNEL_CARGO_TARGET\|target.*json\|i686\|i386\|x86_64\|target-triple\|--target" Make
+
+[THINKING] I'm checking the Verus shift specifications to understand what overflow requirements are needed for the shift operations, since the current approach of deferring to the proving phase might be overcomplicating things.
+
+Actually, I think I've found the issue — the shift VC failure might be because the kernel target is 32-bit (x86), so `usize::BITS == 32`, which means my assumption that `shift < 64` is sufficient isn't actually enough. Verus needs `shift < 32` for a 32-bit architecture, so I need to tighten the bound on FRAME_SHIFT to ensure it satisfies the stricter requirement.
+[RESULT ✓] bash: 217:export GUEST_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-user.json
+222:export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
+259:# unstable flags (-Z ...) and --target, so that cargo-verus can reuse the same argument order.
+265:export KERNEL_CARGO_BUILD_CMD := RUSTC_W...
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+Target is 32-bit (usize=32). The shift bound must be `< 32`. Let me fix the FRAME_SHIFT spec and remove the debug assert:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm checking the kernel target configuration and noticing that the x86 kernel uses 32-bit pointers, which means my shift validation needs to enforce `result < 32` rather than `result < 64` to stay within bounds. I need to adjust this constraint to work correctly across both x86 and x86_64 targets.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus; timeout 1200 make verify-kernel MODU
+
+[THINKING] I'm deciding whether to keep the lemma's shift bound at 64 or tighten it to 32 for consistency with the exec. Since the lemma's weaker requirement of shift < 64 is easier to satisfy and the proof is admitted anyway, I'll leave it as is.

@@ -65,7 +65,7 @@ pub assume_specification[ <::sys::mm::VirtualAddress as ::sys::mm::Address>::int
 
 pub assume_specification[ ::arch::mem::FRAME_SHIFT ] -> (result: usize)
     ensures
-        result < 64,
+        result < 32,
         spec_page_size() == pow2(result as nat),
 ;
 
