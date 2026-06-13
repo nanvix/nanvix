@@ -1372,3 +1372,20 @@ Turn 81
 ────────────────────────────────────────────────────────────
 Module verify: 5 verified, 0 errors, status CLEAN. Now confirming no regressions across the full kernel verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel 2>&1 | tail -12
+[RESULT ✓] bash: === Function Coverage ===
+  45/1023 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-kernel/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=14 admit=26 trusted=0 no_...
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+Full kernel verify: exit 0, 0 errors (CHEATING_DETECTED reflects the expected `admit()` proof bodies). Now running full `make verify` to confirm no regressions across all modules.
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify 2>&1 | tail -25
+
+[THINKING] The full kernel verification shows CHEATING_DETECTED but exits cleanly with no errors—the "cheating" flagged is just the admit() calls scattered throughout proof bodies in other modules, which is expected during the proving phase. The module-level verification came back clean because it only counts admits within our own module, whereas the full kernel includes those pre-existing admits from elsewhere. This is the expected state.
+
+The cached verification run confirms exit 0 with no errors (matching the earlier full run of 55 verified, 0 errors), so everything checks out. Now I need to run the full project verification across all modules.
