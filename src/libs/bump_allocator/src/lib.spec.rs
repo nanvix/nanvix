@@ -159,17 +159,24 @@ impl BumpView {
 // FixedSizeBumpAllocator - view accessor
 //==================================================================================================
 
-impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A, S> {
-    /// Abstract view of the allocator's slot pool.
-    ///
-    /// Uninterpreted (mirrors `raw-array`'s `uninterp spec fn view`): the dynamic
-    /// `allocated` field abstracts the interior-mutable `AtomicUsize` cursor, whose
-    /// value is not spec-readable. `inv()` pins `base/stride/unit_size/unit_align/
-    /// capacity/storage_size` to the type-level constants. The `v -> v'` transition
-    /// (cross-call uniqueness, `allocated + 1`) needs a ghost token and is deferred
-    /// to the proving phase (see `lemma_alloc_transition`, view_design.md section 7).
-    pub uninterp spec fn view(&self) -> BumpView;
-}
+/// Abstract view of the allocator's slot pool.
+///
+/// Uninterpreted (mirrors `raw-array`'s `impl View for RawArray`): the dynamic
+/// `allocated` field abstracts the interior-mutable `AtomicUsize` cursor, whose
+/// value is not spec-readable. `inv()` pins `base/stride/unit_size/unit_align/
+/// capacity/storage_size` to the type-level constants. The `v -> v'` transition
+/// (cross-call uniqueness, `allocated + 1`) needs a ghost token and is deferred
+/// to the proving phase (see `lemma_alloc_transition`, view_design.md section 7).
+///
+/// A free `uninterp spec fn` is used rather than an `impl View`/inherent `spec fn
+/// view`, because adding a second `impl` block (trait or inherent) on
+/// `FixedSizeBumpAllocator` alongside the exec method block collides during Verus
+/// front-end lowering of this crate (`include!`-composed spec/proof modules) and
+/// triggers a duplicate-impl-path panic (`vir/src/context.rs`). Callers read the
+/// view via `bump_view(self)` exactly as they would `self.view()`.
+pub uninterp spec fn bump_view<const N: usize, const A: usize, S: BssStorage>(
+    a: &FixedSizeBumpAllocator<N, A, S>,
+) -> BumpView;
 
 } // verus!
 

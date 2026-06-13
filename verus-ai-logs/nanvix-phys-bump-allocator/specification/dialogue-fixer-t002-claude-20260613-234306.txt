@@ -532,3 +532,324 @@ Turn 40
 ────────────────────────────────────────────────────────────
 Now clear incremental cache and verify:
 [TOOL] bash: cd /home/ruize/nanvix-phy && rm -rf target/x86-kernel/debug/incremental 2>/dev/null; timeout 300 make verify-bump-alloca
+[RESULT ✓] bash: thread 'rustc' (1146887) panicked at vir/src/context.rs:337:13:
+assertion failed: !trait_impl_map.contains_key(&trait_impl.x.impl_path)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: could not compile `bump-allocator` (lib)
+
+Caused by:
+  process didn't exit succ...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+Still panics with the real crate — not spurious. The difference from my passing repro is the `view()` accessor. Let me add it to the repro to confirm:
+[TOOL] bash: cd /tmp && cat > vtest3.rs <<'EOF'
+use ::vstd::prelude::*;
+verus!{
+pub uninterp spec fn base_of<S: ?Sized>() -> int;
+pub
+
+[THINKING] The panic isn't spurious—it's tied to something in the actual crate that my reproduction doesn't have. Comparing against my second attempt, the real crate includes the `view()` inherent method, `align_up` function, `BumpView` with lemmas, `div_ceil` with assume_specification, and a `Display` implementation. Since my repro2 was missing the `view()` accessor, I should add that to see if it's what triggers the issue. I'm also noticing there are two inherent impl blocks on `FixedSizeBumpAll`.
+
+Wait, could `view()` be colliding with something from the `View` trait? It's an inherent method, so that shouldn't be the issue, but let me test by adding `view()` to repro2 to narrow down what's causing the panic.
+[RESULT ✓] bash: verification results:: 0 verified, 0 errors
+done
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp && cat > vtest4.rs <<'EOF'
+use ::vstd::prelude::*;
+use core::fmt;
+verus!{
+pub uninterp spec fn base_of<S: ?Sized
+
+[THINKING] I'm narrowing down what's triggering the panic—it's not the view() and alloc combination by itself. The real culprit is likely the Display implementation on the BumpAllocError enum when it's marked with `#[verus_verify]`, so I'm going to test adding that specific trait impl to see if it reproduces the issue.
+[RESULT ✓] bash: verification results:: 1 verified, 0 errors
+done
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+Repro still passes. Let me get the backtrace from the real crate to identify the duplicated trait-impl path:
+[TOOL] bash: cd /home/ruize/nanvix-phy && RUSTFLAGS="--cfg verus_keep_ghost" RUST_BACKTRACE=1 timeout 200 /home/ruize/toolchain/verus
+
+[THINKING] I'm still not seeing a panic, so Display and Default aren't the culprits. Looking at what else the real crate has that I might be missing—there's the `align_up` free function with `#[verus_spec]`, the `div_ceil` assume_specification, `BumpView` with its various methods and `#[verifier::ext_equal]` attribute, plus the proof lemmas in lib.proof.rs. I'm also wondering whether I've actually added the `alloc_as` method yet or if that's still pending.
+
+The real crate has all these pieces in place—the struct, trait, and enum all marked with `#[verus_verify]`, the `as_mut_ptr` function, the `alloc` method with external_body and spec, the view accessor, `align_up`, `BumpView`, and the lemmas. The `#[verifier::ext_equal]` on BumpView generates a trait impl for structural equality, and I'm wondering if the issue is actually the interaction between the `#[verus_verify]` trait bound on `BssStorage` and having two separate inherent impl blocks on `FixedSizeBumpAllocator` (one in lib.spec.rs for the view, one in lib.rs for methods)—maybe Verus treats those as conflicting somehow. Rather than keep tweaking the repro, I should bisect the real crate directly by removing pieces to isolate what's triggering the duplicate trait impl error.
+[RESULT ✓] bash: 
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && RUST_BACKTRACE=1 timeout 200 /home/ruize/toolchain/verus/verus --crate-type lib src/libs/bu
+[RESULT ✓] bash: thread 'rustc' (1147409) panicked at vir/src/context.rs:337:13:
+assertion failed: !trait_impl_map.contains_key(&trait_impl.x.impl_path)
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Let me bisect on the real crate. First, test whether the proof lemmas are involved:
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "ext_equal\|include!\|reject_recursive\|impl BumpView\|impl.*View.*for\|derive" src
+
+[THINKING] I'm trying to narrow down where the issue is by selectively disabling parts of the crate. The backtrace isn't showing the impl path clearly, so I need a different approach. I could try removing the `view()` accessor implementation while keeping the struct and trait declarations, but that won't work since the spec actually needs `view`. Instead, I'm thinking about commenting out the proof.rs include to see if that's where the problem originates.
+[RESULT ✓] bash: src/libs/bump_allocator/src/lib.spec.rs:79:#[verifier::ext_equal]
+src/libs/bump_allocator/src/lib.spec.rs:97:impl BumpView {
+src/libs/bump_allocator/src/lib.rs:102:include!("lib.spec.rs");
+src/libs/bump_allocator/src/lib.rs:106:include!("lib.proof.rs");
+src/libs/bump_allocator/src/lib.rs:145:#[deriv...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+Let me bisect by temporarily disabling the proof include:
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/libs/bump_allocator/src/lib.rs /tmp/lib.rs.bak && cp src/libs/bump_allocator/src/lib
+
+[THINKING] I'm noticing that `BumpAllocError` has both the standard derives for `Debug`, `Clone`, `Copy`, `PartialEq`, and `Eq`, plus the `#[verus_verify]` attribute. The derived `PartialEq` implementation might be conflicting with how Verus processes the enum when it applies verification.
+
+But wait—in my earlier repro4 test, the `Err1` enum had those exact same derives plus `Display` and `#[verus_verify]`, and it compiled fine. So the derives themselves aren't the culprit.
+
+The real difference seems to be the full `BumpView` struct with its `ext_equal` method, six other methods, and three proof lemmas that reference them, combined with `align_up` and `div_ceil` with their assume specifications. I should empirically narrow this down by temporarily removing the proof lemmas from the include and seeing if the panic disappears.
+[RESULT ✓] bash: thread 'rustc' (1147599) panicked at vir/src/context.rs:337:13:
+--- restoring proof ---
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+Panic persists. Let me test whether the **second inherent impl** (`view()`) is the trigger — remove it and have `alloc` use only `base_of`/constants:
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/libs/bump_allocator/src/lib.spec.rs /tmp/lib.spec.rs.bak
+# Remove the view() accesso
+
+[THINKING] The panic isn't coming from the lemmas themselves, so I need to narrow down what's triggering it. Let me try stripping BumpView down to just the essential methods and see if that helps isolate the issue. The real problem seems to be a duplicate trait implementation somewhere — two impls are trying to register the same path, which is causing the conflict.
+
+I'm noticing that the crate has two inherent impl blocks for FixedSizeBumpAllocator with identical generic signatures: one in lib.spec.rs (with the view method) and one in lib.rs (with new/alloc/alloc_as). In Verus, these synthesized impl paths might be colliding. My repro4 had the same structure — one impl inside verus!{} and one plain — and it compiled fine, so there's something different about how the real crate is set up. Let me try removing the view impl block from spec.rs temporarily and refactor alloc to work around it, then see if that resolves the duplicate impl error.
+[RESULT ✓] bash: removed view block: True
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 - <<'PY'
+p='src/libs/bump_allocator/src/lib.rs'
+s=open(p).read()
+old='''        req
+[RESULT ✓] bash: patched alloc
+verification results:: 5 verified, 0 errors
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+**Root cause found**: two inherent `impl` blocks on `FixedSizeBumpAllocator` (the `view()` one in lib.spec.rs + the methods one in lib.rs) collide on the same `impl_path` → Verus panic. Removing it gives **5 verified, 0 errors**. The fix: use the `View` **trait** impl (like raw-array's `impl View for RawArray`) instead of a second inherent impl. Let me restore and apply that:
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp /tmp/lib.rs.bak src/libs/bump_allocator/src/lib.rs && cp /tmp/lib.spec.rs.bak src/libs/b
+
+[THINKING] I found the issue—removing the second inherent impl block with the `view()` accessor makes the panic go away. The problem is having two inherent impl blocks on `FixedSizeBumpAllocator` with identical generics, one defining `view` in lib.spec.rs and another with `new`/`alloc`/`alloc_as` in lib.rs, and Verus is assigning them the same `impl_path` which causes a duplicate panic. The fix is to consolidate into a single inherent impl block, but since lib.rs is exec code and `view()` is a spec function, I'd need to either move it into the same impl using the right attributes, or switch to implementing the `View` trait instead—which would be a trait impl rather than a second inherent impl, avoiding the collision entirely.
+
+I'm going to restore the backups and use the `View` trait approach, implementing it with an `uninterp spec fn view()` just like raw-array does.
+[RESULT ✓] bash: restored
+159:// FixedSizeBumpAllocator - view accessor
+165:    /// Uninterpreted (mirrors `raw-array`'s `uninterp spec fn view`): the dynamic
+171:    pub uninterp spec fn view(&self) -> BumpView;
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && RUST_BACKTRACE=0 timeout 200 /home/ruize/toolchain/verus/verus --crate-type lib src/libs/bu
+[RESULT ✓] bash: thread 'rustc' (1148067) panicked at vir/src/context.rs:337:13:
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+Still panics with View trait too. Let me separate: keep the View impl but make `alloc` NOT reference `view()`, to see if the View impl alone is the trigger:
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 - <<'PY'
+p='src/libs/bump_allocator/src/lib.rs'
+s=open(p).read()
+old='''        req
+
+[THINKING] The issue isn't just about having two inherent impls — the View trait impl also causes the panic when combined with the methods impl. Removing the view accessor entirely made it compile, so it's specifically that accessor block (whether inherent or trait-based) conflicting with the methods impl that's triggering the problem.
+
+The real difference between repro4 (which passed) and the actual crate (which panics) might be that the methods impl in the real crate references `self.view()` in its spec, and when that happens alongside a View trait impl, something goes wrong. Let me test whether it's the View impl itself or the reference to view in the method specs that's causing the panic.
+[RESULT ✓] bash: alloc uses base_of, View impl still present
+thread 'rustc' (1148252) panicked at vir/src/context.rs:337:13:
+<shellId: 31 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+View impl alone triggers it. The remaining difference from my passing repro is `align_up`/`div_ceil`/`ext_equal`. Let me bisect `ext_equal` on `BumpView`:
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -i 's/^#\[verifier::ext_equal\]/\/\/REMOVED-ext_equal/' src/libs/bump_allocator/src/lib
+
+[THINKING] The panic is triggered by the View impl block itself, independent of whether alloc references it. I need to narrow down what's causing it—it could be the `align_up` function with its `#[verus_spec]` attribute, the `div_ceil` assume_specification, or BumpView's complexity. Let me test removing the spec annotation from `align_up` to see if that eliminates the panic.
+
+Actually, I should systematically bisect by taking my passing repro4 and incrementally adding elements from the real crate—the `div_ceil` assume_specification, the `align_up` spec, and the fuller BumpView with `#[verifier::ext_equal]`—until it panics. The `ext_equal` attribute might be the culprit since it derives structural equality traits that could interact poorly with the View impl. Let me start by removing `ext_equal` from BumpView and testing.
+[RESULT ✓] bash: thread 'rustc' (1148372) panicked at vir/src/context.rs:337:13:
+restored ext_equal
+<shellId: 32 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+Let me build up from the passing repro instead — add `align_up` + `div_ceil` to repro4:
+[TOOL] bash: cd /tmp && cat > vtest5.rs <<'EOF'
+use ::vstd::prelude::*;
+verus!{
+pub uninterp spec fn base_of<S: ?Sized>() -> int;
+pub
+
+[THINKING] I'm trying to narrow down what's causing the panic by building up from a passing test case. The key difference I'm noticing is that when I had an inherent `view` implementation in the working version, it passed, but switching to a trait implementation causes it to panic—and interestingly, even the inherent impl panics in the real code, so the issue isn't about inherent vs trait implementations.
+
+Let me systematically add the missing pieces from the real crate to the passing test case, starting with the `align_up` and `div_ceil` functions.
+[RESULT ✓] bash: verification results:: 1 verified, 0 errors
+done
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+Repro5 passes. Let me add the remaining real-crate elements — `Default` impl + a second method (`alloc_as`) + the error enum with Display:
+[TOOL] bash: cd /tmp && cat > vtest6.rs <<'EOF'
+use ::vstd::prelude::*;
+use core::fmt;
+use core::mem::MaybeUninit;
+verus!{
+pub uninte
+
+[THINKING] Repro5 passes because it has the View trait implementation, alignment utilities, and external body allocation working correctly, so the panic must come from something else. I'm comparing what's different in the real crate—it has an `alloc_as` method, a Default implementation, a Display impl for BumpAllocError, and apparently more that got cut off.
+
+Looking back at repro4, it passed with Default and Display but lacked the alignment functions, while repro5 has those but dropped Default and Display. The most likely culprit is either the Default implementation or having a second method like `alloc_as` in the impl block. Let me add Default and the plain `alloc_as` method to repro5 to see if that triggers the panic.
+[RESULT ✓] bash: verification results:: 1 verified, 0 errors
+done
+<shellId: 34 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+Repro6 passes with everything — so the real crate has an additional conflicting element. Let me audit all `impl` blocks and View-related items in the real spec/proof:
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== spec.rs impls ==="; grep -n "^impl\|^pub.*impl\| impl \|View\|ext_equal\|assume_s
+
+[THINKING] My reproduction case passes with all the features enabled, so the panic must come from something specific in the actual crate's structure. The key difference is that the real crate uses `include!` macros to pull spec and proof files into lib.rs within a `#[cfg(verus_keep_ghost)]` block, and each of those included files has its own `verus!` macro block.
+
+The bisect clearly showed that adding the View trait impl causes the panic in the real crate, even though my repro6 with the same View impl passes. So there's something additional in the real crate—maybe a second View-like implementation or a conflicting trait impl—that only manifests when the View trait impl is present.
+[RESULT ✓] bash: === spec.rs impls ===
+6:// This file contains the abstract View (`BumpView`), its invariant and geometry
+12:// NOTE: Attaching `BumpView` as the `View` of `FixedSizeBumpAllocator` is a later
+16:// inside the atomics"). Until then `BumpView` is referenced by the proof lemmas in
+28:pub assume_specific...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+The working config from my bisect was: struct/trait declared, **no** `View` impl, `alloc` using `base_of`. The `View`/inherent impl is what crashes Verus in this crate (the `include!` interaction isn't reproducible standalone). Let me preserve the reviewer's `self.view().inv()` intent using a **free** uninterpreted view function (no second impl block) that returns the full `BumpView`:
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+
+[THINKING] I'm noticing that `align_up` and other items in lib.rs use the attribute macro form (`#[verus_spec]`, `#[verus_verify]`) at the top level rather than being wrapped inside a `verus!{}` block, while spec.rs and proof.rs are included modules with their own structure.
+
+Looking at my reproductions, repro6 had a similar pattern to the real crate — the View impl inside a `verus!{}` block and methods as attribute-form — and it passed, so that shouldn't be the issue. I'm wondering if there's a duplicate `impl View` somewhere that I'm missing, or if the problem is related to how the test module with `unsafe impl` blocks interacts with the Verus build, since `cfg(test)` is disabled during verification.
+
+The panic is happening when Verus tries to insert trait impls into a map and finds a duplicate. With `#[verus_verify]` on BssStorage and the View impl for FixedSizeBumpAllocator, something is causing Verus to see the same impl twice. My hypothesis now is that including the spec file via `include!` might be causing the View impl to be processed in a way that creates a duplicate. Let me try moving the View impl directly into lib.rs instead of keeping it in the included spec file.
+
+Actually, since the spec.rs is wrapped in `verus!{}` and included, it's functionally the same as writing it directly in lib.rs. I'm going in circles. Let me try a different approach entirely: instead of using a trait impl for View, I'll define a free spec function that returns the BumpView. This avoids any impl block and sidesteps the duplicate-impl panic completely. The function would take a reference to FixedSizeBumpAllocator and return the view, letting the alloc spec use it directly without needing a second impl block.
+
+But wait — I'm realizing the working configuration from my earlier bisect had the struct declared with `#[verus_verify]`, no View impl at all, and the alloc spec using `base_of::<S>()` and the const generics directly. That gave me 5 verified. So the solution is to drop the view impl entirely and express the alloc spec purely through free spec functions and the type parameters.
+
+The plan is to add an uninterpreted `storage_size_of::<S>()` function to capture the storage bounds, then rewrite the alloc ensures clause to use `base_of`, `storage_size_of`, and the alignment constant. This avoids the compiler panic from the View impl while still giving real alignment and in-bounds guarantees. The reviewer wanted view(), but since the View impl crashes Verus, using these uninterpreted functions over the type parameter is the honest workaround.
+
+Actually, I'm reconsidering whether I can keep view() by making it a free function instead of an impl. A free `alloc_view(self) -> BumpView` would return the full BumpView with all fields, letting me write `alloc_view(self).inv()` in requires and access `.base`, `.unit_align`, `.storage_size` in ensures. That's much closer to what the reviewer asked for than scattered uninterpreted functions. Let me test the free-fn approach by removing the View impl block and adding the free function to see if it avoids the panic.
+[RESULT ✓] view: 156. }
+157. 
+158. //==================================================================================================
+159. // FixedSizeBumpAllocator - view accessor
+160. //==================================================================================================
+161. 
+162. impl<const N: usi...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+
+[THINKING] I'm wondering if switching to a free function that takes a reference to the allocator would avoid triggering the panic, since it wouldn't be part of an impl block and shouldn't add entries to the trait_impl_map. Let me test this approach directly in the actual crate rather than trying to reproduce it separately.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+Now let me look at the current `alloc` and `alloc_as` in lib.rs to rewrite their specs using `bump_view`:
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[RESULT ✓] view: 226. impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A, S> {
+227.     ///
+228.     /// # Description
+229.     ///
+230.     /// Creates a new fixed-size bump allocator.
+231.     ///
+232.     /// # Returns
+233.     ///
+234.     /// Returns a new allocator.
+235.     ///
+23...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+Let me check `BumpView`'s fields to reference them correctly:
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+
+[THINKING] I need to revise the alloc spec to use bump_view with full in-bounds checking, and also add the alloc_as spec. Let me first look at what fields BumpView has.
+[RESULT ✓] view: 79. #[verifier::ext_equal]
+80. pub struct BumpView {
+81.     /// Base address of the backing region (`S::as_mut_ptr()` as an integer).
+82.     pub base: int,
+83.     /// Distance in bytes between consecutive slots (`align_up(unit_size, unit_align)`).
+84.     pub stride: nat,
+85.     /// Size of each...
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+Let me verify the spec names for size_of/align_of in vstd:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -rn "spec fn size_of\|spec fn align_of\|pub.*fn size_of\|pub.*fn align
+
+[THINKING] I'm rewriting the alloc spec to use bump_view(self) instead, adding preconditions that check the view's invariant and postconditions that verify the allocated slot is properly aligned within the view's bounds and storage. I'm sketching out the ensures clause for alloc using the view value directly—alignment checked against v.unit_align, and bounds checked against v.base and v.storage_size. For alloc_as, I'll add size and alignment constraints from vstd's layout functions, with separate error cases for size and alignment mismatches. Now I need to import those layout utilities into the spec.
+[RESULT ✓] bash: 20:pub uninterp spec fn size_of<V>() -> nat;
+22:pub uninterp spec fn align_of<V>() -> nat;
+45:pub open spec fn size_of_as_usize<V>() -> usize
+53:pub open spec fn align_of_as_usize<V>() -> usize
+61:pub open spec fn size_of_val_as_usize<V: ?Sized>(val: &V) -> usize
+69:pub open spec fn align_of_val_as_...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+Now rewrite `alloc` spec to use `bump_view` with full in-bounds, and add `alloc_as` spec:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] I've confirmed that the size and alignment functions are uninterpreted, which is what we want. Now I need to rewrite the specs and check what imports are already at the top of the spec file.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+Now run the verification:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | tail -40

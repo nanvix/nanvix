@@ -270,20 +270,15 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     // pattern. Registered in `verus-ai-logs/tcb-allowed.md`.
     #[verus_verify(external_body)]
     #[verus_spec(result =>
-        requires
-            self.view().inv(),
+        requires bump_view(self).inv(),
         ensures
             match result {
                 Ok(slot) => {
-                    let v = self.view();
+                    let v = bump_view(self);
                     let a = slot_ref_addr(slot);
-                    // Alignment and in-bounds of the returned slot's address. Cross-call
-                    // uniqueness and the `allocated + 1` transition need a ghost token
-                    // over the atomic cursor and are deferred to the proving phase
-                    // (see `lemma_geometry` / `lemma_alloc_transition`).
                     &&& a % (v.unit_align as int) == 0
                     &&& v.base <= a
-                    &&& a + (N as int) <= v.base + v.storage_size as int
+                    &&& a + (N as int) <= v.base + (v.storage_size as int)
                 },
                 Err(_) => true,
             },
@@ -346,6 +341,29 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     /// The caller must initialise the returned `MaybeUninit<T>` before reading through it
     /// and ensure exclusive use of the returned reference.
     ///
+    // SAFETY-SPEC: `external_body` for the same reason as `alloc` (it delegates to
+    // `alloc` and then re-materializes the slot reference as `&'static mut
+    // MaybeUninit<T>`). The size/alignment guard arms make the `T`-vs-`(N, A)`
+    // contract caller-visible. Registered in `verus-ai-logs/tcb-allowed.md`.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires bump_view(self).inv(),
+        ensures
+            match result {
+                Ok(slot) => {
+                    let v = bump_view(self);
+                    let a = slot_ref_addr(slot);
+                    &&& vstd::layout::size_of::<T>() == N as nat
+                    &&& vstd::layout::align_of::<T>() <= A as nat
+                    &&& a % (v.unit_align as int) == 0
+                    &&& v.base <= a
+                    &&& a + (N as int) <= v.base + (v.storage_size as int)
+                },
+                Err(BumpAllocError::SizeMismatch) => vstd::layout::size_of::<T>() != N as nat,
+                Err(BumpAllocError::AlignmentMismatch) => vstd::layout::align_of::<T>() > A as nat,
+                Err(_) => true,
+            },
+    )]
     pub unsafe fn alloc_as<T>(&self) -> Result<&'static mut MaybeUninit<T>, BumpAllocError> {
         if core::mem::size_of::<T>() != N {
             return Err(BumpAllocError::SizeMismatch);
