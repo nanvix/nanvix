@@ -1417,3 +1417,20 @@ The cfg_gate count of 10 is global, and the module shows "cfg-gated exec code: 1
 Turn 95
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify 2>&1 | tail -45
+[RESULT ✓] bash: === Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=2 admit=3 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 3/6 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-bump-allocator/verus-logs/verus_2026-...
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+Full `make verify` exited 0. Let me confirm no module reported verification errors and that my `frame.rs` edits didn't break dependent modules.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== any nonzero errors in any verus log? ==="; grep -rn "errors (partial\|[1-9][0-9]* e
+
+[THINKING] The kernel verification completed with exit code 0, though it looks like only the mm::phys::upool module was explicitly noted in the output—possibly due to caching. The important thing is there were no errors reported, but the full output got cut off so I need to check whether all modules actually verified successfully.
+
+I'm concerned that my frame.rs changes (the no_unwind attribute on free and the specs on share/refcount) might not have been re-verified if the build system cached results from the earlier upool run. Even though `make verify` claims to run all modules, the "cached (no recompilation)" message is worrying. I should explicitly run verification on the frame and manager modules to confirm my edits didn't break anything.
