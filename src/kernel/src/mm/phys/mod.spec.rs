@@ -59,7 +59,6 @@ impl FrameAllocView
 // standard library, identical in spirit to the existing vstd iterator shims.
 
 use ::alloc::collections::linked_list::Iter as LinkedListIter;
-use ::alloc::collections::LinkedList;
 use ::core::alloc::Allocator;
 use vstd::pervasive::ForLoopGhostIterator;
 use vstd::pervasive::ForLoopGhostIteratorNew;

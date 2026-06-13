@@ -981,3 +981,22 @@ Turn 48
 Turn 49
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
+[RESULT ✓] bash: error[E0252]: the name `LinkedList` is defined multiple times
+For more information about this error, try `rustc --explain E0252`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  0 verified
+  compilation/setup error (verus did not run)
+  verification: 0 verified, compilatio...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+
+[THINKING] I'm noticing that `LinkedList` is already imported in mod.rs, so having it imported again in mod.spec.rs creates a duplicate since that file gets included directly. I should remove the redundant import from the spec file and rely on what's already in scope from the parent module.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm::phys 2>&1 | gr
