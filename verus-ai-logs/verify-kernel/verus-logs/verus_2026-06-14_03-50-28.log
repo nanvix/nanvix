@@ -1,0 +1,286 @@
+Timestamp: 2026-06-14_03-50-28
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=13
+  admit=21
+  trusted=0
+  no_decreases=0
+  cfg_gate=13
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:137:22
+    |
+137 |         proof { admit(); }
+    |         -----   -----^ expected one of `,`, `:`, or `}`
+    |         |       |
+    |         |       while parsing this struct field
+    |         while parsing this struct
+    |
+help: try naming a field
+    |
+137 |         proof { admit: admit(); }
+    |                 ++++++
+
+error: expected `;`, found keyword `let`
+   --> src/kernel/src/mm/phys/frame.rs:137:27
+    |
+137 |         proof { admit(); }
+    |                           ^ help: add `;` here
+138 |         let frame_number: usize = match self.bitmap.alloc() {
+    |         --- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:213:22
+    |
+213 |         proof { admit(); }
+    |         -----   -----^ expected one of `,`, `:`, or `}`
+    |         |       |
+    |         |       while parsing this struct field
+    |         while parsing this struct
+    |
+help: try naming a field
+    |
+213 |         proof { admit: admit(); }
+    |                 ++++++
+
+error: expected `;`, found keyword `let`
+   --> src/kernel/src/mm/phys/frame.rs:213:27
+    |
+213 |         proof { admit(); }
+    |                           ^ help: add `;` here
+214 |         let frame_number: usize = match self.bitmap.alloc_range(count) {
+    |         --- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:297:22
+    |
+297 |         proof { admit(); }
+    |         -----   -----^ expected one of `,`, `:`, or `}`
+    |         |       |
+    |         |       while parsing this struct field
+    |         while parsing this struct
+    |
+help: try naming a field
+    |
+297 |         proof { admit: admit(); }
+    |                 ++++++
+
+error: expected `;`, found keyword `let`
+   --> src/kernel/src/mm/phys/frame.rs:297:27
+    |
+297 |         proof { admit(); }
+    |                           ^ help: add `;` here
+298 |         let frame_number: usize = frame.into_frame_number().into_raw_value();
+    |         --- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:378:22
+    |
+378 |         proof { admit(); }
+    |         -----   -----^ expected one of `,`, `:`, or `}`
+    |         |       |
+    |         |       while parsing this struct field
+    |         while parsing this struct
+    |
+help: try naming a field
+    |
+378 |         proof { admit: admit(); }
+    |                 ++++++
+
+error: expected `;`, found keyword `let`
+   --> src/kernel/src/mm/phys/frame.rs:378:27
+    |
+378 |         proof { admit(); }
+    |                           ^ help: add `;` here
+379 |         let frame_number: usize = frame.into_frame_number().into_raw_value();
+    |         --- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:441:22
+    |
+441 |         proof { admit(); }
+    |         -----   -----^ expected one of `,`, `:`, or `}`
+    |         |       |
+    |         |       while parsing this struct field
+    |         while parsing this struct
+    |
+help: try naming a field
+    |
+441 |         proof { admit: admit(); }
+    |                 ++++++
+
+error: expected `;`, found keyword `let`
+   --> src/kernel/src/mm/phys/frame.rs:441:27
+    |
+441 |         proof { admit(); }
+    |                           ^ help: add `;` here
+442 |         let frame_number: usize = frame.into_frame_number().into_raw_value();
+    |         --- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:496:22
+    |
+496 |         proof { admit(); }
+    |         -----   -----^ expected one of `,`, `:`, or `}`
+    |         |       |
+    |         |       while parsing this struct field
+    |         while parsing this struct
+    |
+help: try naming a field
+    |
+496 |         proof { admit: admit(); }
+    |                 ++++++
+
+error: expected `;`, found keyword `let`
+   --> src/kernel/src/mm/phys/frame.rs:496:27
+    |
+496 |         proof { admit(); }
+    |                           ^ help: add `;` here
+497 |         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+    |         --- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:533:22
+    |
+533 |         proof { admit(); }
+    |         -----   -----^ expected one of `,`, `:`, or `}`
+    |         |       |
+    |         |       while parsing this struct field
+    |         while parsing this struct
+    |
+help: try naming a field
+    |
+533 |         proof { admit: admit(); }
+    |                 ++++++
+
+error: expected `;`, found keyword `let`
+   --> src/kernel/src/mm/phys/frame.rs:533:27
+    |
+533 |         proof { admit(); }
+    |                           ^ help: add `;` here
+534 |         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+    |         --- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:584:22
+    |
+584 |         proof { admit(); }
+    |         -----   -----^ expected one of `,`, `:`, or `}`
+    |         |       |
+    |         |       while parsing this struct field
+    |         while parsing this struct
+    |
+help: try naming a field
+    |
+584 |         proof { admit: admit(); }
+    |                 ++++++
+
+error: expected `;`, found keyword `let`
+   --> src/kernel/src/mm/phys/frame.rs:584:27
+    |
+584 |         proof { admit(); }
+    |                           ^ help: add `;` here
+585 |         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+    |         --- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:780:18
+    |
+780 |     proof { admit(); }
+    |     -----   -----^ expected one of `,`, `:`, or `}`
+    |     |       |
+    |     |       while parsing this struct field
+    |     while parsing this struct
+    |
+help: try naming a field
+    |
+780 |     proof { admit: admit(); }
+    |             ++++++
+
+error: expected `;`, found `instance`
+   --> src/kernel/src/mm/phys/frame.rs:780:23
+    |
+780 |     proof { admit(); }
+    |                       ^ help: add `;` here
+781 |     instance().alloc_contiguous(count)
+    |     -------- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:801:18
+    |
+801 |     proof { admit(); }
+    |     -----   -----^ expected one of `,`, `:`, or `}`
+    |     |       |
+    |     |       while parsing this struct field
+    |     while parsing this struct
+    |
+help: try naming a field
+    |
+801 |     proof { admit: admit(); }
+    |             ++++++
+
+error: expected `;`, found keyword `let`
+   --> src/kernel/src/mm/phys/frame.rs:801:23
+    |
+801 |     proof { admit(); }
+    |                       ^ help: add `;` here
+802 |     let inner = instance();
+    |     --- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:819:18
+    |
+819 |     proof { admit(); }
+    |     -----   -----^ expected one of `,`, `:`, or `}`
+    |     |       |
+    |     |       while parsing this struct field
+    |     while parsing this struct
+    |
+help: try naming a field
+    |
+819 |     proof { admit: admit(); }
+    |             ++++++
+
+error: expected `;`, found `instance`
+   --> src/kernel/src/mm/phys/frame.rs:819:23
+    |
+819 |     proof { admit(); }
+    |                       ^ help: add `;` here
+820 |     instance().free(frame)
+    |     -------- unexpected token
+
+error: expected `,`
+   --> src/kernel/src/mm/phys/frame.rs:137:22
+    |
+137 |         proof { admit(); }
+    |                      ^
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/phys/frame.rs:779:1
+    |
+779 | pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
+    | ^^^
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/phys/frame.rs:800:1
+    |
+800 | pub(super) fn free_count() -> usize {
+    | ^^^
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/phys/frame.rs:818:1
+    |
+818 | pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+    | ^^^
+
+error: could not compile `kernel` (bin "kernel") due to 26 previous errors

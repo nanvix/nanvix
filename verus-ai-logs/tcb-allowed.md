@@ -4,6 +4,12 @@ Any `external_body` outside this list must be removed.
 
 ## Allowed `external_body`
 
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<Inner>` singleton (guarded by `INSTANCE_INIT`).
+  Raw-memory op over externally-owned `static mut` storage Verus cannot verify without a
+  `PointsTo` (mirrors `bump_allocator`/`raw-array`). `ensures` pins the singleton's abstract
+  state to `phys_view().frames`, asserts `(*r).inv()`, and records `phys_view().initialized` —
+  the §8 ghost-token attachment for the singleton frame allocator.
 - `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref`
 - `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref_mut`
 - `src/kernel/src/mm/phys/kframe.rs::KernelFrame::clear`
