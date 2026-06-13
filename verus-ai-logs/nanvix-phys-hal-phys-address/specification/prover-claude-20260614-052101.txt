@@ -1350,3 +1350,25 @@ Turn 80
 ────────────────────────────────────────────────────────────
 `build-finished: success: true`, `[OK] Build complete.` Dual (non-Verus) build passes now. Let me confirm Verus verification still passes after the import change.
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -20
+[RESULT ✓] bash: - into_virtual_address
+    - from_frame_address
+    - from_into_frame_address
+    - from_raw_value
+    - align_up
+    - align_down
+    - is_aligned
+    - max_addr
+    - into_raw_value
+    - as_ptr
+    - as_mut_ptr
+    - fmt
+
+=== Summary ===
+  verification: 5 verified, 0 errors (exit 0)
+  cheating: a...
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+Module verify: 5 verified, 0 errors, status CLEAN. Now confirming no regressions across the full kernel verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel 2>&1 | tail -12
