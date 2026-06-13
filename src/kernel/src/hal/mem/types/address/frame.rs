@@ -84,7 +84,7 @@ impl FrameAddress {
 }
 
 // Dependency contract for the manager layer: raw-value conversions of a frame address.
-#[cfg_attr(verus_keep_ghost, verus_verify)]
+#[verus_verify]
 impl FrameAddress {
     // Succeeds only for page-aligned inputs, so the resulting frame address satisfies `inv()`.
     // `external_body` until the address layer is verified.

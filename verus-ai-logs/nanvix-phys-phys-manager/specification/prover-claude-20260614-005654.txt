@@ -2508,3 +2508,72 @@ Upool is fine (self-methods attach specs without impl annotation). Let me re-run
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::phys 2>&1 | tail -40
 
 [THINKING] I'm realizing that `impl Upool` sits outside the verus block, so the `new` method with its external_body and no spec is fine. The `alloc` method is a self-method with a spec, and since the previous run didn't error on it, self-methods apparently work without explicit verus_verify on the impl block. But I need to verify whether alloc's spec will actually be available for the manager to use. Let me look at how frame.rs structures its Inner impl — it has `#[verus_verify]` on the impl itself, so I should check if that's required.
+[RESULT ✓] bash: - mod.spec.rs:69 ExLinkedList (struct): external_type_spec
+    - upool.rs:159 Upool (struct): external_body
+    - upool.rs:175 new: external_body
+    - upool.rs:208 alloc: external_body
+  Global: assume=0 external_body=23 admit=10 trusted=0 cfg_gate=15
+  Detail: verus-ai-logs/verify-kernel/verus-log...
+
+────────────────────────────────────────────────────────────
+Turn 160
+────────────────────────────────────────────────────────────
+Still a compile error. Let me check the actual error:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "error\[\|error:" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_01-42-30.lo
+[RESULT ✓] bash: 20:error[E0425]: cannot find function `from_raw_value` in this scope
+27:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 76 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 161
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_01-42-30.log
+[RESULT ✓] view: 18. --- Full output ---
+19.     Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+20. error[E0425]: cannot find function `from_raw_value` in this scope
+21.   --> src/kernel/src/hal/mem/types/address/frame.rs:99:12
+22.    |
+23. 99 |     pub fn from_raw_value(raw_addr: usize) -> Result<Self...
+
+────────────────────────────────────────────────────────────
+Turn 162
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I'm down to one remaining error with the `from_raw_value` function at line 99, which I moved into a conditional compilation block. Let me check the current structure of frame.rs around that line to see what's happening.
+[RESULT ✓] view: 60. //==================================================================================================
+61. // Implementations
+62. //==================================================================================================
+63. 
+64. impl FrameAddress {
+65.     pub fn new(address: PageAligne...
+
+────────────────────────────────────────────────────────────
+Turn 163
+────────────────────────────────────────────────────────────
+kimport structure differs. Let me check how `verus_verify`/`verus_spec` are imported in this file vs kframe.rs:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== address/frame.rs top ==="; sed -n '1,30p' src/kernel/src/hal/mem/types/address/fram
+
+[THINKING] The `#[cfg_attr(verus_keep_ghost, verus_verify)]` attribute on the impl block isn't resolving the issue — `from_raw_value` still can't be found in scope when called from manager.rs, and the error originates at the definition site itself. I'm realizing the problem might be that the `verus_spec` macro on a self-less associated function is generating a call to something that doesn't exist in the current scope.
+
+Looking at what changed: `kframe::new`, `init`, and `check_user_watermark` are now passing, but `from_raw_value` still fails. The key difference is that `kframe::new` uses a bare `#[verus_verify]` attribute on its impl block, while `from_raw_value` uses the conditional `#[cfg_attr(verus_keep_ghost, verus_verify)]` form. I'm wondering if the conditional form doesn't expand the same way during verification, or if there's something about how `external_body` functions interact with the macro expansion that's causing the scope issue.
+[RESULT ✓] bash: === address/frame.rs top ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==============================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 164
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I see that kframe.rs uses a bare `#[verus_verify]` attribute on the impl block, and frame.rs does the same on the struct definition, so both work without the cfg_attr wrapper. I should simplify the impl by switching from `cfg_attr` to just a bare `#[verus_verify]` attribute.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 165
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::phys 2>&1 | tail -30
