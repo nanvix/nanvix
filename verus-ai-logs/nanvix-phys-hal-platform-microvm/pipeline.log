@@ -29,3 +29,6 @@ Module: hal-platform-microvm
 PHASE: view-design
 Module: hal-platform-microvm
 ============================================================
+[2026-06-14 06:26:02] [PROVER] Running view-design...
+[2026-06-14 06:26:02] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-14 06:28:21]   ↳ prover done in 2m19s (exit=0)
