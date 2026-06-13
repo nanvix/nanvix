@@ -435,3 +435,23 @@ This is actually sound because the kernel impl is part of the unsafe TCB, and Ve
 The stability ensures on `as_mut_ptr` is real and non-tautological, addressing the reviewer feedback about giving the method a proper specification rather than leaving it bare, and it'll be usable once the allocator proof phase consumes it.
 
 Now let me look at what warning came up.
+[RESULT ✓] bash: Timestamp : 2026-06-13_23-36-09
+
+warning: cannot use external trait bump_allocator::BssStorage as a bound without declaring the trait (use #[verifier::external_trait_specification] to declare the trait); this is a warning for now but will eventually be an error
+  --> src/libs/bump_allocator/src/lib....
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Let me remove the warning by dropping the external-trait bound from the ghost fn:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+
+[THINKING] The issue is that `BssStorage` is declared as an `unsafe trait` in regular Rust code rather than within a Verus block, so Verus doesn't recognize it as a native trait. The warning suggests using `#[verifier::external_trait_specification]` to register it properly, and since this warning will eventually become an error, I need to fix this to avoid future compilation issues.
+
+I'm considering removing the `BssStorage` bound from `base_of` entirely since it's just a phantom-keyed ghost function that doesn't actually need the constraint — `base_of<S: ?Sized>()` would work fine and let me call it with `Self` regardless. The `base_of` + `as_mut_ptr` pattern is still worth keeping since it addresses the reviewer's concern about bare `as_mut_ptr` calls and adds stability guarantees without regressing the kernel, so I'll just clean up the trait bound to eliminate the warning.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A4 -iE "warning|error|verification 

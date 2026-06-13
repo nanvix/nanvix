@@ -38,7 +38,7 @@ pub assume_specification [ <usize>::div_ceil ](x: usize, y: usize) -> (result: u
 
 /// Ghost constant: the stable base address revealed by a backend `S`'s
 /// `as_mut_ptr()`. Uninterpreted because a static's address is opaque to Verus.
-pub uninterp spec fn base_of<S: BssStorage + ?Sized>() -> int;
+pub uninterp spec fn base_of<S: ?Sized>() -> int;
 
 /// Least multiple of `alignment` that is `>= value`; `None` when `alignment == 0`
 /// or when that multiple does not fit in a `usize`.
