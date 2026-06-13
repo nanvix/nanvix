@@ -1574,3 +1574,104 @@ Down to one — the `deref` return type must match exactly. Let me use the assoc
 Turn 87
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus timeout 300 make verify-kernel MODULE=mm::
+[RESULT ✓] bash: verification: 47 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+---ERRORS---
+note: verifying module mm::phys
+note: verifying module mm::phys::frame
+note: verifying module mm::phys::kframe
+note: verifying module mm::phys::manager
+note: verifying module mm::phys::upool
+verification results:: ...
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+47 verified, 0 errors. CHEATING_DETECTED is expected (admit + sanctioned external_body placeholders). Now I must ensure the **free-function wrapper specs are meaningful** per caller_analysis. Let me review the caller analysis and current wrapper specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+
+[THINKING] The verification passed with 47 specs and no errors, which is good, but I'm realizing the specs themselves might not be capturing what actually matters—the caller expectations. My inner bodies are using `admit()` which is allowed during the spec phase, and the free-function wrappers have external_body placeholders for dependencies, but I'm questioning whether these specs are genuinely meaningful or just technically correct.
+
+Looking back at the task, the real target is the free functions themselves: `share`, `instance`, `refcount`, `is_covered`, `free_count`, `free`, `book`, `alloc_range`, `alloc_contiguous`, and `alloc`. The Inner specs already exist and shouldn't be touched. So I need to review what specs I've actually written on these wrapper functions and check them against the caller_analysis and view_design expectations to see where they're weak and need strengthening.
+[RESULT ✓] bash: # Caller Analysis: `mm::phys::frame`
+
+## Script Output
+
+See: `verus-ai-logs/nanvix-phys-phys-frame/find_callers_output.md`
+(raw `find_callers_lsp.py` report).
+
+Key facts from the script:
+
+- **Crate:** `kernel`. **Depended on by:** none — every caller is intra-crate.
+- All public free functions are `...
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+Now let me view the current free-function wrappers to assess/strengthen their specs.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm seeing that the existing callers already depend on specific wrapper specifications for the allocation functions, and the caller analysis is revealing a gap between what the current implementation provides and what the callers actually need—particularly around frame availability tracking in the allocation path. I need to check whether the pre-existing wrapper functions like alloc, share, and refcount actually verify without admits, since they have real delegation bodies and weak ensures that might be implied by the Inner spec.
+[RESULT ✓] view: 715.         return Err(Error::new(
+716.             ErrorCode::InvalidArgument,
+717.             "frame bitmap is larger than the configured refcount storage",
+718.         ));
+719.     }
+720. 
+721.     // SAFETY: single-threaded boot; no other reference to `REFCOUNT_STORAGE` exists.
+722.     let r...
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+Verification passes. Let me strengthen the two weakest wrapper specs (`book`, `alloc_range`) using the existing view helpers. Let me check what's available.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "pub open spec fn\|pub closed spec fn\|spec fn covers\|reserved\|all_reserved\|book
+
+[THINKING] Looking at the wrapper specs for `alloc`, I'm seeing that it only applies `frame.inv()` on the Ok path, which matches the existing caller contract where they re-derive through lemmas. The challenge is that I can't meaningfully strengthen this spec since the singleton's receiver pre-state isn't spec-readable—`phys_view()` is uninterpreted and fixed—so I can't express the `old@ -> final@` state transitions that would make the spec more complete.
+
+This actually reveals the core design constraint: `phys_view()` is treated as a fixed, uninterpreted snapshot rather than a mutable state. The free functions' specs describe relationships against this fixed view, which works for upstream callers who consume these as "the current truth" via lemmas. So I shouldn't try to add old/new transition specs since that's not expressible within this design. My actual task is just to ensure all ten free functions have proper specs that align with the caller analysis and the established contract.
+
+Looking at the current state, most wrappers already have specs in place—some with admits where needed. The key question now is whether `make verify` still passes cleanly and whether the cheating detection matters given that the task allows admits. I need to check if the external_body list covers my additions and understand how assume_specification counts are being reported. ect normal build. I should verify that `make verify` still passes with all my changes, since the assume_specifications are crate-global and could affect other modules. I also need to check `make build` to ensure the ghost code doesn't interfere with normal compilation.
+
+One thing I'm reconsidering: I added specs to book/alloc_range/is_covered that previously had no wrapper spec. The callers (book_mmio_regions and book_physical_memory_regions) are themselves external_body, so they don't verify against wrapper specs anyway. Adding meaningful specs here is pure strengthening and shouldn't break anything. But the specs I wrote are just `ensures true`, which is weak. The task asks for meaningful specs covering every caller expectation—for book, the caller needs to know that Ok means the frame is reserved. I should check if there's a `reserved` helper in phys_view() that I can use to express this properly. I should focus on strengthening the specs for `book` and `alloc_range` since they currently just assert true, then check what helpers are available in mod.spec.rs to make those assertions more meaningful before re-verifying.
+[RESULT ✓] bash: 31:    pub open spec fn wf(&self) -> bool
+84:    /// Abstract frame-allocator state: which physical frames are allocated (reserved) vs.
+102:    pub open spec fn inv(self) -> bool {
+110:    pub open spec fn live(self) -> bool {
+124:    pub open spec fn covers(self, addr: int) -> bool {
+128:    /// Th...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] view: 120. 
+121. impl FrameAllocView {
+122.     /// The allocator tracks (covers) the frame at `addr` — it is one of the frames this
+123.     /// allocator knows about, allocated or free. Models `frame::is_covered`.
+124.     pub open spec fn covers(self, addr: int) -> bool {
+125.         self.allocated_fr...
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+I'll strengthen `book` and `alloc_range` Ok-postconditions to meaningful reservation facts (with `admit()` since proofs are deferred).
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm strengthening the wrapper assertions for `book` and `alloc_range` by using the reserved frame checks—for `book` I'll verify the physical address is reserved, and for `alloc_range` I'll verify all frames in the region are reserved using the region's start and size fields.
+
+Since these wrappers currently have `ensures true` without any proof body, strengthening the postconditions means I need to add `admit()` to make them verify, as the wrapper layer can't directly prove the stronger assertions without it.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus timeout 300 make verify-kernel MODULE=mm::
+
+[THINKING] I'm verifying that `region_frame_addrs` is accessible through the crate path and that the field accessors for `MemoryRegionView` are correct, then running the kernel verification again.

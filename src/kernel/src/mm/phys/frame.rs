@@ -857,11 +857,12 @@ pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
         phys_addr.inv(),
     ensures
         match result {
-            Ok(()) => true,
+            Ok(()) => crate::mm::phys::phys_view().frames.reserved(phys_addr@),
             Err(_) => true,
         },
 )]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+    proof! { admit(); }
     instance().book(phys_addr)
 }
 
@@ -875,11 +876,13 @@ pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error>
         region.inv(),
     ensures
         match result {
-            Ok(()) => true,
+            Ok(()) => crate::mm::phys::phys_view().frames.all_reserved(
+                crate::mm::phys::region_frame_addrs(region@.start, region@.size)),
             Err(_) => true,
         },
 )]
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
+    proof! { admit(); }
     instance().alloc_range(region)
 }
 
