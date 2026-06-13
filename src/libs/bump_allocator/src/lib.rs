@@ -273,13 +273,14 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
             match result {
                 Ok(slot) => {
                     let v = self.view();
-                    // Alignment and in-bounds of the returned slot. Cross-call
-                    // uniqueness and the `allocated + 1` transition need a ghost
-                    // token over the atomic cursor and are deferred to the proving
-                    // phase (see `lemma_geometry` / `lemma_alloc_transition`).
-                    &&& (slot as int) % (v.unit_align as int) == 0
-                    &&& v.base <= slot as int
-                    &&& slot as int + (N as int) <= v.base + v.storage_size as int
+                    let a = slot_ref_addr(slot);
+                    // Alignment and in-bounds of the returned slot's address. Cross-call
+                    // uniqueness and the `allocated + 1` transition need a ghost token
+                    // over the atomic cursor and are deferred to the proving phase
+                    // (see `lemma_geometry` / `lemma_alloc_transition`).
+                    &&& a % (v.unit_align as int) == 0
+                    &&& v.base <= a
+                    &&& a + (N as int) <= v.base + v.storage_size as int
                 },
                 Err(_) => true,
             },

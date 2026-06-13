@@ -40,6 +40,15 @@ pub assume_specification [ <usize>::div_ceil ](x: usize, y: usize) -> (result: u
 /// `as_mut_ptr()`. Uninterpreted because a static's address is opaque to Verus.
 pub uninterp spec fn base_of<S: ?Sized>() -> int;
 
+/// Abstract address of a freshly handed-out slot reference.
+///
+/// Uninterpreted: a Verus `&mut T` reference carries no spec-readable address
+/// (only raw pointers expose `.addr()`), so — mirroring `raw-array`'s uninterpreted
+/// `view(&self) -> Seq<T>` — the address a caller observes for a returned slot is
+/// modeled abstractly. `alloc`/`alloc_as` assert their alignment and in-bounds
+/// guarantees over `slot_ref_addr(slot)`.
+pub uninterp spec fn slot_ref_addr<T: ?Sized>(r: &T) -> int;
+
 /// Least multiple of `alignment` that is `>= value`; `None` when `alignment == 0`
 /// or when that multiple does not fit in a `usize`.
 ///
