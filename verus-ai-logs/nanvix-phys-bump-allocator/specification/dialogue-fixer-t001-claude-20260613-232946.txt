@@ -369,3 +369,23 @@ Turn 25
 Turn 26
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A6 -iE "does not yet support|error\
+[RESULT ✓] bash: Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+error[E0277]: the size for values of type `Self` cannot be known at compilation time
+   --> src/libs/bump_allocator/src/lib.rs:200:40
+    |
+200 |             result as int == base_of::<Self>(),
+    |                   ...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Need `?Sized` on the ghost fn's bound. Let me fix:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+
+[THINKING] I need to add `?Sized` to the `base_of` trait bound so that `Self` can be unsized, which should resolve the type constraint issue.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A6 -iE "does not yet support|error\
