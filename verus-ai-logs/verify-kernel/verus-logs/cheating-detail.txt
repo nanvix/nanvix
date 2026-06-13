@@ -1,5 +1,7 @@
     - hal/mem/types/address/frame.rs:99 from_raw_value: external_body
     - hal/mem/types/address/frame.rs:119 into_raw_value: external_body
+    - hal/mem/types/address/phys.rs:117 from_number: admit
+    - hal/mem/types/address/phys.rs:132 into_frame_number: admit
     - mm/phys/frame.rs:136 alloc: admit
     - mm/phys/frame.rs:213 alloc_contiguous: admit
     - mm/phys/frame.rs:298 free: admit

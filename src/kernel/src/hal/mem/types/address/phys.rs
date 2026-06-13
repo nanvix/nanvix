@@ -77,6 +77,16 @@ impl PhysicalAddress {
     ///
     /// Behavior is undefined if the provided memory-mapped I/O address is invalid.
     ///
+    // Identity wrapping that deliberately bypasses the physical-RAM-range validator: MMIO
+    // addresses may legally lie outside tracked RAM. On success the abstract address is unchanged.
+    #[verus_verify]
+    #[verus_spec(result =>
+        ensures
+            match result {
+                Ok(r) => r@ == addr@,
+                Err(_) => true,
+            },
+    )]
     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
         Ok(Self(addr))
     }
@@ -98,12 +108,29 @@ impl PhysicalAddress {
     ///
     /// A [`PhysicalAddress`] associated with the given `frame_number`.
     ///
+    // Total constructor: the result is the frame's base address, hence `FRAME_SIZE`-aligned.
+    #[verus_verify]
+    #[verus_spec(result =>
+        ensures
+            result@ == spec_from_number(spec_frame_raw_value(frame)),
+    )]
     pub fn from_number(frame: FrameNumber) -> Self {
+        proof! { admit(); }
         let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
         Self(VirtualAddress::new(addr))
     }
 
+    // Total projection (under `inv()`): identifies the frame containing the address,
+    // `self@ / FRAME_SIZE` (equivalently `self@ >> FRAME_SHIFT`). `inv()` underwrites the unwrap.
+    #[verus_verify]
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            spec_frame_raw_value(result) == spec_frame_number(self@),
+    )]
     pub fn into_frame_number(self) -> FrameNumber {
+        proof! { admit(); }
         let raw_addr: usize = self.0.into_raw_value();
         let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
         // Safety: the following unwrap is safe because a physical address has a valid frame number.

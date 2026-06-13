@@ -28,22 +28,12 @@ pub assume_specification[ ::arch::mem::FRAME_SIZE ] -> (result: usize)
         result == crate::hal::mem::spec_page_size(),
 ;
 
-pub assume_specification[ ::arch::mem::paging::FrameNumber::from_raw_value ](_v: usize)
-    -> Option<::arch::mem::paging::FrameNumber>;
-
-pub assume_specification[ ::arch::mem::paging::FrameNumber::into_raw_value ](_f: ::arch::mem::paging::FrameNumber)
-    -> usize;
-
 pub assume_specification[ crate::hal::mem::FrameAddress::from_frame_number ](
     _f: ::arch::mem::paging::FrameNumber,
 ) -> Result<crate::hal::mem::FrameAddress, ::sys::error::Error>;
 
 pub assume_specification[ crate::hal::mem::FrameAddress::into_frame_number ](
     _a: crate::hal::mem::FrameAddress,
-) -> ::arch::mem::paging::FrameNumber;
-
-pub assume_specification[ crate::hal::mem::PhysicalAddress::into_frame_number ](
-    _a: crate::hal::mem::PhysicalAddress,
 ) -> ::arch::mem::paging::FrameNumber;
 
 pub assume_specification<T: ::sys::mm::Address>[ crate::hal::mem::TruncatedMemoryRegion::<T>::start ](
