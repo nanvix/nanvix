@@ -110,11 +110,12 @@ impl PhysicalAddress {
     // Identity wrapping that deliberately bypasses the physical-RAM-range validator: MMIO
     // addresses may legally lie outside tracked RAM. On success the abstract address is unchanged.
     #[verus_spec(result =>
+        requires
+            spec_frame_number(addr@) <= spec_max_frame_number(),
         ensures
-            match result {
-                Ok(r) => r@ == addr@,
-                Err(_) => true,
-            },
+            result is Ok,
+            (result->Ok_0)@ == addr@,
+            (result->Ok_0).inv(),
     )]
     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
         Ok(Self(addr))
