@@ -102,6 +102,9 @@ layer is verified" rationale already used for `FrameAddress::from_raw_value`/`in
   address/region layer is verified, at which point these `assume_specification`s are removed:**
   - `crate::hal::mem::FrameAddress::from_frame_number` / `into_frame_number`
   - `crate::hal::mem::PhysicalAddress::into_frame_number`
-  - `crate::hal::mem::TruncatedMemoryRegion::<T>::start` / `size`
   - `crate::hal::mem::PageAligned::<T> as Address::into_raw_value`
   - `crate::hal::mem::PageAligned::<T> as Deref::deref`
+
+  (`crate::hal::mem::TruncatedMemoryRegion::<T>::start` / `size` were removed from
+  `frame.spec.rs` once the `hal::mem::types::region` module gained real specifications —
+  their real `#[verus_spec]` contracts now supersede the placeholders.)
