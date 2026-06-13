@@ -274,3 +274,30 @@ Turn 15
 [TOOL] report_intent: Verifying from_address proof
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: verification results:: 4 verified, 0 errors
+verification results:: 0 verified, 0 errors
+verification results:: 70 verified, 0 errors
+verification results:: 35 verified, 0 errors
+verification results:: 2 verified, 0 errors (partial verification with `--verify-*`)
+=== Results ===
+  Global: assume=0 ex...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+from_address now verifies without admit — admit dropped from 25 to 24. Let me confirm the detail and run full regression + build:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== cheating-detail grep ==="; grep "aligned/page" verus-ai-logs/verify-kernel/verus-lo
+
+[THINKING] The from_address field now validates correctly without the admit flag, and the admit count decreased from 25 to 24, so I should verify that from_address no longer appears in the cheating details.
+[RESULT ✓] bash: === cheating-detail grep ===
+(no aligned/page entries — from_address admit GONE)
+=== admit/assume/external_body in module files ===
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:7:pub assume_specification[ ::arch::mem::PAGE_ALIGNMENT ] -> (result: Alignment)
+<shellId: 7 completed with ex...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Only the `PAGE_ALIGNMENT` constant model remains (expected, per reviewer). Now full regression and build:
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus
+touch src/kernel/src/hal/mem/types/address/alig
