@@ -1,4 +1,6 @@
-# Unverified exec functions: 3/6
+# Unverified exec functions: 5/6
   fmt
   new
+  alloc
+  alloc_as
   default

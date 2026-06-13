@@ -135,37 +135,4 @@ impl BumpView {
     }
 }
 
-//==================================================================================================
-// View attachment
-//==================================================================================================
-
-impl<const N: usize, const A: usize, S: BssStorage> View for FixedSizeBumpAllocator<N, A, S> {
-    type V = BumpView;
-
-    closed spec fn view(&self) -> BumpView {
-        BumpView {
-            // `base` and `allocated` are runtime values (a backend pointer and the
-            // atomic cursor) that cannot be read in spec without the ghost token
-            // introduced in the proving phase; they are modeled abstractly here.
-            base: choose|b: int| true,
-            stride: match align_up_spec(N as nat, A as nat) {
-                Some(s) => s,
-                None => 0,
-            },
-            unit_size: N as nat,
-            unit_align: A as nat,
-            capacity: S::NUM_UNITS as nat,
-            storage_size: S::STORAGE_SIZE as nat,
-            allocated: choose|a: nat| true,
-        }
-    }
-}
-
-impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A, S> {
-    /// Allocator-level invariant: the abstract pool is well formed.
-    pub open spec fn inv(&self) -> bool {
-        self.view().inv()
-    }
-}
-
 } // verus!
