@@ -13,6 +13,8 @@
     - mm/phys/frame.rs:737 alloc_contiguous: external_body
     - mm/phys/frame.rs:757 free_count: external_body
     - mm/phys/frame.rs:771 free: external_body
+    - mm/phys/frame.rs:813 share: external_body
+    - mm/phys/frame.rs:834 refcount: external_body
     - mm/phys/kframe.rs:84 new: external_body
     - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
     - mm/phys/manager.proof.rs:21 lemma_free_count_bounded: admit
@@ -29,4 +31,6 @@
     - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
     - mm/phys/mod.rs:103 book_mmio_regions: external_body
     - mm/phys/mod.spec.rs:69 ExLinkedList (struct): external_type_spec
-    - mm/phys/upool.rs:166 Upool (struct): external_body
+    - mm/phys/upool.rs:217 Upool (struct): external_body
+    - mm/phys/upool.rs:241 new: external_body
+    - mm/phys/upool.rs:274 alloc: external_body

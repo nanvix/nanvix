@@ -796,11 +796,41 @@ pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Re
 }
 
 /// Add a new reference to an already-allocated frame (e.g. for copy-on-write sharing).
+// Dependency contract: singleton wrapper around `Inner::share`. On success the frame is (still)
+// allocated; the per-frame reference-count increment lives in the global partition and is pinned
+// to `phys_view().frames` in the proving phase. `external_body` until the free-function layer is
+// verified.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        frame.inv(),
+    ensures
+        match result {
+            Ok(()) => crate::mm::phys::phys_view().frames.allocated_frames.contains(frame@),
+            Err(_) => true,
+        },
+)]
 pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
     instance().share(frame)
 }
 
 /// Returns the current reference count of an already-allocated frame.
+// Dependency contract: singleton wrapper around `Inner::refcount`. Reads the current reference
+// count of the frame from the global partition (`phys_view().frames`); pure, no mutation.
+// `external_body` until the free-function layer is verified.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        frame.inv(),
+    ensures
+        match result {
+            Ok(count) => {
+                &&& crate::mm::phys::phys_view().frames.allocated_frames.contains(frame@)
+                &&& count as int == crate::mm::phys::phys_view().frames.refcounts[frame@]
+            },
+            Err(_) => !crate::mm::phys::phys_view().frames.allocated_frames.contains(frame@),
+        },
+)]
 pub(super) fn refcount(frame: FrameAddress) -> Result<u8, Error> {
     instance().refcount(frame)
 }

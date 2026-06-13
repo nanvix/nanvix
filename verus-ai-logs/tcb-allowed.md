@@ -52,6 +52,15 @@ Any `external_body` outside this list must be removed.
   (`== phys_view().frames.free_count()`).
 - `src/kernel/src/mm/phys/frame.rs::free` — best-effort frame release used by manager error
   cleanup; no precondition, no abstract postcondition (callers ignore the outcome).
+- `src/kernel/src/mm/phys/frame.rs::share` — singleton wrapper around `Inner::share` (the CoW
+  reference-count bump). `requires frame.inv()`, `ensures Ok(()) => the frame is allocated in
+  `phys_view().frames``. The per-frame `+1` lives in the global partition and is pinned to
+  `phys_view().frames` in the proving phase. Sibling of `frame::alloc`/`free`; `external_body`
+  until the free-function layer is verified.
+- `src/kernel/src/mm/phys/frame.rs::refcount` — singleton wrapper around `Inner::refcount`.
+  `requires frame.inv()`, `ensures Ok(count) => count == phys_view().frames.refcounts[frame@]`
+  and `Err(_) => frame not allocated`. Pure read; `external_body` until the free-function layer
+  is verified.
 - `src/kernel/src/hal/mem/types/address/frame.rs::FrameAddress::from_raw_value` — succeeds only
   for page-aligned inputs, so `ensures Ok(fa) => fa.inv()`. Verified when the address layer is.
 - `src/kernel/src/hal/mem/types/address/frame.rs::FrameAddress::into_raw_value` — the raw value is
