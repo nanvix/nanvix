@@ -52,6 +52,13 @@ where
     /// - `Ok(Self)`: The new address.
     /// - `Err(Error::BadAddress)`: If the provided address is invalid.
     ///
+    #[verus_spec(result =>
+        ensures
+            match result {
+                Ok(a) => a@ == raw_addr as int,
+                Err(e) => e.code == crate::error::ErrorCode::BadAddress,
+            },
+    )]
     fn from_raw_value(raw_addr: usize) -> Result<Self, Error>;
 
     #[verus_spec(result =>
@@ -129,7 +136,7 @@ where
     #[verus_spec(result =>
         ensures
             result matches Ok(aligned)
-                && aligned == (self@ % crate::mm::spec_align_value(align) == 0),
+                && aligned == spec_addr_is_aligned(self@, align),
     )]
     fn is_aligned(&self, align: Alignment) -> Result<bool, Error>;
 

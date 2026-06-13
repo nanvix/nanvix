@@ -590,3 +590,142 @@ Turn 30
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-sys MODULE=sys::sys::mm::address 2>&1 | tail -20
 
 [THINKING] I'm trying to figure out the correct module path format for the verify script. The crate is named `sys` and there's a nested module also called `sys`, so the full path is `sys::sys::mm::address`. But when I pass this to the script, it strips the crate prefix and only shows `mm::address`. It seems the `--verify-module` flag expects just the module path without the crate name, so I should be passing `sys::mm::address` to get the right module reference.
+[RESULT ✓] bash: - max_addr
+    - into_raw_value
+    - clone_address
+    - as_ptr
+    - as_mut_ptr
+    - fmt
+    - add
+    - add_assign
+    - from
+    - from
+    - from
+    - from
+
+=== Summary ===
+  verification: 2 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Baseline is CLEAN. Let me check the function order plan.
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py verus-ai-logs/verification
+
+[THINKING] I've established a baseline with the module verification showing 2 verified specs and no errors, with coverage at 2 out of 23 functions—the existing contracts are for `into_raw_value` and `is_aligned`. Now I'm checking what else needs to be examined.
+[RESULT ✓] bash: No matching modules found.
+Available modules:
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py verus-ai-logs/verification
+[RESULT ✓] bash: No matching modules found.
+Available modules:
+try escaped
+No matching modules found.
+Available modules:
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Let me check the PhysicalAddress implementor to assess regression risk of strengthening the error arm.
+[TOOL] bash: cd /home/ruize/nanvix-phy; f=src/kernel/src/hal/mem/types/address/phys.rs; grep -n "from_raw_value\|BadAddress\|max_addr
+
+[THINKING] The module listing isn't showing dependencies, but I've already worked out the order from my analysis—leaves first. The three functions I need to focus on are trait methods, and I've already specified `into_raw_value` and `is_aligned`, so now I just need to write the spec for `from_raw_value`. Since there's no interdependency between them, I can tackle this independently. I'm going to keep the spec minimal and correct, starting with adding the `spec_addr_is_aligned` test to mod.spec.rs.
+
+For `from_raw_value`, I'm deciding against including a range condition in the spec because that would require `spec_max_addr`, which either means changing the trait itself (out of scope) or touching the `max_addr` function (also out of scope). Instead, I'll focus on what I can express: a round-trip guarantee and ensuring the error code is `BadAddress`. This covers what the tests actually check—successful values round-trip and errors return the right error code. The bidirectional relationship between out-of-range values and `BadAddress` is partially covered by guaranteeing the error code, even if I can't fully specify the range condition. I'll document this limitation in the design notes.
+
+But now I'm realizing I need to check whether adding an `ensures` clause to the trait method itself could break the kernel's existing `assume_specification` for `PhysicalAddress::from_raw_value`. The kernel's assumption guarantees that `Ok` values round-trip and errors are unconstrained. If I add an `ensures` that requires errors to have code `BadAddress`, that's a stronger spec than what the kernel assumes. Verus would need the kernel's assumption to imply my trait spec, but `true` (the kernel's error case) doesn't imply `e.code==BadAddress`. This could cause the kernel build to fail—the assumption wouldn't satisfy the trait's stronger specification.
+
+I have two paths: either weaken the trait's error spec to match the kernel's assumption (just `Err(_) => true`), which avoids regression but feels incomplete, or update the kernel's `assume_specification` to include the `BadAddress` constraint. The second option requires checking whether `PhysicalAddress::from_raw_value` actually returns `BadAddress` on error in the implementation, which would make the stronger spec truthful and safe to enforce.
+
+I'm also uncertain about how Verus handles trait method ensures when combined with `assume_specification` on the impl—whether the assumption replaces the spec entirely or if both are checked separately. The practical approach is to examine the actual `PhysicalAddress` implementation to determine if the `BadAddress` strengthening is even correct, then decide which path to take.
+[RESULT ✓] bash: 53:                ErrorCode::BadAddress,
+163:        FrameNumber::from_raw_value(frame_number).unwrap()
+167:impl Address for PhysicalAddress {
+180:    /// - `Err(Error::BadAddress)`: If the provided address is invalid.
+182:    fn from_raw_value(value: usize) -> Result<Self, Error> {
+183:        Sel...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; f=src/kernel/src/hal/mem/types/address/phys.rs; sed -n '40,60p' $f; echo "=== from_virtual_ad
+[RESULT ✓] bash: #[verus_verify(external_derive)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PhysicalAddress(VirtualAddress);
+
+//==================================================================================================
+// Implementations
+//=============================================...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+`from_virtual_address` confirms PhysicalAddress fails via a sparse-memory validator, not a simple `> max_addr` range — so the view_design's bidirectional range condition is **incorrect** across implementors. The correct, truthful trait contract is round-trip + `BadAddress`. Let me check `spec_align_value` and Alignment.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/alignment.rs
+
+[THINKING] So `PhysicalAddress::from_raw_value` does return `Err(BadAddress)` on its error path, which means strengthening the trait's error arm to check `e.code == BadAddress` is accurate for this type. The actual validation uses a platform-specific validator rather than just checking against a maximum address, accounting for sparse memory layouts, so the simple range check `value > max_addr` doesn't fully capture what the validator does.
+
+This means the bidirectional range condition in view_design is actually incorrect for `PhysicalAddress` with sparse memory — it would reject valid addresses that fall within the range. So I shouldn't include that range characterization in the trait spec, as it would be a false contract across all implementors. I'll note this in the view_design documentation.
+
+The correct trait-level contract should specify that `Ok` results preserve the raw address value and `Err` results always have `ErrorCode::BadAddress`, which is truthful for both `VirtualAddress` and `PhysicalAddress`. Now I need to consider whether the kernel's existing `assume_specification` should be updated to match this more precise error contract.
+
+The key question is whether Verus will require the kernel's assume_specification to align with the trait spec, or if it just trusts external specs. The safest approach is to make minimal changes to the sys module first, run `make verify-sys` to catch any issues quickly, then run the full verification to see if the kernel needs updating.
+
+For the spec changes, I need to add a helper function `spec_addr_is_aligned` in mod.spec.rs that checks if a value is aligned, then use it in the `is_aligned` ensures clause. This keeps things aligned with the view_design and reduces duplication. The helper will reference `crate::mm::spec_align_value` to stay consistent with the existing logic.
+[RESULT ✓] view: 140. 
+141. impl From<Alignment> for usize {
+142.     fn from(align: Alignment) -> Self {
+143.         align as usize
+144.     }
+145. }
+146. 
+147. //==================================================================================================
+148. // Material for verification
+149. //============...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+I have enough understanding. Let me record a plan and write the specs.
+[TOOL] create: /home/ruize/.copilot/session-state/f8f8b267-ea53-4d2c-8a1d-a1b44f4c0d73/plan.md
+[TOOL] report_intent: Writing address trait specs
+
+[THINKING] I've confirmed that `spec_align_value` is a public spec function in the `crate::mm` module, and now I'm setting up the mod.spec.rs file to add the alignment helper, keeping in mind that this file gets included into mod.rs so it inherits the same imports and scope.
+
+Writing the spec helper... The proof file can stay empty since trait method declarations don't need separate proof functions—the implementations will discharge the contracts. For the VirtualAddress impl, Verus will verify that its from_raw_value satisfies the trait's ensures clause by checking that the Ok value's view equals the raw address, which the inner inherent method already guarantees.
+
+I'm noticing the trait impl block for VirtualAddress isn't currently annotated with `#[verus_verify]`, so Verus doesn't check it against the trait spec during verification. That's consistent with the existing baseline where the other trait methods (into_raw_value, is_aligned) have specs but their impls aren't verified—this is acceptable as a trusted dependency within the same crate, and adding the new ensures clause won't regress anything.
+
+The real concern is the kernel's assume_specification for PhysicalAddress::from_raw_value. Once I add the trait ensures clause, there might be a conflict between the assume_specification and the trait spec, or Verus might require the assume_specification to be updated to match. I'll run the full verification after making the sys changes to see what happens empirically—if the kernel errors, I'll update the assume_specification to align with the new trait contract. For now, let me proceed with the changes and test the full `make verify` to validate everything works together.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/.copilot/session-state/f8f8b267-ea53-4d2c-8a1d-a1b44f4c0d73/plan.md with 1535 characters
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Now let me write the spec helper and update the trait.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Now update the trait in mod.rs: add spec to `from_raw_value` and refactor `is_aligned` to use the helper.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+Now run the scoped verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-sys MODULE=sys::sys::mm::address 2>&1 | tail -15
+
+[THINKING] The `ErrorCode` is already accessible through the fully-qualified path in the module, so I don't need to add any imports. Now I'm running the scoped verify-sys to check everything.
