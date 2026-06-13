@@ -1,4 +1,4 @@
-# Unverified exec functions: 1011/1022
+# Unverified exec functions: 997/1023
   do_debug
   debug
   do_evctrl
@@ -301,8 +301,6 @@
   into_page_address
   from_frame_number
   into_frame_number
-  from_raw_value
-  into_raw_value
   fmt
   eq
   test
@@ -539,28 +537,17 @@
   drop
   instance
   init
-  alloc
-  alloc_contiguous
-  free_count
-  free
   is_covered
   book
   alloc_range
   share
   refcount
-  new
   base
   clear
   deref
   deref_mut
   drop
-  init
   get_mut
-  alloc_many_user_frames
-  alloc_user_frame
-  check_user_watermark
-  alloc_kernel_frame
-  alloc_many_kernel_frames
   test
   new
   address
@@ -569,7 +556,6 @@
   refcount
   drop
   new
-  alloc
   new
   size
   base
