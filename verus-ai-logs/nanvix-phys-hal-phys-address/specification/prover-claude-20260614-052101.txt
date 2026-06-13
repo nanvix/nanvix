@@ -836,3 +836,80 @@ Turn 40
 
 2. UPDATE
    1 row(s) updated.
+[RESULT ✓] bash: error: could not compile `kernel` (bin "kernel") due to 2 previous errors
+
+=== Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -nE "error\[|error:" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_05-34-45.lo
+
+[THINKING] I'm checking the compilation errors to see what went wrong.
+[RESULT ✓] bash: 20:error[E0425]: cannot find function `from_mmio_address` in this scope
+26:error[E0425]: cannot find function `from_number` in this scope
+33:error: could not compile `kernel` (bin "kernel") due to 2 previous errors
+=== full error context ===
+8:compilation/setup error (verus did not run)
+9-
+10-Cheati...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] The issue is that applying `#[verus_verify]` to individual methods within a non-annotated impl block causes macro expansion problems—the compiler can't resolve functions like `from_mmio_address`. It seems like either the entire impl needs the annotation, or per-method verification isn't the right approach here. Interestingly, `into_frame_number` works fine even with the attribute, but the other two methods are failing, which suggests something specific about how those functions are being processed.
+
+The real solution is to split the impl block: put the three target functions in a separate `#[verus_verify] impl PhysicalAddress` block with only `#[verus_spec]` on the individual methods, while leaving the rest of the impl unannotated. This way the problematic functions like `from_frame_address` with the overflow issue stay unverified, and the macro hygiene problem gets resolved by following the established pattern from other files. I see the issue now — per-function `#[verus_verify]` on associated functions doesn't work because the verification shim loses the `Self::` context. I need to use impl-level annotation instead. Since the three target functions are interspersed with non-target functions throughout the impl, I'll create a separate `#[verus_verify] impl` block containing just those three functions, leaving the original impl untouched. Let me pull up the current code to identify the exact functions to move.
+[RESULT ✓] view: 49. impl PhysicalAddress {
+50.     pub fn from_virtual_address(addr: VirtualAddress) -> Result<Self, Error> {
+51.         // Delegate to the per-platform validator to support sparse physical memory layouts.
+52.         if !crate::hal::platform::is_valid_physical_address(addr) {
+53.             retur...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm restructuring the implementation by moving three functions—from_mmio_address, from_number, and into_frame_number—into a separate verus_verify block for PhysicalAddress, along with their documentation and annotations.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+Now add the new annotated impl block with the three target functions, placed after the original impl:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] view: 60.     }
+61. 
+62.     pub fn into_virtual_address(self) -> VirtualAddress {
+63.         self.0
+64.     }
+65. 
+66.     ///
+67.     /// # Description
+68.     ///
+69.     /// Constructs a [`PhysicalAddress`] from a [`FrameAddress`].
+70.     ///
+71.     /// # Parameters
+72.     ///
+73.     /// - `frame...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus; timeout 1200 make verify-kernel MODU
