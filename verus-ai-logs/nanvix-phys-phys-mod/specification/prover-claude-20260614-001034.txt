@@ -1875,3 +1875,16 @@ Clean. Final full regression + build verification, then cleanup:
 [TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify 2>&1 | grep -iE "Exit code|error
 
 [THINKING] The verification passed with 3 confirmed and no errors, so I'll run the full verification suite once more to make sure the trigger warning edit didn't introduce any regressions, then clean up the temporary backups. Since the only change was to the kernel module spec file and make verify uses caching, I should run it to be safe.
+[RESULT ✓] bash: Exit code : 0
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  Detail: verus-ai-logs/verify-bitmap/verus-logs/cheating-detail.txt
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=0 admit=0 truste...
+
+────────────────────────────────────────────────────────────
+Turn 117
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify > /tmp/verify_out.txt 2>&1; echo
+
+[THINKING] I'm noticing something odd in the verify-bitmap output — it shows external_body and admit both at 0, but cfg_gate is 5, yet the status is flagged as CHEATING_DETECTED. That's strange since cfg_gate=5 was also present in the baseline. Let me check what the overall make verify exit code shows.
