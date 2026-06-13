@@ -39,3 +39,6 @@ Module: hal-platform-microvm
 PHASE: specification
 Module: hal-platform-microvm
 ============================================================
+[2026-06-14 06:28:21] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.rs
+[2026-06-14 06:28:21] [PROVER] Running specification...
+[2026-06-14 06:28:21] [COPILOT] Running: copilot --model claude-opus-4.8 ...
