@@ -190,6 +190,19 @@ impl DynamicLibrary {
                 for phdr in elf.program_headers.iter() {
                     // Check if program header is loadable.
                     if phdr.p_type == goblin::elf::program_header::PT_LOAD {
+                        // Skip zero-size loadable segments. They contribute nothing to the
+                        // in-memory image, and mapping a zero-capacity region would fail.
+                        // Some linkers (e.g. lld at higher optimization levels) emit an empty
+                        // PT_LOAD as section-alignment padding between the text and data
+                        // segments; a conforming loader ignores such entries.
+                        if phdr.p_memsz == 0 {
+                            ::syslog::debug!(
+                                "load(): skipping zero-size PT_LOAD (vaddr={:#x})",
+                                phdr.p_vaddr
+                            );
+                            continue;
+                        }
+
                         ::syslog::debug!(
                             "load(): loadable program header (vaddr={:#x}, paddr={:#x}, \
                              filesz={}, memsz={})",
