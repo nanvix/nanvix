@@ -5,7 +5,6 @@
 // Imports
 //==================================================================================================
 
-use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 include!("manager.spec.rs");
 #[cfg(verus_keep_ghost)]
