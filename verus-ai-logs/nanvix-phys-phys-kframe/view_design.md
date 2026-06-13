@@ -74,36 +74,35 @@ A wrapper struct (`KernelFrameView { addr: int }`) was considered and
 `KernelFrame` currently has **no** `inv()`. Callers of `base()`
 (`into_page_address`, and the page/stack address arithmetic behind it) rely on
 the owned address being **page-aligned**. This is a caller-visible constraint
-on the abstract state, so it belongs in `inv()`:
+on the abstract state, so it belongs in `inv()`.
+
+**Final decision (spec phase): single `inv()`, mirroring the verified sibling
+`UserFrame::inv`.** The originally-sketched `internal_inv()` placeholder
+(`pub closed spec fn internal_inv(&self) -> bool { true }`) was dropped: it would
+be permanently `true` (the closed view `self@ == self.base@` already exposes the
+alignment fact directly, so no implementation-consistency clause is needed), and
+the `spec-design` skill discourages extra `pub spec fn`s on `impl MyType` beyond
+`view`/`inv`. The result is identical in shape to `UserFrame`:
 
 ```rust
 impl KernelFrame {
-    // Placeholder for implementation-consistency facts (e.g. "the stored
-    // FrameAddress is well-formed", `self.base.inv()`). Cannot be written until
-    // impl bodies are visible; the spec phase fills it in. Closed.
-    pub closed spec fn internal_inv(&self) -> bool { true }
-
     // Caller-visible well-formedness: the owned frame address is page-aligned.
-    // This is exactly `FrameAddress::inv` lifted onto KernelFrame's int view,
-    // and it is what kpage / KernelStack address conversions depend on.
+    // Stated purely on the int view via the shared spec_page_size(); leaks no
+    // implementation detail. Mirror of UserFrame::inv.
     pub open spec fn inv(&self) -> bool {
-        &&& self.internal_inv()
-        &&& self@ % spec_page_size() == 0
+        self@ % spec_page_size() == 0
     }
 }
 ```
 
 - `inv()` is **`pub open`** so callers can establish and consume it.
-- `internal_inv()` is **`pub closed`**, left `true` now; in the spec phase it
-  will become `self.base.inv()` (the stored `FrameAddress` is page-aligned),
-  from which the open clause `self@ % spec_page_size() == 0` follows because
-  `self@ == self.base@`.
 - `spec_page_size()` is the same `pub uninterp spec fn` already used by
   `FrameAddress::inv` (`self@ % spec_page_size() == 0`); reusing it keeps the
   alignment notion identical across the two types.
+- No `internal_inv()` is defined; the alignment fact follows on the `new` /
+  `base` paths directly from the required `base.inv()` / `self.inv()`.
 
-No other `pub spec fn` is added to `impl KernelFrame` beyond `view`, `inv`,
-`internal_inv`.
+No other `pub spec fn` is added to `impl KernelFrame` beyond `view` and `inv`.
 
 ---
 
