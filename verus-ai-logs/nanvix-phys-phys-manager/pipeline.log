@@ -94,3 +94,6 @@ Final verification (reviewer-run, not trusted from fixer):
 No remaining FAIL items. Bugs recorded in bugs.md (OBS-1, OBS-2 as proving-phase
 obligations; OBS-3 resolved in spec phase).
 [2026-06-14 02:24:38] [DIALOGUE] specification ended after 3 turns: RESOLVED (1214s)
+[2026-06-14 02:24:38] [PHASE] specification: dialogue-RESOLVED (1h27m44s)
+[2026-06-14 02:24:38] [SPEC DRIFT] (within specification) Comparing 0c3324ea → d1fd9adc
+[2026-06-14 02:24:38] [SPEC DRIFT] (within specification) No changes detected
