@@ -76,9 +76,7 @@ impl UserFrame {
     ///
     /// A user frame.
     ///
-    pub fn new(addr: FrameAddress) -> Self {
-        Self { addr }
-    }
+    pub fn new(addr: FrameAddress) -> Self { ... }
 
     ///
     /// # Description
@@ -89,9 +87,7 @@ impl UserFrame {
     ///
     /// The physical address of the target user frame.
     ///
-    pub fn address(&self) -> FrameAddress {
-        self.addr
-    }
+    pub fn address(&self) -> FrameAddress { ... }
 
     ///
     /// # Description
@@ -102,10 +98,7 @@ impl UserFrame {
     ///
     /// The frame address.
     ///
-    pub fn leak(self) -> FrameAddress {
-        let this: ManuallyDrop<Self> = ManuallyDrop::new(self);
-        this.addr
-    }
+    pub fn leak(self) -> FrameAddress { ... }
 
     ///
     /// # Description
@@ -123,10 +116,7 @@ impl UserFrame {
     /// On success, a new [`UserFrame`] that aliases the same physical frame as
     /// `self`. On failure, an error is returned.
     ///
-    pub fn share(&self) -> Result<UserFrame, Error> {
-        frame::share(self.addr)?;
-        Ok(Self { addr: self.addr })
-    }
+    pub fn share(&self) -> Result<UserFrame, Error> { ... }
 
     ///
     /// # Description
@@ -138,17 +128,11 @@ impl UserFrame {
     /// Upon success, the current reference count of the underlying physical frame is returned.
     /// Upon failure, an error is returned instead.
     ///
-    pub fn refcount(&self) -> Result<u8, Error> {
-        frame::refcount(self.addr)
-    }
+    pub fn refcount(&self) -> Result<u8, Error> { ... }
 }
 
 impl Drop for UserFrame {
-    fn drop(&mut self) {
-        if let Err(e) = frame::free(self.addr) {
-            error!("failed to free user frame: {:?}", e);
-        }
-    }
+    fn drop(&mut self) { ... }
 }
 
 //==================================================================================================
@@ -179,9 +163,7 @@ impl Upool {
     /// A user frame pool.
     ///
     #[verus_verify(external_body)]
-    pub(super) fn new() -> Self {
-        Self { _private: () }
-    }
+    pub(super) fn new() -> Self { ... }
 
     ///
     /// # Description
@@ -212,8 +194,5 @@ impl Upool {
                 },
             },
     )]
-    pub fn alloc(&mut self) -> Result<UserFrame, Error> {
-        let addr: FrameAddress = frame::alloc()?;
-        Ok(UserFrame::new(addr))
-    }
+    pub fn alloc(&mut self) -> Result<UserFrame, Error> { ... }
 }
