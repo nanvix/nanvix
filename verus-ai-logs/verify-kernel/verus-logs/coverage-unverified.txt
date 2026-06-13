@@ -1,4 +1,4 @@
-# Unverified exec functions: 997/1023
+# Unverified exec functions: 988/1023
   do_debug
   debug
   do_evctrl
@@ -540,8 +540,6 @@
   is_covered
   book
   alloc_range
-  share
-  refcount
   base
   clear
   deref
@@ -549,13 +547,6 @@
   drop
   get_mut
   test
-  new
-  address
-  leak
-  share
-  refcount
-  drop
-  new
   new
   size
   base
