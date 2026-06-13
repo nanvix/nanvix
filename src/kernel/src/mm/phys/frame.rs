@@ -751,7 +751,7 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
                 &&& frame.inv()
                 &&& crate::mm::phys::phys_view().frames.allocated_frames.contains(frame@)
             },
-            Err(_) => true,
+            Err(_) => crate::mm::phys::phys_view().frames.free_frames.is_empty(),
         },
 )]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
@@ -862,7 +862,7 @@ pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
     ensures
         match result {
             Ok(()) => crate::mm::phys::phys_view().frames.reserved(phys_addr@),
-            Err(_) => true,
+            Err(_) => !crate::mm::phys::phys_view().frames.free_frames.contains(phys_addr@),
         },
 )]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
@@ -882,7 +882,8 @@ pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error>
         match result {
             Ok(()) => crate::mm::phys::phys_view().frames.all_reserved(
                 crate::mm::phys::region_frame_addrs(region@.start, region@.size)),
-            Err(_) => true,
+            Err(_) => !crate::mm::phys::phys_view().frames.all_free(
+                crate::mm::phys::region_frame_addrs(region@.start, region@.size)),
         },
 )]
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {

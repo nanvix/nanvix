@@ -83,3 +83,25 @@ Any `external_body` outside this list must be removed.
   consequence of this external-bottom boundary, not a verification escape: the watermark threshold
   is genuinely outside Verus's view and callers do not depend on its concrete value (only on the
   fact that user allocations are gated by it; see `caller_analysis.md` line 121).
+
+## `assume_specification` for not-yet-verified callees (eliminated when their module is verified)
+
+These `assume_specification` (and one `external_type_specification`) declarations live in
+`src/kernel/src/mm/phys/frame.spec.rs`. They give trusted contracts to callees of the (now
+verified-in-body) `Inner` frame-allocator methods so those bodies translate. Each is superseded
+by the real specification when its module is verified — the same "superseded when the address
+layer is verified" rationale already used for `FrameAddress::from_raw_value`/`into_raw_value`.
+
+- **External crate (`arch`) — genuinely outside the kernel crate, temporary placeholder:**
+  - `::arch::mem::paging::FrameNumber` — `external_type_specification` (`ExFrameNumber`).
+  - `::arch::mem::FRAME_SIZE` — `ensures result == spec_page_size()`.
+  - `::arch::mem::paging::FrameNumber::from_raw_value` / `into_raw_value`.
+
+- **Intra-crate (`kernel` crate `hal::mem::*`) — recorded here per review item #7. These are
+  workspace-internal and not external dependencies; they are trusted only until the HAL
+  address/region layer is verified, at which point these `assume_specification`s are removed:**
+  - `crate::hal::mem::FrameAddress::from_frame_number` / `into_frame_number`
+  - `crate::hal::mem::PhysicalAddress::into_frame_number`
+  - `crate::hal::mem::TruncatedMemoryRegion::<T>::start` / `size`
+  - `crate::hal::mem::PageAligned::<T> as Address::into_raw_value`
+  - `crate::hal::mem::PageAligned::<T> as Deref::deref`
