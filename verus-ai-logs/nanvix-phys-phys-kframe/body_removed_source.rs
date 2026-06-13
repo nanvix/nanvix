@@ -87,23 +87,7 @@ impl KernelFrame {
                 Err(_) => true,
             },
     )]
-    pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
-        // Ensure the frame is identity-mapped in the kernel address space so that
-        // Deref/DerefMut can safely access it. This lazily installs a page
-        // table entry if needed (page tables come from a BSS pool, so no recursive frame
-        // allocation occurs).
-        let phys_addr: PageAligned<PhysicalAddress> =
-            PageAligned::from_raw_value(base.into_raw_value()).map_err(|e| {
-                error!("frame base is not page-aligned: {e:?}");
-                e
-            })?;
-        crate::mm::virt::identity_map_page(phys_addr).map_err(|e| {
-            error!("failed to identity-map frame: {:?}", e);
-            e
-        })?;
-
-        Ok(Self { base })
-    }
+    pub(super) fn new(base: FrameAddress) -> Result<Self, Error> { ... }
 }
 
 impl KernelFrame {
@@ -117,9 +101,7 @@ impl KernelFrame {
     ///
     /// The base address of the target kernel frame.
     ///
-    pub fn base(&self) -> FrameAddress {
-        self.base
-    }
+    pub fn base(&self) -> FrameAddress { ... }
 
     ///
     /// # Description
@@ -130,13 +112,7 @@ impl KernelFrame {
     /// This avoids a page fault when the current CR3 points to a user page directory that lacks
     /// the PDE for this frame's physical address.
     ///
-    pub fn clear(&mut self) -> Result<(), Error> {
-        let base: *mut u8 = self.base.into_raw_value() as *mut u8;
-        crate::mm::virt::memset(base, 0, mem::PAGE_SIZE).map_err(|e| {
-            error!("memset failed: {:?}", e);
-            e
-        })
-    }
+    pub fn clear(&mut self) -> Result<(), Error> { ... }
 }
 
 /// # Safety
@@ -149,26 +125,16 @@ impl KernelFrame {
 impl Deref for KernelFrame {
     type Target = [u8];
 
-    fn deref(&self) -> &Self::Target {
-        let ptr: usize = self.base.into_raw_value();
-        unsafe { core::slice::from_raw_parts(ptr as *const u8, mem::PAGE_SIZE) }
-    }
+    fn deref(&self) -> &Self::Target { ... }
 }
 
 /// # Safety
 ///
 /// See [`Deref`] impl — the same CR3 invariant applies.
 impl DerefMut for KernelFrame {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        let ptr: usize = self.base.into_raw_value();
-        unsafe { core::slice::from_raw_parts_mut(ptr as *mut u8, mem::PAGE_SIZE) }
-    }
+    fn deref_mut(&mut self) -> &mut Self::Target { ... }
 }
 
 impl Drop for KernelFrame {
-    fn drop(&mut self) {
-        if let Err(e) = super::frame::free(self.base) {
-            error!("failed to free kernel frame: {:?}", e);
-        }
-    }
+    fn drop(&mut self) { ... }
 }

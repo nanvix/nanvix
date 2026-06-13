@@ -1,0 +1,20 @@
+[PIPELINE] NOTE: spec file missing, creating empty stub: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.spec.rs
+[PIPELINE] NOTE: proof file missing, creating empty stub: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.proof.rs
+[PIPELINE] NOTE: added 'use vstd::prelude::*;' to /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[PIPELINE] NOTE: added cfg-gated include!(kframe.spec.rs, kframe.proof.rs) to /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[2026-06-14 03:08:25] [BRANCH] Base: verus-ai/phys-upool → Verus: verus-ai/phys-kframe
+[2026-06-14 03:08:25] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/body_removed_source.rs (5344 -> 4027 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: phys-kframe
+Source: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+Crate:  kernel
+Branch: verus-ai/phys-kframe (base: verus-ai/phys-upool)
+Phases: caller-analysis → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: caller-analysis
+Module: phys-kframe
+============================================================
