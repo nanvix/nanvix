@@ -632,3 +632,81 @@ Turn 28
 Turn 29
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::sys::mm::address::virt 2>&1 | tail -20
+[RESULT ✓] bash: - into_raw_value
+    - clone_address
+    - as_ptr
+    - as_mut_ptr
+    - fmt
+    - add
+    - add_assign
+    - from
+    - from
+    - from
+    - from
+
+=== Summary ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  cheating: assume=0 external_body=0 admit=0 trusted...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '18,70p' verus-ai-logs/verify-sys/verus-logs/verus_2026-06-14_06-40-49.log
+[RESULT ✓] bash: --- Full output ---
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+error[E0425]: cannot find function `new` in this scope
+  --> src/libs/sys/src/sys/mm/address/virt.rs:52:18
+   |
+52 |     pub const fn new(value: usize) -> Self {
+   |                  ^^^ not found in this scope
+
+err...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "const fn\|const_fn\|verus_spec" /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/GUIDE.md | head -20
+
+[THINKING] The `#[verus_spec]` macro seems to be causing issues when applied to a `const fn` — the compiler can't find the `new` function at its definition point, which suggests the macro might be rewriting the function in a way that breaks self-references or isn't fully compatible with const functions.
+[RESULT ✓] bash: 15:#[verus_spec(ret =>
+30:    #[verus_spec(with |= Ghost(x))]
+36:- `#[verus_spec(with |= Ghost(x))]` on the return expression returns a ghost output.
+40:Use `#[verus_spec(with ...)]` on the call expression:
+51:    #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))]
+55:    (#[verus_spec(with Tr...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "verus_spec" src/libs/sys/src --include=*.rs -A3 | grep -B1 -A3 "ensures" | head -40
+
+[THINKING] I'm wondering if the issue is actually about `const fn` itself, so let me search for patterns where `#[verus_spec]` is applied to const functions. But wait—the error appears on both `new` (which is const) and `from_raw_value` (which isn't), so it's probably not a const-specific problem. The "cannot find function `new` in this scope" error is pointing at the definition itself, which suggests something else is going on.
+
+Maybe the macro is generating a call to `new` by bare name in the impl context, or perhaps the issue is with how `#[verus_spec]` processes the `result =>` syntax for the requires/ensures clauses. Let me think about this differently—the `#[verus_spec]` macro might be expanding into a proof companion and an inner function, and something about that expansion is causing a name resolution issue during the rustc pass of `cargo verus verify`.
+
+I should search the nanvix codebase for existing examples of `#[verus_spec]` applied to constructors or functions returning `Self` to see how they're structured.
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/mod.rs:51:    #[verus_spec(result =>
+src/libs/sys/src/sys/mm/address/mod.rs-52-        ensures
+src/libs/sys/src/sys/mm/address/mod.rs-53-            result as int == self@,
+src/libs/sys/src/sys/mm/address/mod.rs-54-    )]
+--
+src/libs/sys/src/sys/mm/address/mod.rs:72: ...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I'm noticing that both `new` and `from_raw_value` are throwing the same error about functions not being found in scope, which suggests the verus_spec macro might be generating free function calls instead of method calls. Looking at the error more carefully—it's E0425 at the definition site itself, which typically means a macro is trying to reference a function name that doesn't exist as a standalone function.
+
+I think I've found the pattern: in mod.rs, `#[verus_spec]` is used on trait method declarations (which have no body), but in phys.rs, it's used on methods inside impl blocks that are annotated with `#[verus_verify]`. The key difference is that my impl block for VirtualAddress doesn't have `#[verus_verify]` wrapping it, so the macro isn't processing the methods correctly and is generating invalid code. The rule seems to be that `#[verus_spec]` on inherent methods requires the enclosing impl block to have `#[verus_verify]`.
+
+Now I'm thinking about whether adding `#[verus_verify]` to the whole impl block would cause issues with the other methods like align_up, align_down, and is_aligned. Since those methods don't have specs, Verus would just verify they're well-formed with no postconditions to prove, which should pass trivially. The constraint about not touching unlisted functions is tricky though — adding `#[verus_verify]` to the impl block technically brings them into verification, even if they pass without contracts. I could split the impl block like phys.rs does, putting new and from_raw_value in their own `#[verus_verify]` impl block, but that's more structural churn than I'd prefer.
+
+Looking at page.rs, I see that mixed annotated and unannotated methods in the same `#[verus_verify]` impl block work fine — the unannotated ones just get verified with no contract. So I should be able to add `#[verus_verify]` to my impl block and let the unlisted methods pass trivially. The main risk is that align_up and checked_add call functions that now have specs (like VirtualAddress::new), but since those specs have no requires clauses, the `.map` operations should handle them fine. Let me just try adding `#[verus_verify]` to the impl block and see if it works.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::sys::mm::address::virt 2>&1 | tail -30

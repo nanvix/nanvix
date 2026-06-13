@@ -1,0 +1,31 @@
+Timestamp: 2026-06-14_06-41-58
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: sys::mm::address::virt
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=1
+
+--- Full output ---
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+error: In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.
+   --> src/libs/sys/src/sys/mm/address/virt.rs:166:1
+    |
+166 | / impl Address for VirtualAddress {
+167 | |     ///
+168 | |     /// # Description
+169 | |     ///
+...   |
+268 | | }
+    | |_^
+
+error: could not compile `sys` (lib) due to 1 previous error

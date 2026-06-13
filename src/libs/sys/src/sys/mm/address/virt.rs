@@ -44,6 +44,7 @@ pub struct VirtualAddress(usize);
 // Implementations
 //==================================================================================================
 
+#[verus_verify]
 impl VirtualAddress {
     #[verus_spec(result =>
         ensures
