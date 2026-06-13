@@ -77,3 +77,6 @@ All checklist items PASS or FIXED with tool evidence (turn_002_driver.md):
 - No tautological/subsumed/weakened ensures; View-consistent (specs reference self@,
   inv()==true); no workspace-internal assume_specification; no loops; no in-scope bugs.
 [2026-06-14 07:01:39] [DIALOGUE] specification ended after 2 turns: RESOLVED (849s)
+[2026-06-14 07:01:39] [PHASE] specification: dialogue-RESOLVED (25m22s)
+[2026-06-14 07:01:39] [SPEC DRIFT] (within specification) Comparing 30c9245c → f248c871
+[2026-06-14 07:01:39] [SPEC DRIFT] (within specification) No changes detected
