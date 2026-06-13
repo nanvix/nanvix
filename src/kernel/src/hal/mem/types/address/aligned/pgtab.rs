@@ -20,6 +20,7 @@ use ::sys::{
 // Structures
 //==================================================================================================
 
+#[verus_verify(external_derive)]
 #[derive(Clone, Copy)]
 pub struct PageTableAligned<T: Address>(T);
 

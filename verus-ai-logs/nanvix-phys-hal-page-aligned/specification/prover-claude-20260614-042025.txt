@@ -1138,3 +1138,28 @@ Let me validate the foundation compiles in verus mode before adding function spe
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
 
 [THINKING] I should validate that the foundation layer—the supertrait and views—compiles cleanly in both normal and Verus builds before adding function specs, since that'll help me isolate whether issues come from the foundation itself or from the specifications. Let me check what build commands are available; a full `make build` might be slow, so I'm looking for a faster verification path like checking just the kernel module in Verus mode.
+[RESULT ✓] bash: verification results:: 4 verified, 0 errors
+verification results:: 0 verified, 0 errors
+verification results:: 70 verified, 0 errors
+verification results:: 35 verified, 0 errors
+error: cannot use type `kernel::hal::mem::types::address::aligned::pgtab::PageTableAligned` which is ignored because it is...
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+The supertrait foundation works. `PageTableAligned` struct needs `#[verus_verify(external_derive)]` like the others:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/pgtab.rs
+
+[THINKING] The supertrait is working well, but I'm hitting a verification issue with PageTableAligned—it's being ignored because it's not declared inside the verus! macro or marked as external. My View implementation references `self.0@`, which requires PageTableAligned to be recognized by Verus, but the struct only has `#[derive(Clone, Copy)]` without the necessary `#[verus_verify]` or external_derive attributes, and it's not wrapped in verus!{}.
+
+The other Address types like PageAligned and PhysicalAddress have `#[verus_verify(external_derive)]`, so I need to add the same attribute to PageTableAligned in pgtab.rs to make it visible to Verus.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/pgtab.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
+
+[THINKING] The `#[verus_verify(external_derive)]` attribute needs vstd's prelude in scope, but pgtab.rs wasn't importing it at the top of the file. I added the import near the bottom before the verus! block, though the attribute on the struct definition at the top of the file still needs access to the macro.
+
+Actually, Rust's module-level `use` statements make items available throughout the module regardless of where they're placed, so the import position shouldn't matter. Let me run the verification to confirm everything works.
