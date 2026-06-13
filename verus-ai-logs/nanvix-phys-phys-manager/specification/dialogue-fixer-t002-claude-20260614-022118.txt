@@ -111,3 +111,70 @@ Turn 6
 ────────────────────────────────────────────────────────────
 0 errors, admit count dropped 11→10 as the reviewer required. Now non-verus build and full verify:
 [TOOL] bash: cd /home/ruize/nanvix-phy; ./z build -- check-kernel 2>&1 | tail -3; echo "=== full verify ==="; make verify 2>&1 | grep
+[RESULT ✓] bash: {"reason":"build-finished","success":true}
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.58s
+[OK]    Build complete.
+=== full verify ===
+  Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  cheating: assume=0 external_body=0 admit=0 t...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+All exit 0, full verify clean (admit=10 in phys module, the false lemma is gone). Now update OBS-3 in bugs.md:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "### OBS-3" verus-ai-logs/nanvix-phys-phys-manager/bugs.md
+[RESULT ✓] bash: 41:### OBS-3: `alloc_kernel_frame` Err liveness vs. the `KernelFrame::new` failure path
+<shellId: 1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/bugs.md
+[RESULT ✓] view: 41. ### OBS-3: `alloc_kernel_frame` Err liveness vs. the `KernelFrame::new` failure path
+42. 
+43. The Err-arm contract now asserts `old(self)@.free_count() == 0` (the liveness
+44. contrapositive: kernel allocation fails only when no frame is free). This holds
+45. for the **allocator-exhaustion path*...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/bugs.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/bugs.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Now write the fixer response:
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/specification/dialogue/turn_002_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/specification/dialogue/turn_002_fixer.md with 2821 characters
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Fixed. The reviewer correctly identified that Fix D was unsound.
+
+## Summary
+
+The Err-arm clause `old(self)@.free_count() == 0` was **false** on the reachable `KernelFrame::new` wrapping-failure path (a frame *was* free, then freed back), and its backing lemma `requires pre.wf() ensures pre.free_count() == 0` was an unconditionally-false soundness landmine.
+
+**Changes (Fix D2):**
+- `manager.rs` — Err arm reverted to the single sound clause `Err(_) => final(self)@ == old(self)@`; removed the explicit `match` wrapper and both lemma calls; restored `frame::alloc()?`.
+- `manager.proof.rs` — deleted the false `lemma_kernel_alloc_err_empty` entirely.
+- `bugs.md` — OBS-3 updated to **RESOLVED**: `free_count()==0` is inexpressible at the `FrameAllocView` abstraction because wrap-failure is invisible to the view.
+
+**Verification:**
+- `make verify-kernel` → 19 verified, **0 errors**; admit count **11→10** as required
+- `make verify` (full) → exit 0, no regressions
+- `./z build -- check-kernel` → success
+- Both reviewer greps (`free_count() == 0`, `lemma_kernel_alloc_err_empty`) return nothing
+
+Response written to `turn_002_fixer.md` with **Result: FIXED**.
+
+
+=== Session End ===
+Session: 766b4dd8-a6a2-483a-860d-460a3cffd43c
+Duration: 112.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/specification/dialogue-fixer-t002-claude-20260614-022118.jsonl

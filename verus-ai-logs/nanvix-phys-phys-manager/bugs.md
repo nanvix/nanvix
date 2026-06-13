@@ -40,34 +40,42 @@ free the same frame twice.
 
 ### OBS-3: `alloc_kernel_frame` Err liveness vs. the `KernelFrame::new` failure path
 
-The Err-arm contract now asserts `old(self)@.free_count() == 0` (the liveness
-contrapositive: kernel allocation fails only when no frame is free). This holds
-for the **allocator-exhaustion path** (`frame::alloc()` returns `Err`), whose
-discharge needs `frame::alloc`'s `Err` spec to expose
-`phys_view().frames.free_count() == 0` — the recorded cross-module obligation.
+**RESOLVED (spec phase, turn 2).** Turn 1's Fix D added an Err-arm clause
+`old(self)@.free_count() == 0` (the liveness contrapositive: kernel allocation
+fails only when no frame is free), discharged by an admitted lemma
+`lemma_kernel_alloc_err_empty(pre) requires pre.wf() ensures
+pre.free_count() == 0`. The reviewer (turn 2) correctly flagged this as
+**unsound**: that lemma claims *every* well-formed partition has zero free
+frames, which is `false`, and as a `pub proof fn` with `admit()` it was a
+soundness landmine callable from any proof.
 
-However, `alloc_kernel_frame` has a **second** Err path:
-`KernelFrame::new(frame_addr)` can fail (its spec is `Err(_) => true`, and
-`identity_map_page` is fallible) *after* `frame::alloc()` already succeeded. On
-that path the just-allocated frame is freed back (so `final(self)@ ==
-old(self)@` still holds), but `old(self)@.free_count() >= 1` — because a frame
-was available to allocate — so `old(self)@.free_count() == 0` is **false** there.
+Root cause: `alloc_kernel_frame` has a **second** Err path —
+`KernelFrame::new(frame_addr)` is fallible (`kframe.rs:84-100`:
+`PageAligned::from_raw_value(...)?; crate::mm::virt::identity_map_page(...)?`)
+and runs *after* `frame::alloc()` already returned `Ok`. On that path a frame
+*was* free (so `old(self)@.free_count() >= 1`), the frame is freed back (so
+`final(self)@ == old(self)@` still holds), and the function returns `Err`. So
+`old(self)@.free_count() == 0` is **false** on a real, reachable Err return.
 
-- **Current state**: the contract is wired through the admitted lemma
-  `lemma_kernel_alloc_err_empty(pre) requires pre.wf() ensures
-  pre.free_count() == 0`, invoked on *both* Err paths, so `make verify-kernel`
-  passes (admit). The lemma as stated is **not soundly dischargeable for the
-  `KernelFrame::new` branch** and must be resolved in the proving phase by one
-  of:
-    1. Strengthening `KernelFrame::new` to be infallible in the kernel-frame
-       context (the page-table pool is BSS-backed, so `identity_map_page` does
-       not recursively allocate — see `kframe.rs:84-100`), proving that branch
-       dead; **or**
-    2. Reclassifying the wrapping failure as a panic/abort rather than a
-       recoverable `Err`, so the only reachable `Err` is exhaustion; **or**
-    3. Weakening the Err arm to the sound disjunction "exhaustion *or*
-       wrapping-failure", dropping the unconditional `free_count() == 0`.
-  Evidence: `frame.rs:702-712` (`frame::alloc` Err spec = `true`),
-  `kframe.rs:74-100` (`KernelFrame::new` Err spec = `true`, fallible
-  `identity_map_page`). Recorded per reviewer instruction (Fix D) — not silently
-  dropped.
+**Resolution**: the wrap-failure outcome is **not observable** in
+`FrameAllocView` — no field distinguishes "exhaustion" from "handle-wrap
+failure" — so no abstract `free_count` clause can be soundly asserted on the Err
+arm. The Err arm was corrected to the strongest sound statement, the
+frame-condition alone:
+
+```rust
+Err(_) => final(self)@ == old(self)@,
+```
+
+The false `lemma_kernel_alloc_err_empty` proof fn and both its call sites were
+**deleted** (`manager.proof.rs`, `manager.rs`). Whole-crate `admit` count
+dropped 11→10 accordingly. `frame::alloc()?` was restored (no explicit `match`
+needed once the Err-path lemma call is gone).
+
+Evidence retained: `frame.rs:702-712` (`frame::alloc` Err spec = `true`),
+`kframe.rs:74-100` (`KernelFrame::new` Err spec = `true`, fallible
+`identity_map_page`). The `free_count()==0` liveness fact remains genuinely
+inexpressible at this abstraction; if a caller ever needs it, the fix is an
+exec-behavior change (make `KernelFrame::new` infallible in the kernel-frame
+context, or convert wrap-failure to a panic) — out of scope for the spec phase.
+
