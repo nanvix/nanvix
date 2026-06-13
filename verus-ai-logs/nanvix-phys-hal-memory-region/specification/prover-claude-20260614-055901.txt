@@ -954,3 +954,70 @@ Let me run the full `make verify` once more to confirm no regressions after all 
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 3000 make verify >/tmp/verify_all2.log 2>&1; echo "MAKE EXIT=$?"; grep -iE "Exit code
 
 [THINKING] Running the full verification suite to confirm everything passes after removing the import and checking spec compliance.
+[RESULT ✓] bash: MAKE EXIT=0
+  Exit code : 0
+  Exit code : 0
+  Exit code : 0
+  Exit code : 0
+  Exit code : 0
+=== tail ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=14 admit=27 trusted=0 no_decreases=0 cfg_gate=15
+  coverage: 49/1023 exec functions have contracts
+  statu...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+All crates pass (exit 0). Let me do a final review of the changed getters and spec file.
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '205,235p;355,375p' src/kernel/src/hal/mem/types/region.rs; echo "=== tail region.rs =
+
+[THINKING] All the builds and verification checks are passing. Now I'm doing a final sweep through the modified files—checking the region.rs and spec.rs getters to make sure they're clean, confirming proof.rs is empty as expected, and scanning for any lingering references to spec_page_size that I removed from region.rs.
+[RESULT ✓] bash: pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    /// Returns the first valid address that lies in the target memory region.
+    #[verus_spec(result =>
+        ensures
+            result@ == self@.start,
+    )]
+    pub fn start(&self) -> T {
+        // The postcondition `result@ ==...
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] sql: {'description': 'Mark todos done', 'query': "UPDATE todos SET status='done' WHER
+
+[THINKING] I'm reconsidering whether the `admit` is truly necessary here, or if there's a way to prove that `result@` equals `self@.start` using a lemma in the proof module, leveraging the fact that `clone` returns a reference. The `admit` is documented and permitted by the task, but I want to explore if there's a cleaner approach that avoids it entirely.
+
+Looking at the broader picture, I'm verifying that the spec is complete: the View captures all the fields (start, size, typ, perm, cache_policy), the getters are covered, and the invariant is properly strengthened. For the callers' expectations—like `MemoryRegion::start` returning the stored start value and `MemoryRegion::size` returning a positive value—the size invariant is deferred to the type invariant rather than enforced in the getter postcondition itself, which aligns with the design. Similarly, for `TruncatedMemoryRegion::start`, the page-alignment guarantee comes from the invariant, and callers that need this property would carry the invariant proof along with the region.
+
+This all matches the view design exactly. I'm satisfied with the approach and ready to wrap up.
+[RESULT ✓] sql: 5 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+Done. Summary of the work:
+
+**Specs added** (`region.spec.rs`): moved the `MemoryRegionView` + View impls out of the inline block, added helper predicates `wf()` (`size > 0`) and `is_page_aligned()`, and defined `MemoryRegion::inv()` (`wf`) and `TruncatedMemoryRegion::inv()` (`wf` + `is_page_aligned`) per `view_design.md`. Also added `spec_set_cache_policy` for the metadata transition.
+
+**Contracts on the 4 in-scope getters** (`region.rs`):
+- `MemoryRegion::start` → `ensures result@ == self@.start`
+- `MemoryRegion::size` → `ensures result as int == self@.size`
+- `TruncatedMemoryRegion::{start,size}` → same, proven by delegation to the inner getters.
+
+**Clone obligation**: `MemoryRegion::start` clones a generic `T: Address`. `assume_specification` cannot target a generic trait method, and the `Address`/`Clone` layer isn't verified yet, so the `clone(x)@ == x@` fact is deferred with a documented `proof! { admit(); }` (same pattern `frame.rs` uses). It resolves when the address layer exposes a clone contract.
+
+**Removed superseded placeholders**: deleted the now-duplicate `TruncatedMemoryRegion::{start,size}` `assume_specification`s from `frame.spec.rs` (real specs now supersede them) and updated `tcb-allowed.md`.
+
+**Results**: `make verify-kernel MODULE=hal::mem::types::region` → 5 verified, 0 errors. `make verify` (all modules) → exit 0, no regressions. `./z build` (dual compilation) → OK (also fixed a redundant `vstd` import that broke the non-ghost build). No bugs found.
+
+
+=== Session End ===
+Session: cbf87cec-8cbe-4cc2-a2ea-f96fcfbfca45
+Duration: 832.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/specification/prover-claude-20260614-055901.jsonl
