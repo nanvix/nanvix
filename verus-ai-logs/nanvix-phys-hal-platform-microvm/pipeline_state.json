@@ -2,10 +2,11 @@
   "module_name": "hal-platform-microvm",
   "log_name": "nanvix-phys-hal-platform-microvm",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.rs",
-  "current_phase": "view-design",
-  "current_phase_idx": 1,
+  "current_phase": "specification",
+  "current_phase_idx": 2,
   "completed_phases": [
-    "caller-analysis"
+    "caller-analysis",
+    "view-design"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -18,6 +19,17 @@
       "review_file": null,
       "duration_s": 93.7,
       "review_rounds": 0
+    },
+    "view-design": {
+      "phase": "view-design",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 139.8,
+      "review_rounds": 0
     }
   },
   "prover_session_id": "590b3c79-d133-4b52-8ca7-3bcb605baf18",
@@ -25,11 +37,13 @@
   "base_branch": "verus-ai/hal-memory-region",
   "verus_branch": "verus-ai/hal-platform-microvm",
   "phase_boundary_shas": {
-    "caller-analysis": "12e3e1f3388bb3ba540b02bc3c89679dd5890a9f"
+    "caller-analysis": "12e3e1f3388bb3ba540b02bc3c89679dd5890a9f",
+    "view-design": "e7fe2d2c00a0aebe788fed8c3774955a35ff9d4f"
   },
   "phase_start_shas": {
     "caller-analysis": "f0aef56b8289f937a43509a3cc190f1fc4a304c3",
-    "view-design": "12e3e1f3388bb3ba540b02bc3c89679dd5890a9f"
+    "view-design": "12e3e1f3388bb3ba540b02bc3c89679dd5890a9f",
+    "specification": "e7fe2d2c00a0aebe788fed8c3774955a35ff9d4f"
   },
   "phase_history": [
     {
@@ -48,6 +62,18 @@
       "phase": "view-design",
       "event": "start",
       "sha": "12e3e1f3388bb3ba540b02bc3c89679dd5890a9f",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "end",
+      "sha": "e7fe2d2c00a0aebe788fed8c3774955a35ff9d4f",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "specification",
+      "event": "start",
+      "sha": "e7fe2d2c00a0aebe788fed8c3774955a35ff9d4f",
       "rollback_iter": 0
     }
   ],
