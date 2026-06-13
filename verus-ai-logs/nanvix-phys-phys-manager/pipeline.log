@@ -39,3 +39,4 @@ Module: phys-manager
 PHASE: specification
 Module: phys-manager
 ============================================================
+[2026-06-14 00:56:54] [STRIP-EXT] removed 1 external_body attribute(s) from /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
