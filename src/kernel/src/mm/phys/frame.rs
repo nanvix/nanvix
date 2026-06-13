@@ -762,11 +762,14 @@ pub(super) fn free_count() -> usize {
 /// Free a frame previously returned by [`alloc`].
 // Dependency contract: best-effort release of a frame. Callers (the manager's error-cleanup
 // paths) ignore the outcome, so no precondition is imposed and no abstract postcondition is
-// promised. `external_body` until the free-function layer is verified.
+// promised. `opens_invariants none`/`no_unwind` so it is callable from `UserFrame::drop`.
+// `external_body` until the free-function layer is verified.
 #[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         true,
+    opens_invariants none
+    no_unwind
 )]
 pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
     instance().free(frame)

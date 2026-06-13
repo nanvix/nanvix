@@ -12,9 +12,9 @@
     - mm/phys/frame.rs:710 alloc: external_body
     - mm/phys/frame.rs:737 alloc_contiguous: external_body
     - mm/phys/frame.rs:757 free_count: external_body
-    - mm/phys/frame.rs:771 free: external_body
-    - mm/phys/frame.rs:813 share: external_body
-    - mm/phys/frame.rs:834 refcount: external_body
+    - mm/phys/frame.rs:774 free: external_body
+    - mm/phys/frame.rs:816 share: external_body
+    - mm/phys/frame.rs:837 refcount: external_body
     - mm/phys/kframe.rs:84 new: external_body
     - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
     - mm/phys/manager.proof.rs:21 lemma_free_count_bounded: admit
