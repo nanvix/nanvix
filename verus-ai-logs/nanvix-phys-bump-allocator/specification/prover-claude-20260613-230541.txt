@@ -995,3 +995,90 @@ Turn 51
 ────────────────────────────────────────────────────────────
 Now run regression checks — `make verify` (all modules) and `make build` (dual compilation):
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 make verify 2>&1 | grep -iE "verified|error|status|crate|Summary|cheating|cover
+[RESULT ✓] bash: /home/ruize/nanvix-phy/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+  Crate     : bitmap
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  Detail: verus-ai-logs/verify-bitmap/verus-logs/cheating-detail.txt
+===...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+All crates verify with **0 errors** (the `CHEATING_DETECTED` flags on other crates are pre-existing `cfg_gate`/`external_body`, untouched by me; my crate's `admit=3` is the expected spec-phase placeholder). Now confirm normal build (dual compilation):
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make build 2>&1 | tail -25
+
+[THINKING] All the crates are verifying cleanly with zero errors. The other crates showing CHEATING_DETECTED are due to pre-existing configuration issues that were already there before my changes—bitmap and slab have cfg_gate flags, and kernel has external_body annotations. My bump-allocator implementation is working as expected with four verified crates and no regressions across the board.
+
+Now I'm going to run the build command to make sure the dual compilation still works properly with the normal cargo build when Verus is erased.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 31 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+`make build` is a no-op target. Let me find the actual build target:
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^[a-zA-Z0-9_-]+:" Makefile | head -40
+
+[THINKING] The `make build` command isn't finding a build target, so I need to look at the Makefile to see what the actual target name is.
+[RESULT ✓] bash: 378:update-sysroot-link:
+393:dump-sccache-stats:
+411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+440:init: init-repo...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+The dual-compilation concern is whether the crate compiles normally (Verus constructs erased, spec/proof includes cfg-gated out). Let me build the crate directly:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/bump_allocator && timeout 300 cargo build 2>&1 | tail -25
+
+[THINKING] I need to verify that the bump-allocator crate compiles in normal mode without Verus constructs. Since the spec and proof files are conditionally included only when `verus_keep_ghost` is enabled, a standard cargo build should work fine. Let me build it directly to confirm.
+[RESULT ✓] bash: Compiling syn v2.0.117
+   Compiling verus_builtin v0.0.0-2026-05-17-0151
+   Compiling synstructure v0.13.2
+   Compiling verus_builtin_macros v0.0.0-2026-05-31-0205
+   Compiling vstd v0.0.0-2026-05-31-0205
+   Compiling bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+    Finis...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+Everything passes. Final status:
+
+## Summary
+
+**Verification phase complete for `bump_allocator`** — 0 Verus errors, normal build intact, no regressions.
+
+### Deliverables
+- **`lib.spec.rs`** — `BumpView` ghost model (`#[verifier::ext_equal]`) with `slot_addr`/`is_consumed`/`has_capacity`/`inv`/`geometry_ok`/`spec_alloc`, plus `align_up_spec` and a `div_ceil` `assume_specification`.
+- **`lib.proof.rs`** — 3 lemma signatures (`lemma_geometry`, `lemma_exhausted_boundary`, `lemma_alloc_transition`) with `admit()` bodies, encoding every caller expectation (alignment, in-bounds, uniqueness, monotone capacity, transition).
+- **`lib.rs`** — `align_up` fully verified (real proof, no admit); `as_mut_ptr` marked; cfg-gated spec/proof includes.
+
+### Results
+| Crate | Verification |
+|---|---|
+| bump-allocator | **4 verified, 0 errors** (admit=3 = spec-phase placeholders) |
+| bitmap / sys / nanvix-slab / kernel | **0 errors** (pre-existing cfg_gate/external_body, untouched by me) |
+| `cargo build` (dual compilation) | ✅ Finished |
+
+### Documentation written (`verus-ai-logs/nanvix-phys-bump-allocator/`)
+- **`verus-unsupported.md`** — two genuine Verus front-end blockers: `break <value>` ("complex break expressions") and raw-pointer deref (`&mut *(ptr as *mut T)`), with exact errors.
+- **`verification-todo.md`** — `alloc`/`alloc_as` marked UNPROVEN (blocked, not `external_body`, not TCB), with intended contracts handed to the proving phase.
+- **`bugs.md`** — no code bugs found; `align_up` total/correct, `alloc`/`alloc_as` defensively overflow-checked.
+
+Per the **verus-constraints** skill, the two blocked functions were left unannotated (Verus auto-skips them) rather than worked around via `external_body` (forbidden — absent from `tcb-allowed.md`). Their guarantees survive as proof-lemma targets for the proving phase.
+
+[THINKING] The normal cargo build works fine, and the dual compilation path through `make verify-bump-allocator` also succeeds with 4 verified and 0 errors. Everything checks out, so I'm ready to wrap this up.
+
+
+=== Session End ===
+Session: baff6ad3-857d-40dd-84dd-9fce949c8497
+Duration: 1295.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/specification/prover-claude-20260613-230541.jsonl
