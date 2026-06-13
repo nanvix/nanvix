@@ -420,3 +420,59 @@ Turn 18
 
 [THINKING] The verus binary is available, and even though the VERUS_EXECUTABLE_DIR environment variable isn't set, the Makefile has a default path configured, so I'll proceed with running the baseline verification.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: - from
+    - default
+    - to_ne_bytes
+    - from_ne_bytes
+    - from
+    - from
+    - from
+    - try_from
+    - try_from
+    - try_from
+    - try_from
+    - from
+    - try_from
+    - try_from
+    - try_from
+    - try_from
+    - fmt
+    - from
+    - from
+    - from
+    - from
+    - try_from
+    - fm...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; tail -80 verus-ai-logs/verify-sys/verus-logs/verus_2026-06-14_06-38-48.log 2>/dev/null | head
+
+[THINKING] There's a compilation error from verus that I need to debug. Looking at the file path `src/libs/sys/src/sys/mm/address/virt.rs`, I'm trying to figure out the correct module structure—whether the crate root is `lib.rs` or `sys.rs`, and how the module path `mm::address::virt` maps to the actual file layout. Let me check the error log to see what's actually failing.
+[RESULT ✓] bash: Timestamp: 2026-06-14_06-38-48
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: mm::address::virt
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=1
+
+--- Full output ---
+    Checking ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::mm::address::virt 2>&1 | tail -25
+
+[THINKING] I need to use the correct module path `sys::mm::address::virt` and I'm noticing there are already legitimate cfg gates in the virt.rs file like `#[cfg(target_pointer_width = "32")]`, so the cfg_gate counter might be tracking something else like `#[cfg(verus_keep_ghost)]` includes.
