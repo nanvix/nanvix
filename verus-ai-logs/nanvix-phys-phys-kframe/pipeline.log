@@ -21,3 +21,11 @@ Module: phys-kframe
 [2026-06-14 03:08:25] [PROVER] Running caller-analysis...
 [2026-06-14 03:08:25] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-14 03:10:16]   ↳ prover done in 1m50s (exit=0)
+[2026-06-14 03:10:16] [PHASE] caller-analysis: no-review (1m50s)
+[2026-06-14 03:10:16] ✅ caller-analysis: PASS (0/0)
+[2026-06-14 03:10:16] [ABSTRACTION] Using override source for view-design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/body_removed_source.rs
+
+============================================================
+PHASE: view-design
+Module: phys-kframe
+============================================================
