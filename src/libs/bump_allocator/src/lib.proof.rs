@@ -61,7 +61,7 @@ pub proof fn lemma_alloc_transition(v: BumpView)
         !v.is_consumed(v.allocated as int),
         v.spec_alloc().is_consumed(v.allocated as int),
         // Configuration (everything except `allocated`) is unchanged.
-        v.spec_alloc() == BumpView { allocated: v.spec_alloc().allocated, ..v },
+        v.spec_alloc() == (BumpView { allocated: v.spec_alloc().allocated, ..v }),
 {
     admit();
 }

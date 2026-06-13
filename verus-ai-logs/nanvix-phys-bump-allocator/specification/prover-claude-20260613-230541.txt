@@ -729,3 +729,20 @@ Turn 32
 ────────────────────────────────────────────────────────────
 Now run verification to see errors:
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-bump-allocator 2>&1 | tail -55
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Just a struct-literal parenthesization issue. Coverage shows 3/6 (align_up, alloc, alloc_as). Let me fix the proof.rs line:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-bump-allocator 2>&1 | sed -n '/Checking bump/,/Log written/p' | hea

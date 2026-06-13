@@ -1,0 +1,86 @@
+Timestamp: 2026-06-13_23-19-25
+Mode: cargo
+Crate: bump-allocator
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=3
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+error[E0308]: mismatched types
+    --> src/libs/bump_allocator/src/lib.spec.rs:41:44
+     |
+  41 |         let m = ((value + alignment - 1) / alignment) * alignment;
+     |                  --------------------------^^^^^^^^^
+     |                  |                         |
+     |                  |                         expected `int`, found `nat`
+     |                  arguments to this method are incorrect
+     |
+help: the return type of this call is `vstd::prelude::nat` due to the type of the argument passed
+    --> src/libs/bump_allocator/src/lib.spec.rs:41:17
+     |
+  41 |         let m = ((value + alignment - 1) / alignment) * alignment;
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^---------^
+     |                                            |
+     |                                            this argument influences the return type of `spec_euclidean_or_real_div`
+note: method defined here
+    --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin-0.0.0-2026-05-17-0151/src/lib.rs:1270:8
+     |
+1270 |     fn spec_euclidean_or_real_div(self, rhs: Rhs) -> Self::Output;
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0308]: mismatched types
+   --> src/libs/bump_allocator/src/lib.spec.rs:45:18
+    |
+ 45 |             Some(m)
+    |             ---- ^ expected `nat`, found `int`
+    |             |
+    |             arguments to this enum variant are incorrect
+    |
+help: the type constructed contains `vstd::prelude::int` due to the type of the argument passed
+   --> src/libs/bump_allocator/src/lib.spec.rs:45:13
+    |
+ 45 |             Some(m)
+    |             ^^^^^-^
+    |                  |
+    |                  this argument influences the type of `Some`
+note: tuple variant defined here
+   --> /home/ruize/.rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/option.rs:608:5
+    |
+608 |     Some(#[stable(feature = "rust1", since = "1.0.0")] T),
+    |     ^^^^
+
+error[E0308]: mismatched types
+    --> src/libs/bump_allocator/src/lib.spec.rs:104:27
+     |
+ 104 |         &&& self.stride % (self.unit_align as int) == 0
+     |             --------------^^^^^^^^^^^^^^^^^^^^^^^^
+     |             |             |
+     |             |             expected `nat`, found `int`
+     |             arguments to this method are incorrect
+     |
+help: the return type of this call is `vstd::prelude::int` due to the type of the argument passed
+    --> src/libs/bump_allocator/src/lib.spec.rs:104:13
+     |
+ 104 |         &&& self.stride % (self.unit_align as int) == 0
+     |             ^^^^^^^^^^^^^^------------------------
+     |                           |
+     |                           this argument influences the return type of `spec_euclidean_mod`
+note: method defined here
+    --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin-0.0.0-2026-05-17-0151/src/lib.rs:1279:8
+     |
+1279 |     fn spec_euclidean_mod(self, rhs: Rhs) -> Self::Output;
+     |        ^^^^^^^^^^^^^^^^^^
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `bump-allocator` (lib) due to 3 previous errors
