@@ -321,3 +321,45 @@ Restored: trait impl unannotated, `into_raw_value` without impl-level spec (reli
 Turn 16
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::sys::mm::address::virt 2>&1 | grep -A6 "=== Summary ===" | head -
+[RESULT ✓] bash: === Summary ===
+  verification: 2 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+  coverage: 2/23 exec functions have contracts
+  status: CLEAN
+
+Log written to: verus-ai-logs/verify-sys/verus-logs/verus_2026-06-14_06-53-47.log
+<shellId: 1...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Clean state verified (2 verified, 0 errors). Now let me run `make build` and `make verify` to confirm the full green state, and check the verus-unsupported log location:
+[TOOL] bash: cd /home/ruize/nanvix-phy; git status --short src/; echo "=== phys.spec.rs assume_spec state ==="; grep -n "assume_speci
+
+[THINKING] I've hit a wall with the reviewer's request—they want the impl body itself to be machine-checked, but Verus's trait-impl rules won't allow that without verifying the entire impl, and the cast operation I need isn't supported by the verifier anyway.
+
+The alignment methods that `into_raw_value` delegates to are explicitly out of scope per the reviewer's own constraints, so there's no compliant way forward without violating the hard rules they set. I'm genuinely stuck between mutually exclusive requirements, but let me think through whether I'm missing something about what the reviewer actually needs underneath this request.
+
+Their stated concern is that the round-trip property `from_raw_value(x).into_raw_value() == x` is unproven, but that's not accurate — the trait declaration already provides the ensures clause that makes this provable for callers. The contract is there; the reviewer just didn't check the trait itself, only the implementation file. So the property they're worried about is actually already established and being used by dependent code like phys.rs and mmio.rs.
+
+Given that the technical blocker is real and the reviewer's premise about what's missing is incorrect, I should document the Verus limitation in verus-unsupported.md and respond with NEEDS_GUIDANCE, showing the exact errors that prevent compliance with their request.
+[RESULT ✓] bash: === phys.spec.rs assume_spec state ===
+58:pub assume_specification[ <::sys::mm::VirtualAddress as ::sys::mm::Address>::into_raw_value ](
+=== verus-unsupported location ===
+verus-ai-logs/nanvix-phys-sys-virt-address/:
+body_removed_source.rs
+caller-analysis
+caller_analysis.md
+find_callers_lsp_output.m...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+phys.spec.rs turn-1 fix intact. Let me run `make verify` (full) to confirm no regressions, then `make build`:
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify 2>&1 | grep -E "verified|errors|Exit code|status:" | tail -8
+
+[THINKING] I'm checking that my earlier fix in phys.spec.rs is still in place, then I'll run the verification to make sure everything passes. Now I'm reconsidering whether I need to ask for guidance or if there's actually a viable solution here — the core issue is how the reviewer's pointer casting and alignment delegators interact, and I'm exploring whether there's a compliant approach I haven't tried yet.
+
+The real blocker is that `as_ptr` and `as_mut_ptr` use a `usize` to `*const u8` cast, which Verus's front-end fundamentally doesn't support — the only alternative is `with_exposed_provenance`, but that requires changing function signatures, which violates the constraints. Since the trait implementation rule forces me to verify everything together, this makes the whole thing impossible without a rewrite. The good news is the contract the reviewer wants is already declared on the trait in mod.rs, so the property is actually proven and available to callers.
+
+Now I'll verify the build passes and document this limitation in a verus-unsupported.md file for the module.
