@@ -190,3 +190,49 @@ spec* criteria.
 - `spec_max_addr::<T>()` is assumed to be the existing spec companion of
   `Address::max_addr()`; if absent it is the one spec helper the proving phase
   must surface (a pure type-level constant), referenced by the range invariant.
+
+## Specification-phase update (deviation recorded)
+
+While binding contracts to exec code, the proposed `spec_max_addr::<T>()` /
+`spec_addr_valid::<T>` / `addr_wf` machinery and the bidirectional range arm
+for `from_raw_value` (`Err ⇔ raw > max_addr`) were **dropped**. Reasons:
+
+1. **Untruthful across implementors.** `PhysicalAddress::from_raw_value`
+   (kernel `phys.rs`) validates via `is_valid_physical_address` to support
+   *sparse* physical memory — it can reject `raw` values that are `<= max_addr`.
+   So `Err ⇔ raw > spec_max_addr` is false; encoding it on the trait would be a
+   wrong contract. Whether `from_raw_value` succeeds depends on dynamic /
+   per-platform validity, which is not expressible as a uniform caller-visible
+   predicate (per spec-design: dynamic info → keep the `Err` arm, do not turn it
+   into a `requires`/range predicate).
+2. **Out of scope to surface `spec_max_addr`.** A per-type spec maximum would
+   require either a new trait spec method (forcing every implementor — incl.
+   out-of-scope `max_addr` impls — to change) or an `ensures` on the
+   out-of-scope `max_addr`. Both violate "do not touch unlisted functions".
+
+### Contracts actually bound (final)
+
+- `from_raw_value(raw_addr) -> Result<Self, Error>` (newly specified):
+  ```text
+  ensures match result {
+      Ok(a)  => a@ == raw_addr as int,                 // round-trip
+      Err(e) => e.code == ErrorCode::BadAddress,       // error code pinned
+  }
+  ```
+  Covers the test/caller expectations that are uniform across all implementors
+  (round-trip on success; `BadAddress` on failure, used by `?`-propagation in
+  the `PageAligned`/`PageTableAligned` blanket impls and the kernel tests).
+- `into_raw_value` — unchanged (`result as int == self@`).
+- `is_aligned` — same predicate, now via helper
+  `spec_addr_is_aligned(self@, align)` defined in `mod.spec.rs`.
+
+`spec_addr_is_aligned(v, align) := v % spec_align_value(align) == 0` is the only
+View helper retained; it is referenced by `is_aligned`'s `ensures`.
+
+### Incidental fix
+
+`mod.rs` carried a redundant duplicate `use ::vstd::prelude::*;` (in addition to
+the conventional `use vstd::prelude::*;`), pre-existing and identical in the
+pre-spec commit. It broke the non-Verus `cargo build` under the workspace's
+`warnings = "deny"`. Removed the duplicate to restore dual compilation; matches
+the single-import pattern of the sibling `virt.rs`. Verus verification unaffected.

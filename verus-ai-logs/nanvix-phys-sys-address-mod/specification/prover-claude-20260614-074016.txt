@@ -1103,3 +1103,110 @@ Module CLEAN. Now run full `make verify` to confirm whole pipeline (sys full inc
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify 2>&1 | grep -E "verification results|=== Results|verified|errors|Exi
 
 [THINKING] The module verification passed cleanly with no errors, so removing that import didn't break anything. Now I need to run the full `make verify` to ensure the entire pipeline—both the system and kernel components—still compiles without issues after modifying mod.rs.
+[RESULT ✓] bash: verification results:: 0 verified, 0 errors
+verification results:: 70 verified, 0 errors
+=== Results ===
+  70 verified
+  0 errors
+  Exit code : 0
+  verification: 70 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+=== Results ===
+  Exit code : 0
+  Unverified function list written to: verus-ai...
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+All crates: **0 errors**. Let me confirm the sys-specific result and the cheating breakdown (to confirm cfg_gate is pre-existing, unchanged).
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== sys final summary ==="; tail -25 verus-ai-logs/verify-sys/verus-logs/$(ls -t verus-
+
+[THINKING] All the crates are compiling cleanly with zero errors across the board. The CHEATING_DETECTED status I'm seeing is from pre-existing configuration gates and kernel verification work that was already in progress—nothing I introduced. Now I'm checking the sys crate's verification output to confirm my changes didn't cause any issues there.
+[RESULT ✓] bash: === sys final summary ===
+Exit code: 0
+  cfg_gate=1
+note: verifying module sys::mm::address
+note: verifying module sys::mm::address::virt
+<shellId: 57 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+Everything is green. Let me finalize: update `view_design.md` to record the spec-phase deviation, and confirm the proof file state.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== mod.proof.rs ==="; cat src/libs/sys/src/sys/mm/address/mod.proof.rs; echo "=== mod.
+
+[THINKING] The module verification is passing across the board—both the specific address modules and the full system build are clean with no errors, and the cargo build completed successfully after fixing the alignment issue.
+
+Now I need to finalize the documentation: update view_design.md to record why I dropped the spec_max_addr and spec_addr_valid predicates (the bidirectional range assumption doesn't hold for sparse physical address spaces), confirm that mod.proof.rs is correct as-is with its empty verus block, and verify there are no actual code bugs to report since the range over-specification was caught and corrected at the design level. The spec-completeness for determinism is acceptable too—from_raw_value correctly leaves the Ok-vs-Err outcome unconstrained at the trait level since no uniform predicate can determine it across all implementors with sparse memory layouts.
+[RESULT ✓] bash: === mod.proof.rs ===
+verus! { } // verus!
+=== mod.spec.rs ===
+verus! {
+
+// Alignment predicate over an abstract address value `v` (`self@`): the integer
+// address is an exact multiple of the alignment's byte value. This is the
+// declarative meaning callers attach to `is_aligned` — independent of h...
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+Now record the spec-phase deviation in `view_design.md`.
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat >> verus-ai-logs/nanvix-phys-sys-address-mod/view_design.md <<'EOF'
+
+## Specification-pha
+[RESULT ✓] bash: updated
+<shellId: 59 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+Let me do a final review of the complete diff of my changes.
+[TOOL] bash: cd /home/ruize/nanvix-phy; git --no-pager show HEAD --stat 2>/dev/null | head -5; echo "=== diff of mod.rs vs pre-spec (
+
+[THINKING] I should leave bugs.md as is since there's no actual code bug to report—the view_design issue was resolved at design time. Now I'm doing a final review of the mod.rs changes to make sure the diff is clean and focused.
+[RESULT ✓] bash: commit 9a30d59b4117458a005c59770a517de8bda3bfad
+Author: Ruize Tang <1466040111@qq.com>
+Date:   Sun Jun 14 07:52:51 2026 +0800
+
+    [verus] verify PASS (cheating detected): kernel::all (66 verified, 0 errors, admit=28 external_body=12 cfg_gate=15)
+=== diff of mod.rs vs pre-spec (192f966ee) ===
+diff -...
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+Complete. All checks pass.
+
+## Summary
+
+Added formal Verus specs to the `Address` trait in `src/libs/sys/src/sys/mm/address/mod.rs` for the three in-scope methods.
+
+**Changes:**
+- **`mod.rs`** — Added `#[verus_spec]` to the previously-unspecified `from_raw_value`:
+  ```
+  Ok(a)  => a@ == raw_addr as int        // round-trip
+  Err(e) => e.code == ErrorCode::BadAddress
+  ```
+  Refactored `is_aligned` to use the new helper; `into_raw_value` already specified (kept). Removed a pre-existing redundant duplicate `use ::vstd::prelude::*;` that broke the non-Verus build.
+- **`mod.spec.rs`** — Added `spec_addr_is_aligned(v, align) = v % spec_align_value(align) == 0`.
+- **`mod.proof.rs`** — Unchanged (trait declarations; impls discharge contracts, no lemmas needed).
+
+**Key design decision (recorded in `view_design.md`):** Dropped the view_design's proposed `spec_max_addr`/`spec_addr_valid` bidirectional range arm. `PhysicalAddress::from_raw_value` validates via `is_valid_physical_address` (sparse memory), so `Err ⇔ raw > max_addr` is **false** across implementors — encoding it would be an untruthful contract. The round-trip + `BadAddress` contract is the uniform, test-pinned guarantee callers actually rely on.
+
+**Verification:**
+- `make verify-sys MODULE=sys::sys::mm::address`: 2 verified, **0 errors**, CLEAN
+- `make verify` (all crates incl. kernel): **0 errors** everywhere — no regression; the kernel's existing `assume_specification` for `PhysicalAddress::from_raw_value` coexists cleanly
+- `cargo build` (non-Verus): clean (dual compilation restored)
+
+The residual `cfg_gate`/`admit` cheating flags are all pre-existing (alignment.rs's `verus!{}` block and the kernel's in-progress admits) and outside this module's scope.
+
+[THINKING] The changes are clean and focused—I removed a redundant import, added the `from_raw_value` spec, and refactored `is_aligned` to use a helper function in the spec file. All verification passes with no errors and the build is clean.
+
+I should note that the CHEATING_DETECTED flag comes from pre-existing code in alignment.rs and the kernel module, which are outside my scope. My own module has zero assumes, zero external_body declarations, and zero admits—it meets the grading criterion cleanly.
+
+
+=== Session End ===
+Session: f8f8b267-ea53-4d2c-8a1d-a1b44f4c0d73
+Duration: 813.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/specification/prover-claude-20260614-074016.jsonl
