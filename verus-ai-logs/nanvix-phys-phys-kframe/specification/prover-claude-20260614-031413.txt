@@ -544,3 +544,160 @@ Turn 23
 ────────────────────────────────────────────────────────────
 Let me run a baseline verification of the `mm::phys` module.
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+[RESULT ✓] bash: - manager.proof.rs:88 lemma_user_bulk_ok: admit
+    - manager.proof.rs:109 lemma_user_bulk_err_restored: admit
+    - manager.proof.rs:119 lemma_kernel_bulk_err_restored: admit
+    - manager.rs:104 init: external_body
+    - manager.rs:515 kernel_watermark: external_body
+    - mod.proof.rs:9 lemma_fra...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+There's a compilation/setup error. Let me check the log.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -iE "error\[|erro
+
+[THINKING] I'm seeing a compilation error where verus didn't run with exit code 101, so I need to check the logs to understand what went wrong.
+[RESULT ✓] bash: error: Unsupported constant type
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -B3 -A6 "Unsuppor
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |
+188 |               let _ = write!(
+    |  _____________________^
+189 | |                 &mut crate::klog::Klog::get(
+190 | |           ...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+The baseline fails because `error!` macros in Verus-checked functions are unsupported. This matches the `UserFrame::drop` pattern (cfg-gated `error!`). Let me check how `UserFrame` methods and impl blocks are annotated.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I'm seeing the root cause now — the `error!` macro calls in `kframe.rs` are triggering Verus parsing failures because they expand with `module_path!()` which Verus can't handle under `verus_keep_ghost`. The fix is to gate these logging calls with `#[cfg(not(verus_keep_ghost))]`, just like the pattern already used in `UserFrame::drop`. To fix the baseline, I need to mark `new` as `external_body` since it's in the tcb-allowed list and uses `error!` — this prevents Verus from parsing its body. For `drop`, I'll add the verification annotation and cfg-gate its error! calls to match the UserFrame pattern. For `base`, I need to add `#[verus_verify]` to its impl block, but that means `clear` (which also uses error!) needs to be marked `external_body` to avoid verification — so I'll need to restructure the impl blocks to separate verified from external functions.
+
+Now I'm checking whether I can use `#[verus_spec]` alone on individual functions without wrapping the impl block in `#[verus_verify]`, and looking at how other methods in the codebase handle this pattern.
+[RESULT ✓] view: 120.         requires
+121.             self.inv(),
+122.         ensures
+123.             result@ == self@,
+124.             result.inv(),
+125.     )]
+126.     pub fn leak(self) -> FrameAddress {
+127.         let this: ManuallyDrop<Self> = ManuallyDrop::new(self);
+128.         this.addr
+129.     }
+13...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I need to check the UserFrame implementation block to see how the View and inv definitions are structured so I can replicate that pattern.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.spec.rs
+
+[THINKING] I need to check the spec.rs file for UserFrame to understand how the inv and internal_inv definitions are structured.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl UserFrame {
+4.     /// Well-formedness of a user-frame handle: its owned physical address is page aligned.
+5.     ///
+6.     /// This is purely structural; it makes **no** ownership claim (it does not assert the frame
+7.     /// is allocated or has a positive refcount). Owner...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I'm looking at how UserFrame keeps things simple with just a single invariant checking page alignment, and I should apply that same straightforward approach to KernelFrame rather than overcomplicating it with an internal invariant placeholder. I'm settling on the UserFrame pattern—just a single `inv()` function that checks page alignment, dropping the always-true `internal_inv()` since it adds no value and goes against the spec-design guidance. I'll update view_design.md to document this deviation.
+
+Now I'm laying out the implementation: kframe.spec.rs gets the `inv()` spec function, kframe.proof.rs stays empty since no proof functions are needed, and kframe.rs gets updated to use `external_body` for the `new` function with the invariant check added to the success path.
+
+I need to figure out the exact annotation pattern for external_body on an impl method—checking how upool.rs handles Upool::new to see if it's `#[verus_verify(external_body)]` on the method itself or if there's a different pattern for impl blocks.
+[RESULT ✓] view: 209. //==================================================================================================
+210. // User Frame Pool
+211. //==================================================================================================
+212. 
+213. ///
+214. /// # Description
+215. ///
+216. /// Thin fac...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+I have a clear picture. `UserFrame` is the exact sibling pattern. Let me write the specs. First, `kframe.spec.rs`:
+[TOOL] create: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.spec.rs.new
+
+[THINKING] I'm seeing the pattern now — methods inside a `#[verus_verify]` impl block need `#[verus_verify(external_body)]` plus `#[verus_spec]` annotations. For KernelFrame::new, I'll keep the existing impl block decorator and add the external_body attribute to the method, then update the spec to include `kf.inv()` in the Ok case while leaving the error macros as they are.
+
+External_body skips body parsing entirely, so the error macros won't cause compilation issues. I can verify this works by looking at Inner::alloc, which is marked external_body and contains error macros that compile fine. For drop, I need to mirror UserFrame::drop's approach by cfg-gating the error macros with `#[cfg(not(verus_keep_ghost))]`. The base function is straightforward to verify since it has no error macros, and clear should remain untouched since it's not in scope for this task.
+
+The real constraint is that base and clear share an impl block without annotation. If I add `#[verus_verify]` to that block, clear gets pulled into verification too, which would break compilation and violates the "don't touch clear" requirement. I can't add external_body to clear since that counts as modifying it. The cleanest approach is to keep base in its current impl block and find a way to verify it without triggering verification of clear. I'm considering splitting the impl block into two: one with `#[verus_verify]` containing base, and another without it containing clear untouched. This respects the constraint not to modify clear while still allowing base to be verified. The question is whether this structural change is acceptable, or if I should test whether `#[verus_spec]` alone on base works without the impl-level annotation. I'm settling on splitting the impl block so base gets verified while clear stays untouched. For new's spec, I should add `kf.inv()` to the ensures clause to match UserFrame's pattern and give callers the invariant they need — this only strengthens the contract without breaking existing proofs. For drop, I'm mirroring UserFrame's structure with the verus_verify annotation and cfg-gating the error log. I need to use the fully-qualified path `crate::hal::mem::spec_page_size()` in the invariant, following the same pattern UserFrame uses. Now I'm ready to write out the spec file.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.spec.rs.new with 703 characters
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && rm src/kernel/src/mm/phys/kframe.spec.rs.new
+
+[THINKING] I see the spec.rs file already has the verus macro structure, so I need to edit it in place rather than creating a new file.
+[RESULT ✓] bash: 
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Now update `kframe.rs`: mark `new` external_body with strengthened spec, add spec to `base` (split impl block), and spec `drop`.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Now split the `base`/`clear` impl block and add a spec to `base`:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Now spec the `Drop` impl, mirroring `UserFrame::drop`:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+Now let me run the verification for `mm::phys`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
+
+[THINKING] I'm looking at how the `drop` method handles the `e` binding when `verus_keep_ghost` is enabled — the error logging gets cfg-gated out, leaving `e` unused in that branch. UserFrame has the same pattern, and while it compiles fine, there might be an unused variable warning depending on how the cfg gates interact with the binding.
+
+Now I need to verify the same pattern in mm::phys.
