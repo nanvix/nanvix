@@ -1,0 +1,44 @@
+Timestamp: 2026-06-13_23-47-33
+Mode: cargo
+Crate: bump-allocator
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=1
+  admit=3
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+warning: cannot use external trait bump_allocator::BssStorage as a bound without declaring the trait (use #[verifier::external_trait_specification] to declare the trait); this is a warning for now but will eventually be an error
+   --> src/libs/bump_allocator/src/lib.spec.rs:171:5
+    |
+171 |     pub uninterp spec fn view(&self) -> BumpView;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: cannot use external trait bump_allocator::BssStorage as a bound without declaring the trait (use #[verifier::external_trait_specification] to declare the trait); this is a warning for now but will eventually be an error
+   --> src/libs/bump_allocator/src/lib.rs:290:5
+    |
+290 |     pub fn alloc(&self) -> Result<&'static mut [u8; N], BumpAllocError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+error: cannot find trait `T14_BssStorage` in this scope
+   --> src/libs/bump_allocator/src/lib.rs:222:15
+    |
+222 |     _storage: PhantomData<S>,
+    |               ^^^^^^^^^^^^^^
+
+note: This error was found in Verus's Trait-Conflict-Checker
+
+warning: `bump-allocator` (lib) generated 2 warnings
+error: could not compile `bump-allocator` (lib) due to 1 previous error; 2 warnings emitted

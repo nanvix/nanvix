@@ -252,3 +252,49 @@ Turn 15
 Turn 16
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A6 -iE "does not yet support|error\
+[RESULT ✓] bash: error: cannot use type `bump_allocator::BumpAllocError` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/bump_allocator/src/lib.rs:288:28
+    |
+273 |             match result {
+    |                   ------
+274 |                 ...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Types `FixedSizeBumpAllocator` and `BumpAllocError` need `#[verus_verify]` to be usable in specs. Let me check how raw-array annotates its types:
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '198,224p' src/libs/raw-array/src/lib.rs
+
+[THINKING] The `slot_ref_addr` type is now passing type checking, but I'm hitting new issues with `BumpAllocError` and `FixedSizeBumpAllocator` — Verus is rejecting them because they're defined as plain Rust types outside the `verus!` macro, and I need them accessible in spec contexts like the `view` implementation and match expressions in ensures clauses.
+
+Looking at how `raw-array` handles this, I see that `RawArray<T>` uses `#[verus_verify]` annotations on its struct declarations. I should apply the same approach to `FixedSizeBumpAllocator`, `BumpAllocError`, and the `BssStorage` trait to make them visible to Verus's verification system.
+[RESULT ✓] bash: // External type specification for RawArrayStorage.
+#[verus_verify]
+#[cfg(verus_keep_ghost)]
+#[verus_verify(reject_recursive_types(T))]
+#[verus_verify(external_type_specification)]
+#[verus_verify(external_body)]
+pub struct ExRawArrayStorage<T>(RawArrayStorage<T>);
+
+//================================...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] I need to add the `#[verus_verify]` attribute to `FixedSizeBumpAllocator` and `BumpAllocError` since `RawArray<T>` already has it. The allocator struct contains `AtomicUsize` and `PhantomData<S>`, and Verus will need to handle these external types when verification is enabled.
+
+For `BumpAllocError`, the enum should work fine with `#[verus_verify]` for spec matching. I'm not sure yet if the `BssStorage` trait itself needs annotation — the error only mentioned the two concrete types, so I'll start by adding the attribute to those and see if that resolves the issue. Since `AtomicUsize` has an external type specification in the standard library specs, Verus should recognize it properly.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -B1 -A6 -iE "does not yet support|error\

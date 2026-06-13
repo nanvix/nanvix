@@ -143,6 +143,7 @@ pub const fn align_up(value: usize, alignment: usize) -> Option<usize> {
 /// Error type returned by [`FixedSizeBumpAllocator`] operations.
 ///
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[verus_verify]
 pub enum BumpAllocError {
     /// Storage capacity exhausted.
     Exhausted,
@@ -213,6 +214,7 @@ pub unsafe trait BssStorage {
 /// - `A`: Unit alignment in bytes.
 /// - `S`: Backing storage provider.
 ///
+#[verus_verify]
 pub struct FixedSizeBumpAllocator<const N: usize, const A: usize, S: BssStorage> {
     /// Atomic bump index for the next available slot.
     next_slot: AtomicUsize,
