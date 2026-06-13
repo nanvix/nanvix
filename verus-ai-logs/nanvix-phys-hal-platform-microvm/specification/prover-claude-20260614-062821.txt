@@ -274,3 +274,24 @@ The proof file stays empty (no proof obligations needed for the identity). Now l
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=hal::platform::microvm 2>&1 | tail -40
 [TOOL] report_intent: Verifying microvm module
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 1/31 exec functions have contracts.
+  Unverified functions:
+    - setup_heap_backing_storage
+    - setup_klog_backing_storage
+    - disable_interrupts
+    - enable_interrupts
+    - wait_for_interrupt
+    - putb
+    - vmbus_write
+    - vmbus_read
+    - do_shutdown
+    - snapshot
+    - signal_startup_...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Module verifies clean (1 verified, 0 errors). The other 30 functions are out of scope. Now check for regressions and build.
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify 2>&1 | tail -25
+
+[THINKING] The verification passed with the one function I needed to check, and the other functions are outside my scope. Now I should run the regression tests and build to make sure everything still works.
