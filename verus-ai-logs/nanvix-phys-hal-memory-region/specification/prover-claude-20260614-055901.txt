@@ -772,3 +772,144 @@ Turn 47
 [THINKING] The build passes with exit code 0, but the CHEATING_DETECTED status is flagged due to the admit and coverage. I'd rather remove the admit for a cleaner solution, so I'm reconsidering whether the Address trait clone could work with the existing patterns in the codebase. My earlier search didn't turn up any kernel functions that return a cloned generic Address while preserving the view, so I'm weighing whether to use admit as allowed by the task or modify the sys crate instead.
 
 Given the scope constraints and the fact that modifying the Address trait would have broad ripple effects across the project, I'll keep the admit as a documented deferral—it mirrors what's already in frame.rs. Now I need to run the full crate verification to check for regressions, then build. The proof.rs file is still empty, which is fine since no lemmas are needed. One thing to verify: frame.rs's alloc_range now calls region.start() and size() with real specs from the region module, so the contracts should flow through properly even though the MemoryRegion::start implementation uses admit internally.
+[RESULT ✓] bash: MAKE EXIT=0
+
+note: verifying module hal::mem::types::region
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=14 admit=27 trusted=0 no_decreases=0 ...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -iE "error|verification failed|VERIFY_FAILED|[0-9]+ errors" /tmp/verify_all.log | grep -
+
+[THINKING] Checking that the verify command succeeded across all the crates and scanning through the logs to make sure there aren't any hidden errors in the output.
+[RESULT ✓] bash: === verified counts ===
+  Exit code : 0
+  Exit code : 0
+  Exit code : 0
+  Exit code : 0
+  Exit code : 0
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+No errors anywhere. Now verify dual compilation with `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 2400 make build >/tmp/build.log 2>&1; echo "MAKE EXIT=$?"; tail -15 /tmp/build.log
+[RESULT ✓] bash: MAKE EXIT=0
+make: Nothing to be done for 'build'.
+<shellId: 34 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+`make build` is a no-op target. Let me find the correct build command.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -nE "^build:|^all:|^\.PHONY|kernel:|^run:" Makefile | head; echo "=== z help ==="; ls z 
+
+[THINKING] The `make build` target isn't doing anything, so I need to look at what the actual build command should be. The build skill documentation mentions using `./z` instead, so let me figure out what that script does.
+[RESULT ✓] bash: 377:.PHONY: update-sysroot-link
+392:.PHONY: dump-sccache-stats
+411:all: all-nanvix
+513:.PHONY: release-generate-manifest
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+590:.PHONY: ensure-verus
+624:verify-kernel: ensure-verus
+842:run: image
+859:.PHONY: all-test-kernel-ramfs clean-test-kernel...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 2400 ./z build 2>&1 | tail -25; echo "EXIT=${PIPESTATUS[0]}"
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.30s
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked -Zbuild-std=core,alloc -Zjson-target-spec  --target /home/ruize/nanvix-phy/build/targets/x86-user.json  -p c-bindings-rust --featu...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+Build error: unused vstd import in non-verus build. Let me check the original imports via git.
+[TOOL] bash: cd /home/ruize/nanvix-phy; git --no-pager diff -- src/kernel/src/hal/mem/types/region.rs | head -60
+
+[THINKING] The non-verus build is failing because I removed the inline verus! block from region.rs that was using vstd items, but the `use ::vstd::prelude::*` import at line 32 is still there and now unused. The code that depended on it moved to spec.rs, which only gets included in the verus build, so in the non-verus configuration that import has nothing to reference. The real issue is that I didn't actually modify lines 8 or 32 — I only removed the inline verus block and added the `#[verus_spec]` attribute to the getters. So why is line 32 suddenly flagged as unused? The original file built fine with both imports present, which means one of them was being used. After my changes, line 32 became redundant, likely because the macro expansion from `#[verus_spec]` is pulling in what it needs through line 8, making the duplicate import unnecessary. In the non-verus build, neither vstd import should be needed since there are no verus items, so it's odd that only one is flagged as unused. I'm wondering if the original file actually had just one vstd import, or if the build was already failing before my changes. Let me check the git history to see what the imports looked like originally.
+[RESULT ✓] bash: 
+<shellId: 37 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; git status --short; echo "==="; git --no-pager diff --stat
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-memory-region/specification/prover-claude-20260614-055901.jsonl
+ M verus-ai-logs/nanvix-phys-hal-memory-region/specification/prover-claude-20260614-055901.txt
+===
+ .../prover-claude-20260614-055901.jsonl            | 109 +++++++++++++++++++++
+ .../prover-claude-202606...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; git check-ignore src/kernel/src/hal/mem/types/region.rs; echo "ignored?=$?"; echo "=== HEAD i
+
+[THINKING] I'm noticing that `git status` only shows the log files as modified, but the changes to region.rs, region.spec.rs, and frame.spec.rs aren't appearing — they might be git-ignored or there's something odd about how the repository is tracking these files.
+
+Let me check what the original version looks like using `git show HEAD` to see if these files even exist in the repository.
+[RESULT ✓] bash: ignored?=1
+=== HEAD imports lines 8,32 ===
+use vstd::prelude::*;
+use ::vstd::prelude::*;
+<shellId: 39 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+Line 32 is a duplicate of line 8 (`vstd::prelude::*`) and is now unused in the non-verus build. Let me remove the redundant import and rebuild.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+
+[THINKING] The exit code from `git check-ignore` means the file isn't ignored, but it's also not showing up in `git status` as modified, which is puzzling. Maybe the file is actually tracked and my changes happen to match what's already there, or perhaps `src` is a separate git repository altogether. Either way, it's not critical to figure out right now.
+
+Looking at the actual issue: HEAD has both `use vstd::prelude::*;` on line 8 and `use ::vstd::prelude::*;` on line 32, and the original code built fine. The macros like `#[verus_verify(external_derive)]` must expand to code that uses items from `vstd::prelude`, which is why neither import was flagged as unused. Since line 8 is always present and provides the same glob import, line 32 is redundant in the non-verus build, but I need to make sure I don't break the verus build that depends on the vstd prelude for spec.rs. The real issue is that removing the bottom verus block shifted which imports are actually needed in each build. In the verus build, that block was using prelude items like View and int, but now that code is in spec.rs instead. For the non-verus build, line 32 became unused since the cfg-gated block doesn't expand there. So the safest fix is to remove line 32 and verify both builds still work — the macros should pull in what they need through line 8, and the verus build's prelude usage is now satisfied by spec.rs. I'm second-guessing whether line 8 actually resolves correctly in the verus build — it uses `vstd::prelude::*` without the leading `::`, whereas line 32 uses `::vstd`. In a no_std kernel context, the absolute path might be necessary. But since both lines exist in HEAD and the verus build currently passes, removing line 32 should be safe as long as line 8 provides the same prelude items. The real puzzle is why the original code passed the non-verus build with line 32 present if it wasn't being used — unless `verus_keep_ghost` was actually enabled during that build, which would explain why the bottom block wasn't cfg'd out. The safest approach is to just remove the duplicate import on line 32 and verify both builds work as expected.
+[RESULT ✓] view: 6. //==================================================================================================
+7. 
+8. use vstd::prelude::*;
+9. #[cfg(verus_keep_ghost)]
+10. include!("region.spec.rs");
+11. #[cfg(verus_keep_ghost)]
+12. include!("region.proof.rs");
+13. 
+14. use crate::hal::mem::types::{
+15.   ...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+
+[THINKING] I'm noticing that both line 8 and line 32 import from vstd's prelude using glob imports, but the compiler is flagging line 32 as unused even though the original code built successfully. The key difference seems to be that in the original version, the verus! block was present in region.rs, so both imports were actually being used—but now I'm wondering why line 32 is being flagged when the non-verus build should still need it.
+
+Actually, I think the issue is that I added `#[verus_spec]` attributes, which likely changed how the macros expand and which import they reference. Since both `vstd` and `::vstd` resolve to the same crate in edition 2018+, and the original code compiled with line 8 present, I can safely remove the duplicate line 32 and just keep line 8. Let me test that by removing line 32 and running the build.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 2400 ./z build 2>&1 | tail -15; echo "EXIT=${PIPESTATUS[0]}"
+[RESULT ✓] bash: Compiling nanvix-http v0.16.17 (/home/ruize/nanvix-phy/src/libs/nanvix-http)
+   Compiling nanvix v0.16.17 (/home/ruize/nanvix-phy/src/libs/nanvix)
+   Compiling nanvixd v0.16.17 (/home/ruize/nanvix-phy/src/utils/nanvixd)
+   Compiling nanvix-bench v0.16.17 (/home/ruize/nanvix-phy/src/utils/nanvix-benc...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+Non-verus build passes. Now re-confirm the verus build still compiles after removing the import.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=hal::mem::types::region >/tmp/vk2.log 2>&1; echo "EXIT
+
+[THINKING] The build is working, but I need to verify that the VERUS build still passes after removing that import line. Since I modified region.rs, the cache is invalidated, so I should re-run the verification to make sure everything compiles correctly with just the remaining import.
