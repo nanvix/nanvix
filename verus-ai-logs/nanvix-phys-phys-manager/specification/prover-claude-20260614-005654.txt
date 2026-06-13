@@ -4040,3 +4040,50 @@ Non-verus build passes now. Re-confirm verus verification still passes after the
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verification:|^  [0-9]+ (verified|errors)"
 
 [THINKING] The non-verus build is working now, but I need to verify that my changes to manager.rs didn't break the verus build—specifically, removing that import on line 8 might affect things, though frame.rs should only depend on vstd. Let me run verify-kernel again to make sure we're still at zero errors, and I should also double-check what check-kernel does since the task focuses on make verify and make build.
+[RESULT ✓] bash: 19 verified
+  0 errors
+  verification: 19 verified, 0 errors (exit 0)
+<shellId: 127 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 280
+────────────────────────────────────────────────────────────
+Both verus and non-verus builds pass. Let me ensure the new `kernel_watermark` accessor and `spec_kernel_watermark` uninterp are documented in tcb-allowed.md:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "kernel_watermark\|spec_kernel_watermark\|KERNEL_WATERMARK" verus-ai-logs/tcb-allowed
+
+[THINKING] Both the verus and non-verus builds are passing, so I should run the full verification suite again to make sure the import change in manager.rs didn't introduce any regressions across the other modules. Actually, `make verify` already completed successfully, and since the only modification was removing that import, I'm confident the broader build is still intact.
+
+Now I need to update the documentation to reflect the new kernel_watermark external_body and its corresponding uninterp spec_kernel_watermark. The cheating report shows 24 external_body entries now, which includes kernel_watermark, so I should verify that tcb-allowed.md documents this properly before running a final verification pass.
+[RESULT ✓] bash: NOT DOCUMENTED
+<shellId: 128 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 281
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; tail -40 verus-ai-logs/tcb-allowed.md
+[RESULT ✓] bash: ## Skip / exclude from current proof target
+
+- `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::get_mut`
+- `src/kernel/src/mm/phys/frame.rs::init`
+
+## `external_body` introduced while speccing `mm::phys`
+
+- `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates an
+  `alloc::c...
+
+────────────────────────────────────────────────────────────
+Turn 282
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat >> verus-ai-logs/tcb-allowed.md <<'EOF'
+
+## External-bottom: build-time constant accessor
+[RESULT ✓] bash: appended
+<shellId: 130 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 283
+────────────────────────────────────────────────────────────
+Now run the full `make verify` to confirm no regressions across all modules:
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify 2>&1 | grep -E "exit|error|Exit code|verification:|status:" | tail -10
+
+[THINKING] Let me run the full `make verify` one more time to ensure there are no regressions across all modules, since I've already confirmed the kernel-specific changes work. I should also check the broader non-verus build to satisfy the task requirements completely.
