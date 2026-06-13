@@ -2,23 +2,52 @@
   "module_name": "bump-allocator",
   "log_name": "nanvix-phys-bump-allocator",
   "source_path": "/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs",
-  "current_phase": "caller-analysis",
-  "current_phase_idx": 0,
-  "completed_phases": [],
-  "phase_results": {},
+  "current_phase": "view-design",
+  "current_phase_idx": 1,
+  "completed_phases": [
+    "caller-analysis"
+  ],
+  "phase_results": {
+    "caller-analysis": {
+      "phase": "caller-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 1354.7,
+      "review_rounds": 0
+    }
+  },
   "prover_session_id": "adc9e571-7220-40ab-b39e-6fb90c7b0591",
   "completed": false,
   "base_branch": "exp",
   "verus_branch": "verus-ai/bump-allocator",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "caller-analysis": "c6e8efc22333ba1e8376e4a261bde906bcf2fbb9"
+  },
   "phase_start_shas": {
-    "caller-analysis": "3b7e25cc23aac07166334c70d3847bdf17635de0"
+    "caller-analysis": "3b7e25cc23aac07166334c70d3847bdf17635de0",
+    "view-design": "c6e8efc22333ba1e8376e4a261bde906bcf2fbb9"
   },
   "phase_history": [
     {
       "phase": "caller-analysis",
       "event": "start",
       "sha": "3b7e25cc23aac07166334c70d3847bdf17635de0",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "caller-analysis",
+      "event": "end",
+      "sha": "c6e8efc22333ba1e8376e4a261bde906bcf2fbb9",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "start",
+      "sha": "c6e8efc22333ba1e8376e4a261bde906bcf2fbb9",
       "rollback_iter": 0
     }
   ],
