@@ -972,3 +972,39 @@ Turn 48
 Turn 49
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus; timeout 1200 make verify-kernel MODU
+[RESULT ✓] bash: === Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::address::phys.
+...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -nE "error\[|error:" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_05-38-56.lo
+[RESULT ✓] bash: 20:error[E0252]: the name `pow2` is defined multiple times
+34:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+=== context ===
+8:compilation/setup error (verus did not run)
+9-
+10-Cheating patterns:
+11-  assume=0
+12-  external_body=14
+13-  admit=26
+14-  trusted=0
+15-  no_decre...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] Since both spec.rs and proof.rs are included in the same module, I can remove the duplicate pow2 import from proof.rs and rely on the one already brought in through spec.rs.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus; timeout 1200 make verify-kernel MODU

@@ -1,5 +1,3 @@
-use vstd::arithmetic::power2::pow2;
-
 verus! {
 
 // A frame index scaled by the frame size stays within `usize`, so `from_number`'s base-address
