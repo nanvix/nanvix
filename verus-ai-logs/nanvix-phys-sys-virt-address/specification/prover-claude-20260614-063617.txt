@@ -476,3 +476,76 @@ Turn 20
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::mm::address::virt 2>&1 | tail -25
 
 [THINKING] I need to use the correct module path `sys::mm::address::virt` and I'm noticing there are already legitimate cfg gates in the virt.rs file like `#[cfg(target_pointer_width = "32")]`, so the cfg_gate counter might be tracking something else like `#[cfg(verus_keep_ghost)]` includes.
+[RESULT ✓] bash: - try_from
+    - fmt
+    - from
+    - from
+    - from
+    - from
+    - try_from
+    - fmt
+    - new
+    - seconds
+    - nanoseconds
+    - checked_sub
+    - checked_add_duration
+    - checked_sub_duration
+    - partial_cmp
+    - cmp
+
+=== Summary ===
+  verification: 0 verified, compilation/setup error...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '20,80p' verus-ai-logs/verify-sys/verus-logs/verus_2026-06-14_06-39-00.log
+[RESULT ✓] bash: error: could not find module mm::address::virt specified by --verify-module or --verify-only-module
+       available modules are:
+       - sys::mm::access
+       - sys::mm::address
+       - sys::mm::address::virt
+       - sys::mm::alignment
+       or use --verify-root
+
+error: could not compile `sys`...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "verify-module\|MODULE\|module\|strip\|sed\|crate" scripts/verify.sh | head -40
+
+[THINKING] The error message still shows `mm::address::virt` even though I passed the full path `sys::mm::address::virt`, so the verify script must be stripping the crate prefix or handling the MODULE argument differently than expected. Looking at the available list, it shows `sys::mm::address::virt`, so I need to check how the script maps the MODULE parameter to understand the mismatch.
+[RESULT ✓] bash: 6:#   Cargo mode:  ./verify.sh --crate <crate_name> [OPTIONS]
+9:# Cargo mode uses `cargo verus verify -p <crate>` and is the recommended
+24:MODULE=""
+35:Usage: $(basename "$0") (--crate CRATE | --verus-dir DIR) [OPTIONS]
+38:  --crate CRATE         Cargo crate name (uses: cargo verus verify -p CRATE)...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls src/libs/sys/src/; echo "---lib root---"; cat src/libs/sys/src/lib.rs 2>/dev/null | head -
+
+[THINKING] The script is stripping the `sys::` prefix from module paths, but Verus actually needs the full path including the crate name. The available modules list shows `sys::mm::address::virt`, so when running `cargo verus verify -p sys`, I should be passing `--verify-module sys::mm::address::virt` to the verify-module flag, not the stripped version.
+
+Looking at the kernel example, `make verify-kernel MODULE=mm::phys` works without the `kernel::` prefix, which suggests the crate's lib.rs might be structured differently. For the `sys` crate, the available modules are listed WITH the `sys::` prefix, which is unusual — it might be that the crate's lib.rs does `pub mod sys;` and re-exports, making `sys` a module inside the crate rather than just the crate name itself.
+[RESULT ✓] bash: exit_status.rs
+lib.rs
+sys
+---lib root---
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Configuration
+//============================================================...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys MODULE=sys::sys::mm::address::virt 2>&1 | tail -25
+
+[THINKING] I'm working through the module path structure—the crate is named `sys` with a `mod sys` declaration inside it, so the full path should be `sys::sys::mm::address::virt`, but Verus is showing just `sys::mm::address::virt`, which suggests there might be a discrepancy in how the module hierarchy is being resolved.
+
+Looking at the script's behavior, it strips the leading `sys::` prefix from the module path, so if I pass `sys::mm::address::virt` it becomes `mm::address::virt`—which is incorrect. The solution is to pass the full path `sys::sys::mm::address::virt` so that after stripping one `sys::` prefix, I'm left with the correct `sys::mm::address::virt` for verification.
