@@ -629,7 +629,7 @@ Options:
              omitted).
   {allow_host} <ip|cidr>                    (Repeatable, standalone mode only) Permit egress to \
              this IPv4/CIDR (allowlist; requires {allow_host_networking}; mutually exclusive with \
-             {block_host}; DNS on port 53 is also permitted).
+             {block_host}).
   {block_host} <ip|cidr>                    (Repeatable, standalone mode only) Deny egress to this \
              IPv4/CIDR (blocklist; requires {allow_host_networking}; mutually exclusive with \
              {allow_host}).

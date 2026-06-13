@@ -257,9 +257,6 @@ fn do_connect(
     // denied whenever a filter is active and permitted only under `AllowAll`
     // (preserving unrestricted behavior when no policy is set).
     //
-    // Connections to the DNS port are exempted in allowlist mode so name
-    // resolution works for the allowed hosts (see `HostFilter::permits_connection`).
-    //
     // Reject sockaddrs too short to hold a `sockaddr` before parsing. `socklen`
     // is copied out of the packed request first so the trace below does not take
     // a reference to an unaligned field; `size_of_val` reuses the in-scope
@@ -270,7 +267,7 @@ fn do_connect(
         return build_error(tid, ErrorCode::InvalidArgument);
     }
     let permitted: bool = match SocketAddr::try_from(&request.sockaddr) {
-        Ok(SocketAddr::V4(addr)) => filter.permits_connection(addr.addr().octets(), addr.port()),
+        Ok(SocketAddr::V4(addr)) => filter.permits(addr.addr().octets()),
         _ => filter.is_allow_all(),
     };
     if !permitted {
