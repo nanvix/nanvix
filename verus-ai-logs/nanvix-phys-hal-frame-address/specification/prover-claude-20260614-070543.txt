@@ -919,3 +919,32 @@ Now the critical regression check — full `make verify` (I modified `mm/phys/fr
 Since this cfg-gate was already present in the baseline run with the same count (1 instance, 15 total gates), I haven't introduced any regression. The "CHEATING_DETECTED" status appears to be a false positive from the detector misidentifying the pre-existing, legitimate cfg-gated ghost material. My changes didn't add any cfg-gating of actual exec code, and verification shows 6 verified with 0 errors.
 
 Now I need to run the full verification suite to confirm no regressions in the mm/phys module I modified, and check whether removing the FrameAddress assume_specs while strengthening the PageAligned ones affects downstream verification.
+[RESULT ✓] bash: VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+/home/ruize/nanvix-p...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+Let me confirm all modules (especially `mm/phys`) actually re-verified without errors, not just cache.
+[TOOL] bash: cd /home/ruize/nanvix-phy && LOG=verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_07-22-26.log; echo "=== error/f
+
+[THINKING] Looking at the verify output, it says "Module: <all>" but only shows the frame module with a "cached" note, which is confusing—maybe the full output got cut off by the tail command limiting it to 35 lines, so I'm only seeing a partial view of what was actually verified.
+
+The real concern is whether mm/phys actually re-verified after my spec change or if it was just pulled from cache. Since the task requires running `make verify` for all crates and kernel (and mm/phys is part of the kernel), I should check the full log to confirm mm/phys was actually re-verified and there are no errors.
+[RESULT ✓] bash: === error/fail lines ===
+=== modules verified count ===
+1
+=== mm::phys modules ===
+note: verifying module hal::mem::types::address::frame
+<shellId: 41 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+The full run used cache. Let me directly verify the `mm::phys` modules that depend on my changed `mm/phys/frame.spec.rs` to confirm no regression.
+[TOOL] bash: cd /home/ruize/nanvix-phy && for m in mm::phys::frame mm::phys::manager mm::phys::mod; do echo "##### $m #####"; timeout
+
+[THINKING] The log shows only the frame module was verified and it was cached, which is strange since I modified `mm/phys/frame.spec.rs` — that should have invalidated the cache. I'm wondering if the caching works at the crate level where Verus re-verifies all modules in a single pass, or if there's something else going on with how the cache invalidation works.
+
+Let me force a clean re-verification by running `make verify-kernel MODULE=mm::phys::frame` to directly check that specific module against my modified specs and confirm it still passes.
