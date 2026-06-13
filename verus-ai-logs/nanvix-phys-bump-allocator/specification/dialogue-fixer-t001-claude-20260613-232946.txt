@@ -627,3 +627,10 @@ Source is clean — only the intended `as_mut_ptr` spec (line 198) and `align_up
 Turn 46
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 200 make verify-bump-allocator 2>&1 | grep -i "verification results"
+[RESULT ✓] bash: 
+<shellId: 24 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 200 make verify-bump-allocator 2>&1 | grep -iE "verified|errors" | head -6
