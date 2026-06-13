@@ -15,7 +15,6 @@
     - mm/phys/frame.rs:774 free: external_body
     - mm/phys/frame.rs:817 share: external_body
     - mm/phys/frame.rs:838 refcount: external_body
-    - mm/phys/kframe.rs:84 new: external_body
     - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
     - mm/phys/manager.proof.rs:21 lemma_free_count_bounded: admit
     - mm/phys/manager.proof.rs:36 lemma_kernel_alloc_one: admit
