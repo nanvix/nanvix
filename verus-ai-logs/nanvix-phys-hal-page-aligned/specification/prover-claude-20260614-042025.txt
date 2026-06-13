@@ -1436,3 +1436,111 @@ s=open(f).read()
 [THINKING] The E0425 error persists with the let-binding, so reverting that executor change didn't resolve it. I'm comparing the differences between `from_address` and `bitmap::new` — the former is generic over `T: Address` and returns a `Result`, while the latter is a concrete implementation on `Bitmap`. Looking at how `from_address` uses pattern bindings like `addr@` and `r@` in its spec to understand what might be causing the binding issue.
 
 The macro seems to be generating "cannot find function from_address" even with a trivial spec body, which suggests the spec content itself isn't the problem. I'm wondering if `#[verus_spec]` on a method that's called by sibling methods in the same generic impl block is causing some scoping issue during macro expansion. Let me test whether adding a spec to another method like `into_inner` produces the same error to isolate whether it's specific to `from_address` or a broader issue with speccing methods in this generic impl.
+[RESULT ✓] bash: patched
+error: could not compile `kernel` (bin "kernel")
+=== Results ===
+  0 verified
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  Unverified functions:
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+<shellId: 60 completed w...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; L=verus-ai-logs/verify-kernel/verus-logs/$(ls -t verus-ai-logs/verify-kernel/verus-logs/ | he
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+
+thread 'rustc' (1340353) panicked at vir/src/traits.rs:511:13:
+assertion failed: !method_impls.contains(&p)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: could not compile `ke...
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+A Verus internal panic now. Let me revert the `into_inner` probe and examine bitmap's working `verus_spec` attribute ordering vs mine:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/src/libs/bitmap/src; sed -n '78,101p' lib.rs
+
+[THINKING] I'm hitting a different issue now—a Verus internal panic in the traits module when trying to spec the `into_inner` inherent method, which is actually a bug in Verus itself triggered by some specific interaction. It's interesting that `into_inner` causes a compiler panic while `from_address` just gave an undefined reference error. The problem seems to be related to how the `impl<T: Address> PageAligned<T>` inherent block is being processed.
+
+The panic message about `method_impls` suggests Verus is getting confused during trait method resolution, possibly because `PageAligned` has both inherent methods and trait implementations for `Address` (which itself has a `View` supertrait). When I add `verus_spec` to `into_inner`, something in that trait processing chain breaks. Let me reconsider whether the `from_address` error might actually stem from how the `#[verus_spec]` macro generates hidden spec companions—maybe the macro isn't handling the way `from_address` is referenced elsewhere in the code.
+
+Looking back at the progression: the `from_address` E0425 error appeared even in my first test without `#[verus_verify]` on the trait impl, so that's a separate issue from the panic. The panic is new and tied to marking the `Address` impl with `#[verus_verify]` plus the supertrait. The `from_address` error is purely about the `#[verus_spec]` annotation itself. Since `bitmap::new` works fine with `verus_spec` but `from_address` doesn't, the difference must be that `from_address` is generic—that's likely the key distinction. Looking at line 100 in the bitmap code to check the attribute ordering around the verus_spec macro.
+[RESULT ✓] bash: /// # Description
+    ///
+    /// Creates a new bitmap with a given length. The bitmap is initialized with all bits set to zero.
+    ///
+    /// # Parameters
+    ///
+    /// - `number_of_bits`: Length of the bitmap in bits.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a new bitmap is retu...
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address; grep -nE "fn |trait " mod.rs | head -40
+
+[THINKING] I'm checking whether the ordering and structure match between the doc comment and verus_spec, and they seem consistent. The bitmap::new function is defined in a non-generic impl block, so I need to verify if the issue stems from genericity differences. I'm also realizing that the verus_ai-exp path contains a different copy of nanvix than my local project at /home/ruize/nanvix-phy, which could explain the discrepancy. Let me trace back to the root cause of the E0425 error about the missing function.
+
+The error message is coming from rustc, not Verus itself, which suggests the verus_spec macro is expanding to code that references `from_address` as a free function that doesn't exist in scope. I'm considering running cargo expand to see the macro expansion, though that's tricky with a no_std cross-compilation target. The key insight is that bitmap::new works fine in a different crate with a non-generic impl, but my generic inherent methods in this impl are failing in different ways—into_inner triggers a Verus panic about missing method impls, while from_address causes the E0425 error. I'm now wondering if PageAligned implements the Address trait, and if that trait itself declares a `from_address` method that's conflicting with the inherent method I'm defining.
+[RESULT ✓] bash: 31:pub trait Address
+49:    fn from_raw_value(raw_addr: usize) -> Result<Self, Error>;
+55:    fn into_raw_value(self) -> usize;
+70:    fn align_up(&self, align: Alignment) -> Result<Self, Error>;
+86:    fn align_down(&self, align: Alignment) -> Result<Self, Error>;
+102:    fn is_aligned(&self, align...
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] The `from_address` field isn't defined in the trait, so that's not the issue. Let me check the full implementation in page.rs to see how the calls are structured.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; find . -path ./target -prune -o -name "*.rs" -print 2>/dev/null | xargs grep -ln "
+
+[THINKING] The `into_inner` spec is triggering a Verus internal panic in traits.rs about duplicate method implementations. The issue seems to stem from marking `#[verus_verify]` on the `impl<T: Address> Address for PageAligned<T>` block — since PageAligned now implements Address, which has View as a supertrait, the compiler is detecting a conflict with how method impls are being tracked.
+
+I need to isolate the problem. Let me strip back to just a minimal `from_address` spec without the `#[verus_verify]` annotation on the impl block and see if the E0425 error persists. The error "cannot find function from_address" suggests the macro is generating a bare reference to `from_address` without proper scoping, so I should check the verus macro source to understand how it's expanding the spec.
+[RESULT ✓] bash: ./verus/source/builtin_macros/src/attr_rewrite.rs
+./verus/source/builtin_macros/src/lib.rs
+---
+./verus/source/builtin_macros
+<shellId: 64 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src; grep -n "fn name\|ident\|fn_name\|sig.ident\|metho
+[RESULT ✓] bash: 132:        let path = arg.path().get_ident().expect("Invalid verus verifier attribute");
+150:                let ident = if let syn::Meta::List(list) = arg {
+155:                        &format!("{DUAL_SPEC_PREFIX}_{}", f.sig.ident),
+156:                        f.sig.ident.span(),
+159:             ...
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+Let me cleanly isolate: only a trivial `from_address` spec, no `#[verus_verify]` on the trait impl:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned; python3 - <<'EOF'
+f='page.rs'
+s=open(f).read()
+#
+
+[THINKING] I'm looking at how the `#[verus_spec]` macro works, particularly the special handling in impl blocks where it adds a marker attribute to methods that are tagged with `#[verus_spec]` when the impl block itself is processed by `verus_verify`.
+
+But when `#[verus_spec]` appears on a method in an impl block that doesn't have `#[verus_verify]` (like the `PageAligned<T>` impl), the macro processes it standalone instead, which is where the error is coming from. The `from_address` method is in a non-verus_verify impl, so its spec is being handled by the standalone processing path around line 681, and that's generating the E0425 error when it references `from_address`. I need to isolate this by removing all the extra pieces—no `#[verus_verify]` on the Address impl, just a minimal `#[verus_spec]` on `from_address` alone—to see exactly which error surfaces.

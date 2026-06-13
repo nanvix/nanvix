@@ -38,6 +38,10 @@ pub struct PageAligned<T: Address>(T);
 
 impl<T: Address> PageAligned<T> {
     /// Constructs a page address from an aligned virtual address.
+    #[verus_spec(ret =>
+        ensures
+            true,
+    )]
     pub fn from_address(addr: T) -> Result<Self, Error> {
         // Check if `addr` is not aligned to a page boundary.
         if !addr.is_aligned(PAGE_ALIGNMENT)? {
@@ -47,16 +51,11 @@ impl<T: Address> PageAligned<T> {
         Ok(Self(addr))
     }
 
-    #[verus_spec(ret =>
-        ensures
-            true,
-    )]
     pub fn into_inner(self) -> T {
         self.0
     }
 }
 
-#[verus_verify]
 impl<T: Address> Address for PageAligned<T> {
     fn into_raw_value(self) -> usize {
         self.0.into_raw_value()
