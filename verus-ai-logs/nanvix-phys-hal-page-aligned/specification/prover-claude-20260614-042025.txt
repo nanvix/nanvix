@@ -582,3 +582,110 @@ Let me run a baseline verification to confirm the harness works and current stat
 [TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
 
 [THINKING] I'm starting with the module path for aligned page addresses in the memory types, then running a baseline verification to confirm the test harness is working properly and there are no current errors. I need to set up the Verus executable directory and check if the verify script supports the `--module` flag before running the baseline with the toolchain path.
+[RESULT ✓] bash: === Results ===
+  0 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module hal::mem::types::address::aligned::page:
+    ⚠️  cfg-gated exec code: 1
+  Global: assume=0 external_body=14 admit=24 trusted=0 cfg_gate=17
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== VERUS_CRATES ==="; grep -n "VERUS_CRATES" Makefile; echo "=== sys address specs ===
+
+[THINKING] The baseline is working and I understand the harness structure now. The module path checks out, though there's a cfg-gated exec code warning to keep in mind. The external references are coming from already-verified modules. Let me add a spec annotation to `into_raw_value` and test it in isolation to see where the View-bound issue surfaces.
+
+I'm thinking through whether `self@` will even work here — `into_raw_value` is in an impl for `PageAligned<T>` where T only has the `Address` bound, not `View`. So Verus should complain that `PageAligned<T>: View` isn't satisfied. The real fix would be making `View<V=int>` a supertrait of `Address`, but that breaks the normal build since `PhysicalAddress` and `VirtualAddress` only impl `View` under verus. I could try gating the trait definition itself with cfg attributes, but that leads to trait duplication which Rust forbids.
+
+Let me step back and test empirically what Verus actually says, or consider whether I can add the `View` bound more surgically — maybe just on the impl blocks themselves rather than the trait.
+
+Actually, the real question is whether the Address trait is already verified elsewhere. If it's part of the sys crate and that crate has its own verification target, then adding specs to Address methods would be part of that separate verification effort, not this kernel module. For this page.rs module, Address is an external dependency, so I'd either reference existing specs or write new ones with `external_body` if they don't exist yet.
+[RESULT ✓] bash: === VERUS_CRATES ===
+301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+=== sys address specs ===
+=== verus_s...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '290,320p' src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] The `sys` crate has the Address trait with unspecified methods, and when verifying the kernel's `page` module, those cross-crate trait methods become dependencies without specs. I need to add specs and mark them as `external_body`, but since they're trait methods in `sys`, there's a complication with how to handle this across crates.
+
+The real constraint is that I need `T: View<V=int>` for the page.rs specs to work. Let me check the VirtualAddress View implementation and whether it's conditionally compiled.
+[RESULT ✓] bash: fn from(value: VirtualAddress) -> Self {
+        value.0
+    }
+}
+
+//==================================================================================================
+// Material for verification
+//==================================================================================================
+
+ve...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+I now understand the structure. Let me write initial specs and test against Verus empirically to resolve the trait-bound questions. First the spec file:
+[TOOL] create: /tmp/page.spec.rs.bak
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned; cp page.spec.rs /tmp/page.spec.rs.orig; cp page.
+
+[THINKING] I'm noticing a difference in how the `verus!` macro is used across the codebase. In the sys crate, the View impl sits in a plain `verus! { }` block without any `#[cfg(verus_keep_ghost)]` attribute, which suggests the macro itself handles ghost code erasure during normal builds. But in the kernel crate, they're wrapping `verus! { }` with `#[cfg(verus_keep_ghost)]`, so there's an inconsistency in how they're managing ghost code visibility across these modules.
+
+Regardless of the mechanism, the key insight is that View impls are only present in verus mode for the concrete types in the kernel, which means my bound problem persists. Rather than keep theorizing, I should just empirically test by adding the spec annotations without changing the bounds, running verus, and seeing what error it produces—that'll tell me exactly what Verus needs. I'm sketching out the spec file with helper functions like `spec_aligned` to check page alignment, and then adding `#[verus_spec]` annotations to the exec functions with ensures clauses that capture the invariants.
+
+Writing spec annotations... I can use `proof! { admit(); }` inside exec functions to satisfy the verifier during the spec phase, which is allowed as a placeholder. For the trait methods like `is_aligned` that `from_address` depends on, I should add specs with `external_body` to the concrete implementations in other modules. The simplest approach is to add requires/ensures specs to the in-scope exec functions and use `proof! { admit(); }` in their bodies to discharge obligations, letting the proving phase handle the actual proofs later.
+
+But there's a complication with trait method specs — I can't strengthen a trait impl's spec beyond what the trait declares, and `into_raw_value` is actually an inherent method on `FrameAddress`, not a trait implementation, so I have more flexibility there.
+
+The real issue is that `PageAligned::into_raw_value` IS a trait method impl of the `Address` trait, which means I'd need to add the ensures clause to the trait declaration itself in the sys crate. That would require adding a `View<V=int>` supertrait to `Address` and specifying the contract universally across all implementations — a significant change that touches the sys crate. But `from_address` might be inherent on `PageAligned`, so I could spec that freely without modifying the trait.
+
+Rather than debate scope further, I'll just write the specs empirically and let Verus tell me what's actually allowed. I'll start by adding the spec to page.spec.rs and then add the verus_spec annotations to both methods in page.rs, using admit() in the bodies if needed to get past the type checker.
+[RESULT ✓] create: Created file /tmp/page.spec.rs.bak with 18 characters
+[RESULT ✓] bash: backed up
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+
+[THINKING] I'm starting to write out the spec file, placing the spec_aligned trait in spec.rs with proper annotations, then applying the trait-method spec to the into_raw_value function and using an inherent method approach for from_address.
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat > /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs <<'EOF'
+verus! {
+
+// Success cond
+[RESULT ✓] bash: done
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I'm adding the `#[verus_spec]` annotation to methods in page.rs, starting with `from_address` to test the View bound issue and then `into_raw_value` to check the trait-member issue.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; timeout 1200 make verify-kernel MODULE=hal::me
