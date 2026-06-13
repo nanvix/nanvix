@@ -60,6 +60,6 @@ pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::PageAligned<T
 
 pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::deref ](
     _a: &crate::hal::mem::PageAligned<T>,
-) -> &T;
+) -> &<crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::Target;
 
 }

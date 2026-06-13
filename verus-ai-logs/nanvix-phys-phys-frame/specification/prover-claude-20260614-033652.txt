@@ -1556,3 +1556,21 @@ Turn 84
 Turn 85
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus timeout 300 make verify-kernel MODULE=mm::
+[RESULT ✓] bash: error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+  verification: 0 verified, compilation/setup error (verus did not run) (e...
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+Down to one — the `deref` return type must match exactly. Let me use the associated-type form.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs
+
+[THINKING] I'm down to one remaining error with the deref signature—the return type needs to match the associated type form exactly rather than just returning `&T`, so I'll switch to using the explicit associated-type syntax that Verus expects.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus timeout 300 make verify-kernel MODULE=mm::
