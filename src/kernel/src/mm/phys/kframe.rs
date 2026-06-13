@@ -77,7 +77,6 @@ impl KernelFrame {
     // Dependency contract: wrapping a frame goes through `mm::virt::identity_map_page`, which
     // is outside the verification scope of `mm::phys`. On success the returned handle owns the
     // same physical frame that was passed in.
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             base.inv(),

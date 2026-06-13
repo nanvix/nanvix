@@ -39,3 +39,4 @@ Module: phys-kframe
 PHASE: specification
 Module: phys-kframe
 ============================================================
+[2026-06-14 03:14:13] [STRIP-EXT] removed 1 external_body attribute(s) from /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
