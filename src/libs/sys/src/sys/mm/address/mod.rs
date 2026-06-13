@@ -30,7 +30,7 @@ use ::vstd::prelude::*;
 #[verus_verify]
 pub trait Address
 where
-    Self: core::fmt::Debug + Clone + PartialEq + Eq + PartialOrd + Ord,
+    Self: core::fmt::Debug + Clone + PartialEq + Eq + PartialOrd + Ord + View<V = int>,
 {
     ///
     /// # Description
@@ -48,6 +48,10 @@ where
     ///
     fn from_raw_value(raw_addr: usize) -> Result<Self, Error>;
 
+    #[verus_spec(result =>
+        ensures
+            result as int == self@,
+    )]
     fn into_raw_value(self) -> usize;
     ///
     /// # Description

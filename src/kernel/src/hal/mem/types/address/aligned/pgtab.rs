@@ -166,3 +166,23 @@ impl<T: Address> Ord for PageTableAligned<T> {
         self.0.cmp(other)
     }
 }
+
+//==================================================================================================
+// Material for verification
+//==================================================================================================
+
+use ::vstd::prelude::*;
+
+verus! {
+
+impl<T: Address + View<V = int>> View for PageTableAligned<T>
+{
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.0@
+    }
+}
+
+} // end verus!

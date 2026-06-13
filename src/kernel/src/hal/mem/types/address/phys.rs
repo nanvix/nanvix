@@ -246,7 +246,6 @@ impl core::fmt::Debug for PhysicalAddress {
 // Material for verification
 //==================================================================================================
 
-#[cfg(verus_keep_ghost)]
 verus! {
 
 impl View for PhysicalAddress

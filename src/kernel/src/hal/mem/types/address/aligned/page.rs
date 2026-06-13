@@ -37,7 +37,7 @@ use ::vstd::prelude::*;
 #[derive(Clone, Copy)]
 pub struct PageAligned<T: Address>(T);
 
-impl<T: Address + View<V = int>> PageAligned<T> {
+impl<T: Address> PageAligned<T> {
     /// Constructs a page address from an aligned virtual address.
     pub fn from_address(addr: T) -> Result<Self, Error> {
         // Check if `addr` is not aligned to a page boundary.
@@ -53,12 +53,7 @@ impl<T: Address + View<V = int>> PageAligned<T> {
     }
 }
 
-#[verus_verify]
-impl<T: Address + View<V = int>> Address for PageAligned<T> {
-    #[verus_spec(result =>
-        ensures
-            result as int == self@,
-    )]
+impl<T: Address> Address for PageAligned<T> {
     fn into_raw_value(self) -> usize {
         self.0.into_raw_value()
     }
@@ -214,6 +209,18 @@ verus! {
 
 use crate::hal::mem::spec_page_size;
 
+impl<T: Address + View<V = int>> PageAligned<T>
+{
+    pub open spec fn inv(&self) -> bool
+    {
+        self@ % spec_page_size() == 0
+    }
+}
+
+}
+
+verus! {
+
 impl<T: Address + View<V = int>> View for PageAligned<T>
 {
     type V = int;
@@ -221,14 +228,6 @@ impl<T: Address + View<V = int>> View for PageAligned<T>
     closed spec fn view(&self) -> int
     {
         self.0@
-    }
-}
-
-impl<T: Address + View<V = int>> PageAligned<T>
-{
-    pub open spec fn inv(&self) -> bool
-    {
-        self@ % spec_page_size() == 0
     }
 }
 
