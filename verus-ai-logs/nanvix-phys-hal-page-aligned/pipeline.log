@@ -83,3 +83,6 @@ Residual whole-crate CHEATING_DETECTED (admit=24, external_body=14) is pre-exist
 placeholders in mm/phys/* and FrameAddress shims — none in this module's own functions
 (VERUS-TOOL-1 for into_raw_value documented in bugs.md). Out of scope for hal-page-aligned.
 [2026-06-14 05:14:53] [DIALOGUE] specification ended after 2 turns: RESOLVED (912s)
+[2026-06-14 05:14:53] [PHASE] specification: dialogue-RESOLVED (54m28s)
+[2026-06-14 05:14:53] [SPEC DRIFT] (within specification) Comparing 0bb17a40 → d10a1863
+[2026-06-14 05:14:53] [SPEC DRIFT] (within specification) No changes detected
