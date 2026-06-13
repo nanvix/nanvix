@@ -21,3 +21,11 @@ Module: hal-frame-address
 [2026-06-14 07:01:40] [PROVER] Running caller-analysis...
 [2026-06-14 07:01:40] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-14 07:03:47]   ↳ prover done in 2m07s (exit=0)
+[2026-06-14 07:03:47] [PHASE] caller-analysis: no-review (2m07s)
+[2026-06-14 07:03:47] ✅ caller-analysis: PASS (0/0)
+[2026-06-14 07:03:47] [ABSTRACTION] Using override source for view-design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/body_removed_source.rs
+
+============================================================
+PHASE: view-design
+Module: hal-frame-address
+============================================================
