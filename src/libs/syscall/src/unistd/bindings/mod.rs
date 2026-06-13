@@ -52,5 +52,6 @@ pub mod symlink;
 pub mod symlinkat;
 pub mod sysconf;
 pub mod unlink;
+pub mod wait;
 pub mod waitpid;
 pub mod write;
