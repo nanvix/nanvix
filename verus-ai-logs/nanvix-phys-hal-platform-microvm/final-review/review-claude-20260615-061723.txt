@@ -367,3 +367,542 @@ src/kernel/src/hal/platform/microvm/mod.spec.rs:14:pub open spec fn spec_gva_to_
 Turn 7
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify-kernel MODULE=hal::platform::microvm 2>&1 | tail -4
+[RESULT ✓] bash: 1/31 exec functions have contracts.
+  Unverified functions:
+    - setup_heap_backing_storage
+    - setup_klog_backing_storage
+    - disable_interrupts
+    - enable_interrupts
+    - wait_for_interrupt
+    - putb
+    - vmbus_write
+    - vmbus_read
+    - do_shutdown
+    - snapshot
+    - signal_startup_...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== microvm dir cheating scan ===" && grep -rnE '\b(admit|assume|assu
+
+[THINKING] The cheating metrics I'm looking at apply to the entire kernel crate, not just this module—the gva_to_gpa scope itself has zero violations across all categories. The function coverage shows 1 out of 31 functions, but that's because only gva_to_gpa is in scope; the other 30 are out of scope and off-limits.
+
+For the verification work here, I need to focus on what's actually in the microvm module files. Let me check across mod.rs, pvclock.rs, start.rs, and start16.rs to confirm there are no admit, external_body, or assume violations within the module's scope.
+[RESULT ✓] bash: === microvm dir cheating scan ===
+NONE in microvm dir
+=== cfg-gated EXEC in mod.rs (excluding imports/derives) ===
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+78:#[cfg(feature = "whp")]
+81:#[cfg(all(feature = "pit", not(feature = "whp")))]
+95:#[cfg(feature = "whp")]
+97:#[cfg(not(feature =...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/microvm/mod.rs
+
+[THINKING] The cfg-gated exec calls in mod.rs are all within out-of-scope functions that use platform-specific feature gates like whp, pit, smp, and stdio—these are pre-existing platform code, not part of the verification work. The in-scope function gva_to_gpa doesn't have any of these gates. Lines 9 and 11 use `#[cfg(verus_keep_ghost)]` for spec includes, which is allowed since they're importing spec and proof files. I'm checking lines 7-13 to verify the verus_keep_ghost annotations.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Module is clean for in-scope work. Now launching 2 independent review sub-agents (one per model).
+[TOOL] report_intent: Launching review sub-agents
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'mode': 'background',
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'mode': 'background', 
+
+[THINKING] The in-scope module is clean with only standard spec/proof includes and pre-existing platform feature gates on out-of-scope functions. Now I'm launching two independent sub-agents to conduct their reviews and generate raw files with comprehensive context, and they'll each run the cached verification themselves to avoid build contention.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+Both review sub-agents are running in the background (claude-opus-4.8 and gpt-5.3-codex). I'm waiting for them to complete before consolidating their findings.
+I'll start by reading the required skills and key files in parallel, then investigate the actual code.
+[TOOL] report_intent: Reading skills and key files
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git branch --show-current && git log --oneline -5
+[TOOL] bash: for d in spec-design verus-constraints ast-consistency bug-reporting spec-drift-check; do echo "===== $d ====="; cat /ho
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: verus-ai-prove-bottom-up
+bb3c9c7b2 [verus] verify PASS: kernel::hal::platform::microvm (cached (no recompilation), —)
+76f88d183 [verus] verify PASS (cheating detected): kernel::all (77 verified, 0 errors, admit=27 external_body=11 cfg_gate=14)
+433e85cec [verus] verify PASS (cheating detected): arch:...
+[RESULT ✓] bash: Output too large to read at once (48.8 KB). Saved to: /tmp/copilot-tool-output-1781475587044-2f73n5.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The skills output is large. Let me read each skill separately and the key files.
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] bash: Output too large to read at once (23.2 KB). Saved to: /tmp/copilot-tool-output-1781475590733-8k5c1a.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781475590733-8k5c1a.txt
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md | head -300
+[RESULT ✓] bash: ---
+name: spec-design
+description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or reviewing Ve...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing microvm verification
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/microvm
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-platform-microvm
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: mod.proof.rs
+mod.rs
+mod.spec.rs
+pvclock.rs
+start.rs
+start16.rs
+[RESULT ✓] view: body_removed_source.rs
+caller-analysis
+caller_analysis.md
+cheating-elimination
+final-review
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/microvm/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/microvm/mod.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/microvm/mod.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-platform-microvm/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-platform-microvm/view_design.md
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 221. 2. **Bidirectional Failure Condition** — express error conditions as abstract
+222.    predicates on the module's interface state, not as a list of individual
+223.    code checks. Ask: what condition at the interface level makes success
+224.    impossible?
+225. 3. **Liveness** — if the precondit...
+[RESULT ✓] view: 360. }
+361. 
+362. ///
+363. /// # Description
+364. ///
+365. /// Signals the VMM that kernel startup is complete and user-space applications are about to start.
+366. ///
+367. pub fn signal_startup_complete() {
+368.     // SAFETY: The port I/O write targets the VMM control port with a well-known
+369.  ...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // The MicroVM platform's guest-virtual -> guest-physical translation map.
+4. //
+5. // MicroVM runs the guest identity-mapped, so the abstract map is the identity
+6. // over the entire usize address space. This is a platform-level invariant (the
+7. // VMM maps GVA == GPA), NOT an ...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. # Caller Analysis: hal::platform::microvm (`gva_to_gpa`)
+2. 
+3. ## Script Output
+4. 
+5. The automated caller-finding script
+6. (`scripts/find_callers_lsp.py src/kernel/src/hal/platform/microvm/mod.rs`)
+7. reported `gva_to_gpa` under **"Public Functions with No External Callers"**.
+8. 
+9. That res...
+[RESULT ✓] view: 1. # View Design: `hal::platform::microvm` (`gva_to_gpa`)
+2. 
+3. In-scope (verification-order) target: the single free function
+4. `gva_to_gpa(gva: usize) -> usize` in
+5. `src/kernel/src/hal/platform/microvm/mod.rs`. Every other item in the module
+6. (the `Platform` struct, `init`, `parse_bootinfo`,...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md | tail -n +300
+[RESULT ✓] bash: `requires` clause here would be unsound or unusable.
+
+**Guideline**: When both `requires` and a runtime check coexist, the
+runtime check is a temporary safety net. Mark it as removable (e.g.,
+`// TODO: remove once all callers are verified`) so that future
+verification work knows to clean it up.
+
+###...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: echo "===== verus-constraints ====="; cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md 2>/de
+[RESULT ✓] bash: ===== verus-constraints =====
+---
+name: verus-constraints
+description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: echo "===== ast-consistency ====="; cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md 2>/dev/nu
+[RESULT ✓] bash: ===== ast-consistency =====
+---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: echo "===== bug-reporting ====="; cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md 2>/dev/null; 
+[RESULT ✓] bash: ===== bug-reporting =====
+---
+name: bug-reporting
+description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+---
+
+# Bug Reporting
+
+Finding real code bug...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Auditing module evidence
+[TOOL] rg: Final Comprehensive Review
+[TOOL] rg: admit\s*!\s*\(
+[TOOL] rg: external_body
+[TOOL] rg: assume_specification|\bassume\s*!?\s*\(
+[TOOL] rg: verus_keep_ghost
+[TOOL] rg: VERUS REWRITE|VERUS BUG FIX|VERUS DEVIATION
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/microvm/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-platform-microvm/bugs.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/microvm/mod.rs:9:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/microvm/mod.rs:11:#[cfg(verus_keep_ghost)]
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.md:1:# Final Comprehensive Review: arch-paging-mod
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.claude.md:1:# Final Comprehensive R...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Now let me read the key files - source, spec, proof, and analysis docs.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/microvm/mod.rs
+[RESULT ✓] view: 400. /// # Returns
+401. ///
+402. /// The base address of the boot kernel stack guard page.
+403. ///
+404. #[cfg(all(debug_assertions, feature = "exception-stack-guard"))]
+405. pub fn get_kstack_guard_base() -> usize {
+406.     unsafe extern "C" {
+407.         static kstack_guard: u8;
+408.     }
+409. ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] rg: ### Caller Analysis|### View Design|### Specification|### Proving|### Cheating Elimination|### Bug Recording
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/final-review/final_review.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/final-review/final_review.codex.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review
+[RESULT ✓] view: 1. # Final Comprehensive Review: arch-paging-table
+2. 
+3. Module: `arch::x86::mem::paging::table`
+4. File: `src/libs/arch/src/x86/mem/paging/table.rs` (+ `.spec.rs`, `.proof.rs`)
+5. In-scope functions: `Table::write`, `TableIndex::into_raw`, `TableEntry::raw`,
+6. `Table::read`, `TableEntry::from_raw...
+[RESULT ✓] view: 1. # Final Comprehensive Review: arch-paging-table (gpt-5.3-codex)
+2. 
+3. ## Checklist
+4. ### Caller Analysis
+5. - [x] All pub functions have callers searched (tool-verified, not manual claim) (`caller_analysis.md` + repo search evidence in file).
+6. - [x] Caller expectations (success + failure) doc...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.md
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pte/final-review/final_review.md
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pte/final...
+[RESULT ✓] view: review-claude-20260615-061723.jsonl
+review-claude-20260615-061723.txt
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "==== mod.spec.rs ===="; cat src/kernel/src/hal/platform/microvm/mod.s
+[RESULT ✓] bash: ==== mod.spec.rs ====
+verus! {
+
+// The MicroVM platform's guest-virtual -> guest-physical translation map.
+//
+// MicroVM runs the guest identity-mapped, so the abstract map is the identity
+// over the entire usize address space. This is a platform-level invariant (the
+// VMM maps GVA == GPA), NOT an...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Now let me check how the spec/proof are wired in, and read the analysis docs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "include!\|verus_keep_ghost\|spec.rs\|proof.rs\|use vstd\|spec_gva_
+[RESULT ✓] bash: 8:use vstd::prelude::*;
+9:#[cfg(verus_keep_ghost)]
+10:include!("mod.spec.rs");
+11:#[cfg(verus_keep_ghost)]
+12:include!("mod.proof.rs");
+425:#[verus_spec(result =>
+427:        result as int == spec_gva_to_gpa(gva as int),
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/microvm/mod.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Now the analysis docs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "==== caller_analysis.md ===="; cat verus-ai-logs/nanvix-phys-hal-plat
+[RESULT ✓] bash: ==== caller_analysis.md ====
+# Caller Analysis: hal::platform::microvm (`gva_to_gpa`)
+
+## Script Output
+
+The automated caller-finding script
+(`scripts/find_callers_lsp.py src/kernel/src/hal/platform/microvm/mod.rs`)
+reported `gva_to_gpa` under **"Public Functions with No External Callers"**.
+
+That r...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "==== view_design.md ===="; cat verus-ai-logs/nanvix-phys-hal-platform
+[RESULT ✓] bash: ==== view_design.md ====
+# View Design: `hal::platform::microvm` (`gva_to_gpa`)
+
+In-scope (verification-order) target: the single free function
+`gva_to_gpa(gva: usize) -> usize` in
+`src/kernel/src/hal/platform/microvm/mod.rs`. Every other item in the module
+(the `Platform` struct, `init`, `parse_boo...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Now let me read the TCB allowed list and scan the module for cheating patterns.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "==== tcb-allowed.md ===="; cat verus-ai-logs/tcb-allowed.md 2>/dev/nu
+[RESULT ✓] bash: ==== tcb-allowed.md ====
+# TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<Inner>` sing...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Tracing callers and guards
+[TOOL] rg: \bgva_to_gpa\s*\(
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/mod.rs
+[TOOL] rg: pub use microvm::\*|mod microvm;
+[TOOL] rg: microvm
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/mod.rs:9:mod microvm;
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/mod.rs:21:pub use microvm::*;
+[RESULT ✓] view: 90.         phys_view().initialized,
+91.         phys_view().inv(),
+92.     ensures
+93.         phys_view().inv(),
+94.         phys_view().initialized,
+95.         match result {
+96.             Ok(_) => forall|a: int|
+97.                 #[trigger] mmio_regions_frame_set(mmio_regions).contains(a)
+9...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/microvm/mod.rs:430:pub fn gva_to_gpa(gva: usize) -> usize {
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/mod.rs:114:            let mmio_addr: usize = crate::hal::platform::gva_to_gpa(start);
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+The TCB list does not mention the microvm module — so any `external_body` in microvm would be a blocker. Let me scan the module directory for all cheating patterns.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && DIR=src/kernel/src/hal/platform/microvm && echo "Files in module dir:"; ls 
+[RESULT ✓] bash: Files in module dir:
+total 68
+drwxrwxr-x 1 ruize ruize   114 Jun 14 06:29 .
+drwxrwxr-x 1 ruize ruize   146 Jun 10 00:34 ..
+-rw-rw-r-- 1 ruize ruize    21 Jun 14 06:24 mod.proof.rs
+-rw-rw-r-- 1 ruize ruize 33824 Jun 15 06:16 mod.rs
+-rw-rw-r-- 1 ruize ruize   728 Jun 14 06:29 mod.spec.rs
+-rw-rw-r-- 1 ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Module is clean of all cheating patterns. Now AST consistency, VERUS REWRITE comments, and the scripts.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && DIR=src/kernel/src/hal/platform/microvm && echo "==== VERUS REWRITE / DEVIA
+[RESULT ✓] bash: ==== VERUS REWRITE / DEVIATION / BUG FIX comments ====
+==== verus_spec/verus_verify across module ====
+src/kernel/src/hal/platform/microvm/mod.rs:425:#[verus_spec(result =>
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running review checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/ke
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff sr
+[TOOL] rg: admit\s*!\s*\(
+[TOOL] rg: external_body
+[TOOL] rg: \bassume\s*!\s*\(|\bassume\s*\(
+[TOOL] rg: assume_specification
+[TOOL] rg: \#\[cfg\((?:not\()?(?:.*)?verus_keep_ghost
+[TOOL] rg: VERUS REWRITE
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/microvm/mod.rs:9:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/microvm/mod.rs:11:#[cfg(verus_keep_ghost)]
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+disable_interrupts                       MATCH                                
+do_shutdown                              MATCH   ...
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 25 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && set -o pipefail && make verify-kernel MODULE=hal::platform::microvm 2>&1 | 
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --help
+[RESULT ✓] bash: usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+
+AST-level exec consistency checker for Verus verification.
+
+Compare executable code between an original Rust source and its
+Verus-verified counterpart using tree-sitter AST ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
