@@ -1626,3 +1626,15 @@ Turn 100
 Turn 101
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/manager.rs /tmp/manager.rs.bak && timeout 600 make verify-kernel 
+[RESULT ✓] bash: verification results:: 11 verified, 0 errors (partial verification with `--verify-*`)
+  verification: 11 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+<shellId: 56 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+0 errors — module verifies (11 verified). `CHEATING_DETECTED` flags the external_body/admit usage (expected). Let me review the guardrail report and update tcb-allowed.md / view_design.md accordingly:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "cheat|external_body|admit|a
+
+[THINKING] The module passes verification with no errors. The "CHEATING_DETECTED" flag is expected since it's flagging the external_body and admit usage, which are sanctioned by the task requirements. Now I'm checking the guardrail output to confirm it's only reporting on those approved patterns.
