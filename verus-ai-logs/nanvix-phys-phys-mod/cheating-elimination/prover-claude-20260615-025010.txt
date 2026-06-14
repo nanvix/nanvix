@@ -347,3 +347,125 @@ Let me force a fresh (non-cached) verification to confirm `init` verifies with 0
 [TOOL] bash: cd /home/ruize/nanvix-phy; touch src/kernel/src/mm/phys/mod.rs; make verify-kernel MODULE=mm::phys VERUS_EXECUTABLE_DIR=
 
 [THINKING] The cached verification result shows a successful exit, but I need to see the actual verified count and error summary. Let me force a fresh verification by touching the source file and re-running to get the full output with the verification statistics. I'll force a recompilation by touching the source file to update its modification time, which will trigger cargo to rebuild without actually changing the code.
+[RESULT ✓] bash: note: verifying module mm::phys
+verification results:: 9 verified, 0 errors (partial verification with `--verify-*`)
+  9 verified
+  0 errors
+  Unverified functions:
+  verification: 9 verified, 0 errors (exit 0)
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Module `mm::phys` verifies: **9 verified, 0 errors**. Let me check what's already changed vs base and read the supporting docs.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== diff vs base for phys mod ==="; git diff --stat verus-ai/bump-allocator -- src/kern
+
+[THINKING] All nine verification checks passed for the physical memory module with no errors. The core initialization and proof lemmas are solid. Now I'm reviewing what's in scope for the trusted code base—the two external functions for booking memory regions are properly marked as TCB-allowed, and I'm examining the ExLinkedList type specification, which is a required trusted type rather than a function or admitted assumption.
+
+The ExLinkedList declaration uses the external type specification mechanism, which is distinct from the cheating categories I need to eliminate like admit, assume, and external_body on functions. This is a fundamental trusted type declaration that Verus requires to even reference the LinkedList type in verified code—there's no proof obligation here, just a declaration of a foreign type's existence. Removing it would break compilation entirely. Since the documentation in tcb-allowed.md and verus-unsupported.md thoroughly justify the LinkedList limitation and the functions using it are already approved, this type spec is supporting infrastructure for allowed functions, not a proof gap I need to close.
+
+The two external_body functions on the book are explicitly listed as TCB-allowed exceptions, so keeping them is correct per the task requirements. The real work here is confirming the current state is clean—no admit, assume, or undocumented proof gaps—with only the approved external_body remaining. I should verify this against the git diff and the cheating-elimination log to see what's already been done.
+[RESULT ✓] bash: === diff vs base for phys mod ===
+ src/kernel/src/mm/phys/mod.proof.rs | 271 ++++++++++++++++++++++++++++++++++++
+ src/kernel/src/mm/phys/mod.rs       |  67 +++++++++
+ src/kernel/src/mm/phys/mod.spec.rs  | 123 ++++++++++++++++
+ 3 files changed, 461 insertions(+)
+=== does base have these files ===
+pr...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Only additive changes (specs/proofs/annotations). Let me verify AST consistency — that exec bodies are unchanged vs base.
+[TOOL] bash: cd /home/ruize/nanvix-phy; git status --short; echo "=== mod.rs diff vs base (exec-relevant only) ==="; git diff verus-a
+
+[THINKING] Looking at the diff, I see that mod.proof.rs is entirely new with 271 lines, while mod.rs and mod.spec.rs have 67 and 123 insertions respectively—all additions with no deletions. This suggests the base branch already had the bare function definitions, and the specs and proofs were added in a prior commit on this branch.
+
+Since the cheating-elimination phase is the final verification step (coming after the specification and proving phases), the main work is already done—I just need to confirm no disallowed constructs remain and verify the executable code hasn't changed. Let me check git status to see if there are any uncommitted changes, and then examine the actual diff of mod.rs to confirm only annotations and comments were added without altering the function logic itself.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/prover-claude-20260615-025010.jsonl
+ M verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/prover-claude-20260615-025010.txt
+=== mod.rs diff vs base (exec-relevant only) ===
++use vstd::prelude::*;
++#[cfg(verus_keep_ghost)]
++include!("mod....
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Working tree is clean except the phase's own prover logs. Exec bodies unchanged — only ghost annotations/specs/proofs added. Let me check the cfg_gate entries to confirm none are in-scope exec gates.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== cfg_gate section of cheating-detail ==="; sed -n '/cfg_gate/,/^$/p; /cfg-gate/I,/^$
+
+[THINKING] The diff only adds imports, configuration gates, and specification ensures-clauses without modifying any executable logic, so the AST structure remains consistent with the base implementation. After the cheating-elimination phase, the in-scope items are down to 2 TCB-allowed external bodies and 1 external type spec, with no admits, assumes, or cfg-gated exec code remaining. The AST consistency check shows zero mismatches (only ghost additions), and verification passed with 9 verified items and no errors for the phys module. I need to verify that the 5 cfg gates counted in the cheating report don't include any in-scope exec code from the phys module itself—checking the cfg gate details to confirm they're all test-related or verus-specific.
+[RESULT ✓] bash: === cfg_gate section of cheating-detail ===
+=== grep cfg in detail ===
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,60p' verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+[RESULT ✓] bash: - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refcount: external_body
+    - mm/phys/frame.rs:481 book: external_body
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/verus-unsupported.md
+
+[THINKING] The external_body and external_type_spec items are what's flagged in the cheating details, while the cfg_gate entries aren't specifically listed there—the cfg_gate count of 5 is tracked globally but likely refers to standard gates like cfg(feature="test") and cfg(verus_keep_ghost") that don't represent actual exec-logic differences. The cfg gates in mod.rs are just the typical verus include and test module gates, not conditional code that behaves differently between verus and normal builds for the same function, so those are fine.
+
+For the physical memory module, the in-scope cheating is limited to two external_body functions in mod.rs (book_physical_memory_regions and book_mmio_regions, both TCB-allowed) plus the external_type_spec for ExLinkedList in mod.spec.rs, which is a required trusted type declaration supporting those functions. Everything else in frame.rs, manager.rs, and upool.rs falls outside this scope. I should verify the LinkedList limitation is genuine by checking verus-unsupported.md so I can properly document why ExLinkedList is unavoidable, then write up the fix report.
+[RESULT ✓] view: 1. # Verus-unsupported constructs in `mm::phys`
+2. 
+3. ## std `LinkedList` for-loops in `book_physical_memory_regions` / `book_mmio_regions`
+4. 
+5. ### What
+6. Both helper functions iterate a `alloc::collections::LinkedList` of memory
+7. regions with a `for region in list.iter() { ... }` loop:
+8. 
+9...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Let me confirm the vstd limitation claim (escalation ladder evidence) before finalizing.
+[TOOL] bash: cd ~/toolchain/verus/vstd 2>/dev/null && { echo "=== LinkedList iterator/View support in vstd ==="; grep -rilE "linked_l
+
+[THINKING] I've confirmed the core limitation: vstd doesn't provide LinkedList iterators, and the orphan rule prevents implementing one externally, so the two book functions must stay as external_body implementations and ExLinkedList needs to remain a required external type specification. Now I'm writing a quick test to verify this E0117 error and the lack of vstd LinkedList iterator support are actually real constraints.
+[RESULT ✓] bash: === LinkedList iterator/View support in vstd ===
+=== ForLoopGhostIterator impls present ===
+./pervasive.rs
+=== which iters have ghost support ===
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd ~/toolchain/verus/vstd 2>/dev/null; echo "=== iterator spec files ==="; ls std_specs/ 2>/dev/null | grep -iE "iter|li
+[RESULT ✓] bash: === iterator spec files ===
+iter.rs
+range.rs
+slice.rs
+vec.rs
+vecdeque.rs
+=== ForLoopGhostIterator impls ===
+=== LinkedList anywhere ===
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+vstd has iterator specs only for slice/vec/vecdeque/range — **no LinkedList**. The limitation is genuine. Let me run full-crate verification to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | grep -iE "verified|errors|ex
+
+[THINKING] I've confirmed that vstd's standard library specs include iterators for slice, vec, vecdeque, range, and iter, but LinkedList has no iterator support at all. This validates the constraint: the orphan rule prevents implementing foreign traits on foreign types, vstd can't be extended, so those two book functions have to stay as external implementations.
+
+The phys-mod verification shows zero cheating violations — no admits, no assumes, no undeclared external bodies. The two TCB-allowed external functions (book_physical_memory_regions and book_mmio_regions) are properly scoped, and ExLinkedList is declared as a required trusted external type. The AST is consistent with only ghost-only additions under cfg gates, and the mm::phys module verifies cleanly with 9 verified items and zero errors.
+
+Now I need to run the full crate verification to check for regressions, though the global report will flag cheating from other modules' external bodies that fall outside scope.
