@@ -13,10 +13,11 @@ use vstd::arithmetic::mul::lemma_mul_inequality;
 // index multiplied by `FRAME_SIZE` and is `FRAME_SIZE`-aligned. The frame-index bound supplied by
 // `FrameNumber`'s type invariant (`raw <= MAX_ADDRESS / FRAME_SIZE - 1`) keeps the product within
 // `usize`, so the shift is overflow-free.
-pub proof fn lemma_frame_address(raw: usize)
+pub broadcast proof fn lemma_frame_address(raw: usize)
     requires
         0 <= raw as int <= FrameNumber::spec_max(),
     ensures
+        #![trigger (raw << crate::mem::FRAME_SHIFT)]
         (raw << crate::mem::FRAME_SHIFT) as int == raw as int * (crate::mem::FRAME_SIZE as int),
         (raw << crate::mem::FRAME_SHIFT) as int % (crate::mem::FRAME_SIZE as int) == 0,
 {

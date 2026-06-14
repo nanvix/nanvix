@@ -145,3 +145,46 @@ But this approach requires modifying the proof file structure significantly. Giv
 Turn 8
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-arch 2>&1 | grep -
+[RESULT ✓] bash: Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch)
+error: cannot call function `arch::x86::mem::paging::frame::number::FrameNumber::into_raw_value` with mode exec
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:421:38
+    |
+421 |         proof! { lemma_frame_address(self.fr...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Confirmed reproducer: `error: cannot call function ...into_raw_value with mode exec` inside `proof!`. The binding is genuinely required *if* the lemma is called positionally. But I can try the reviewer's preferred route 2 differently: convert the lemma to a **broadcast** lemma so the original single-expression body verifies with only a (stripped) `proof` block. Let me try.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.proof.rs
+
+[THINKING] I've confirmed the binding is actually required since the function call fails without it. The reviewer wants to go with removing the mismatch entirely, so I'm exploring the broadcast approach to keep the original single-expression exec body intact. Let me reconsider how to handle the frame shift operation with this strategy.
+
+The key insight is that Verus accepts the shift operation itself without the lemma—it derives the necessary bounds from `into_raw_value`'s postcondition guaranteeing the value stays within `spec_max`. So a broadcast lemma triggered on the shift expression could auto-discharge the postconditions. I'm converting the existing lemma to a broadcast version with a trigger on the shift pattern.
+
+Writing broadcast lemma... I'm realizing the proof block with `broadcast use` gets stripped during AST checking since it's a ghost statement, so the exec-visible code would match the original expression. Let me try wrapping the broadcast statement in a proof block before the return expression — that way the broadcast facts are in scope for the trigger, but the stripped AST shows just the original computation.
+[RESULT ✓] view: 16. pub proof fn lemma_frame_address(raw: usize)
+17.     requires
+18.         0 <= raw as int <= FrameNumber::spec_max(),
+19.     ensures
+20.         (raw << crate::mem::FRAME_SHIFT) as int == raw as int * (crate::mem::FRAME_SIZE as int),
+21.         (raw << crate::mem::FRAME_SHIFT) as int % (crate:...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Let me convert the lemma to broadcast with a trigger, and use a stripped `proof` block in the original-shaped body.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.proof.rs
+
+[THINKING] I'm going to refactor this as a broadcast lemma with a trigger condition, then use that broadcast in the frame_address proof to keep the original single-expression structure intact.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-arch 2>&1 | grep -
