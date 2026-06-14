@@ -6,7 +6,7 @@
   "current_phase_idx": 0,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "f28f6069-a94f-421d-8ea2-2842a8824a0d",
   "completed": false,
   "base_branch": "verus-ai/arch-x86-pte",
   "verus_branch": "verus-ai/arch-paging-mod",
