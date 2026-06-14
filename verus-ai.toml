@@ -1,0 +1,18 @@
+# Auto-generated from verification-plan-phys.json.
+# Regenerate with scripts/generate_nanvix_phys_verus_configs.py.
+
+[project]
+background = """File: `src/libs/bump_allocator/src/lib.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`FixedSizeBumpAllocator::alloc_as`, `FixedSizeBumpAllocator::alloc`, `align_up`, `as_mut_ptr`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+
+
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+
+"""
