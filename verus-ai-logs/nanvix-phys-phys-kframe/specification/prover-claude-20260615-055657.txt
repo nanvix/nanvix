@@ -1438,3 +1438,215 @@ Turn 80
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify 2>&1 | grep -iE "status:|FAIL|error|Exit code|verifying crate|=== |
 
 [THINKING] The verification passed with exit code 0 and the cached build didn't require recompilation, with CHEATING_DETECTED marked as the current state and justified in the documentation. I should check the earlier output to confirm the library crates also verified successfully without any errors.
+[RESULT ✓] bash: === Verus Verification (cargo mode) ===
+=== Results ===
+  Exit code : 0
+=== Cheating Pattern Check ===
+=== Function Coverage ===
+=== Summary ===
+  status: CHEATING_DETECTED
+=== Verus Verification (cargo mode) ===
+=== Results ===
+  Exit code : 0
+=== Cheating Pattern Check ===
+=== Function Coverage ==...
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+All verification passes with exit 0 (no errors/failures). Now let me confirm `make build` (normal dual compilation) still works:
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "^build:" Makefile | head; echo "=== running build ==="; timeout 590 make build 2>&
+
+[THINKING] All the verification runs completed successfully with exit code 0, showing either CLEAN or CHEATING_DETECTED statuses as expected for the shim-heavy crates. Now I need to verify that the normal build still works with my changes, particularly the vstd import in identity_map.rs and the verus attributes I added.
+
+Running the build now...
+[RESULT ✓] bash: === running build ===
+make: Nothing to be done for 'build'.
+<shellId: 51 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+`make build` has no target. Let me find the correct build command:
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^[a-z-]+:" Makefile | grep -iE "build|all|kernel|^run" | head -20; echo "=== z sc
+
+[THINKING] The `make build` command isn't finding a build target, so I need to check the Makefile to see what the actual build command should be—it looks like `./z` might be the right way to build based on the skill description.
+[RESULT ✓] bash: 411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+458:clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanv...
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,60p' .github/skills/build/SKILL.md 2>/dev/null | grep -iE "z |build|cargo|make|^-
+
+[THINKING] I need to check the build skill documentation to find the exact command for validating dual compilation.
+[RESULT ✓] bash: ---
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+# Build Nanvix
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system o...
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+The proper build command is `./z build -- kernel`. Let me verify the normal (non-Verus) build compiles with my changes:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 590 ./z build -- kernel 2>&1 | tail -30
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 54 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '60,110p' .github/skills/build/SKILL.md 2>/dev/null | grep -iE "kernel|build|target|
+[RESULT ✓] bash: ./z build -- all RELEASE=yes LOG_LEVEL=error
+### Manual Build Variants
+# Default debug build.
+./z build -- all
+# Release build.
+./z build -- all RELEASE=yes LOG_LEVEL=panic
+./z build -- all RELEASE=yes LOG_LEVEL=panic TIMESTAMP_MSG=yes
+### Building on Windows (using `z.ps1`)
+# Build everything (gues...
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^[a-zA-Z0-9_-]+:" Makefile | grep -i "kernel\|nanvix\b" | head; echo "=== what bu
+
+[THINKING] The build command `./z build -- kernel` failed because there's no make target called "kernel". I need to check the Makefile to find the actual kernel build target—it might be part of `all-nanvix` or have a different name entirely.
+[RESULT ✓] bash: 411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+458:clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanv...
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+The target is `all-kernel`. Let me build it:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 590 ./z build -- all-kernel 2>&1 | tail -30
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+The normal build flags an unused `::vstd::prelude::*` import. Let me check if this is pre-existing (duplicate import) by comparing with the original:
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -8 -- src/kernel/src/mm/phys/kframe.rs | tail; echo "=== original kframe.
+
+[THINKING] I'm noticing there's a pre-existing unused import warning in kframe.rs where line 32 has `use ::vstd::prelude::*;` alongside line 14's `use vstd::prelude::*;`, and the compiler is treating this as an error due to the `-D warnings` flag. I need to figure out whether this was already failing before my changes or if something I did triggered it. I need to check whether those duplicate imports at lines 14 and 32 existed in the original file or if this is something my changes introduced. The key question is whether the baseline build actually passed with both imports present, since one would be flagged as unused under `-D warnings`. Let me trace through git history to see what the original kframe.rs looked like.
+[RESULT ✓] bash: 0d542686e [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+b1029936c [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+c552132c4 [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (ve...
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+The "unused import" — let me determine if it's pre-existing by checking the baseline build before my session's edits:
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -15 | cat; echo "=== diff of kframe.rs imports: my changes vs baseline ==
+
+[THINKING] I'm realizing the original kframe.rs had both import statements already, so the duplicate wasn't introduced by recent changes. The key question is whether the normal build passed with warnings-as-errors before. Since the original file had no verus_spec or verus_verify annotations on individual functions, the vstd dependency came from the struct-level `#[verus_verify]` macro and the `verus!` macro invocations.
+
+With two identical glob imports from vstd, Rust might not flag either as unused since both could theoretically contribute to name resolution. But I haven't actually changed the imports in kframe.rs, so something else must have triggered this warning to surface now. Let me check whether the current main branch version has this same issue. I'm wondering if the original baseline actually had this same unused-import warning, or if it was being suppressed somehow. Let me check what the state was before my changes by looking at an earlier commit and testing whether it builds cleanly. The simplest approach is to just remove the redundant line 32 import and verify that fixes the issue. I'm trying to figure out whether the macros like `verus_verify` and `verus_spec` are actually being resolved under a normal build. They're attribute proc-macros that need to be in scope, and `vstd::prelude::*` re-exports them. Since both line 14 and line 32 import the same thing, rustc flags one as unused — and this was probably already happening in the baseline. The real question is whether the original code even compiled cleanly under normal build, or if this unused import error existed before my changes.
+
+Let me just build the baseline commit directly to see if the error pre-exists. I need to find the exact commit before my session started — the one with empty specs and the original unannotated kframe.rs. Looking at the git log, my first edits came after the task began, so I need to identify the parent of my earliest commit and test that state.
+[RESULT ✓] bash: 2fe53d813 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, external_body=28 cfg_gate=9)
+54e42554d [verus] verify PASS (cheating detected): bump-allocator::all (cached (no recompilation), —, external_body=2)
+dca463b57 [verus] verify PASS (cheating detected): nanvix-...
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+This is a pre-existing redundant duplicate `vstd` import (line 14 and line 32 both glob-import the same prelude; my added macros made line 32's redundancy surface under `-D warnings`). upool.rs avoids this by cfg-gating its second import. Let me view and remove the redundant one:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] I'm checking whether the unused-import error in kframe.rs existed before my session started, so I need to look at the baseline commit and compare the imports to see if I introduced this issue.
+
+The key insight is that the normal build (`./z build -- all-kernel`) probably never ran during the verus verification workflow, which only executes `make verify`. So this unused-import warning at line 32 was likely latent and pre-existing, never caught because nobody ran the normal build. Since my changes added more macro invocations that would actually use the vstd import, I couldn't have caused a newly-unused import—it was always redundant under normal build.
+
+The cleanest solution is to remove the duplicate import at line 32, since line 14 already imports `use vstd::prelude::*;`. Looking at upool's pattern, I see it uses a cfg-gated import for the duplicate. So instead of removing line 32 entirely, I should make it conditional with `#[cfg(verus_keep_ghost)]` to match that structure — keeping the ungated line 14 as the primary import and gating the `::vstd` variant for the verus build only. Either approach works — removing line 32 leaves line 14 as the sole import, which the skill requires to stay ungated. Since the error flags line 32 as unused and line 14 is the canonical one, I'll delete line 32 and verify the surrounding code still compiles.
+[RESULT ✓] view: 14. use vstd::prelude::*;
+15. #[cfg(verus_keep_ghost)]
+16. include!("kframe.spec.rs");
+17. #[cfg(verus_keep_ghost)]
+18. include!("kframe.proof.rs");
+19. 
+20. use crate::hal::mem::{
+21.     Address,
+22.     FrameAddress,
+23.     PageAligned,
+24.     PhysicalAddress,
+25. };
+26. use ::arch::mem;
+27. us...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== baseline f27202565 (task start) lines 10-35 ===" && git show f27202565:src/kernel
+
+[THINKING] I'm noticing there are two vstd imports in kframe.rs—one on line 14 and another on line 32, both without any gating. Looking back at the original version, both of these imports were already there before any changes. But now I'm trying to understand what the actual issue is here, since having both imports present seems like it might be the root problem.
+[RESULT ✓] bash: === baseline f27202565 (task start) lines 10-35 ===
+     1	//==================================================================================================
+     2	// Imports
+     3	//==================================================================================================
+     4	
+     5...
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+Baseline confirms both imports pre-existed ungated. The normal build was never exercised by the verify-only workflow. The fix matching upool.rs's working pattern: cfg-gate the redundant second import (keeping line 14 ungated as the constraint skill requires). This leaves the verus build state identical while fixing the normal build:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] Looking at the baseline code, both import statements were already present and ungated — the `use vstd::prelude::*;` on line 5 and the `use ::vstd::prelude::*;` on line 23 — which means the normal build would've already triggered the unused-import error. The key detail is that line 5 was part of the verus_keep_ghost include section.
+
+I need to decide which import to keep. Since removing the redundant one is simpler than gating it like upool does, I'll remove line 32's `use ::vstd::prelude::*;` and keep line 14's `use vstd::prelude::*;` to align with the verus-ai harness convention. I'm realizing cfg-gating line 32 is the safest approach since it keeps the verus build unchanged while fixing the normal build warning. This matches exactly what upool does, and it won't violate the constraint about keeping the ungated vstd import on line 14. Let me apply that change now.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+Now check identity_map.rs — I added a vstd import there too. Let me verify it won't warn:
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "vstd::prelude" src/kernel/src/mm/virt/identity_map.rs; echo "=== verus_verify/veru
+
+[THINKING] I need to verify that the vstd import I added to identity_map.rs is actually being used and check whether it's already present or if there are any unused import warnings to worry about. Let me look at the file to see the context around that import.
+[RESULT ✓] bash: 73:use ::vstd::prelude::*;
+=== verus_verify/verus_spec usages in file ===
+648:#[verus_verify(external_body)]
+<shellId: 61 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+Good — identity_map.rs's vstd import is used by the `verus_verify` attribute macro (resolved even under normal build), so no warning. Now run the normal build:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 ./z build -- all-kernel 2>&1 | tail -40
+
+[THINKING] The `vstd` import at the top of identity_map.rs is actually needed even in normal builds because the `#[verus_verify(...)]` attribute macro still needs to be resolved and applied before being erased, so there's no unused import warning. I'm wondering if there's a potential issue with how this import behaves under normal compilation though.
+
+Actually, attribute proc-macros do count as using their imports, so the glob import gets consumed when the macro is resolved. The same logic applies to frame.rs where I added the `#[verus_verify(external_body)]` and `#[verus_spec(...)]` attributes — those files should already have the necessary vstd imports. Let me just run the normal build and see if anything breaks.
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+Normal build passes now. Let me confirm verus verification still passes (module + full) after the import change:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -25
