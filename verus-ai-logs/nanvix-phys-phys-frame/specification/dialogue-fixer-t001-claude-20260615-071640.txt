@@ -121,3 +121,53 @@ Turn 9
 ────────────────────────────────────────────────────────────
 Only `init` (686) and `alloc_contiguous` (792) remain, both justified by their `Inner` Err arms stating only `final == old` (inexpressible without `old(phys_view())`). Now verify:
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | grep -vE "
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+verification results:: 31 verified, 0 error...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+0 errors, 31 verified. Now confirm `make build` (kernel) still compiles:
+[TOOL] bash: cd /home/ruize/nanvix-phy && make all-kernel 2>&1 | tail -4
+[RESULT ✓] bash: RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-ke...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Both pass. Now write the fixer response:
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_fixer.md with 4115 characters
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Done. Fixed all 4 flagged shims and justified the 2 retained `Err(_) => true`.
+
+**Changes** (`src/kernel/src/mm/phys/frame.rs`, shim Err arms only):
+- `alloc` → `free_frames.is_empty()` (OOM witness)
+- `book` → `!free_frames.contains(phys_addr@)`
+- `alloc_range` → `!region_frames(...).subset_of(free_frames)`
+- `share` → `!allocated.contains(frame@) || refcounts[frame@] >= 255`
+
+**Retained** `Err(_) => true` only on `alloc_contiguous` (line 792) and `init` (686) — both justified by quoting their `Inner`/own Err arms, which carry only `final == old` / `inv()`, inexpressible without `old(phys_view())`.
+
+**Verification:** `make verify-kernel` → 31 verified, 0 errors. `make all-kernel` → builds `kernel.elf`. Response written to `turn_001_fixer.md` with result **FIXED**.
+
+[THINKING] I've confirmed the error cases match what I found earlier—the `alloc_contiguous` Err arm returns `final == old`, and `init` returns true. That covers everything I needed to verify.
+
+
+=== Session End ===
+Session: e6abfcd6-1cbb-40f0-87b0-02ca3ffff345
+Duration: 98.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue-fixer-t001-claude-20260615-071640.jsonl
