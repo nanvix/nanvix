@@ -230,3 +230,281 @@ Now let me run the actual verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-sys 2>&1 | tail -40
 
 [THINKING] I'm going to run the `verify-sys` target from the Makefile, which is defined through a pattern rule.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Verification is CLEAN. Now let me verify AST consistency and spec drift via git, and check the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git branch -a 2>/dev/null | head -20; echo "=== current ==="; git rev-parse
+
+[THINKING] The verification checks are all passing with clean status and zero counts across the board. I'm working through the remaining checklist items now—admit, assume, trusted functions, and exec_allows_no_decreases_clause all show zero, which is good. There's a cfg-gated exec code item to examine, though I'm noticing a 32-bit pointer width configuration that needs closer inspection.
+
+The tool reports cfg_gate=0, but I need to verify whether the target_pointer_width gating is actually a legitimate platform conditional or something that could be hiding code from the verifier. The rule is specifically about verus-related cfg gating, not general platform conditionals, so this should be fine. I'm moving on to check AST consistency and spec drift by examining the git diff against the base branch, then I'll run the full verification suite to catch any cross-module regressions.
+[RESULT ✓] bash: dev
+  exp
+* verus-ai-prove-bottom-up
+  verus-ai/arch-frame-number
+  verus-ai/arch-paging-mod
+  verus-ai/arch-paging-table
+  verus-ai/arch-x86-pde
+  verus-ai/arch-x86-pte
+  verus-ai/bump-allocator
+  verus-ai/hal-frame-address
+  verus-ai/hal-memory-region
+  verus-ai/hal-page-aligned
+  verus-ai/hal-phy...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== diff dev vs HEAD (virt exec) ==="; git diff dev HEAD -- src/libs/
+
+[THINKING] I'm on the verus-ai-prove-bottom-up branch, but running git diff against it gives nothing since that's the current branch. The AST consistency check needs to compare against the actual source-of-truth original code before verification, so I need to find the right base branch—likely dev—and check what the spec-drift and AST consistency tooling actually uses.
+[RESULT ✓] bash: === diff dev vs HEAD (virt exec) ===
+diff --git a/src/libs/sys/src/sys/mm/address/virt.rs b/src/libs/sys/src/sys/mm/address/virt.rs
+index 2608e35fa..8634b431a 100644
+--- a/src/libs/sys/src/sys/mm/address/virt.rs
++++ b/src/libs/sys/src/sys/mm/address/virt.rs
+@@ -5,6 +5,12 @@
+ // Imports
+ //==========...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git diff dev HEAD -- src/libs/sys/src/sys/mm/address/virt.rs | sed -n '60,1
+
+[THINKING] I'm checking the diff of virt.rs to confirm all changes are annotation-only with no changes to the actual execution logic, and I notice the split of the impl block into two separate impls is structurally fine since it's exec-equivalent. I'm seeing clone_address added at line 254, but I need to verify whether it already exists elsewhere in the current file.
+[RESULT ✓] bash: +    fn clone_address(&self) -> Self {
++        VirtualAddress(self.0)
++    }
++
+     fn as_ptr(&self) -> *const u8 {
+         self.0 as *const u8
+     }
+@@ -289,3 +311,20 @@ impl From<VirtualAddress> for usize {
+         value.0
+     }
+ }
++
++//========================================================...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+`clone_address` appears added vs `dev`. Let me verify whether that's a required trait method (spec drift check).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== mod.rs diff (Address trait) ==="; git diff dev HEAD -- src/libs/s
+
+[THINKING] Looking at the diff, I see several verification-related changes: new imports gated behind verus_keep_ghost, struct and impl annotations for verification, and a split of the impl block where the first part gets marked for verification while the second handles other methods. The structural reorganization is semantically equivalent for execution purposes.
+
+But I'm noticing something concerning — the diff shows `clone_address` being added as a new method. This could indicate either that the `Address` trait gained a new requirement during verification, or that we're introducing new exec functionality, which would be a spec-drift issue. I need to check whether `clone_address` is actually a required trait method or if this is genuinely adding new public API surface.
+[RESULT ✓] bash: === mod.rs diff (Address trait) ===
+diff --git a/src/libs/sys/src/sys/mm/address/mod.rs b/src/libs/sys/src/sys/mm/address/mod.rs
+index d4f5213ac..0af904c3e 100644
+--- a/src/libs/sys/src/sys/mm/address/mod.rs
++++ b/src/libs/sys/src/sys/mm/address/mod.rs
+@@ -5,6 +5,12 @@
+ // Modules
+ //===============...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+New finding: `clone_address` is a newly-added exec trait method. Let me check the spec-drift / ast-consistency tooling and run cross-module + build checks.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls /home/ruize/verus-ai-exp/verus-ai/ 2>/dev/null; echo "=== skills ==="; f
+
+[THINKING] I'm noticing something important: a new `clone_address` method was added to the `Address` trait during verification to work around the fact that `Clone` doesn't have a Verus contract. This raises a spec-drift concern—adding a new public trait method expands the exec API surface, which could violate the AST consistency requirement that exec code shouldn't change.
+
+But stepping back, this change happened in the `sys-address-mod` target, not `sys-virt-address`. The `clone_address` addition to the trait and its implementation in virt.rs is a consequence of that separate module's verification. For the scope of `sys-virt-address`, virt.rs must implement this method because the trait now requires it—this isn't gratuitous drift, it's a compilation requirement. Adding a new method doesn't weaken existing guarantees, and while it does expand the API surface, it's a necessary consequence of satisfying the trait contract, not a spec weakening or semantically-inequivalent rewrite.
+
+Now I need to check what the spec-drift tool actually flags. The command placeholders weren't substituted, so I'm looking for the actual verification commands and the tcb-allowed file to understand what's permitted. Let me trace through the verus-ai tooling to find the spec-drift and AST consistency checks.
+[RESULT ✓] bash: EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.py
+docs
+guardrails.py
+logs
+prompts.py
+report.py
+run.py
+scripts
+talk
+target-systems
+tests
+tree-sitter-verus
+tree_sitter_compat.py
+utils.py
+verus
+verus-ai-logs
+verus-ai.toml.example
+vstd
+workflow.py
+=== skills ===
+/home/...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Let me run the AST consistency and spec drift tools for this module.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && cat /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-ad
+
+[THINKING] I'm pulling the module name and baseline SHA from the pipeline state file, then running the ast_consistency and spec_drift tools to check for any issues.
+[RESULT ✓] bash: {
+    "module_name": "sys-virt-address",
+    "log_name": "nanvix-phys-sys-virt-address",
+    "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs",
+    "current_phase": "cheating-elimination",
+    "current_phase_idx": 4,
+    "completed_phases": [
+        "pr...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && python3 scripts/spec_drift.py check sys-virt-address 2>&1 | tail -30; echo "EXIT
+
+[THINKING] I'm checking the spec_drift and ast_consistency tools against the verus-ai-prove-bottom-up branch, though the auto-detection might struggle since the base and current branches are the same. There's also a concern about the `clone_address` addition to the trait that I need to investigate further.
+[RESULT ✓] bash: Error: pipeline_state.json not found for module 'sys-virt-address'
+EXIT=0
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && SRC=src/libs/sys/src/sys/mm/address/virt.rs; echo "=== drift: cheating phase sta
+[RESULT ✓] bash: === drift: cheating phase start (446430c1) -> HEAD ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract d...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== AST consistency: cheating phase start -> HEAD ==="; python3 /home
+
+[THINKING] I'm checking for drift in the cheating-elimination phase and comparing against the original dev branch to make sure the module's guarantees haven't weakened. The proving phase started at fe53d18, and since the original dev had no specs at all, adding them is actually a strengthening change. I'm also noting that `clone_address` is a new function being introduced.
+
+Now I need to run AST consistency checks to verify that the exec function hasn't changed from the phase start baseline, since that's a requirement for the cheating-elimination phase.
+[RESULT ✓] bash: === AST consistency: cheating phase start -> HEAD ===
+⚠️  3 mismatched (16 functions match)
+EXIT=0
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base
+
+[THINKING] I'm seeing three mismatches when comparing against the cheating phase start, but the fix report indicates nothing changed in the cheating elimination phase—that doesn't add up. Let me check the summary and diffs to understand what's actually different, since the base reference points to the cheating phase start commit.
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+VirtualAddress::add                      MATCH                                
+VirtualAddress::add_assign               MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for fn in "VirtualAddress::align_up" "VirtualAddress::align_down" "VirtualA
+
+[THINKING] I'm noticing three method mismatches: `align_down`, `align_up`, and `is_aligned`. These appear in both the inherent `VirtualAddress` implementations and the `Address` trait implementations, though there are actually two `align_up` methods to account for. I need to examine the diffs to understand what's changed, starting from the baseline reference point.
+
+Ah, I see the issue now — if the executable changed during the cheating-elimination phase, that's problematic. But it's possible the mismatch stems from the phase-start SHA having different implementations of these alignment functions, maybe with stubbed-out bodies or a different structure, and then the real implementations were restored during proving. Let me compare the diffs between that baseline SHA and the current HEAD to see what actually changed in these functions.
+[RESULT ✓] bash: ############ VirtualAddress::align_up ############
+✅ VirtualAddress::align_up: MATCH
+############ VirtualAddress::align_down ############
+## VirtualAddress::align_down (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,3 @@
+-    pub fn align_down(&self, align: Alignment) -> Self {
+-        Virtu...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+The AST mismatches are name-collisions (inherent vs trait methods share names). Let me confirm exec is truly unchanged via git diff.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== git diff 446430c1 -> HEAD for address dir ==="; git diff 446430c1
+
+[THINKING] The AST checker is incorrectly pairing methods with the same name across different implementations — `VirtualAddress::align_up`, `align_down`, and `is_aligned` each exist as both inherent methods and trait implementations with different signatures, but the checker treats them as a single entity in its diff output.
+
+To verify this is a false positive rather than actual execution drift, I should check the textual git diff between the two commits for the relevant file to see if anything actually changed.
+[RESULT ✓] bash: === git diff 446430c1 -> HEAD for address dir ===
+EXIT_EMPTY_CHECK:
+0
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Confirmed: **zero textual changes** to the address dir during cheating-elimination — the 3 AST "mismatches" are false positives from the checker pairing inherent methods with identically-named trait-impl methods. Now running cross-module regression and build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "build:" .github/skills/build/SKILL.md 2>/dev/null | head; echo "=
+
+[THINKING] The virt.rs file and its directory haven't changed at all since the cheating phase started, so the execution logic itself wasn't modified during the cheating elimination. Those three AST mismatches are actually false positives—the checker is incorrectly pairing inherent methods with trait implementation methods that happen to share the same names. I need to verify this against the original baseline from before verification to confirm the inherent methods' actual implementations are still intact.
+
+Looking at the git diff between dev and HEAD for virt.rs, the only execution changes were the impl block split and the addition of clone_address. The align_up, align_down, and is_aligned method bodies weren't touched, so they match the dev version exactly. The impl split doesn't affect the AST checker since it hashes per-function regardless of which impl block contains it. The clone_address function is new, but it's a required trait method that was added during the address module proving phase before cheating started—it's part of the accepted verification design and doesn't count as a change for this phase's scope.
+
+The cfg-gating checklist item passes: the tool found zero verus-specific cfg gates. The platform conditionals like `cfg(target_pointer_width="32")` were already in the original dev code and aren't verification-related, so they don't violate the rule.
+
+Now I need to run the remaining checklist items: a full `make verify` across all crates to ensure cross-module regression, and then the build command to verify everything compiles.
+[RESULT ✓] bash: === build skill head ===
+---
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. Thi...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1800 make verify 2>&1 | tee /tmp/verify_all.log | tail -5
+
+[THINKING] I'm trying to figure out the right build command for the sys library in this verification task. The checklist requires running both a Verus command and a build command with zero errors and warnings. For Verus modules, the build command should compile the sys crate itself, though it looks like the verify-sys step might already handle this.
+
+I'll run the full `make verify` command to cover all crates and the kernel, which will catch any cross-module regressions. I'll kick this off in the background since it's the comprehensive check.
