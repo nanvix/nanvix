@@ -56,6 +56,9 @@ pub use self::{
 // Standalone Functions
 //==================================================================================================
 
+#[verus_spec(ret =>
+    ensures true,
+)]
 fn book_physical_memory_regions(
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
 ) -> Result<(), Error> {

@@ -539,3 +539,48 @@ For spec.rs, I'll add a new verus! block after the existing one to avoid modifyi
 The exec specs on the three functions are tricky since they're private and called by init, so without ghost state the ensures clauses are nearly trivial. The real challenge is the loop in `book_physical_memory_regions`, which blocks compilation entirely.
 
 Let me just run a quick experiment: add a minimal spec annotation to that function and see if Verus can handle the LinkedList loop, then baseline the verify timing to understand the current state.
+[RESULT ✓] bash: - free_count
+    - free
+    - is_covered
+    - book
+    - alloc_range
+    - share
+    - refcount
+    - new
+    - base
+    - clear
+    - deref
+    - deref_mut
+    - drop
+    - init
+    - get_mut
+    - alloc_many_user_frames
+    - alloc_user_frame
+    - check_user_watermark
+    - alloc_kernel_frame
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Baseline: `0 verified, 0 errors (exit 0)`; pre-existing `external_body=8, cfg_gate=5` from the frame layer. Now let me empirically test how Verus handles the `LinkedList` for-loop by annotating one function minimally.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/mod.rs /tmp/mod.rs.bak
+
+[THINKING] Looking at the baseline results, the verification shows no issues, but the cheating detection flagged eight external_body violations in frame.rs and five cfg_gate violations—likely from the `#[cfg(verus_keep_ghost)]` annotations. The CHEATING_DETECTED status makes sense because those external_body methods in frame.rs aren't fully contained within the trusted code base.
+
+The key insight is that with the MODULE=mm::phys filter, the verification counts only functions in that module, which currently has zero annotated functions, explaining the "0 verified" result. The cheating detection still runs across the entire crate, so those baseline violations are pre-existing from the frame layer. My focus should be on adding verified functions to mm::phys without making the cheating situation worse.
+
+Let me test the LinkedList loop issue directly by adding a minimal spec to book_physical_memory_regions and seeing what Verus reports about the for loop.
+[RESULT ✓] bash: 
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -A30 "error\|Error\|book_physica
