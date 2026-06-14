@@ -301,3 +301,91 @@ Before I finalize the blocker report, let me trace through one more angle: could
 At the call site, Verus knows self hasn't been mutably borrowed, so self@ still equals its pre-state. But the lemma's conclusion claims self@ equals the old state with one frame allocated—which directly contradicts what Verus believes. This means the admit is injecting a fact that, combined with self@ == g_old, creates an inconsistency: the same address would be both free and allocated simultaneously, violating the manager's well-formedness invariant. The manager's proof after these admits is operating in an unsound context where anything becomes provable.
 
 This is a fundamental architectural issue—the manager needs a proper ghost token to make self actually mutated so Verus can track the state change. Without that, the admits can't be legitimately eliminated in the phys-frame phase alone. I'm confident this is a blocker requiring the token-based approach. Let me verify the current state still passes and then document the findings.
+[RESULT ✓] bash: === diff vs backup ===
+IDENTICAL
+=== frame files vs HEAD ===
+ src/kernel/src/mm/phys/manager.proof.rs | 4 ++++
+ 1 file changed, 4 insertions(+)
+(empty=clean)
+verification results:: 58 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+  verification: 58 verified, 0 errors (exit 0...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+The git diff shows manager.proof.rs differs from HEAD by 4 insertions despite being identical to my backup. Let me investigate — my backup may not have been pristine.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; echo "=== working tree vs HEAD for manager.proof.rs ==="; git diff HEAD -- src/kernel/s
+
+[THINKING] The git diff is showing 4 insertions for manager.proof.rs even though the file content is identical to my backup, which is confusing me — the touch command only updated the modification time, not the actual content, so git diff shouldn't be detecting any changes. I need to investigate what's actually different between the current file and HEAD.
+[RESULT ✓] bash: === working tree vs HEAD for manager.proof.rs ===
+=== END diff ===
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; git status --short -- src/kernel/src/mm/phys/; echo "=== (no source files listed = all 
+
+[THINKING] The diff is now empty, which means manager.proof.rs matches HEAD. The earlier git diff output showing 4 insertions must have been stale, or something changed between when that command ran and now. Let me reconsider the sequence of events—the diff ran before the touch command, so there's a timing issue I need to work through.
+
+Actually, thinking about it more: my Python script modified the file earlier, then I restored from backup. That backup was taken at the start of this shell session, which was after the file was already committed. The "4 insertions" output is puzzling since removing code would show deletions, not insertions. But the fact that the diff is clean now suggests the file is in a good state. Let me verify with git status to be certain.
+[RESULT ✓] bash: === (no source files listed = all clean) ===
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+All source files are byte-identical to HEAD; the module verifies (58 verified, 0 errors). The transient "4 insertions" was a stale git stat cache. 
+
+My investigation is conclusive. Let me record the findings. First let me check the existing report and todo locations.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; ls -la verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md 2>/dev/null && echo "E
+
+[THINKING] All the source files check out as clean and identical to HEAD—that earlier git artifact has cleared up. The module verification passed with 58 verified and no errors. I'm at a critical decision point now and need to think through the full situation one more time before I file the blocker report.
+
+The four admits in manager.proof.rs are genuinely unprovable from their preconditions—I've empirically confirmed the postconditions aren't satisfied. They encode the §8 global ghost-token deferral across the manager view, physical view, and frame instance attachment, and they're pre-existing code untouched by my phys-frame work. The only legitimate ways to eliminate them are either getting human-approved external axioms (which I'm forbidden to write unilaterally) or realizing the §8 ghost token through tracked state in the exec singleton (which would require forbidden changes to exec signatures and is actually the phys-manager proving phase's responsibility).
+
+Given the constraints and the spec design, I absolutely cannot write assume_specification or axioms without human approval—these admits are external-bottom trust assumptions that need that approval. The honest deliverable is that frame.rs itself is completely clean, and I need to document these four admits as genuinely-stuck §8-token obligations requiring human-approved axioms, then report this as a blocker for handoff.
+
+I'm reconsidering whether implementing the §8 ghost token myself is even possible within the constraints. A global mutable singleton would need either frame::alloc to take a tracked token parameter (signature change, forbidden) or an unverified axiom (also forbidden). There's no path forward without violating the rules, so this confirms the blocker status. Let me document this precisely and check if verification_todo.md already exists and what format it expects.
+
+Actually, I'm realizing these four admits are pre-existing deferrals from the phys-manager phase, not something phys-frame introduced. The phys-frame work only touched frame.rs, while these admits live in manager.proof.rs. Since the whole mm::phys module compiles together, the cheating detector flags them all, but they're genuinely out of scope for phys-frame. I'll document them clearly in verification_todo.md as cross-phase artifacts requiring human-approved external axioms, then report the blocker status with full transparency about what's actually blocking progress.
+[RESULT ✓] bash: does not exist
+=== confirm frame files have zero admit/assume ===
+src/kernel/src/mm/phys/frame.rs:0
+src/kernel/src/mm/phys/frame.proof.rs:0
+src/kernel/src/mm/phys/frame.spec.rs:0
+<shellId: 17 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Frame files are completely clean. The 4 admits are a genuine cross-module blocker. Let me document them precisely in the verification_todo.md.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md
+
+[THINKING] I'm reconsidering whether the ghost token mechanism could work legitimately without modifying the executor or adding axioms. The fundamental problem is that `frame::alloc()` modifies global state without borrowing `self`, which creates a provability gap I need to think through more carefully.
+
+Looking at what Verus actually knows at the call site: the pre-state `g_old` equals `self@`, and after the call, `phys_view().frames` contains the newly allocated address. But `lemma_manager_attached` would equate `self@` with `phys_view().frames`, which conflates the pre-state with the post-state—creating a logical contradiction where the address appears both free and allocated simultaneously. This incoherence confirms the model can't work without the ghost token to track the state transition properly.
+
+The core issue is that `phys_view()` has no temporal dimension—it's a single global snapshot with no way to express "pre-state equals this, post-state equals that." Without the token mechanism to index time, there's no sound way to prove the manager's allocation semantics, and the admits are masking a fundamental design gap. This is a blocker that can't be resolved within the phys-frame scope alone. I need to document this honestly in the verification todo and update the report accordingly.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md with 6125 characters
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Now let me update the fix_report.md to reflect this second-pass investigation.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; rm -f verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md
+[RESULT ✓] bash: 
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md with 5635 characters
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Let me run the final confirmation that the module verifies and clean up the temp backup.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; rm -f /tmp/manager.proof.rs.bak; echo "=== final source cleanliness check ==="; git sta
