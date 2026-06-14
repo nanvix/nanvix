@@ -1,0 +1,42 @@
+Timestamp: 2026-06-15_00-11-14
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 0
+76 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=12
+  admit=36
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+   Compiling config v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/config)
+   Compiling kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+    Checking cmdline v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/cmdline)
+    Checking koptions v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/koptions)
+    Checking sorted-vec v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sorted-vec)
+    Checking type-safe v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/type-safe)
+    Checking no_fail v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/no_fail)
+    Checking sysapi v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sysapi)
+    Checking error v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/error)
+verification results:: 0 verified, 0 errors
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys)
+    Checking multibin v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/multibin)
+verification results:: 6 verified, 0 errors
+    Checking raw-array v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/raw-array)
+    Checking elf v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/elf)
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch)
+verification results:: 0 verified, 0 errors
+    Checking bitmap v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/bitmap)
+verification results:: 48 verified, 0 errors
+verification results:: 70 verified, 0 errors
+    Checking nanvix-slab v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/slab)
+verification results:: 35 verified, 0 errors
+verification results:: 76 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 11.18s
