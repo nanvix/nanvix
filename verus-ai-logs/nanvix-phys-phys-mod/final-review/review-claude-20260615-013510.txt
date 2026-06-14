@@ -395,3 +395,56 @@ Now let me run baseline verification to warm the cache and get authoritative res
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
 
 [THINKING] I'm going to run the baseline verification to warm up the cache and get definitive results, starting with the kernel verification since it takes a while. I also need to count the cfg-gated execution code, checking whether those cfg(verus_keep_ghost) annotations on the imports and include macros are actually allowed or if they're gating executable code.
+[RESULT ✓] bash: - frame.rs:799 alloc_contiguous: external_body
+    - frame.rs:820 free_count: external_body
+    - frame.rs:838 free: external_body
+    - frame.rs:880 book: external_body
+    - frame.rs:901 alloc_range: external_body
+    - kframe.rs:94 new: external_body
+    - manager.proof.rs:12 lemma_manager_attach...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Module verification passes (exit 0). The global cheating counts span sibling modules. Let me run AST consistency and spec-drift checks scoped to phys-mod.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== AST consistency (auto-detect) ===" && python3 /home/ruize/verus-ai-exp/veru
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== spec_drift ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_d
+
+[THINKING] I'm noticing the verification metrics are reporting global counts across the entire kernel, but the actual task scope is narrower—just the functions in mod.rs like init and the memory booking functions. The admits and other cheating counts are coming from other modules like manager and frame, which fall outside what I need to focus on for this specific task.
+
+Let me isolate what's actually relevant to phys-mod itself: checking the three files (mod.rs, mod.spec.rs, mod.proof.rs) for any admits, external_body declarations, and other verification gaps. The external_body functions I'm finding are already documented in tcb-allowed.md, so they're accounted for.
+
+The global counts across the kernel include other modules still in progress, but those don't block this review since they're separate verification targets. What matters for phys-mod is that I have zero admits, zero assumes, and two pre-approved external_body declarations.
+
+The verification itself completed with exit 0, so there are no compilation or verification errors to address. Now I should run the AST consistency and spec_drift checks to get authoritative data on whether the module is truly complete.
+[RESULT ✓] bash: === AST consistency (auto-detect) ===
+✅ Consistent: 4 functions, 0 structs match.
+=== exit 0 ===
+<shellId: 9 completed with exit code 0>
+[RESULT ✓] bash: === spec_drift ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+=== exit 0 ===
+===...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Baseline is clean: AST consistent, no spec drift, no exec rewrites. Let me confirm full cross-module regression, then launch the two review sub-agents.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify 2>&1 | tail -25
+
+[THINKING] Looking at the baseline verification results—AST consistency checks out, no spec drift detected, and the module verification passed cleanly. The physical model metrics show only two external bodies in the TCB with no admits or assumes, which is good. Let me review what came before to see if there are any concerns to address.
+
+I notice there's a stale review file from a prior run that I should ignore. I'll create fresh review files as specified. Now I'm going to run the full cross-module regression with `make verify` to confirm everything still passes, then kick off the two sub-agents in parallel while relying on the cached results to avoid contention.
