@@ -511,3 +511,55 @@ Turn 25
 Turn 26
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-arch MODULE=x8
+[RESULT ✓] bash: 4/23 exec functions have contracts.
+  Unverified functions:
+    - from_raw_value
+    - into_raw_value
+    - is_user
+    - is_writable
+    - set_read_write
+    - set_user_supervisor
+    - is_cow
+    - set_cow
+    - from_raw_value
+    - into_raw_value
+    - flags
+    - frame_number
+    - frame_address...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "error\|Error\|cannot\|expected" verus-ai-logs/verify-arch/verus-lo
+
+[THINKING] The verification failed with exit code 101, and I notice the cfg_gate count dropped from 4 to 2 globally—the pte module's 2 gates were removed, which accounts for the reduction. The gates are gone as expected, but now verus is throwing an error that I need to investigate.
+[RESULT ✓] bash: 8:compilation/setup error (verus did not run)
+20:error: cannot use function `arch::x86::mem::paging::flags::ReadWriteFlag::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+26:    = help: The following declaration may resolve this ...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+The impl-level approach over-verifies external methods. Let me revert and try simply removing the cfg_attr lines (since `is_present` already works without them):
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp /tmp/pte.rs.bak src/libs/arch/src/x86/mem/paging/pte.rs && echo reverted
+
+[THINKING] Adding the `#[verus_verify]` attribute to the entire impl block is too aggressive—it forces Verus to verify method bodies that depend on external functions like `flags::*::from_raw_value` and `into_raw_value`, which aren't specced and can't be used in verified code. The original cfg_attr approach was more targeted and avoided this problem.
+
+I need to apply `#[verus_verify]` only to the `new` method instead, since that's the one with verus_spec that actually needs verification. The `new` method's body is straightforward struct construction without external calls, so it should verify cleanly. But I'm uncertain whether applying the attribute to a single method still triggers the `verus_impl_method_marker` lint that verus_spec relies on to detect whether it's inside a verified impl. The other option is to split the impl block: move the verified methods like `new` and `is_present` into their own `#[verus_verify]` impl block, leaving the rest in a plain impl. This avoids cfg gates and external_body entirely since only the methods that actually verify are in the verus_verify impl. But I'm puzzled why `is_present` currently verifies fine without the cfg_attr allow when `new` seems to need it — maybe the marker isn't strictly required for verus_spec to work, or there's something specific about how `new` is being used that differs from `is_present`.
+[RESULT ✓] bash: reverted
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -i '/#\[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_mark
+[RESULT ✓] bash: 85:    #[verus_spec(result =>
+178:    #[verus_spec(result =>
+306:    #[verus_spec(result =>
+404:    #[verus_spec(result =>
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-arch MODULE=x8
