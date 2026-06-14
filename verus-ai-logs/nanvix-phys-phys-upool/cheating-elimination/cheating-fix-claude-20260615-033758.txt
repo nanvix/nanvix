@@ -252,3 +252,36 @@ Turn 12
 Turn 13
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verifying module mm::p
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+error: postcondition not satisfied
+243 |             result@.wf(),
+    |             ^^^^^^^^^^^^ failed this postcondition
+verification results:: 42 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") du...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Evidence captured for `new` (postcondition `result@.wf()` unprovable with uninterp view). Let me restore `new`'s `external_body` and capture the `alloc` evidence too.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] So the uninterpreted view is blocking the proof for `Upool::new`, and I need to figure out if giving it a concrete view would help. The constraint is that I can only modify certain parts—specifically the `View for UserFrame` implementation, which isn't on the forbidden list—but I'm running into limitations with what's actually changeable within scope.
+
+The real issue is that `Upool::alloc`'s spec is locked in place because the manager depends on it: the ensures clause must maintain `final(self)@ == old(self)@.alloc_one(uf@)`. Since the only executable operation is `frame::alloc()` with a frozen physical view contract, there's no way to prove a genuine state transition on `self@` in the body. The view has to stay uninterpreted so the manager's bridge lemma can handle the abstraction gap, and `alloc` must remain external_body. So with external_body on both new and alloc, Verus trusts their postconditions without inspecting the bodies, which sidesteps the structural contradiction entirely. The uninterpreted view means Verus can't derive what the view should be from the struct's actual value, so it simply accepts the assumed postconditions. Making the struct itself non-external is actually cleaner — it's more transparent about what's really happening (the view is uninterpreted, not the struct), which aligns better with the opaque type model while minimizing trust boundaries.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 - <<'PY'
+import re,io
+f="src/kernel/src/mm/phys/upool.rs"
+s=open(f).read()
+# 
+[RESULT ✓] bash: changed
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verifying module mm::p

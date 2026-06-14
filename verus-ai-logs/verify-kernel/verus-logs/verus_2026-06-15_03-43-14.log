@@ -1,0 +1,59 @@
+Timestamp: 2026-06-15_03-43-14
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+42 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=16
+  admit=24
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/upool.rs:278:5
+    |
+278 |     pub fn alloc(&mut self) -> Result<UserFrame, Error> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/upool.rs:268:17
+    |
+268 |                   Ok(uf) => {
+    |                   ^^^^^^ failed this postcondition
+...
+278 |       pub fn alloc(&mut self) -> Result<UserFrame, Error> {
+    |  _________________________________________________________-
+279 | |         let addr: FrameAddress = frame::alloc()?;
+280 | |         Ok(UserFrame::new(addr))
+281 | |     }
+    | |_____- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/upool.rs:268:17
+    |
+268 |                 Ok(uf) => {
+    |                 ^^^^^^ failed this postcondition
+...
+279 |         let addr: FrameAddress = frame::alloc()?;
+    |                                                - at this exit
+
+verification results:: 42 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
