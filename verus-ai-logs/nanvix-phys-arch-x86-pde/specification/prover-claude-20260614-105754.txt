@@ -1259,3 +1259,160 @@ Turn 85
 Turn 86
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | grep -E "error|FRAME_SHIFT|pow2|verified|Exit code" | head -20
+[RESULT ✓] bash: error: postcondition not satisfied
+108 |         PAGE_SIZE as int == pow2(FRAME_SHIFT as nat),
+110 | pub const FRAME_SHIFT: usize = PAGE_SHIFT;
+verification results:: 38 verified, 1 errors
+error: could not compile `arch` (lib) due to 1 previous error
+  38 verified
+  1 errors
+  Exit code : 101
+  veri...
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+`FRAME_SHIFT < 32` proves but `pow2(12)` can't be evaluated in a const's postcondition. Let me check all kernel consumers of FRAME_SHIFT to plan the placeholder removal properly.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] The postcondition `PAGE_SIZE == pow2(12)` isn't automatically satisfied because Verus can't evaluate `pow2(12)` at compile time. I need to find a different approach—vstd has lemmas like `lemma2_to64` that provide proven pow2 values up to 64, which might help establish this equality.
+
+Since I can't invoke lemmas inside a const's verification, I'll create a separate public proof lemma in the arch module that establishes both `FRAME_SHIFT < 32` and `PAGE_SIZE == pow2(FRAME_SHIFT)`, then have the kernel call this lemma before using the shift value. I can actually prove this lemma using the existing vstd lemmas rather than just admitting it. Instead of using pow2 in the arch FRAME_SHIFT ensures, I could use a simpler constraint like `FRAME_SHIFT < 32`, then add a separate public lemma in arch that proves the pow2 relationship between PAGE_SIZE and FRAME_SHIFT (using lemma2_to64 or admit). This way the kernel can call that lemma to get the pow2 fact it needs for lemma_frame_index, while arch avoids the unprovable const postcondition. I'm considering a broadcast proof lemma in the arch module that establishes both the shift bound and the power-of-two relationship for FRAME_SHIFT, though broadcast triggers can be finicky. But actually, the cleaner approach is to avoid proving the pow2 fact in arch altogether — instead, keep FRAME_SHIFT as a simple verified const and let the kernel's into_frame_number function establish the necessary lemmas itself by asserting the power-of-two property and using the appropriate proof tactics. I'm settling on a concrete approach: keep the arch constant as a model-only definition without ensures, remove the kernel's placeholder assumption, and add a small proof block in `into_frame_number` that establishes the required facts before calling the lemma. This proof will use a broadcast lemma for the power-of-two arithmetic and a computed assertion to pin down the shift value. So the arch constant can prove `FRAME_SHIFT < 32` on its own—that error was only on the pow2 line. I should strip the pow2 requirement from the arch spec and let the kernel derive it internally in `into_frame_number`'s proof block using `by(compute)` and the lemma. The kernel call site then gets `shift < 32 < 64` from the arch constant, and the pow2 fact gets proven where it's actually needed. I'm realizing the pow2 ensures on FRAME_SHIFT can't be proven via broadcast at the const level, so I need a different approach. The cleanest path forward is to mark the arch FRAME_SHIFT with `#[verus_verify]` without ensures, then add a separate public proof lemma in the arch module that establishes the pow2 property, which into_frame_number can then invoke. This keeps the kernel lemma untouched and avoids complicating the eventual proof of lemma_frame_index. Defining the proof lemma... I need to check what other functions in phys.rs are using FRAME_SHIFT to understand the full scope of what needs to be handled. The conflict between the kernel's assume_specification and arch's definition is unavoidable — the kernel placeholder has to be removed, so I need to make sure all consumers are properly accounted for before making that change.
+[RESULT ✓] view: 60. 
+61.     pub fn into_virtual_address(self) -> VirtualAddress {
+62.         self.0
+63.     }
+64. 
+65.     ///
+66.     /// # Description
+67.     ///
+68.     /// Constructs a [`PhysicalAddress`] from a [`FrameAddress`].
+69.     ///
+70.     /// # Parameters
+71.     ///
+72.     /// - `frame_addr`: Th...
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I see that lines 79 and 84 are in an unverified impl block, so they don't require the FRAME_SHIFT specification. The actual verified consumer is in the #[verus_verify] impl starting at line 90, so I need to examine how into_frame_number is specified there and what the assume_specification context looks like.
+[RESULT ✓] view: 140.             result@ == spec_from_number(spec_frame_raw_value(frame)),
+141.     )]
+142.     pub fn from_number(frame: FrameNumber) -> Self {
+143.         proof! { lemma_from_number_no_overflow(frame); }
+144.         let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
+145.         Self(Vi...
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[RESULT ✓] view: 55. // =================================================================================================
+56. 
+57. // Note: `VirtualAddress::new` now carries its own verified `#[verus_spec]` in the `sys` crate
+58. // (`result@ == value as int`), so its placeholder `assume_specification` was removed —...
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] I'm checking what lemma_frame_index requires in the phys.proof.rs file.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // A frame index scaled by the frame size stays within `usize`, so `from_number`'s base-address
+4. // multiply never overflows. This follows from `FrameNumber::MAX == MAX_ADDRESS / FRAME_SIZE - 1`,
+5. // hence `(MAX + 1) * FRAME_SIZE == MAX_ADDRESS <= usize::MAX`. Proven in the pr...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+Let me re-read the spec-design skill's Exec Binding Rules to decide whether changing exec code is acceptable here.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills && ls && echo "---" && sed -n '1,60p' spec-design/SKILL.md 2>/dev/null 
+
+[THINKING] I'm looking at the preconditions that `into_frame_number` needs to satisfy when calling `lemma_frame_index` — specifically that `shift < 64` and the page size matches a power of 2. Right now these constraints are guaranteed by the `assume_specification`, but if I remove that and define `FRAME_SHIFT` directly in the architecture without those ensures, I'll need to establish these facts explicitly before the lemma call.
+
+My approach is to create a proof lemma in the architecture layer that establishes both constraints: that `FRAME_SHIFT < 32` (which gives us `< 64`) and that `PAGE_SIZE` equals `pow2(FRAME_SHIFT)`. Since the kernel's `spec_page_size()` is defined as `arch::mem::PAGE_SIZE as int`, the architecture lemma's proof about `PAGE_SIZE` directly translates to what the kernel needs. Then in `into_frame_number`, I can invoke this architecture lemma right after binding `shift` to `FRAME_SHIFT`, and the facts about `FRAME_SHIFT` will apply to `shift` by equality.
+
+The best place to put this lemma is in the architecture's constants module rather than in a proof file specific to page directory entries, since it's a general architectural constant that other parts of the kernel might need to reference. I'm realizing the cleanest path forward is to keep FRAME_SHIFT as a simple constant without the ensures clause, add a proper arch lemma to prove the power-of-two property, and make a minimal edit to the kernel's into_frame_number to call that lemma instead of relying on the placeholder. This follows the same pattern as removing other placeholders — when they're superseded by real specs, the consumer just needs to invoke the actual proof. The kernel edit is justified since it's a one-line proof call that strengthens the verification rather than weakening it. The real question is whether refactoring the shift operation to multiplication counts as a behavior change—the results are identical since FRAME_SIZE equals 1 << FRAME_SHIFT, so it's semantically equivalent. Option A (switching to multiply and leaving FRAME_SHIFT unmodeled) is much cleaner and self-contained, avoiding the cross-crate mess entirely, though it does modify the implementation source code. Option A keeps the change localized to just the frame_address function itself, while Option B would require modeling FRAME_SHIFT and making edits across the kernel spec and proof files. Since the shift and multiply produce identical results, Option A is the more minimal approach that avoids touching unrelated code paths.
+
+But I'm second-guessing myself — the task emphasizes surgical changes and not fixing pre-existing issues. Changing the exec to use multiplication isn't really fixing a bug; it's adapting the implementation to make the spec provable. The real question is whether the pow2 proof for FRAME_SHIFT is even feasible, and if not, Option B might be a dead end anyway.
+
+Let me settle on Option A: rewrite the shift as multiplication by FRAME_SIZE. The result is semantically identical, FRAME_SIZE is already verified, and the spec already uses FRAME_SIZE. The overflow check should discharge the same way the current shift does — with the admit() at the function start covering all obligations. This is the cleanest, most self-contained path forward. I need to verify that `x * FRAME_SIZE` is truly equivalent to `x << FRAME_SHIFT` by checking whether PAGE_SIZE equals 1 << PAGE_SHIFT in the constants. But I'm also second-guessing whether modifying the exec code is justified here—the methodology prefers binding specs to existing exec rather than changing it. Maybe Option B (modeling the real dependency with a kernel-side proof) is actually more aligned with the design principles, even though the pow2 const proof seemed unprovable earlier.
+
+Let me commit to Option B: I'll add a `#[verus_verify]` annotation to FRAME_SHIFT in constants.rs without an ensures clause, then create a proof lemma in the same file that establishes the relationship between FRAME_SHIFT and PAGE_SIZE using the pow2 lemma, with the body admitted for now. This lemma needs to be accessible from the kernel code that imports arch::mem, so I'll place it in a verus! block within constants.rs since that file is already processed by the verifier.
+
+In kernel phys.rs, I'll remove the assume_specification block and replace it with a comment explaining the supersession, then call the new lemma in into_frame_number after the shift assignment. Since shift is bound to FRAME_SHIFT, Verus should be able to substitute and apply the lemma's facts. The lemma will be re-exported through arch::mem's public interface, making it accessible as `::arch::mem::lemma_frame_shift_pow2`.
+
+This is a fair bit of cross-crate coordination, so let me double-check the spec-design skill's exact requirements around executable changes one more time.
+[RESULT ✓] bash: ast-consistency
+body-removal
+bug-reporting
+caller-analysis
+crate-analysis
+proof-extraction
+proof-minimization
+property-analysis
+proving-guide
+review-methodology
+spec-design
+spec-drift-check
+tcb-plan
+verification-order
+verus-constraints
+verus-setup
+verus-syntax
+view-design
+---
+### Exec Binding Rules ...
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills && grep -iA6 -E "do not (change|modify|rewrite|alter).{0,30}(exec|body|
+[RESULT ✓] bash: spec-design/SKILL.md:   erased at compile time and do not change exec behavior. However,
+spec-design/SKILL.md-   prefer keeping ghost state in spec.rs (e.g., on the View type)
+spec-design/SKILL.md-   rather than adding fields to exec structs; only add when the proof
+spec-design/SKILL.md-   genuinely...
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+Exec code must NOT be changed — so Option A (shift→multiply) is out. I'll model FRAME_SHIFT and supersede the kernel placeholder. Let me check the constant definitions for transparency.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+
+[THINKING] I can't change the exec code, so I'm going with Option B instead: I'll model FRAME_SHIFT with the `#[verus_verify]` attribute in constants.rs, removing the unprovable const ensures and the pow2 import, then provide the pow2 fact separately for the kernel to use.
+
+The approach is to add an arch proof lemma `lemma_frame_shift_pow2()` in constants.rs that establishes `FRAME_SHIFT < 32` and `PAGE_SIZE as int == pow2(FRAME_SHIFT as nat)`, remove the assume_specification from kernel phys.spec.rs, and then call this lemma from into_frame_number. Adding a proof! block is a verification annotation, not a change to executable logic, so it's consistent with the constraint. But I'm realizing I need to think through what spec Verus actually attaches to a const with #[verus_verify] and no ensures clause.
+
+Since FRAME_SHIFT is a transparent const with value 12, Verus knows shift == 12 directly from the definition. That handles `shift < 64` automatically, but proving `spec_page_size() == pow2(shift)` still requires evaluating pow2(12) == 4096, which isn't automatic. The cleanest fix is to add a broadcast use of lemma2_to64 inside into_frame_number's existing proof block so pow2(12) evaluates correctly. I still need to remove the assume_specification from phys.spec.rs since it conflicts with the arch modeling, and the transparent const definition should let Verus know shift == 12 without further help.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+
+[THINKING] I'm setting up constants for page and frame sizes with Verus verification—PAGE_SHIFT and FRAME_SHIFT are both 12, making PAGE_SIZE and FRAME_SIZE equal to 4096 bytes. Since these are marked as transparent in Verus, the verifier can see through to their definitions automatically. Now I'm moving into how the kernel uses these constants.
+
+When `into_frame_number` calls `lemma_frame_index`, it needs to prove that FRAME_SHIFT is less than 64 and that `spec_page_size()` equals 2^12. My plan is to revert FRAME_SHIFT back to a simple transparent constant definition without the unprovable ensures clause, remove the pow2 import from constants.rs since it won't be needed anymore, strip out the assume_specification for FRAME_SHIFT from the kernel's phys.spec.rs file, and add a broadcast of `lemma2_to64` in the proof block of `into_frame_number` to handle the power-of-two calculation. I should verify whether `spec_page_size()` is actually transparent and check if removing the assume_spec will let the lemma's requirements be satisfied naturally.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+Now confirm arch verifies with FRAME_SHIFT modeled (no ensures):
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | grep -E "error|verified|Exit code" | head -20

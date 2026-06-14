@@ -7,7 +7,6 @@
 
 use sys::mm::Alignment;
 use vstd::prelude::*;
-use vstd::arithmetic::power2::pow2;
 
 //==================================================================================================
 // Constants
@@ -102,11 +101,7 @@ pub const MAX_ADDRESS: usize = usize::MAX;
 ///
 /// Alias for `PAGE_SHIT`.
 ///
-#[verus_spec(
-    ensures
-        FRAME_SHIFT < 32,
-        PAGE_SIZE as int == pow2(FRAME_SHIFT as nat),
-)]
+#[verus_verify]
 pub const FRAME_SHIFT: usize = PAGE_SHIFT;
 
 ///
