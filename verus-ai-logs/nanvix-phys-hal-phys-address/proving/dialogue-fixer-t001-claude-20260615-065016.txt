@@ -432,3 +432,71 @@ But my own experiment showed adding the attribute caused a cast error, which con
 Turn 25
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-sys 2>&1 | grep -iE "Exit code|error|cheating detected|verified
+[RESULT ✓] bash: error: Verus does not support this cast: `usize` to `*const u8`
+error: Verus does not support this cast: `usize` to `*mut u8`
+error: could not compile `sys` (lib) due to 2 previous errors
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+  verification: 0 verified, compila...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+**Critical finding: HEAD itself fails `make verify-sys`** with the same int-to-ptr cast error — this is a pre-existing state. The int-to-ptr casts in `as_ptr`/`as_mut_ptr` are unverifiable. Let me check whether `sys` is part of the `make verify` crate set and how this is currently handled.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "VERUS_CRATES|verify-sys|^verify:" Makefile | head; echo "=== is t
+
+[THINKING] I'm realizing that the `#[verus_verify]` attribute on the `impl Address for VirtualAddress` block with the int-to-ptr casts is actually a pre-existing bug in the committed code—the HEAD itself fails verification with this error, so this isn't something I introduced. The working tree at the start of this turn had the attribute removed, which is why things were passing.
+
+The core tension is clear now: with `#[verus_verify]` present, the int-to-ptr cast causes verification to fail (a genuine Verus limitation), but removing it makes `into_raw_value` unverified, which is why the kernel needs the `assume_specification`. The reviewer's requirement is that `make verify-sys` must pass (exit 0), but HEAD's sys doesn't verify at all, so there's a pre-existing problem that the removal was trying to work around. The pragmatic solution is to keep the assume_specification in phys.spec.rs since it's necessary, then restore virt.rs to the state that makes verify-sys pass—which means removing the `#[verus_verify]` attribute from that impl block. But HEAD currently has it and fails verification, which creates a dilemma: either the broken state is pre-existing and outside my scope, or I need to fix sys to meet the reviewer's requirement. Let me check if there's an alternative pattern like `external_body` or a different approach that would let those methods verify properly.
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator arch
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+=== is there a working-tree vs HEAD difference anywhe...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+The git log is revealing: `d54fd253d` was **PASS** (sys 6 verified), then HEAD is **FAIL**. Let me see what broke it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== diff PASS(d54fd253d) -> HEAD for virt.rs ==="; git --no-pager dif
+
+[THINKING] Looking at the git history, HEAD is currently in a failing state for the sys module with a compilation error, while the previous commit had a passing verification. The current broken state was actually committed, so I need to trace back to understand what changed between the working and broken versions.
+
+The key difference appears to be the `#[verus_verify]` annotation on the impl block for Address in virt.rs. The passing commit likely didn't have this annotation, meaning the cast wasn't being verified. A later commit added `#[verus_verify]` as an attempted fix, but that's what actually broke the verification. So removing that annotation from the impl block is what will restore the passing state—which matches what I observed in the working tree at the start of this turn.
+
+Let me check the actual diff between the passing commit and HEAD to confirm that the verus_verify annotation is indeed the culprit.
+[RESULT ✓] bash: === diff PASS(d54fd253d) -> HEAD for virt.rs ===
+diff --git a/src/libs/sys/src/sys/mm/address/virt.rs b/src/libs/sys/src/sys/mm/address/virt.rs
+index 8634b431a..f7e173f34 100644
+--- a/src/libs/sys/src/sys/mm/address/virt.rs
++++ b/src/libs/sys/src/sys/mm/address/virt.rs
+@@ -164,6 +164,7 @@ impl Virtu...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+**Root cause found.** The git history proves it:
+- `d54fd253d` (PASS, sys 6 verified): `impl Address for VirtualAddress` had **no** `#[verus_verify]`.
+- HEAD (FAIL): a prior attempt **added** `#[verus_verify]` to that block, which breaks `make verify-sys` because the sibling `as_ptr`/`as_mut_ptr` methods use `usize as *const u8` int-to-pointer casts that Verus cannot translate.
+
+This is a genuine Verus limitation: Verus requires the *whole* trait impl to be verified together, but two sibling methods are unverifiable. So `into_raw_value` cannot be verified in `sys` without `external_body` on the pointer methods (which would *expand* the TCB, not shrink it). This is exactly the reviewer's sanctioned escape-hatch case.
+
+My fix: (1) revert the regression that breaks `verify-sys`, (2) keep the `assume_specification` and document it in `tcb-allowed.md` with the isolated reproducer.
+[TOOL] report_intent: Fixing verify-sys regression
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I've pinpointed the exact issue: removing the `#[verus_verify]` attribute from the impl block for `Address` on `VirtualAddress` fixes the verification failure. The commit without that attribute passes cleanly, but adding it back causes an int-to-ptr cast error that breaks the sys verification. This is clearly a regression introduced by that annotation.
+
+My plan is to remove that attribute, confirm `make verify-sys` passes again, then document the `assume_specification` for `into_raw_value` in the tcb-allowed.md escape hatch with a reproducer showing why the cast can't be verified under the whole-impl rule. This satisfies the reviewer's requirement while fixing the pre-existing regression.
+
+I'm also considering whether marking `as_ptr` and `as_mut_ptr` with `external_body` instead would let me verify `into_raw_value` directly, but that trades one assumption for two external bodies plus proof work—not a net improvement, so the escape hatch is the right call.
+
+I need to remove the `#[verus_verify]` attribute that's breaking the verify-sys build, which is clearly a regression. The reviewer authorized touching virt.rs for this work, so that's within scope. Then I'll document the `assume_specification` in tcb-allowed.md and update the note in phys.spec.rs to reference it.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-sys 2>&1 | grep -iE "Exit code|error|cheating detected|verified

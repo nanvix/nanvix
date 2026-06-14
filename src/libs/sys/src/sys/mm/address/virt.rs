@@ -164,7 +164,15 @@ impl VirtualAddress {
     }
 }
 
-#[verus_verify]
+// NOTE: This `impl Address for VirtualAddress` block is intentionally NOT annotated
+// `#[verus_verify]`. Verus requires an entire trait impl to be verified as a unit
+// ("In order to verify any items of this trait impl, the entire impl must be verified"),
+// but the sibling `as_ptr` / `as_mut_ptr` methods perform `usize as *const u8` /
+// `usize as *mut u8` int-to-pointer casts, which Verus does not support
+// ("Verus does not support this cast: `usize` to `*const u8`"). Annotating the block
+// therefore breaks `make verify-sys` (see verus-ai-logs/tcb-allowed.md). Consequently
+// `into_raw_value`'s contract is supplied to kernel callers via the documented
+// `assume_specification` in `phys.spec.rs` rather than verified here.
 impl Address for VirtualAddress {
     ///
     /// # Description
