@@ -405,3 +405,21 @@ All 6 verified, 0 errors, 0 admit, 0 assume. The 2 `external_body` are exactly t
 [RESULT ✓] bash: - lib.rs:286 alloc: external_body
     - lib.rs:367 alloc_as: external_body
 <shellId: 12 completed with exit code 0>
+[RESULT ✓] bash: VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs/build/targets/x86-kernel.json" \
+/home/ruize/na...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Full `make verify` (kernel) passes: 76 verified, 0 errors. Let me confirm `make verify` scope includes the lib crates and there's no regression in other libs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '/^verify:/,/^$/p' Makefile | head -20
+
+[THINKING] The `make verify` command ran successfully on the kernel crate with 76 verified items and no errors, though 36 items are still in admit status from modules not yet in scope. I'm realizing the bump-allocator is a separate library crate, so I need to check whether the verify target in the Makefile actually covers all modules or just the kernel crate.
+[RESULT ✓] bash: verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "VERUS_CRATES" Makefile | head; echo "---full verify run summary---"; make ve
