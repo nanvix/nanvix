@@ -156,3 +156,263 @@ Turn 0
 7. // The seven flag projections shared wi...
 [RESULT ✓] view: 1. verus! { } // verus!
 2. 
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null; echo "=== COVERAG
+[TOOL] bash: cd /home/ruize/nanvix-phy && find verus-ai-logs/nanvix-phys-arch-x86-pte -type f 2>/dev/null | head -50; echo "==="; ls 
+
+[THINKING] I need to gather more context by looking at several referenced files—the cheating details, coverage verification status, and caller analysis—along with checking what's in the verus-ai-logs directory and understanding the spec phase context. The checklist points to multiple files I need to locate and examine.
+[RESULT ✓] bash: - x86/mem/paging/table.proof.rs:8 lemma_entry_roundtrip: admit
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+=== COVERAGE UNVERIFIED (pte) ===
+<shellId: 1 completed with exit code 1>
+[RESULT ✓] bash: verus-ai-logs/nanvix-phys-arch-x86-pte/verification-plan.json
+verus-ai-logs/nanvix-phys-arch-x86-pte/pipeline.log
+verus-ai-logs/nanvix-phys-arch-x86-pte/pipeline_state.json
+verus-ai-logs/nanvix-phys-arch-x86-pte/body_removed_source.rs
+verus-ai-logs/nanvix-phys-arch-x86-pte/caller-analysis/prover-cla...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pte/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pte/view_design.md
+
+[THINKING] I need to gather the key files for this verification task—the caller analysis, view design, and verification plan to understand the scope, then locate the placeholder files and command specifications that will be needed.
+[RESULT ✓] view: 1. # View Design: `arch::x86::mem::paging::pte` (Page Table Entry)
+2. 
+3. In-scope (verification-order) targets — the **only** functions this View must
+4. serve, and the only ones any later phase may annotate:
+5. 
+6. - `PageTableEntryFlags::new`
+7. - `PageTableEntry::new`
+8. - `PageTableEntry::is_pr...
+[RESULT ✓] view: 1. # Caller Analysis: `arch::x86::mem::paging::pte`
+2. 
+3. ## Script Output
+4. 
+5. Source file: `src/libs/arch/src/x86/mem/paging/pte.rs`
+6. Script: `scripts/find_callers_lsp.py` (rust-analyzer LSP), crate `arch`.
+7. 
+8. The LSP run reported **0 external callers** for *every* public function. This i...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls scripts/ | grep -iE "coverage|drift|caller|spec" ; echo "=== plan ==="; head -60 verus-a
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "spec_drift\|fn_coverage\|spec-completeness\|spec_completeness" scripts/ verus-ai-
+
+[THINKING] I'm checking the verification-plan.json to understand the scope and tools involved, along with reviewing the spec-drift command and build configuration. I'm also looking at fn_coverage.py and comparing the specification against the actual implementation. I notice a discrepancy between what view_design.md specifies for the `PageTableEntry::inv()` invariant and what's currently in pte.spec.rs.
+
+The spec file uses `self@.frame` and omits the `self.flags.inv()` check, but since that evaluates to true anyway, the implementations are functionally equivalent. The view_design also lists some functions as defined locally, but they're actually imported from the paging module—a reasonable adaptation. I'm verifying that all four in-scope functions have proper specifications with ensures clauses, which they do. Now I need to run fn_coverage.py and check the spec drift command to see what else needs attention.
+[RESULT ✓] bash: === plan ===
+{
+  "target": "src/kernel/src/mm/phys/frame.rs",
+  "entries": [
+    "src/kernel/src/mm/phys/frame.rs:Inner::alloc",
+    "src/kernel/src/mm/phys/frame.rs:Inner::alloc_contiguous",
+    "src/kernel/src/mm/phys/frame.rs:Inner::free",
+    "src/kernel/src/mm/phys/frame.rs:Inner::share",
+    "...
+[RESULT ✓] bash: === find fn_coverage ===
+/mnt/shared/verus-ai-improve4/scripts/fn_coverage.py
+/mnt/shared/verus-ai-improve5-argus-exp2/scripts/fn_coverage.py
+/mnt/shared/view-design-exp/kheap-worker7-clean/scripts/fn_coverage.py
+/mnt/shared/verus-ai-improve5-kheap-claw/scripts/fn_coverage.py
+/mnt/shared/kheap-mas-e...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/scripts/ | grep -iE "coverage|drift"; echo "=== fn_coverage help ==="; cd /home/rui
+
+[THINKING] I need to locate fn_coverage.py and spec_drift.py in the verus-ai directory at /home/ruize/verus-ai-exp/verus-ai and execute them.
+[RESULT ✓] bash: fn_coverage.py
+refinement_coverage.py
+spec_drift.py
+=== fn_coverage help ===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterp...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/libs/arch/src/x86/mem/
+
+[THINKING] I'm realizing that pte.rs serves as both the source and the annotated file here, so I should run the coverage script on it against itself to identify which functions have contracts. Let me execute it and see what happens.
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/libs/arch/src/x86/mem/paging/pte.rs`
+- **Verus file:** `src/libs/arch/src/x86/mem/paging/pte.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy/src/libs/arch/src/x86`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Source e...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py --help 2>&1 | head -40
+
+[THINKING] The coverage tool isn't directly reporting the contract count for my in-scope functions, but the verify-arch output showed 18 out of 525 exec functions have contracts across the crate. Since I'm focusing on just the four target functions, I need to manually check each one in pte.rs to confirm they have requires or ensures clauses. The first function, `PageTableEntryFlags::new`, has an ensures specification that validates the result matches the spec function, so that's confirmed.
+
+Looking at the remaining three functions: `PageTableEntryFlags::is_present` has an ensures clause checking the result equals the present flag, `PageTableEntry::new` has ensures clauses for both the spec equivalence and invariant, and `PageTableEntry::is_present` has an ensures clause for the present flag check. All four functions have contract specifications, which is what I need. Now I should run the spec_drift.py script to see what it reports.
+[RESULT ✓] bash: usage: spec_drift.py [-h] {snapshot,diff,check,git-diff} ...
+
+Spec drift detector for Verus verification.
+
+positional arguments:
+  {snapshot,diff,check,git-diff}
+    snapshot            Extract spec snapshot from files
+    diff                Compare two snapshots
+    check               Check spec ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff --help 2>&1 | head
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager status --short src/libs/arch/src/x86/mem/paging/ ; echo "=== log ==="; git -
+[RESULT ✓] bash: === log ===
+4fa1ae7ab [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, admit=1 external_body=2 cfg_gate=4)
+0d057372d [verus-ai] specification scaffold END: arch-x86-pte
+36fbe1a2b [verus-ai] specification prover END: arch-x86-pte
+eec703a62 [verus] verify PASS (cheatin...
+[RESULT ✓] bash: usage: spec_drift.py git-diff [-h] --before BEFORE [--after AFTER]
+                              [--file-stem FILE_STEM] [-o OUTPUT] [--json]
+                              source
+
+positional arguments:
+  source                Source file path (relative to repo root)
+
+options:
+  -h, --help           ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check --help 2>&1 | head -3
+
+[THINKING] The working tree is clean, and the specification was committed at 0d057372d. Now I'm running a spec_drift check to see if any previously-shipped specs have been weakened, particularly comparing the new pte.spec.rs against the assume_specification placeholders in identity_map.spec.rs and other in-module specs.
+[RESULT ✓] bash: usage: spec_drift.py check [-h] [--phase PHASE] [--logs-dir LOGS_DIR]
+                           [--before BEFORE] [--after AFTER] [-o OUTPUT]
+                           [--json]
+                           module
+
+positional arguments:
+  module                Module name (e.g. volume_impl)
+
+options:...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check pte --logs-dir verus-
+[RESULT ✓] bash: Error: pipeline_state.json not found for module 'pte'
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/nanvix-phys-arch-x86-pte/pipeline_state.json 2>/dev/null | head -40
+[RESULT ✓] bash: {
+  "module_name": "arch-x86-pte",
+  "log_name": "nanvix-phys-arch-x86-pte",
+  "source_path": "/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pte.rs",
+  "current_phase": "specification",
+  "current_phase_idx": 2,
+  "completed_phases": [
+    "caller-analysis",
+    "view-design"
+  ],
+  "phase...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check arch-x86-pte --logs-d
+[RESULT ✓] bash: Module:   arch-x86-pte
+Phase:    specification
+Source:   /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pte.rs
+Baseline: 2462d3636ab1
+Current:  HEAD
+
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "admit|assume|external_body|trusted|assume_specification" src/libs/arch/src/x86/me
+
+[THINKING] Checking the cheating patterns in the PTE module specifically—the verification shows a few violations scattered across the table proofs but none actually in the PTE files themselves, so I should grep to confirm they're not hiding elsewhere.
+[RESULT ✓] bash: exit: 1
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-arch-x86-pte/specification/ ; echo "=== bugs files anywhere ==
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat .github/skills/build/SKILL.md 2>/dev/null | grep -iE "z build|cargo build|./z|build" | 
+
+[THINKING] I'm verifying that the pte module doesn't have any cheating patterns—the `admit` and `external_body` declarations are in the `table` module, not here, so they're outside scope. Now I'm checking for `assume_specification` in workspace-internal code and loop invariants.
+
+Since pte has no loops, I can move on to verifying the build. The checklist requires running `verus_cmd` and `build_cmd`—`make verify-arch` already passed with exit code 0, which verifies all modules in the arch crate and covers cross-module regression. Now I'm examining the more subtle checklist items like ensuring there are no tautological ensures (specs should be concrete, not just `Err(_) => true`) and checking whether any ensures are subsumed by others.
+
+For `PageTableEntry::new`, the ensures include both the spec equation and `result.inv()`. While the invariant might be derivable from the FrameNumber type invariant of the frame argument, explicitly stating `result.inv()` is standard practice and necessary for callers. The error paths are vacuous since both constructors are infallible and `is_present` returns a bool. View consistency checks out—the implementation uses `self@.frame` equivalently to what the view design expects, and verification passed, so the specs and implementation align properly.
+
+Moving through the remaining checklist: specs are written for caller expectations using View projections and matching spec functions; trait obligations like `from_raw`/`raw` are boundary concerns outside scope; no `assume_specification` appears in the workspace-internal code; and spec completeness is solid across all four in-scope functions with no nondeterminism. For caller coverage, `PageTableEntryFlags::new` ensures the result matches `spec_pte_flags_new` with all seven flags recorded, and `is_present` returns the correct boolean based on the present parameter. `PageTableEntry::new` similarly ensures the result equation holds with flags and frame matching the inputs, which callers can verify through the individual getter specs.
+
+Now I'm checking whether `result.inv()` is derivable from the ensures clause for `PageTableEntry::new` — the invariant requires `0 <= frame <= spec_max`, and since FrameNumber has a type invariant guaranteeing the frame value stays within bounds, the ensures clause combined with that type invariant should cover it. I need to verify the bugs file and run the build to confirm everything compiles cleanly.
+[RESULT ✓] bash: dialogue
+dialogue-reviewer-t001-claude-20260614-114717.jsonl
+dialogue-reviewer-t001-claude-20260614-114717.txt
+prover-claude-20260614-114221.jsonl
+prover-claude-20260614-114221.txt
+=== bugs files anywhere ===
+=== check spec prover txt tail for bug mentions ===
+42:- **bug-reporting** — use for any di...
+[RESULT ✓] bash: name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+# Build Nanvix
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system operation...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-arch-x86-pte/bugs.md 2>&1; echo "=== run build ==="; ./z build
+
+[THINKING] The spec prover confirms no bugs exist and all 76 verifications passed with a successful kernel build. I'm considering running the build myself to double-check, though the verification step already compiled the architecture code, so I need to determine which build command makes sense to run.
+[RESULT ✓] bash: ls: cannot access 'verus-ai-logs/nanvix-phys-arch-x86-pte/bugs.md': No such file or directory
+=== run build ===
+	/home/ruize/nanvix-phy/bin/vfs-bench-nostd.elf\;vfs-bench-nostd
+mkimage: adding '/home/ruize/nanvix-phy/bin/procd.elf' (4029876 bytes, cmdline='procd')
+mkimage: adding '/home/ruize/nanvix...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -25
+
+[THINKING] The build completed successfully. Now I'm running a full cross-module regression check with `make verify` to ensure all kernel modules still pass verification — the prover reported 76 verified modules with no errors, though I'm considering whether running the full verification is necessary given that the architecture-specific modules already passed.
