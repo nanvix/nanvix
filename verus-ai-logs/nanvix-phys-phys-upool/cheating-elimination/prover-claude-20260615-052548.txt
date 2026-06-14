@@ -630,3 +630,21 @@ All 3 remaining cfg gates in upool.rs target `include!`/`use` (excluded from the
 [TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/mm/phys/upool.rs && timeout 1800 make verify-kernel MODULE=mm::phys::u
 
 [THINKING] The three remaining cfg gates in upool.rs are all excluded from the count—two include! macros on lines 9 and 11, plus a use statement on line 20—so the module's cfg_gate total should be zero. I'm running the verification again to make sure verus still processes the upool module correctly and that the cheating count reflects this.
+[RESULT ✓] bash: /home/ruize/nanvix-phy/scripts/verify.sh --crate kernel --module mm::phys::upool --log-dir verus-ai-logs/verify-kernel
+note: verifying module mm::phys::upool
+verification results:: 8 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+  ✅ No cheating detected in module mm::phys::u...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Module status is now **CLEAN** — "No cheating detected in module mm::phys::upool", 8/8 verified, and global cfg_gate dropped 10→9. Let me confirm AST consistency still holds and run the full-crate verification for regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref verus-ai/ph
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 2400 make verify 2>&1 | tail -25
+
+[THINKING] The module verification for mm::phys::upool came back clean with no cheating detected, and the global cfg_gate count dropped from 10 to 9 after eliminating the module's single gate. The difference between the 8 verified items now versus the 19 from earlier is because the module-scoped verification only checks that specific module rather than the full codebase.
+
+Now I need to run AST consistency to confirm the View move didn't break anything, then run the full verification suite and check the broader mm::phys module to ensure upool doesn't introduce any regressions.
+[RESULT ✓] bash: ✅ Consistent: 8 functions, 2 structs match.
+<shellId: 29 completed with exit code 0>
