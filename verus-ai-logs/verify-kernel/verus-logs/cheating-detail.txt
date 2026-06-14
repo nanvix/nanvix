@@ -18,7 +18,6 @@
     - mm/phys/frame.rs:826 free: admit
     - mm/phys/frame.rs:868 book: admit
     - mm/phys/frame.rs:889 alloc_range: admit
-    - mm/phys/frame.spec.rs:24 ExFrameNumber (struct): external_type_spec
     - mm/phys/kframe.rs:94 new: external_body
     - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
     - mm/phys/manager.proof.rs:21 lemma_free_count_bounded: admit
