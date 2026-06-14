@@ -217,16 +217,6 @@ impl PageAligned<PhysicalAddress> {
 
 verus! {
 
-use crate::hal::mem::spec_page_size;
-
-impl<T: Address> PageAligned<T>
-{
-    pub open spec fn inv(&self) -> bool
-    {
-        self@ % spec_page_size() == 0
-    }
-}
-
 impl<T: Address> View for PageAligned<T>
 {
     type V = int;
