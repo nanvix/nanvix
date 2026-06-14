@@ -483,3 +483,60 @@ AST consistency: 0 mismatches. Now re-run module verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 |
 
 [THINKING] The AST checks are all consistent, which confirms the cfg-gate removal didn't impact the executable AST since that code gets stripped during hashing anyway. Now I need to re-run the module verification to make sure everything still passes with cfg_gate set to 0, and then do a normal build to check for any regressions.
+[RESULT ✓] bash: === Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::address::frame.
+  Global: assume=0 external_body=11 admit=29 trusted=0 cfg_gate=14
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Fun...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Module is **CLEAN** — 6 verified, 0 errors, no cheating. Now confirm the normal (non-ghost) build still compiles with the ungated `verus!` block.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -nE "^build:|^all:|cargo build|build-kernel|^kernel:" Makefile | head
+
+[THINKING] The module verification came back clean with no issues detected, and the global configuration gate count dropped as expected. Now I need to run a normal kernel build to make sure the ungated verus block compiles without problems.
+[RESULT ✓] bash: 411:all: all-nanvix
+916:# otherwise spawn one `cargo build -p <pkg>` per bundled binary, which adds significant
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '905,945p' Makefile
+[RESULT ✓] bash: # under cmd.exe-style argument passing) when absolute paths are long, truncating arguments
+# mid-path and producing 'invalid entry' errors from mkimage.
+STANDALONE_WITH_VFS_INITRDS := $(STANDALONE_TEST_BINARIES:%=$(BINARIES_DIR)/%.initrd)
+STANDALONE_NO_VFS_INITRDS   := $(STANDALONE_NO_VFS_BINARIES:%...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -nE "KERNEL_RUST_FLAGS|KERNEL_CARGO_TARGET|KERNEL_CARGO_FLAGS|KERNEL_PAC
+
+[THINKING] I'm thinking through a simpler approach—instead of building the full kernel, I can just run a cargo check on the kernel crate without verus to verify the ungated verus! block compiles correctly. I need to find the right cargo flags and target configuration the kernel uses.
+[RESULT ✓] bash: 218:export KERNEL_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
+221:export KERNEL_CARGO_FLAGS := -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec
+222:export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel; RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dyn
+[RESULT ✓] bash: Compiling kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 11.08s
+<shellId: build1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Normal build passes. Now run full-crate `make verify-kernel` to confirm 0 verification errors (global cheating in other modules is pre-existing/out-of-scope).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1800 make verify-kernel 2>&1 | sed -n '/=== Results ===/,$p'
+
+[THINKING] The normal kernel build succeeded with the ungated verus! block, confirming the change is semantically safe. Now I need to run the full kernel verification to check for regressions in the frame module, then run the complete crate verification—though I expect some pre-existing admits in other modules that are out of scope for this task.
