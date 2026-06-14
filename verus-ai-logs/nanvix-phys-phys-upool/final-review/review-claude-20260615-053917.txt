@@ -335,3 +335,140 @@ Looking at the actual ground truth for upool.rs, the verification counts show ze
 [RESULT ✓] bash: aad917836 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, external_body=25 cfg_gate=9)
 a0a9180fb [verus] verify PASS (cheating detected): bump-allocator::all (cached (no recompilation), —, external_body=2)
 d8b3b4c89 [verus] verify PASS (cheating detected): nanvix-...
+[RESULT ✓] bash: cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::phys:
+    ⚠️  external_body: 25
+    ⚠️  cfg-gated exec code: 3
+  Affected functions:
+    - frame.rs:137 alloc: external_body
+    - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Verification **passes (exit 0)**. All 25 external_body / 9 cfg_gate are in frame.rs/manager.rs/mod.rs (base branch) — **none in upool.rs**. Notably `UserFrame::drop` is NOT external_body anymore. Let me confirm coverage details for upool and check the diff vs base.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== fn_coverage scoped to upool ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scr
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== diff of upool.rs vs base branch verus-ai/phys-manager ===" && git --no-pager diff
+
+[THINKING] The verification passes for the mm::phys module, and the cheating detection shows external_body references concentrated in frame.rs, manager.rs, and the mod files—nothing in upool.rs itself. What's interesting is that `UserFrame::drop` got eliminated from the external_body list during the cheating-elimination phase, which suggests the analysis is working correctly to filter out false positives.
+
+Now I'm checking whether all the detected external_body references are actually listed in tcb-allowed.md. The task requires every external_body to be pre-approved, and I'm seeing some discrepancies—like `alloc_contiguous` in frame.rs appears in the cheating detection but I need to verify it's in the allowed list.
+
+That said, these external_body references in frame.rs, manager.rs, and mod.rs are all pre-existing from the base branch, not introduced by the upool work itself. The real TCB compliance question for this review is whether upool.rs adds any new external_body—and it doesn't. The verification passes, and upool.rs has zero external_body, zero admits, zero assumes. The 25 external_body and 9 cfg_gate references are all inherited from earlier modules.
+
+Looking at coverage now: 32 out of 44 exec functions have contracts, leaving 12 unverified functions like `instance`, `alloc_contiguous`, `free_count`, `new`, `base`, `clear`, `deref`, `deref_mut`, `drop`, `get_mut`, and the test function.
+
+I'm noticing `new` and `drop` appear in the unverified list, which is odd since `Upool::new` has `#[verus_verify]` and `UserFrame::new` and `UserFrame::drop` both have `#[verus_spec]` with ensures clauses. The coverage tool might not be detecting contracts on Drop implementations or functions with only ensures but no requires, or these unverified entries could be from the other modules entirely—frame.rs, kframe.rs, manager.rs—which are out of scope for this upool review.
+[RESULT ✓] bash: === diff of upool.rs vs base branch verus-ai/phys-manager ===
+diff --git a/src/kernel/src/mm/phys/upool.proof.rs b/src/kernel/src/mm/phys/upool.proof.rs
+new file mode 100644
+index 000000000..6c2f998f2
+--- /dev/null
++++ b/src/kernel/src/mm/phys/upool.proof.rs
+--- stat ---
+ src/kernel/src/mm/phys/fram...
+[RESULT ✓] bash: === fn_coverage scoped to upool ===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/kernel/src/mm/phys/upo
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== frame.rs diff vs base ===" && git --no-pager diff verus-ai/phys-manager -- src/ke
+
+[THINKING] Looking at the diff, I see changes across several files including a new proof module and spec file, but frame.rs shows 77 additions which seems outside the scope of the task. Let me investigate what actually changed in frame.rs since that wasn't supposed to be modified.
+
+The additions to frame.rs are likely the spec contracts for the frame shim functions (alloc, free, share, refcount) that upool depends on — these are documented in tcb-allowed.md as allowed external specs added specifically to support upool's requirements. I should verify the frame.rs diff to confirm it's only adding specs to those shims and not changing any logic.
+[RESULT ✓] bash: === frame.rs diff vs base ===
+diff --git a/src/kernel/src/mm/phys/frame.rs b/src/kernel/src/mm/phys/frame.rs
+index 2ee575a77..8c21657fe 100644
+--- a/src/kernel/src/mm/phys/frame.rs
++++ b/src/kernel/src/mm/phys/frame.rs
+@@ -707,6 +707,27 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Erro...
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/kernel/src/mm/phys/upool.rs`
+- **Verus file:** `src/kernel/src/mm/phys/upool.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy/src/kernel/src`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Source exec fns | 7 |
+| Verus e...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+upool's only changes to out-of-scope code are `external_body`+contract additions to the four `frame::{alloc,free,share,refcount}` shims — all listed in tcb-allowed.md. upool.rs itself has zero external_body, and `drop` verifies without it (making the tcb-allowed/bugs.md drop entries stale). Let me run spec_drift, build, and full verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== spec_drift upool.rs vs HEAD ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scr
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 make build 2>&1 | tail -30
+
+[THINKING] The frame.rs changes are adding verification contracts to four shim functions—`alloc`, `free`, `share`, and `refcount`—using `#[verus_verify(external_body)]` and `#[verus_spec(...)]` annotations, while keeping their implementations unchanged since they just delegate to the instance methods. These are the exact functions listed in the TCB allowlist. So the upool work itself introduces zero external_body functions, and all the frame shims it relies on are already listed in tcb-allowed.md — that's a clean pass on TCB compliance. But I'm noticing that tcb-allowed.md and bugs.md both mention UserFrame::drop as external_body, yet the current drop verifies without that annotation. The verification passed at module level with zero external_body admits, which means the cheating-elimination phase must have restructured drop to avoid needing external_body. That's actually good news for the code, but it leaves those documentation entries stale — they're describing a constraint that no longer applies. I need to run the full workspace verification and build checks for cross-module regression, plus the spec_drift script. Let me kick off `make build` first for quicker feedback, then run `make verify` across all modules, and execute spec_drift in parallel.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: build completed with exit code 0>
+[RESULT ✓] bash: === spec_drift upool.rs vs HEAD ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+=...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+No spec weakening (drift vs HEAD = 0; vs base only *additions*/strengthened requires, since base had no specs). Build is up-to-date. Let me read the caller analysis for my own reconciliation, then launch the full `make verify` and the two review sub-agents concurrently.
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/caller_analysis.md
+
+[THINKING] The contract analysis shows no drift against HEAD, and the changes against the base branch are acceptable since we're adding preconditions to previously unspecified functions—this is a strengthening, not a weakening. The build target appears to be cached, so I should investigate the Makefile to understand why it's reporting nothing to do.
+
+Actually, the verify-kernel already compiled everything successfully under Verus, so the build being a no-op is fine. Rather than get stuck on that, I should run the full `make verify` across the workspace to check for cross-module regressions, though the git log shows all modules are already cached as PASS. I'll kick off the full verification asynchronously while preparing the sub-agent prompts, making sure they stick to static analysis and avoid running heavy commands that could contend with the build lock.
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::upool`
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-phys-upool/find_callers_output.md`
+5. (generated by `scripts/find_callers_lsp.py`)
+6. 
+7. - Crate: `kernel` (intra-crate analysis only; no external crate dependents).
+8. - 8 exec functions in scope, al...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+I have full ground truth. Now launching the full `make verify` (cross-module regression) and the two independent review sub-agents concurrently. Sub-agents will do static analysis (no heavy `make` to avoid cargo-lock contention with my central run).
+[TOOL] report_intent: Running verify and review agents
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify 2>&1 | tail -40
+
+[THINKING] I'm noticing a critical gap between what callers expect from `UserFrame::share` and what the current spec actually guarantees. Callers assume the refcount increments by one on success and the parent remains untouched on failure, but the spec doesn't explicitly state the refcount increment—it only describes the postconditions around handle equality and frame allocation, which doesn't fully capture the reference counting semantics that bugs.md hints at.
+
+More importantly, both `share` and `alloc` have `Err(_) => true` in their ensures clauses, which the checklist flags as potentially tautological. The refcount spec's error arm is meaningful (`!allocated_frames.contains(self@)`), so why can't `share` say something similar? The honest answer is that `phys_view()` is a single fixed value with no `old()` to compare against, making "unchanged on error" inexpressible—but this raises a judgment call about whether `Err(_) => true` is genuinely honest or just subsumed by the inability to express state preservation. The error paths for alloc and share genuinely can't express anything more meaningful than `true` given the single-state constraint — alloc fails when no frames exist (the absent frame has no address to reference), and share can fail even when the frame is allocated (refcount overflow), so neither can honestly claim a specific precondition. I'll flag this as acceptable-with-justification rather than a blocker, since it aligns with the established module conventions and reflects the actual limitation. Now I'm spinning up the verification: running the full test suite to check for cross-module regressions, and launching two independent review sub-agents in the background to do static analysis, spec reconciliation, and caller coverage without running heavy build commands to avoid contention.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: <command started in background with shellId: verifyall>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
