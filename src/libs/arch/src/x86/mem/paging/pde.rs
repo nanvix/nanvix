@@ -79,6 +79,19 @@ impl PageDirectoryEntryFlags {
     ///
     /// A [`PageDirectoryEntryFlags`].
     ///
+    #[verus_spec(result =>
+        ensures
+            result@ == spec_pde_flags_new(
+                present,
+                read_write,
+                user_supervisor,
+                page_write_through,
+                page_cache_disable,
+                accessed,
+                dirty,
+                page_size,
+            ),
+    )]
     pub fn new(
         present: PresentFlag,
         read_write: ReadWriteFlag,
@@ -111,6 +124,9 @@ impl PageDirectoryEntryFlags {
     /// `true` if the present flag is set, `false` otherwise.
     ///
     #[inline(always)]
+    #[verus_spec(result =>
+        ensures result == self@.present,
+    )]
     pub fn is_present(&self) -> bool {
         matches!(self.present, PresentFlag::Present)
     }
@@ -285,7 +301,13 @@ impl PageDirectoryEntry {
     ///
     /// A [`PageDirectoryEntry`].
     ///
+    #[verus_spec(result =>
+        ensures
+            result@ == spec_pde_new(flags@, frame@),
+            result.inv(),
+    )]
     pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self {
+        proof! { use_type_invariant(frame); }
         Self { flags, frame }
     }
 
@@ -351,6 +373,9 @@ impl PageDirectoryEntry {
     /// `true`: If the target page directory entry is marked as present.
     /// `false`: Otherwise.
     ///
+    #[verus_spec(result =>
+        ensures result == self@.flags.present,
+    )]
     pub fn is_present(&self) -> bool {
         self.flags.is_present()
     }
@@ -377,7 +402,13 @@ impl PageDirectoryEntry {
     ///
     /// The physical address.
     ///
+    #[verus_spec(result =>
+        ensures
+            result as int == self@.frame * (crate::mem::FRAME_SIZE as int),
+            result as int % (crate::mem::FRAME_SIZE as int) == 0,
+    )]
     pub fn frame_address(&self) -> usize {
+        proof! { admit(); }
         self.frame.into_raw_value() << crate::mem::FRAME_SHIFT
     }
 

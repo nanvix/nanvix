@@ -1,0 +1,476 @@
+=== Copilot Session ===
+Timestamp: 2026-06-14T10:57:54.059602
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are adding formal specifications to /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs using Verus, in-place.
+Spec and proof files sit alongside the source file.
+
+== PROJECT CONTEXT ==
+
+File: `src/libs/arch/src/x86/mem/paging/pde.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`PageDirectoryEntry::new`, `PageDirectoryEntryFlags::new`, `PageDirectoryEntry::is_present`, `PageDirectoryEntryFlags::is_present`, `PageDirectoryEntry::frame_address`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+
+
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+
+
+
+Caller analysis: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/caller_analysis.md
+View design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/view_design.md
+Source file: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+Spec file:  /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.spec.rs
+Proof file: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.proof.rs
+Verus command: make verify-arch
+
+== SKILLS ==
+
+Follow strictly:
+- **spec-design** — MUST follow: primary methodology for this phase
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns
+- **verification-order** — MUST follow: write specs in dependency order
+- **spec-completeness** — SHOULD follow: determinism-based completeness check (best-effort)
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai/scripts/
+- Source directory: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai/vstd/
+
+== TASK ==
+
+**Planning**: Before writing any specs, read all functions in the module
+and plan the order to write specs (leaves first, callers last).
+
+If `/home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json` exists, use it as a starting point:
+```
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json     -m "YOUR_MODULE"
+```
+
+**Read the caller analysis and View design first.** Read /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/caller_analysis.md
+to understand what callers expect from each function — these expectations define
+the guarantees your specs must provide. If /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/view_design.md exists, use the
+View type defined there — do not redesign from scratch. If the file does not
+exist, design the View following the **view-design** skill.
+If you need to modify the View (e.g. add fields, adjust inv()), follow
+the **view-design** skill's principles and update /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/view_design.md accordingly.
+
+The project structure (spec/proof files, Cargo.toml) is already set up.
+Work in-place on:
+1. **/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.spec.rs** — View types, invariants, helper predicates,
+   spec transition functions. Every caller expectation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/caller_analysis.md
+   must map to at least one `requires`, `ensures`, `invariant`, or lemma signature.
+2. **/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.proof.rs** — Proof function signatures only
+   (requires/ensures). Leave bodies as `admit()` — proving phase fills them in.
+3. **/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs** — The primary work: add `#[verus_spec]` annotations
+   (requires/ensures) to every exec function. Also add cfg-gated includes.
+
+Follow the **spec-design** skill's Exec Binding Rules strictly.
+
+**Handling dependency functions:**
+- **Already verified** (has specs): reference the existing specs
+  directly — do not rewrite them.
+- **Not yet verified** (no specs): write a spec for it and mark the function
+  `external_body`. These will be eliminated when that module is verified later.
+
+Goal: meaningful specs covering every caller expectation from
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/caller_analysis.md and every View operation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/view_design.md.
+0 Verus errors (`admit()` in proof bodies is fine).
+
+**ULTIMATE GOAL**: The verification target is not just this module in isolation.
+The end goal is that `make verify` (all verified modules) passes with 0 errors.
+Existing ensures/requires clauses inherited from upstream modules are caller
+dependencies — they must not be weakened or removed. In this phase, proof bodies
+use `admit()`, so proving difficulty is not a factor — write the correct spec that
+describes what the function actually does, without concern for proof complexity.
+If an existing spec seems unsatisfiable, determine whether the spec is incorrect
+(it describes behavior the code cannot have) or the code is wrong (a code bug).
+Correct whichever is broken; do not weaken the guarantee.
+
+**Bug awareness**: If you encounter code that cannot have a correct spec
+(e.g., logic that is always wrong, impossible error paths, arithmetic that
+always overflows), follow the **bug-reporting** skill. For auto-fixable bugs
+(overflow, off-by-one, missing bounds check), fix them directly and record
+in /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/bugs.md. For complex bugs, record only — proving phase will validate.
+
+Run `make verify-arch` to confirm 0 errors.
+Then run `make verify` to ensure no regressions in other modules.
+Verify `make build` still works (dual compilation).
+
+
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by reading the key context files and the skills.
+[TOOL] report_intent: Reading context and skills
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/view_design.md
+
+[THINKING] I'm going to start by examining the source file, caller analysis, view design, and the relevant skills to understand the structure and dependencies.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. # Caller Analysis: `x86/mem/paging/pde.rs` (Page Directory Entry)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-arch-x86-pde/find_callers_output.md`
+5. 
+6. > **Note on script results:** the LSP script reported **0 external callers** for
+7. > every public function. This is a false neg...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. # View Design: `arch::x86::mem::paging::pde` (Page Directory Entry)
+2. 
+3. In-scope (verification-order) targets — the **only** functions this View must
+4. serve, and the only ones any later phase may annotate:
+5. 
+6. - `PageDirectoryEntryFlags::new`
+7. - `PageDirectoryEntry::new`
+8. - `PageDirec...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Now let me read the existing spec/proof files, the skills, and dependency specs.
+[TOOL] report_intent: Reading skills and dependency specs
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== pde.spec.rs ===" && cat src/libs/arch/src/x86/mem/paging/pde.spec.rs 2>/dev/null;
+[TOOL] skill: spec-design
+
+[THINKING] I'm reviewing the view specification and examining the proof files to understand the current state, then checking the relevant skills and dependency specs like FrameNumber and flag enums.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === pde.spec.rs ===
+verus! { } // verus!
+=== pde.proof.rs ===
+verus! { } // verus!
+=== ls paging dir ===
+total 72
+drwxrwxr-x 1 ruize ruize   178 Jun 14 10:52 .
+drwxrwxr-x 1 ruize ruize    74 Jun 14 08:54 ..
+-rw-rw-r-- 1 ruize ruize  8701 Jun  8 19:33 flags.rs
+drwxrwxr-x 1 ruize ruize    88 Jun 14 07...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+The Verus skills aren't in the skill tool. Let me find them on disk.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai 2>/dev/null && ls; echo "=== find skills ==="; find /home/ruize/verus-ai-exp -iname
+
+[THINKING] The skill tool doesn't include spec-design, so those skills must be defined elsewhere. I need to check the scripts directory mentioned in the task to locate them.
+[RESULT ✓] bash: EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.py
+docs
+guardrails.py
+logs
+prompts.py
+report.py
+run.py
+scripts
+talk
+target-systems
+tests
+tree-sitter-verus
+tree_sitter_compat.py
+utils.py
+verus
+verus-ai-logs
+verus-ai.toml.example
+vstd
+workflow.py
+=== find skills ===
+/...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills && for s in spec-design verus-constraints verification-order spec-compl
+[RESULT ✓] bash: Output too large to read at once (42.3 KB). Saved to: /tmp/copilot-tool-output-1781405896127-jlvsc1.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781405896127-jlvsc1.txt
+[RESULT ✓] view: File too large to read at once (42.3 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781405896127-jlvsc1.txt
+[RESULT ✓] view: 1. ######## spec-design ########
+2. ---
+3. name: spec-design
+4. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enf...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781405896127-jlvsc1.txt
+
+[THINKING] I need to review the rest of the spec-design skill along with the other related skills like verus-constraints, the Exec Binding Rules, and view-design references to get a fuller picture of how everything connects.
+[RESULT ✓] view: 320.    proof, or must they transform it first? If the latter, provide the
+321.    form the caller actually needs.
+322. 
+323. ---
+324. 
+325. ## Part 2: Spec Classification
+326. 
+327. Specifications fall into three categories with different ownership:
+328. 
+329. ### Internal
+330. 
+331. Specs that exi...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781405896127-jlvsc1.txt
+
+[THINKING] I need to examine the verus-constraints file more thoroughly, then cross-reference the related modules like table.spec.rs, table.rs, FrameNumber spec, flags.rs, and the mem module to understand the FRAME_SIZE and FRAME_SHIFT constants. I'm also looking at identity_map.spec.rs to see how the assume_specification placeholders work, and I'll review the skill file alongside its sibling files to identify the patterns I should follow.
+[RESULT ✓] view: 560. on loops, `verus! { }` blocks (for spec/proof fn in .spec.rs/.proof.rs),
+561. vstd imports (cfg-gated), ghost/tracked local variables (each must be
+562. used by at least one proof construct — assertion, invariant, or proof block),
+563. `Ghost<T>` / `Tracked<T>` struct fields (only when proof re...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Now let me study the sibling patterns and dependency specs.
+[TOOL] report_intent: Studying sibling and dependency specs
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging && echo "===== table.spec.rs =====" && cat table.spec.rs && e
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/flags.rs
+
+[THINKING] I'm checking the related files like table.spec.rs, table.rs, and table.proof.rs to understand the established patterns, and also looking at FrameNumber specs, flags.rs, the mem module for constants like FRAME_SIZE and FRAME_SHIFT, plus identity_map.spec.rs to get a complete picture of how these components fit together.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] bash: ===== table.spec.rs =====
+verus! {
+
+//==================================================================================================
+// TableIndex — a validated page-table slot number
+//==================================================================================================
+
+// A `Tabl...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Now let me read the FrameNumber spec, the mem module constants, and the identity_map.spec.rs placeholders.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame && echo "===== number.spec.rs =====" && cat number.spec
+
+[THINKING] I need to examine the FrameNumber spec to understand how `spec_max()` and `into_raw_value` work, along with their View implementations, and check the `mem` module for the FRAME_SIZE and FRAME_SHIFT constants. I should also look at the identity_map.spec.rs file to see what placeholders need to be filled in.
+[RESULT ✓] bash: ===== number.spec.rs =====
+verus! {
+
+//==================================================================================================
+// View
+//==================================================================================================
+
+impl View for FrameNumber {
+    type V = int;
+
+    /...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/arch/src && grep -rn "FRAME_SHIFT\|FRAME_SIZE\|MAX_ADDRESS\|PAGE_SHIFT\|pub const" me
+
+[THINKING] I need to check the `mem` module to find where FRAME_SIZE and FRAME_SHIFT are defined and verify if they're accessible from the spec.
+[RESULT ✓] bash: === find mem module ===
+./x86/mem/paging/frame/mod.rs
+./x86/mem/paging/mod.rs
+./x86/mem/mod.rs
+./x86_64/mem/mod.rs
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/arch/src && grep -rn "FRAME_SHIFT\|FRAME_SIZE\|MAX_ADDRESS\b" --include=*.rs | grep -
+[RESULT ✓] bash: x86/mem/paging/frame/number.rs:37:    pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+x86/mem/constants.rs:97:pub const MAX_ADDRESS: usize = usize::MAX;
+x86/mem/constants.rs:104:pub const FRAME_SHIFT: usize = PAGE_SHIFT;
+x86/mem/constants.rs:112:pub const FRAME_SIZE: usize = PAGE_SIZE...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Now let me check the kernel's identity_map.spec.rs placeholders and how the types are lifted.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "PageDirectoryEntry\|PageDirectoryEntryFlags\|ExPageDirectoryEntry" src/kernel/src
+
+[THINKING] I'm noticing the distinction between `FRAME_SHIFT` and `FRAME_SIZE` in the verification setup—`FRAME_SIZE` is marked with `#[verus_verify]` while `FRAME_SHIFT` isn't, and since they're related by `FRAME_SIZE == 1 << FRAME_SHIFT`, the spec can use the multiplication form while the exec code uses the bit shift operation.
+
+Looking at the `frame_address` function, the raw value gets shifted left by `FRAME_SHIFT` (which is 12), and the maximum value calculation shows this won't overflow since `(usize::MAX/4096 - 1)*4096` fits within `usize`. The postcondition matches up correctly with the spec's multiplication form.
+
+Now I need to verify how the `mem` module is accessible in the spec files—since `pde.rs` imports `crate::mem` and the spec files are included via `include!`, I should be using `crate::mem` to reference constants like `FRAME_SIZE`.
+[RESULT ✓] bash: 124:pub struct ExPageDirectoryEntry(PageDirectoryEntry);
+132:pub struct ExPageDirectoryEntryFlags(PageDirectoryEntryFlags);
+185:pub assume_specification[ PageDirectoryEntryFlags::new ](
+194:) -> PageDirectoryEntryFlags;
+196:pub assume_specification[ PageDirectoryEntry::new ](
+197:    flags: PageDire...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+[RESULT ✓] view: 110. 
+111. // NOTE: `TableEntry` (trait), `Table<E>`, `TableIndex`, `pd_index`, `pt_index`,
+112. // `Table::from_address`, `Table::read`, and `Table::write` now have real
+113. // `#[verus_spec]`/`#[verus_verify]` contracts in `arch::x86::mem::paging::table`.
+114. // Their former placeholder declarat...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Let me look at table.rs to mirror the exec annotation patterns and check the tcb-allowed list.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===== table.rs ====="; sed -n '1,120p' src/libs/arch/src/x86/mem/paging/table.rs; ech
+
+[THINKING] I need to add proper specifications to pde.rs to replace these placeholder assume_specifications that lack ensures clauses. The View design must match what's documented in view_design.md, and since the flag enums are lifted as external type specifications, I can use pattern matching like `is Present` directly in the spec context. Let me look at how exec annotations are structured in table.rs to understand the `#[verus_spec]` attribute pattern I should follow.
+[RESULT ✓] bash: ===== table.rs =====
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//======================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+I have enough understanding. Let me set up a todo list and write the spec file.
+[TOOL] sql: {'description': 'Track spec tasks', 'query': "INSERT INTO todos (id, title, desc
+
+[THINKING] I've confirmed that my in-scope functions don't need `external_body` since they're all pure constructors and queries with bodies that Verus can verify directly. Now I'm checking how `read`, `write`, and `from_address` are annotated in the rest of table.rs, particularly looking at the `#[verus_verify] impl` block patterns and how the View `inv()` and `use_type_invariant` are applied before moving on to examine pte.rs.
+
+I'm also verifying a couple of key details: whether the flag enums can use `is Present` syntax in spec context within the arch crate, and whether Verus will process them correctly even though they're not explicitly annotated with `#[verus_verify]`. The flag enums are simple C-like enums defined in flags.rs, and while Verus should handle `is` checks on them abstractly regardless of discriminant values, I need to confirm whether Verus processes unannotated items in the arch crate at all.
+
+Looking at how table.spec.rs references types like `TableEntry` and `PteWord` without external_type_specification, it seems plain crate types are visible to Verus specs. The discriminant expression `(1 << Self::SHIFT)` might be a concern, but since we only need the variant check for `is Present`, not the actual discriminant value, I'll proceed and let the verification step reveal any issues.
+
+Now I'm starting to design the spec files, beginning with pde.spec.rs.
+
+Defining flag projection helpers... Finishing the spec function for creating a new page directory entry, then defining the view structure that maps the entry to its flags and frame number. I'm checking the invariants — the frame must be within valid bounds and the flags must satisfy their own invariant. Since PageDirectoryEntryFlags has a trivial invariant, the real constraint comes from the FrameNumber's type invariant on the inner frame value.
+
+Now I'm thinking through whether PageDirectoryEntry itself needs a type_invariant attribute. The frame bound is already guaranteed by FrameNumber's own invariant, so technically we don't need to mark it. But the `inv()` function should still be referenced in the `new` constructor's ensures clause to make it meaningful — that way when we construct a new entry, we're asserting that the result satisfies the invariant. The proof will work because the input frame's type invariant provides the necessary bound.
+
+For the `frame_address` function, I'm working through the shift operation: `into_raw_value()` gives us both the value and the guarantee that it's within bounds, then we shift left by FRAME_SHIFT. The challenge is proving that this shift doesn't overflow and that the result equals the frame value times the frame size.
+
+I'm realizing that within the pde.rs module, I can access the closed view definition directly, so `self@.frame` and `self.frame@` are equivalent by definition. The spec signature just needs the ensures clause stating the result equals the frame times the frame size.
+
+For `is_present`, the exec function checks if the present flag matches the Present variant, and the ensures clause should state that the result equals the present field from the view. Since the view's present field is defined as checking whether the flag is Present, this aligns naturally.
+
+Writing the exec annotations... I'm debating whether to include the alignment clause in the frame_address postcondition. The modulo condition is technically derivable from the product form, so minimality suggests dropping it, but the design doc explicitly lists it as a key invariant for frame alignment. Since callers like verify_kernel_mappings don't strictly require it and Verus would need nonlinear arithmetic to derive it automatically, I'll follow the minimality principle and keep only the product-form ensure clause. I'm settling on including both the product form and alignment invariant since they're explicitly documented in the approved design and alignment is a genuine caller-facing guarantee, even if derivable. Let me verify the frame_address spec references are correct — `self@.frame` accesses the int field, and `crate::mem::FRAME_SIZE` is accessible in the spec as a verus-annotated const. For the proof module, no separate lemmas are needed since the caller expectations follow directly from the new function's ensures clause, so I can leave it as an empty verus block.
+
+Now I'm working through how to handle verification for the exec functions. For PageDirectoryEntryFlags::new, the body constructs Self with all eight fields, and the ensures clause should hold definitionally since the view expansion directly matches the spec function — Verus should prove this automatically without needing admit. For PageDirectoryEntry::new, I need to check whether the body similarly satisfies its ensures clause automatically or if I need to add a proof block.
+
+The key question is whether result.inv() in the ensures clause actually gets used by any caller, or if it's just a floating spec that's never consumed. If it's never required downstream, I might be able to simplify the ensures to avoid the extra proof obligation. I can't use `#[verifier::type_invariant]` on PageDirectoryEntry's inv because from_raw_value is out of scope and unannotated, so Verus would complain about it not establishing the invariant. Instead, I'll keep inv as a regular method and explicitly ensure result.inv() in new's contract, which requires calling use_type_invariant(frame) in the proof block. For frame_address, I need to prove that shifting the frame value by FRAME_SHIFT equals multiplying by FRAME_SIZE, but since that's a bit-vector arithmetic proof I can't easily establish right now, I'll add an admit() in a proof block to make it provable for the spec phase.
+
+Looking at which functions need proof help: flags::new should be definitional and auto-provable, pde::new needs use_type_invariant(frame) to discharge the invariant, flags::is_present should auto-prove since the matches! expansion should equate to the spec definition, and pde::is_present delegates to flags::is_present so it depends on that working.
+
+Only frame_address needs admit() for the shift-to-multiply proof. For robustness during the spec phase, I'll write them out and run verify-arch to see if any of the supposedly auto-provable ones actually fail.
+
+The proof.rs file can stay empty. On the enum front, Verus should handle the PresentFlag enum with its explicit discriminants fine — the values are simple (0 and 1), and Verus can evaluate the bit shifts. The question is whether Verus will even look at these enums when they're in flags.rs without #[verus_verify], but when pde.rs references them in specs, Verus needs access to their definitions.
+
+Actually, table.rs is already verified in the same crate, so if the flag enums caused parse errors under Verus, table verification would've already failed. Since it presumably works, the enums are fine. And since pde.rs imports them via `use crate::x86::mem::paging::flags::...`, and the spec file is included into pde.rs, I can reference PresentFlag directly in the spec without issues.
+
+For the View trait implementation, I need `vstd::prelude::*` which pde.rs already has. The view function will extract the flags and frame fields using their respective View implementations, and since both are in the same module, private field access is allowed. The invariant on PageDirectoryEntryFlags connects through self.flags.inv() in PDE::inv, which is referenced in the new function's ensures clause. Now I'm ready to write the spec file.
+[RESULT ✓] sql: 4 row(s) inserted. Last inserted row ID: 4.
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.spec.rs
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && printf '%s\n' 'verus! { } // verus!' | cat src/libs/arch/src/x86/mem/paging/pde.spec.rs; ec
+[RESULT ✓] bash: verus! { } // verus!
+(current content above)
+removed placeholder spec
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.spec.rs
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.spec.rs with 5460 characters
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+The proof file stays empty (no lemmas needed). Now let me annotate the exec functions.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] I can leave proof.rs as a minimal Verus module without any lemmas, then move on to adding annotations to the exec functions in pde.rs.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Now the `PageDirectoryEntry` methods:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Now let me run `make verify-arch`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | tail -40
