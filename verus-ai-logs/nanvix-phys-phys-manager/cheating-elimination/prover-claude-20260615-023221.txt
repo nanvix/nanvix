@@ -382,3 +382,86 @@ So I'm genuinely blocked here. The blocker is structural: a free-function alloca
 Actually, let me reconsider the `assume_specification` items too. There are three in manager.spec.rs for stdlib methods like `Result::and_then`, `Result::inspect_err`, and `Vec::capacity`. These aren't "cheating" in the admit sense—they're trusted stdlib contracts that were presumably approved during the spec phase. If vstd has shipped these specs since then, I could remove those `assume_specification` directives entirely.
 
 Let me start by running the baseline verification on the mm::phys module to see what the current state looks like.
+[RESULT ✓] bash: - frame.rs:675 instance: external_body
+    - frame.rs:713 init: external_body
+    - frame.rs:769 alloc: external_body
+    - frame.rs:799 alloc_contiguous: external_body
+    - frame.rs:820 free_count: external_body
+    - frame.rs:838 free: external_body
+    - frame.rs:880 book: external_body
+    - fr...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] The verification passes but the cheating scan flags issues across the whole kernel. I need to focus on just the manager module, which has 4 admits in manager.proof.rs. Let me pull the cheating details specific to the manager scope to understand what those admits are.
+
+Looking at the manager-scoped items: manager.proof.rs has 4 admits, manager.rs has some external_body declarations, and manager.spec.rs has assume_specification calls that don't appear to be flagged as cheating by the tool. So the real problem is those 4 admits in the proof file.
+
+Let me step back and reconsider whether there's actually a sound way to discharge these admits by re-examining the full contracts for frame::alloc and upool.alloc, and how the manager actually uses them—maybe I'm missing something about the manager view tie that would make this work.
+[RESULT ✓] view: 755. // Dependency contract for the manager layer: thin singleton wrapper around `Inner::alloc`.
+756. // `external_body` until the `frame` free-function layer is verified; the manager bridges the
+757. // returned address into its own abstract frame partition via a proof lemma.
+758. #[verus_verify(ex...
+[RESULT ✓] view: 215. ///
+216. /// Thin facade over the module-level [`frame`](super::frame) allocator. Exists as a distinct type
+217. /// so user-frame allocation has its own entry point ([`Upool::alloc`] returning [`UserFrame`]).
+218. ///
+219. #[derive(Debug)]
+220. #[verus_verify(external_body)]
+221. pub struct Up...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== reviewer t002 txt (tail) ===" && tail -80 verus-ai-logs/nanvix-phys-phys-ma
+
+[THINKING] The key difference is that `Upool::alloc` takes `&mut self` and its contract captures the state transition through that mutable reference, which is why the user bulk path can be proven. The kernel path uses a free function without access to `self`, so there's no way to express the required state transition—that's why the lemma can't be discharged.
+
+For `lemma_manager_attached`, the manager view is `self.upool@`, which is opaque since `Upool` is an external body, and `phys_view().frames` is also opaque. The only link between them is a ghost token that lives in the frame layer, which is out of scope. All four lemmas hit the same wall: they need state transitions threaded through `&mut self` methods, but the allocators are free functions or opaque singletons that can't be restructured without changing frame.rs signatures, which is off-limits.
+
+For `lemma_user_bulk_err_restored`, the user path mutates `self.upool@` through `self.upool.alloc()`, and on error the function clears the frames and returns. The contract requires `final(self)@ == old(self)@`, but in Verus's model, `self.upool@` stays in the post-alloc state because `clear()` doesn't reverse mutations and Drop isn't modeled. Even if Drop were modeled, `UserFrame::drop` calls the free-function `frame::free`, which doesn't touch `self.upool`, so it wouldn't restore the state anyway. The contract is actually stronger than what the exec can prove—the admit bridges a genuine Drop-semantics and free-function gap. Weakening the Err-arm contract would break the important guarantee for callers that no frames leak, so that's not an option.
+
+I'm now convinced these four admits are genuine proof gaps rooted in the ghost-token and Drop-model limitations that can't be resolved within the manager module's scope without either changing frame.rs signatures to thread a tracked token (out of scope) or adding unsound axioms (banned). Let me attempt removing each admit one at a time and capture the exact Verus errors as concrete evidence for the todo file.
+
+The core issue is that the kernel path calls `frame::alloc()` directly as a free function, bypassing any `&mut self` state that would allow Verus to attach a transition. The manager's view returns `self.upool@`, which works for the user path via `&mut self` threading, but the kernel path has no mechanism to express the frame allocation transition. These postconditions are fundamentally inexpressible without a ghost token threaded through frame::alloc, which is out of scope.
+
+I'll now remove the admits, collect the errors as evidence, restore them to keep verification working, then write the detailed analysis in verification_todo.md and determine whether this is a BLOCKER result.
+[RESULT ✓] bash: === reviewer t002 txt (tail) ===
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== gate present at 6465a2a13? ==="; git --no-pager show 6465a2a13:src/kernel/s
+
+[THINKING] So the verification automation was actually committing the broken states when I ran the kernel verification after my perl...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+The proving-phase reviewer independently reached the same conclusion. Let me genuinely attempt each admit and capture concrete Verus error evidence before documenting.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp src/kernel/src/mm/phys/manager.proof.rs /tmp/manager.proof.rs.bak && echo "backup 
+
+[THINKING] The independent reviewer reached the same conclusion I did—four admits are genuinely blocked by out-of-scope dependencies like the unverified frame.rs, the immutable phys_view() constant, and the ghost token that would require redesigning tracked-token views. So we're aligned that this is a blocker, but I want to make one more genuine attempt to see if any of these might actually be dischargeable.
+
+Let me try removing each admit and capture the concrete errors to confirm they're truly unprovable. I'll examine all four: the manager attachment lemma has opaque postconditions linking closed upool state to phys_view frames with no way to connect them; the kernel alloc lemmas require arbitrary FrameAllocView pre and post states with nothing linking them together; and the user bulk error lemma tries to equate an arbitrary opaque m@ with a pre state, which is impossible without a connection between them. All four have universally-quantified ensures that can't be satisfied given the constraints.
+[RESULT ✓] bash: backup made
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 - <<'PY'
+import re
+p='src/kernel/src/mm/phys/manager.proof.rs'
+s=open(p).read
+
+[THINKING] I'm reconsidering whether I can actually prove these lemmas with the contracts available. For `lemma_kernel_alloc_one`, there's no linking between the requires and postconditions, so it seems impossible. But let me think through `lemma_manager_attached` more carefully — could I establish that `m@ == phys_view().frames` by leveraging the manager's initialization contract that ensures `phys_view().manager_ready`, combined with what `frame::instance()` guarantees about the frame's state?
+
+The problem is that while Upool::new ensures the result is well-formed and Upool::alloc transitions the state, there's no contract that actually connects `upool@` to `phys_view().frames`. Without that connection, the lemma remains unprovable. I think the best approach now is to remove these four admits and see what errors surface.
+[RESULT ✓] bash: admits removed: 4
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|admit|fail|veri
