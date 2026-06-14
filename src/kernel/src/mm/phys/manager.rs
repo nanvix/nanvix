@@ -204,7 +204,6 @@ impl PhysMemoryManager {
         }
         if !frames.is_empty() {
             let reason: &str = "frames vector is not empty";
-            #[cfg(not(verus_keep_ghost))]
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
