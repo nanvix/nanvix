@@ -1,0 +1,77 @@
+Timestamp: 2026-06-15_02-30-33
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+8 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=17
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=5
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+error: requires not satisfied
+   --> src/kernel/src/mm/phys/mod.proof.rs:193:22
+    |
+193 |             requires spec_page_size() > 0, a == i * spec_page_size();
+    |                      ^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> src/kernel/src/mm/phys/mod.proof.rs:56:5
+   |
+56 |     assert forall|x: int| pre_f.refcounts.contains_key(x) implies pre_f.allocated_frames.contains(x) by {
+   |     ^^^^^^
+
+note:   trigger 1 of 1:
+  --> src/kernel/src/mm/phys/mod.proof.rs:56:67
+   |
+56 |     assert forall|x: int| pre_f.refcounts.contains_key(x) implies pre_f.allocated_frames.contains(x) by {
+   |                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> src/kernel/src/mm/phys/mod.proof.rs:64:5
+   |
+64 |     assert forall|a: int| frames.contains(a)
+   |     ^^^^^^
+
+note:   trigger 1 of 1:
+  --> src/kernel/src/mm/phys/mod.proof.rs:64:27
+   |
+64 |     assert forall|a: int| frames.contains(a)
+   |                           ^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+  --> src/kernel/src/mm/phys/mod.proof.rs:64:5
+   |
+64 |     assert forall|a: int| frames.contains(a)
+   |     ^^^^^^
+
+verification results:: 8 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

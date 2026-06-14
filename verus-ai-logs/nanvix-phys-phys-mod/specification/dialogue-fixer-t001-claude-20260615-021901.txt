@@ -421,3 +421,107 @@ Turn 24
 Turn 25
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|warning:|verified|sta
+[RESULT ✓] bash: verification results:: 8 verified, 0 errors (partial verification with `--verify-*`)
+  8 verified
+  0 errors
+  Exit code : 0
+    ⚠️  admit: 7
+    - mod.proof.rs:19 lemma_spec_initialize_establishes_inv: admit
+    - mod.proof.rs:36 lemma_spec_book_frame_preserves_inv: admit
+    - mod.proof.rs:57 lemm...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+`init` verifies with the strong postcondition. Now I must discharge the 7 admits. Let me study vstd's Map API for `union_prefer_right`:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -rn "union_prefer_right\|pub open spec fn insert\|pub open spec fn rem
+
+[THINKING] The `init` function is now verifying correctly with the real postcondition including the disjoint property — 8 verified with no errors. The remaining work is to replace the 7 admits with actual proofs. I'm going to rewrite the proof bodies in mod.proof.rs, starting with the simpler ones and working up in complexity. I need to pull in the right imports like Set and Map operations from the spec file.
+
+Writing proof bodies... Now I'm working through the proof that post.frames satisfies the well-formedness predicate by checking each of the six conjuncts. The key insight is that addr comes from the free set (so it's aligned), and I need to show that after inserting it into allocated and removing it from free, all the invariants still hold—particularly the biconditional linking allocated frames to refcount entries, and ensuring the two frame sets remain disjoint. I'm trying a more automated approach by asserting the well-formedness with lemmas and letting Verus handle the Set and Map axioms. I'm sketching out the proof structure for the frame booking lemma, breaking down the invariant preservation into its key conjuncts—disjoint frames and the biconditional for refcounts—though I'm realizing this might get verbose and wondering if Verus can handle more of it automatically.
+
+For the set-based version of the lemma, I'm analyzing what happens when we book a set of frames: the allocated frames grow by the set, free frames shrink by removing that set, and refcounts get updated with the new entries all set to 1. The alignment properties carry through from the preconditions, and I need to verify the disjointness and refcount biconditional hold in the postcondition. I need to verify that A and S don't overlap—since S is a subset of F and A is disjoint from F, they can't intersect, so when x is in A it's definitely not in S, meaning R'[x] stays equal to R[x]. The proof checks out, but Verus will need to instantiate the precondition's universal quantifiers using the right triggers: the allocated_frames.contains(addr) trigger for conjunct 4, and the refcounts.contains_key(addr) trigger for conjunct 6. For the union_prefer_right operation, I should rely on vstd's map lemmas to handle the domain and indexing behavior, though I might need to add some assertions about extensional equality or pull in additional lemmas to make the proof go through.
+
+Given how involved this is getting, I think I need to write out a careful proof for lemma 3 with explicit extensional equalities and use assert forall blocks where needed. I should also reconsider whether I need lemma 2 as a separate proof or if I can derive it from lemma 3—though the syntactic difference between insert/remove operations and union/difference/union_prefer_right operations means they might not be trivially equivalent even if they're semantically the same.
+
+Actually, I can show they're extensionally equal: insert(addr) equals union({addr}), remove(addr) equals difference({addr}), and the single-element map case equals union_prefer_right. So I can prove lemma 2 by reducing it to lemma 3—let S be the singleton set containing addr, show the postcondition matches spec_book_frames(S) via extensionality, then apply lemma 3 with its preconditions (S ⊆ free and addr aligned). That's cleaner than proving them separately.
+
+Now I'm writing out the full proof structure for lemma 3, which will establish that the operation preserves the invariant and produces the expected allocated frames.
+
+Writing the proof body...
+[RESULT ✓] bash: map.rs:168:    pub axiom fn tracked_union_prefer_right(tracked &mut self, right: Self)
+map.rs:170:            *self == old(self).union_prefer_right(right),
+set.rs:96:    pub open spec fn subset_of(self, s2: Set<A>) -> bool {
+set.rs:156:    pub closed spec fn difference(self, s2: Set<A>) -> Set<A> {
+...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -n "union_prefer_right" map.rs; echo "=== def ==="; sed -n '/fn union_
+[RESULT ✓] bash: 168:    pub axiom fn tracked_union_prefer_right(tracked &mut self, right: Self)
+170:            *self == old(self).union_prefer_right(right),
+=== def ===
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -rn "fn union_prefer_right\|union_prefer_right" map.rs map_lib.rs 2>/d
+[RESULT ✓] bash: map.rs:168:    pub axiom fn tracked_union_prefer_right(tracked &mut self, right: Self)
+map.rs:170:            *self == old(self).union_prefer_right(right),
+map_lib.rs:120:    ///    map![1 => 10, 2 => 11].union_prefer_right(map![1 => 20, 3 => 13])
+map_lib.rs:123:    pub open spec fn union_prefer_rig...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/map_lib.rs
+[RESULT ✓] view: 118.     /// ```rust
+119.     /// assert(
+120.     ///    map![1 => 10, 2 => 11].union_prefer_right(map![1 => 20, 3 => 13])
+121.     ///    =~= map![1 => 20, 2 => 11, 3 => 13]);
+122.     /// ```
+123.     pub open spec fn union_prefer_right(self, m2: Self) -> Self {
+124.         Self::new(
+125.      ...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && sed -n '90,100p;150,165p;205,212p' set.rs
+
+[THINKING] `union_prefer_right` is an open spec function that Verus can unfold directly, so I don't need special lemmas to reason about its domain and index properties. For R' = R.union_prefer_right(one_map) where one_map maps elements in S to 1, the containment check R'.contains_key(x) reduces to checking whether x is in R's domain or one_map's domain.
+
+Now I need to write the actual proofs, focusing on getting Verus to properly instantiate the quantified wellformedness conditions. The tricky part is conjunct 4 with its biconditional trigger on allocated_frames.contains(addr) — I'll need to prove each forall in post_f.wf() with matching triggers by asserting them separately before asserting the full wellformedness property.
+
+First, I'll extract the pre_f.wf() fact and derive a key helper lemma: that R.dom() equals A by combining the wellformedness conjuncts. From conjunct 4, A.contains(x) iff R.contains_key(x) && R[x]>0, and from conjunct 6, R.contains_key(x) implies R[x]>0, so these are equivalent. Then I'll write the full proof generously with assertions, and I need to verify the exact definition of disjoint in vstd to properly prove conjunct 3 for post_f.
+
+allocated and post_f.free.
+[RESULT ✓] bash: pub open spec fn spec_has(self, a: A) -> bool {
+        self.contains(a)
+    }
+
+    /// Returns `true` if the first argument is a subset of the second.
+    #[rustc_diagnostic_item = "verus::vstd::set::Set::subset_of"]
+    pub open spec fn subset_of(self, s2: Set<A>) -> bool {
+        forall|a: A| se...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Now I'll write real proofs for all 7 lemmas. Let me rewrite mod.proof.rs:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && cat > mod.proof.rs <<'PROOFEOF'
+// Copyright(c) The Maintainers of N
+
+[THINKING] I need the `difference_contains` axiom to handle the closed spec for `difference`, which Verus provides by default through broadcast. Since `subset_of` and `disjoint` are open specs, they'll unfold to foralls. Now I'm writing out the proof module with the standard axioms for union, insert, and remove operations.
+
+Writing the proof lemmas...
+[RESULT ✓] bash: done
+270 mod.proof.rs
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|fail|verified|status|
