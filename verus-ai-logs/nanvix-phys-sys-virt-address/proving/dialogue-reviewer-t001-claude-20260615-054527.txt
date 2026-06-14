@@ -212,3 +212,107 @@ Turn 5
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls /home/ruize/toolchain/verus/ 2>/dev/null | head; echo "=== run verify-sy
 
 [THINKING] I see there's a `make verify-sys` command available for the `sys` crate, so I'll execute it. The VERUS_EXECUTABLE_DIR is set to `/home/ruize/toolchain/verus` by default, so I'll run the verification task with that configuration.
+[RESULT ✓] bash: builtin
+builtin_macros
+cargo-verus
+libverus_builtin.rlib
+libverus_builtin_macros.so
+libverus_state_machines_macros.so
+libvstd.rlib
+rust_verify
+state_machines_macros
+version.json
+=== run verify-sys ===
+Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C p...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Verification is CLEAN. Let me check the spec-drift tooling, run cross-module regression, and the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls /home/ruize/verus-ai-exp/verus-ai/ 2>/dev/null; echo "=== skills ==="; l
+
+[THINKING] The verification tool confirms no cfg-gated execution code was found, which resolves my earlier concern about line 296—the `target_pointer_width` configurations aren't flagged as cheating since they're legitimate platform conditionals.
+
+The cached result is acceptable since we just finalized the proving commit. For coverage, only two functions have contracts out of 255 exec functions, but the proving phase checklist doesn't mandate coverage requirements. Let me verify against the actual checklist: no spec drift, zero admits and external bodies, no cfg-gated code, proper cheating audit reporting, no claimed limitations needing reproducers, minimal rewrites with no comments present, and cross-module regression testing all pass. The verification itself shows zero errors and warnings, so I'm on track with the proving requirements.
+
+Now I need to run the spec-drift check using the appropriate skill, execute the full cross-module regression with `make verify`, and ensure the build completes with zero warnings. Let me locate the spec-drift-check skill and confirm the build command.
+[RESULT ✓] bash: EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.py
+docs
+guardrails.py
+logs
+prompts.py
+report.py
+run.py
+scripts
+talk
+target-systems
+tests
+tree-sitter-verus
+tree_sitter_compat.py
+utils.py
+verus
+verus-ai-logs
+verus-ai.toml.example
+vstd
+workflow.py
+=== skills ===
+=== sp...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/; echo "=
+[RESULT ✓] bash: SKILL.md
+===
+---
+name: spec-drift-check
+description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+---
+
+# Spec Drift Check
+
+## What Is S...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find . /home/ruize/verus-ai-exp/verus-ai -name 'spec_drift.py' 2>/dev/null 
+
+[THINKING] I need to run the spec_drift.py check, which requires the pipeline_state.json file from the verus-ai repository. Let me locate the script and find the pipeline state file for the nanvix-phys-sys-virt-address module.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py
+=== pipeline_state ===
+./verus-ai-logs/nanvix-phys-bump-allocator/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-mod/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-manager/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-upool/p...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/nanvix-phys-sys-virt-address/pipeline_state.json; echo "=
+[RESULT ✓] bash: {
+  "module_name": "sys-virt-address",
+  "log_name": "nanvix-phys-sys-virt-address",
+  "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs",
+  "current_phase": "proving",
+  "current_phase_idx": 3,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_s...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Spec drift: clean. Now cross-module regression and build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 590 make verify 2>&1 | grep -iE "crate|Exit code|cheating:|status:|
+
+[THINKING] The spec drift check passes with no drift detected between the baseline and current state. Now I need to run the cross-module regression tests with `make verify` across all crates and ensure the build completes with zero errors and warnings, checking what the actual build command should be.
+
+For the regression check, `make verify` will run verification across all modules including the kernel, which has some known admits from the commit history. The requirement is that all verified modules must exit successfully, not necessarily that they have zero cheating. Let me run `make verify` with a generous timeout since kernel verification can take a while, then capture the pass/fail status for each crate.
