@@ -214,3 +214,190 @@ Turn 3
 [THINKING] I've confirmed that both external_body functions in mod.rs are properly listed in tcb-allowed.md, so now I'm running the verification with `make verify-kernel` scoped to the mm::phys module, and I'll also do a full verification run to check everything.
 
 This is going to take a while.
+[RESULT ✓] bash: - frame.rs:137 alloc: external_body
+    - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_body
+    - frame.rs:481 book: external_body
+    - frame.rs:517 is_covered: external_body
+    - f...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null
+
+[THINKING] The verification results are cached, showing global stats across the entire kernel crate rather than just the module I need to focus on. Looking at the summary—assume=0, external_body=17, admit=0, trusted=0, no_decreases=0, cfg_gate=5—these are crate-wide metrics, but I need to narrow down to the `mm::phys` module specifically in mod.rs for the "phys-mod" checklist.
+
+I can see two external_body functions in mod.rs that are allowed: `book_physical_memory_regions` at line 82 and `book_mmio_regions` at line 117. There's also an external_type_spec in the spec file for ExLinkedList, which is a type specification rather than a function external_body. The cfg_gate count of 5 suggests there are conditional compilation gates somewhere, likely in other files. Let me check the detailed cheating report to understand which functions are involved and what's actually relevant to this module.
+[RESULT ✓] bash: - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refcount: external_body
+    - mm/phys/frame.rs:481 book: external_body
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/verify-kernel/verus-logs/ && echo "===grep cfg in logs===" && grep -rniE '
+
+[THINKING] I need to focus on the mod.rs file specifically for this review, not the other modules in the directory. The checklist is scoped to just that one file along with its spec and proof companions, so I should ignore the external_body references that span the broader phys directory. I'm trying to pinpoint which lines correspond to the cfg_gate=5 detail, but the detail file seems incomplete.
+[RESULT ✓] bash: cheating-detail.txt
+coverage-unverified.txt
+verus_2026-06-15_00-55-32.log
+verus_2026-06-15_01-01-27.log
+verus_2026-06-15_01-04-34.log
+verus_2026-06-15_01-06-51.log
+verus_2026-06-15_01-10-45.log
+verus_2026-06-15_01-12-18.log
+verus_2026-06-15_01-19-48.log
+verus_2026-06-15_01-20-04.log
+verus_2026-06-15...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,60p' verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_02-55-15.log
+
+[THINKING] I'm checking which files use cfg-gated executable code, keeping in mind that the checklist only permits cfg-gating for imports, derives, debug assertions, and logging. Looking at mod.rs specifically, I can see a few cfg directives in use: one gates a test module behind a feature flag, another gates a vstd prelude import behind a verus_keep_ghost condition, and there's an incomplete include statement that also appears to be cfg-gated.
+
+The issue is that there's a `pub fn test()` function gated by `cfg(feature="test")`, which is executable code—not one of the allowed categories. Since cfg_gate=5 applies across the entire kernel crate, I need to identify which five items are actually flagged. Let me check the full log output to see if there's a detailed breakdown of what triggered the cfg_gate violations.
+[RESULT ✓] bash: Timestamp: 2026-06-15_02-55-15
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=17
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=5
+
+--- Full output ---
+note: verifying module mm::phys
+
+note: verifyin...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rniE 'cfg_gate' scripts/ 2>/dev/null | head; echo "==="; grep -n 'VERUS_AI_VERIFY_SCR
+
+[THINKING] I need to track down what cfg-gated code exists in mod.rs and verify it against the checklist requirement that only imports, derives, debug_assert, and logging are allowed. Let me find the verification script to see what the detector flags.
+[RESULT ✓] bash: scripts/verify.sh:478:count_cfg_gates() {
+scripts/verify.sh:534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+scripts/verify.sh:544:    CFG_GATE_COUNT="$GLOBAL_CFG_GATE_COUNT"
+scripts/verify.sh:549:    CFG_GATE_COUNT=0
+scripts/verify.sh:559:    MOD_CFG_G...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/scripts/verify.sh
+[RESULT ✓] view: 478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+485. count = 0
+486. cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+487. 
+488. for rs_file in sorted(src_dir.glob('**...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 -c "
+import re
+from pathlib import Path
+cfg_pat = re.compile(r'#\[cfg(_attr)?\((not
+
+[THINKING] The `cfg_gate` function identifies executable code that's gated behind `#[cfg(verus_keep_ghost)]` attributes—it specifically flags cases where these attributes aren't used for standard purposes like imports, module declarations, or derive macros. It ignores feature-based gates and only targets the verus_keep_ghost configuration.
+
+Looking at mod.rs, the three verus_keep_ghost attributes all guard standard constructs (a use statement and two include! macros), so they're correctly skipped and contribute zero to the count. The five cfg_gate instances are actually in other files like frame.rs, manager.rs, and upool.rs. I should verify this by running the count directly on just the mod files to confirm the module-scoped results.
+[RESULT ✓] bash: done
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== admit/assume/trusted in mod files ==="; grep -nE 'admit\(|assume\(|verus_verify\(
+
+[THINKING] The cfg-gated exec code in mod.rs and spec/proof checks out. Now I'm verifying the other safety constraints—looking for any admit(), assume(), or trusted function calls, checking that exec_allows_no_decreases_clause is zero everywhere, and confirming that external_body functions like book_physical_memory_regions and book_mmio_regions are properly listed in the tcb-allowed documentation.
+
+I need to find the ast-consistency and spec_drift scripts to run those validation checks, then verify the full kernel builds without errors or warnings and that all exec rewrites include the VERUS REWRITE comment with minimal reproducers.
+[RESULT ✓] bash: === admit/assume/trusted in mod files ===
+exit=1
+=== VERUS REWRITE in mod.rs ===
+=== find ast/drift scripts ===
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls scripts/ | grep -iE 'ast|drift|consist'; echo "---grep skill refs---"; grep -rliE 'ast-c
+
+[THINKING] I'm checking the mod files to confirm there are no admit/assume/trusted/no_decreases directives, and verifying that the two functions use external_body rather than exec rewrites, which means the checklist requirement for VERUS REWRITE comments is vacuously satisfied.
+[RESULT ✓] bash: ---grep skill refs---
+---ls scripts---
+bench
+benchmark.py
+cleanup-nanvixd.sh
+common
+create-release.py
+docker-retry.sh
+generate-l2-initramfs.sh
+generate-l2-snapshot.sh
+generate-manifest.sh
+get-nanvix.sh
+install-containerd.sh
+install-shim.sh
+pipeline.sh
+plot-performance.py
+run-smoke-test.py
+run-uservm...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -5 -- src/kernel/src/mm/phys/mod.rs; echo "=== git status ==="; git statu
+
+[THINKING] I notice the referenced tools like `spec_drift_cmd` and `verus_cmd_all` aren't actually available in this environment since the placeholders weren't substituted, so I'll need to perform the AST consistency and spec-drift validation manually instead. The AST check will verify that the verified code's abstract syntax tree matches the actual executable code.
+
+For AST consistency, I'm checking whether what Verus verifies with `verus_keep_ghost` enabled produces the same AST as normal compilation without that flag—differences would only arise from cfg-gated executable code, which we haven't found in the mod files, so that's a pass. On the spec-drift side, I need to ensure the original guarantees haven't been weakened by reviewing the contracts directly since I don't have the baseline command available. Let me check the git history and diff to see what's actually changed in these files.
+[RESULT ✓] bash: 7a1be4161 [verus] verify PASS (cheating detected): kernel::mm::phys (9 verified, 0 errors, external_body=17 cfg_gate=5)
+a5b7ccb88 [verus-ai] proving strip-external-body: phys-mod (2)
+d1df5b679 [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+37e905589 [...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] skill: build
+
+[THINKING] The mod files are already committed with no uncommitted changes. The last verification flagged cheating because the global counts include other files outside the phys-mod scope, but when I focus just on phys-mod itself, the external_body references are limited to two functions that are both in the tcb-allowed list.
+
+For phys-mod specifically, cfg_gate is 0, so it passes the cheating elimination check. The global "CHEATING_DETECTED" status is actually coming from sibling files like frame.rs, manager.rs, upool.rs, and kframe.rs that are separate review targets.
+
+Now I need to verify the verification actually succeeded with 0 errors and then run the full build to confirm there are no warnings or errors.
+[RESULT ✓] skill: Skill "build" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running cross-module verify and build
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel 2>&1 | grep -iE 'verifi|error|warning|summary|status|cheating:|coverage:
+
+[THINKING] I need to run the full kernel verification without module filtering to check for cross-module regressions, then build the kernel using the build command.
+[RESULT ✓] report_intent: Intent logged
