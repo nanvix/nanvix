@@ -256,3 +256,33 @@ No diff from base — files are pristine and verification passed (exit 0, module
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/mm/phys/upool.rs && timeout 900 make verify-kernel MODULE=mm::ph
 
 [THINKING] The verification passed without rebuilding, and the verus results were cached. The module actually did verify as shown in the output. Now I'm checking whether the upool files genuinely contain no admit or assume statements, only external_body declarations.
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+verification results:: 42 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.86s
+  0 errors
+  Exit code : 0
+  verification: 42 verified, 0 errors (exit 0)
+<shellId: 6 completed with exit...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Fresh verification confirms **42 verified, 0 errors**. The upool module is clean: zero `admit`/`assume`, and the only 3 `external_body` (`Upool` struct, `Upool::new`, `Upool::alloc`) are all explicitly authorized in `tcb-allowed.md`. The `UserFrame::*` target functions all verify with real contracts.
+
+Let me confirm `Upool::new`/`alloc` genuinely require `external_body` (uninterp view), then run full-crate regression while writing the report.
+[TOOL] report_intent: Running full-crate regression check
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 2400 make verify 2>&1 | tail -25
+
+[THINKING] The verification passed cleanly with no errors, confirming that all three external_body references in the phys-upool module are already listed in tcb-allowed.md, and all eight target functions verify correctly. Now I'm reconsidering whether the actual goal is to eliminate the Upool::new and Upool::alloc external_body references entirely rather than just verify them.
+
+Looking at the tcb-allowed.md rules, these functions are authorized to keep external_body, so they pass the gate. But the notes suggest these should be "eliminated when their module is verified." The real constraint is that Upool's view is defined as an uninterpreted spec function, which means I can't prove the postcondition in-body without knowing what the view actually returns—and I can't modify the view definition itself since it's not in the target function list. So in-body verification is genuinely impossible here, making external_body the only viable approach. The correct conclusion is to keep them as authorized external_body.
+
+Now I need to verify there are no regressions. Since I made zero content changes—only touched the file's modification time—the crate state is identical to the baseline. I should run make verify-kernel and make verify as instructed, though the risk of regression is zero.
+
+Let me write the report now while running verification in the background, and I'll also confirm that there are no remaining TODOs for upool. The cfg-gated code in the module (include! and error! logging) are pre-existing idioms required for the proof and ghost-mode compatibility, not new semantic changes I introduced.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: <command started in background with shellId: fullverify>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
