@@ -1,0 +1,26 @@
+Timestamp: 2026-06-15_06-58-18
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=12
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: The verifier does not yet support the following Rust feature: Path Def(Static { safety: Safe, mutability: Mut, nested: false }, DefId(0:2250 ~ kernel[5062]::mm::phys::frame::REFCOUNT_STORAGE))
+   --> src/kernel/src/mm/phys/frame.rs:679:53
+    |
+679 |     let refcount: &'static mut [u8] = unsafe { &mut REFCOUNT_STORAGE[..] };
+    |                                                     ^^^^^^^^^^^^^^^^
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
