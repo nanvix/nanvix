@@ -1473,3 +1473,13 @@ Turn 96
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -iE "coverage|in-sc
 
 [THINKING] All tests passed with zero errors and nine verified cases. The three "CHEATING_DETECTED" instances match the expected count since those are the in-scope functions that use `admit()`. Now I need to review the full output to validate the guardrail interpretation and see which functions remain unverified and what the coverage looks like.
+[RESULT ✓] bash: VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc...
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+The 3 admits are exactly the in-scope functions — expected for the spec phase. Now checking for regressions across all modules and dual-compilation.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1800 make verify 2>&1 | grep -E "error\[|error:|warning:|--> src|verified|errors|stat
+
+[THINKING] The three admits correspond exactly to the three in-scope functions with contracts, which is the correct state for this phase of the spec. The "CHEATING_DETECTED" flags are expected since the task explicitly allows admits in proof bodies and specifies an admit count of three. Now I need to run the full verification suite and build to check for any regressions.
