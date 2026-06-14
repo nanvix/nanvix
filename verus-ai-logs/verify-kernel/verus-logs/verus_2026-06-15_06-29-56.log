@@ -1,0 +1,21 @@
+Timestamp: 2026-06-15_06-29-56
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::region
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=27
+  trusted=0
+  no_decreases=0
+  cfg_gate=14
+
+--- Full output ---
+note: verifying module hal::mem::types::region
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.24s
