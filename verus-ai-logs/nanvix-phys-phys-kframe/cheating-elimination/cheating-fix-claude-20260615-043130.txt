@@ -164,3 +164,94 @@ Verify failed with a compile error despite pristine source. Let me see the full 
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|warning: unused
 
 [THINKING] The compilation failed with exit code 101 despite the source file being unchanged, so I'm wondering if there's a stale cache issue or something else got corrupted — let me pull the full error message to figure out what's actually going wrong.
+[RESULT ✓] bash: error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/kframe.rs:100:13
+    = help: The following declaration may re...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Source is pristine but the error persists — this is a stale build/verus cache from my experiment. Let me verify the actual file state and clear the cache.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '81p;100,107p' src/kernel/src/mm/phys/kframe.rs; echo "=== git status ==="; gi
+
+[THINKING] The error at kframe.rs:100 is complaining about `PageAligned::from_raw_value` even though the source looks clean with `external_body` on new, which shouldn't trigger body validation. I suspect there's a stale build artifact cached somewhere — either in `.verus-cache` or the target directory from my earlier experiment. Let me verify the source is actually pristine by checking line 81.
+[RESULT ✓] bash: #[verus_verify]
+            PageAligned::from_raw_value(base.into_raw_value()).map_err(|e| {
+                #[cfg(not(verus_keep_ghost))]
+                error!("frame base is not page-aligned: {e:?}");
+                e
+            })?;
+        crate::mm::virt::identity_map_page(phys_addr).map_err...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Something is off — the file shows my edits again but git reports no diff. Let me investigate the git state carefully.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== HEAD ==="; git rev-parse --abbrev-ref HEAD; echo "=== line 81 in working tr
+
+[THINKING] The file wasn't actually reverted — line 81 still has `#[verus_verify]` instead of `external_body`, and the cfg gates remain in place. Git status shows no changes, which is strange since the checkout should have worked, unless the current HEAD is pointing to a different branch than expected.
+
+Let me trace through what happened: I edited the file twice to remove `external_body` and add cfg gates, then ran verify and got an error. The `git checkout` command reported success and grep confirmed the restore worked at that moment. But after running the verification process again, the file somehow reverted back to my edited version with the cfg gates still there. This suggests either the build process itself is rewriting the file, or there's some copy/symlink mechanism at play that I'm not accounting for.
+[RESULT ✓] bash: === HEAD ===
+verus-ai-prove
+=== line 81 in working tree ===
+    #[verus_verify]
+=== line 81 in verus-ai-prove ===
+    #[verus_verify]
+=== diff working vs verus-ai-prove ===
+=== md5 ===
+ed5fe9064678a2337a2f9e267706beb9  src/kernel/src/mm/phys/kframe.rs
+ed5fe9064678a2337a2f9e267706beb9  -
+<shellId: 8 ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== recent commits on verus-ai-prove ==="; git --no-pager log --oneline -8 veru
+
+[THINKING] So the `verus-ai-prove` branch actually has `#[verus_verify]` at line 81 in kframe.rs, not `external_body` like I thought. When I checked it out earlier, I got that version with the cfg gates intact. But that's strange because the git diff showed no changes to kframe.rs between branches earlier in round 1.
+
+Let me check the git log for kframe.rs on the `verus-ai-prove` branch to see what actually happened.
+[RESULT ✓] bash: === recent commits on verus-ai-prove ===
+875c2541a [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+912f3a54e [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+bad75592d [verus] verify FAIL: kernel::mm::phys...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+The harness **auto-commits** after every verify run — my experimental edits got committed to `verus-ai-prove`, so my "restore" pulled back the broken version. Let me restore from the last passing commit `f2d7c1194`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== f2d7c1194 line 81 ==="; git show f2d7c1194:src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] The harness is auto-committing after each verification run, so my experimental changes got committed as failed attempts. When I tried to restore the file from the branch tip, I pulled back those same broken edits that were already committed there.
+
+The pristine version is actually at an earlier commit like `f2d7c1194` where the verification passed — that's where kframe.rs still had the original `external_body` without my cfg gates. I need to check what that commit's version of the file looks like to restore it properly.
+[RESULT ✓] bash: === f2d7c1194 line 81 ===
+    #[verus_verify(external_body)]
+=== f2d7c1194 lines 99-110 ===
+        let phys_addr: PageAligned<PhysicalAddress> =
+            PageAligned::from_raw_value(base.into_raw_value()).map_err(|e| {
+                error!("frame base is not page-aligned: {e:?}");
+            ...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+`f2d7c1194` is the pristine version (`external_body`, no cfg gates). Let me restore kframe.rs from it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git checkout f2d7c1194 -- src/kernel/src/mm/phys/kframe.rs && echo "restored from f2d
+[RESULT ✓] bash: restored from f2d7c1194
+=== verify key lines ===
+    #[verus_verify(external_body)]
+1
+=== md5 vs pristine ===
+05dc590c327b84e9349478eb41152cda  src/kernel/src/mm/phys/kframe.rs
+05dc590c327b84e9349478eb41152cda  -
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Restored to pristine. Only 1 cfg-gate (the original `drop` logging gate). Let me confirm verification passes again.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verifying module mm::
+
+[THINKING] The file is now clean with the external_body restored and only the original cfg gate remaining in the drop function. Let me run verify-kernel again to make sure everything passes with 42 verified and no errors.
