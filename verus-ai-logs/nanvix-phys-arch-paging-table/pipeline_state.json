@@ -2,9 +2,11 @@
   "module_name": "arch-paging-table",
   "log_name": "nanvix-phys-arch-paging-table",
   "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
-  "completed_phases": [],
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
   "phase_results": {
     "proving": {
       "phase": "proving",
@@ -26,7 +28,8 @@
     "proving": "9ab8755f76c2cb19f14d2859c1f66f6184dd7f4e"
   },
   "phase_start_shas": {
-    "proving": "fa94f8e10fa3253c7d55b3c55df44cbb06dfc0fc"
+    "proving": "fa94f8e10fa3253c7d55b3c55df44cbb06dfc0fc",
+    "cheating-elimination": "62dd6abc117a8d52b4c4a4af5dec2c5a55657ee2"
   },
   "phase_history": [
     {
@@ -39,6 +42,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "9ab8755f76c2cb19f14d2859c1f66f6184dd7f4e",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "62dd6abc117a8d52b4c4a4af5dec2c5a55657ee2",
       "rollback_iter": 0
     }
   ],
