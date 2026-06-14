@@ -144,9 +144,6 @@ impl Inner {
             lemma_view_of(self);
             assert(spec_refcount_seq(self) == pre_rc);
             assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
-            // Every in-range frame index is representable (`i <= spec_max`); `num_bits` is unchanged
-            // by the allocation below, so this bound carries to the constructed index.
-            lemma_index_representable(self);
         }
         let frame_number: usize = match self.bitmap.alloc() {
             Ok(index) => index,

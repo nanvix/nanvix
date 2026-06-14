@@ -227,25 +227,6 @@ proof fn lemma_refcount_value(inner: &Inner, addr: int)
 {
 }
 
-/// Every bitmap-managed frame index is representable as a `FrameNumber` (`i <= spec_max`). This is
-/// the representability clause of `internal_inv`, exposed as a forall with a `frame_addr_of(i)`
-/// trigger so callers can instantiate it after mutating the allocator (the index bound is fixed by
-/// `num_bits`, which the mutating operations leave unchanged).
-proof fn lemma_index_representable(inner: &Inner)
-    requires
-        inner.internal_inv(),
-    ensures
-        forall|i: int| #![trigger frame_addr_of(i)]
-            (0 <= i < inner.bitmap@.num_bits ==> i <= spec_max_frame_number()),
-{
-    assert forall|i: int| #![trigger frame_addr_of(i)]
-        (0 <= i < inner.bitmap@.num_bits ==> i <= spec_max_frame_number()) by {
-        if 0 <= i < inner.bitmap@.num_bits {
-            assert(frame_addr_of(i) <= usize::MAX as int);
-        }
-    }
-}
-
 //==================================================================================================
 // State-transition lemmas (single-frame reserve / release / refcount update)
 //==================================================================================================

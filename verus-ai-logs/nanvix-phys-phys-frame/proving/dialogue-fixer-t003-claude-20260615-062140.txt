@@ -1357,3 +1357,79 @@ Turn 99
 Turn 100
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+[RESULT ✓] bash: === Summary ===
+  verification: 54 verified, 1 errors (exit 101)
+  cheating: assume=0 external_body=19 admit=18 trusted=0 no_decreases=0 cfg_gate=15
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-46-...
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error:\
+[RESULT ✓] bash: 30:error: postcondition not satisfied
+31:   --> src/kernel/src/mm/phys/frame.proof.rs:238:9
+41:   --> src/kernel/src/mm/phys/frame.proof.rs:314:9
+47:   --> src/kernel/src/mm/phys/frame.proof.rs:314:31
+53:   --> src/kernel/src/mm/phys/frame.proof.rs:322:9
+59:   --> src/kernel/src/mm/phys/frame.proof....
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+`alloc` now verifies (54). The new lemma's postcondition (frame.proof.rs:238) isn't going through — `internal_inv` likely isn't unfolding. Let me check how existing lemmas access `internal_inv` clauses.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] The alloc verification is progressing with 54 items checked, but now I'm hitting a postcondition failure in frame.proof.rs at line 238. The lemma's ensures clause isn't being satisfied even though the body asserts frame_addr_of(i)<=usize::MAX, which should trigger the strengthened internal_inv to give i<=spec_max. The problem seems to be with how the trigger annotation on the forall is interacting with the proof inside the lemma body.
+
+I'm wondering if internal_inv is actually being unfolded when needed. It's a closed spec function, but within the module it should be transparent, so the requires clause should expose all its conjuncts. The trigger on the strengthened clause might not be matching frame_addr_of(i) the way I expect, preventing the conjunction from being extracted. I'm realizing that in Verus, `closed` spec functions are actually transparent within their own module, so `internal_inv` should unfold automatically here since both the lemma and the invariant are in the frame module. Let me check how the existing `lemma_alloc_contains` handles `internal_inv` to see if there's a pattern I'm missing.
+[RESULT ✓] view: 180.         },
+181. {
+182.     let i = addr / spec_page_size();
+183.     lemma_aligned_addr_index(addr);
+184.     if inner@.free_frames.contains(addr) {
+185.         let j = choose|j: int|
+186.             0 <= j < inner.bitmap@.num_bits && !(#[trigger] inner.bitmap@.set_bits.contains(j))
+187.     ...
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm checking the requires clause for lemma_alloc_contains around line 165-180 to see if it requires internal_inv and what conditions it uses.
+[RESULT ✓] view: 160.         assert(inner.bitmap@.set_bits.contains(j) && addr == frame_addr_of(j));
+161.         lemma_frame_addr_injective(j, i);
+162.         assert(inner.bitmap@.set_bits.contains(i));
+163.     }
+164.     if inner.bitmap@.set_bits.contains(i) {
+165.         assert(addr == frame_addr_of(i));
+166....
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+The lemma's forall has an invalid trigger (`frame_addr_of(i)` isn't in its body). But `alloc` already verifies (54) — it's proving the bound inline via `old(self)`'s invariant + the `frame_addr_of(idx)` trigger. The lemma is unnecessary. Let me remove it and its call.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm wondering if the trigger on the ensures clause might be causing the issue with lemma_index_representable. The forall quantifier has a trigger based on frame_addr_of, but something about how that's being applied seems problematic.
+
+Actually, I think I see the problem now — the trigger term frame_addr_of(i) doesn't actually appear in the body of the quantified expression. The body is just the implication about bounds and spec_max_frame_number, which only mentions i directly. Since triggers must be subterms of the quantifier body, this trigger is invalid and likely won't fire at all, which would explain why the lemma can't be used effectively.
+
+The fix is to either restructure the ensures clause so the body contains a valid triggerable term, or simplify by converting this to a non-quantified lemma that takes a specific index as a parameter instead.
+
+Now I'm working through whether I can call this per-index lemma at the right point in the code. The challenge is that after the bitmap mutation, the internal invariant might not hold yet (since we're in the middle of updating state), so I can't call the lemma on the mutated self. But at allocation start, the index is unknown, so I can't call it then either. I'm exploring whether I can reference the pre-state using old(self) and call the lemma on that to capture the bound for the specific index. The key insight is that `old(self).inv()` unfolds to give `old(self).internal_inv()` as an available fact throughout the function, and since `internal_inv` is module-transparent, its forall clause can be instantiated by mentioning `frame_addr_of(idx)`. So I can directly assert the connection between `old(self).bitmap@.num_bits` and `pre_nb`, then trigger the instantiation with `frame_addr_of(idx)` to derive that `idx <= spec_max`, all without needing a separate lemma. The lemma's postcondition is assumed at call sites even though it fails to verify, but its trigger is too weak to actually help. The inline asserts using `old(self).internal_inv` are what's making `alloc` verify, so the lemma itself is redundant. I should remove both the lemma and its call, then confirm the inline derivation works independently.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
