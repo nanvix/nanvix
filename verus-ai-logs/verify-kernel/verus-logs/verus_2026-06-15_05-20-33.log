@@ -1,0 +1,45 @@
+Timestamp: 2026-06-15_05-20-33
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::phys
+Exit code: 101
+4 verified
+2 errors
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=27
+  trusted=0
+  no_decreases=0
+  cfg_gate=14
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+note: verifying module hal::mem::types::address::phys
+
+error: precondition not satisfied
+   --> src/kernel/src/hal/mem/types/address/phys.rs:144:13
+    |
+144 |             lemma_from_number_no_overflow(frame);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/hal/mem/types/address/phys.proof.rs:17:9
+    |
+ 17 |         0 <= spec_frame_raw_value(frame) <= spec_max_frame_number(),
+    |         ----------------------------------------------------------- failed precondition
+
+error: precondition not satisfied
+  --> src/kernel/src/hal/mem/types/address/phys.proof.rs:67:5
+   |
+67 |     lemma_usize_shr_is_div(raw_addr, shift);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+  ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/bits.rs:47:17
+   |
+47 |                 0 <= shift < <$uN>::BITS,
+   |                 ------------------------ failed precondition
+
+verification results:: 4 verified, 2 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

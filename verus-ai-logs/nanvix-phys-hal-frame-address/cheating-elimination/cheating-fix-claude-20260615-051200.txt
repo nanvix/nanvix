@@ -390,3 +390,92 @@ Now update the `from_number` caller to establish the bound via `use_type_invaria
 Turn 24
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | s
+[RESULT ✓] bash: === Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== ...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); gr
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+error: Verus Internal Error: missing type invariant function
+   --> src/kernel/src/hal/mem/types/address/phys.rs:144:32
+    |
+144 |             use_type_invariant(frame);
+    |                                ^^^^^
+
+error: c...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '43,95p' src/libs/arch/src/x86/mem/paging/frame/number.rs
+
+[THINKING] The issue is that `use_type_invariant` for `FrameNumber` works within the arch crate where it's defined, but fails when called from the kernel crate because the type invariant isn't accessible across crate boundaries. I can't invoke `use_type_invariant` on a foreign type's invariant from outside its defining crate.
+
+Instead, I should extract the bound `0 <= frame@ <= spec_max_frame_number()` from the postcondition of `into_raw_value`, which already guarantees `0 <= self@ <= Self::spec_max()` with the result matching the value.
+[RESULT ✓] bash: /// # Description
+    ///
+    /// Constructs a [`FrameNumber`].
+    ///
+    /// # Parameters
+    ///
+    /// - `value`: The value of the frame number.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(`[`FrameNumber`]`)`: Upon success.
+    /// - `None`: If the value is greater than [`Self::MAX`].
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '20,42p' src/libs/arch/src/x86/mem/paging/frame/number.rs
+
+[THINKING] I'm looking at how `into_raw_value` provides a postcondition that bounds `frame@` between 0 and `Self::spec_max()`, which I can use in `from_number` instead of relying on the type invariant. Since `FrameNumber` is `Copy`, calling `into_raw_value` consumes the value but the frame remains usable, so I need to verify whether `FrameNumber` actually derives `Copy`.
+
+The current implementation calls `into_raw_value` to get the address, but the lemma that establishes the multiplication bound is invoked before that call in the proof block, so the bound isn't available yet. I should reorder the logic to call `into_raw_value` first to establish the bound on `frame@`, then apply the lemma. For `Copy` types, Verus should track that the copied `self` in the postcondition has the same view as the original `frame`, so the bound `0 <= frame@ <= spec_max` should carry through. Let me just try this approach. Actually, there's a cleaner path that avoids changing the exec code entirely: I can pass the bound to the lemma differently. The real issue is that I can't derive the frame bounds from a closed view across crates, and Verus doesn't automatically assume type invariants for parameters — I'd need to call use_type_invariant, which fails cross-crate. So the bound has to come from into_raw_value's explicit ensures. That means I need to call into_raw_value before invoking the lemma, but since FrameNumber is Copy, the frame stays usable and Verus should track the relationship. Let me verify that FrameNumber is actually Copy.
+[RESULT ✓] bash: ///
+/// # Description
+///
+/// A type that represents a frame number.
+/// A frame number is in the range from `0` to [`Self::MAX`] (inclusive).
+///
+#[verus_verify]
+#[derive(Debug, Clone, Copy)]
+pub struct FrameNumber(usize);
+
+//=========================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Let me empirically test whether the parameter's type invariant is auto-assumed (avoiding any exec change). First revert the `use_type_invariant` in `from_number`:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] FrameNumber implements Copy, so I need to be careful not to modify the exec AST of from_number. Let me look at what's currently in the base branch versus HEAD—the current version already has the verus proof annotation with the lemma, while the base branch had it with an admit instead. The exec code converts the frame into a raw value and multiplies it by the address size.
+
+I reverted my use_type_invariant addition, but now I need to figure out how to get the bound for the lemma. The core problem is that a proof function receiving a ghost FrameNumber can't know its value is bounded because type invariants don't travel with ghost values and the view is closed. The only ways to establish the bound are either through use_type_invariant (which breaks cross-crate) or through a postcondition from an exec method like into_raw_value. Since use_type_invariant doesn't work across crates, the caller has to use into_raw_value's ensures clause, which means I need to reorder the code—call into_raw_value first to get the bound, then use it in the lemma. But currently from_number calls into_raw_value inside the address expression after the proof lemma, so there's a sequencing problem to resolve. The issue is that the lemma call happens before `into_raw_value()` returns, so the bound it establishes isn't available yet at the multiplication point where it's needed. Reordering the execution—extracting the raw value first, then calling the lemma with that bound in scope, then performing the multiply—would fix this, but it requires modifying `from_number` in phys.rs, which is outside my target module. However, since the admits are in phys.proof.rs and tied to this task, I think the intent is that fixing the proof helpers counts as part of the work, so Option A (reorder) seems justified. Restructuring the proof block...
+
+Actually, I'm realizing the scope constraint is tighter than I thought — `PhysicalAddress::from_number` isn't in the verification-order target list, so I can't modify it at all. The only path forward is fixing the lemma itself without relying on bounds passed from the caller. A cross-crate `use_type_invariant` won't work, so I need to check if there's an existing architecture-level broadcast lemma that already establishes the FrameNumber bound I could leverage.
+
+Alternatively, since `into_raw_value` already exposes the bound through its postcondition, maybe I can restructure the proof so the lemma's requires clause is trivially satisfied, and instead prove the overflow fact separately at the multiply operation using `into_raw_value`'s guarantee directly.
+
+The core issue is that the lemma needs `frame@`'s type invariant bound to establish the overflow fact, but `use_type_invariant` fails cross-crate. If I can't import the invariant, the lemma would need to derive the bound itself—which seems impossible without it. The error "missing type invariant function" suggests this might be a genuine Verus limitation for cross-crate type invariant application. I'm realizing that cross-crate use_type_invariant isn't supported—it only works within arch itself—so I need to get the bound from into_raw_value's postcondition instead, which means reordering from_number to bind the raw value first. The key insight is that this preserves the exact same execution order (into_raw_value happens first either way), so it's semantically identical, just a refactoring to make the bound available for the lemma. I'll document why this deviation was necessary—the cross-crate limitation forces this approach. Realizing that modifying the proof block contents wouldn't change the exec AST since ghost code gets stripped anyway—so I could add `use_type_invariant(frame)` inside the existing `proof! { ... }` block without triggering an ast-consistency mismatch. But `use_type_invariant` might not be available cross-crate, which brings me back to the same constraint issue.
+
+The core problem is that the bound `0 <= frame@ <= spec_max` needs to come from somewhere, and the only source is `into_raw_value`'s postcondition. Since the proof block executes before the multiply, I can't reference the raw value there without binding it first—which requires reordering the exec statements. There's no way around this without either reordering or eliminating the lemma entirely. Given that reordering is minimal and semantics-preserving, I'll proceed with that approach and document it as a necessary deviation. Reordering the function... I'll test empirically whether Verus automatically assumes the parameter's type invariant by removing the `use_type_invariant` call and just invoking the lemma directly in the proof block to see if the precondition is satisfied.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | s
