@@ -203,3 +203,91 @@ Only `external_body` on `invlpg` exists, and it's allowlisted. Let me run `make 
 
 [THINKING] The only cheating in the module is the `external_body` on `invlpg`, which is in the allowed list. Let me run the verification to confirm it passes cleanly, and I'll check that the verus-unsupported.md file exists first.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Verification exits 0 but cheating gate flags crate-wide items. Let me check the detail to see which are in my scope (`invlpg` only).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+[THINKING] I'm seeing cheating violations across the arch crate with external_body, admit, and cfg_gate issues, but my focus is narrowed to just the `invlpg` function in mod.rs. Let me examine the cheating details to identify which violations actually fall within my scope versus which ones are already on the allowed list.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:8 lemma_entry_roundtrip: admit
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+In-scope cheating is only `invlpg: external_body`, which is allowlisted in `tcb-allowed.md`. The other items (`table.rs`, `table.proof.rs`) are out of scope. Let me confirm AST consistency vs base and check the cfg gates.
+[TOOL] report_intent: Confirming AST consistency
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== diff mod.rs vs base ==="; git diff verus-ai-prove-bottom-up -- sr
+
+[THINKING] I'm reviewing the cheating items in the codebase—some are in scope and on the allowed list, while others fall outside the scope like the table module entries. Now I need to check what cfg_gate=4 refers to. I should verify that mod.rs hasn't changed by comparing it against the base branch to ensure AST consistency, and confirm that the cfg gates are only applied to the include! statements for spec and proof files, which is the standard approved pattern.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === diff mod.rs vs base ===
+=== diff spec ===
+=== diff proof ===
+DONE
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Files are byte-identical to base — AST consistency trivially holds. Let me confirm what the `cfg_gate=4` items are, to ensure none gate exec code in my scope.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "cfg(verus_keep_ghost)\|cfg(verus)\|cfg_attr" src/libs/arch/src/x8
+
+[THINKING] The only item in scope that involves external code is `invlpg`'s `external_body`, which is already documented as an allowed hardware trust boundary in the guidelines—it's an inline assembly instruction that Verus can't model. The faithful contract for it is empty, so there's nothing to clean up. The other items like cfg_gate and the table files fall outside the scope anyway.
+[RESULT ✓] bash: 8:#[cfg(verus_keep_ghost)]
+10:#[cfg(verus_keep_ghost)]
+--- detail file cfg ---
+<shellId: 7 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Everything is confirmed. The `cfg(verus_keep_ghost)` gates only include spec/proof files (standard pattern, not exec-code gating). The sole in-scope cheating item — `invlpg`'s `external_body` — is explicitly allowlisted in `tcb-allowed.md` as an external-bottom hardware trust boundary (inline `asm!` Verus cannot model). Files are byte-identical to base. Let me write the report.
+[TOOL] report_intent: Writing fix report
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination
+
+[THINKING] The cfg gates are only applied to the spec and proof includes, which is the standard pattern throughout the codebase, so there's no issue there. The only in-scope concern is the `invlpg` external_body, which is already allowlisted in the TCB.
+
+Now I'm writing up the report.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/fix_report.md with 3332 characters
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Done. Summary:
+
+**Result: PASS**
+
+The only in-scope function is `invlpg`, whose single cheating construct (`#[verus_verify(external_body)]`) is **explicitly allowlisted** in `verus-ai-logs/tcb-allowed.md` — an external-bottom hardware trust boundary (inline `asm!` issuing the `invlpg` instruction, which Verus cannot model). The faithful contract is empty, matching the inherited upstream `assume_specification`.
+
+- No `admit`/`assume`/`assume_specification` in `mod.rs`/`mod.spec.rs`/`mod.proof.rs`.
+- The two `cfg(verus_keep_ghost)` gates only include the spec/proof files (standard pattern, not exec-code gating).
+- AST consistency: all three files are byte-identical to base (`git diff` empty) — no changes were needed or made.
+- The crate-wide `CHEATING_DETECTED` from `make verify-arch` comes solely from out-of-scope `table` module items, which I left untouched per the hard rules.
+
+Report written to `verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/fix_report.md`.
+
+
+=== Session End ===
+Session: 36eefab3-0a62-402b-b6d6-08bfaf03e479
+Duration: 105.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/prover-claude-20260615-004700.jsonl
