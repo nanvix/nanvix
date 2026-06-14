@@ -712,3 +712,29 @@ Turn 34
 ────────────────────────────────────────────────────────────
 Now let me run the final module verification to confirm the restored state, and the AST consistency check.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -n
+[RESULT ✓] bash: 6:/home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate kernel --module mm::virt::identity_map --log-dir verus-ai-logs/verify-kernel
+16:note: verifying module mm::virt::identity_map
+18:verification results:: 9 verified, 0 errors (partial verification with `--verify-*`)
+22:  9 verified
+23:...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Module verifies (9 verified, 0 errors, exit 0) with the 3 documented admits. Let me run the AST consistency check via the verus-ai tooling.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find /home/ruize/verus-ai-exp/verus-ai -name "ast_consistency.py" 2>/dev/nu
+
+[THINKING] The restored state checks out with 9 verified entries and no errors, which confirms this is the cleanest honest state. I need to track down the AST consistency script—it's not in the current repo, so I should check the VERUS_AI_DIR or use the verus-ast MCP as an alternative.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+=== try MCP/script ===
+AST=/home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+✅ Consistent: 14 functions, 1 structs match.
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+AST consistency: **zero mismatches** (14 functions, 1 struct match — the 3 `admit()` lines are ghost-stripped). Let me run the full-crate verification to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 2400 make verify 2>&1 | tail -25
+
+[THINKING] The AST check shows all 14 functions and the struct match perfectly with no discrepancies, and those ghost `admit()` lines don't impact the execution AST. Now I need to run the full verification suite—`make verify-kernel` checks the whole kernel, and `make verify` runs everything across all crates plus the kernel, which will take some time.
