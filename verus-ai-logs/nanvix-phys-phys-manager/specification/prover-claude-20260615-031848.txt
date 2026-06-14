@@ -1271,3 +1271,199 @@ Update the backup and re-run verification:
 [TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/manager.rs /tmp/manager.rs.bak && timeout 600 make verify-kernel 
 
 [THINKING] I need to update the backup in /tmp with the corrected version and run the verify-kernel check again, then review the specs for alloc_user_frame and alloc_kernel_frame to confirm they're using result binding with &mut self but no additional &mut output parameters.
+[RESULT ✓] bash: error: `config::kernel::KERNEL_WATERMARK` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+error: cannot use type `kernel::mm::phys::manager::PhysMemoryManager` which is ignored because it is either declared outside the verus! macro o...
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+Good progress — the macro bugs are fixed; these are now real spec-content errors. Let me investigate how existing external types are made visible to Verus and how config consts are handled.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && grep -n "struct Inner\|verus_verify\|external\|verus!\|View for Inne
+
+[THINKING] The compilation errors are clearing up now that the syntax issues are resolved — Verus is actually validating the spec content. The first real blocker is that `config::kernel::KERNEL_WATERMARK` can't be used directly as an external constant in the spec, so I need to either wrap it in an `uninterp spec fn` or use `external_body` to handle it properly.
+
+The trickier issue is that `PhysMemoryManager`, `UserFrame`, and `KernelFrame` are all declared outside the verus! block, so Verus doesn't recognize them when my spec methods try to reference them. Even though I've added `View` implementations, the types themselves need to be registered with Verus — likely through `#[verifier::external_type_specification]` or by bringing them into the verus! scope somehow, similar to how `Inner` in frame.rs is properly declared within verus!.
+[RESULT ✓] bash: 10://! Access to the frame allocator is synchronized externally and performed by a single thread, so
+81:#[verus_verify]
+82:struct Inner {
+103:#[verus_verify]
+104:impl Inner {
+115:    #[verus_verify(external_body)]
+181:    #[verus_verify(external_body)]
+254:    #[verus_verify(external_body)]
+339:    ...
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && grep -n "struct PhysMemoryManager\|impl PhysMemoryManager\|verus_ver
+
+[THINKING] I see that `Inner` uses `#[verus_verify]` on both the struct and its impl block to register with Verus, so I need to apply the same pattern to `PhysMemoryManager`, `UserFrame`, and `KernelFrame` structs along with their impl blocks. Let me check how these are currently structured.
+[RESULT ✓] bash: 69:pub struct PhysMemoryManager {
+77:impl PhysMemoryManager {
+98:    #[verus_verify(external_body)]
+99:    #[verus_spec(result =>
+177:    #[verus_verify(external_body)]
+178:    #[verus_spec(result =>
+247:    #[verus_verify(external_body)]
+248:    #[verus_spec(result =>
+288:    #[verus_verify(externa...
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I need to add `#[verus_verify]` attributes to several structs that are missing them: `PhysMemoryManager` and its impl block, `UserFrame`, and `KernelFrame`. Currently only `Upool` has the attribute, so these others need to be registered for verification.
+[RESULT ✓] view: 60. //==================================================================================================
+61. // Structures
+62. //==================================================================================================
+63. 
+64. ///
+65. /// # Description
+66. ///
+67. /// Physical memory manag...
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 20. ///
+21. /// # Description
+22. ///
+23. /// A type that represents a user frame.
+24. ///
+25. #[derive(Debug)]
+26. pub struct UserFrame {
+27.     /// Frame address.
+28.     addr: FrameAddress,
+29. }
+30. 
+31. #[cfg(verus_keep_ghost)]
+32. verus! {
+33. 
+34. /// Abstract view of a [`UserFrame`]: the ph...
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] view: 24. };
+25. use ::sys::error::Error;
+26. #[cfg(verus_keep_ghost)]
+27. use ::vstd::prelude::*;
+28. 
+29. //==================================================================================================
+30. // Kernel Frame
+31. //=======================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+The three types need `#[verus_verify]` registration (like `Inner` in frame.rs). Let me add them:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I need to add the `#[verus_verify]` attribute to the struct definitions so Verus recognizes them as known types. The View impl blocks inside the verus!{} macro need this, but the regular impl blocks outside don't require it.
+
+Looking at how frame.rs handles this with the Inner struct, I can see that adding `#[verus_verify]` to structs outside verus!{} is the right pattern. Since FrameAddress is already used in frame.rs and works fine, it should be compatible here too. I'll add the attribute to PhysMemoryManager, UserFrame, and KernelFrame structs, and also to the impl blocks to match the pattern from frame.rs.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+Now check `verus_verify` is imported in upool.rs and kframe.rs, and fix the `config::kernel::KERNEL_WATERMARK` spec issue:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && grep -rn "verus_verify\|use ::verus" upool.rs kframe.rs manager.rs |
+
+[THINKING] I need to verify that `verus_verify` is properly imported in both upool.rs and kframe.rs, since it's already being used in manager.rs.
+[RESULT ✓] bash: === how manager imports verus_verify ===
+69:#[verus_verify]
+78:#[verus_verify]
+=== check kframe/upool top imports ===
+6://! A [`KernelFrame`] represents a single page-sized physical frame allocated for kernel use.
+14:use crate::hal::mem::{
+20:use ::arch::mem;
+<shellId: 44 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && grep -rn "verus_verify\|verus_spec\|verus_builtin_macros\|macro_use"
+
+[THINKING] I'm noticing that `verus_verify` is being used in manager.rs without an explicit import, so it's likely coming from a prelude or macro_use directive. I should trace back through frame.rs to see how it's being resolved — it's probably a builtin proc-macro attribute that gets pulled in via `#[macro_use]` or resolved through the crate's module path.
+[RESULT ✓] bash: === crate root ===
+<shellId: 45 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src && grep -rn "verus_verify\|verus_builtin_macros\|prelude" lib.rs 2>/dev/null | 
+[RESULT ✓] bash: collections
+debug.rs
+event
+hal
+io
+ipc
+kargs.rs
+kcall
+kimage.rs
+klog.rs
+kmain.rs
+kmod.rs
+kpanic.rs
+macros.rs
+mm
+multibin.rs
+pm
+stdio.rs
+uart.rs
+=== search whole kernel for verus_verify use/import ===
+<shellId: 46 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+`verus_verify` is auto-injected by the toolchain (no import needed). Now fix the `config::kernel::KERNEL_WATERMARK` spec error:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+
+[THINKING] The `verus_verify` macro is globally available through Verus's automatic prelude injection, so I don't need to explicitly import it in upool.rs or kframe.rs. Since frame.rs already uses it without imports, the same approach will work here. Now I'm checking the kernel configuration constants...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // `PhysMemoryManager` is a *stateless* facade over the global frame allocator
+7. // (`Upool` carries no fields; kernel frames are drawn directly from `frame::*`)...
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+The external `config` const can't be evaluated by Verus. Make the watermark an opaque (uninterpreted) abstract constant — sound since `check_user_watermark` is an external_body shim and callers only need the abstract guarantee:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+
+[THINKING] The core problem is that Verus can't evaluate the external const at compile time. I'm considering two approaches: either make the spec function that returns the watermark an opaque uninterpreted function so it's treated as a fixed unknown value (which works fine since we only need consistency, not the actual number), or use the external_body verifier attribute on the spec function. But there's a complication with how the exec function interacts with this.
+
+Since `check_user_watermark` is marked external_body anyway, I don't need to prove its implementation matches the spec — I just assert the postcondition. That means an uninterpreted `spec_kernel_watermark()` works perfectly: it's an abstract constant representing the threshold. The runtime and spec don't need a definitional link that Verus can verify (since the config module is external anyway). So I'll go with making it an uninterpreted spec function with no body — that's the cleanest approach.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/manager.rs /tmp/manager.rs.bak && timeout 600 make verify-kernel 

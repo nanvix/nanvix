@@ -66,6 +66,7 @@ static PHYS_MEMORY_MANAGER_INIT: AtomicBool = AtomicBool::new(false);
 ///
 /// Physical memory manager.
 ///
+#[verus_verify]
 pub struct PhysMemoryManager {
     upool: Upool,
 }
@@ -74,6 +75,7 @@ pub struct PhysMemoryManager {
 // Implementations
 //==================================================================================================
 
+#[verus_verify]
 impl PhysMemoryManager {
     ///
     /// # Description

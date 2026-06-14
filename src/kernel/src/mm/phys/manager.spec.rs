@@ -26,12 +26,13 @@ use vstd::seq::Seq;
 
 /// The kernel watermark threshold, lifted to `int`.
 ///
-/// Abstract form of the build-time constant `config::kernel::KERNEL_WATERMARK`:
-/// the number of physical frames the allocator must keep in reserve for kernel
-/// use, below which user allocations are refused.
-pub open spec fn spec_kernel_watermark() -> int {
-    config::kernel::KERNEL_WATERMARK as int
-}
+/// Abstract (uninterpreted) form of the build-time constant
+/// `config::kernel::KERNEL_WATERMARK`: the number of physical frames the
+/// allocator must keep in reserve for kernel use, below which user allocations
+/// are refused. It is left opaque because the concrete value is a build-time
+/// constant of an external crate; callers only rely on its consistency, not its
+/// magnitude.
+pub uninterp spec fn spec_kernel_watermark() -> int;
 
 /// A user allocation of `count` frames is admissible only if, after servicing it,
 /// at least `KERNEL_WATERMARK` frames would still be free.
