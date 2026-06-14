@@ -2557,3 +2557,18 @@ Turn 159
 Turn 160
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | grep -E "warning|v
+[RESULT ✓] bash: verification results:: 4 verified, 0 errors
+  4 verified
+  0 errors
+  ✅ No cheating detected.
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+  verification: 4 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_de...
+
+────────────────────────────────────────────────────────────
+Turn 161
+────────────────────────────────────────────────────────────
+No warning, still 4 verified/0 errors/CLEAN. Let me re-run full verify and build to confirm nothing broke from the restructure.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | grep -E "Crate|verifica
+
+[THINKING] The architecture verification passed cleanly, so I need to rerun the full verification suite to make sure the kernel still passes after recompiling, then do a final build to be certain everything is solid.
