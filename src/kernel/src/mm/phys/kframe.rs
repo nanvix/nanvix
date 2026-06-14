@@ -98,10 +98,12 @@ impl KernelFrame {
         // allocation occurs).
         let phys_addr: PageAligned<PhysicalAddress> =
             PageAligned::from_raw_value(base.into_raw_value()).map_err(|e| {
+                #[cfg(not(verus_keep_ghost))]
                 error!("frame base is not page-aligned: {e:?}");
                 e
             })?;
         crate::mm::virt::identity_map_page(phys_addr).map_err(|e| {
+            #[cfg(not(verus_keep_ghost))]
             error!("failed to identity-map frame: {:?}", e);
             e
         })?;

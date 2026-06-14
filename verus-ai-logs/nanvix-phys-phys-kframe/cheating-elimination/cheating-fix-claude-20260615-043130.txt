@@ -78,3 +78,33 @@ Let me empirically test removing the `external_body` to capture the actual Verus
 Turn 4
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "kframe|error|fail|req
+[RESULT ✓] bash: error: Unsupported constant type
+191 | |                     crate::klog::KlogLevel::Error,
+   ::: src/kernel/src/mm/phys/kframe.rs:101:17
+101 |                   error!("frame base is not page-aligned: {e:?}");
+    = note: this error originates in the macro `write` which comes from the expansion of...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Removing `external_body` surfaces a first blocker: the `error!` macros in the body (Unsupported constant type — same reason `deref`/`clear` are external). Let me gate those (mirroring the approved `drop` pattern) to expose the deeper blocker.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] Removing the external_body annotation exposes the real issue: the `error!` macros inside the `new` function's body can't be compiled by Verus because they use an unsupported constant type. This is the actual blocker preventing in-body verification of the function.
+
+The deeper problem is that `identity_map_page` requires `identity_map_view().inv()` to hold, which I can't prove from just `base.inv()` since the function is uninterpreted. I'll gate the error macros the same way `drop` does to expose this identity_map_view precondition error and confirm it's the real wall.
+[RESULT ✓] view: 94.     pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
+95.         // Ensure the frame is identity-mapped in the kernel address space so that
+96.         // Deref/DerefMut can safely access it. This lazily installs a page
+97.         // table entry if needed (page tables come from a ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "kframe|error|fail|req
