@@ -396,3 +396,116 @@ All four reproduced. Restoring to the green (committed) state and confirming.
 [THINKING] The assertion passes but the postcondition fails—both point to the same issue: the manager's exec functions for the kernel and contiguous paths aren't actually modifying `self`, which blocks all four admits at their core.
 
 The real problem is that `phys_view()` is a parameter-free uninterpreted constant and `Upool::view` has no linking axiom, so there's no way to connect the global mutable state to `self@` transitions. Fixing this would require either redefining the specs to make `phys_view` state-parameterized, threading a ghost token through the frame.rs free functions, or weakening the manager specs—all of which are out of scope or forbidden. This genuinely needs guidance. Let me restore manager.rs to green and then document the exact errors and reproducers.
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.rs | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+=== verifying restored state ===
+verification results:: 42 verified, 0 errors (partial verification with `--verify-*`)
+  Exit code : 0
+  Global: assume=0 external_body=18 admit=24 trusted=0 cfg_gate=15
+  verifi...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+git shows a 1-line diff against HEAD. Let me inspect it to ensure I restored correctly.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git diff src/kernel/src/mm/phys/manager.rs && echo "=== git log ===" && git log --one
+
+[THINKING] I'm noticing a discrepancy — git diff shows manager.rs has changed even though I restored it from the backup I took at the session start, which should match HEAD. Let me investigate what the actual difference is.
+[RESULT ✓] bash: === git log ===
+e6a9eb322 [verus] verify PASS (cheating detected): kernel::mm::phys (42 verified, 0 errors, admit=24 external_body=18 cfg_gate=15)
+f73543b11 [verus] verify FAIL: kernel::mm::phys (41 verified, 1 errors)
+56eaa6abe [verus] verify FAIL: kernel::mm::phys (41 verified, 1 errors)
+<shellId:...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Working tree is clean at the green state (42 verified, 0 errors). The earlier diff was the transient reproducer, now re-committed as restored. Let me run `make build` as the reviewer requested (item 10).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && (make build 2>&1 || ./z build 2>&1) | tail -25
+
+[THINKING] The git diff is clean now after the auto-commit captured the restored state, so manager.rs is back in sync with HEAD. The working tree is in a good place with 42 verified tests and no errors, and that earlier change was just the transient reproducer edit before the pipeline re-committed everything.
+
+I'm seeing 24 admits globally across the codebase, with 4 of those in the manager module specifically (lemma_manager_attached, lemma_kernel_alloc_one, lemma_kernel_alloc_contiguous, lemma_user_bulk_err_restored). The frame.rs file has 8 pre-existing admits that are out of scope. I've now thoroughly demonstrated through reproducers that all 4 manager admits are irreducible within the current scope, so the state is back to green but with those cheating admits still present. Now I need to run `make build` as the reviewer requested to confirm everything compiles correctly.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -E "^[a-z-]+:" Makefile 2>/dev/null | head -30; echo "=== z help ==="; ls -la z*
+
+[THINKING] I need to figure out how to build this project since `make build` doesn't have a direct target—let me look at the Makefile and check what build options are available, keeping in mind the custom instructions mention using `./z` for Linux.
+[RESULT ✓] bash: update-sysroot-link:
+dump-sccache-stats:
+all: all-nanvix
+all-nanvix: \
+all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+all-nanvix: all-nanvix-shim
+all-nanvix: standalone-images
+all-nanvix: all-nanvix-bench
+init: init-repo
+init-repo:
+clean: \
+clean: clean-ho...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 ./z build 2>&1 | tail -25
+
+[THINKING] The build target is `./z build` for the canonical Linux build, which should compile the kernel without errors to satisfy the reviewer's requirement. Let me run that command to verify everything compiles correctly.
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.25s
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked -Zbuild-std=core,alloc -Zjson-target-spec  --target /home/ruize/nanvix-phy-specs/build/targets/x86-user.json  -p nvx-crt0 --featur...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+A real regression: the non-Verus `./z build` fails because loop variable `i` (line 244) is used only in ghost invariants, which are stripped in the normal build → `-D unused-variables`. This was a latent issue from the prior `for _` → `for i` change. Let me fix it by underscore-prefixing (still usable in the ghost invariant).
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I see there's a build error in the non-Verus build where the loop variable `i` is unused because it's only referenced inside ghost code that gets stripped out during compilation. This is a regression from my earlier change where I switched from using `_` to `i` as the loop variable. The `-D warnings` flag is catching this and failing the build.
+
+I need to find a solution that works for both builds. The ghost invariant needs `i`, but in the exec build it's genuinely unused. Looking at other loops in the codebase, they use `i` and `j` in actual exec code (like calculating memory addresses), so they don't have this problem. The cleanest fix here is to add a harmless reference to `i` in the exec code, like `let _ = i;`, to suppress the unused variable warning without changing the loop variable name. Renaming the loop variable from `i` to `_i` would suppress the unused warning while keeping the invariant intact, since `_i` is a valid identifier in Verus and the underscore prefix only affects the warning, not the variable's usability in ghost code.
+[RESULT ✓] view: 235.         #[cfg_attr(verus_keep_ghost, verus_spec(
+236.             invariant
+237.                 g_old == old(self)@,
+238.                 g_old.wf(),
+239.                 self@.wf(),
+240.                 frames@.len() == i,
+241.                 user_bulk_inv(g_old, self@, frames@),
+242.       ...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm considering renaming the loop variable from `i` to `_i` to suppress the unused variable warning, though I'm uncertain whether Verus will properly resolve it within the invariant given how the for-loop macro handles naming internally. The `#[allow(unused_variables)]` attribute could work too, but placing it on the loop itself is tricky. Renaming to `_i` feels like the cleanest solution here.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+I need the underscore prefix to suppress the exec-build warning while keeping it usable in the ghost invariant. Let me correct to `_idx`.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm realizing the underscore prefix won't actually solve the problem since Verus needs to reference the variable in the invariant. Let me think through whether Verus can work with an underscore-prefixed name or if I need a different approach entirely.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== make build ===" && timeout 600 ./z build 2>&1 | tail -8
+[RESULT ✓] bash: === make build ===
+
+================================================================================
+SCCACHE Statistics
+================================================================================
+SCCACHE not available or not configured.
+==========================================================...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Build passes now. Let me confirm Verus still verifies with the `_idx` rename.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verified,|Exit code|ad

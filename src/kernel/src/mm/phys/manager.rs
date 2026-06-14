@@ -237,11 +237,11 @@ impl PhysMemoryManager {
                 g_old == old(self)@,
                 g_old.wf(),
                 self@.wf(),
-                frames@.len() == i,
+                frames@.len() == _idx,
                 user_bulk_inv(g_old, self@, frames@),
                 count > 0 ==> g_old.user_alloc_ok(count as nat),
         ))]
-        for i in 0..count {
+        for _idx in 0..count {
             proof_decl! {
                 let ghost mview_pre = self@;
             }
