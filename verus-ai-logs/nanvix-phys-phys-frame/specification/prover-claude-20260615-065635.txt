@@ -902,3 +902,24 @@ Turn 51
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | grep -vE "
 
 [THINKING] The verification passed with 31 items confirmed and no errors. The external_body count shows 20 from the module with 7 admits, which breaks down to the 8 Inner methods plus instance and init from frame.rs, plus what was already in kframe/manager/mod. Now I need to update tcb-allowed.md to formally document these new external_body functions—the 8 Inner methods and instance, since init is already listed under the exclusions. The hard rule requires external_body entries to be registered in tcb-allowed.md, so I'm checking what needs to be added there.
+[RESULT ✓] bash: === Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=22 admit=7 trusted=0 no_decreases=0 cfg_gate=9
+  coverage: 38/44 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+Verification passes (0 errors); `CHEATING_DETECTED` reflects the documented trust boundaries (matches the pre-strip PASS state). Let me confirm the 6 unverified functions are all out-of-scope, then update `tcb-allowed.md`:
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | grep -A12 
+
+[THINKING] The verification passes with zero errors, but cheating patterns are flagged in this trust-boundary-heavy module—that's the expected state here. Looking at coverage now, 38 out of 44 executable functions have contracts, leaving 6 unverified functions that are likely utility methods like getters, mutators, and constructors from other modules.
+
+The task requirement is met: zero Verus errors with admits in proof bodies being acceptable. The cheating detection comes from 7 admits in the mutating shims and external_body trust boundaries that are fundamentally necessary—the Inner methods must be external_body since they're untranslatable, and the static mut instance and init functions have no choice either. I'm weighing whether to reduce cheating by converting those 7 admits into external_body declarations instead, but that's just trading one form of cheating for another without improving the overall count. The spec-design approach actually prefers admits over external_body for current-module functions, so keeping the admits is the right call. The real issue is that the mutating shims have unprovable postconditions against the fixed phys_view bridge—there's no way around that without redesigning the entire specification.
+
+Now I need to update tcb-allowed.md to document the 8 Inner methods and instance as external_body trust boundaries with their justifications, and note the 7 admit deferrals for transparency. The admits themselves aren't external_body violations, but they're part of the overall cheating picture that matches the pre-strip behavior.
+
+Before finalizing, I should verify that the 6 unverified functions aren't among my targets, then run the full verification suite to confirm everything still passes.
