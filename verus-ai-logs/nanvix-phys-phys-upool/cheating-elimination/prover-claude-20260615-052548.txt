@@ -209,3 +209,102 @@ Makefile
 Turn 5
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -50
+[RESULT ✓] bash: - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_body
+    - frame.rs:481 book: external_body
+    - frame.rs:517 is_covered: external_body
+    - frame.rs:565 alloc_range: external_body
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The cheating detected is all in frame.rs/manager.rs/mod.rs — none in upool.rs. Let me see the full detail and check against tcb-allowed.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | head -80
+
+[THINKING] I'm seeing that the verification flagged cheating globally, but all the external_body items are confined to frame.rs, manager.rs, and mod.rs—nothing in upool.rs itself, and all of these are already listed in tcb-allowed.md. I need to check the full cheating details to confirm upool has no violations and identify which of the 25 external_body items aren't in the allowed list.
+[RESULT ✓] bash: - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refcount: external_body
+    - mm/phys/frame.rs:481 book: external_body
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+None of the cheating items are in upool.rs. Let me verify the cfg_gate items aren't in upool and confirm upool's drop verifies despite the `error!` macro.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rnE "cfg\(verus|cfg\(verus_keep_ghost\)|#\[cfg" src/kernel/src/mm/phys/upool.rs; echo
+
+[THINKING] None of the 25 external_body items are actually in upool.rs, and while there are cfg_gate items with a value of 10, I need to track down where those are located. Looking at the cheating details, I'm only seeing external_body and external_type_spec listed, so I need to find the cfg_gate items separately. The real issue is that the task is scoped to phys-upool, but the verification command is running globally and catching cheating in other modules like frame.rs, manager.rs, and mod.rs that are all part of tcb-.
+
+The upool.rs module itself has zero cheating — the base branch had `Upool::new` as external_body which has been removed and now verifies cleanly. The drop function is allowed as external_body per tcb-allowed.md due to the error! macro, but it's actually verifying without needing that annotation, and the global verification passed with exit 0. I should double-check whether the cfg_gate items are actually in upool or elsewhere, and confirm that upool's drop is being properly verified.
+[RESULT ✓] bash: 9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+20:#[cfg(verus_keep_ghost)]
+39:#[cfg(verus_keep_ghost)]
+=== full cheating detail (all lines) ===
+25 verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+=== grep upool in detail ===
+NO upool cheating
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "cfg_gate\|cfg-gate" verus-ai-logs/verify-kernel/verus-logs/*.txt verus-ai-logs/ve
+
+[THINKING] The cfg gates in upool.rs are just the standard spec/proof inclusion pattern using `#[cfg(verus_keep_ghost)]`, not cfg-gated exec code that would change semantics—this matches the pattern used throughout the codebase. So upool has no actual cheating; the 25 external_body and 10 cfg_gate instances are all in the O category.
+[RESULT ✓] bash: No cfg_gate in upool
+=== where are cfg gates counted ===
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); echo "LOG=$LOG";
+
+[THINKING] I need to check the full verus log to see the breakdown for cfg_gate=10 and verify that none of those entries are in the upool.
+[RESULT ✓] bash: LOG=verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_05-26-31.log
+16:  cfg_gate=10
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rln "cfg(verus_keep_ghost)" src/kernel/src/mm/phys/ ; echo "=== count cfg gates per f
+[RESULT ✓] bash: src/kernel/src/mm/phys/kframe.rs
+src/kernel/src/mm/phys/upool.rs
+src/kernel/src/mm/phys/frame.rs
+src/kernel/src/mm/phys/mod.rs
+src/kernel/src/mm/phys/manager.rs
+=== count cfg gates per file (exec-affecting) ===
+0 src/kernel/src/mm/phys/frame.proof.rs
+2 src/kernel/src/mm/phys/frame.rs
+0 src/kernel/sr...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+upool.rs has zero cheating (no admit/assume/external_body, and the 4 cfg gates are the standard spec/proof-include pattern). All 25 external_body + cfg gates are in other files (frame.rs/manager.rs/mod.rs), all listed in tcb-allowed.md and out of scope. The result was cached, though. Let me force a clean recompile to confirm the current upool.rs (especially `drop` with `error!`) genuinely verifies.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '600,640p' Makefile
+
+[THINKING] I'm looking at what the cfg_gate detector actually counts—it's flagging `cfg(verus_keep_ghost)` gates, and upool.rs has 4 of them, but they're just the standard pattern for including spec and proof files, not exec code that would change behavior. The global cfg_gate=10 count probably refers to something more specific, so I need to figure out exactly what the cheating detector is looking for versus what's actually happening in those upool gates. So the upool changes are already committed in the START commit, meaning the proving phase already added specs and removed external_body. Now I need to verify there's actually nothing left to do by checking whether drop actually verifies. The coverage output listed drop as unverified, but I need to figure out which drop — KernelFrame or UserFrame — and whether UserFrame::drop with its error! macro somehow still passes verification despite the translation concerns mentioned in tcb-allowed.md.
+
+The proving phase ran build and verify and passed, so the current code with drop and error! apparently does verify. Let me force a clean verification without cache to be absolutely certain the current state verifies cleanly, since the cheating gate is failing due to other modules' external_body, not upool itself. All the external functions across frame.rs, manager.rs, and mod.rs are already listed in tcb-allowed.md, so they're out of scope for this phase. The upool module itself has zero cheating, which completes the deliverable. Now I need to verify that the drop function actually verifies without relying on cached results — let me force a fresh compilation to confirm the current source is genuinely proven.
+[RESULT ✓] bash: if [ ! -f "$$verus_path" ]; then \
+		echo "Error: VERUS_EXECUTABLE_DIR is set to '$(VERUS_EXECUTABLE_DIR)' but no $(VERUS_BINARY) found there."; \
+		exit 1; \
+	fi; \
+	if [ "$(IS_WINDOWS)" != "yes" ] && [ ! -x "$$verus_path" ]; then \
+		echo "Error: $(VERUS_BINARY) at '$$verus_path' is not executable...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/mm/phys/upool.rs && timeout 1800 make verify-kernel MODULE=mm::phys 2>
+
+[THINKING] I need to force a recompilation by updating the file's modification time so cargo picks up the changes and re-runs the verification. Touching upool.rs will trigger a rebuild of the kernel crate and force verus to re-verify the module.
