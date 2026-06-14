@@ -179,3 +179,35 @@ Turn 1
 ────────────────────────────────────────────────────────────
 The fixer's claims look substantial. Now I verify independently by running the tools myself rather than trusting the report.
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | tail -30
+[RESULT ✓] bash: Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-14_11-36-06
+
+note: verifying module sys::mm::address
+
+note: verif...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+"Cached (no recompilation)" concerns me — I need to confirm the new proof actually verified, not just that a stale cache passed. Let me check the cheating detail and force a real verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== cheating detail ==="; cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.tx
+
+[THINKING] I'm concerned about that "cached" note—I need to verify the proof actually ran on the new code rather than just using a cached result. Let me check the cheating-detail output to confirm pde is gone and look at the verification logs to see the verified/errors count.
+[RESULT ✓] bash: === cheating detail ===
+    - x86/mem/paging/table.proof.rs:8 lemma_entry_roundtrip: admit
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+=== grep pde in detail ===
+NO PDE CHEATS
+=== grep admit in pde files ===
+NONE
+<shellId: 0 completed ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+No pde cheats remain. But the run was cached — I'll force a clean re-verification of the actual proof to confirm it genuinely verifies.
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/libs/arch/src/x86/mem/paging/pde.proof.rs src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] I'm concerned the verification might be cached, so I need to force a fresh re-verification to confirm the proof actually checks out. Let me touch the proof file to invalidate the cache and see if it still reports zero errors.
