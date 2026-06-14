@@ -924,3 +924,66 @@ Turn 8
 Turn 7
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/mm/phys/upool.rs && make verify-kernel MODULE=mm::phys
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo 'admit:' && rg -n "admit\s*!?\(" src/kernel/src/mm/phys/upool*.rs || true && ech
+[RESULT ✓] bash: admit:
+assume:
+external_body_attr:
+src/kernel/src/mm/phys/upool.rs:246:    #[verus_verify(external_body)]
+src/kernel/src/mm/phys/upool.rs:272:    #[verus_verify(external_body)]
+assume_specification:
+cfg_not_verus_keep_ghost:
+src/kernel/src/mm/phys/upool.rs:205:            #[cfg(not(verus_keep_ghost)...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && printf 'admit=%s\n' "$(rg -N "admit\s*!?\(" src/kernel/src/mm/phys/upool*.rs | wc -l)
+[RESULT ✓] bash: admit=0
+assume=0
+external_body_attr=2
+assume_specification=0
+cfg_not_verus_keep_ghost=1
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Now let me run the AST consistency check, spec drift, and verification in parallel.
+[TOOL] report_intent: Running AST, spec-drift, and verify
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/kernel/s
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref HEAD 
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ✅ Consistent: 8 functions, 2 structs match.
+EXIT=0
+<shellId: 31 completed with exit code 0>
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+EXIT=0
+<shellId: 30 completed with ex...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+AST consistency and spec drift both pass. Now let me run the actual verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 590 make verify-kernel MODULE=mm::phys 2>&1 | tail -40; echo "PIPEEXIT=${PIPE
