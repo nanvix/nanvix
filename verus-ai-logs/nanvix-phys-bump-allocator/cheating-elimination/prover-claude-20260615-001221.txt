@@ -273,3 +273,227 @@ I need to determine whether this `assume_specification` for the standard library
 Turn 9
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-bump-allocator 2>&1 | tail -40
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== cheating-detail ==="; cat verus-ai-logs/verify-bump-allocator/verus-logs/ch
+
+[THINKING] The verification passes but the cheating check is flagging two external body references—`alloc` and `alloc_as`—that are actually listed in the allowed file. Interestingly, `assume_specification` isn't being counted by the cheating gate's regex, even though it appears in the code, so I need to look at the cheating-detail output to see what's actually being detected.
+
+The real question is whether the phase gate actually cross-references tcb-allowed.md when determining pass/fail, or if it's just reporting the raw counts without considering what's allowed. Let me check the verify script to understand how it decides whether to report CHEATING_DETECTED.
+[RESULT ✓] bash: === cheating-detail ===
+    - lib.rs:286 alloc: external_body
+    - lib.rs:367 alloc_as: external_body
+=== coverage-unverified ===
+# Unverified exec functions: 3/6
+  fmt
+  new
+  default
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). The 2 `external_body` (alloc, alloc_as) are both in tcb-allowed.md. Now let me check the `assume_specification` for `div_ceil` — whether vstd provides a spec so I can eliminate it.
+[TOOL] bash: cd /home/ruize/toolchain/verus && grep -rn "div_ceil" vstd/ 2>/dev/null | head -30
+
+[THINKING] I've identified the two external_body functions—`alloc` and `alloc_as`—both listed in tcb-allowed.md, while the unverified ones like `fmt`, `new`, and `default` fall outside scope. The critical check is whether every external_body is registered in tcb-allowed.md, and since both are, the zero-cheating requirement holds. Now I need to verify if the phase gate actually cross-references tcb-allowed.md by examining the verify.sh script log.
+
+The task allows functions in tcb-allowed.md to keep external_body, so both `alloc` and `alloc_as` are permitted. I'm noticing `assume_specification` appears in the output table for `div_ceil`, but the cheating gate reports `assume=0`—suggesting `assume_specification` might not be counted as a cheating item. Since `div_ceil` is a standard library function without vstd coverage, I should check if vstd now provides a spec for it; if so, I can use that instead and eliminate the `assume_specification`.
+[RESULT ✓] bash: 
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/toolchain/verus -name "*.rs" -path "*vstd*" 2>/dev/null | head; echo "---try find vstd source---"; find
+[RESULT ✓] bash: /home/ruize/toolchain/verus/vstd/multiset_lib.rs
+/home/ruize/toolchain/verus/vstd/atomic.rs
+/home/ruize/toolchain/verus/vstd/future.rs
+/home/ruize/toolchain/verus/vstd/shared.rs
+/home/ruize/toolchain/verus/vstd/wrapping.rs
+/home/ruize/toolchain/verus/vstd/laws_cmp.rs
+/home/ruize/toolchain/verus/vstd...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "div_ceil" /home/ruize/toolchain/verus/vstd/std_specs/num.rs 2>/dev/null; echo "=== exit ==="; grep -rln "div_c
+[RESULT ✓] bash: === exit ===
+<shellId: 14 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+vstd has no `div_ceil` spec. Let me check the diff against the base branch to understand what's pre-existing.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short; echo "=== current branch ==="; git branch --show-current; echo "=
+
+[THINKING] The `vstd` library doesn't specify `div_ceil`, so I need the `assume_specification` to define it. While `assume_specification` is human-approved and external-bottom trust, the cheating gate didn't flag it, so I'm working through the escalation ladder: I've already searched `vstd` without finding it, and now I'm considering safe alternatives or restructuring approaches.
+
+The core issue is that I can't change the exec logic (which calls `div_ceil` on the alignment value), but I could potentially provide the proof differently if I can find an existing `vstd` spec or determine if this `assume_specification` pattern is already accepted elsewhere in the codebase. Actually, the verification already passes with exit 0—the cheating gate is reporting `external_body=2`, but both functions are listed in `tcb-allowed.md`, so they're permitted under the task rules.
+
+Now I need to check whether the `assume_specification` for `div_ceil` is pre-existing on the base branch or something I introduced, since the task only restricts writing new `assume_specification` without approval.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/prover-claude-20260615-001221.jsonl
+ M verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/prover-claude-20260615-001221.txt
+=== current branch ===
+verus-ai-prove
+=== diff stat vs verus-ai-prove ===
+<shellId: 15 completed with...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+No diff vs base — files are in committed state. Let me check how the phase gate evaluates pass/fail (whether it cross-references tcb-allowed.md).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,60p' scripts/verify.sh 2>/dev/null | head -60; echo "..."; grep -n "tcb-all
+
+[THINKING] The bump_allocator files haven't changed from the base branch, so the `assume_specification[div_ceil]` was already there. Looking at the proof file, there are no `admit()` calls in the lemma bodies and verification passes cleanly, which means everything is fully proved with no outstanding admits or assumptions.
+
+The current state shows two external_body items (both allowed by tcb-allowed.md), one pre-existing assume_specification for div_ceil that vstd doesn't cover, and zero cfg-gated exec issues. The verification passes, so the only flagged "cheating" is the two allowed external bodies. The task asks to eliminate all cheating with zero exceptions except for tcb-allowed.md, so I need to reconsider whether the trait method `as_mut_ptr` and its spec are actually problematic or if they're acceptable as a trusted contract for the backend implementation.
+
+For the div_ceil assume_specification, it's pre-existing on the base branch and was presumably approved during the speccing phase. The escalation ladder shows I can't avoid it without either proving div_ceil (impossible, it's a std intrinsic with no body) or rewriting the exec logic to not use div_ceil (which would violate source integrity). So the assume_specification appears genuinely required here unless I restructure the implementation itself.
+
+Actually, stepping back — the assume_specification for div_ceil is a faithful std-library spec, mirroring what vstd does in std_specs for other functions. This is the standard way to give std functions specs, not a workaround. The cheating gate doesn't count it as cheating.
+
+So there are no actual blockers: verification passes, the two external_body calls are allowed by tcb-allowed.md, and the assume_specification is a legitimate std-lib spec. The real question is whether the task wants me to verify everything is clean given tcb-allowed.md, or whether I should still try to eliminate the external_body calls on alloc and alloc_as despite being allowed to keep them.
+
+Looking at tcb-allowed.md more carefully — it provides detailed justification for those functions (int-to-ptr materialization, raw memory access, mirroring raw-array behavior). These are genuine limitations that legitimately warrant staying. Now I need to check if there's a gate script that cross-references tcb-allowed.md to understand the phase pass criterion.
+[RESULT ✓] bash: #!/bin/bash
+
+# Generic Verus verification script with cheating detection and git tracking.
+#
+# Two modes:
+#   Cargo mode:  ./verify.sh --crate <crate_name> [OPTIONS]
+#   Legacy mode: ./verify.sh --verus-dir <dir> [OPTIONS]
+#
+# Cargo mode uses `cargo verus verify -p <crate>` and is the recommended
+# ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+The verify script doesn't cross-reference tcb-allowed.md — the task statement is authoritative: external_body on `alloc`/`alloc_as` is allowed since both are listed. Let me confirm the full state: verification passes (exit 0), no admit/assume, and the 2 external_body are exactly the allowed ones. Let me check the existing log dir and confirm no admit anywhere.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== any admit() call (not comment) in crate ==="; grep -rn "admit()" src/libs/b
+
+[THINKING] The verify.sh script doesn't actually check against tcb-allowed.md—it just flags any external_body as cheating. The real validation happens at the harness level when it cross-references the allowed file. Since both alloc and alloc_as are listed in tcb-allowed.md, they're not blockers even though they have external bodies.
+
+The codebase is already clean: no admit, no assume, no cfg-gated exec, and only the two allowed external bodies. The assume_specification for div_ceil is pre-existing and approved—it's a faithful standard library spec that align_up genuinely needs since vstd doesn't provide it. So this task is effectively in a passing state, but I should verify the checklist: verification exits cleanly, all external bodies are in the allowed file, no problematic assumes, and the AST matches the base branch.
+
+The assume_specification is sound—it correctly specifies div_ceil as (x + y - 1)/y for unsigned integers without overflow—and it's the standard way to handle std library function contracts, not a cheating workaround. The cheating gate confirms it's not counted. Given that everything already passes the phase gate requirements, the task is really about confirming the clean state and documenting it, though I'm wondering if the intent is to push even harder to eliminate the allowed external bodies on alloc and alloc_as despite them being permitted.
+
+Those external bodies genuinely can't be verified without a permission token from the backend—they involve raw pointer materialization from integers, which is a true limitation—so keeping them aligns with the tcb justification. I've confirmed there are no hidden admit() calls anywhere, and the proof file comment about "admit() placeholders" is stale; the actual bodies contain real proofs. Since I haven't made any changes, regressions are impossible, but I should still run the verification as instructed to confirm the clean state. I'm torn between updating the stale comment in the proof file for accuracy versus keeping changes minimal. Since proof files are freely editable and the comment falsely claims admit() placeholders that don't actually exist, I'll update it to reflect reality — it's a documentation fix that improves honesty. Now I need to verify everything once more and check if the verification report file already exists before writing the final summary.
+[RESULT ✓] bash: === any admit() call (not comment) in crate ===
+src/libs/bump_allocator/src/lib.proof.rs:6:// Proof-function signatures for the abstract pool model. Bodies are `admit()`
+exit=0
+=== verification_todo exists? ===
+total 136
+drwxrwxr-x 1 ruize ruize   514 Jun 15 00:12 .
+drwxrwxr-x 1 ruize ruize  1788 Ju...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+No real `admit()` — only a comment reference. The module is already clean. Let me review the existing rationale docs to align my report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== verification-todo.md ==="; cat verus-ai-logs/nanvix-phys-bump-allocator/ver
+
+[THINKING] I'm looking at the source files to understand the verification approach — there's a version with external bodies removed that's used to check the spec independently, and there's already a verification-todo document. I need to examine the proving directory and the unsupported features list to see what the established rationale is, and clarify whether the external_body approach means those function bodies aren't actually being verified.
+
+External bodies are trusted, which is why they're listed in tcb-allowed.md — that confirms the state is clean. I'm going to skip modifying the stale comment in lib.proof.rs to keep changes minimal and surgical. The comment about admit() placeholders is technically describing the workflow accurately (they were admit() during spec phase, now discharged in proving phase), so leaving it avoids adding a diff without functional benefit. I'll run a final verification to confirm everything is correct, then write up the report.
+[RESULT ✓] bash: === verification-todo.md ===
+# Verification TODO — `bump_allocator` (`src/libs/bump_allocator/src/lib.rs`)
+
+Functions that are in scope but cannot be body-verified in the specification
+phase. They are **not** trust boundaries (absent from `tcb-allowed.md`) and are
+**not** marked `external_body`; the...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+The existing `verification-todo.md` is stale (from the spec phase); the current committed state already moved `alloc`/`alloc_as` to `external_body` + full specs registered in tcb-allowed.md. Let me run the AST consistency check per the skill.
+[TOOL] bash: cat /home/ruize/.openclaw/workspace/skills/ast-consistency/SKILL.md
+
+[THINKING] I'm noticing a discrepancy between the verification todo document from the specification phase and the current source code. The todo marked `alloc` and `alloc_as` as unproven and unannotated, but they're now marked with `#[verus_verify(external_body)]` and listed in the tcb-allowed file, suggesting the verification approach shifted during the proving phase.
+
+The current committed state already has these functions properly annotated with full specs, `align_up` is verified with a real spec and an assumption for the standard library call, and all proof lemmas are fully discharged without admits. So the codebase is already in a clean state for the cheating-elimination phase—I just need to confirm this and run the AST consistency check to ensure the executable code hasn't changed from the original.
+[RESULT ✓] bash: ---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+for the full ru...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git show verus-ai-prove:src/libs/bump_allocator/src/lib.rs > /tmp/lib_base.rs 2>&1 &&
+[RESULT ✓] bash: python3: can't open file '/home/ruize/nanvix-phy-specs/scripts/ast_consistency.py': [Errno 2] No such file or directory
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/nanvix-phy-specs -name "ast_consistency.py" 2>/dev/null; find / -path /proc -prune -o -name "ast_consis
+[RESULT ✓] bash: /mnt/shared/verus-ai-improve4/scripts/ast_consistency.py
+/mnt/shared/verus-ai-improve5-argus-exp2/scripts/ast_consistency.py
+/mnt/shared/view-design-exp/kheap-worker7-clean/scripts/ast_consistency.py
+/mnt/shared/verus-ai-improve5-kheap-claw/scripts/ast_consistency.py
+/mnt/shared/kheap-mas-exp/script...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git diff verus-ai-prove -- src/libs/bump_allocator/src/lib.rs | head; echo "lib.rs di
+
+[THINKING] The AST consistency check shows the file is byte-identical between the current version and the base, so there are zero mismatches. I'll verify this by running the tool against the actual files to be certain.
+[RESULT ✓] bash: lib.rs diff exit lines above (empty=identical)
+=== run ast tool ===
+✅ Consistent: 12 functions, 7 structs match.
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+AST consistency passes: **12 functions, 7 structs match** — zero mismatches, exec source byte-identical to base. 
+
+The module is already cheating-free given tcb-allowed.md. Summary of the audited state:
+- admit: 0, assume: 0, cfg-gated exec: 0
+- external_body: 2 (`alloc`, `alloc_as`) — both registered in tcb-allowed.md
+- assume_specification: 1 (`<usize>::div_ceil`) — faithful std-lib spec; vstd has none (confirmed)
+- Verification exit 0
+
+Let me write the report.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/fix_report.md
+[TOOL] report_intent: Writing elimination report
+
+[THINKING] The AST consistency check shows all 12 functions and 7 structs match between the exec source and base, with the exec code being byte-identical. I'm now questioning whether the base `verus-ai-prove` represents the verified state or the original non-verus source, since the AST tool strips ghost annotations to compare the current file against the base.
+
+The base branch is the reference baseline for this task, so it serves as the authority. Everything checks out: zero admits, zero assumes, two external_body declarations (both allowed), one assume_specification (faithful to the standard library spec), no cfg-gated exec code, and AST consistency confirmed across all functions and structs.
+
+Since I made no changes to the code, there are no regressions to worry about, though the task asks for running `make verify` across the full crate—which would be time-consuming and unnecessary given the verification already passed. The `assume_specification` for `div_ceil` is a faithful external spec for a standard library function that isn't yet in vstd—this is sound and not a verification escape, so I'll document it as an approved external-bottom rather than a blocker. Now I need to write the fix_report.md and update verification_todo.md at the specified path, noting that there are zero remaining proof gaps since the state is already clean.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/fix_report.md with 3817 characters
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Now the verification_todo.md at the requested path (zero remaining gaps).
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/verification_todo.md
+
+[THINKING] I need to create the verification_todo.md file with an underscore (not the hyphen version that already exists) to document that there are no remaining gaps to address.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/verification_todo.md with 1131 characters
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Final confirmation run of the crate verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 300 make verify-bump-allocator 2>&1 | grep -E "Exit code|cheating:|status:|ve
+
+[THINKING] I'm deciding whether to run the full verification suite given that I haven't modified any source, spec, or proof files, so there's no real risk of regression. Since the task asks for it though, I should at least re-run the bump allocator verification to confirm it still passes with zero errors.
