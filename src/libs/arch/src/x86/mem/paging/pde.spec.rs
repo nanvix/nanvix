@@ -139,10 +139,11 @@ impl View for PageDirectoryEntry {
 impl PageDirectoryEntry {
     // The only real constraint is the frame bound, inherited verbatim from the `FrameNumber` type
     // invariant. It is what makes `frame_address` total and overflow-free: the derived physical
-    // base `frame * FRAME_SIZE` is well-defined and cannot overflow `usize`.
+    // base `frame * FRAME_SIZE` is well-defined and cannot overflow `usize`. (The flags carry no
+    // cross-field constraint — `PageDirectoryEntryFlags::inv` is vacuously `true` — so they add
+    // nothing here.)
     pub open spec fn inv(&self) -> bool {
-        &&& 0 <= self@.frame <= FrameNumber::spec_max()
-        &&& self.flags.inv()
+        0 <= self@.frame <= FrameNumber::spec_max()
     }
 }
 
