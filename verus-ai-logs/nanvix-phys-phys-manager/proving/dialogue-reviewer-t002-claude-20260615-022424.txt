@@ -343,3 +343,50 @@ The detector flags 15 cfg gates globally, but they're a deliberate, codebase-wid
 Turn 12
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|verified|verifying module m
+[RESULT ✓] bash: error: Unsupported constant type
+191 | |                     crate::klog::KlogLevel::Error,
+207 |               error!("{reason}");
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Confirmed: un-gating `error!` makes Verus fail with "Unsupported constant type" in the macro expansion — a **genuine Verus limitation** (the isolated reproducer item 7 requires). The cfg-gates are logging-only, semantically inert, and the established codebase convention. Let me restore the file and check the `// VERUS REWRITE` convention usage.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/manager.rs.bak src/kernel/src/mm/phys/manager.rs && echo "restored"; git --no
+
+[THINKING] I've confirmed that removing the cfg gates causes Verus to fail with an "Unsupported constant type" error when expanding the `error!` macro, which means the cfg-gating of logging macros is a genuine Verus limitation—Verus simply can't process those macros. This is the exact reproducer that item 7 is asking for, and it means item 5's cfg-gates can't be removed.
+
+Looking at item 5 more carefully: the cfg-gated code is logging-only with no control flow or logic changes—the function behaves identically whether the gates are present or not since logging returns `()` and isn't visible to Rust's type system. These gates are hiding a logging call that Verus literally cannot compile, which matches the established pattern across all verified phys modules. So item 5 should be marked PASS with justification—the gates are semantically inert and gating a confirmed Verus limitation.
+
+Now I'm examining item 8 about the `check_user_watermark` reorder and whether moving `let available = frame::free_count()` before the overflow check constitutes a "VERUS REWRITE."
+[RESULT ✓] bash: restored
+ src/kernel/src/mm/phys/manager.rs | 1 +
+ 1 file changed, 1 insertion(+)
+=== VERUS REWRITE usage across repo ===
+0
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff -- src/kernel/src/mm/phys/manager.rs; echo "=== checkout clean to
+
+[THINKING] The git diff is showing an extra insertion even though I restored from a backup taken after the fixer's commit, which should have been clean — possibly just a trailing newline difference. I should verify the file actually matches HEAD. Also, I'm noticing that `// VERUS REWRITE` doesn't appear anywhere in the src/ directory, so it's not an established convention in this codebase, which contradicts what checklist item 8 references.
+[RESULT ✓] bash: diff --git a/src/kernel/src/mm/phys/manager.rs b/src/kernel/src/mm/phys/manager.rs
+index 4d9db5adf..2aab0ae3f 100644
+--- a/src/kernel/src/mm/phys/manager.rs
++++ b/src/kernel/src/mm/phys/manager.rs
+@@ -204,6 +204,7 @@ impl PhysMemoryManager {
+         }
+         if !frames.is_empty() {
+             l...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+File reset clean. Let me re-run verification on the clean tree to restore the baseline and confirm the committed state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel 2>&1 | tail -12
+
+[THINKING] I'm realizing the confusion with my backup and diff — the backup was taken before my perl script removed the gate, so it still had the cfg line. When I restored it, the working tree should've matched HEAD, but the diff showed the cfg line as added, meaning my working tree was missing it. Let me just use `git checkout` to reset this properly.
+
+Now I need to re-run the kernel verification to restore the cache to a clean passing state, since my experiment compiled a broken version. Let me run make verify-kernel to confirm the clean tree passes and re-establish the baseline.
