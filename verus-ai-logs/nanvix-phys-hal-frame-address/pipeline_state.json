@@ -5,7 +5,8 @@
   "current_phase": "cheating-elimination",
   "current_phase_idx": 4,
   "completed_phases": [
-    "proving"
+    "proving",
+    "cheating-elimination"
   ],
   "phase_results": {
     "proving": {
