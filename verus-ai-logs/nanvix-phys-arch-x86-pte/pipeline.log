@@ -209,3 +209,18 @@ Module: arch-x86-pte
 [2026-06-15 01:31:18] Running final comprehensive review...
 [2026-06-15 01:31:18] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 01:38:00]   ↳ review done in 6m41s (exit=0)
+[2026-06-15 01:38:00] [FINAL REVIEW] Result: PASS (0/5)
+[2026-06-15 01:38:00] [FINAL REVIEW] Cheating report: external_body: 3 (3 on user fns)
+[2026-06-15 01:38:00] [FINAL REVIEW] ⚠ unapproved external_body fn: 3
+[2026-06-15 01:38:00] [FINAL REVIEW] ❌ Overriding to FAIL — cheating: unapproved external_body fn: 3
+[2026-06-15 01:38:00] [FINAL REVIEW] Done (6m41s)
+
+============================================================
+PIPELINE FINISHED: arch-x86-pte (some phases need work)
+  ✅ proving                   dialogue-RESOLVED         6m47s (1 dialogue turns)
+  ✅ cheating-elimination      dialogue-RESOLVED        12m59s (1 dialogue turns)
+  ❌ final-review              FAIL                      6m41s
+  ──────────────────────────────────────────────────────────
+  Total: 26m49s
+============================================================
+[2026-06-15 01:38:00] [USAGE] Summary: 9 calls, 0 tokens, 41m36s total → /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pte/usage_summary.json
