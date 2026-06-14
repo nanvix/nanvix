@@ -84,9 +84,14 @@ impl Inner {
 ///
 /// `free_frames` is the image of the clear bitmap indices under the injective
 /// map `i -> i * PAGE_SIZE`, so its cardinality is `num_bits - usage`.
+///
+/// `num_bits >= 0` is supplied by the caller: `Bitmap::inv()` references the
+/// private backing slice, so the bound is not visible in this module; the caller
+/// recovers it from the `usize` result of `number_of_bits()`.
 proof fn lemma_free_count(inner: &Inner)
     requires
         inner.inv(),
+        inner.bitmap@.num_bits >= 0,
     ensures
         inner@.free_frames.finite(),
         inner@.free_frames.len() + inner.bitmap@.usage() == inner.bitmap@.num_bits,
@@ -99,7 +104,6 @@ proof fn lemma_free_count(inner: &Inner)
     let full = set_int_range(0, n);
     let clear = full.difference(sb);
 
-    assert(n >= 0);
     assert(ps > 0);
     bv.lemma_set_bits_finite();
     lemma_int_range(0, n);
@@ -124,7 +128,20 @@ proof fn lemma_free_count(inner: &Inner)
         }
     }
 
-    assert(inner@.free_frames =~= clear.map(f));
+    assert(inner@.free_frames =~= clear.map(f)) by {
+        assert forall|addr: int| inner@.free_frames.contains(addr) implies #[trigger]
+            clear.map(f).contains(addr) by {
+            let i = choose|i: int|
+                0 <= i < n && !sb.contains(i) && addr == frame_addr_of(i);
+            assert(clear.contains(i));
+            assert(addr == f(i));
+        }
+        assert forall|addr: int| #[trigger] clear.map(f).contains(addr)
+            implies inner@.free_frames.contains(addr) by {
+            let x = choose|x: int| clear.contains(x) && addr == f(x);
+            assert(0 <= x < n && !sb.contains(x));
+        }
+    }
     lemma_map_size(clear, inner@.free_frames, f);
 }
 

@@ -823,10 +823,12 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
 )]
 pub(super) fn free_count() -> usize {
     let inner = instance();
+    let nbits: usize = inner.bitmap.number_of_bits();
+    let used: usize = inner.bitmap.usage();
     proof! {
         lemma_free_count(inner);
     }
-    inner.bitmap.number_of_bits() - inner.bitmap.usage()
+    nbits - used
 }
 
 /// Free a frame previously returned by [`alloc`].

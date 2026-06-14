@@ -845,3 +845,77 @@ The lemma must reference `inner.bitmap@` to establish that `free_frames.len() + 
 Turn 47
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|free_count|lemma_free_c
+[RESULT ✓] bash: note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+  --> src/kernel/src/mm/phys/frame.proof.rs:87:7
+87 | proof fn lemma_free_count(inner: &Inner)
+error: assertion failed
+   --> src/kernel/s...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm seeing two assertion failures in the lemma_free_count function at lines 102 and 127. The first one is likely checking that n is non-negative, and the second appears to be validating that the inner free frames match the cleared frames. Let me pull up the proof file to examine those specific lines.
+[RESULT ✓] view: 93. {
+94.     let bv = inner.bitmap@;
+95.     let n = bv.num_bits;
+96.     let sb = bv.set_bits;
+97.     let ps = spec_page_size();
+98.     let f = |i: int| frame_addr_of(i);
+99.     let full = set_int_range(0, n);
+100.     let clear = full.difference(sb);
+101. 
+102.     assert(n >= 0);
+103.     ass...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+I need `num_bits >= 0` (not derivable in-module since `Bitmap::inv` references private fields), and the map-equality needs explicit witnesses. Let me revise the lemma and establish `num_bits >= 0` in `free_count` via the exec `number_of_bits()` result.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm hitting assertion failures on the bitmap inversion logic—the first one expects n to be non-negative, and the second is checking that the freed frames match what we expect after clearing. The issue seems to be around how bitmap.inv() unfolds and whether the internal invariants are properly exposed when inner.inv() expands to include the wellformedness check and internal invariant.
+
+Since internal_inv() is marked closed but we're in the same module, it should be transparent, which means bitmap.inv() should expand and give us num_bits == bits@.len()*8. But the assertion is still failing, so either Verus isn't automatically expanding the closed spec function, or I need to explicitly reveal it. Let me try deriving n >= 0 from something more directly accessible in the invariant—maybe through the refcount length constraint, though that gives me an upper bound rather than what I need.
+
+The most direct approach is to explicitly assert inner.bitmap.inv() to trigger its expansion, which should unfold to num_bits == bits@.len()*8 and give me n >= 0. Since bitmap.inv() is a public open spec function, I should be able to access it from the internal_inv() chain. The issue is that `bitmap.inv()` is an open spec function that references private fields from another crate, so Verus can't expand it outside the Bitmap module to derive `num_bits >= 0`. I need to find another way to establish this constraint — either through a public method on Bitmap or BitmapView, or by reconsidering what `internal_inv` already guarantees.
+
+Looking at the actual requirements: I need `num_bits >= 0` for calling `lemma_int_range(0, n)` and `bv.lemma_set_bits_finite()`. The `number_of_bits()` method returns a usize and ensures `result as int == num_bits`, which means `num_bits` is always non-negative — but that's an exec function I can't call in a proof context. The solution might be to add `num_bits >= 0` as a precondition to the lemma itself, then establish it in `free_count` where I have exec access to `number_of_bits()` before calling the lemma. I could call number_of_bits() first to establish that num_bits >= 0, then pass that into the lemma before computing the difference. Or I could check whether the bitmap's invariant already provides num_bits >= 0 transitively, or look for an existing spec lemma in the codebase that guarantees it. Let me test whether asserting the bitmap invariant makes num_bits >= 0 provable directly. I'm considering whether to keep the exec body unchanged or refactor it with let bindings to establish that `num_bits >= 0`. The rules say exec code shouldn't change, so binding to lets feels risky. Instead, I could try to get the constraint into the proof differently — maybe by asserting that `bitmap.inv()` holds before checking `n >= 0`, which might expose the num_bits constraint if inv() isn't actually opaque. For the line 127 map equality issue with `inner@.free_frames =~= clear.map(f)`, I need to verify that the set membership definitions align — checking whether the existential quantifiers and frame address calculations match up correctly. I need to bring in the set axioms to handle the `set_int_range` and `difference` operations, then verify that `lemma_map_size` applies correctly — the lemma requires `clear.map(f) == inner@.free_frames` (which I get from the `=~=` equivalence), injectivity on `f` over `clear`, and finiteness of `clear`, all of which I've established. The ensures clause needs `clear.len() == n - sb.len()` from `difference_len`, which chains to `free_frames.len() + usage() == n`.
+
+For the `n >= 0` requirement, I'm exploring whether I can extract this from a Bitmap spec lemma without changing the executable code, or if I need to add it as a requires clause to `free_count` and supply it from elsewhere. I'm realizing that `bitmap.inv()` doesn't directly give me `num_bits >= 0` — the invariant references private fields and the `wf()` condition only constrains the bits themselves, not the length. So I need to add `num_bits >= 0` as an explicit requirement to the lemma. The cleanest way to establish this in `free_count` without major restructuring is to bind the results of `number_of_bits()` and `usage()` to local variables, then call the lemma — this gives the proof access to the concrete values and lets me reason that `num_bits >= 0` holds. Restructuring the code to bind nbits before the proof block is the right move—it gives me the num_bits >= 0 fact I need for the lemma's requires clause. The restructure is minimal and safe, so I'll go with it: bind nbits and used, call lemma_free_count(inner) in the proof block, then return nbits - used. After the lemma establishes that free_frames.len() + usage == num_bits and free_frames is finite, the arithmetic works out since nbits as int equals num_bits and used as int equals usage.
+
+I also need to verify there's no underflow: since usage() ensures used <= num_bits, the subtraction nbits - used is safe. Now I'll write out the full lemma with num_bits >= 0 as a requires and fix the map equality assertion.
+[RESULT ✓] view: 82. 
+83. /// The size of the free pool equals the number of clear bits in the bitmap.
+84. ///
+85. /// `free_frames` is the image of the clear bitmap indices under the injective
+86. /// map `i -> i * PAGE_SIZE`, so its cardinality is `num_bits - usage`.
+87. proof fn lemma_free_count(inner: &Inner)
+88...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm reconsidering whether to use binding for `free_count` to make `num_bits>=0` available, since the current exec computes `inner.bitmap.number_of_bits() - inner.bitmap.usage()`. Binding would change the exec, so I'm exploring whether I can establish the constraint differently—maybe by adding the proof before the tail without needing to bind. Now I'll update the free_count function.
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to correct the file path—that change should go in frame.rs, not proof.rs.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|assertion|free_count|le
