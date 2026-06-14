@@ -14,3 +14,6 @@ Phases: caller-analysis → cheating-elimination + final-review
 PHASE: caller-analysis
 Module: bump-allocator
 ============================================================
+[2026-06-15 00:17:37] [PROVER] Running caller-analysis...
+[2026-06-15 00:17:37] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-15 00:41:17]   ↳ prover done in 23m39s (exit=0)
