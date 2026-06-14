@@ -132,6 +132,7 @@ proof fn lemma_free_count(inner: &Inner)
         assert forall|addr: int| inner@.free_frames.contains(addr) implies #[trigger]
             clear.map(f).contains(addr) by {
             let i = choose|i: int|
+                #![trigger frame_addr_of(i)]
                 0 <= i < n && !sb.contains(i) && addr == frame_addr_of(i);
             assert(clear.contains(i));
             assert(addr == f(i));
