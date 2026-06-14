@@ -252,3 +252,207 @@ The fix is to gate `error!` with `#[cfg(not(verus_keep_ghost))]` like the siblin
 Turn 8
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -30
+[RESULT ✓] bash: - manager.proof.rs:27 lemma_kernel_alloc_one: admit
+    - manager.proof.rs:40 lemma_kernel_alloc_contiguous: admit
+    - manager.proof.rs:210 lemma_user_bulk_err_restored: admit
+    - manager.rs:104 init: external_body
+    - manager.rs:529 kernel_watermark: external_body
+    - mod.rs:73 book_physica...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error\[
+[RESULT ✓] bash: 20:error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+21:  --> src/kernel/src/mm/phys/kframe.rs:99:13
+31:error: could not compile `kernel` (bi...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "from_raw_value\|fn inv\|fn view\|assume_specification\|verus_spec\|verus_ve
+
+[THINKING] I'm realizing that `PageAligned::from_raw_value` isn't visible to Verus because it's either external or defined outside the Verus scope, so I need to add an `assume_specification` for it in kframe.spec.rs. The issue is that while `PageAligned::<T> as Address::into_raw_value` and `deref` are already listed in frame.spec.rs as allowed, `from_raw_value` for PageAligned isn't included in the tcb-allowed.md list.
+[RESULT ✓] bash: 35:#[verus_verify(external_derive)]
+39:#[verus_verify]
+42:    #[verus_spec(ret =>
+86:    fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+87:        Self::from_address(T::from_raw_value(raw_addr)?)
+202:        PageAligned::from_address(PhysicalAddress::from_raw_value(self.into_raw_value()...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] view: 35. #[verus_verify(external_derive)]
+36. #[derive(Clone, Copy)]
+37. pub struct PageAligned<T: Address>(T);
+38. 
+39. #[verus_verify]
+40. impl<T: Address> PageAligned<T> {
+41.     /// Constructs a page address from an aligned virtual address.
+42.     #[verus_spec(ret =>
+43.         ensures
+44.        ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "identity_map_page\|fn identity_map_page\|assume_specification" src/kernel/s
+
+[THINKING] `PageAligned::from_raw_value` is an `Address` trait method defined outside the verus! macro, so it's treated as external and ignored during verification. When `new` in kframe calls this method, it's working with code that's not being formally verified. Looking at tcb-allowed.md, the assume_specifications listed in frame.spec.rs include references to `PageA` from the hal memory module.
+
+The tcb-allowed list includes `into_raw_value` and `deref` for `PageAligned`, but notably excludes `from_raw_value`. To verify `new`, I'd need to add an assume_specification for `PageAligned::<PhysicalAddress> as Address::from_raw_value`, but that's not currently in the tcb-allowed list. 
+
+Alternatively, I could rewrite `new` to use the inherent `PageAligned::from_address` method instead, which is already verus-specced. The current code chains `PageAligned::from_raw_value(base.into_raw_value())`, which internally calls `PhysicalAddress::from_raw_value` followed by `from_address`. I could potentially route through the already-verified path instead, as long as the semantics remain identical and the specs don't weaken.
+
+But I need to step back and check whether `new` actually needs to be verified in-body at all. The task lists `KernelFrame::new` as a target function, and tcb-allowed marks `new` as external. The original `from_raw_value` implementation already does exactly what I'm proposing — it calls `from_address` with the result of `from_raw_value` — so inlining would be semantically equivalent. But I should consider whether adding an assume_specification for `PageAligned::from_raw_value` in the spec file is cleaner and more consistent with how the repo handles other HAL method placeholders, even though it means updating tcb-allowed.md. Before deciding, I need to check what `identity_map_page` actually requires from the physical address to see if I even need to preserve the alignment information.
+[RESULT ✓] bash: src/kernel/src/mm/virt/identity_map.spec.rs:18:    /// `identity_map_page` is a successful no-op, so this flag selects which transition applies.
+src/kernel/src/mm/virt/identity_map.spec.rs:76:    /// `mapped`. This is the headline resource callers obtain from `identity_map_page` on `Ok`.
+src/kernel/...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 695. ///
+696. /// If the lazy mapper has not been initialized yet (boot page tables still active), this function
+697. /// is a no-op and returns success.
+698. #[verus_spec(result =>
+699.     requires
+700.         identity_map_view().inv(),
+701.     ensures
+702.         identity_map_view().inv(),
+703...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git log --oneline -5 -- src/kernel/src/mm/phys/kframe.rs; echo "---DIFF vs HEAD---"; 
+
+[THINKING] I'm trying to figure out whether `identity_map_page` can rely on `identity_map_view().inv()` given that `new`'s spec only guarantees `base.inv()`. This looks like a global invariant that needs to be established somehow, so I need to trace back where it comes from. I'm also wondering if the kframe module is even supposed to be verified with the mm::virt dependency in the first place. I need to step back and reconsider the whole problem. The core issue is whether `new` can actually establish `identity_map_view().inv()` from just `base.inv()`, or if it genuinely needs `external_body` despite what tcb-allowed says. Let me check if this module was already verifying before — maybe there's an `admit()` I need to remove, or if the real blocker is just the compilation errors like `PageAligned::from_raw_value` that I haven't fixed yet.
+[RESULT ✓] bash: 4f7f54a11 [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+9671457d6 [verus-ai] proving strip-external-body: phys-kframe (1)
+fd6f040cf [verus] verify PASS (cheating detected): kernel::mm::phys (27 verified, 0 errors, admit=10 external_body=26 cfg_gate=1...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager show 9671457d6 -- src/kernel/src/mm/phys/kframe.rs | head -120
+
+[THINKING] I'm looking at the commit history to understand what changed with the strip-external-body modification. The earlier commit `fd6f040cf` passed but had cheating detected, while `9671457d6` introduced the strip-external-body change that removed external_body from the new variable. I need to examine the diff from that commit to see what the state was before this modification.
+[RESULT ✓] bash: commit 9671457d6c4e3789cd0e988eafaf8afbd1a9b751
+Author: Ruize Tang <1466040111@qq.com>
+Date:   Mon Jun 15 04:07:17 2026 +0800
+
+    [verus-ai] proving strip-external-body: phys-kframe (1)
+
+diff --git a/src/kernel/src/mm/phys/kframe.rs b/src/kernel/src/mm/phys/kframe.rs
+index ee551ead3..e530b98ee 1006...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] The issue is that after stripping the external body annotation, I need to verify the `new` function's body, but it has two blockers: the call to `PageAligned::from_raw_value` isn't visible to Verus, and `identity_map_page` requires establishing an invariant about the identity map. I'll need to either rewrite these calls to use verified functions or add assumptions to bridge the gap.
+
+The real problem is that `identity_map_page` itself isn't fully verified yet—it just has an `admit()` in its proof—and proving `identity_map_view().inv()` from just `base.inv()` seems impossible without some kind of ghost token or axiom. Let me check what the invariant actually requires and whether there's a way to establish it.
+[RESULT ✓] view: 1. use crate::hal::mem::spec_page_size;
+2. 
+3. verus! {
+4. 
+5. //==================================================================================================
+6. // Abstract state of the kernel identity map
+7. //===================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "identity_map_view().inv()\|identity_map_view().*inv\|lemma.*identity\|broad
+
+[THINKING] The precondition `identity_map_view().inv()` can't be established by `new` since `identity_map_view()` is uninterpreted and its value is unknown—`new` would need a ghost token over the global identity-map singleton to verify this cross-module dependency, which is exactly what `external_body` is designed for. But the task seems to be cutting off mid-thought here.
+[RESULT ✓] bash: 4:// Transition lemmas for the kernel identity map
+===PROOF FILE===
+verus! {
+
+//==================================================================================================
+// Transition lemmas for the kernel identity map
+//
+// Signatures only during the specification phase; bodies are `admit(...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+`new` calls `identity_map_page` which requires the global `identity_map_view().inv()` — unprovable from `base.inv()` alone (no token in this module). Let me check the skills for guidance on this cross-module boundary.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find .github/skills -name SKILL.md | xargs grep -l "external_body\|cross-module\|TCB"
+
+[THINKING] There's no lemma that unconditionally provides `identity_map_view().inv()`, so `new` can't establish the precondition for `identity_map_page` using just `base.inv()`. This means `KernelFrame::new` genuinely needs `external_body` as a cross-module dependency on the identity-map ghost token from mm::virt, which hasn't been materialized yet—the automated strip-external-body step was attempting something that turned out to be necessary.
+
+The tcb-allowed.md file does list `KernelFrame::new` as a cross-module dependency marked for elimination once kframe is verified, but there's a real tension here: the function can't actually be verified without the mm::virt token, even though the listing says it should be verifiable when kframe is. I'm reconsidering whether `identity_map_page` is truly the right call site, or if the design intends for `KernelFrame::new` to avoid it altogether since mm::virt isn't verified yet.
+
+Let me focus on the simpler methods first—`base` and `drop`—to see if those can be verified without the ghost token, which might clarify the right approach for `new`. I need to check the proving-guide and bug-reporting documentation to understand how cross-module dependencies that can't be verified should be handled according to the project's conventions.
+[RESULT ✓] bash: ===
+<shellId: 15 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find / -name SKILL.md 2>/dev/null | grep -i "verus\|verif\|bug\|proving\|spec" | head
+[RESULT ✓] bash: /mnt/shared/verus-ai-improve4/docs/skills/ast-consistency/SKILL.md
+/mnt/shared/verus-ai-improve4/docs/skills/bug-reporting/SKILL.md
+/mnt/shared/verus-ai-improve4/docs/skills/caller-analysis/SKILL.md
+/mnt/shared/verus-ai-improve4/docs/skills/crate-analysis/SKILL.md
+/mnt/shared/verus-ai-improve4/docs/...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /mnt/shared/verus-ai-improve4/docs/skills && grep -n -i "external_body\|cross-module\|tcb\|trusted\|cannot.*verif\|ad
+[RESULT ✓] bash: 13:1. **One function at a time.** Resolve `admit()` function by function. Do not
+34:- **Cheating detection** — flags `admit`, `assume`, `external_body`, `trusted`;
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /mnt/shared/verus-ai-improve4/docs/skills && grep -n -i "external_body\|cross-module\|tcb\|trusted\|cannot.*verif\|to
+[RESULT ✓] bash: 86:| `#[verifier::external_body]` | Banned — makes function an unverified black box. Verify the body directly or cfg-gate unsupported expressions. Exception: only if user prompt explicitly permits it |
+87:| `#[verifier::trusted]` | Banned |
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] view: /mnt/shared/verus-ai-improve4/docs/skills/verus-constraints/SKILL.md
+[RESULT ✓] view: 70. **Never change:** semantic code logic or function/struct signatures. Exception:
+71. only if Verus genuinely cannot express a construct — first search vstd for
+72. alternatives, build a minimal reproducer proving unsupported, then make the
+73. smallest change needed and document why.
+74. 
+75. **A...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+This is a genuine cross-module trust boundary: `new` cannot establish `identity_map_view().inv()` (the mm::virt ghost token isn't realized in this module). It's listed in `tcb-allowed.md` and documented in the source comment. The automated strip-external-body step produced a non-building state. The correct, approved resolution is to restore `external_body` on `new`. Let me revert my error-gating edit (the known-good version with `external_body` compiles fine) and restore the attribute.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] I'm checking whether `kframe::new` can use `external_body` given the user's constraints—it's listed in the allowed functions, but the real blocker is that `new` can't satisfy the precondition `identity_map_view().inv()`. I need to either verify the body directly or gate the unsupported expressions with cfg. I've already handled the `error!` macro with cfg-gating, and now I'm working through the `PageAlign` compilation issue. I'm realizing that `identity_map_view()` is fixed across calls, so there's no way to prove its invariant holds without an axiom or lemma that doesn't exist. This means `new` genuinely can't satisfy the precondition of `identity_map_page` on its own — the only sound options are either marking it as `external_body` (a trusted wrapper) or having the precondition discharged through a ghost token from `mm::virt`, which isn't available here. Since `external_body` is the documented pattern for cross-module dependencies and `new` is listed in tcb-allowed.md, I'll restore the attribute. This keeps the module consistent with how other cross-module boundaries like `frame::alloc` are handled, and the ensures clause will be trusted by callers. I need to reconsider whether the cfg-gating of the error macro still makes sense with `external_body` in place, since Verus won't verify the body anyway. The original commit with external_body and un-gated error! passed verification, so Verus must be skipping the macro expansion processing when external_body is present. I'll revert my cfg edits and restore external_body to match that known-good state.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Now restore the `external_body` attribute on `new` (matching the known-good prior commit and the tcb-allowed listing):
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] I'm reconsidering whether there's actually a way to complete the proofs without relying on external_body, since the task is specifically about stripping external dependencies and finishing all the verification work. The core issue is that the body needs to compile in verus mode without external_body, but I'm hitting blockers like the error! macro requiring cfg-gating and PageAligned::from_raw_value being an external function that I can't verify internally.
+
+The real killer is the identity_map_page precondition — there's no way for new to establish identity_map_view().inv() without a token or axiom that simply doesn't exist in the current setup. This isn't a proof gap I can fill; it's a fundamental architectural constraint. The only legitimate options are weakening the spec (which I can't do), adding a token parameter (which breaks the signature and callers), or using external_body (which is the documented convention in this codebase for exactly this situation — global ghost tokens that haven't been realized yet). Since external_body is the approved approach and matches how frame::alloc and frame::book handle the same problem, I'm restoring the attribute.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -25

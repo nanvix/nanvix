@@ -78,6 +78,7 @@ impl KernelFrame {
     // same physical frame that was passed in. `external_body` per `verus-ai-logs/tcb-allowed.md`:
     // the identity-mapping side effect lives in `mm::virt` and the body's `?`/log closures call
     // into that layer, so the wrap contract is trusted until `mm::virt` is verified.
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             base.inv(),
@@ -97,12 +98,10 @@ impl KernelFrame {
         // allocation occurs).
         let phys_addr: PageAligned<PhysicalAddress> =
             PageAligned::from_raw_value(base.into_raw_value()).map_err(|e| {
-                #[cfg(not(verus_keep_ghost))]
                 error!("frame base is not page-aligned: {e:?}");
                 e
             })?;
         crate::mm::virt::identity_map_page(phys_addr).map_err(|e| {
-            #[cfg(not(verus_keep_ghost))]
             error!("failed to identity-map frame: {:?}", e);
             e
         })?;
