@@ -392,3 +392,77 @@ Turn 19
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify 2>&1 | tail -40
 
 [THINKING] The verification passed with 47 verified items and no errors, so I should run the full `make verify` across the entire repository to check for regressions. Actually, looking at task step 5, it asks for this full verification, but since my only change was removing an unused lemma from the arch crate's table.proof.rs file, it shouldn't affect other crates.
+[RESULT ✓] bash: Log written to: verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_00-59-23.log
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Full `make verify`: arch **47 verified, 0 errors**; kernel **76 verified, 0 errors**. No regressions from my change. (The kernel-side `admit=36`/`external_body=12` are pre-existing, out-of-scope items from other phases — unchanged by my edit.)
+
+Let me confirm my session's only source change is the proof-only file (no exec/AST change).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== source changes since pre-task commit ff874a83b ==="; git diff ff8
+
+[THINKING] The verification results show the architecture passed with 47 verified and no errors, while the kernel has 76 verified with no errors as well. The kernel does have some pre-existing admits and external body items, but those are unrelated to my architecture change and were already there before my modifications. Since the kernel still verifies cleanly with zero errors and my change didn't introduce any regressions, I'm in good shape.
+
+Now I'm checking AST consistency — my only source modification was removing a dead lemma from the proof file, which doesn't affect any executable code. The invlpg module remains untouched. Since I made zero changes to executable code, there shouldn't be any AST consistency issues. Let me verify this by checking the git diff to confirm that only the proof file changed and nothing in the executable code was modified.
+[RESULT ✓] bash: === source changes since pre-task commit ff874a83b ===
+diff --git a/src/libs/arch/src/x86/mem/paging/table.proof.rs b/src/libs/arch/src/x86/mem/paging/table.proof.rs
+index c9af7f8a4..cd9b217dc 100644
+--- a/src/libs/arch/src/x86/mem/paging/table.proof.rs
++++ b/src/libs/arch/src/x86/mem/paging/table.p...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Only the proof-only file changed; zero exec/AST changes, `mod.rs` (`invlpg`) untouched. Let me update the report and record the deferred proper proof.
+[TOOL] report_intent: Writing report and TODO
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/verification_todo.md
+
+[THINKING] The only change to the source is in the proof file where I removed the dead broadcast lemma and replaced it with documentation—no executable code was modified, and the AST remains consistent with zero signature changes. Now I need to update the fix report and create a verification todo file documenting the deferred trait obligation proof for the round-trip law.
+
+Writing both files now...
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/verification_todo.md with 2202 characters
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && rm -f verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/fix_re
+[RESULT ✓] bash: 
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/fix_report.md with 4774 characters
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Done. Summary of the cheating elimination for **arch-paging-mod**:
+
+**Eliminated the only actionable blocker — the `admit()`** in `table.proof.rs::lemma_entry_roundtrip`. Via the verus-constraints ladder I confirmed it was an *unprovable axiom* over the `uninterp` codec functions (`spec_entry_raw`/`spec_entry_from_raw`), generic over unbounded `E`, and **dead code** (never `broadcast use`d, no group, no caller repo-wide). I removed the dead placeholder (not swapped for `assume`/`external_body`), deferring the genuine trait-obligation proof to the not-yet-run `table` proving phase (recorded in `verification_todo.md`).
+
+**Counts (`make verify-arch`):** `admit 1→0`, `assume 0`, `assume_specification 0`, cfg-gated-exec 0. Remaining `external_body=3` are exactly the **TCB-allowlisted** `invlpg`, `table::read`, `table::write` (asm / int-to-pointer hardware boundaries the task permits).
+
+**Verification:** `make verify-arch` → 47 verified, 0 errors. Full `make verify` → arch 47/0, kernel 76/0 — **no regressions**.
+
+**AST consistency:** zero mismatches — the sole change is a proof-only file (deleted a ghost `proof fn`); `mod.rs`/`invlpg` and all exec code untouched.
+
+**Result: PASS** — zero eliminable cheating remains; the only `external_body` left are allowlisted.
+
+Reports written to `verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/fix_report.md` and `.../verification_todo.md`.
+
+[THINKING] I've wrapped up the work—removed the only eliminable cheating vector, verified all external body configurations, and confirmed the architecture passes with no errors and no regressions. The only change to the AST is proof-related, so everything checks out.
+
+
+=== Session End ===
+Session: 36eefab3-0a62-402b-b6d6-08bfaf03e479
+Duration: 591.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/cheating-fix-claude-20260615-005102.jsonl
