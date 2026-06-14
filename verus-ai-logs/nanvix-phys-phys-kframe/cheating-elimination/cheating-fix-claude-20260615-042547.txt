@@ -253,3 +253,57 @@ Now update the verification_todo and run the final `make verify-kernel` the user
 Turn 14
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel 2>&1 | grep -iE "verifying module mm::phys::kframe|ver
+[RESULT ✓] bash: note: verifying module mm::phys::kframe
+  Exit code : 0
+  cheating: assume=0 external_body=17 admit=24 trusted=0 no_decreases=0 cfg_gate=15
+  cheating: assume=0 external_body=17 admit=24 trusted=0 no_decreases=0 cfg_gate=15
+  status: CHEATING_DETECTED
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Verification itself passes (exit 0). The `CHEATING_DETECTED` status reflects the crate-wide gate counting out-of-scope modules. Let me clean up the backup file.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rm -f verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/fix_report.prev.md &
+
+[THINKING] The kernel verification passes with exit code 0, and the `CHEATING_DETECTED` status acts as a gate that flags any admits or external bodies in out-of-scope modules. I've completed everything within scope, so now I'm removing the backup file I created.
+[RESULT ✓] bash: source unchanged from base (empty diff above = good)
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+I investigated the round-2 report thoroughly. Here are the findings:
+
+## Result: no eliminable cheating exists in phys-kframe scope
+
+The grader's `cheating_report_1.md` is a **directory-wide** scan of `src/kernel/src/mm/phys/`. I mapped every one of its 28 entries to its owning function/phase:
+
+| Items | Owning phase | In kframe scope? |
+|---|---|---|
+| 8 admits (frame.rs) + 8 external_body | `phys-frame` | No |
+| 4 admits (manager.proof.rs) + 2 external_body | `phys-manager` | No |
+| 2 external_body + 1 type-spec (mod.rs) | `phys-mod` | No |
+| 2 external_body (upool.rs) | `phys-upool` | No |
+| **1 external_body — `KernelFrame::new`** | **phys-kframe** | **Yes (TCB-allowed)** |
+
+Addressing each grader demand against the **kframe files** (verified by grep):
+- **admit/assume → 0** (the word "assume" at spec.rs:8 is doc prose, not `assume()`).
+- **trusted/external_body on proof fns → 0** (`kframe.proof.rs` is empty; "trusted" at rs:80 is a comment).
+- **limitation_assume → 0.**
+- **exec_allows_no_decreases → 0** (no loops/recursion in `new`/`base`/`drop`).
+
+The single in-scope `external_body` (`KernelFrame::new`) is TCB-allowed **and provably irreducible**: it calls `identity_map_page`, which requires the global `identity_map_view().inv()`; that accessor is `uninterp` (opaque), no `mm::virt` lemma establishes it unconditionally, and the callee itself is admit-blocked. Removing it would only force a worse `assume`.
+
+**Hard rule** ("do not touch unlisted functions") forbids modifying the 27 out-of-scope entries — they belong to other phases (mirrors `phys-upool`'s round-3 outcome with the identical list).
+
+**Verification:** `make verify-kernel MODULE=mm::phys` → **42 verified, 0 errors**; `make verify-kernel` → exit 0. Source is byte-identical to base (zero AST mismatches). Reports updated at `cheating-elimination/fix_report.md` and `verification_todo.md`.
+
+The crate-wide `CHEATING_DETECTED` cannot be cleared by this phase without violating the hard rule, since all residual cheating lives in out-of-scope modules.
+
+
+=== Session End ===
+Session: da6bca2e-698c-4358-b010-966ea9ddc9bf
+Duration: 343.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/cheating-fix-claude-20260615-042547.jsonl
