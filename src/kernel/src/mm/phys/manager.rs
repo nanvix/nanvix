@@ -218,7 +218,8 @@ impl PhysMemoryManager {
         // A zero-sized allocation is trivially satisfied.
         if count == 0 {
             proof! {
-                lemma_user_bulk_ok(g_old, self@, frames@, count as nat);
+                lemma_user_addr_set_empty();
+                lemma_book_all_empty(g_old);
             }
             return Ok(());
         }
@@ -226,6 +227,7 @@ impl PhysMemoryManager {
         Self::check_user_watermark(count)?;
         proof! {
             lemma_manager_attached(self);
+            lemma_user_bulk_base(g_old);
         }
 
         #[cfg_attr(verus_keep_ghost, verus_spec(
@@ -233,10 +235,21 @@ impl PhysMemoryManager {
                 g_old == old(self)@,
                 g_old.wf(),
                 self@.wf(),
+                frames@.len() == i,
+                user_bulk_inv(g_old, self@, frames@),
+                count > 0 ==> g_old.user_alloc_ok(count as nat),
         ))]
-        for _ in 0..count {
+        for i in 0..count {
+            proof_decl! {
+                let ghost mview_pre = self@;
+            }
             match self.upool.alloc() {
-                Ok(frame) => frames.push(frame),
+                Ok(frame) => {
+                    proof! {
+                        lemma_user_bulk_step(g_old, mview_pre, frames@, frame);
+                    }
+                    frames.push(frame);
+                },
                 Err(error) => {
                     frames.clear();
                     proof! {
@@ -245,9 +258,6 @@ impl PhysMemoryManager {
                     return Err(error);
                 },
             }
-        }
-        proof! {
-            lemma_user_bulk_ok(g_old, self@, frames@, count as nat);
         }
         Ok(())
     }

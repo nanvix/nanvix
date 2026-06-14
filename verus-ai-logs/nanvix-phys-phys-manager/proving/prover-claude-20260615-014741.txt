@@ -678,3 +678,160 @@ Turn 32
 Turn 33
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verified,|errors|error
+[RESULT ✓] bash: verification results:: 37 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+  Global: assume=0 external_body=18 admit=25 trusted=0 cfg_gate=15
+=== Summary ===
+  verification: 37 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=18 admit=25 trusted=0 no_decreases=0 c...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Progress: manager admits 7→5 (`free_count_bounded`, `kernel_bulk_err_restored` discharged/removed), 0 errors. Now the substantive one: discharge `lemma_user_bulk_ok` via a loop invariant using `Upool::alloc`'s real transition spec.
+[TOOL] sql: {'description': 'Update todo progress', 'query': "UPDATE todos SET status='done'
+
+[THINKING] The admit count dropped to 25 after removing two proof functions from manager.proof.rs, which now contains five remaining admits: manager_attached, kernel_alloc_one, kernel_alloc_contiguous, user_bulk_ok, and user_bulk_err_restored. I'm focusing on discharging user_bulk_ok next since it's the substantive one.
+[RESULT ✓] sql: Executed 2 statement(s):
+
+1. UPDATE
+   1 row(s) updated.
+
+2. UPDATE
+   1 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I need to examine the `alloc_many_user_frames` function and trace through how it relates to the `user_bulk_ok` lemma and its call sites, looking at the definitions for `book_all`, `alloc_one`, and `user_addr_set` to understand the proof structure.
+[RESULT ✓] view: 197.     ) -> Result<(), Error> {
+198.         proof_decl! {
+199.             let ghost g_old = self@;
+200.         }
+201.         proof! {
+202.             assert(g_old == old(self)@);
+203.             assert(g_old.wf());
+204.         }
+205.         if !frames.is_empty() {
+206.             let reas...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+Let me assess vstd's Set cardinality support — the distinctness part (`user_addr_set.len() == count`) hinges on it.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -rn "pub.*fn.*lemma_len_insert\|fn lemma_set_insert\|insert(a).len()\|
+
+[THINKING] I'm working through the postcondition requirements for the Ok arm—it needs to verify that the allocation count is valid, the frames array length matches the count, the user address set has the right cardinality, all addresses were previously free, and the final state reflects booking all those addresses.
+
+The lemma_user_bulk_ok axiom gives me most of what I need, but I have to establish the loop invariant that tracks the state as frames are pushed one by one. The key insight is that after the watermark check, I need to capture that old(self) satisfies user_alloc_ok(count) by combining the check_user_watermark result with lemma_manager_attached, which tells me the current state equals the physical view's frames. I'll assert this as a ghost fact right after the watermark check, then use it to discharge the postcondition.
+
+For the loop itself, I'm working through how to relate the loop's progress to the invariant—since each iteration pushes exactly one frame (or returns on error), the length of frames naturally tracks the iteration count, so I can use frames@.len() as the proxy for how many iterations have completed. So I need to use `for i in 0..count` instead of `for _` to bind the loop variable, which lets me express the invariant `frames@.len() == i` that ties the frame list length to the current iteration count. This way, when the loop exits after count iterations, I can conclude that `frames@.len() == count`. The inductive step then needs to maintain the relationship between the ghost state and the accumulated frames as we iterate. Now I'm working through the field equalities for the lemma, checking that allocated, free, and refcounts match between the two approaches. The allocated and free sets check out by set extension, and I'm verifying the refcounts map behavior where the union_prefer_right operation ensures the right operand wins on overlapping keys. Now I need to handle the inductive step where pushing a new frame onto the list increments both the loop counter and the user address set size. I'll need helper lemmas to show that pushing a frame adds exactly one new address to the set, and that the set cardinality increases by one when adding a fresh address. For the base case, I need to verify that an empty frames list corresponds to booking an empty set of addresses, which means the refcount map stays unchanged and the free set remains intact.
+
+For the postcondition about user allocation being okay when count > 0, I established after the watermark check that the old state has enough free frames. Since the old state is immutable throughout, I can either add this fact to the loop invariant or re-assert it after the loop so it's available at the return point. The invariant approach is cleaner since the fact depends only on the immutable old state.
+
+Looking at what the postcondition actually requires: `old(self)@` equals `g_old`, so I need `g_old.user_alloc_ok(count)` to hold at the Ok return. The loop invariant should capture this along with the other key facts: that `g_old` equals the old self, the self state is well-formed, frames length matches the loop counter, the self state equals the old state with booked addresses, the user address set length matches frames, the old state has all those addresses free, and the watermark condition holds.
+
+This is getting substantial—eight invariant clauses. The proving guide suggests defining a spec function predicate for anything over five clauses, so I should create a helper predicate in the proof file. But I need to weigh whether discharging `user_bulk_ok` is worth the complexity versus keeping it admitted. Given that the task explicitly asks for loop invariants and proof bodies, and this is the one genuinely provable loop, it seems like the intended core work. I'll attempt it incrementally with helper lemmas, being careful to keep the build working. If I hit a wall after reasonable effort, I can revert this change.
+
+Now I need to think through what helper lemmas vstd provides for set operations—specifically around set insertion and length calculations.
+
+The finiteness issue is a real concern though. To use `len()` on `user_addr_set(frames)`, the set must be provably finite, but since it's defined as a comprehension over addresses, Verus might not automatically recognize it as finite. Without that, `len()` defaults to zero and the distinctness claim breaks. Proving the set is finite and has the right cardinality would require relating it back to the sequence, which adds significant complexity. I'm weighing whether this deep dive into set cardinality is worth the marginal reduction from five admits to four, especially when the build still shows "CHEATING_DETECTED" regardless.
+[RESULT ✓] bash: set.rs:16:/// To work specifically with finite sets, see the [`self.finite()`](Set::finite) predicate.
+set.rs:44:    /// assert(Set::<A>::empty().finite());
+set.rs:285:                    &&& s.remove(a).finite()
+set.rs:383:                &&& s.remove(aa).finite()
+set.rs:456:                self.fi...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+vstd has `axiom_set_insert_len` (needs `finite()`). The discharge is feasible but intricate (Set cardinality + finiteness + book_all/alloc_one algebra). Let me find the broadcast group and write the helper lemmas.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && sed -n '1010,1030p' set.rs; echo "=== insert finite axiom ==="; grep -n "ax
+
+[THINKING] I see that vstd has an axiom for set insertion that tracks length changes based on whether an element already exists, but it requires the set to be finite. So I need to establish that user_addr_set(frames) is finite by showing that inserting an address into the set after pushing a frame to the stack produces the same result as inserting into the original set, then proving the base case.
+
+I'm defining a helper lemma that proves user_addr_set(frames.push(uf)) equals user_addr_set(frames).insert(uf) by set extensionality—checking membership for indices less than the sequence length versus the new element. Since the empty set is finite and insertion preserves finiteness, I can maintain user_addr_set(frames) as finite throughout the loop invariant.
+
+For the distinctness property, I need to show that when allocating a new frame uf, its address isn't already in the accumulated set. The upool.alloc postcondition guarantees uf is in the free frames, and since the invariant ties the pool's state to book_all(S), I can derive that uf is in the difference of free frames and S, so it's not in S. After pushing, the set length grows by exactly one, matching the new sequence length.
+
+The key is capturing uf's non-membership in user_addr_set(frames) before the push, then applying the lemmas to show the invariant holds. I also need a helper lemma for book_all that shows how allocating one frame updates the booked set...
+
+Defining helper lemmas... I'm settling on using `frames@.len() == i` as the loop invariant, which should work cleanly with Verus's for-loop semantics — at loop exit, the framework ensures `i == count`, giving me the postcondition I need. Now I'm planning to replace the admitted `lemma_user_bulk_ok` with a set of concrete helper lemmas in manager.proof.rs that handle the key steps: empty address sets, pushing frames, and how `book_all` interacts with `alloc_one`.
+
+For the refcount equality in `lemma_book_all_alloc_one`, I need to carefully show that applying `alloc_one` to a booked state matches the refcount structure when booking a larger set.  I'm checking three cases: when the key equals the allocated element, when it's already in the booked set, and when it's outside both. The union_prefer_right operation ensures the right map's values take precedence, so even if the element already exists in the original refcounts, the inserted value of 1 matches what the union would produce. The domains align correctly too—both sides include keys from the original refcounts plus the booked set, so I can use `assert_maps_equal!` to finish the proof.
+
+For the allocated and free sets, the algebra works out cleanly: inserting into the allocated set and removing from the free set produces the same result whether the element was already in the booked set or not. This means the lemma holds unconditionally without needing extra preconditions like `a ∉ s` or `a ∈ free`.
+
+Now I'm writing the proof function that asserts extensional equality on each field of the FrameAllocView struct...
+
+Defining the user_addr_set_push lemma... I need to ensure the set is finite and maintain that invariant throughout the loop, then verify the postcondition that the final count matches the cardinality. I should also check which broadcast group contains the set axioms I need for the proof.
+[RESULT ✓] bash: axiom_set_complement,
+    axiom_set_ext_equal,
+    axiom_set_ext_equal_deep,
+    axiom_mk_map_domain,
+    axiom_mk_map_index,
+    axiom_set_empty_finite,
+    axiom_set_insert_finite,
+    axiom_set_remove_finite,
+    axiom_set_union_finite,
+    axiom_set_intersect_finite,
+    axiom_set_difference_fin...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -n "broadcast group group_set_axioms" set.rs
+
+[THINKING] I'm looking for the broadcast group name that contains the axiom set operations—it should be `vstd::set::group_set_axioms`—and I need to trace back to find where this group is declared around line 1029.
+[RESULT ✓] bash: 248:    broadcast group group_set_axioms_early {
+999:pub broadcast group group_set_axioms {
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I'm pulling in the set axioms from vstd and broadcasting them in my proof lemmas. Now I need to write the helper lemmas and refactor the loop logic, starting with replacing the existing lemma_user_bulk_ok in manager.proof.rs.
+
+Let me review what manager.proof.rs looks like now after my changes.
+[RESULT ✓] view: 68.         base_raw as int + (idx as int) * spec_page_size() <= usize::MAX as int,
+69. {
+70.     // `spec_page_size()` is a `usize`-derived value, hence non-negative, and `idx < count`,
+71.     // so multiplying the inequality `idx <= count` by `spec_page_size()` preserves it.
+72.     vstd::arithme...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Now I'll replace the admitted `lemma_user_bulk_ok` with proven helper lemmas and a loop-invariant predicate. Let me write them:
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I'm replacing the admitted axiom with concrete helper lemmas that establish properties of the user address set, starting with the base case for empty sequences and then building up the inductive step for appending frames.
+
+Now I'm defining the loop invariant as a spec predicate that tracks the accumulated frames, ensures the user address set is finite and has no duplicates, and maintains that the current memory view equals the original view with all allocated addresses booked. I also need to add the precondition that all those addresses were initially free in the original view, plus the postcondition requirement that the original view supports allocating the requested count of frames.
+
+At each iteration, when upool.alloc returns a new frame, I need to verify that its address was in the free frames of the previous memory view, which follows from the upool.alloc ensures clause.
+
+The key is showing that after allocating this frame, the new memory view equals booking all frames in the updated set. Since the new frame wasn't in the original set S, I can use a lemma showing that booking a set and then allocating one frame equals booking the set with that frame inserted. Then I verify the invariant clauses: finiteness and length are preserved by set insertion, and all frames remain free since both the original set and the new frame are in g_old's free frames. ows that uf@ isn't in the existing address set, so the ensures clause follows: the new mview equals the old one with uf@ allocated, which corresponds to booking the expanded address set. For the base case, I need to establish that an empty frames list satisfies the invariant with the original allocator and an empty address set, then after the loop completes, the invariant guarantees the final frame count matches the loop iterations.
+
+For the count==0 early return path, the postcondition is vacuously satisfied since the implication requires count > 0, and I can verify that the final self state equals the original after booking an empty set using the appropriate lemmas. The loop invariant tracking frames@.len() == i ensures the count matches the number of iterations, and the allocator's well-formedness is maintained throughout. After the loop exits, Verus gives me the invariant with the iterator exhausted, meaning `i == count`, so `frames@.len() == i` becomes `frames@.len() == count`. The tricky part is that if I use `i` in the invariant, Rust might warn about an unused variable in the executable code, even though the invariant is ghost. I could suppress this with `_i` or just accept the warning, but let me first check if there's a way to avoid needing `i` altogether in the loop variable. Without the loop index, I can't track how many iterations ran, so I need another way to prove `frames@.len() == count`. But actually, Verus knows structurally that a `for i in 0..count` loop always executes exactly count times, so I should just use the index and check if warnings appear—if they do, I'll add a minimal fix. Let me start writing out the proof file additions and rewrite the loop.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+Now rewrite the loop in `alloc_many_user_frames` to use the inductive invariant:
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I need to refactor the loop in `alloc_many_user_frames` and update the proof for the count==0 case, but first I'm checking whether my new `use` statement for `user_addr_set` conflicts with existing imports at the top of the file. Refining the loop structure with better proof organization. I'm adding assertions to pin the watermark check result to `g_old`, then introducing a loop invariant that tracks frame count and maintains the bulk allocation invariant across iterations. The key change is calling `lemma_user_bulk_step` before pushing each frame, using the frame count from the loop index to establish the invariant. There's a subtle ordering here with the lemma call happening before the push operation. I need to capture the pre-alloc state of the mview before calling upool.alloc(), so I can reference it in the lemma call afterward. By binding `let ghost mview_pre = self@` before the allocation, I can then use the ensures clause to establish that the post-alloc state equals `mview_pre.alloc_one(frame@)`, which gives me the pre-state needed for the lemma while still having access to the frame that was allocated. I'm realizing the `closed` view modifier in Verus hides the definition from outside the module, but within the same module where it's defined, the body is transparent. Since manager.spec.rs is included into manager.rs, they're part of the same module, so the relationship `self@ == self.upool@` should be visible in the proof even though the view is closed.
+
+But I'm uncertain whether `closed` spec functions are automatically transparent within their own module or if they require an explicit `reveal`. The existing proof worked with an admitted lemma that bypassed needing this connection, so I'm not sure if the closed-view transparency actually works in practice. I should test this empirically by writing the loop and seeing if Verus can connect `self@` to `self.upool@` without additional assertions or reveals.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verified,|errors|error

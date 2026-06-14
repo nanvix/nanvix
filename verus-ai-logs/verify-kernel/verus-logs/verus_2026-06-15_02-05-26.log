@@ -1,0 +1,38 @@
+Timestamp: 2026-06-15_02-05-26
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=18
+  admit=24
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error[E0255]: the name `user_addr_set` is defined multiple times
+   --> src/kernel/src/mm/phys/manager.proof.rs:83:5
+    |
+ 83 | use crate::mm::phys::manager::user_addr_set;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `user_addr_set` reimported here
+    |
+   ::: src/kernel/src/mm/phys/manager.spec.rs:113:1
+    |
+113 | pub open spec fn user_addr_set(frames: Seq<UserFrame>) -> Set<int> {
+    | ------------------------------------------------------------------ previous definition of the value `user_addr_set` here
+    |
+    = note: `user_addr_set` must be defined only once in the value namespace of this module
+help: you can use `as` to change the binding name of the import
+    |
+ 83 | use crate::mm::phys::manager::user_addr_set as other_user_addr_set;
+    |                                             ++++++++++++++++++++++
+
+For more information about this error, try `rustc --explain E0255`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
