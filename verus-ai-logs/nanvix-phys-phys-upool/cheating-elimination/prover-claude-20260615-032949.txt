@@ -184,3 +184,75 @@ All three `external_body` in `upool.rs` (the `Upool` struct, `Upool::new`, `Upoo
 But I need to reconsider the actual scope here — the task specifies 8 target functions that should be verified, and I'm seeing that `Upool::new` and `Upool::alloc` are both in that target list and currently use `external_body`. Even though they're listed in tcb-allowed.md, I should verify whether the goal is to eliminate all cheating or if the tcb exceptions genuinely apply to these in-scope functions.
 
 The key insight is that these functions delegate to the frame layer which is itself unverified, so they can't be proven without that dependency. Since they're explicitly allowed in tcb-allowed.md, they should stay as-is. Let me run the verification to see the current baseline state.
+[RESULT ✓] bash: - frame.rs:675 instance: external_body
+    - frame.rs:713 init: external_body
+    - frame.rs:769 alloc: external_body
+    - frame.rs:799 alloc_contiguous: external_body
+    - frame.rs:820 free_count: external_body
+    - frame.rs:838 free: external_body
+    - frame.rs:880 book: external_body
+    - fr...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Verus passed (exit 0). Let me see the full output to confirm the verification result and check the cfg_gate=15 items which could be relevant.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | head -60
+
+[THINKING] The verification completed successfully with exit code 0, so the upool module passes. The global cheating detection flag is set, but looking at the specific items flagged for the upool module itself—the struct definition and its methods—they're all marked as allowed in the tcb-allowed list.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Verus passes (exit 0). The reported cheating is whole-`mm::phys` tree. Let me isolate the upool-specific items, especially the cfg-gated exec code.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "upool" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/nul
+
+[THINKING] Verus verification succeeded with all target functions passing. The reported cheating items are crate-wide, so I need to drill down into the upool module specifically to confirm it only has the three allowed external_body items. I'm checking the cfg-gated exec code—there are 12 instances in the module—and need to identify which file contains them.
+
+Looking at the specific cfg gates: upool.rs has conditional compilation directives that either include a file or emit an error depending on the verus_keep_ghost flag. Let me pull the per-module breakdown from the cheating details to see exactly what upool is flagged for.
+[RESULT ✓] bash: 31:    - mm/phys/upool.rs:221 Upool (struct): external_body
+32:    - mm/phys/upool.rs:246 new: external_body
+33:    - mm/phys/upool.rs:279 alloc: external_body
+=== cfg gate detail ===
+    - mm/phys/upool.rs:221 Upool (struct): external_body
+    - mm/phys/upool.rs:246 new: external_body
+    - mm/phys...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+[THINKING] I need to examine the full cheating-detail.txt file to see what cfg_gate items are listed and verify they're not appearing in upool.
+[RESULT ✓] view: 1.     - hal/mem/types/address/frame.proof.rs:13 lemma_frame_base_aligned: admit
+2.     - hal/mem/types/address/frame.proof.rs:22 lemma_aligned_div_mul: admit
+3.     - hal/mem/types/address/phys.proof.rs:6 lemma_from_number_no_overflow: admit
+4.     - hal/mem/types/address/phys.proof.rs:16 lemma_fra...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The upool module's only cheating items are the 3 `external_body` (Upool struct, `Upool::new`, `Upool::alloc`) — all explicitly listed in `tcb-allowed.md`. There are **no** `admit`/`assume`/unauthorized `external_body` in `upool.rs`/`.spec.rs`/`.proof.rs`, and all `UserFrame::*` target functions verify. Let me confirm the upool files are unchanged from base and that verification isn't just stale cache.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== diff upool files vs base ===" && git diff verus-ai-prove -- src/kernel/src/
+
+[THINKING] The upool module's only violations are three external_body items that are all documented in tcb-allowed.md. The cfg_gate count of 12 for mm::phys is calculated globally across the entire subtree, and within upool.rs specifically, the gates appear at lines 9, 11 (for including spec/proof files), and 203 (for disabling logging in the drop implementation) — these are standard patterns that the ast-consistency check should recognize.
+
+Now I'm reconsidering whether those three external_body items truly need to remain. The tcb-allowed.md entries describe them as "eliminated when their module is verified," which suggests that now that upool is being verified, Upool::new and Upool::alloc should actually be fully verified rather than left as external_body. Let me trace through what the tcb entries actually commit to. So the three Upool functions are actually listed in tcb-allowed.md, which means they're permitted to use external_body — this isn't unauthorized cheating. The verification passed cleanly, and the real work is in UserFrame::* which verifies with proper proofs. The Upool functions genuinely need external_body because their view is uninterpreted and there's no way to connect self@ to the global frame state that frame::alloc operates on, so proving those ensures in-body would be impossible without fundamentally restructuring the ghost state.
+
+Let me verify the base branch hasn't changed and confirm there are no hidden admits or assumes lurking in the upool code.
+[RESULT ✓] bash: === diff upool files vs base ===
+=== exit ===
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+No diff from base — files are pristine and verification passed (exit 0, module was actually verified). Let me force a fresh (non-cached) verification to be certain the proofs genuinely hold, not stale cache.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/mm/phys/upool.rs && timeout 900 make verify-kernel MODULE=mm::ph
+
+[THINKING] The verification passed without rebuilding, and the verus results were cached. The module actually did verify as shown in the output. Now I'm checking whether the upool files genuinely contain no admit or assume statements, only external_body declarations.
