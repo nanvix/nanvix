@@ -1,5 +1,3 @@
-    - hal/mem/types/address/frame.proof.rs:13 lemma_frame_base_aligned: admit
-    - hal/mem/types/address/frame.proof.rs:22 lemma_aligned_div_mul: admit
     - hal/mem/types/address/phys.proof.rs:6 lemma_from_number_no_overflow: admit
     - hal/mem/types/address/phys.proof.rs:16 lemma_frame_index: admit
     - mm/phys/frame.rs:136 alloc: admit

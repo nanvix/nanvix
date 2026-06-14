@@ -1,0 +1,424 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T04:47:36.116670
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are proving the specifications for /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.rs using Verus.
+Do NOT weaken contracts (requires/ensures/invariants) to make proofs easier.
+If a proof fails, distinguish:
+- **Proof gap**: strengthen the proof (add lemmas, invariants, assertions)
+- **Code bug**: the code is wrong — if it's an auto-fixable bug (overflow, off-by-one, missing bounds check, unchecked cast), fix it directly following the **bug-reporting** skill's auto-fix procedure and record in /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-frame-address/bugs.md. For complex bugs, record only (do not fix).
+Your job is to complete all proofs — fill proof bodies, write loop invariants,
+add lemmas, and eliminate every `admit()` placeholder.
+
+== PROJECT CONTEXT ==
+
+File: `src/kernel/src/hal/mem/types/address/frame.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`FrameAddress::into_raw_value`, `FrameAddress::into_frame_number`, `FrameAddress::from_raw_value`, `FrameAddress`, `FrameAddress::from_frame_number`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+
+
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+
+
+
+Source file: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.rs
+Spec file:  /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.spec.rs
+Proof file: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.proof.rs
+Verus command: make verify-kernel
+
+== SKILLS ==
+
+Follow these skills strictly:
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns, source integrity
+- **proving-guide** — MUST follow: proof strategy, invariant planning
+- **verification-order** — MUST follow: verify functions in dependency order
+- **spec-design** — MUST follow when writing requires/ensures/invariants
+- **spec-drift-check** — reference when checking for spec weakening
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-frame-address/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai/scripts/
+- Source directory: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai/vstd/
+
+== TASK ==
+
+**Planning**: Before writing any proofs, read all functions in the module
+and create a verification plan: list each function that needs proving,
+its dependencies, and the order to verify them (leaves first, callers last).
+
+If `/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verification-plan.json` exists, use it as a starting point:
+```
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verification-plan.json
+```
+
+**Proving**: Follow your plan. For each function, write the proof body,
+remove any `admit()` and `external_body`, and run `make verify-kernel` to confirm.
+
+Prove all specifications: fill proof bodies, write loop invariants, add
+intermediate assertions and lemmas, until `make verify-kernel` passes with 0 errors
+and 0 remaining `admit()` calls and 0 `assume()`.
+
+Critical rules:
+- Do NOT add `external_body` to any function (see verus-constraints).
+- Do NOT weaken specs to make a proof easier.
+  Weakening means: adding `requires` (restricts callers), or removing/loosening `ensures` (loses guarantees).
+  If verification fails, follow the proof gap / code bug classification above.
+
+**ULTIMATE GOAL**: The verification target is not just this module in isolation.
+The end goal is that `make verify` (all verified modules) passes with 0 errors.
+Specs must be strong enough for upstream callers to verify against.
+If a spec is hard to prove, strengthen the proof strategy — do NOT weaken the spec.
+Weakened specs will be automatically detected by spec drift analysis and rejected.
+
+After all functions verify, run `make verify` to confirm no regressions
+in other modules.
+
+
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reading source and skills
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.proof.rs
+
+[THINKING] I'll start by reviewing the relevant skills and examining the source files.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Spec helpers for `FrameAddress` are shared with the `phys` sibling module: a frame's abstract
+2. // state is the physical address (`int`), its frame number is `self@ / spec_page_size()`, and its
+3. // base address is `frame_index * spec_page_size()`.
+4. use crate::hal::mem::types::address::phy...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // =================================================================================================
+4. // Proof obligations for `FrameAddress`'s frame-number conversions.
+5. //
+6. // Bodies are `admit()` placeholders during the specification phase; the proving phase discharges
+7....
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] skill: proving-guide
+[TOOL] skill: verus-constraints
+
+[THINKING] I'm reviewing the physical module specifications, looking at the frame number specs, raw value specs, maximum frame constraints, and the PageAligned and PhysicalAddress contract definitions.
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai -maxdepth 3 -iname "*.md" | grep -iE "skill|constraint|proving|verification-order
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/scripts/ ; echo "---"; cat /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb
+
+[THINKING] I need to look up those skills in the filesystem since they're not showing up in the available list.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/docs/specifying-and-proving-types.md
+<shellId: 0 completed with exit code 0>
+[RESULT ✓] bash: __pycache__
+add_verification.py
+ai_residue.py
+ast_consistency.py
+cascade_analysis.py
+check_proof_blocks.py
+compute_scope.py
+dummy_probe.py
+dummy_probe_report.py
+eb_diagnose.py
+find_callers_lsp.py
+find_deps_lsp.py
+fn_coverage.py
+groundtruth_diff.py
+inject_verus_verify.py
+llm_fix_suggest.py
+llm_review...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py verus-ai-l
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/; ls; echo "===phys spec helpers==="; gre
+
+[THINKING] I need to look at the phys module spec helpers and related contracts to understand the available functionality, then review the verification plan and dependency specs for this module.
+[RESULT ✓] bash: aligned
+frame.proof.rs
+frame.rs
+frame.spec.rs
+mod.rs
+page.rs
+pd.rs
+phys.proof.rs
+phys.rs
+phys.spec.rs
+test.rs
+===phys spec helpers===
+phys.spec.rs:1:use crate::hal::mem::spec_page_size;
+phys.spec.rs:16:pub open spec fn spec_frame_raw_value(frame: FrameNumber) -> int {
+phys.spec.rs:21:pub open spec f...
+[RESULT ✓] bash: ===bugs dir===
+body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+# Bugs — hal::mem::types::address::frame
+
+## BUG-001 (auto-fixed): Duplicate `use ::vstd::prelude::*;`...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[RESULT ✓] view: 1. use crate::hal::mem::spec_page_size;
+2. use vstd::arithmetic::power2::pow2;
+3. 
+4. verus! {
+5. 
+6. // =================================================================================================
+7. // Abstract models of frame-number quantities, realized by the verified `arch` crate.
+8. //
+9....
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/; echo "=== phys.proof.rs ==="; cat phys.
+
+[THINKING] I'm looking at the two lemmas I need to prove. The first one, `lemma_frame_base_aligned`, requires showing that when I convert a frame's raw value back through the spec helpers, the result is divisible by the page size. Since `spec_from_number(spec_frame_raw_value(frame))` equals `frame@ * spec_page_size()`, I need to verify that this product is properly aligned modulo the page size.
+
+The second lemma, `lemma_aligned_div_mul`, works in the opposite direction: given an address that's already aligned to the page size, converting it to a frame number and back should recover the original address. This relies on the property that `(addr / d) * d == addr` when `addr % d == 0`.
+
+Both lemmas hinge on establishing that `spec_page_size() > 0`, which ultimately comes from `PAGE_SIZE` in the arch crate. I should check how the phys module handles this, since it's already verified and uses these same helpers.
+[RESULT ✓] bash: === phys.proof.rs ===
+verus! {
+
+// A frame index scaled by the frame size stays within `usize`, so `from_number`'s base-address
+// multiply never overflows. This follows from `FrameNumber::MAX == MAX_ADDRESS / FRAME_SIZE - 1`,
+// hence `(MAX + 1) * FRAME_SIZE == MAX_ADDRESS <= usize::MAX`. Proven in...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/; ls; echo "=== page.rs specs (fr
+
+[THINKING] I'm focusing on my hal-frame-address module and need to prove two lemmas in frame.proof.rs. The critical piece is establishing that `spec_page_size()` is positive, which ultimately depends on verifying that the underlying `PAGE_SIZE` constant is greater than zero.
+
+I also need to check the dependency contracts for the key functions I'm using—PageAligned and PhysicalAddress operations like `from_raw_value`, `into_raw_value`, `from_frame_number`, and `into_frame_number`—to ensure they're properly specified before I can rely on them in my proofs.
+[RESULT ✓] bash: mod.rs
+page.proof.rs
+page.rs
+page.spec.rs
+pgtab.rs
+=== page.rs specs (from_address, into_raw_value, into_frame_number) ===
+42:    #[verus_spec(ret =>
+43:        ensures
+49:    pub fn from_address(addr: T) -> Result<Self, Error> {
+64:    fn into_raw_value(self) -> usize {
+225:    pub open spec fn inv...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] view: 30. 
+31. //==================================================================================================
+32. // Structures
+33. //==================================================================================================
+34. 
+35. #[verus_verify(external_derive)]
+36. #[derive(Clone, Copy)...
+[RESULT ✓] view: 200.     /// Converts a page-aligned virtual address to a page-aligned physical address.
+201.     pub fn into_physical_address(self) -> Result<PageAligned<PhysicalAddress>, Error> {
+202.         PageAligned::from_address(PhysicalAddress::from_raw_value(self.into_raw_value())?)
+203.     }
+204. }
+205....
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/; echo "=== page.spec.rs ==="; ca
+
+[THINKING] I'm tracing through the FrameAddress functions to understand how the spec_aligned predicate works with PageAligned and PhysicalAddress conversions. The from_raw_value path chains PageAligned::from_address with PhysicalAddress::from_raw_value, where PageAligned::from_address guarantees the result maintains the address value and satisfies the invariant.
+
+For into_raw_value, I need to verify that PageAligned's Address implementation has the right contract — it should ensure the result equals self.0@, which would make FrameAddress::into_raw_value work correctly since FrameAddress wraps PageAligned. Let me check the page.spec.rs file to see if there's a specification for the Address trait implementation.
+[RESULT ✓] bash: === page.spec.rs ===
+verus! {
+
+// `PAGE_ALIGNMENT` is an external (arch-crate) constant. Model it so that verified
+// exec code referencing it has a Verus specification. The page alignment's numeric
+// value is the page size (both are 4096 on the supported target), which is the link
+// that lets `fr...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/; grep -rn "fn into_frame_number\|fn into
+
+[THINKING] I need to track down where `into_frame_number` is actually defined for `PageAligned`. It's being called on `self.0` which is a `PageAligned<PhysicalAddress>`, so the method must be implemented there. Looking at the tcb-allowed specifications, I can see references to `PageAligned::<T>` implementing `Address::into_raw_value` and `Deref::deref`, which suggests the trait implementations are documented in the phys/fr module.
+[RESULT ✓] bash: ./aligned/pgtab.rs:40:    fn into_raw_value(self) -> usize {
+./aligned/page.rs:64:    fn into_raw_value(self) -> usize {
+./page.rs:24:    pub fn into_raw_value(self) -> usize {
+./page.rs:53:    pub fn into_raw_value(self) -> usize {
+./pd.rs:30:    pub fn into_raw_value(self) -> usize {
+./frame.rs:11...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/; grep -n "Deref\|deref\|impl" pa
+
+[THINKING] I'm noticing a potential issue with the method chain — FrameAddress::into_frame_number is calling into_frame_number on PageAligned<PhysicalAddress>, but I don't see that method defined on the PageAligned type itself.
+
+Let me think through this more carefully. The grep results show into_frame_number only appears in frame.rs and phys.rs, so it's likely that PageAligned implements Deref to PhysicalAddress, which would allow the method call to resolve through the deref coercion. I should check the Deref implementation to confirm this is how it's working.
+[RESULT ✓] bash: 22:use ::core::ops::Deref;
+40:impl<T: Address> PageAligned<T> {
+63:impl<T: Address> Address for PageAligned<T> {
+165:impl<T: Address> core::fmt::Debug for PageAligned<T> {
+171:impl<T: Address> Deref for PageAligned<T> {
+174:    fn deref(&self) -> &Self::Target {
+179:impl<T: Address> PartialEq for Pa...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] view: 171. impl<T: Address> Deref for PageAligned<T> {
+172.     type Target = T;
+173. 
+174.     fn deref(&self) -> &Self::Target {
+175.         &self.0
+176.     }
+177. }
+178. 
+[RESULT ✓] view: 148.     // Total projection (under `inv()`): identifies the frame containing the address,
+149.     // `self@ / FRAME_SIZE` (equivalently `self@ >> FRAME_SHIFT`). `inv()` underwrites the unwrap.
+150.     #[verus_spec(result =>
+151.         requires
+152.             self.inv(),
+153.         ensures
+1...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "PAGE_SIZE\|PAGE_SHIFT\|pow2\|spec_page_size" src/libs/arch/src/mem*
+
+[THINKING] I'm working through the method resolution for `self.0.into_frame_number()` where `self.0` is a `PageAligned<PhysicalAddress>`. Since `PageAligned` doesn't directly implement `into_frame_number`, the compiler needs to deref to find the method on the underlying `PhysicalAddress` type, but there's a mismatch between what deref provides (a reference) and what the method expects (ownership).
+
+Now I'm checking the preconditions and postconditions for both methods. `PhysicalAddress::into_frame_number` requires that the frame number is within bounds, and `FrameAddress::into_frame_number` has similar requirements plus the alignment invariant. The proof uses a lemma about aligned division, then calls through to the underlying `PhysicalAddress` method. The key insight is that when we dereference `self.0`, we're looking at the same underlying physical address value, so the frame number bounds check that holds for the `FrameAddress` also holds for the dereferenced `PhysicalAddress`.
+
+For the second postcondition, I need to verify that converting the frame number back gives us the original address, which follows directly from the alignment lemma. However, I'm realizing the `Deref` implementation might need a specification annotation in Verus—I should check if there's an `assume_specification` already declared for it in the module, or if I need to add one. Either way, I'll write out the lemmas and see what verification catches. Both lemmas will need to establish that `spec_page_size() > 0`, so I need to trace where `PAGE_SIZE` gets its verified specification from the architecture crate.
+[RESULT ✓] bash: ===
+src/libs/arch/src/x86/mem/constants.rs
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "PAGE_SIZE\|PAGE_SHIFT" src/libs/arch/src/x86/mem/constants.rs; echo
+[RESULT ✓] bash: 39:/// Log2 PAGE_SIZE
+42:pub const PAGE_SHIFT: usize = 12;
+50:pub const PAGE_SIZE: usize = 4096;
+51:::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
+58:pub const PAGE_MASK: usize = !(PAGE_SIZE - 1);
+82:pub const PAGE_TABLE_LENGTH: usize = PGTAB_SIZE / PAGE_SIZE;
+105:pub const FRAME_SHIFT: ...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "spec_page_size() > 0\|spec_page_size() == 4096\|PAGE_SIZE == 4096\|
+
+[THINKING] I'm thinking through how Verus handles the `PAGE_SIZE` constant marked with `#[verus_verify]` — since it's defined as 4096, Verus treats it as having that concrete value, so `spec_page_size()` evaluates to 4096 and proving it's greater than zero should be straightforward.
+
+Now I'm wondering if `mem` is a re-export module, since frame.rs references `::arch::mem::PAGE_SIZE` while the actual constant lives in `arch::x86::mem::constants.rs`. I should search the codebase to see if there's already an existing lemma that establishes the positivity of `spec_page_size()` rather than proving it from scratch.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.spec.rs:71:// relied on (`FRAME_SHIFT < 32` and `spec_page_size() == pow2(FRAME_SHIFT)`) now follow from the
+src/kernel/src/hal/mem/types/address/phys.proof.rs:26:        spec_page_size() == pow2(shift as nat),
+src/kernel/src/mm/phys/frame.proof.rs:47:      ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '30,80p' src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] bash: |addr: int|
+                    exists|i: int|
+                        #[trigger] self.bitmap@.set_bits.contains(i)
+                        && addr == frame_addr_of(i),
+                |addr: int| {
+                    let i = addr / spec_page_size();
+                    self.refcount@[i] as int
+   ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Writing lemma proofs
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.proof.rs.new
+
+[THINKING] I'm working with an invariant that assumes spec_page_size() is positive, so let me try proving the lemmas directly by asserting that spec_page_size() equals 4096 and checking if Verus can recognize PAGE_SIZE as that constant. Now I'm writing a lemma for frame_base_aligned that relates the spec frame value to the actual frame multiplied by the page size.
+
+Writing the proof file...
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.proof.rs.new with 1475 characters
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/; mv frame.proof.rs.new frame.proof.rs &&
+
+[THINKING] I need to edit the proof file directly rather than recreating it, so I'll make targeted changes to the frame.proof.rs file to replace the admit() bodies in the two lemmas and add the necessary imports.
+[RESULT ✓] bash: verus! {
+
+use vstd::arithmetic::div_mod::lemma_mod_multiples_basic;
+use vstd::arithmetic::div_mod::lemma_fundamental_div_mod;
+
+// =================================================================================================
+// Proof obligations for `FrameAddress`'s frame-number conversions.
+//
+/...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "verify-kernel" Makefile* src/kernel/Makefile* 2>/dev/null | head; e
+
+[THINKING] I need to figure out the correct module path for the verify-kernel command—the plan directory is nanvix-phys-hal-frame-address, so the module path should be something like `hal::mem::types::address::frame`. Let me check how the make verify-kernel MODULE parameter works and what the actual verification command expects.
+[RESULT ✓] bash: Makefile:585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+Makefile:624:verify-kernel: ensure-verus
+Makefile:629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+===
+328:ifneq ($(strip $(MODULE)),)
+329:  VERUS_MODULE_ARG := --module $(M...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -40

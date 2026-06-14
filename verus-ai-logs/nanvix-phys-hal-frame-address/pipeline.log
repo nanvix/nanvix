@@ -82,3 +82,6 @@ Phases: proving → cheating-elimination + final-review
 PHASE: proving
 Module: hal-frame-address
 ============================================================
+[2026-06-15 04:47:36] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.rs
+[2026-06-15 04:47:36] [PROVER] Running proving...
+[2026-06-15 04:47:36] [COPILOT] Running: copilot --model claude-opus-4.8 ...
