@@ -423,3 +423,16 @@ Full `make verify` (kernel) passes: 76 verified, 0 errors. Let me confirm `make 
 Turn 18
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "VERUS_CRATES" Makefile | head; echo "---full verify run summary---"; make ve
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator arch
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+---full verify run summary---
+  status: CHEATING_DETE...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify 2>&1 | grep -E "verification results|Crate|Exit code" | head -40
+
+[THINKING] The grep command missed "Checking" due to output buffering issues, so I'm switching to counting errors per crate instead.
