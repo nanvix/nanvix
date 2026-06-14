@@ -858,3 +858,148 @@ Turn 41
 Turn 42
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
+[RESULT ✓] bash: - manager.rs:300 check_user_watermark: external_body
+    - manager.rs:346 alloc_kernel_frame: external_body
+    - manager.rs:403 alloc_many_kernel_frames: external_body
+    - mod.rs:82 book_physical_memory_regions: external_body
+    - mod.rs:117 book_mmio_regions: external_body
+    - mod.spec.rs:73 ...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '/Full output/,
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0425]: cannot find function `init` in this scope
+    --> src/kernel/src/mm/phys/manager.rs:106:19
+     |
+ 106 |     pub(super) fn init(upool: Upool) -> Result<(), Error> {
+     |                   ^^^^
+     |...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "^error" | hea
+
+[THINKING] The `#[verus_spec]` macro on the `init` function is likely generating a companion function or proof version, and somewhere in that transformation it's trying to reference something that doesn't exist, causing the "cannot find function init" error at that line. The combination of `#[verus_verify(external_body)]` and `#[verus_spec]` is probably creating a mismatch in how the function is being resolved. The macro might be generating a hidden function that calls `init` by name, but if `init` is `pub(super)`, the generated code can't access it from a child scope. Or maybe `phys_view` isn't resolving properly and breaking the macro expansion. The error specifically points to `init` being called somewhere that can't find it — possibly within the verus_spec macro's generated proof code. Let me compare this to how `frame::init` works, since that one compiles fine despite having a similar structure with `pub(super)` and `external_body`.
+
+Actually, the key difference might be that `frame::init` is a free function at module level, while my `init` is an associated function inside an `impl` block. The `#[verus_spec]` macro might handle associated functions differently. But before diving deeper into that, I should look at the full error log to see if there's an earlier, more fundamental error that's causing this one as a side effect.
+[RESULT ✓] bash: 20:error[E0425]: cannot find function `init` in this scope
+90:error[E0425]: cannot find function `check_user_watermark` in this scope
+97:error: could not compile `kernel` (bin "kernel") due to 2 previous errors
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Errors are only on the two no-receiver associated fns (`init`, `check_user_watermark`). Let me check how `verus_spec` handles associated functions without `self`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '88,97p'; echo 
+
+[THINKING] The issue is that `init` and `check_user_watermark` are static associated functions without `self` parameters, while the other four methods have `&mut self` and work fine. The verus macro seems to be generating a `Self::init` call for these static functions, which is causing the "cannot find function in this scope" error.
+
+Looking at the codebase, I don't see any existing examples of `#[verus_spec]` applied to associated functions without a receiver — most methods either take `&self`/`&mut self` or use just `#[verus_verify(external_body)]` without the spec macro. This suggests there might be a verus limitation or bug specifically with `#[verus_spec]` on no-self associated functions. The workaround would be to either restructure the spec or move these functions into a `verus!{}` block instead of using the attribute macro, though that's tricky since they're inside the impl block in exec code. The error message suggests the macro is generating a bare `init(...)` call that can't find the function in scope, which points to how the verifier shim is being constructed. Let me look at the verus_spec macro implementation to understand how it handles no-self associated functions differently than methods with receivers.
+[RESULT ✓] bash: = and 7 other candidates
+
+error[E0425]: cannot find function `check_user_watermark` in this scope
+   --> src/kernel/src/mm/phys/manager.rs:300:8
+    |
+300 |     fn check_user_watermark(count: usize) -> Result<(), Error> {
+    |        ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+For more informatio...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin_macros-0.0.0-2026-05-31-0205/src && gr
+
+[THINKING] I'm checking attr_rewrite.rs to see how it handles associated functions without self and how it generates the reverification proof while referencing the function name.
+[RESULT ✓] bash: 53:pub const DUAL_SPEC_PREFIX: &str = "__VERUS_SPEC";
+55:const VERUS_SPEC: &str = "verus_spec";
+128:        ["external", "external_body", "external_type_specification"];
+152:            // The spec function is generated with the name _VERUS_SPEC_<name>
+161:                        &format!("{DUAL_SPE...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin_macros-0.0.0-2026-05-31-0205/src && se
+
+[THINKING] The spec function gets generated with a special naming convention like `_VERUS_SPEC_<name>`, and there's a dual-spec mechanism at play. When a function is verified, it gets renamed to `VERIFIED_{x}` and wrapper functions are created around it. For associated functions with both `external_body` and `verus_spec`, the macro likely generates a dual spec wrapper like `__VERUS_SPEC_init` that calls the original method, which might be why there's a "cannot find function init" error occurring.
+
+The issue seems to be that the generated proxy is calling `init(...)` unqualified instead of `Self::init(...)`, which is a known limitation with associated functions that have no `self` receiver — the dual-spec generation can't properly qualify the call. I'm wondering if there's even a working example in the codebase of `#[verus_spec]` on a no-self associated function, or if this pattern is just unsupported. Rather than using `#[verus_spec]` on both `init` and `check_user_watermark`, maybe I should try just `#[verus_verify(external_body)]` without the spec annotation to see if that makes the function known to Verus with a trivial spec, then check whether the calling code's postconditions would still hold.
+
+Now I'm reconsidering how `phys_view()` actually works — it's an uninterpreted spec function with no arguments, which means it's a constant in Verus logic, not something that changes across program points. The external_body functions' ensures clauses don't actually modify this constant; they assert facts about it. So when `init` has an ensures clause like `Ok => phys_view().initialized`, that's asserting a global fact that becomes available as an assumption at the call site's continuation.
+
+This is the key insight: `phys_view()` represents the final relevant state, and the external_body shims assert properties that hold by the end of boot. The manager shims don't need to havoc it — they just re-assert facts that are globally true. Since external_body functions' ensures are trusted assumptions, `manager::init` can have `ensures phys_view().initialized` without needing it in the requires.
+
+Now I need to track down the actual issue: the `verus_spec` macro is generating an unqualified call for associated functions without self, and I should look at the macro code around the external_body dual-spec generation to see where that's happening.
+[RESULT ✓] bash: erase: EraseGhost,
+) -> Vec<syn::ItemFn> {
+    let mut ret = vec![];
+    let mut unverified_fun = fun.clone();
+    if fun.sig.constness.is_some() {
+        // Create a proxy function to include requires/ensures.
+        let proxy = rewrite_const_ret_proxy(&mut unverified_fun);
+        ret.push(unver...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin_macros-0.0.0-2026-05-31-0205/src && se
+
+[THINKING] I'm trying to understand how the dual spec feature works here—it looks like when I have both `#[verus_verify(external_body)]` and `#[verus_spec]` together, the `rewrite_verus_spec_dual` function generates two versions: a `verified_init` function with the actual implementation, and an `init` function that becomes an external body stub. The thought trails off as I'm working through exactly how these two attributes interact.
+
+Looking at the error more carefully, it seems the dual-spec mechanism might be generating a `__VERUS_SPEC_init` companion that tries to call `init`, but for no-self associated functions this creates a problem since there's no implicit receiver. The working examples in the codebase like `Inner::alloc` use both attributes too, but they take `&mut self`, so the issue appears to be specific to functions without a receiver. This might be a genuine limitation in how the macro handles dual-spec generation for static associated functions. and the dual-spec mechanism is being triggered for the associated functions with &mut self too, which is why those work—the generated proxy can call `self.something`. So the real question is what controls whether dual-spec generation happens and whether I can disable it for the no-self case. Let me check the code that decides between dual and normal spec modes.
+[RESULT ✓] bash: erase: &EraseGhost,
+    attr_args: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    if !erase.keep() {
+        return input;
+    }
+
+    let mut item = syn::parse_macro_input!(input as Item);
+    let args = syn::parse_macro_input!(attr_args with syn::pun...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin_macros-0.0.0-2026-05-31-0205/src && gr
+
+[THINKING] I'm distinguishing between the `verus_verify` attribute which handles `external_body` directives, and the separate `verus_spec` attribute that's processed elsewhere. The "cannot find function init" error seems to be coming from how `verus_spec` processes its macro at that line, so I need to trace through that function to understand what's happening.
+
+Actually, I'm going to sidestep this macro complexity entirely. Since `phys_view()` is a global constant uninterpreted spec function with no arguments, once I establish facts like `phys_view().inv()` and `phys_view().initialized` early on (in frame::init/book), those become global truths. I can give `init` and `check_user_watermark` only the `#[verus_verify(external_body)]` attribute without `#[verus_spec]`, making them known to Verus with a trivial spec. Then when `mod.rs::init` calls `manager::init`, even though `manager::init` has no ensures clause, the facts about the constant `phys_view()` should persist because the SMT solver recognizes it as the same term before and after the call. The question is whether Verus forgets facts about `phys_view()` when calling an external_body function, or whether those facts remain valid since `phys_view()` is a constant.
+
+But the task explicitly requires meaningful specs on all six targets, so I can't just drop the contracts entirely. Let me first confirm whether the macro issue is specifically triggered by the no-self-associated-fn plus verus_spec combination, then find the right workaround to keep the specs intact.
+[RESULT ✓] bash: 10:///   where ... is a block of requires, ensures, decreases, etc. in the verus! syntax
+11:/// - To apply `ensures`, `invariant`, `decreases` in `exec`,
+12:///   developers should call the corresponding macros at the beginning of the loop
+15:///   To pass and get tracked/ghost from function call, u...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+Let me test whether the issue is `verus_spec` on no-receiver associated fns by temporarily removing it from those two.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/manager.rs /tmp/manager.rs.bak
+# Temporarily strip verus_spec fro
+
+[THINKING] I'm looking at how the verus_verify processing handles dual_spec and const declarations, but the actual verus_spec attributes are handled by the verus! syntax transformer instead. The "cannot find function init" error might not be coming from where I initially thought — I need to step back and reconsider what's actually causing it, especially since my functions aren't const or static.
+
+Let me test a simpler hypothesis: what if the issue is specifically with having `#[verus_spec]` on associated functions without `&self`? I should try removing `#[verus_spec]` from `init` and `check_user_watermark` while keeping only `#[verus_verify(external_body)]` to see if that resolves the compilation error. If it does, then I know the problem is the combination of verus_spec with no-self associated functions, and I can figure out how to keep the specs working properly. Let me just test empirically by commenting out the verus_spec attributes on those two functions while keeping external_body, then run a verify to see if that's the culprit. Meanwhile, I'm thinking about whether I even need both external_body and verus_spec for init and check_user_watermark—maybe I can capture the watermark contract through a separate proof lemma instead, which would sidestep this macro issue entirely.
+[RESULT ✓] bash: done
+97:    #[verus_verify(external_body)]
+98:        pub(super) fn init(upool: Upool) -> Result<(), Error> {
+168:    #[verus_verify(external_body)]
+169:    #[verus_spec(result =>
+238:    #[verus_verify(external_body)]
+239:    #[verus_spec(result =>
+278:    #[verus_verify(external_body)]
+279:       ...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|verification:|status:

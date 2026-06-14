@@ -12,12 +12,12 @@
     - mm/phys/frame.rs:807 alloc_range: external_body
     - mm/phys/manager.proof.rs:17 lemma_watermark_monotone: admit
     - mm/phys/manager.proof.rs:33 lemma_contiguous_run_distinct: admit
-    - mm/phys/manager.rs:106 init: external_body
-    - mm/phys/manager.rs:195 alloc_many_user_frames: external_body
-    - mm/phys/manager.rs:262 alloc_user_frame: external_body
-    - mm/phys/manager.rs:300 check_user_watermark: external_body
-    - mm/phys/manager.rs:346 alloc_kernel_frame: external_body
-    - mm/phys/manager.rs:403 alloc_many_kernel_frames: external_body
+    - mm/phys/manager.rs:98 init: external_body
+    - mm/phys/manager.rs:187 alloc_many_user_frames: external_body
+    - mm/phys/manager.rs:254 alloc_user_frame: external_body
+    - mm/phys/manager.rs:279 check_user_watermark: external_body
+    - mm/phys/manager.rs:325 alloc_kernel_frame: external_body
+    - mm/phys/manager.rs:382 alloc_many_kernel_frames: external_body
     - mm/phys/mod.rs:82 book_physical_memory_regions: external_body
     - mm/phys/mod.rs:117 book_mmio_regions: external_body
     - mm/phys/mod.spec.rs:73 ExLinkedList (struct): external_type_spec

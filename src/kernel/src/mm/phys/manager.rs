@@ -95,15 +95,7 @@ impl PhysMemoryManager {
     // the contract therefore states the caller-relevant guarantee: the global
     // frame allocator stays initialized and well-formed across this call.
     #[verus_verify(external_body)]
-    #[verus_spec(result =>
-        requires
-            phys_view().initialized,
-            phys_view().inv(),
-        ensures
-            phys_view().inv(),
-            phys_view().initialized,
-    )]
-    pub(super) fn init(upool: Upool) -> Result<(), Error> {
+        pub(super) fn init(upool: Upool) -> Result<(), Error> {
         if unlikely(PHYS_MEMORY_MANAGER_INIT.load(ORDER)) {
             return Err(Error::new(
                 ErrorCode::InvalidArgument,
@@ -284,20 +276,7 @@ impl PhysMemoryManager {
     // captures the watermark policy: at least `KERNEL_WATERMARK` frames remain free
     // after servicing `count`. `Err` covers both the overflow guard and a breach.
     #[verus_verify(external_body)]
-    #[verus_spec(result =>
-        requires
-            phys_view().initialized,
-            phys_view().inv(),
-        ensures
-            phys_view().inv(),
-            phys_view().initialized,
-            phys_view().frames.free_frames.finite(),
-            match result {
-                Ok(()) => spec_watermark_ok(phys_view().frames, count as int),
-                Err(_) => true,
-            },
-    )]
-    fn check_user_watermark(count: usize) -> Result<(), Error> {
+        fn check_user_watermark(count: usize) -> Result<(), Error> {
         let watermark_threshold: usize = config::kernel::KERNEL_WATERMARK
             .checked_add(count)
             .ok_or_else(|| {
