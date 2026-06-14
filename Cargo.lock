@@ -3867,6 +3867,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "waitpid-rust"
+version = "0.16.60"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
 name = "want"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

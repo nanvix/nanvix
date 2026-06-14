@@ -82,6 +82,9 @@ pub mod sys_uio;
 /// Definitions for UNIX Domain Sockets
 pub mod sys_un;
 
+/// Process termination status.
+pub mod sys_wait;
+
 /// Time types.
 pub mod time;
 
