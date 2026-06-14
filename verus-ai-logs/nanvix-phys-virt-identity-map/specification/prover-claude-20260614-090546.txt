@@ -891,3 +891,22 @@ Turn 53
 Turn 54
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -45
+[RESULT ✓] bash: pub struct ExTable<E>(arch::mem::paging::Table<E>)
+            where
+            E: arch::mem::paging::TableEntry,;
+
+error: could not compile `kernel` (bin "kernel") due to 29 previous errors
+
+=== Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -nE "error\[|error:
+
+[THINKING] The error count is down to 29 now that the initial issue is resolved. I'm looking at what's causing the remaining errors—it seems like the `Table` type might need an external type specification, or Verus is trying to verify functions that use `Table` without having the proper specification for it. Let me examine what these errors actually are.
