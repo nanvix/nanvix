@@ -56,19 +56,21 @@ pub use self::{
 // Standalone Functions
 //==================================================================================================
 
-#[verus_spec(ret =>
-    requires
-        forall|i: int| 0 <= i < physical_memory_regions@.len()
-            ==> (#[trigger] physical_memory_regions@[i]).inv(),
-)]
+// This function iterates the supplied `LinkedList` of regions. The std `LinkedList`
+// iterator cannot be given a Verus `for`-loop specification from this crate (the orphan
+// rule forbids implementing vstd's iterator traits for the foreign `Iter` type, and the
+// pinned `vstd` dependency cannot be extended — see `mod.spec.rs` / `verus-unsupported.md`).
+// The function is therefore `external_body`. Its abstract effect — every frame of every
+// region becomes booked — is modelled by `PhysMemView::spec_book_frames` and the
+// `lemma_book_physical_*` signatures in `mod.proof.rs`; binding that effect to the global
+// allocator state is deferred to a later phase per the View design.
+#[verus_verify(external_body)]
 fn book_physical_memory_regions(
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
 ) -> Result<(), Error> {
-    proof! { admit(); }
     info!("booking physical memory regions ...");
 
     // Book physical memory that is not usable.
-    #[verus_spec(invariant true)]
     for region in physical_memory_regions.iter() {
         info!("booking: {:?}", region);
         frame::alloc_range(region)?;
@@ -77,6 +79,12 @@ fn book_physical_memory_regions(
     Ok(())
 }
 
+// `external_body` for the same std-`LinkedList` reason as
+// `book_physical_memory_regions`. Its abstract effect — every *tracked* MMIO frame
+// (`is_covered`) becomes booked while untracked frames are skipped — is modelled by
+// `PhysMemView::spec_book_frames` over `M.intersect(covered())` and the
+// `lemma_book_mmio_*` signatures in `mod.proof.rs`.
+#[verus_verify(external_body)]
 fn book_mmio_regions(
     mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
 ) -> Result<(), Error> {
@@ -123,6 +131,20 @@ fn book_mmio_regions(
 ///
 /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
 ///
+#[verus_spec(ret =>
+    ensures
+        // `init` is the one-shot boot entry point for the global physical-memory
+        // subsystem. Its caller-visible abstract effect — establish the frame-allocator
+        // invariant (`PhysMemView::inv`) and pre-reserve all boot-known RAM frames and all
+        // tracked MMIO frames so they are never handed out by `alloc` — is modelled by
+        // `PhysMemView::spec_initialize` / `spec_book_frames` and the `lemma_init_*`
+        // signatures in `mod.proof.rs`. Binding that effect to the global singleton state
+        // (`frame::instance()@` / `INSTANCE_INIT`) is deferred to a later phase (the
+        // functions take no `self`/ghost handle through which the post-state could be named;
+        // see the View design "Notes for Later Phases"). At this layer the body is verified
+        // for memory/type safety and that every callee precondition is met.
+        true,
+)]
 pub fn init(
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
     mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,

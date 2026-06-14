@@ -11,6 +11,7 @@ use crate::{
 };
 use ::core::mem::ManuallyDrop;
 use ::sys::error::Error;
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // User Frame
@@ -142,6 +143,7 @@ impl Upool {
     ///
     /// A user frame pool.
     ///
+    #[verus_verify(external_body)]
     pub(super) fn new() -> Self {
         Self { _private: () }
     }

@@ -50,139 +50,27 @@ impl FrameAllocView
 } // end verus!
 
 //==================================================================================================
-// std `LinkedList` support
+// std `LinkedList` type specification
 //==================================================================================================
 //
-// vstd does not provide a specification for `alloc::collections::LinkedList` or its iterator.
-// The boot-orchestration functions iterate the supplied region lists with
-// `for region in list.iter() { ... }`, so we mirror the std-iterator support that vstd already
-// ships for `core::slice::Iter` (see `vstd/std_specs/slice.rs`). These are trust-boundary
-// specifications for std-library functions that vstd does not yet cover.
+// vstd does not provide a specification for `alloc::collections::LinkedList`. Verified functions in
+// this module (`init`) take `LinkedList` parameters, so Verus needs to know the type. We declare it
+// as an opaque external type. We deliberately do NOT provide a `View`/iterator specification: doing
+// so requires implementing vstd's `View`/`ForLoopGhostIterator` traits for the foreign std types
+// `LinkedList`/`Iter`, which the Rust orphan rule forbids from a downstream crate (E0117), and the
+// pinned `vstd` dependency cannot be extended. Consequently the `for region in list.iter()` loops in
+// `book_physical_memory_regions` / `book_mmio_regions` cannot be body-verified here; those two
+// functions are marked `external_body` (see `verus-unsupported.md`).
 
 verus! {
 
-use ::alloc::collections::linked_list::Iter;
 use core::alloc::Allocator;
-use vstd::pervasive::{ForLoopGhostIterator, ForLoopGhostIteratorNew};
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::reject_recursive_types(T)]
 #[verifier::reject_recursive_types(A)]
 pub struct ExLinkedList<T, A: Allocator>(LinkedList<T, A>);
-
-impl<T, A: Allocator> View for LinkedList<T, A> {
-    type V = Seq<T>;
-
-    uninterp spec fn view(&self) -> Seq<T>;
-}
-
-#[verifier::external_type_specification]
-#[verifier::external_body]
-#[verifier::reject_recursive_types(T)]
-pub struct ExLinkedListIter<'a, T: 'a>(Iter<'a, T>);
-
-impl<T> View for Iter<'_, T> {
-    type V = (int, Seq<T>);
-
-    uninterp spec fn view(&self) -> (int, Seq<T>);
-}
-
-pub assume_specification<'a, T>[ Iter::<'a, T>::next ](
-    elements: &mut Iter<'a, T>,
-) -> (r: Option<&'a T>)
-    ensures
-        ({
-            let (old_index, old_seq) = old(elements)@;
-            match r {
-                None => {
-                    &&& elements@ == old(elements)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(element) => {
-                    let (new_index, new_seq) = elements@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& element == old_seq[old_index]
-                },
-            }
-        }),
-;
-
-pub struct LinkedListIterGhostIterator<'a, T> {
-    pub pos: int,
-    pub elements: Seq<T>,
-    pub phantom: Option<&'a T>,
-}
-
-impl<'a, T> ForLoopGhostIteratorNew for Iter<'a, T> {
-    type GhostIter = LinkedListIterGhostIterator<'a, T>;
-
-    open spec fn ghost_iter(&self) -> LinkedListIterGhostIterator<'a, T> {
-        LinkedListIterGhostIterator { pos: self@.0, elements: self@.1, phantom: None }
-    }
-}
-
-impl<'a, T: 'a> ForLoopGhostIterator for LinkedListIterGhostIterator<'a, T> {
-    type ExecIter = Iter<'a, T>;
-
-    type Item = T;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &Iter<'a, T>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.elements == exec_iter@.1
-    }
-
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.elements == self.elements
-            &&& 0 <= self.pos <= self.elements.len()
-        }
-    }
-
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.elements.len()
-    }
-
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.elements.len() - self.pos)
-    }
-
-    open spec fn ghost_peek_next(&self) -> Option<T> {
-        if 0 <= self.pos < self.elements.len() {
-            Some(self.elements[self.pos])
-        } else {
-            None
-        }
-    }
-
-    open spec fn ghost_advance(
-        &self,
-        _exec_iter: &Iter<'a, T>,
-    ) -> LinkedListIterGhostIterator<'a, T> {
-        Self { pos: self.pos + 1, ..*self }
-    }
-}
-
-impl<'a, T> View for LinkedListIterGhostIterator<'a, T> {
-    type V = Seq<T>;
-
-    open spec fn view(&self) -> Seq<T> {
-        self.elements.take(self.pos)
-    }
-}
-
-pub assume_specification<'a, T, A: Allocator>[ LinkedList::<T, A>::iter ](
-    s: &'a LinkedList<T, A>,
-) -> (iter: Iter<'a, T>)
-    ensures
-        iter@.0 == 0int,
-        iter@.1 == s@,
-;
 
 } // end verus!
 

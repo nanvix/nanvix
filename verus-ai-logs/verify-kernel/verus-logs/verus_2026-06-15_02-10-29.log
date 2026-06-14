@@ -1,0 +1,43 @@
+Timestamp: 2026-06-15_02-10-29
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=17
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=5
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: cannot use type `kernel::mm::phys::upool::Upool` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/upool.rs:147:28
+    |
+147 |     pub(super) fn new() -> Self {
+    |                            ----
+    |
+   ::: src/kernel/src/mm/phys/mod.rs:163:9
+    |
+163 |     let upool: Upool = Upool::new();
+    |         -----          ------------
+...
+167 |     PhysMemoryManager::init(upool)?;
+    |                             -----
+    |
+   ::: src/kernel/src/mm/phys/manager.rs:86:24
+    |
+ 86 |     pub(super) fn init(upool: Upool) -> Result<(), Error> {
+    |                        ^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExUpool(crate::mm::phys::upool::Upool);
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
