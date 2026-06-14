@@ -140,3 +140,32 @@ This is a trivial identity function. Let me verify it.
 
 [THINKING] The function just returns the input value directly, and the spec confirms this should match, so the verification should go through without needing any proof steps. Let me run the kernel to check.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: - do_shutdown
+    - snapshot
+    - signal_startup_complete
+    - get_kstack_top
+    - get_kstack_guard_base
+    - virt_to_phys
+    - is_valid_physical_address
+    - is_valid_physical_region
+    - max_physical_address
+    - parse_bootinfo
+    - log_control_registers
+    - register_ramfs_mmio_region
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Verification passes: **1 verified, 0 errors**. The target function `gva_to_gpa` verifies cleanly.
+
+The function is the identity (`gva => gva`), matching `spec_gva_to_gpa(gva) = gva`. No proof body was needed — Verus discharges `result as int == spec_gva_to_gpa(gva as int)` automatically. No `admit()`/`assume()` in scope, no spec weakening, no code bug. The remaining `admit=27`/`external_body=11` are in other out-of-scope functions.
+
+[THINKING] The verification confirms the target function `gva_to_gpa` is clean with no admit parameter, and I've double-checked that it only contains the gva conversion logic without any extraneous code.
+
+
+=== Session End ===
+Session: fc773d3e-23bd-45db-b505-0466d72238a2
+Duration: 37.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-platform-microvm/proving/prover-claude-20260615-060600.jsonl
