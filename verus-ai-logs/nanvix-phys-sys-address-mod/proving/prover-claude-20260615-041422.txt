@@ -285,3 +285,212 @@ Turn 8
 Turn 9
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-sys MODULE=mm::address 2>&1 | tail -50
+[RESULT ✓] bash: - try_from
+    - try_from
+    - from
+    - try_from
+    - try_from
+    - try_from
+    - try_from
+    - fmt
+    - from
+    - from
+    - from
+    - from
+    - default
+    - to_ne_bytes
+    - from_ne_bytes
+    - from
+    - from
+    - from
+    - try_from
+    - try_from
+    - try_from
+    - try_from
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Verification passed (exit 0) but flags `cfg_gate=1`. Let me investigate what triggers it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rniE "cfg_gate|cfg\(|cheat" verus-ai-logs/verify-sys/verus-logs/verus
+
+[THINKING] The verification passed with exit code 0, but there's a cfg_gate flag set to 1 that might be triggering a false positive on the cheating detection. I need to examine the full log to understand whether this is actually a legitimate use of conditional compilation like `#[cfg(verus_keep_ghost)]` or if the include! macros are being flagged incorrectly.
+[RESULT ✓] bash: 10:Cheating patterns:
+16:  cfg_gate=1
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls verus-ai-logs/verify-sys/; echo "---"; find verus-ai-logs/verify-sys/ -n
+[RESULT ✓] bash: verus-logs
+---
+verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt
+---head log---
+Timestamp: 2026-06-15_04-15-46
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: mm::address
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decrease...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt
+[RESULT ✓] bash: 
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "VERUS_AI_VERIFY_SCRIPT" Makefile | head -3
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/scripts && grep -rln "cfg_gate" . | head
+
+[THINKING] I'm checking what the verification script actually counts for cfg_gate and looking through the module files to find where cfg gates are being applied to executable code, since the cheating detail file came back empty.
+[RESULT ✓] bash: 325:export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+621:	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-$*
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+<shellId: 14 completed with exit co...
+[RESULT ✓] bash: ./verify.sh
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "cfg_gate\|cfg(" scripts/verify.sh | head; echo "---fn---"; grep -n
+[RESULT ✓] bash: 478:count_cfg_gates() {
+486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATING_DIR")" || MOD_CFG_GATE=0
+584:        echo "  Global:...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh
+[RESULT ✓] view: 478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+485. count = 0
+486. cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+487. 
+488. for rs_file in sorted(src_dir.glob('**...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh
+
+[THINKING] I'm realizing that `cfg_gate=1` is a global count across the entire crate, not scoped to a single module—the module-level scan would show `MOD_CFG_GATE` instead. The summary output printed the global count, and earlier the module scan reported those metrics along with a `CHEATING_DETECTED` status, so I need to look at that final summary line around line 692 to understand what's happening.
+[RESULT ✓] view: 680. "
+681.         echo "  $COV_VERIFIED/$COV_TOTAL exec functions have contracts."
+682.         echo "  Unverified function list written to: $COVERAGE_FILE"
+683.     fi
+684. else
+685.     echo "  ⚠️  Coverage analysis unavailable (tree-sitter required)."
+686.     echo "     Set VERUS_AI_DIR to the...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rnE "#\[cfg(_attr)?\((not\()?verus_keep_ghost" src/libs/sys/src/ | gr
+
+[THINKING] I'm seeing that the global CFG_GATE_COUNT is 1 and CHEATING_FOUND was set, but I need to trace through the logic more carefully—the CHEATING_DETECTED status should only appear if CHEATING_FOUND is true, which in the module branch only happens when MOD_SUM is greater than zero. Since I didn't see the full module scan output earlier, I should re-run with more verbose logging to determine whether the cheating detection came from the module-level check or the global gate count.
+
+Now I'm searching the crate source for cfg gate patterns to identify what that single cfg_gate detection actually is, filtering out the standard import and derive statements that the detection logic skips.
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/mod.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/mod.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/virt.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/virt.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/alignmen...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/alignment.rs
+
+[THINKING] The detection logic skips lines that start with `include!`, so those wouldn't be counted. The one `cfg_gate=1` applies globally across the entire crate source directory, so I need to verify the alignment there.
+[RESULT ✓] view: 145. }
+146. 
+147. //==================================================================================================
+148. // Material for verification
+149. //==================================================================================================
+150. 
+151. #[cfg(verus_keep_ghost)]
+152. ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+The module already verifies (exit 0, admit=0, assume=0). The `cfg_gate=1` appears global. Let me confirm whether it's in my module's scope or resolving incorrectly.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "CRATE_SRC_DIR=" scripts/verify.sh | head
+
+[THINKING] I'm looking at a `verus!` block in alignment.rs that's gated with `#[cfg(verus_keep_ghost)]`, which counts as one cfg_gate. Since this is a `verus!` block containing spec functions, it's actually allowed under the constraints.
+
+The key issue is that this code is in alignment.rs, which is outside my module scope (mm::address). When scanning just my module, MOD_SUM should be 0, which means CHEATING_FOUND should stay false and the status should be CLEAN. But the output showed CHEATING_DETECTED, so I need to re-run the verification and check what's actually being included in the module-scoped copy of mm/address. I'm checking whether there are actually any `admit()` calls or proof obligations left in the module files. The trait methods in mod.rs are abstract declarations with specs, and Verus only generates proof obligations for implementations, not the trait declarations themselves. Since the implementations live in the virt submodule (which is outside my scope), and the verification already passes with no errors or admits, I'm wondering if the task is already complete or if I'm missing something about what needs to be proven.
+[RESULT ✓] bash: 131:        CRATE_SRC_DIR="$(dirname "$CRATE_MANIFEST")/src"
+136:                CRATE_SRC_DIR="$candidate"
+189:    CRATE_SRC_DIR="$VERUS_DIR"
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh
+[RESULT ✓] view: 125.                 print(pkg['targets'][0]['src_path'])
+126.         break
+127. " 2>/dev/null || echo "")"
+128.     CRATE_MANIFEST="$(echo "$CRATE_META" | head -1)"
+129.     CRATE_ROOT_FILE="$(echo "$CRATE_META" | sed -n '2p')"
+130.     if [[ -n "$CRATE_MANIFEST" ]]; then
+131.         CRATE_SRC_DI...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -10; echo "---status---"; git --no-pager status -s | head
+
+[THINKING] The crate source directory is `src/libs/sys/src`, and the module path `mm::address` should map to `src/libs/sys/src/mm/address`, but the actual file is at `src/libs/sys/src/sys/mm/address` because the lib.rs has a `mod sys;` declaration that adds an extra level to the module hierarchy.
+
+This mismatch causes the module-scoped cheating detection to fail and fall back to the global scope, which reports a `cfg_gate=1` from alignment.rs — a pre-existing legitimate block that's not related to my target functions. My module itself has zero admits, assumes, or external_body declarations, and the target functions are abstract trait methods that don't require proof bodies.
+
+I'm wondering if the task is already complete since there are no admits to eliminate, or if I need to force a clean verification to confirm the specs are actually being verified rather than just cached.
+[RESULT ✓] bash: adbfcd003 [verus] verify PASS (cheating detected): sys::mm::address (cached (no recompilation), —, cfg_gate=1)
+83956a24c [verus-ai] proving START: sys-address-mod
+bf9ac2442 [verus-ai] pipeline FINISHED: arch-frame-number
+59c53c8c8 [verus-ai] final review: arch-frame-number
+3e71d99e5 [verus] verify P...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Let me confirm there are no admits/assumes in the address module and force a fresh (non-cached) verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rnE "admit\(\)|assume\(|external_body|trusted" src/libs/sys/src/sys/m
+
+[THINKING] A previous verification run passed with "cheating detected" because of a pre-existing `cfg_gate=1` global in alignment.rs, which isn't a target function and falls outside my module's files. The constraint says not to touch unlisted functions, so I need to figure out whether this existing global counts as cheating I should address or if it's acceptable to leave as-is.
+
+Looking at the actual scope: my target functions in mod.rs are abstract trait methods with specs but no proof bodies, which means they don't generate any verification obligations themselves—they just impose requirements on implementors. The module verifies trivially because there's nothing to prove. The only flag is that out-of-scope global in alignment.rs, which was already present in prior runs and accepted as passing.
+
+Let me force a clean re-verification by touching the source file to bypass any caching, then confirm the target module genuinely verifies with zero errors and no admits anywhere in the address directory.
+[RESULT ✓] bash: NONE FOUND
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/libs/sys/src/sys/mm/address/mod.rs src/libs/sys/src/sys/mm/addres
