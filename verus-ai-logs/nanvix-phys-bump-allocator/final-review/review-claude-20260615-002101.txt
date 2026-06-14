@@ -987,3 +987,167 @@ none
 === assume_specification ===
 ./lib.spec.rs:28:pub assume_specification [ <usize>::div_ceil ](x: usize, y: usize) -> (result: usize)
 === extern...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/Makefile
+[RESULT ✓] view: 290. export SETCAP_CMD := setcap
+291. endif
+292. 
+293. #===================================================================================================
+294. # Verus Formal Verification
+295. #===================================================================================================
+296. ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Verification passed (exit 0, 0 errors). Now running AST consistency, spec drift, and searching vstd for div_ceil.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git branch --show-current; echo "--- HEAD ---"; git --no-pager log --oneline -3
+echo 
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs
+echo "=== SPEC DRIFT ==="
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.p
+[TOOL] bash: VR=$(ls -d /home/ruize/toolchain/verus* 2>/dev/null | head -1)
+echo "verus dir: $VR"
+find /home/ruize/toolchain -path '*
+[RESULT ✓] bash: verus-ai-prove
+--- HEAD ---
+bb63e624b [verus] verify PASS (cheating detected): bump-allocator::all (cached (no recompilation), —, external_body=2)
+077d7b256 [verus] verify PASS (cheating detected): bump-allocator::all (cached (no recompilation), —, external_body=2)
+8b6f2732b [verus] verify PASS (che...
+[RESULT ✓] bash: verus dir: /home/ruize/toolchain/verus
+/home/ruize/toolchain/verus/vstd/multiset_lib.rs
+/home/ruize/toolchain/verus/vstd/atomic.rs
+/home/ruize/toolchain/verus/vstd/future.rs
+/home/ruize/toolchain/verus/vstd/shared.rs
+/home/ruize/toolchain/verus/vstd/wrapping.rs
+/home/ruize/toolchain/verus/vstd/laws_...
+[RESULT ✓] bash: === SPEC DRIFT ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+EXIT=0
+<shellId: 2...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/toolchain/verus/source >/dev/null && rg -n "div_ceil" /home/ruize/toolchain/verus/source/vstd /home/ruize
+[RESULT ✓] bash: ls: cannot access '/home/ruize/toolchain/verus/source': No such file or directory
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize -maxdepth 6 -type d -name vstd 2>/dev/null | head -20
+[RESULT ✓] bash: /home/ruize/verus/vstd
+/home/ruize/verus-bin/vstd
+/home/ruize/toolchain/verus/vstd
+/home/ruize/verus-ai-improve/vstd
+/home/ruize/verus-ai-improve-backup/vstd
+/home/ruize/nanvix-exp/nanvix-bitmap/toolchain/verus/vstd
+/home/ruize/nanvix-exp/nanvix-slab/toolchain/verus/vstd
+/home/ruize/nanvix-exp/nanvi...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: rg -n "div_ceil|assume_specification\s*\[\s*<usize>::div_ceil" /home/ruize/toolchain/verus/vstd /home/ruize/toolchain/ve
+[RESULT ✓] bash: 
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: rg -n "div_ceil" /home/ruize/toolchain/verus 2>/dev/null | head -50
+[RESULT ✓] bash: 
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] rg: assume_specification\s*\[\s*<usize>::div_ceil\s*\]|div_ceil
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.spec.rs:25:// `usize::div_ceil` rounds the quotient towards positive infinity. It panics on a
+/home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.spec.rs:28:pub assume_specification [ <usize>::div_ceil ](x: usize, y: usize) -> (re...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: rg -n "pub const fn div_ceil|Panics|rhs" /home/ruize/.rustup/toolchains -g '*uint_macros.rs' | head -40
+[RESULT ✓] bash: /home/ruize/.rustup/toolchains/1.96.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/num/uint_macros.rs:21:        clmul_rhs = $clmul_rhs:literal,
+/home/ruize/.rustup/toolchains/1.96.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/num/uint_macros.rs:418:        /// P...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: rg -n "div_ceil" /home/ruize/.rustup/toolchains/1.96.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/nu
+[RESULT ✓] bash: 3703:        #[doc = concat!("assert_eq!(7_", stringify!($SelfT), ".div_ceil(4), 2);")]
+3711:        pub const fn div_ceil(self, rhs: Self) -> Self {
+<shellId: 32 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/.rustup/toolchains/1.96.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/num/uint_macros.rs
+[RESULT ✓] view: 3688.         #[inline(always)]
+3689.         #[track_caller]
+3690.         pub const fn div_floor(self, rhs: Self) -> Self {
+3691.             self / rhs
+3692.         }
+3693. 
+3694.         /// Calculates the quotient of `self` and `rhs`, rounding the result towards positive infinity.
+3695.       ...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 - <<'PY'
+import re
+from pathlib import Path
+files=[Path('src/libs/bump_alloca
+[RESULT ✓] bash: [admit]
+total=0
+
+[assume]
+total=0
+
+[external_body]
+src/libs/bump_allocator/src/lib.rs:271:#[verus_verify(external_body)]
+src/libs/bump_allocator/src/lib.rs:348:#[verus_verify(external_body)]
+total=2
+
+[assume_specification]
+src/libs/bump_allocator/src/lib.spec.rs:28:pub assume_specification [ <usize>...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] rg: cfg(_attr)?\(
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.rs:83:#![cfg_attr(not(any(test, feature = "std")), no_std)]
+/home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.rs:101:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.rs:105:#[cfg(verus_keep_g...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Re-running verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/bump_allocator/src/lib.rs && make verify-bump-allocator
+[RESULT ✓] report_intent: Intent logged
