@@ -262,3 +262,130 @@ VERUS at ~/toolchain/verus
 Turn 10
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; time make verify-bump-allocator VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 |
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat verus-ai-logs/verify-bump-allocator/verus-logs/cheating-detail.txt; echo 
+
+[THINKING] Looking at the baseline counts, I see external_body=2 with `alloc` and `alloc_as` both listed in tcb-allowed.md, but I'm noticing that assume_specification appears in the spec file for div_ceil and isn't being counted as "assume" in the summary. Let me check the cheating-detail.txt to understand how assume_specification is actually being tallied.
+[RESULT ✓] bash: - lib.rs:286 alloc: external_body
+    - lib.rs:367 alloc_as: external_body
+===COVERAGE===
+# Unverified exec functions: 3/6
+  fmt
+  new
+  default
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '1,80p' scripts/verify.sh | grep -n "assume\|external_body\|admit\|che
+
+[THINKING] The cheating check flagged two external body references—`alloc` and `alloc_as`—both of which are already permitted in the allowed list. The `assume_specification` for `div_ceil` didn't trigger the cheating detection, which suggests that `assume_specification` doesn't count toward the "assume" metric. I should verify the check script to confirm how it actually counts these violations.
+[RESULT ✓] bash: 3:# Generic Verus verification script with cheating detection and git tracking.
+===grep full===
+3:# Generic Verus verification script with cheating detection and git tracking.
+103:# Determine verification mode and source directory for cheating detection.
+292:# --- Helper: run cheating detection on a...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '533,660p' scripts/verify.sh
+
+[THINKING] I'm checking whether `assume_specification` is actually counted as a cheating pattern in the guardrails detection, since the task mentions counting it but the verification script doesn't seem to flag it. Let me figure out what actually determines a pass or block result. Counts in the gate are assume, external_body, admit, trusted, no_decreases, and cfg_gate — assume_specification isn't included, so it won't trigger a failure. The real goal is to eliminate assume, admit, and external_body (except TCB-allowed ones), and the current state already has external_body=2 both in tcb-allowed, so there may be nothing left to eliminate. But I need to verify how the pipeline actually determines whether the gate passes with TCB-allowed external_body marked as acceptable, so let me check the verify.sh logic around the cross-check.
+[RESULT ✓] bash: GLOBAL_CHEATING_JSON="$(run_cheating_scan "$CHEATING_DIR")"
+GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+
+CHEATING_AVAILABLE=false
+if echo "$GLOBAL_CHEATING_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if 'assume' in d else 1)...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+The gate doesn't count `assume_specification`. Let me verify that and confirm the guardrails detection treats it correctly.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai 2>/dev/null && grep -n "assume_specification\|def detect_cheating\|assume\b\|extern
+
+[THINKING] The verify.sh script flags external_body as cheating whenever it's present, but doesn't actually check against tcb-allowed.md—that exemption gets applied later by the pipeline. Since the task requires external_body entries in tcb-allowed.md to be allowed, I need to ensure any remaining external_body references are all accounted for in that exemption list.
+
+Now I'm checking whether assume_specification gets caught by the cheating detection. The patterns it looks for are assume, external_body, admit, trusted, and no_decreases—so I need to verify that assume_specification isn't being matched as "assume" by accident when the detection runs.
+[RESULT ✓] bash: 29:    limitation_assume_count: int = 0  # assume() with approved VERUS-AI LIMITATION id
+31:    external_body_count: int = 0
+32:    external_body_fn_count: int = 0  # external_body NOT on external_type_specification
+33:    external_body_proof_fn_count: int = 0  # external_body on proof fn (always il...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; python3 -c '
+import sys; from pathlib import Path
+from guardrails import detect_ch
+[RESULT ✓] bash: Traceback (most recent call last):
+  File "<string>", line 7, in <module>
+AttributeError: 'CheatingReport' object has no attribute 'is_cheating'. Did you mean: 'has_cheating'?
+---assume_specification grep in guardrails---
+<shellId: 12 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; python3 -c '
+from pathlib import Path
+from guardrails import detect_cheating
+for f
+[RESULT ✓] bash: lib.rs assume= 0 external_body= 2 admit= 0 has_cheating= True
+lib.spec.rs assume= 0 external_body= 0 admit= 0 has_cheating= False
+lib.proof.rs assume= 0 external_body= 0 admit= 0 has_cheating= False
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Confirmed: only cheating flagged is the 2 TCB-allowed `external_body` (alloc, alloc_as). `assume_specification` for `div_ceil` isn't counted by the gate. Let me check whether vstd already provides a `div_ceil` spec so I could eliminate even that trusted spec.
+[TOOL] bash: cd ~/toolchain/verus; grep -rn "div_ceil" vstd/ 2>/dev/null | head; echo "---in vstd.vir / source---"; find ~/toolchain/
+
+[THINKING] The guardrails detector doesn't flag `assume_specification` as cheating, so the bump-allocator's cheating phase is essentially complete—the only remaining external functions are the two TCB-allowed allocator functions, and the `div_ceil` assumption is a legitimate trusted specification. Let me reconsider whether I should still try to eliminate things: the task says zero cheating except for TCB-allowed external_body, and I have exactly that state with verification passing at exit 0. The target functions (alloc_as, alloc, align_up, as_mut_ptr) are either verified with real bodies or are TCB-allowed, so there's genuinely nothing left to eliminate—this is already the clean state the task requires.
+
+But let me reconsider whether I should attempt to eliminate the external_body on alloc and alloc_as anyway, since they're the only functions in scope. No—the task explicitly allows functions listed in tcb-allowed.md to keep external_body, and both are listed there. I should also verify there's no cfg-gated exec code (the count is 0, which is correct), and then check if div_ceil's assume_specification can be replaced by searching vstd for a built-in spec—that would be worth doing since it's the one remaining trusted spec.
+[RESULT ✓] bash: ---in vstd.vir / source---
+/home/ruize/toolchain/verus/vstd/multiset_lib.rs
+/home/ruize/toolchain/verus/vstd/atomic.rs
+/home/ruize/toolchain/verus/vstd/future.rs
+/home/ruize/toolchain/verus/vstd/shared.rs
+/home/ruize/toolchain/verus/vstd/wrapping.rs
+/home/ruize/toolchain/verus/vstd/laws_cmp.rs
+/home...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+vstd has no `div_ceil` spec — the `assume_specification` is a legitimate external-bottom trusted boundary (not counted as cheating, and rewriting `align_up`'s exec body to avoid it would violate ast-consistency). Now let me verify AST consistency against the base branch.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== diff lib.rs vs base ==="; git diff verus-ai-prove-bottom-up -- src/
+
+[THINKING] The `assume_specification` for `div_ceil` is actually a valid trusted boundary since vstd doesn't provide its own spec for this function, making it an external-bottom trust classification that the gate allows. The phase already passes the cheating check cleanly with no problematic external bodies, so there's nothing that needs to be eliminated. I'm reconsidering whether I could replace the assumption with an actual verification instead.
+
+Changing the `align_up` implementation to avoid `div_ceil` would alter the execution semantics, which the ast-consistency skill forbids unless required by Verus—and it's not required here. The original code uses `div_ceil`, so I should leave it as is. The `assume_specification` is a standard, accepted Verus mechanism for external std functions and isn't on the cheating list.
+
+My conclusion is that the cheating-elimination phase is already passing. Let me verify by checking the ast-consistency between the current code and the base branch to ensure the execution code hasn't changed without justification.
+[RESULT ✓] bash: === diff lib.rs vs base ===
+=== status of spec/proof files in base ===
+100644 blob 92f8a26ea86d848e424e6120f1e92d5f039afd60	src/libs/bump_allocator/src/lib.proof.rs
+100644 blob 3975e91d04667dd1f895eb5fcca2e7485d8aa5c7	src/libs/bump_allocator/src/lib.rs
+100644 blob 29cd6253775ea51e1e33421e7f0110aa977...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+lib.rs is byte-identical to the base branch (empty diff) — zero AST mismatch. Let me confirm the actual Verus verification result (errors count) from the log.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat verus-ai-logs/verify-bump-allocator/verus-logs/verus_2026-06-15_00-24-36.
+
+[THINKING] The lib.rs file hasn't changed relative to the base branch, so there are no AST mismatches in the exec code. The cheating gate shows external_body=2 with everything else at zero, and the assume_specification for div_ceil is a legitimate external-bottom that doesn't get counted since vstd has no replacement for it.
+
+Verification passes with exit code 0. Both alloc and alloc_as are confirmed in tcb-allowed.md with the correct paths, so those two external_body functions are genuinely allowed. Now I need to verify that the in-scope functions like align_up and as_mut_ptr are also passing verification — the exit code is 0, but I should check the actual verus log to confirm there are no verification errors reported.
