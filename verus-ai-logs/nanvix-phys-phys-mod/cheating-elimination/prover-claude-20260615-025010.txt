@@ -469,3 +469,58 @@ vstd has iterator specs only for slice/vec/vecdeque/range — **no LinkedList**.
 The phys-mod verification shows zero cheating violations — no admits, no assumes, no undeclared external bodies. The two TCB-allowed external functions (book_physical_memory_regions and book_mmio_regions) are properly scoped, and ExLinkedList is declared as a required trusted external type. The AST is consistent with only ghost-only additions under cfg gates, and the mm::phys module verifies cleanly with 9 verified items and zero errors.
 
 Now I need to run the full crate verification to check for regressions, though the global report will flag cheating from other modules' external bodies that fall outside scope.
+[RESULT ✓] bash: Exit code : 0
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=17 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+  Unverified function list written to: verus-ai-logs/verify-kernel/verus-logs/coverage-unverified.txt
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Full kernel verification: **exit 0, admit=0, assume=0**. The `external_body=17`/`cfg_gate=5` are crate-global (other modules out of scope). In-scope phys-mod is clean. Let me write the report.
+[TOOL] report_intent: Writing cheating-elimination report
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/fix_report.md
+
+[THINKING] The kernel verification passed with no errors, and the 17 external bodies flagged as out-of-scope belong to other modules while the TCB-allowed ones in mod.rs are accounted for. The "CHEATING_DETECTED" status is a global gate tracking these external references across the crate, which come from frame.rs, manager.rs, and upool.rs among other tasks.
+
+Since I made no source changes—only touched file timestamps—there's zero regression risk and the pre-existing proofs all pass. I'll write up the fix report now, noting that the kernel verification exit 0 confirms the phys-mod scope is clean.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/fix_report.md with 4851 characters
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Done. Here's the summary.
+
+## Cheating Elimination: phys-mod — **PASS**
+
+**In-scope analysis** (`init`, `book_physical_memory_regions`, `book_mmio_regions` in `mod.rs`/`mod.spec.rs`/`mod.proof.rs`):
+
+| Item | Before | After |
+|------|--------|-------|
+| admit() | 0 | 0 |
+| assume() | 0 | 0 |
+| external_body | 2 (TCB-allowed) | 2 (TCB-allowed) |
+| assume_specification | 0 | 0 |
+| cfg-gated exec | 0 | 0 |
+
+The module is already fully proven on this branch. The only remaining trust items are explicitly permitted:
+- `book_physical_memory_regions` / `book_mmio_regions` — `external_body`, both **listed in `tcb-allowed.md`** (genuine std-`LinkedList` iteration limitation).
+- `ExLinkedList` — required `external_type_specification` so verified `init` can name the foreign `LinkedList` type.
+
+**Escalation ladder verified, not assumed:** I confirmed vstd ships iterator ghost-specs only for slice/vec/vecdeque/range/iter — **no LinkedList anywhere**. The orphan rule (E0117) blocks supplying the impls, and pinned vstd can't be extended. The abstract booking effect is fully specified over `PhysMemView` and **proven with zero `admit`** by the lemmas in `mod.proof.rs`.
+
+**AST consistency:** zero mismatches — diff vs base is purely additive (ghost/spec only); exec bodies of all three functions are byte-identical to base.
+
+**Verification:** `mm::phys` = **9 verified, 0 errors**; full `verify-kernel` exits 0 with `admit=0 assume=0`. (Crate-global `external_body=17`/`cfg_gate=5` belong to out-of-scope modules — `frame.rs`, `manager.rs`, `upool.rs`.)
+
+Report: `verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/fix_report.md`. No `verification_todo.md` needed (no proof gaps).
+
+
+=== Session End ===
+Session: 94470c8c-9a82-4c92-afd6-19b672562739
+Duration: 276.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/prover-claude-20260615-025010.jsonl
