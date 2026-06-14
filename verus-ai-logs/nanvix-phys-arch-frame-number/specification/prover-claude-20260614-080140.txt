@@ -1283,3 +1283,165 @@ The `pub open` type invariant conflicts with the opaque type's `NULL` constructo
 Turn 74
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -45
+[RESULT ✓] bash: Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-14_08-14-25
+
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::add...
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "FrameNumber::NULL\|\.NULL\b\|NULL" src/ --include=*.rs | grep -i "framenumber\|fram
+
+[THINKING] I'm trying to figure out which function the error is actually referring to — the message mentions "pub open spec function" but I'm not sure if it's pointing at `view()`, which is closed, or maybe `spec_max_frame_number()` which is marked as `pub open`. The error says the NULL const constructor must be well-formed everywhere, but the root issue seems to be something more fundamental about how these functions are defined.
+
+The real problem is that adding a type invariant creates a conflict: NULL is a public constant that constructs an opaque datatype, and with the invariant in place, the constructor needs to be verified for all contexts where NULL is visible. But since the datatype is opaque outside the module, the constructor can only be built inside the module — this is a genuine limitation in Verus. I could either drop the type invariant and find another way to enforce the bound, or accept that NULL's public visibility makes this approach impossible.
+
+The standard pattern in the codebase is to use a public open invariant function without type_invariant, then add `requires self.inv()` to into_raw_value and ensure the invariant in from_raw_value. But this would require callers to thread the invariant check, which contradicts how the kernel treats FrameNumber as an always-valid token. The kernel's unconditional bound on into_raw_value confirms that type_invariant semantics are what's needed downstream. So type_invariant is the right choice, but NULL's public visibility is the blocker.
+[RESULT ✓] bash: src/kernel/src/hal/arch/shared/mem/mmu/page_directory.rs:161:            FrameNumber::NULL,
+src/kernel/src/hal/arch/shared/mem/mmu/page_table.rs:201:            FrameNumber::NULL,
+src/libs/arch/src/x86/mem/paging/frame/number.rs:39:    pub const NULL: Self = Self(0);
+=== any use of NULL of frame ===...
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+This is a genuine Verus interaction. Let me research how Verus handles type invariants with public const constructors.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; grep -rn "opaque datatype\|must be well-formed everywhere\|constructor is disallow
+
+[THINKING] NULL is genuinely public and used across crates in the kernel, so I can't modify it. This creates a fundamental tension with the type_invariant approach since the public constant constructor would bypass the invariant. I need to figure out how Verus typically handles this pattern—a public constant that constructs a type with an invariant—or whether the const initializer needs to live in a module where construction is restricted and the invariant can be proven.
+
+Actually, let me step back and reconsider whether the unconditional bound in into_raw_value is truly necessary. The kernel's placeholder expects no requires clause, which downstream code relies on. But when arch verification happens later, if my into_raw_value requires self.inv(), then kernel code using from_number would need to establish that invariant. The real question is whether I can provide the bound conditionally instead—through a public open inv() function and have into_raw_value require it—and still maintain soundness for the kernel's current placeholder semantics. The kernel's placeholder is actually sound because every FrameNumber value in practice satisfies the bound—from_raw_value enforces it and NULL=0 works. But Verus can't prove an unconditional postcondition without either a type invariant (blocked by the NULL pub const issue) or a requires clause (which changes the contract). I could theoretically use admit() in a proof block inside the exec function, but that's a verification escape that defeats the purpose of the task's zero-error requirement.
+
+The real issue is that the bound on into_raw_value is fundamentally unprovable without type_invariant, so admit() would be permanent rather than a placeholder. That means I need to find a way to make type_invariant coexist with the NULL pub const constructor—maybe through some Verus annotation or by checking how opaque datatypes handle this pattern.
+[RESULT ✓] bash: verus/source/rust_verify_test/tests/adts.rs:1719:    } => Err(err) => assert_vir_error_msg(err, "disallowed: field expression for an opaque datatype")
+verus/source/rust_verify_test/tests/adts.rs:1760:    } => Err(err) => assert_vir_error_msg(err, "disallowed: field expression for an opaque datatype"...
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; sed -n '270,330p' verus/source/vir/src/well_formed.rs
+[RESULT ✓] bash: if !required_vis.at_least_as_restrictive_as(&f.x.visibility) {
+            let kind = f.x.item_kind.to_string();
+            let msg = format!("in {reason:}, cannot refer to private {kind:}");
+            return Err(error(&span, msg));
+        }
+    }
+
+    Ok(f)
+}
+
+fn check_datatype_access<Emit: Emi...
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; grep -rn "pub open spec function\|must be well-formed everywhere\|well-formed ever
+
+[THINKING] I'm tracking down where `disallow_private_access` gets set for const initializers and why the error message says "pub open spec function". Let me search through the const handling code to find where this specific phrasing originates and how const bodies are validated at their declared visibility level.
+[RESULT ✓] bash: verus/source/rust_verify_test/tests/fndef_types.rs:941:    } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot refer to private function")
+verus/source/rust_verify_test/tests/modules.rs:208:    } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot re...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; sed -n '1395,1460p' verus/source/vir/src/well_formed.rs
+[RESULT ✓] bash: if function.x.mode == Mode::Exec
+        && (function.x.decrease.len() > 0 || function.x.decrease_by.is_some())
+        && (function.x.attrs.exec_assume_termination
+            || function.x.attrs.exec_allows_no_decreases_clause)
+    {
+        emit.emit(
+            None,
+            VirErrAs::Warni...
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; grep -n "opaque\|const\|type_invariant\|external_body\|struct\|Self(" verus/source
+
+[THINKING] I'm noticing the error message references a `pub open spec function` but it's actually being triggered on a const NULL constructor, not a spec function. Let me reconsider how consts are being handled in Verus — it seems like the const might be getting treated as a function that returns a value, which could explain why the spec mode check is being applied.
+
+The real issue is that adding `#[verus_verify]` to the struct makes Verus treat FrameNumber as an opaque datatype with private fields, and now the `pub const NULL = Self(0)` constructor is disallowed because a public const can't construct an opaque type in spec contexts. Before the annotation, Verus didn't enforce this restriction. I need to figure out if there's a way to mark the const as exec-only or if I should reconsider where to apply the `#[verus_verify]` annotation. Looking at how PhysicalAddress is structured in phys.rs — it doesn't use `#[verus_verify]` on the struct itself, just defines the `impl View` inside a `verus!{}` block. That's enough for Verus to recognize it as a datatype without triggering the opaque const constructor check. But when I tried type_invariant earlier without `#[verus_verify]`, it complained the struct wasn't declared in the crate — so maybe the View impl alone isn't sufficient for type_invariant, or I need to check if phys.rs actually uses type_invariant at all.
+
+The real tension is: `#[verus_verify]` makes type_invariant work but breaks pub const NULL, while dropping it avoids the const issue but type_invariant fails. Let me reconsider whether type_invariant is actually necessary here. If I go with Option B (no type_invariant, just self.inv() checks in into_raw_value), the kernel's placeholder stays untouched in its own crate, so `make verify` still passes there — no regression in the kernel, just my arch module verifies with a different spec approach.
+
+But the concern is future-facing: if someone eventually supersedes the kernel's placeholder with my arch spec, from_number would break without the type_invariant guarantee. That suggests type_invariant really is the intended design, so I need to solve the NULL const problem. Let me look for a Verus attribute that excludes a const from spec-mode checking, or check how other code handles pub const of opaque datatypes.
+[RESULT ✓] bash: 7:    #[test] test_const_eval1 verus_code!{
+17:    #[test] test_generic_const_eval2 verus_code!{
+18:        const S: usize = 10;
+19:        struct TestConst {
+28:        const C: u64 = 3 + 5;
+29:        spec const S: int = C as int + f();
+30:        const fn e() -> (u: u64) ensures u == 1 { 1 }
+31: ...
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; grep -rn "exec const\|const.*verus\|verus.*const\|when_used_as_spec\|ExecConst\|ex
+
+[THINKING] I'm noticing that `exec const` declarations create exec-only constants that can't be read in spec context, which means their bodies skip visibility checks. If I mark NULL as `exec const`, it would become opaque to the spec layer and potentially allow the constructor, though this would require modifying how the const is declared.
+
+The challenge is figuring out how to express `exec const` in attribute-style Verus code rather than the inline syntax. Looking at the actual definitions, MAX and NULL live inside the `#[verus_verify]` impl block, but MAX needs to remain spec-readable since my spec function references it directly. So I can't simply make both constants exec-only — I need a more targeted approach that only hides NULL's construction from spec visibility.
+
+Let me explore whether removing `#[verus_verify]` from the impl block while keeping it on the struct itself would prevent the const construction error, since the struct's Verus datatype status might be what's triggering the opaque type check in the first place.
+
+The real constraint is that the functions need `#[verus_verify]` context to be found, so I could try splitting the constants into a separate impl block without verification while keeping the annotated functions in their own verified impl block. But that might not help since Verus still checks all items in a verified module unless explicitly marked external.
+
+Looking at the core issue: the struct field is private, making the datatype transparent only within the module, so a public const trying to construct it fails. My options are either making NULL exec-only or finding a way to make it non-public, though the latter isn't viable given how it's used.
+
+Let me explore whether I can mark the const as exec-only through Verus attributes—maybe `#[verus_verify(external)]` would skip verification entirely, though I need to check if that's different from the banned `#[verifier::external]` attribute.
+[RESULT ✓] bash: verus/source/builtin_macros/src/attr_rewrite.rs:55:const VERUS_SPEC: &str = "verus_spec";
+verus/source/builtin_macros/src/attr_rewrite.rs:322:        if !self.verify_const || get_verus_spec(attrs).is_some() {
+verus/source/builtin_macros/src/attr_rewrite.rs:422:            rewrite_verus_spec_on_item_...
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; sed -n '315,330p;475,510p' verus/source/builtin_macros/src/attr_rewrite.rs
+
+[THINKING] I'm seeing how the `#[verus_spec]` attribute transforms a const into Exec mode through the rewrite logic at line 489, which means applying this attribute to the NULL const changes its mode classification. Let me trace through the `rewrite_verus_spec_on_item_const` function to understand the full transformation.
+[RESULT ✓] bash: fn get_verus_spec(attrs: &[syn::Attribute]) -> Option<&syn::Attribute> {
+    attrs.iter().find(|attr| attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC))
+}
+
+impl VerusVerifyVisitor {
+    fn add_verus_spec_if_needed(&self, attrs: &mut Vec<syn::Attribute>, span: proc_macro2::Span) {
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+Let me take the faithful type-invariant approach but make `NULL` an exec const (so its constructor isn't checked at spec visibility). Let me revert `inv` to `pub open` and annotate `NULL`.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+
+[THINKING] I'm realizing that putting `#[verus_spec(ensures true)]` on a const with `#[verus_spec(...)]` makes it an exec const, which feels awkward. The real question is whether `add_verus_spec_if_needed` with `verify_const` actually propagates that flag when `#[verus_verify]` is on the impl block — I need to check the logic around line 322.
+
+Actually, stepping back: the core issue is just the `pub const NULL: Self = Self(0)` constructor under an opaque datatype with a type_invariant. The simplest fix would be marking it as exec-mode so it bypasses the spec const checks and the opaque constructor restriction. But then I'm unsure whether an exec const can still satisfy the type_invariant requirement — `Self(0)` trivially satisfies `0 <= 0 <= max`, so Verus might auto-discharge it, but I can't assume exec mode bypasses the opaque constructor restriction without testing. Maybe the cleaner approach is to not register the struct with the full type_invariant in the first place, which would avoid the unconditional-bound requirement altogether.
+
+Let me think through the pragmatic trade-offs: the main goal is meaningful specs for the three functions, zero Verus errors, and no regressions. The type_invariant gives the cleanest match to the kernel's existing contract, but it's creating friction with the NULL const. I should just try marking NULL with `#[verus_spec]` to make it exec-mode while keeping the struct and impl annotations, and see if that works. Or even simpler — what if I move NULL into a separate plain impl block outside the `#[verus_verify]` annotation? The question is whether Verus processes consts in non-annotated impl blocks. Since the struct itself is marked `#[verus_verify]`, making it opaque, the const NULL would still construct it. But in attribute mode, Verus only verifies items that are explicitly annotated; non-annotated items are treated as external and trusted. Looking at the bitmap coverage — only 2 out of 525 exec functions have contracts, meaning the other 523 aren't erroring, which suggests Verus treats non-annotated functions as external.
+
+So the plan is to split the impl blocks: put MAX and NULL in a plain `impl FrameNumber` block without `#[verus_verify]`, and keep the two functions in the annotated block. The concern is whether specs can still reference MAX if it's in a non-verified impl, but since MAX is a public const in the same module, Verus should be able to read it even without the annotation.
+
+Actually, there's a simpler approach: keep everything in one `#[verus_verify]` impl block but mark NULL with `#[verus_spec(ensures true)]` to make it exec mode instead of spec mode. This avoids the opaque constructor check entirely since the disallow_private_access flag only applies to spec-mode functions. The exec const should auto-prove the trivial type invariant without needing an explicit proof block. I'm reconsidering whether I even need the type_invariant approach. If I skip it and just define inv() as a plain spec function like the existing codebase does in phys.rs and frame.rs, I can avoid touching the NULL const entirely. The struct doesn't need #[verus_verify] just to have spec methods defined in a verus!{} block — Verus recognizes it as a datatype from the impl alone. So Option B without type_invariant might actually sidestep all these complications while staying consistent with the existing patterns. With #[verus_verify] only on the impl block (not the struct), the NULL const doesn't trigger opaque treatment, so Option B sidesteps that issue entirely. The tradeoff is that into_raw_value gains a `requires self.inv()` clause, which differs from the kernel's placeholder contract—this doesn't break the current build since the kernel uses its own spec, but it means my arch spec is now stricter than what upstream assumes, potentially complicating future supersession.
+
+The real question is which spec is correct: the kernel's unconditional bound works only because FrameNumber's type invariant guarantees all values are bounded, so the faithful spec should capture that as a type_invariant, not push it to callers. The function itself always returns a bounded value—that's the reality. So I should go with Option A (type_invariant) and fix NULL by making it an exec const with an ensures clause that verifies its view equals zero.
+
+For the exec const annotation, I need `#[verus_spec(ensures NULL@ == 0)]` since the spec mode only flips to exec if ensures is present. This should auto-verify because NULL constructs to Self(0), which has view 0 and satisfies the type invariant. Making NULL exec-mode also sidesteps the opaque const error that was triggered by it being a spec/dual const. The kernel can still use NULL in exec contexts, and it's not used in spec anywhere, so this works cleanly.
+
+Now I'll revert inv() back to pub open since the opaque error was likely about NULL's implicit spec treatment rather than inv() itself. With NULL as exec const, the type_invariant check should pass even with pub open inv, so let me test that configuration.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -40
