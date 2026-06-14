@@ -1,4 +1,4 @@
-# Unverified exec functions: 1014/1022
+# Unverified exec functions: 1013/1022
   do_debug
   debug
   do_evctrl
@@ -563,7 +563,6 @@
   alloc_many_kernel_frames
   book_physical_memory_regions
   book_mmio_regions
-  init
   test
   new
   address
