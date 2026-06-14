@@ -956,3 +956,201 @@ Turn 72
 Turn 73
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+[RESULT ✓] bash: === Summary ===
+  verification: 53 verified, 1 errors (exit 101)
+  cheating: assume=0 external_body=19 admit=18 trusted=0 no_decreases=0 cfg_gate=15
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-36-...
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+Compiles now, 1 error. Let me see it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error:\
+[RESULT ✓] bash: 30:error: assertion failed
+31:   --> src/kernel/src/mm/phys/frame.rs:195:28
+34:    |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+133:   --> src/kernel/src/mm/phys/frame.rs:160:37
+141:   --> src/kernel/src/mm/phys/frame.rs:161:80
+159:   --> src/kernel/src/mm/phys/frame....
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+The `idx <= spec_max` bound genuinely fails (line 195) — confirming the top-of-space frame gap is real on the 32-bit verification target. The same latent bug class as `into_frame_number`. Let me check whether constructing the address totally via `FrameAddress::from_raw_value(idx*FRAME_SIZE)` is provably `Ok` (the spec-preserving fix). Let me check `PhysicalAddress::from_raw_value` and `PageAligned::from_address` specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "fn from_raw_value\|from_virtual_address\|verus_spec\|ensures\|requires" src
+
+[THINKING] The assertion failure at line 195 confirms this is a real bug—the frame allocator can indeed allocate the top-of-space frame (at index `usize::MAX/FRAME_SIZE`, or address `0xFFFFF000` on 32-bit systems), but this frame index isn't representable as a `FrameNumber` because the architecture explicitly excludes it.
+
+When `from_raw_value` rejects this unrepresentable frame after the bitmap and refcount have already been mutated, `alloc` returns an error with corrupted internal state, violating its postcondition that guarantees errors only occur when the allocator is actually full. This is the same root-cause pattern as the previously recorded `into_frame_number` panic bug.
+
+The fix needs to preserve the spec's guarantee that `alloc` only fails when `free_frames.is_empty()`. Since the top frame can't be represented as a `FrameNumber`, the allocator must never treat it as a usable free frame in the first place. The cleanest approach is to construct the frame address directly via `FrameAddress::from_raw_value` using the raw index calculation, bypassing `FrameNumber`'s bounds entirely—but I need to verify that this path actually succeeds for all valid addresses.
+
+Looking at the dependency chain: `PhysicalAddress::from_raw_value` needs to be total, and `PageAligned::from_address` must succeed for aligned values. If both hold and the index times frame size stays within representable bounds, then constructing the address directly works. However, the resulting `FrameAddress` for the top frame would have a frame number exceeding `FrameNumber::MAX`, which violates the precondition for `into_frame_number`—but `alloc`'s postcondition only requires alignment, not the frame-number bound, so returning such an address might technically satisfy the spec even though it's problematic downstream.
+
+The real issue is that returning an unrepresentable frame address isn't actually correct—the architecture deliberately excludes that top frame because its end address overflows `usize`, making it unsafe to use. The proper fix would require strengthening `Inner::internal_inv` to bound the number of bits, but that's outside the allowed scope. This is a design-level issue that can't be cleanly resolved within the constraints, so I should record it as a complex bug rather than attempt a partial fix. So the fix is to use `FrameAddress::from_raw_value(idx * FRAME_SIZE)` directly instead of going through `FrameNumber`, which avoids the panic for the unreachable top frame while still satisfying alloc's spec and producing identical results for all representable frames. This follows the same pattern as the existing `into_frame_number` fix—replacing a panicking unwrap with a total computation that handles the edge case correctly.
+
+Now I need to verify that `PhysicalAddress::from_raw_value` has a spec that supports proving this is always Ok, checking whether the spec is defined inline or through the Address trait.
+[RESULT ✓] bash: 49:    pub fn from_virtual_address(addr: VirtualAddress) -> Result<Self, Error> {
+112:    #[verus_spec(result =>
+113:        requires
+115:        ensures
+138:    #[verus_spec(result =>
+139:        ensures
+150:    #[verus_spec(result =>
+151:        requires
+153:        ensures
+185:    fn from_raw_val...
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] view: 40. #[verus_verify(external_derive)]
+41. #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+42. pub struct PhysicalAddress(VirtualAddress);
+43. 
+44. //==================================================================================================
+45. // Implementations
+46. //=================...
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+`PhysicalAddress::from_raw_value` is not total (platform validity check), so that path won't prove `Ok` either. Let me confirm which target Verus actually verified against (x86 32-bit vs x86_64), since on 64-bit the bound holds trivially.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "target\
+
+[THINKING] I'm realizing that `from_virtual_address` invokes a platform-level validity check through `is_valid_physical_address`, which means `PhysicalAddress::from_raw_value` isn't total—it can reject addresses outside physical memory bounds. This means `FrameAddress::from_raw_value(idx*4096)` could fail if that address isn't actually valid, so I can't assume it succeeds, which breaks this proof path for the error case.
+
+Now I'm stepping back to reconsider whether the reviewer's request to remove those admits is even feasible. The core issue is that the alloc proof has a fundamental gap: either the reviewer didn't actually try removing the admits and discover this problem, or there's an approach I'm overlooking. Let me think through whether there's any way to establish that `idx <= spec_max`. The only invariant is `internal_inv`, which gives `idx <= spec_max+1`, not a strict bound. And even if I could somehow satisfy the error postcondition by undoing mutations, the `is_empty()` requirement fails because the top frame's address would still be in `free_frames` unless it's somehow excluded from the bitmap's coverage.
+
+The only consistent resolution would be if `internal_inv` already bounds `num_bits <= spec_max+1`, preventing the top frame from being managed. But re-examining all the clauses of `internal_inv`, none directly enforce this bound. Clause 7 only gives an upper bound of `spec_max+2`, so `num_bits` could theoretically reach that value.
+
+This is a genuine soundness gap that can't be fixed without modifying `internal_inv` (which is locked) or changing `init` (which is out of scope). Since the task requires zero admits and I can't modify the locked invariant, I'm stuck — but let me reconsider whether the verification target is actually 32-bit, since on 64-bit this wouldn't be an issue.
+[RESULT ✓] bash: ===
+TARGET env:
+
+11:export TARGET ?= x86
+217:export GUEST_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-user.json
+222:export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '28,70p'
+
+[THINKING] I need to examine the specific error context in the log file around lines 130-167 to understand those warnings, and verify that line 195 is indeed the only critical error.
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/frame.rs:195:28
+    |
+195 |                     assert(idx <= spec_max_frame_number());
+    |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+note: automatically chose triggers f...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+The only hard error is line 195: `idx <= spec_max_frame_number()` is genuinely **false** for the top-of-space frame (idx = `usize::MAX/FRAME_SIZE` = spec_max+1), which `internal_inv` permits but `FrameNumber` excludes. Let me check `FrameAllocView::wf` for any representability bound I can leverage.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,80p' src/kernel/src/mm/phys/mod.spec.rs
+
+[THINKING] The only hard error is that assertion on line 195 checking if the index stays within the spec's maximum frame number. Everything else is just trigger notes. This pinpoints the issue exactly—it's about what the top frame can represent.
+
+Now I need to figure out the cleanest way to fix this. The core problem is that `internal_inv` promises `frame_addr_of(i)` won't exceed `usize::MAX`, but `FrameNumber::spec_max()` is defined as `usize::MAX / FRAME_SIZE`, which creates a representability gap at the boundary.
+
+The invariant allows one frame (at index `usize::MAX / FRAME_SIZE`) that the rest of the system treats as invalid. This is a real latent bug—either the invariant is too weak, or the allocator code is making unsafe assumptions. Since I can't modify the locked invariant and the spec is fixed, I'm genuinely blocked. The only honest path forward is to record this as a complex bug that requires either strengthening the invariant or weakening the allocator's spec, both of which are outside my scope.
+
+Before I give up though, let me double-check whether that problematic index can actually occur given all the constraints in the invariant. For the top frame to be a valid bitmap index, the number of bits would need to be at least `spec_max + 2`, and I need to verify that the frame address calculation doesn't overflow even at that boundary. Working through the math on both 32-bit and 64-bit systems, it does seem possible for the invariant to permit this edge case.
+
+So this is a genuine, reachable bug in the allocator logic. The same issue affects `alloc_contiguous` since it also derives frame addresses from bitmap indices, but `alloc_range` might avoid it since it works directly with input addresses rather than bitmap indices. I need to decide how to handle this finding.
+
+The core problem is that `internal_inv` is too weak—it doesn't prevent the bitmap from containing unrepresentable frames. The proper fix would be to strengthen `internal_inv`, but that's locked from modification per the task constraints. I could add a guard in `alloc` to check if the returned index exceeds `FrameNumber::MAX`, but that just defers the problem without solving it cleanly. Since this is a complex bug that can't be fixed without violating the constraints, I should record it in the bug log and use `admit` for the affected functions rather than trying to force a proof that would be unsound. I'm reconsidering whether alloc could use `from_raw_value` if I can prove it succeeds via `is_valid_physical_address`, but the invariant only guarantees frame addresses fit in usize, not that they're valid physical addresses—so that path doesn't work either. This confirms alloc and alloc_contiguous are genuinely blocked by the same complex bug: the bitmap can represent frames that don't map to valid FrameNumbers. I should still attempt alloc_range since it might be input-address based and provable, then report this as a blocker requiring guidance.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+// PhysMemoryManager - Specifications
+//
+// This file contains specification functions and view types.
+
+verus! {
+
+use crate::hal::mem::spec_page_size;
+use vstd::map::*;
+
+pub uninterp spec fn byte_at_address(ptr: int) -> u...
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+The hard error is isolated to the top-frame representability gap. Before finalizing, let me check `alloc_range` and `alloc_contiguous` bodies to determine if they share this blocker or are independently provable.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The `wf()` function only validates alignment and refcount consistency, so it doesn't help constrain the frame index. This confirms that `idx <= spec_max_frame_number()` is genuinely false for the top frame—a real bug that `internal_inv` allows through. Now I need to decide whether this is auto-fixable or should just be recorded: it could be an off-by-one or missing bounds check, but I'm still evaluating whether it qualifies as straightforward to fix.
+
+The tempting fix would be to strengthen `internal_inv` with a representability constraint, but `internal_inv` is locked, and strengthening it would expand the TCB since `init` is already trusted to establish the invariant. That's a significant trade-off. Given that I'm the fixer responding to the reviewer's request to remove three admits, the most pragmatic approach is to complete what's provable—fix A and attempt the other allocations—and record this top-frame gap as a genuine bug rather than try to patch it through a TCB expansion. I'm weighing whether to strengthen the internal_inv invariant to fix the representability bug, or stick to the hard rule against modifying locked specs and report it as NEEDS_GUIDANCE instead. The core tension is that strengthening internal_inv would be a legitimate bug fix, not cheating, but the explicit instruction forbids unilateral spec changes. I think the honest path is to complete what I can prove without modification—FIX A and whatever of alloc_range/alloc_contiguous is provable—then report the top-frame gap precisely as a blocker with the proposed fix, rather than leaving admits in place. I'm weighing whether to invest time in alloc_range and alloc_contiguous given that alloc itself hits a fundamental blocker. The reviewer explicitly said these functions are provable and can reuse a lemma, which suggests they either assume 64-bit or aren't aware of the top-frame gap. Since this is a real bug in a locked invariant, the right move is to document it clearly and make a minimal, justified strengthening to internal_inv—not as a workaround but as the actual correct fix. But I'm constrained by the hard rule against modifying that spec.
+
+Let me reconsider whether there's a code-level fix instead. If alloc encounters an unrepresentable frame, it could mark it as permanently reserved and retry allocation on the next frame, which would consume the problematic frame and satisfy the spec if a representable free frame exists downstream—though this changes the algorithm significantly and risks leaking the top frame if all remaining frames are unrepresentable.
+
+But that still violates the spec: if only the top frame remains free, alloc would mark it reserved, find no other free frames, and return Err with a non-empty free_frames list, breaking the invariant again.
+
+The core issue is that the spec fundamentally assumes all free frames are representable, and that assumption needs to live in the invariant itself—which I can't modify. So I'm genuinely blocked on completing the alloc proof. I'll keep FIX A as committed, document the bug in bugs.md, and leave the alloc proof with an admit and a clear comment explaining why it can't be completed without changing the locked spec.
+
+This is exactly the kind of situation where NEEDS_GUIDANCE applies—I have a real blocker that requires touching a locked spec, and the best path forward is to present the exact error and evidence rather than spend more time on alloc_range or alloc_contiguous, which likely share the same fundamental gap.
+[RESULT ✓] view: 804.                     assert(self@ == view_of(pre_sb.insert(fnx), pre_nb, pre_rc.update(fnx, 1u8)));
+805.                     lemma_reserve_one_v(pre_sb, pre_nb, pre_rc, fnx, addr);
+806.                 }
+807.                 Ok(())
+808.             },
+809.             Err(error) => {
+810.       ...
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 900.     )]
+901.     fn alloc_range(
+902.         &mut self,
+903.         region: &TruncatedMemoryRegion<PhysicalAddress>,
+904.     ) -> Result<(), Error> {
+905.         proof! { admit(); }
+906.         // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
+907.         /...
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+`alloc_range` constructs addresses only as `index * FRAME_SIZE` (for error messages) and returns `Result<(), Error>` — it never calls `from_frame_number`/`from_raw_value`, so it has **no** top-frame gap and is provable. Let me check `alloc_contiguous`.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at how `alloc_range` operates, it takes INPUT region addresses and bitmap indices, then constructs addresses only for error messages using `index * mem::FRAME_SIZE` without ever calling `FrameNumber::from_raw_value` or `from_frame_number`. Since it only returns `Ok(())/Err` and never produces a `FrameAddress`, it doesn't have the top-frame representability constraint.
+
+The spec defines frames as a half-open range `start_fn..end_fn` where `end_fn = (start+size)/PS`. Given the region invariants (start and size are page-aligned, size > 0), the code's inclusive loop `[start_fn, start_fn+size/PS-1]` covers exactly the spec's range with no off-by-one error. On the success path, all bitmap indices are verified to be within bounds and free, and the frame addresses are computed directly as `i*PS` without constructing `FrameNumber` objects, so there's no top-frame gap issue. This makes `alloc_range` fully provable, though it requires substantial proof work for the two loops and their invariants.
+
+Now I need to check `alloc_contiguous` to see if it has the same property or if it constructs `FrameAddress` from bitmap indices.
+[RESULT ✓] view: 200.                 error!("{reason:?}");
+201.                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
+202.             },
+203.         };
+204.         proof! {
+205.             assert(frame_number@ == idx);
+206.         }
+207. 
+208.         // Attempt to convert the frame number to...
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+`alloc_contiguous` shares the gap (constructs base via `from_raw_value`), but `alloc_range` does not. Let me test whether the `alloc` bound passes on the 64-bit target (where `spec_max` ≫ `u32::MAX`), to characterize the blocker precisely.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys TARGET=x86_64 2>&1 | tail -8
+
+[THINKING] Looking at how the contiguous allocation works: when `bitmap.alloc_range(count)` returns a start index, it sets the refcount for all frames in that range to 1, then converts that start index to a FrameNumber and ultimately a FrameAddress. The key constraint is that for `count` contiguous frames starting at `start`, they must fit within the bitmap bounds (start + count ≤ num_bits), and the start index itself could potentially be at the boundary where it equals spec_max + 1 if the allocation allows it.
+
+The critical difference from regular allocation is in the error specification: `alloc_contiguous` only requires `final@ == old@` on failure—there's no "free_frames insufficient" clause like `alloc` has. This means if `from_raw_value` returns None for the top frame, I'd need to restore the state to satisfy the error contract. But the current code doesn't undo the mutations it's already made (the bitmap bits are set and refcounts are updated), so the state doesn't match. However, since the spec permits failure without the is_empty condition, undoing the mutations on the None path would be a valid, spec-preserving code fix that's within scope.
+
+For `alloc`, the gap is more fundamental—its strong error spec combined with the locked invariant makes it harder to fix. For `alloc_range`, there's no gap at all since it never constructs a FrameNumber. Given the complexity and time constraints, the real issue is that `internal_inv` allows frames that aren't representable as FrameNumbers. The cleanest solution is to tighten the invariant itself so that all managed frames satisfy the FrameNumber bounds, which would fix the root cause across all three functions. The real issue is that `alloc` fundamentally can't be proven without either modifying the locked invariant or accepting that the top frame case is unprovable. Since the task's auto-fix guidance applies to overflow and bounds-check bugs, and this is exactly that kind of issue, I should document the blocker clearly and mark the unprovable point with an admit rather than abandoning the proof entirely. The honest path forward is acknowledging that this module will retain at least one admit due to the representability gap, but I can preserve the proof structure and isolate the problem precisely. I'm realizing that internal_inv is explicitly listed as a spec I cannot modify, so strengthening it isn't an option. The blocker is real and stands. Now I need to decide whether attempting alloc_range is worth the effort given that the main goal of removing all three admits can't be fully met—partial progress with a clear explanation of the blocker might be the most valuable deliverable. The real question is whether this is a 32-bit-specific issue or something that affects all targets. Let me test the alloc proof on x86_64 to see if it actually passes there—that would tell me whether the blocker is universal or just a 32-bit problem, and whether the reviewer might be seeing different results on their default architecture.
