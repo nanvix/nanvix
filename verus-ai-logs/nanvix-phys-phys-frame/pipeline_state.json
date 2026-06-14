@@ -30,6 +30,17 @@
       "review_file": null,
       "duration_s": 150.8,
       "review_rounds": 0
+    },
+    "specification": {
+      "phase": "specification",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-RESOLVED",
+      "review_file": null,
+      "duration_s": 1405.4,
+      "review_rounds": 2
     }
   },
   "prover_session_id": "e6abfcd6-1cbb-40f0-87b0-02ca3ffff345",
@@ -38,7 +49,8 @@
   "verus_branch": "verus-ai/phys-frame",
   "phase_boundary_shas": {
     "caller-analysis": "d00311f03fe77d9e07d81efdf9f02dfd2ad1cc71",
-    "view-design": "7c792c75d0db71c024735e387f1e6d9c97e02df9"
+    "view-design": "7c792c75d0db71c024735e387f1e6d9c97e02df9",
+    "specification": "5b321ed07e8c217cfe2bc9e1b5d6e1909f31f5ae"
   },
   "phase_start_shas": {
     "caller-analysis": "a88bb8f92564135ed2166ddef5b51ec1a13decd3",
@@ -74,6 +86,12 @@
       "phase": "specification",
       "event": "start",
       "sha": "7c792c75d0db71c024735e387f1e6d9c97e02df9",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "specification",
+      "event": "end",
+      "sha": "5b321ed07e8c217cfe2bc9e1b5d6e1909f31f5ae",
       "rollback_iter": 0
     }
   ],
