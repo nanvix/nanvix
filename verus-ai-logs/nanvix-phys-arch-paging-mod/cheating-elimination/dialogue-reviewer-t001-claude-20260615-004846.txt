@@ -219,3 +219,184 @@ Turn 3
 
 [THINKING] I notice the referenced skills don't exist in the repository, so I'll need to perform the consistency and drift checks manually using git diff. Let me run the architecture verification command to see what the actual output shows, and then I'll examine the source files for the relevant patterns.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+[THINKING] Verus verification passes, but I'm seeing cheating flags at the crate level—external_body, admit, and cfg_gate—and I need to figure out which ones are actually scoped to the module files. Let me check the cheating details to understand what's in scope.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:8 lemma_entry_roundtrip: admit
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "cfg" src/libs/arch/src/x86/mem/paging/mod.rs; echo "---all cfg in
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "admit\|assume\|external_body\|exec_allows_no_decreases\|trusted" 
+
+[THINKING] Looking at the scope constraints for this module, only `invlpg:external_body` at mod.rs:80 is in scope—the admit and other external_body functions are in table.rs and table.proof.rs, which are outside the arch-paging-mod module. The hard rule is clear: I can only touch functions that are explicitly listed, so `invlpg` is the only one I should be working with. Now I need to check what cfg_gate=4 refers to since the cheating-detail.txt doesn't have those items listed.
+
+The rule about cfg-gated exec code is strict—only imports, derives, debug_assert, and logging are allowed. In mod.rs, there are two `#[cfg(verus_keep_ghost)]` annotations on include! lines, which are spec and proof includes, not exec code, so those should be fine. Let me search through mod.rs to find all the cfg locations and see which ones are actually in this module.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/mod.rs:77:// `assume_specification[ ::arch::mem::paging::invlpg ]` (no `requires`/`ensures`).
+src/libs/arch/src/x86/mem/paging/mod.rs:79:#[verus_verify(external_body)]
+<shellId: 8 completed with exit code 0>
+[RESULT ✓] bash: 8:#[cfg(verus_keep_ghost)]
+10:#[cfg(verus_keep_ghost)]
+---all cfg in module dir---
+src/libs/arch/src/x86/mem/paging/frame/number.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/frame/number.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/mod.rs:8:#[cfg(verus_keep_ghost...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Checking spec drift and AST consistency
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git branch -a 2>/dev/null | head -30; echo "=== current ==="; git rev-parse
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for b in verus-ai-prove-bottom-up main HEAD~1; do echo "=== diff vs $b ==="
+
+[THINKING] Looking at the in-scope files, I'm checking the counts for various Verus constructs: there's one external_body usage for invlpg which is properly allowlisted, and two cfg-gated exec declarations using verus_keep_ghost on include! lines.
+
+The assume match at line 77 is just in a comment, not an actual assume statement. Now I need to verify spec drift and AST consistency — the checklist references spec_drift_cmd and ast-consistency, but I'm checking whether the git diff against verus-ai-prove-bottom-up is truly empty as the fix report claims.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: dev
+  exp
+* verus-ai-prove-bottom-up
+  verus-ai/arch-frame-number
+  verus-ai/arch-paging-mod
+  verus-ai/arch-paging-table
+  verus-ai/arch-x86-pde
+  verus-ai/arch-x86-pte
+  verus-ai/bump-allocator
+  verus-ai/hal-frame-address
+  verus-ai/hal-memory-region
+  verus-ai/hal-page-aligned
+  verus-ai/hal-phy...
+[RESULT ✓] bash: === diff vs verus-ai-prove-bottom-up ===
+=== diff vs main ===
+fatal: bad revision 'main'
+=== diff vs HEAD~1 ===
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== diff vs dev ==="; git --no-pager diff dev -- src/libs/arch/src/x8
+
+[THINKING] I'm realizing there's a mismatch in the branch comparison — the current branch is verus-ai-prove-bottom-up, so comparing against itself produces an empty diff, which doesn't actually validate anything against a real baseline. The cheating elimination phase seems to be referencing a different branch, verus-ai/arch-paging-mod, so I need to clarify which branch is actually the target for comparison.
+
+For the AST consistency check, I should be comparing the exec code signatures and bodies against the original non-Verus version to catch any spec drift. The dev branch is likely the original upstream code, so that's probably the right baseline to diff against.
+[RESULT ✓] bash: === diff vs dev ===
+diff --git a/src/libs/arch/src/x86/mem/paging/mod.rs b/src/libs/arch/src/x86/mem/paging/mod.rs
+index 73e0034d9..8d622c998 100644
+--- a/src/libs/arch/src/x86/mem/paging/mod.rs
++++ b/src/libs/arch/src/x86/mem/paging/mod.rs
+@@ -4,6 +4,12 @@
+ // Modules
+ //===========================...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -in "warning\|error" verus-ai-logs/verify-arch/verus-logs/verus_2026-0
+
+[THINKING] Looking at the diff between the dev and verus versions, the main changes are adding the vstd prelude import with some conditional includes, a trust-boundary comment, and the `#[verus_verify(external_body)]` attribute on the invlpg function. The actual function signature and body remain identical to the dev version—it's just metadata and attributes being added to support verification.
+
+The spec and proof files are empty, which matches the original code that had no specification. The external_body contract has no requires or ensures clauses, which aligns with the upstream assume_specification, so no guarantees have been weakened. The verification passes with exit code 0 across all modules.
+
+Now I'm working through the verification checklist: zero admit() calls in scope, zero assume() calls, zero trusted functions, and checking the no_decreases clause status.
+[RESULT ✓] bash: === verification line ===
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && tail -40 verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_00-49-18.log
+
+[THINKING] The cached log didn't produce verification output, so I need to examine the full log to see what the verification result actually shows.
+[RESULT ✓] bash: Timestamp: 2026-06-15_00-49-18
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=1
+  trusted=0
+  no_decreases=0
+  cfg_gate=4
+
+--- Full output ---
+    Finished `dev` profile [optimized + debuginfo] ta...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Writing turn 1 review and STOP
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls verus-ai-logs/nanvix-phys-arch-paging-mod/ && echo "---" && test -f veru
+
+[THINKING] The build was cached with a clean exit, so the verification passed without errors. All checklist items for the in-scope module check out, while the out-of-scope items in the other module are part of a separate elimination phase.
+
+Now I'm doing a final strict review of each claim. The exec rewrites item is vacuously satisfied since there are no rewrites to check. I'm confirming there's no `assume_specification` in the mod files, verifying that mod.spec.rs and proof files are genuinely empty, and double-checking that the external_body invlpg entry in tcb-allowed.md matches the exact path. I should also verify that verus-unsupported.md exists to back up the trust boundary claim before marking everything complete.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: body_removed_source.rs
+caller-analysis
+caller_analysis.md
+cheating-elimination
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+verus-unsupported.md
+view-design
+view_design.md
+---
+verus-unsupported.md EXISTS
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+All evidence gathered. Every in-scope item passes. Writing the review and STOP.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/dialogue/STOP with 9 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/dialogue/turn_001_driver.md with 4699 characters
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Review complete. **Result: RESOLVED** — all 12 checklist items PASS.
+
+**Evidence summary (in-scope: `mod.rs`/`mod.spec.rs`/`mod.proof.rs`, target `invlpg`):**
+- `make verify-arch` → exit 0 (verification passes).
+- In-scope cheating: only `invlpg` `external_body` at `mod.rs:80` — **allowlisted** verbatim in `tcb-allowed.md` (inline-asm `invlpg`, hardware TLB trust boundary, empty contract).
+- admit/assume/trusted/no_decreases = 0 in scope. The `admit` and other `external_body` flagged crate-wide are in `table.rs`/`table.proof.rs` — a **different module**, untouched per the hard rule.
+- cfg-gates are only ghost `include!` of spec/proof — not exec gating.
+- AST consistency: `git diff dev -- mod.rs` shows `invlpg` body/signature byte-identical; only an attribute, comment, and ghost includes added. No exec rewrites.
+- No spec weakening: empty contract matches upstream `assume_specification` (no requires/ensures).
+- Build clean, 0 warnings/errors.
+
+Wrote `turn_001_driver.md` and `STOP` (`RESOLVED`).
+
+
+=== Session End ===
+Session: 7c72ab80-7428-4b76-9551-6a424ef9994f
+Duration: 136.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/dialogue-reviewer-t001-claude-20260615-004846.jsonl
