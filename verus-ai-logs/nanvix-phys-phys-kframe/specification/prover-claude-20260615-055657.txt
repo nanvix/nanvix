@@ -863,3 +863,231 @@ Turn 42
 Turn 43
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tail -30
+[RESULT ✓] bash: - manager.rs:306 check_user_watermark: external_body
+    - manager.rs:352 alloc_kernel_frame: external_body
+    - manager.rs:409 alloc_many_kernel_frames: external_body
+    - mod.rs:82 book_physical_memory_regions: external_body
+    - mod.rs:117 book_mmio_regions: external_body
+    - mod.spec.rs:73 ...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '/Full output/,$p' verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-06-10.
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: cannot use function `kernel::hal::mem::types::address::frame::FrameAddress::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+  --> src/ker...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+`new`'s body is now verified but calls three unspecced cross-module dependencies. Per the task, I must give them specs + `external_body`. Let me inspect each dependency's file context.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== identity_map.rs verus state ==="; grep -n "verus\|include!\|vstd\|verus_spec\|ver
+
+[THINKING] The `new` function's body is now being checked, but it's calling three unverified external functions that need specs: `FrameAddress::into_raw_value`, `mm::virt::identity_map_page`, and `PageAligned::from_raw_value`. I need to write specifications for each of these and mark them as external_body to proceed.
+
+Since these are internal workspace functions rather than external dependencies, I should add `#[verus_spec]` annotations directly to them in their source modules rather than using `assume_specification`. The task explicitly allows modifying dependency functions to add specs and external_body markers—these will be properly verified later when those modules are tackled.
+
+For the minimal spec approach: `new` only needs these functions to be callable with valid type signatures. Since the ensures clause just checks `frame@ == base@` and doesn't depend on the return values of `into_raw_value`, `from_raw_value`, or `identity_map_page`, I can give them trivial contracts (requires true, ensures true) wrapped in `#[verus_verify(external_body)]`. This lets the calls type-check without needing detailed specifications yet.
+
+But there's a complication: `into_raw_value` and `from_raw_value` are trait impl methods on generic types, which makes adding external_body trickier. I'm realizing the pragmatic path forward is to spec these three functions across their respective modules (frame.rs, page.rs, identity_map.rs) with minimal external_body placeholders, even though it touches multiple files.
+
+The real concern is whether adding specs to these functions breaks verification in other modules that already depend on them. I need to be careful not to over-commit to specs that might conflict with existing verified code. Let me check the current verus setup in each of these three files to understand what annotations and imports are already in place.
+[RESULT ✓] bash: === identity_map.rs verus state ===
+=== aligned/page.rs verus state (Address impl + into/from_raw) ===
+24:use ::vstd::prelude::*;
+30:#[verus_verify(external_derive)]
+50:impl<T: Address> Address for PageAligned<T> {
+51:    fn into_raw_value(self) -> usize {
+69:    fn from_raw_value(raw_addr: usize) -...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+The dependencies are cross-module and one is a trait method. Let me check how the codebase already specs `Address` trait methods / similar conversions, to follow the established pattern.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== assume_specification usages ==="; grep -rn "assume_specification" src/kernel/src/
+
+[THINKING] I'm noticing that `identity_map.rs` doesn't have any Verus setup at all, so adding verification there would require importing vstd. Meanwhile, `aligned/page.rs` already has vstd imported but the `Address` trait implementation for `PageAligned<T>` lacks verification annotations. This is pulling me into broader multi-file changes across modules outside my intended scope.
+
+Looking at how other verified functions in the codebase handle external dependencies—like `upool.rs` where verified bodies don't directly call hal functions, or `manager.rs` where the allocation functions are marked external_body—it seems `kframe`'s `new` would be the first verified exec body actually calling hal conversion functions and `identity_map_page`. The proper solution is providing specs for these dependencies, either through `assume_specification` in `kframe.spec.rs` or by adding external_body annotations to the actual functions, though the latter requires editing files in other modules and potentially adding Verus scaffolding to `identity_map.rs`.
+
+Actually, the skill is clear: I should add `#[verus_spec]` annotations directly on the dependency functions rather than using `assume_specification` for internal code. For the three functions I need to spec—`FrameAddress::into_raw_value` (inherent method in frame.rs), `PageAligned<T>::from_raw_value` (trait method in page.rs), and `identity_map_page` (in identity_map.rs with no Verus scaffolding)—the trait method is the tricky one since speccing trait implementations can cascade and require specs on the trait declaration itself.
+
+Let me reconsider the whole approach: maybe the real issue is that I'm trying to verify `new`'s body when I should focus on what's actually required. The task demands zero Verus errors and a valid contract on `new`, but does the body itself need to verify, or can I structure this differently?
+
+The core problem is that `new` calls functions like `PageAligned::from_raw_value` which are external to the verified code. To call them from verified code, they need specs — either `external_body` contracts or `assume_specification`. For an external trait method from another crate, `assume_specification` might be the pragmatic choice here, even if it's not ideal. Let me look at how the existing code handles similar situations with `PAGE_SIZE` and the frame.rs shims to see if there's a pattern I should follow.
+[RESULT ✓] bash: === assume_specification usages ===
+src/kernel/src/hal/mem/types/address/frame.rs:36:pub assume_specification[ ::arch::mem::PAGE_SIZE ] -> (result: usize)
+src/libs/error/src/lib.rs:539:pub assume_specification[ Error::new ](code: ErrorCode, reason: &'static str) -> (result: Error)
+src/libs/slab/src/...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+This requires speccing three cross-module dependencies (one is a trait method). Let me view their exact definitions to add `external_body` contracts following the established pattern.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I'm seeing how the codebase handles verification across different layers—using `assume_specification` for external dependencies like std and the arch/sys libraries, while kernel-internal functions need the `#[verus_verify(external_body)]` and `#[verus_spec]` annotations applied directly to their implementations.
+
+The tricky part is the `Address` trait method in `PageAligned`. Since `Address` is defined in the external `sys` crate, I could use `assume_specification` on the trait impl as a trust boundary, though that's not explicitly listed in the tcb-allowed.md. But stepping back, for the `new` function's contract to work, I don't actually need these helper functions to have meaningful specs—they just need to be callable from Verus. The minimal approach is to make them externally-callable with any contract.
+
+For the inherent methods like `into_raw_value`, I can add `#[verus_verify(external_body)]` and a simple spec. For the trait method `from_raw_value`, it's trickier but the same principle applies. Let me try adding external_body annotations and see what Verus accepts, then iterate from there. Adding vstd imports to identity_map.rs...
+
+Actually, I'm reconsidering whether trait methods can take `#[verus_verify(external_body)]` — the impl block itself would need the annotation too, and there's no precedent for this in the codebase. The error message suggests using `assume_specification` for trait methods instead, which is the standard approach for unverified trait implementations. Since `PageAligned` is defined in the kernel crate but implements an external trait from `sys`, I could use `assume_specification` to provide a contract for the conversion methods without trying to annotate the trait impl directly. Let me check the page.rs structure to see how the Address impl is organized and whether I can apply this approach cleanly.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] The `Address` trait lives in the external `sys` crate, and `PageAligned<T>` implements it in the kernel. The problem is that using `#[verus_verify(external_body)]` on an impl method requires the trait itself to be Verus-aware, but since `Address` is in an external crate that likely isn't annotated for Verus, this creates a verification issue. The error message is pointing toward using `assume_specification` as a workaround.
+
+However, there's a tension here: the guidance says not to use `assume_specification` for workspace code, and both `PageAligned` and the `Address` trait are workspace code. The alternative is to use `external_body` on the actual functions themselves — `identity_map_page` (a free function) and `into_raw_value` (an inherent method) are straightforward, but `from_raw_value` is a trait method, which complicates things. I should try applying `external_body` to the trait impl method and see if Verus accepts it; if not, I'll fall back to `assume_specification` for just that one. Actually, looking at the codebase, there's already precedent for using `assume_specification` on workspace code like `::arch::mem::PAGE_SIZE` and `Error::new`, so it's not entirely off the table for operations that sit at the hardware/trust boundary. I need to nail down the specs for these three functions. `FrameAddress::into_raw_value` should ensure the result equals the frame address's view, and `PageAligned::from_raw_value` needs a spec that captures the relationship between the raw value and the resulting view. For `identity_map_page`, I'll keep the spec minimal and sound until I understand the full semantics.
+
+Let me check the PageAligned View definition to write a meaningful spec for `into_raw_value` that's actually verifiable.
+[RESULT ✓] view: 200. 
+201. #[cfg(verus_keep_ghost)]
+202. verus! {
+203. 
+204. use crate::hal::mem::spec_page_size;
+205. 
+206. impl<T: Address + View<V = int>> View for PageAligned<T>
+207. {
+208.     type V = int;
+209. 
+210.     closed spec fn view(&self) -> int
+211.     {
+212.         self.0@
+213.     }
+214. }
+215. ...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+Let me check the `PhysicalAddress` view to decide if a meaningful `into_raw_value` spec is sound:
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "impl View for PhysicalAddress\|closed spec fn view\|fn into_raw_value\|verus_spec\
+
+[THINKING] I'm tracing through a chain of type views here — PageAligned wraps a PhysicalAddress, and FrameAddress delegates to it, so the raw value ultimately depends on what PhysicalAddress's View implementation does, which I'd need to verify.
+
+To keep things sound without overcommitting, I'll give these external_body shims minimal or trivial contracts since no existing verified code actually depends on their specs. I'm adding `#[verus_verify(external_body)]` to each method, though I'm uncertain whether this works on trait methods in a non-verus impl block — the pattern I've seen requires the impl itself to be marked `#[verus_verify]`, but a method-level annotation might be self-contained.
+
+Actually, the cleaner approach is to use `assume_specification` in kframe.spec.rs instead. The Verus error recommends it, and the codebase already uses it for workspace boundaries like Error::new and PAGE_SIZE. This keeps all my changes local to the kframe module without touching other files, which respects the constraint about not modifying unlisted functions. Even though the skill discourages assume_specification for workspace code, the tool itself recommends it here, and it's the most idiomatic solution for trait methods and unscaffolded modules like identity_map.rs.
+
+But wait — the task instruction explicitly says to mark functions as external_body when they're not yet verified, which points toward approach (A) instead. And there's the concern that assume_specification creates a global spec that could conflict later if those modules get verified. Given the explicit guidance favoring external_body, I'll go with that approach and implement it carefully across the three functions, starting with adding the necessary Verus imports and annotations to identity_map.rs.
+
+For identity_map_page, I'll add a minimal spec since the function's abstract behavior isn't observable to kframe's callers — just a trivial ensures true with a comment noting it's a placeholder for an unverified dependency. For FrameAddress::into_raw_value, I need to check whether the inherent impl block itself needs the #[verus_verify] attribute, since the method is outside the main verus! block but other free functions in frame.rs already have external_body annotations.
+[RESULT ✓] bash: 35:#[verus_verify(external_derive)]
+226:    fn into_raw_value(self) -> usize {
+250:verus! {
+252:impl View for PhysicalAddress
+256:    closed spec fn view(&self) -> int
+262:} // end verus!
+=== view body ===
+impl View for PhysicalAddress
+{
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+I'll add `external_body` contracts to the three dependencies. Let me view the top of identity_map.rs for import placement:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I'm working through the relationship between PhysicalAddress and VirtualAddress in this frame abstraction, trying to figure out what contract to specify for `FrameAddress::into_raw_value`. The issue is that the chain of conversions is complex and the view is closed, so I can't reason about exact equality from the kframe perspective. For the external_body shim contracts, I want to keep things minimal and sound, but I'm uncertain whether the spec `result as int == self@` actually holds true given how PhysicalAddress::into_raw_value delegates to self.0.into_raw_value().
+
+Actually, thinking about it more carefully — if the inner type's into_raw_value equals its @, then yes, this chains down correctly. These are address newtypes, so it should be true by construction. But asserting this as a trusted external_body is a soundness claim, and since I'm not certain and the `new` function doesn't require it, I'll keep all three functions with minimal contracts to stay safe. I'm going to add the meaningful spec for `into_raw_value` since it's the natural contract and sound by the newtype construction, then move on to implementing the changes across the three files. I'll start with the minimal approach using just external_body annotations for from_raw_value and identity_map_page, keeping the meaningful spec for into_raw_value. Then I need to check what imports are already in identity_map.rs to see if I need to add the vstd prelude.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //!
+5. //! # Description
+6. //!
+7. //! This module implements identity mapping for physical memory accesses.
+8. //!
+9. //! Only the kernel process has physical memory identity-mapped into its virtual address s...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I need to check the remaining imports to properly integrate vstd into the codebase.
+[RESULT ✓] view: 30.         Address,
+31.         PageAligned,
+32.         PageDirectoryAddress,
+33.         PhysicalAddress,
+34.     },
+35. };
+36. use ::arch::{
+37.     cpu::cr3::Cr3Register,
+38.     mem::{
+39.         self,
+40.         paging::{
+41.             self,
+42.             AccessedFlag,
+43.             D...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 55.             Table,
+56.             TableIndex,
+57.             UserSupervisorFlag,
+58.         },
+59.         PAGE_ALIGNMENT,
+60.         PAGE_TABLE_LENGTH,
+61.     },
+62. };
+63. use ::config::kernel::MEMORY_SIZE;
+64. use ::core::sync::atomic::{
+65.     AtomicU32,
+66.     AtomicUsize,
+67.     Or...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 69. use ::sys::error::{
+70.     Error,
+71.     ErrorCode,
+72. };
+73. 
+74. // Compile-time check: the number of identity-mapping PDEs must fit in one page directory.
+75. ::static_assert::assert_eq!(MEMORY_SIZE / mem::PGTAB_SIZE <= PAGE_TABLE_LENGTH);
+76. 
+77. //=======================================...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+Now let me make the three dependency edits:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tail -25

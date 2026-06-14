@@ -1,3 +1,5 @@
+    - hal/mem/types/address/aligned/page.rs:81 from_raw_value: external_body
+    - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
     - mm/phys/frame.rs:137 alloc: external_body
     - mm/phys/frame.rs:210 alloc_contiguous: external_body
     - mm/phys/frame.rs:290 free: external_body
@@ -24,3 +26,4 @@
     - mm/phys/mod.rs:82 book_physical_memory_regions: external_body
     - mm/phys/mod.rs:117 book_mmio_regions: external_body
     - mm/phys/mod.spec.rs:73 ExLinkedList (struct): external_type_spec
+    - mm/virt/identity_map.rs:649 identity_map_page: external_body
