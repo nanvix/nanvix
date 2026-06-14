@@ -308,3 +308,80 @@ Turn 12
 [TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/mm/phys/upool.rs && timeout 1800 make verify-kernel MODULE=mm::phys 2>
 
 [THINKING] I need to force a recompilation by updating the file's modification time so cargo picks up the changes and re-runs the verification. Touching upool.rs will trigger a rebuild of the kernel crate and force verus to re-verify the module.
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+verification results:: 19 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+    - drop
+  verification: 19 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=25 admit=0 trusted=0 no_decreases=0 cfg_gate=10
+  status: CHEATING_DETE...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Fresh recompile confirms: **mm::phys::upool verifies 19/19, 0 errors** — including `drop`. The `drop` in the unverified list is `KernelFrame::drop` (kframe). Let me confirm the cfg_gate accounting and check the ast-consistency skill to be precise in the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== verify script cfg_gate detection ==="; grep -rn "cfg_gate\|cfg(verus\|cfg-gate" $
+
+[THINKING] The upool module verifies cleanly with zero errors, and the "drop" reference in the unverified list is actually from KernelFrame, not UserFrame. The 25 external body instances and 10 cfg_gate cheats are coming from other modules in tcb-allowed.md, so they're outside the scope of what I'm checking here.
+
+Let me verify that none of those 25 external body instances belong to upool—I've already confirmed this via grep. All 19 verified functions in the mm::phys::upool module include the upool functions plus their spec and proof code, so the proving phase is essentially complete. Now I just need to confirm there's zero cheating in upool and write up the report.
+
+I'm checking the cfg_gate count to make sure none of those 10 instances are attributed to upool's exec code in a way that breaks ast-consistency. The cfg gates in upool are spec and proof includes, which is the standard required pattern used across all modules—they gate ghost spec inclusion, not exec code, so they don't violate the consistency rule.
+[RESULT ✓] bash: === verify script cfg_gate detection ===
+.git/logs/refs/heads/verus-ai/bump-allocator:9:c6f37acae5e47e53b64860a10fdf74a1047bd6b5 50979be476c344fba56bba66663897a19f64c1a0 Ruize Tang <1466040111@qq.com> 1781456126 +0800	commit: [verus] verify PASS (cheating detected): bitmap::all (70 verified, 0 error...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rniE "cfg_gate|cfg.gated|verus_keep_ghost" scripts/verify.sh scripts/*.py scripts/**/
+[RESULT ✓] bash: scripts/verify.sh:476:# Count cfg-gated exec code (cheating indicator).
+scripts/verify.sh:478:count_cfg_gates() {
+scripts/verify.sh:486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+scripts/verify.sh:534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_C...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Let me see the module-scoped pass/fail logic and the actual module cheating output.
+[TOOL] view: /home/ruize/nanvix-phy/scripts/verify.sh
+
+[THINKING] I see the pattern now—the script filters out cfg gates that target specific constructs like `include!` macros, `use` statements, `extern`, `mod`, and logging macros. Looking at upool's cfg gates, the ones on lines 9 and 11 both point to included files, and line 20 targets a `use` statement, so they all get excluded from the detection.
+
+But line 39 is different—it's a `#[cfg(verus_keep_ghost)]` attribute directly before a `verus! {` block containing the View implementation. Since `verus! {` doesn't match any of the exclusion patterns, this would actually be counted as a cfg_gate. The question is whether this shows up in the module-scoped detection results, which is what the phase gate actually checks. I need to look at the full module output to see if upool reports a non-zero cfg_gate count at the module level.
+[RESULT ✓] view: 565.     if [[ $MOD_SUM -eq 0 ]]; then
+566.         echo "  ✅ No cheating detected in module $MODULE."
+567.     else
+568.         CHEATING_FOUND=true
+569.         echo "  Module $MODULE:"
+570.         echo "$MOD_CHEATING_JSON" | python3 -c "
+571. import sys,json; d=json.load(sys.stdin)
+572. for k in...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+The MODULE=mm::phys scope copies the whole phys dir (including TCB-allowed frame/manager/mod external_body). Let me run with the precise upool module scope to confirm upool itself is clean.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys::upool 2>&1 | grep -iE "verifying module|ver
+
+[THINKING] When MODULE is set, the gate checks the module-scoped sum, and if it's zero, no cheating is detected in that module. The MODULE_CHEATING_DIR copies the entire module directory—so setting MODULE=mm::phys copies the whole mm/phys folder from the source, not just individual files.
+
+This means the module scope includes all files in phys (frame.rs, manager.rs, mod.rs, upool.rs, etc.), which is why it's reporting 25 external_body items and flagging CHEATING_DETECTED. But here's the thing: those external_body declarations in frame, manager, and mod are pre-existing and TCB-allowed, not something I need to fix. The cheating gate doesn't know about the TCB allowlist—it just counts everything.
+
+The actual task is specifically about upool.rs, and that file has zero cheating now, which is what matters for this phase. The other files' external_body are out of scope per the instructions ("Do not touch unlisted functions"), and the baseline commit already notes these as accepted TCB items in the git log.
+
+To get a clean upool-scoped verification, I should try running with MODULE=mm::phys::upool to isolate just that file and confirm the cheating count is zero at that scope level.
