@@ -18,6 +18,17 @@
       "review_file": null,
       "duration_s": 2671.1,
       "review_rounds": 2
+    },
+    "cheating-elimination": {
+      "phase": "cheating-elimination",
+      "passed": false,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-BLOCKED",
+      "review_file": null,
+      "duration_s": 1521.7,
+      "review_rounds": 2
     }
   },
   "prover_session_id": "511fc3c9-9d9e-499f-9aaa-b8520b146def",
@@ -25,7 +36,8 @@
   "base_branch": "verus-ai-prove",
   "verus_branch": "verus-ai-prove",
   "phase_boundary_shas": {
-    "proving": "af3ac4325b4d94d8b1b358d6d3e6f5cb1bc96db1"
+    "proving": "af3ac4325b4d94d8b1b358d6d3e6f5cb1bc96db1",
+    "cheating-elimination": "22b2f42aef3181cb19256c5d57f74456309f7f88"
   },
   "phase_start_shas": {
     "proving": "f019836f1a04500359e3605e456bb89cbd6bca0b",
@@ -48,6 +60,12 @@
       "phase": "cheating-elimination",
       "event": "start",
       "sha": "3a0b7204c30502882370885cf4298e7d96c57726",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "end",
+      "sha": "22b2f42aef3181cb19256c5d57f74456309f7f88",
       "rollback_iter": 0
     }
   ],
