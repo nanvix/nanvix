@@ -998,3 +998,354 @@ Summary:
   2) Caller-expectation coverage incomplete (reported 4/10 covered).
 Let me force a fresh (non-cached) verification to get an explicit result line.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/kernel/src/hal/mem/types/region.spec.rs && timeout 1500 make veri
+[RESULT ✓] bash: note: verifying module hal::mem::types::region
+verification results:: 5 verified, 0 errors (partial verification with `--verify-*`)
+  5 verified
+  0 errors
+  Exit code : 0
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::region.
+  Detail: verus-ai-logs/verify-kernel...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Fresh verify: 5 verified, 0 errors, no cheating in module. Now let me run `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1500 make build 2>&1 | tail -25
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^build:|^all:|^kernel:|^run:" Makefile | head; echo "=== try carg
+[RESULT ✓] bash: 411:all: all-nanvix
+842:run: image
+=== try cargo build of kernel exec (verus erased) ===
+   Compiling static_assert v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/static_assert)
+   Compiling cfg-if v1.0.4
+   Compiling mmio-tag v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/mmio...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-claude, agent_type: general-purpose, status: running, description: Independent final review (claude), elapsed: 219s, total_turns: 0, model: claude-opus-4.8, current_intent: "Running guardrail and AST checks", tool_calls_completed: 26, (time...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'review-gpt5', 'wait': True, 'timeout': 30}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-gpt5, agent_type: general-purpose, status: completed, description: Independent final review (gpt5), elapsed: 222s, total_turns: 0, model: gpt-5.3-codex, duration: 135s
+
+Done. I wrote the full review to:
+
+`/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-p...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+gpt5 flagged a potential AST mismatch (`clone` vs `clone_address`). Let me verify this against the original source.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== current start() ==="; grep -n "clone_address\|\.clone()" src/kernel
+
+[THINKING] The gpt5 agent is reporting a failure with two problems: there's an AST mismatch where `clone()` was changed to `clone_address()` in the MemoryRegion::start method, and the caller-expectation coverage is incomplete at only 4 out of 10 cases. I'm checking the source files and caller analysis to understand what's happening with this method signature change.
+[RESULT ✓] bash: === current start() ===
+179:        let start_raw_addr: usize = start.clone().into_raw_value();
+206:        self.name.clone()
+215:        self.start.clone_address()
+=== body_removed_source start ===
+165:    pub fn start(&self) -> T { ... }
+275:    pub fn start(&self) -> PageAligned<T> { ... }
+=== gi...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== start() at caf3a578c (pre-verification) ==="; git show caf3a578c:sr
+
+[THINKING] I need to check out the original version of the start() function from before the verification changes were made, specifically looking at commit caf3a578c on the verus-ai-prove-bottom-up branch to see what the code looked like before the verification effort started.
+[RESULT ✓] bash: === start() at caf3a578c (pre-verification) ===
+191:    pub fn start(&self) -> T {
+192:        self.start.clone()
+342:    pub fn start(&self) -> PageAligned<T> {
+=== grep clone_address definition ===
+src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:44:    fn clone_address(&self) -> Self {
+src/k...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Build compiles. Let me run spec_drift and fn_coverage for completeness.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== spec_drift ==="; python3 /home/ruize/verus-ai-exp/verus-ai/script
+[RESULT ✓] bash: === spec_drift ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+=== fn_coverage ==...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== clone_address trait decl ==="; sed -n '80,95p' src/libs/sys/src/sys
+
+[THINKING] I'm noticing that `MemoryRegion::start` was changed from `self.start.clone()` to `self.start.clone_address()` during verification, but there's no `// VERUS REWRITE` comment explaining the change. I need to check whether `clone_address` is semantically equivalent to the original clone operation and whether this rewrite follows the proper documentation standards.
+[RESULT ✓] bash: === clone_address trait decl ===
+    /// # Returns
+    ///
+    /// A copy of the target [`Address`].
+    ///
+    #[verus_spec(result =>
+        ensures
+            result@ == self@,
+    )]
+    fn clone_address(&self) -> Self;
+    ///
+    /// # Description
+    ///
+    ///  Aligns the target [`Address...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+All checks done. Let me verify git status is clean and the final-review dir exists, then write the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --porcelain; echo "=== final-review dir ==="; ls -la verus-ai-lo
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-memory-region/final-review/review-claude-20260615-063327.jsonl
+ M verus-ai-logs/nanvix-phys-hal-memory-region/final-review/review-claude-20260615-063327.txt
+=== final-review dir ===
+total 1456
+drwxrwxr-x 1 ruize ruize     252 Jun 15 06:37 .
+drwxrwxr-x 1 ruize ruize   ...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -i "clone_address\|MISMATCH\|AST\|Result:" verus-ai-logs/nanvix-phys-h
+[RESULT ✓] bash: - [ ] AST consistency check passes: `ast_consistency.py ... summary` reports 1 mismatch (`MemoryRegion::start`).
+- [x] Findings are verification/spec-process issues (coverage gap + AST mismatch), not runtime bug reports.
+## AST Consistency
+- AST check: FAIL
+- `ast_consistency.py ... summary` reports...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+gpt5 flagged two issues. The `clone()`→`clone_address()` change is real (original was `self.start.clone()`) and lacks a `// VERUS REWRITE` comment. Let me read gpt5's detailed reasoning while claude finishes.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.gpt5.md
+
+[THINKING] `clone_address()` is a trait method that returns a copy with the same view, semantically equivalent to `.clone()`, but the rewrite is necessary because generic types constrained by `T: Address` don't necessarily implement a Verus-specced `Clone` trait.
+
+The issue is that while the rewrite is sound and semantically equivalent, it's missing the required `// VERUS REWRITE` comment and documentation that should accompany all exec rewrites. This is a checklist failure rather than a true AST mismatch—there's no semantic divergence between `clone()` and `clone_address()`, but the process requirement for documenting such rewrites wasn't followed.
+
+Now I need to reconcile this with the other agent's assessment. They flagged caller coverage as incomplete (4/10), which hinges on whether callers can properly access the invariant. The getters ensure the result matches the view field, while structural properties like size and alignment are encoded in the invariant rather than in the getter ensures themselves. Since the invariant is available to callers maintaining the type, the coverage question becomes whether the getters should explicitly require or ensure the invariant holds.
+
+The real issue is that a caller like the one in frame.rs relying on `size % FRAME_SIZE == 0` won't find that guarantee in the getter's ensures clause—only that the result equals the view field. The alignment property lives in the invariant, which isn't automatically surfaced. This is a genuine design tension: either the getter should add a conditional ensure about alignment, or the spec should establish a type invariant that's always maintained. Since constructors are out of scope and only these four getters are in scope, the alignment property isn't strictly exposed through the current spec.
+[RESULT ✓] view: 1. # Final Comprehensive Review: hal-memory-region (gpt-5.3-codex)
+2. 
+3. ## Checklist
+4. ### Caller Analysis
+5. - [x] Read `caller_analysis.md`; scope matches exactly the 4 getters (`start/size` on `MemoryRegion` + `TruncatedMemoryRegion`).
+6. - [x] Verified each getter has an external-top `#[verus...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+gpt5 used an `ast_consistency.py` script. Let me run it myself to confirm the mismatch, then wait for claude.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; ls /home/ruize/verus-ai-exp/verus-ai/scripts/ | grep -i ast; echo "=== run ==
+
+[THINKING] I found a mismatch flagged by the ast_consistency script: `clone()` versus `clone_address()`. Let me verify this myself and check whether it's actually a blocker. The script flags this as a problem because the method names differ, and according to the ast-consistency rules, such rewrites are only valid if they're semantically equivalent for a documented Verus limitation and include a `// VERUS REWRITE` comment with a minimal reproducer.
+
+Looking at the specifics: `clone_address()` does produce an identical copy with the right spec (`ensures result@ == self@`), so it's semantically sound. The issue is that there's no documentation comment explaining the rewrite. Since my task is to review rather than fix, I should flag this as a legitimate finding — the rewrite is necessary because `T: Address` provides `clone_address` with a Verus spec while generic `Clone::clone` has none, but it needs that comment to pass the consistency check.
+
+On the caller coverage question, gpt5 reported 4 out of 10 callers covered. The getters only ensure value projection, while the non-emptiness and alignment properties live in the invariant and aren't surfaced through them. Whether this counts as a missing spec depends on how strictly we interpret the requirements — callers dividing by FRAME_SIZE need `size % page_size == 0`, which the getter doesn't guarantee.
+
+The bottom line: the checklist requires all items to be checked, and any unchecked item means FAIL. The missing `VERUS REWRITE` comment is an unchecked item, so the result is FAIL regardless of how the caller coverage debate resolves. I need to confirm the ast_consistency script result and wait for the other review.
+[RESULT ✓] bash: ast_consistency.py
+scan_ast_limitations.py
+=== run ===
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+MemoryRegion::cache_policy               MISMATCH                        ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+The body_removed baseline mismatches everything (bodies stripped). Let me run against the true pre-verification original from git.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git show caf3a578c:src/kernel/src/hal/mem/types/region.rs > /tmp/region_orig.
+
+[THINKING] I see the issue now — comparing against body_removed_source.rs is giving false positives since all the function bodies are stripped out anyway. That's not the right baseline to use. The actual comparison should be against the original source code from git to catch real mismatches, which is what the other approach found with just one discrepancy.
+[RESULT ✓] bash: exit=0
+## Functions
+MemoryRegion::new                        MISMATCH                             
+MemoryRegion::start                      MISMATCH                             
+Consistent: ❌ NO (matched=26 mismatched=2 missing=0 extra=0)
+=== diff for MemoryRegion::start ===
+## MemoryRegion::start (...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Two mismatches vs the true original: `MemoryRegion::start` and `MemoryRegion::new`. Let me inspect the `new` diff.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py /tmp/reg
+
+[THINKING] I'm comparing against the original commit and found two mismatches in MemoryRegion — the constructor and the start method which changed from clone to clone_address. Let me dig into what the new function is doing.
+[RESULT ✓] bash: ## MemoryRegion::new (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -5,6 +5,13 @@
+         typ: MemoryRegionType,
+         perm: AccessPermission,
+     ) -> Result<Self, Error> {
++        // Check if name is too long (byte length).
++        if name.len() > Self::MEMORY_REGION_NAME_MAX {
++           ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+My independent analysis is confirmed. Now I'll write the final review file.
+[TOOL] report_intent: Writing final review file
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.claude.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.claude.md with 10340 characters
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== when was name-length check added? ==="; git log --oneline -S "memor
+
+[THINKING] I'm noticing that the name-length check in `MemoryRegion::new` might be from a different commit than the one I'm examining, not necessarily part of the verification work. Let me trace back whether this check was introduced in the "Add per-region MMIO cache policy" commit or came later as a separate change.
+
+The key question is whether modifying `new` violates the scope constraints — if it was touched during verification when it shouldn't have been, that's a problem. I need to check the git history to see when this name check was actually added and whether it predates the verification branch or was introduced as part of it.
+[RESULT ✓] bash: === when was name-length check added? ===
+a8d5c56a6 [kernel] E: Limit MemoryRegion name length
+=== when was clone_address introduced in region.rs? ===
+40a4c4b60 [verus] verify PASS (cheating detected): kernel::all (59 verified, 0 errors, admit=26 external_body=14 cfg_gate=15)
+<shellId: 44 completed ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Review complete. Written to `verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.claude.md`.
+
+## Summary
+
+**Result: FAIL** (1 blocker; everything else clean)
+
+**Guardrail counts (region.rs / .spec.rs / .proof.rs):**
+- admit: **0**
+- assume: **0**
+- external_body: **0**
+- assume_specification: **0**
+- cfg-gated exec: **0** (the two `#[cfg(verus_keep_ghost)] include!` lines are the standard ghost guard, not counted)
+
+**verify-kernel:** PASS — `MODULE=hal::mem::types::region` → **5 verified, 0 errors** (fresh, non-cached); module cheating check clean. `make build` / kernel `cargo build` compile.
+
+**Blocker:**
+- **AST consistency MISMATCH on the in-scope `MemoryRegion::start`**: exec body was changed `self.start.clone()` → `self.start.clone_address()` with **no `VERUS DEVIATION` comment**. The change is behavior-preserving (`clone_address` returns the identical address and has `ensures result@ == self@`) and was made only to discharge `start`'s ensures — but per the ast-consistency/source-integrity rules an undocumented exec change on an in-scope function is a blocker. Fix: add a documenting deviation comment, or revert to `.clone()` and use a human-approved `assume_specification` for `Clone::clone`.
+
+**Everything else passes:** spec quality (clean declarative getter projections, alignment/non-emptiness correctly delegated to `inv()`), caller coverage **4/4** (none missing), proof completeness (no admit), TCB compliance (zero external_body in module). No `bugs.md` exists and no true runtime/logic bug is present in the 4 getters.
+
+Independently corroborated: the parallel gpt5 review flagged the same `clone_address` mismatch and also concluded FAIL.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git show a8d5c56a6:src/kernel/src/hal/mem/types/region.rs > /tmp/region_base.
+
+[THINKING] The name-length check was added as a functional change in an earlier commit, not as part of the verification effort, so the `MemoryRegion::new` mismatch is just a baseline artifact and not something to worry about. Now I'm looking at the `clone_address` change that was introduced in a verification commit — this is a genuine rewrite that wasn't documented. I need to establish a proper baseline by comparing against the commit right before verification work started on this module, specifically the version at a8d5c56a6 which has the name check but predates the verification changes.
+[RESULT ✓] bash: exit=0
+=== ast_consistency vs true pre-verification baseline (a8d5c56a6) ===
+MemoryRegion::start                      MISMATCH                             
+Consistent: ❌ NO (matched=27 mismatched=1 missing=0 extra=0)
+<shellId: 45 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Confirmed: exactly 1 verification-introduced AST change — `clone()`→`clone_address()` in `MemoryRegion::start`, undocumented. Let me read claude's review.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 30, 'wait': True}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 334s, total_turns: 0, model: claude-opus-4.8, duration: 326s
+
+Review complete. Written to `verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Both agents independently concluded **FAIL** on the same blocker. Let me read claude's detailed file, then write the consolidated review.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.claude.md
+
+[THINKING] Both agents flagged the AST mismatch as a blocker and marked the test as failing, but they diverge on caller coverage—Claude sees 4 out of 4 callers properly covered since alignment is correctly delegated to the invariant function, while GPT-5 counts only 4 out of 10 because it doesn't consider alignment surfaced through getters. I'm working through the spec-design principle here: getters should tie results to view fields while structural invariants stay in the invariant function, and the bottom-up convention suggests callers can legitimately access the invariant.
+
+The key insight is that value-projection expectations are fully satisfied across all four functions, and the structural properties like size and page-alignment are properly encoded in the invariant rather than redundantly duplicated on every getter—this aligns with spec-design best practice. The unanimous blocker remains the undocumented AST rewrite in MemoryRegion::start, which is what drives the overall FAIL verdict. I'm now pulling details from Claude's analysis to write the consolidated final review.
+[RESULT ✓] view: 1. # Final Comprehensive Review: hal-memory-region (claude-opus-4.8)
+2. 
+3. Independent, strict final review. All commands were run for real on branch
+4. `verus-ai-prove-bottom-up`. Scope = the 4 pure getters only:
+5. `MemoryRegion::{start,size}`, `TruncatedMemoryRegion::{start,size}`.
+6. 
+7. ## Che...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Both independent reviews agree: **FAIL** on a single shared blocker (undocumented `clone()`→`clone_address()` exec rewrite in `MemoryRegion::start`). I independently confirmed this via `ast_consistency.py` against the true pre-verification baseline. Now writing the consolidated review.
+[TOOL] report_intent: Writing consolidated review
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.md
+
+[THINKING] Both reviews agree on the AST blocker being a failure, but they diverge on caller coverage—Claude sees 4 out of 4 passing while GPT-5 only sees 4 out of 10. Looking at this myself, Claude's interpretation aligns with the spec design: structural properties belong in the invariant method, not duplicated on getters. But there's a real tension here—callers can only derive alignment if they have access to the invariant, yet the getters don't require it and there's no type-level invariant to enforce this.
+
+In a bottom-up approach this is acceptable since the constructors establish the invariant later. I'll mark caller coverage as 4 out of 4 for the value-projection getters with a note that structural properties are delegated to the invariant and depend on out-of-scope constructors threading it through. That's the more defensible position.
+
+Now I need to write the consolidated final review. The critical blocker is the undocumented exec rewrite in MemoryRegion::start—that's a clear failure.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.md with 12588 characters
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/; ls -la *.md
+
+[THINKING] Let me verify the files were created successfully and summarize what was accomplished.
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 10458 Jun 15 06:40 final_review.claude.md
+-rw-rw-r-- 1 ruize ruize  4981 Jun 15 06:37 final_review.gpt5.md
+-rw-rw-r-- 1 ruize ruize 12744 Jun 15 06:41 final_review.md
+<shellId: 46 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Done. Two independent reviews (claude-opus-4.8 + gpt-5.3-codex) plus my own corroboration are complete and consolidated.
+
+## Result: **FAIL** — one blocker
+
+**Raw reviews:** `final_review.claude.md`, `final_review.gpt5.md`
+**Consolidated:** `final_review.md`
+
+### The blocker (both agents agree, independently reproduced)
+AST consistency mismatch on the **in-scope** `MemoryRegion::start`: exec body was changed `self.start.clone()` → `self.start.clone_address()` with **no `// VERUS REWRITE` comment**. I confirmed via `ast_consistency.py` against the true pre-verification baseline (`a8d5c56a6`): `matched=27 mismatched=1`. The change is behavior-preserving (`Address::clone_address` carries `ensures result@ == self@` and is value-identical) and was needed because the bare `Clone` supertrait has no Verus contract — but it's undocumented, which fails the strict rubric.
+
+**Fix:** add a `// VERUS REWRITE` comment (with isolated reproducer), or revert to `.clone()` with a human-approved `assume_specification`.
+
+### Everything else passes
+- **Guardrails (region files):** admit 0, assume 0, external_body 0, assume_specification 0, cfg-gated exec 0 (only standard `cfg(verus_keep_ghost)` ghost-includes).
+- **Verification:** `make verify-kernel MODULE=hal::mem::types::region` → 5 verified, 0 errors; build OK.
+- **TCB:** trivially compliant (zero external_body).
+- **Spec quality:** clean declarative getter projections; alignment/non-emptiness correctly delegated to `inv()`.
+- **Caller coverage:** 4/4 value-projection (resolved a divergence — gpt5 scored 4/10 by literal-bullet mapping; adopted claude's spec-design-aligned 4/4 with a noted follow-on `inv()`-threading obligation for out-of-scope constructors).
+- **No `bugs.md`** needed — no true code defect; the one finding is a process/source-integrity issue, not a runtime bug.
+
+
+=== Session End ===
+Session: 35593e29-35dc-42fc-b400-f80133cf557f
+Duration: 518.9s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/review-claude-20260615-063327.jsonl
