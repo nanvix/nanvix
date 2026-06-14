@@ -1,0 +1,20 @@
+[PIPELINE] NOTE: spec file missing, creating empty stub: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.spec.rs
+[PIPELINE] NOTE: proof file missing, creating empty stub: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.proof.rs
+[PIPELINE] NOTE: added 'use vstd::prelude::*;' to /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[PIPELINE] NOTE: added cfg-gated include!(upool.spec.rs, upool.proof.rs) to /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[2026-06-15 04:34:26] [BRANCH] Base: verus-ai/phys-manager → Verus: verus-ai/phys-upool
+[2026-06-15 04:34:26] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/body_removed_source.rs (4796 -> 4338 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: phys-upool
+Source: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+Crate:  kernel
+Branch: verus-ai/phys-upool (base: verus-ai/phys-manager)
+Phases: caller-analysis → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: caller-analysis
+Module: phys-upool
+============================================================
