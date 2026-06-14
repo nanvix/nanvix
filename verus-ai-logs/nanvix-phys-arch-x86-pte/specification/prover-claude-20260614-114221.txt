@@ -426,3 +426,17 @@ The cleanest approach is to remove the seven duplicate helper definitions from p
 Turn 19
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | tail -40
+[RESULT ✓] bash: PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+/h...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Verification passes: 48 verified, 0 errors. The `admit=1`/`external_body=2` are pre-existing (my proof file is empty). Now check no regressions across all modules and the build:
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -25
+
+[THINKING] The verification passed with 48 checks and no errors. The `admit=1` and `external_body=2` flags showing up in the cheating metrics are pre-existing from other modules, not introduced by my changes—my pte.proof.rs file is empty, so I haven't added anything that would cause these.
+
+Now I'll run the full verification suite across all modules and then build to make sure there are no regressions.
