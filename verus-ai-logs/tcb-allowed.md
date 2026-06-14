@@ -73,13 +73,20 @@ with their pre-existing `#[verus_spec]` contracts honored as trust boundaries.
 
 The `frame::*` free-function shims are no longer `external_body`. The pure-query
 shims `is_covered` and `refcount` are proven outright via the `instance()` bridge.
-The mutating / aggregate shims (`alloc`, `alloc_contiguous`, `free`, `share`,
-`book`, `alloc_range`, `free_count`) carry a single deferred `proof! { admit(); }`:
+The aggregate query shim `free_count` is also fully body-verified via
+`lemma_free_count` (`frame.proof.rs`): it counts the clear bitmap indices as the
+image of an injective `i -> i * page_size` map and discharges
+`free_frames.len() + usage == num_bits` without any `admit()`.
+
+The mutating shims (`alloc`, `alloc_contiguous`, `free`, `share`,
+`book`, `alloc_range`) carry a single deferred `proof! { admit(); }`:
 their `#[verus_spec]` contracts are stated over the *fixed* uninterpreted
 `phys_view()` with no `old(phys_view())` to diff the mutation against, so the
 post-state membership facts are a proving-phase obligation, not an `external_body`
 trust boundary. (Per the spec-design guidance, current-module functions defer with
-`admit()` rather than `external_body`.)
+`admit()` rather than `external_body`.) See
+`verus-ai-logs/nanvix-phys-phys-frame/verification-todo.md` for the full analysis
+of why these six are blocked under the frozen specs.
 
 ## Allowed `external_body` — `UserFrame::drop` (`upool.rs`)
 

@@ -1078,3 +1078,78 @@ Now let me confirm the module still verifies cleanly, then run the full `make ve
 The core issue is that `phys_view()` must always equal the singleton's current state, but the shims read `phys_view()` in their postconditions as a fixed value. When instance() pins `phys_view()` to the pre-mutation state and then the singleton mutates inside `instance().alloc()`, the postcondition assertions about `phys_view()` end up describing the wrong state. For mutating shims to verify, `phys_view()` would need to be pinned to the post-mutation state, but instance() returns before the mutation completes—making this impossible. I've also considered whether these six shims should be marked as external_body instead, but Verus forbids that for functions in the current module, so the admits remain as documented deferred obligations.
 
 Now I'm documenting these as genuinely stuck proofs in verification-todo.md with full analysis of the architectural constraint, then running the full module verification to confirm the 32 proofs still verify with the comment added, followed by a complete regression check and final documentation before committing. I'm realizing the core issue: when `instance()` returns with `ensures (*result)@ == phys_view().frames`, that equality only holds at that moment. Once the method mutates `*result`, Verus knows the old value but the ensures fact becomes stale. For the allocation case, the ensures would claim the frame was already allocated in the old state, but it was actually free—so the 6 mutating shims are genuinely impossible to verify. Time to document this and move forward with the full verification run.
+[RESULT ✓] bash: verification results:: 32 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+    ⚠️  admit: 6
+  verification: 32 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+<shellId: verify6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+Confirmed: 32 verified, 0 errors, admit:6. The 6 mutating-shim admits are architecturally undischargeable. Let me record the analysis and bugs file.
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls verus-ai-logs/nanvix-phys-phys-frame/ 2>&1; echo "---todo---"; ls verus-ai-logs/*todo* 2>&
+
+[THINKING] I've verified 32 cases with no errors and 6 that need admission, which is consistent with the constraints. Before I conclude, I should reconsider whether I can actually reduce those 6 by strengthening the instance() specification, though I need to check whether instance() is even something I'm allowed to modify.
+
+Looking at the frozen specs list, instance() isn't there — so its spec is actually open. But here's the core problem: instance() returns a mutable reference to Inner that callers then modify, while phys_view() is a constant uninterpreted value. There's no way to strengthen instance()'s spec to make phys_view() magically track mutations that happen after the function returns. And if I tried to make the mutating methods maintain phys_view().frames as an invariant across the mutation, that contradicts the fact that alloc() actually changes the frames — so the value can't stay constant while the underlying state changes.
+
+This is architecturally impossible without modifying the frozen specs in mod.spec.rs or redefining phys_view() itself. So 6 admits is the honest minimum here, and I need to document them as deferred.
+
+The free-function shim specs (alloc, book, free) aren't in the frozen list, but they're the public API that upstream depends on, so weakening them would break the whole goal. And there's no alternative abstract view available anyway — phys_view() is the only one. So I'm accepting 6 admits and moving on to write the documentation, checking the existing format in verification-todo.md and tcb-allowed.md first.
+[RESULT ✓] bash: body_removed_source.rs
+caller-analysis
+caller_analysis.md
+find_callers_output.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+---todo---
+ls: cannot access 'verus-ai-logs/*todo*': No such file or directory
+---tcb shim section---
+...
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+tcb-allowed.md lists `free_count` among the deferred admits, but I discharged it. Let me update that note for accuracy, and view the section.
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+
+[THINKING] I need to update tcb-allowed.md since I've already discharged free_count, moving it from the deferred admit list to body-verified. Let me pull up the full note section so I can make that edit accurately.
+[RESULT ✓] view: 72. ### Note on the body-verified shims
+73. 
+74. The `frame::*` free-function shims are no longer `external_body`. The pure-query
+75. shims `is_covered` and `refcount` are proven outright via the `instance()` bridge.
+76. The mutating / aggregate shims (`alloc`, `alloc_contiguous`, `free`, `share`,
+7...
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+Now the verification-todo.md documenting the 6 blocked shims, and bugs.md.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/verification-todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/verification-todo.md with 3978 characters
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/bugs.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/bugs.md with 965 characters
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+Now the full `make verify` to confirm no regressions in other modules.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 3600 make verify 2>&1 | tail -40
