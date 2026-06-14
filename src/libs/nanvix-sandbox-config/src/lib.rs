@@ -65,6 +65,15 @@ impl std::str::FromStr for NetworkingMode {
     }
 }
 
+// Host egress filtering types live in `net-backend` (the network daemon's
+// crate) to keep the enforcement type next to the enforcement point and avoid a
+// dependency cycle. They are re-exported here so config consumers can refer to
+// them via `nanvix::sandbox_config`.
+pub use ::net_backend::{
+    HostFilter,
+    Ipv4Cidr,
+};
+
 //==================================================================================================
 // Exports
 //==================================================================================================

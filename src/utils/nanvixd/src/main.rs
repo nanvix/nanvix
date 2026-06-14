@@ -173,6 +173,7 @@ async fn async_main() -> Result<ExitCode> {
         args.mount_directory().map(|s| s.to_string()),
         args.kernel_args().map(|s| s.to_string()),
         args.networking_mode(),
+        args.host_filter(),
         #[cfg(feature = "gdb")]
         args.gdb_port(),
         args.gateway_sockaddr().map(|s| s.to_string()),
