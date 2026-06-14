@@ -192,3 +192,25 @@ Turn 4
 ────────────────────────────────────────────────────────────
 Now let me run the baseline verification for this module.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE='hal::mem::types::address::phys' 2>&1 | tail -40
+[RESULT ✓] bash: note: verifying module hal::mem::types::region
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.25s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::address::phys.
+  Global: assume=0...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+The module-scoped run shows CLEAN, exit 0, no cheating in our module. Let me see the full output to confirm verification actually ran on our target functions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE='hal::mem::types::address::phys' 2>&1 | grep -iE 
+
+[THINKING] I'm noticing a discrepancy between the module I specified and what the verification output is showing. The MODULE argument I passed was `hal::mem::types::address::phys`, but the output is displaying `hal::mem::types::region` instead. Looking at the summary more carefully, it indicates the address module is CLEAN with an admit count of 27 globally, though I need to examine the full output to understand how the global admit and external_body counts break down.
+
+The verification shows 3 out of 17 exec functions have contracts — those are the three target functions I'm focusing on: `into_frame_number`, `from_number`, and `from_mmio_address`. The status is CLEAN with exit code 0, and the cheating check confirms no cheating was detected in the module itself, which means any admits are coming from other modules. Since the proof file I reviewed contains no admit() calls and the bodies are fully written, it looks like this module might already be complete. I should re-run the verification more carefully and check the full output to confirm the module verifies with zero errors.
