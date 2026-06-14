@@ -1,0 +1,83 @@
+Timestamp: 2026-06-14_11-44-37
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=2
+  admit=1
+  trusted=0
+  no_decreases=0
+  cfg_gate=4
+
+--- Full output ---
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::address::virt
+
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error: ambiguous glob re-exports
+  --> src/libs/arch/src/x86/mem/paging/mod.rs:19:9
+   |
+19 | pub use pde::*;
+   |         ^^^^^^ the name `spec_present_set` in the value namespace is first re-exported here
+20 | pub use pte::*;
+   |         ------ but the name `spec_present_set` in the value namespace is also re-exported here
+   |
+   = note: `-D ambiguous-glob-reexports` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(ambiguous_glob_reexports)]`
+
+error: ambiguous glob re-exports
+  --> src/libs/arch/src/x86/mem/paging/mod.rs:19:9
+   |
+19 | pub use pde::*;
+   |         ^^^^^^ the name `spec_rw_set` in the value namespace is first re-exported here
+20 | pub use pte::*;
+   |         ------ but the name `spec_rw_set` in the value namespace is also re-exported here
+
+error: ambiguous glob re-exports
+  --> src/libs/arch/src/x86/mem/paging/mod.rs:19:9
+   |
+19 | pub use pde::*;
+   |         ^^^^^^ the name `spec_us_set` in the value namespace is first re-exported here
+20 | pub use pte::*;
+   |         ------ but the name `spec_us_set` in the value namespace is also re-exported here
+
+error: ambiguous glob re-exports
+  --> src/libs/arch/src/x86/mem/paging/mod.rs:19:9
+   |
+19 | pub use pde::*;
+   |         ^^^^^^ the name `spec_pwt_set` in the value namespace is first re-exported here
+20 | pub use pte::*;
+   |         ------ but the name `spec_pwt_set` in the value namespace is also re-exported here
+
+error: ambiguous glob re-exports
+  --> src/libs/arch/src/x86/mem/paging/mod.rs:19:9
+   |
+19 | pub use pde::*;
+   |         ^^^^^^ the name `spec_pcd_set` in the value namespace is first re-exported here
+20 | pub use pte::*;
+   |         ------ but the name `spec_pcd_set` in the value namespace is also re-exported here
+
+error: ambiguous glob re-exports
+  --> src/libs/arch/src/x86/mem/paging/mod.rs:19:9
+   |
+19 | pub use pde::*;
+   |         ^^^^^^ the name `spec_a_set` in the value namespace is first re-exported here
+20 | pub use pte::*;
+   |         ------ but the name `spec_a_set` in the value namespace is also re-exported here
+
+error: ambiguous glob re-exports
+  --> src/libs/arch/src/x86/mem/paging/mod.rs:19:9
+   |
+19 | pub use pde::*;
+   |         ^^^^^^ the name `spec_d_set` in the value namespace is first re-exported here
+20 | pub use pte::*;
+   |         ------ but the name `spec_d_set` in the value namespace is also re-exported here
+
+error: could not compile `arch` (lib) due to 7 previous errors

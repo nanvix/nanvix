@@ -133,6 +133,7 @@ pub enum PageSizeFlag {
 /// bit 9 of the x86 PTE). When set, the page is shared with another address space
 /// and writes to it must trigger a copy on the page-fault path.
 ///
+#[verus_verify]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CopyOnWriteFlag {
     /// The page is not shared via copy-on-write.

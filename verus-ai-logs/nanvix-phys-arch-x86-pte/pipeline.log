@@ -39,3 +39,6 @@ Module: arch-x86-pte
 PHASE: specification
 Module: arch-x86-pte
 ============================================================
+[2026-06-14 11:42:21] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pte.rs
+[2026-06-14 11:42:21] [PROVER] Running specification...
+[2026-06-14 11:42:21] [COPILOT] Running: copilot --model claude-opus-4.8 ...

@@ -1,4 +1,4 @@
-# Unverified exec functions: 511/525
+# Unverified exec functions: 507/525
   from_ptr
   from_ptr
   do_checksum
@@ -483,23 +483,19 @@
   set_user_supervisor
   from_raw
   raw
-  new
   from_raw_value
   into_raw_value
-  is_present
   is_user
   is_writable
   set_read_write
   set_user_supervisor
   is_cow
   set_cow
-  new
   from_raw_value
   into_raw_value
   flags
   frame_number
   frame_address
-  is_present
   set_read_write
   set_user_supervisor
   is_cow
