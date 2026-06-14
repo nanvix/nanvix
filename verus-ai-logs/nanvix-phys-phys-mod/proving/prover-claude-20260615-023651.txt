@@ -580,3 +580,17 @@ No trigger warnings now. Let me confirm the full log is warning-free and run a f
 [TOOL] bash: cd /home/ruize/nanvix-phy && LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); echo "LOG: $LOG"
 
 [THINKING] I've confirmed there are no more automatic trigger warnings—9 verified entries with zero errors, admits, or assumptions. Now I'm checking the full log to make sure it's completely clean of warnings.
+[RESULT ✓] bash: LOG: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_02-42-29.log
+0
+--- full make verify ---
+  Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=0 admit=0 tru...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | grep -iE "=== |verifying crate|verification:|status:|Exit code|FAIL|erro
+
+[THINKING] Looking at the full make verify output across all crates, everything exited with code 0. The kernel crate shows a cheating detection flag with external_body=17, which is expected based on the documented test case configuration.
