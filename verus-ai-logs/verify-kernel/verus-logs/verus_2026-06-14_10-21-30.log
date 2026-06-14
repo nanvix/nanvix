@@ -1,0 +1,40 @@
+Timestamp: 2026-06-14_10-21-30
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+22 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=18
+  admit=36
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+verification results:: 22 verified, 0 errors
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: duplicate specification for `arch::x86::mem::paging::table::TableEntry`
+   --> src/libs/arch/src/x86/mem/paging/table.rs:31:1
+    |
+ 31 | / pub trait TableEntry: Copy {
+ 32 | |     /// Creates from a raw [`PteWord`], returning `None` if the value is invalid.
+ 33 | |     fn from_raw(raw: PteWord) -> Option<Self>;
+ 34 | |     /// Returns the raw [`PteWord`] representation.
+ 35 | |     fn raw(self) -> PteWord;
+ 36 | | }
+    | |_^ declared here (and not marked as `external`)
+    |
+   ::: src/kernel/src/mm/virt/identity_map.spec.rs:114:1
+    |
+114 | / pub trait ExTableEntry: Copy {
+115 | |     type ExternalTraitSpecificationFor: TableEntry;
+116 | | }
+    | |_^ specification declared via `external_trait_specification`
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
