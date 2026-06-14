@@ -1,0 +1,45 @@
+Timestamp: 2026-06-14_11-23-23
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+39 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=16
+  admit=36
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+verification results:: 39 verified, 0 errors
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: duplicate specification for `arch::x86::mem::paging::pde::impl&%0::new`
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:97:5
+    |
+ 97 | /     pub fn new(
+ 98 | |         present: PresentFlag,
+ 99 | |         read_write: ReadWriteFlag,
+100 | |         user_supervisor: UserSupervisorFlag,
+...   |
+105 | |         page_size: PageSizeFlag,
+106 | |     ) -> Self {
+    | |_____________^ declared here (and not marked as `external`)
+    |
+   ::: src/kernel/src/mm/virt/identity_map.spec.rs:185:1
+    |
+185 | / pub assume_specification[ PageDirectoryEntryFlags::new ](
+186 | |     present: PresentFlag,
+187 | |     read_write: ReadWriteFlag,
+188 | |     user_supervisor: UserSupervisorFlag,
+...   |
+193 | |     page_size: PageSizeFlag,
+194 | | ) -> PageDirectoryEntryFlags;
+    | |____________________________^ specification declared via `assume_specification`
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
