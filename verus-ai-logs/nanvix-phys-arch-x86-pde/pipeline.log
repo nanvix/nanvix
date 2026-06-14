@@ -29,3 +29,6 @@ Module: arch-x86-pde
 PHASE: view-design
 Module: arch-x86-pde
 ============================================================
+[2026-06-14 10:54:15] [PROVER] Running view-design...
+[2026-06-14 10:54:15] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-14 10:57:53]   ↳ prover done in 3m38s (exit=0)
