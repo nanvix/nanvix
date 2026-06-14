@@ -1576,3 +1576,27 @@ Turn 95
 Turn 96
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -40
+[RESULT ✓] bash: RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --tar...
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+`make verify-arch`: **8 verified, 0 errors, no cheating, zero admits**. Now let me check for regressions and that the build still works.
+[TOOL] sql: {'description': 'Update todo status', 'query': "UPDATE todos SET status='done' W
+
+[THINKING] The architecture verification passed cleanly with all 8 checks succeeding and no errors, which is great. What's particularly satisfying is that the core conversion functions—into_raw_value and from_raw_value—both verified completely without needing any admits, meaning the specs are fully proven even at this stage. Now I'm moving on to update the todos and run the full verification suite.
+[RESULT ✓] sql: Executed 2 statement(s):
+
+1. UPDATE
+   2 row(s) updated.
+
+2. UPDATE
+   1 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -50
