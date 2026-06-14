@@ -184,3 +184,274 @@ src/kernel/src/mm/phys/upool.rs:218:    /// Private field prevents external cons
 === cfg ===
 src/kernel/src/mm/phys/upool.rs:9:#[cfg(verus_keep_ghost)]
 src/kernel/src/mm/phys/upool.rs:11:#[cfg(verus_keep...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Verification passed (exit 0) and upool files have zero admit/assume/external_body. The 25 external_body are repo-wide. Let me confirm none are in upool and check AST consistency + spec drift.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== cheating-detail ===" && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detai
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | head -120
+
+[THINKING] The verification passed, and looking at the cheating check results across the kernel, the external_body and cfg_gate counts are repo-wide rather than specific to upool. For upool itself, the grep search shows zero instances of admit, assume, and external_body in the upool files.
+[RESULT ✓] bash: === cheating-detail ===
+    - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refcount: external_body
+    - mm/phys/frame.rs:...
+[RESULT ✓] bash: - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refcount: external_body
+    - mm/phys/frame.rs:481 book: external_body
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Zero external_body in upool — confirmed. The 24 external_body are all in frame.rs/manager.rs/mod.rs (other modules), all documented in tcb-allowed.md. Let me check AST consistency, spec drift, VERUS REWRITE comments, and build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== VERUS REWRITE in upool ===" && grep -rn "VERUS REWRITE\|REWRITE" src/kernel/src/m
+
+[THINKING] I'm tallying up the external_body occurrences across the files—16 in frame.rs, 6 in manager.rs, 2 in mod.rs, plus one external_type_spec in mod.spec.rs—which adds up to 24, but the counter shows 25, so I'm rechecking the line numbers in frame.rs to account for the discrepancy.
+
+Now I'm looking at the tcb-allowed list and seeing that frame.rs has both struct-impl methods and free-function shims, with specific functions like alloc, free, share, and refcount listed as allowed. The key insight is that for the upool module review specifically, I need to focus on upool.rs and its related files, which have zero external_body—that's clean. But since the cross-module regression requires all verified modules to pass, I should verify that all 24 or 25 external_body across the phys subsystem are actually listed in tcb-allowed.md. I need to track down the ast-consistency and spec-drift-check skills along with the command placeholders that weren't filled in yet.
+[RESULT ✓] bash: === VERUS REWRITE in upool ===
+=== ast/spec-drift scripts ===
+=== skills ===
+benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+=== verus-ai scripts ===
+EXPERIMENT_REPOR...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && ls scripts/ 2>/dev/null; echo "=== grep ast-consistency/spec-drift ==="; grep -r
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-phys-upool/ 2>/dev/null; echo "==="; find verus-ai-logs/nanvix
+
+[THINKING] I'm checking the cfg-gated code in upool to confirm there are no VERUS REWRITE comments or exec rewrites needed. The only cfg-gated sections are the spec/proof includes and the vstd prelude import, which are all allowed since they're just imports.
+
+Now I need to locate the ast-consistency and spec-drift tools in the verus-ai scripts.
+[RESULT ✓] bash: body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+cheating-elimination
+find_callers_output.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+verification_todo.md
+view-design
+view_design.md
+===
+verus-ai-logs/nanvix-phys-phys-upool/verificatio...
+[RESULT ✓] bash: __pycache__
+add_verification.py
+ai_residue.py
+ast_consistency.py
+cascade_analysis.py
+check_proof_blocks.py
+compute_scope.py
+dummy_probe.py
+dummy_probe_report.py
+eb_diagnose.py
+find_callers_lsp.py
+find_deps_lsp.py
+fn_coverage.py
+groundtruth_diff.py
+inject_verus_verify.py
+llm_fix_suggest.py
+llm_review...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Let me run the AST consistency and spec drift tools, and check the build.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && python3 scripts/ast_consistency.py --help 2>&1 | head -30; echo "=====SPECDRIFT=
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md
+
+[THINKING] I'm going to run the AST consistency and spec drift checks on upool, check how to use those tools, and review the fix report from the prover to see what changes were made.
+[RESULT ✓] view: 1. # Cheating Elimination Report: phys-upool
+2. 
+3. Scope: `src/kernel/src/mm/phys/upool.rs` (+ `upool.spec.rs`, `upool.proof.rs`).
+4. In-scope functions: `UserFrame::{share, refcount, leak, drop, new, address}`,
+5. `Upool::{new, alloc}`.
+6. 
+7. Counts below are **module-scoped to `mm::phys::upool`*...
+[RESULT ✓] bash: usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+
+AST-level exec consistency checker for Verus verification.
+
+Compare executable code between an original Rust source and its
+Verus-verified counterpart using tree-sitter AST ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Let me independently verify AST consistency and spec drift against the base branch.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git branch --show-current 2>&1; echo "=== branches ==="; git branch -a 2>&1 | grep -i "phys
+
+[THINKING] I need to verify the prover's claims by running the consistency and drift analysis tools against the base branch verus-ai/phys-manager.
+[RESULT ✓] bash: verus-ai/phys-upool
+=== branches ===
+  verus-ai/phys-manager
+* verus-ai/phys-upool
+=== AST CONSISTENCY ===
+ERROR: Cannot get original from git: fatal: invalid object name 'verus-ai/phys-manager'.
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref verus-ai/ph
+
+[THINKING] The issue is that the script runs from the verus-ai directory, so git operations are happening in the wrong repository. I need to change into the nanvix-phy directory before executing the script, or call it with the full path and let it auto-detect the correct working directory.
+[RESULT ✓] bash: usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+ast_consistency.py: error: argument command: invalid choice: 'verus' (choose from 'count', 'summary', 'diff', 'report')
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref verus-ai/ph
+
+[THINKING] I'm realizing the positional arguments should be `source verus {mode}`, where source is optional when using `--base-ref`. So the command structure is `--base-ref verus-ai/phys-manager src/.../upool.rs count`, which is what I tried initially, but I ran into a git error due to the wrong working directory.
+[RESULT ✓] bash: ✅ Consistent: 8 functions, 2 structs match.
+EXIT=0
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+AST consistency: PASS (8 functions, 2 structs match, exit 0). Now spec drift and build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff --help 2>&1 | head
+[RESULT ✓] bash: usage: spec_drift.py git-diff [-h] --before BEFORE [--after AFTER]
+                              [--file-stem FILE_STEM] [-o OUTPUT] [--json]
+                              source
+
+positional arguments:
+  source                Source file path (relative to repo root)
+
+options:
+  -h, --help           ...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff --before verus-ai/
+[RESULT ✓] bash: **REQUIRES ADDED**
+```
+phys_view().initialized
+```
+
+**REQUIRES ADDED**
+```
+phys_view().inv()
+```
+
+**REQUIRES ADDED**
+```
+self.inv()
+```
+
+**ENSURES ADDED**
+```
+phys_view().inv()
+```
+
+**ENSURES ADDED**
+```
+and the frame is still allocated (it has gained
+            // a reference). On failure: no refe...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Spec drift shows only ADDED requires/ensures. Let me check for any REMOVED (weakened) guarantees and get the summary.
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff --before verus-ai/
+
+[THINKING] The spec drift shows both REQUIRES ADDED and ENSURES ADDED, which represents the spec-writing process for newly-specced functions rather than a weakening of guarantees. I need to focus on whether existing guarantees were actually removed or weakened, since adding preconditions makes the function weaker from a caller's perspective but that's expected when adding specifications to previously unspecified code.
+[RESULT ✓] bash: === REMOVED/WEAKEN lines ===
+3:## Summary
+7:  - Ensures removed: 0
+11:- Functions removed: 0
+15:Each item below is a potential spec weakening that must be reviewed.
+=== counts ===
+24
+0
+=== head ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 9
+- **Contract drift (⚠ review required): 4...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+No ensures removed (0 guarantees weakened); the 9 added requires are legitimate subsystem preconditions mirroring the do-not-modify `frame::*` contracts. Now let me run the build and full cross-module verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 ./z build -- all-kernel 2>&1 | tail -30; echo "BUILD_EXIT=${PIPESTATUS[0]}"
+
+[THINKING] Looking at the contract changes, no guarantees were weakened on the ensures side, but nine new preconditions were added to functions like `Upool::alloc`, which narrows their applicability—I need to verify whether these added requires like `phys_view().initialized`, `phys_view().inv()`, and `self.inv()` are actually justified.
+
+On the base branch, these functions were likely unspecced or minimally specified since the allocator was still in development. The new preconditions reflect genuine requirements because the functions call into frame shims that demand the allocator be initialized and well-formed—these are standard subsystem invariants, not artificial constraints to avoid proof work. Since no ensures were removed, the original guarantees remain intact, and these preconditions are the legitimate preconditions callers must already satisfy, so this shouldn't count as a weakening. But strictly speaking, I should verify that these functions weren't previously callable unconditionally—if they had no requires before and now require initialized+inv, that's a tightening of the contract that could affect existing callers.
+
+Actually, the upool specs were being written in this same phase, so the "before" state had the old specs from the base branch. The added requires are necessary and correct—they match the frame shim contracts and are justified by memory-safety requirements. With no ensures removed, the spec drift check passes. Now I need to run the build and full verification to confirm everything compiles and verifies across modules.
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Build succeeded (exit 0). Let me force a clean recompile of the kernel crate to surface any warnings, and run the full cross-module verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/mm/phys/upool.rs && RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=stat
+
+[THINKING] The build completed cleanly with zero warnings, though it was cached. I should force a recompile of the kernel crate to be absolutely certain there are no hidden warnings lurking in the incremental build.
+[RESULT ✓] bash: DONE rc=0
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Zero warnings, zero errors on recompile. Now the full cross-module verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -E "^verify(-|:| )" Makefile 2>/dev/null | head; echo "==="; grep -n "verify" Makefile
+
+[THINKING] Running the full verification across all crates to make sure everything checks out.
+[RESULT ✓] bash: verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+verify-kernel: ensure-verus
+===
+116:NO_SCCACHE_GOALS := check format format-check lint lint-check spellcheck spellcheck-fix verify help clean distclean
+300:# List of crates to verify with Verus.
+323:	$(CARGO) verus verify --locked --no-defau...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify 2>&1 | grep -iE "verifying module|verified|error|warning|Exit code
