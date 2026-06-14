@@ -1190,7 +1190,7 @@ impl Inner {
                         assert(index < self.bitmap@.num_bits);
                         assert(!self.bitmap@.is_bit_set(index as int));
                         assert(!pre_sb.contains(index as int));
-                        assert(index as int < pre_nb);
+                        assert((index as int) < pre_nb);
                     }
                 },
                 Ok(true) => {

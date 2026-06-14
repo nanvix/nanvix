@@ -3120,3 +3120,47 @@ Turn 227
 Turn 228
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -6
+[RESULT ✓] bash: cheating: assume=0 external_body=19 admit=16 trusted=0 no_decreases=0 cfg_gate=19
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_07-21-54.log
+make: *** [Makefile:625: verify-kernel] Error 101
+<shellId: ...
+
+────────────────────────────────────────────────────────────
+Turn 229
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "verifie
+[RESULT ✓] bash: 20:error: expected `,`
+26:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+=== locs ===
+21:    --> src/kernel/src/mm/phys/frame.rs:1193:31
+<shellId: 109 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 230
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '18,26p';
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: expected `,`
+    --> src/kernel/src/mm/phys/frame.rs:1193:31
+     |
+1193 |                         assert(index as int < pre_nb);
+     |                               ^^^^^^^^^^^^^^^^^^^^^^^
+
+error: cou...
+
+────────────────────────────────────────────────────────────
+Turn 231
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm running into a parsing ambiguity with the cast operator — `index as int < pre_nb` is being interpreted as `as (int < pre_nb)` instead of `(index as int) < pre_nb`, so I need to add parentheses around the cast to clarify the precedence.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 232
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -6
