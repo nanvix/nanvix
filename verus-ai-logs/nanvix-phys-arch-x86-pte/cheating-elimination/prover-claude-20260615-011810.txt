@@ -224,3 +224,75 @@ Turn 6
 ────────────────────────────────────────────────────────────
 Now let me run the baseline verification for arch:
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-arch 2>&1 | ta
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+[THINKING] I'm looking at some cheating detection metrics across the architecture crate, specifically checking the external_body and cfg_gate values to understand where the issues are occurring.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls verus-ai-logs/verify-arch/verus-logs/ && echo "---" && grep -rn "cfg_gat
+
+[THINKING] The three external_body items detected are all listed in tcb-allowed.md, so they're permitted even though they fall outside the pte module scope. I need to figure out what cfg_gate=4 means and whether that affects the analysis.
+
+The core issue is that verify-arch reports CHEATING_DETECTED, but the pte module itself has no cheating—it already verifies cleanly. The task asks me to eliminate all cheating so verify-arch passes without warnings, but I need to understand whether the cfg_gate violations are actually in the pte module or in the allowed TCB functions, and whether the four listed functions I'm supposed to work with actually have contracts and verify properly.
+[RESULT ✓] bash: cheating-detail.txt
+coverage-unverified.txt
+verus_2026-06-14_08-09-50.log
+verus_2026-06-14_08-10-07.log
+verus_2026-06-14_08-13-23.log
+verus_2026-06-14_08-13-34.log
+verus_2026-06-14_08-14-25.log
+verus_2026-06-14_08-18-15.log
+verus_2026-06-14_08-18-29.log
+verus_2026-06-14_08-20-25.log
+verus_2026-06-14...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "cfg_gate\|cfg-gate\|cfg_keep\|verus_keep_ghost\|cfg(" scripts/veri
+
+[THINKING] I need to examine the verify.sh script to see how it counts cheating instances, particularly the cfg_gate mechanism and how it determines whether the module passes or fails based on cheating detection.
+[RESULT ✓] bash: 476:# Count cfg-gated exec code (cheating indicator).
+478:count_cfg_gates() {
+486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATIN...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-arch MODULE=x8
+
+[THINKING] When MODULE is set, the verification becomes module-scoped, so I'm running the check specifically for the pte module at `x86::mem::paging::pte`. Now I'm counting the cfg_gate occurrences in pte.rs—there are `#[cfg(verus_keep_ghost)]` attributes on lines 9 and 11, plus `#[cfg_attr(verus_keep_ghost, ...)]` on lines 85 and 307.
+
+Let me just run the module-scoped verification to see what the pte module reports.
