@@ -906,3 +906,114 @@ Verus-verified counterpart using tree-sitter AST ...
 ────────────────────────────────────────────────────────────
 Turn 18
 ────────────────────────────────────────────────────────────
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -- src/kernel/src/hal/platform/microvm/mod.rs | head -10;
+[RESULT ✓] bash: 194b299b8 [verus] verify PASS: kernel::hal::platform::microvm (1 verified, 0 errors)
+b899eda4e [verus-ai] caller-analysis START: hal-platform-microvm
+b52e0c915 [kernel] E: Introduce NFRAMES constant
+f7ecbec1a [uservm] E: Decouple initrd command line
+7ad7c45d8 [kernel] F: Add kernel arguments to comm...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && BASE=b52e0c915 && echo "=== ast count vs $BASE ==="; python3 /home/ruize/ve
+[TOOL] report_intent: Collecting final counts
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 - <<'PY'
+import re
+from pathlib import Path
+base=Path('src/kernel/s
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1.     - mm/phys/frame.rs:136 alloc: admit
+2.     - mm/phys/frame.rs:213 alloc_contiguous: admit
+3.     - mm/phys/frame.rs:298 free: admit
+4.     - mm/phys/frame.rs:379 share: admit
+5.     - mm/phys/frame.rs:442 refcount: admit
+6.     - mm/phys/frame.rs:497 book: admit
+7.     - mm/phys/frame.rs:535 ...
+[RESULT ✓] bash: [admit] count=0
+[assume] count=0
+[external_body] count=0
+[assume_specification] count=0
+[cfg_verus_keep_ghost] count=2
+  src/kernel/src/hal/platform/microvm/mod.rs:9: #[cfg(verus_keep_ghost)]
+  src/kernel/src/hal/platform/microvm/mod.rs:11: #[cfg(verus_keep_ghost)]
+[verus_rewrite] count=0
+<shellId: ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[RESULT ✓] bash: === ast count vs b52e0c915 ===
+✅ Consistent: 28 functions, 3 structs match.
+=== summary ===
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+disable_interrupts                  ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/kernel
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: unrecognized arguments: --output
+<shellId: 32 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+AST consistency PASS — all 28 functions and 3 structs match. Now spec_drift and verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== spec_drift git-diff --before HEAD (as instructed) ==="; python3 /
+[RESULT ✓] bash: === spec_drift git-diff --before HEAD (as instructed) ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contrac...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+No spec drift. Now let me run the actual verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "verify-kernel" Makefile 2>/dev/null | head; echo "---"; ls Makefil
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+---
+Makefile
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=hal::platform::microvm 2>&1 | tail -40
