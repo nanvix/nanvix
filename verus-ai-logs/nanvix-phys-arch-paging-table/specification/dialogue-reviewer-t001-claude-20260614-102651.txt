@@ -157,3 +157,322 @@ I'll start by gathering evidence: reading the source files and running verificat
 7. // A `TableInde...
 [RESULT ✓] view: 1. verus! { } // verus!
 2. 
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). Let me find the context files and tools referenced in the checklist.
+[TOOL] report_intent: Locating context files and tools
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-arch-paging-table/ 2>/dev/null; echo "---SPEC DIR---"; find ve
+[TOOL] bash: cd /home/ruize/nanvix-phy && find . -name 'fn_coverage.py' 2>/dev/null; echo "---"; find . -path ./build -prune -o -name
+
+[THINKING] The verification succeeded, so now I need to track down the context files referenced in the checklist—things like the caller analysis, view design, and bugs documentation. These placeholders haven't been populated yet, so I'm going to explore the verus-ai-logs directory to find the relevant analysis files and locate the fn_coverage.py tool.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+pipeline.log
+pipeline_state.json
+specification
+usage.jsonl
+verification-plan.json
+verus-unsupported.md
+view-design
+view_design.md
+---SPEC DIR---
+verus-ai-logs/nanvix-phys-arch-paging-table/verification-plan.json
+verus-ai-logs/nanvix-p...
+[RESULT ✓] bash: ---
+./.github/ISSUE_TEMPLATE/bug-report.md
+./.github/skills/gdb-debugging/SKILL.md
+./verus-ai-logs/nanvix-phys-bump-allocator/find_callers_lsp_output.md
+./verus-ai-logs/nanvix-phys-bump-allocator/caller_analysis.md
+./verus-ai-logs/nanvix-phys-bump-allocator/view_design.md
+./verus-ai-logs/nanvix-phys...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Let me read the key context files.
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/verus-unsupported.md
+[RESULT ✓] view: 1. # Caller Analysis: `arch::x86::mem::paging::table`
+2. 
+3. ## Script Output
+4. 
+5. Raw `find_callers_lsp.py` output reported **7 public exec functions, 0 private,
+6. 2 types (`Table`, `TableIndex`)** and — importantly — **0 external callers for
+7. every public function** (only internal callers of ...
+[RESULT ✓] view: 1. # View Design: `arch::x86::mem::paging::table`
+2. 
+3. ## Abstract Resource
+4. 
+5. To callers this module is **a single hardware page-table page**: a fixed-length
+6. array of `PAGE_TABLE_LENGTH` (= 1024) typed entries, addressed by a *validated*
+7. in-range index (`TableIndex`) and backed by volat...
+[RESULT ✓] view: 1. # Bugs — `arch::x86::mem::paging::table`
+2. 
+3. No code bugs were found in this module. All scope functions admit correct
+4. specs as written; the only obstacles are a Verus language limitation and a
+5. deferred abstraction, both recorded below for the proving phase.
+6. 
+7. ## Not a code bug — Ve...
+[RESULT ✓] view: 1. # Verus-Unsupported Constructs — `arch::x86::mem::paging::table`
+2. 
+3. This file records language/library constructs in the `table` module that Verus
+4. cannot translate or verify, together with the minimal reproduction and the
+5. trust-boundary mitigation used.
+6. 
+7. ## 1. Integer-to-pointer c...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Now let me check coverage details, cheating details, and the in-scope function list.
+[TOOL] report_intent: Checking coverage and cheating details
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== CHEATING DETAIL ==="; cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.tx
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/nanvix-phys-arch-paging-table/verification-plan.json 2>/dev/null | head -
+
+[THINKING] I'm reviewing the verification results and coverage metrics—the external_body cases for read/write operations are justified trust boundaries given the int-to-ptr casts, and only 7 out of 525 functions have contracts. Now I need to examine the coverage-unverified list and cheating details, then cross-reference with the callers and verification plan.
+
+Looking at the in-scope functions and their specs, I see that most have ensures clauses, but Table::read and Table::write are marked external_body without specs, and the trait methods from_raw and raw lack contracts entirely. Let me check the cheating detail file and coverage output to identify which functions are missing contracts, then look for the spec_drift and verification commands in the checklist.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === CHEATING DETAIL ===
+    - x86/mem/paging/table.rs:195 read: external_body
+    - x86/mem/paging/table.rs:215 write: external_body
+
+=== COVERAGE UNVERIFIED (table-related) ===
+  test_paging_flag
+  test_paging_structure_base_address
+  test_paging_structure_base_address_alignment
+  redirectable
+  is...
+[RESULT ✓] bash: {
+  "target": "src/kernel/src/mm/phys/frame.rs",
+  "entries": [
+    "src/kernel/src/mm/phys/frame.rs:Inner::alloc",
+    "src/kernel/src/mm/phys/frame.rs:Inner::alloc_contiguous",
+    "src/kernel/src/mm/phys/frame.rs:Inner::free",
+    "src/kernel/src/mm/phys/frame.rs:Inner::share",
+    "src/kernel/sr...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp /home/ruize/nanvix-phy/scripts -type f \( -name '*.py' -o -name '*.sh' \) 2>/dev/null | gr
+
+[THINKING] I need to search more broadly for the fn_coverage.py script and locate the verus-ai-exp directory that's being referenced in the environment variable.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py
+/home/ruize/verus-ai-exp/verus-ai/scripts/refinement_coverage.py
+/home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py
+/home/ruize/verus-ai-exp/verus-ai/.venv_ocr/lib/python3.12/site-packages/pip/_internal/cli/autocompletion.py
+/home/ruize/v...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Let me run the fn_coverage and spec_drift scripts to get concrete data.
+[TOOL] report_intent: Running coverage and drift scripts
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help 2>&1 | head -30; ec
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/libs/arch/src/x86/mem/
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check 2>&1 | head -40
+
+[THINKING] I need to figure out what files fn_coverage expects—it needs both a source_file and verus_exec_file, and in this case they're pointing to the same table.rs file since the Verus annotations are already there. Let me check the pipeline_state.json to understand the command structure and see if body_removed_source.rs is the right comparison file to use.
+[RESULT ✓] bash: usage: spec_drift.py check [-h] [--phase PHASE] [--logs-dir LOGS_DIR]
+                           [--before BEFORE] [--after AFTER] [-o OUTPUT]
+                           [--json]
+                           module
+spec_drift.py check: error: the following arguments are required: module
+<shellId: 8 co...
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/libs/arch/src/x86/mem/paging/table.rs`
+- **Verus file:** `src/libs/arch/src/x86/mem/paging/table.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy/src/libs/arch/src/x86`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Sour...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -o '"module"[^,]*' verus-ai-logs/nanvix-phys-arch-paging-table/pipeline_state.json | h
+
+[THINKING] Looking at the coverage report, I found 7 executable functions in this file: from_address, into_raw, new, pd_index, pt_index, read, and write. The trait methods raw and from_raw aren't included since they're defined elsewhere. Checking which ones have requires/ensures clauses, I see that new, into_raw, pd_index, and pt_index all have ensures blocks, while from_address appears to have one as well.
+
+However, read and write are marked as external_body with no postconditions at all. Read returns an Option but has no ensures clause, and write is a void function with no specification either. The design document explicitly defers these specs to a future permission layer, so the question is whether that's acceptable for the current spec phase. Let me check the spec_drift with the module identifier to see what this reveals.
+[RESULT ✓] bash: ---try check---
+Module:   nanvix-phys-arch-paging-table
+Phase:    specification
+Source:   /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs
+Baseline: 6b53570e2e94
+Current:  HEAD
+
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Let me check the precedent: do the cited external_body trust boundaries (bump_allocator::alloc, frame::instance) carry requires/ensures?
+[TOOL] report_intent: Checking external_body precedent
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn 'external_body' src/kernel/src/mm/phys/frame.rs src/libs/ 2>/dev/null | grep -iE '
+[TOOL] bash: cd /home/ruize/nanvix-phy && find src -name 'bump_allocator*' 2>/dev/null; grep -rln 'fn alloc' src/libs/ 2>/dev/null | 
+
+[THINKING] Checking the pre-existing specs in identity_map.spec.rs to make sure nothing got weakened—the earlier `assume_specification` calls for pd_index, pt_index, from_address, read, and write were all state-free, and now the in-module specs are adding ensures clauses, so they're actually strengthened. The drift check passes cleanly. Now I need to verify the cross-module regression by running verify-arch, which completed successfully with exit 0 across all modules. But I'm noticing something concerning: the fn_coverage shows 7/7 matched, yet read and write have external_body annotations with no ensures clauses at all. The checklist demands "every in-scope exec function has requires/ensures," and even though external_body functions are trusted, they should still have ensures describing their abstract contract—but the actual code has none. This contradicts what verus-unsupported.md says about how external_body functions should work.
+
+The As-Built Decision deferred the entries map to the permission layer, which means read and write genuinely can't express meaningful postconditions in the addr-only view. But the real question is whether this addr-only view itself is a spec-phase failure that requires rolling back the view-design decision. The tool flags this as CHEATING_DETECTED because read and write are the module's own functions marked external_body, and the reviewer is strict about this.
+
+However, external_body here is justified by a documented Verus limitation (int-to-ptr cast), the same pattern accepted in prior modules like bump_allocator and frame. The issue isn't that external_body is wrong—it's that even trust-boundary functions should have requires/ensures describing the abstract contract. read and write have none, so callers get zero specification. Caller analysis shows no verified caller actually depends on them today (all admit), so functionally nothing is lost, but the spec-phase deliverable is supposed to provide usable contracts. The addr-only view fundamentally prevents meaningful specs for these functions, and that constraint was a deliberate choice in view-design.
+
+Now I'm reconsidering whether adding a permission token to read/write could work locally. The cascade concern is real: read/write are called by identity_map's ensure_pt/ensure_pte/identity_map_page, which are out of scope and admit their bodies. If read/write gain a tracked parameter, those call sites would need to provide it, which is a signature change that would cause type errors even with admit(). So the cascade is unavoidable—it's not just a proof obligation but a structural change that bleeds into out-of-scope code. The addr-only decision is genuinely justified.
+
+But now I'm wondering if there's a precedent I should check. External_body functions are trust boundaries, and I need to see how prior modules like bump_allocator handled this—did their external_body functions like alloc carry requires/ensures, or are they exempt from the coverage requirement?
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: src/libs/bump_allocator/src/lib.rs:266:    // SAFETY-SPEC: `external_body` because the success path materializes a
+src/libs/bump_allocator/src/lib.rs:271:    #[verus_verify(external_body)]
+src/libs/bump_allocator/src/lib.rs:344:    // SAFETY-SPEC: `external_body` for the same reason as `alloc` (it d...
+[RESULT ✓] bash: src/libs/bump_allocator
+src/libs/bump_allocator/src/lib.rs
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 655. static mut INSTANCE: MaybeUninit<Inner> = MaybeUninit::uninit();
+656. 
+657. /// Whether the frame allocator has been initialized.
+658. static INSTANCE_INIT: AtomicBool = AtomicBool::new(false);
+659. 
+660. /// Returns a mutable reference to the initialized singleton.
+661. //
+662. // Trust bounda...
+[RESULT ✓] view: 240.     /// backend causes independent bump counters, which leads to overlapping slot reservations
+241.     /// and undefined behavior (multiple `&'static mut` references to the same memory).
+242.     ///
+243.     pub const unsafe fn new() -> Self {
+244.         Self {
+245.             next_slot: A...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Let me run final checks: grep for cheating patterns in the module files, check for loops, and run the build.
+[TOOL] report_intent: Running final cheating and build checks
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== grep cheating in table files ==="; grep -nE 'admit|assume|external_body|trusted|a
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE '^[a-z-]+:|build:' Makefile 2>/dev/null | head -20
+
+[THINKING] The key issue is that the precedent cases—bump_allocator::alloc and frame::instance—both use external_body but still include full `#[verus_spec]` contracts with requires and ensures clauses, which is exactly what external_body trust boundaries are supposed to do: trust the implementation while still documenting the abstract contract for callers. The table.rs `read` and `write` methods break this pattern by being external_body with no contract specifications at all, which is inconsistent with the established precedent.
+
+The addr-only view design genuinely prevents meaningful specs here—`read` can't ensure anything about the returned value without an entries map, and `write` has no observable state changes to specify—but this is a root cause traceable back to the view-design phase, which documented why that choice was made. Now I need to evaluate what a strict reviewer should flag: the checklist items around requiring/ensuring on all in-scope exec functions, meaningful error path contracts, specs that are actually usable by callers, and view consistency all fail for read and write.
+
+The key tension is whether the addr-only deferral is acceptable as a spec-phase deliverable. The precedent (frame::instance, bump alloc) shows that the same trust-boundary pattern carries full contracts, so holding table to that standard would mean read/write must have requires/ensures. But the cascade argument shows adding a tracked permission parameter would break out-of-scope callers. However, frame::instance uses external_body and writes ensures referencing a global ghost view function without adding any tracked parameter—so maybe table could do something similar here.
+
+The problem is table lacks a global memory view function, and with an addr-only view, there's no way to pin read's result without a memory model. So the addr-only decision genuinely blocks it. I need to treat the missing contracts as a failure of the "every exec fn has requires/ensures" rule, but the root cause is upstream. Before rolling back, I should attempt a local fix: can I add meaningful specs to read/write without cascading? For write, with addr-only view and &self, I can't ensure any state change. For read, the unsafe safety contract is already enforced by TableIndex's type invariant. The real question is whether the external_body uses themselves are acceptable trust boundaries—they're documented and mirror accepted precedent, so that part should be fine.
+
+The core issue is that read and write are external_body trust boundaries with no contracts at all, which violates the checklist. I should verify if there's already a tcb-allowed.md entry for these, but my job as reviewer on turn 1 is to walk the checklist, mark the first failure, and write a focused fix request. The fix request should ask for abstract-contract ensures on read/write following the precedent of frame::instance and bump_allocator::alloc that this module claims to mirror. If the addr-only view can't support meaningful ensures, that's evidence the view design itself needs revisiting—but I should request the local fix first and let the implementer decide if it cascades. So I need to mark this as FAIL on the coverage checklist for read/write specifically, and request that the fixer add abstract contracts following the established precedent. If they come back showing with tool output that it cascades into other failures, then we escalate — that's the proper review dialogue. But first I should verify whether the trait methods `raw` and `from_raw` also lack specs, since they're in-scope and the round-trip law was deferred too.
+
+Looking at the trait declaration in table.rs and the implementations in pde.rs/pte.rs, both trait methods are missing requires/ensures. So we have multiple in-scope functions without specs: `read`, `write`, `TableEntry::from_raw`, and `TableEntry::raw`. This is a real spec-phase gap stemming from the addr-only view deferral.
+
+That said, the view_design.md decision is documented and reasoned — read/write are external trust boundaries and the entries/round-trip specs were deferred because threading the token cascades into out-of-scope callers. The asymmetry with frame::instance is justified since no global memory view exists for table yet. An honest strict reviewer would acknowledge that the in-scope verifiable functions (new, into_raw, pd_index, pt_index, from_address) all have solid specs, while read/write/raw/from_raw are deferred trust boundaries with documented justification and no verified callers depending on them.
+
+But the rules are clear: don't accept justifications as fixes. I should FAIL the "every in-scope exec function has requires/ensures" criterion and require the fixer to either add expressible contracts or produce cascade evidence. This keeps the dialogue honest. Let me do a few final checks — grep for admit/assume/trusted across the table files and verify the build passes before writing the full review.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 230:    # Profiling build: release performance + debug symbols + frame pointers.
+378:update-sysroot-link:
+393:dump-sccache-stats:
+411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:a...
+[RESULT ✓] bash: === grep cheating in table files ===
+src/libs/arch/src/x86/mem/paging/table.rs:194:    #[verus_verify(external_body)]
+src/libs/arch/src/x86/mem/paging/table.rs:214:    #[verus_verify(external_body)]
+=== loops ===
+26:/// Trait bound for entry types that can be stored in a page table.
+145:/// responsi...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+I have all the evidence I need. Let me verify the dialogue directory and write the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-arch-paging-table/specification/dialogue/ 2>/dev/null; mkdir -
+
+[THINKING] The verify-arch build already completed successfully in dev profile, so I know the code compiles. Now I'm ready to assemble the full checklist verdict with all the evidence I've gathered.
+
+Looking at the specification coverage across the seven exec functions: `read` and `write` are external_body with no requires/ensures at all, while `new`, `into_raw`, `pd_index`, `pt_index`, and `from_address` have specs. The trait methods `raw` and `from_raw` also lack specs despite being in-scope. This mirrors the precedent functions like `bump_allocator::alloc` which do carry full specs despite being external_body, so this is a clear gap.
+
+For caller coverage, the analysis shows callers depend on specific behaviors—read returning None for invalid addresses, read-after-write round-trips, write only touching slot i—but none of these are formally expressed in the specs. The pd_index, pt_index, into_raw, and from_address functions do meet their caller expectations though.
+
+View consistency is mixed: the specced functions properly reference View and maintain the type invariant, while read and write don't reference view at all (only addr), which aligns with the addr-only view design. The specced functions pass this check, but the unspecced ones create an inconsistency.
+
+For tautological ensures, the specced functions avoid them, though the bump precedent elsewhere uses `Err(_) => true` which is tautological. And into_raw's ensures stating `result < PAGE_TABLE_LENGTH` AND `result as nat == self@` needs checking for subsumption. Checking items 8 through 14 of the verification checklist. vstd search is N/A since there's no assume_specification, so that passes. The specs for pd_index, pt_index, into_raw, and from_address are caller-facing, but read, write, raw, and from_raw provide nothing — that's a failure tied to the earlier issue. The TableEntry trait methods raw and from_raw lack specs entirely, leaving the round-trip semantic contract unspecified, which violates the trait obligation requirement. Spec completeness is also incomplete across read, write, and trait methods. There are no loops to check. The critical issue is external_body on the module's own functions (read and write) — while justified by Verus limitations and documented precedent, it creates a contract-free trust boundary, which I'm marking conditional since it needs to carry contracts like prior accepted cases. The spec_drift check is still in progress. (b) requires demonstrating the cascade with a concrete compile error, or finding a workaround. But actually, I'm realizing the cascade argument might be a strawman — the frame::instance pattern shows you can reference a global ghost spec function without threading a permission token as a parameter, which keeps caller signatures intact. So the real fix is to model table memory as a global ghost spec function like phys_view(), then give read and write ensures clauses that reference it, avoiding any signature change and the cascade problem entirely.
+
+This is within spec-phase scope since it's just adding spec functions and ensures attributes with no executable signature changes. I'll write the fix request now, walking through the full checklist but focusing on this concrete solution for the deferred contracts, then create the dialogue directory and start the driver document.
+[RESULT ✓] bash: ok
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/specification/dialogue/turn_001_driver.md
+
+[THINKING] Now I'm putting together the full review checklist.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/specification/dialogue/turn_001_driver.md with 8149 characters
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Turn 1 review complete. Summary:
+
+**`make verify-arch`: exit 0** (all modules pass, builds clean). **No spec drift.** The verified pure functions — `TableIndex::new`, `into_raw`, `pd_index`, `pt_index`, `Table::from_address` — all carry correct, caller-usable specs.
+
+**Core FAIL (#1):** `Table::read`, `Table::write`, and the in-scope `TableEntry::raw`/`from_raw` trait methods carry **no requires/ensures at all**. They're `external_body` *contract-free* trust boundaries — callers get nothing (None=invalid, read-after-write round-trip, trait round-trip law all unexpressed).
+
+**Why I rejected the deferral justification:** `view_design.md` defers these claiming a permission parameter would cascade into out-of-scope `admit()` callers. But the precedents this module explicitly cites — `frame::instance` (`frame.rs:668`) and `bump_allocator::alloc` (`lib.rs:271`) — are *also* `external_body` yet carry full contracts referencing a **parameter-free global ghost view** (`phys_view()`), with no signature change and no cascade. So the cascade rationale is a strawman.
+
+**Fix request written** to `turn_001_driver.md`: add contracts to `read`/`write`/trait methods via a parameter-free global ghost memory model (mirroring `frame::instance`), verify with `make verify-arch` + `fn_coverage.py` + `spec_drift.py`; or produce the concrete cascade compiler error to justify escalation.
+
+**STOP not created** — FAIL items #1, #2, #6, #9, #10, #11, #13 remain open.
+
+[THINKING] I've wrapped up the first pass with a full review and a targeted fix for the initial failure, but I'm holding off on marking this complete since there are still open issues to address.
+
+
+=== Session End ===
+Session: 483259bb-c863-4ac6-a9e5-69f1818c00a7
+Duration: 290.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/specification/dialogue-reviewer-t001-claude-20260614-102651.jsonl
