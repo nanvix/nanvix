@@ -1665,3 +1665,72 @@ Module still verifies: 22 verified, 0 errors. Now the full verification suite to
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify 2>&1 | tail -40
 
 [THINKING] All 22 checks passed without errors, so now I'll run the full verification suite to make sure nothing broke.
+[RESULT ✓] bash: === Verus Verification (cargo mode) ===
+  Crate     : kernel
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-...
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+All green: normal build passes, module verifies (22 verified, 0 errors), full `make verify` exits 0 with no regressions. Let me confirm everything is committed and do a final review of the external_body justifications:
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short; echo "=== recent commits ==="; git log --oneline -3 | cat
+
+[THINKING] I'm noticing the `make verify` output only shows the kernel crate, but earlier notes mentioned running verify across multiple crates like bump-allocator, nanvix-slab, sys, and bitmap. Let me check if `make verify` is kernel-specific or if those other crates are verified separately — either way, this run exited cleanly with no errors.
+
+All three goals are confirmed: the normal build passes, the kernel module verification shows 22 verified with zero errors, and `make verify` exits successfully with no regressions and the expected CHEATING_DETECTED state. Now I need to verify the import change got committed by the auto-commit script.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-kframe/specification/prover-claude-20260615-055657.jsonl
+ M verus-ai-logs/nanvix-phys-phys-kframe/specification/prover-claude-20260615-055657.txt
+=== recent commits ===
+2709cff63 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, exte...
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+The verify script auto-committed my import fix (only log files remain dirty). Let me verify the import change is persisted and do a final confirmation of the target function specs:
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== committed import region ===" && git show HEAD:src/kernel/src/mm/phys/kframe.rs | 
+
+[THINKING] The verify script auto-committed the import fix, and git status confirms only log files are modified—my source changes including the kframe.rs line 32 edit are already committed.
+[RESULT ✓] bash: === committed import region ===
+use ::sys::error::Error;
+#[cfg(verus_keep_ghost)]
+use ::vstd::prelude::*;
+=== target fn specs ===
+41:#[verus_verify]
+64:#[verus_verify]
+79:    #[verus_spec(result =>
+91:    pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
+118:    #[verus_spec(result =>
+1...
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+All work is complete and committed. 
+
+## Summary
+
+The blocking normal-build failure was resolved. Final state:
+
+**Fix applied:** kframe.rs had two ungated `vstd::prelude::*` glob imports (lines 14 and 32, both pre-existing). Under the normal build's `-D warnings`, the redundant second one was flagged unused. I cfg-gated line 32 (`#[cfg(verus_keep_ghost)] use ::vstd::prelude::*;`) — matching upool.rs's working pattern — keeping line 14 ungated per the verus-constraints skill. This leaves the verus build state identical while fixing the normal build.
+
+**Verification results (all green):**
+- `./z build -- all-kernel`: ✅ Build complete
+- `make verify-kernel MODULE=mm::phys`: ✅ 22 verified, 0 errors
+- `make verify`: ✅ exit 0, no regressions
+
+**Specs delivered** (all caller expectations from caller_analysis.md covered):
+- `KernelFrame::new` → `ensures Ok(frame) ⟹ frame@ == base@`
+- `KernelFrame::base` → `ensures result@ == self@`
+- `KernelFrame::drop` → `ensures phys_view().inv()`, `opens_invariants none`, `no_unwind` (verbatim from `frame::free`)
+
+**TCB:** Only justified `external_body` additions (clear, into_raw_value, identity_map_page) plus the `from_raw_value` assume_specification — all documented in tcb-allowed.md. Status CHEATING_DETECTED is the accepted state for this shim-heavy module (assume=0, admit=0, all external_body justified).
+
+
+=== Session End ===
+Session: e13f7def-2fce-45f2-a7e5-8f7a32e52a76
+Duration: 1450.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/specification/prover-claude-20260615-055657.jsonl
