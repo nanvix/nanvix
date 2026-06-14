@@ -30,6 +30,17 @@
       "review_file": null,
       "duration_s": 213.1,
       "review_rounds": 0
+    },
+    "specification": {
+      "phase": "specification",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-RESOLVED",
+      "review_file": null,
+      "duration_s": 1977.6,
+      "review_rounds": 1
     }
   },
   "prover_session_id": "d56498a2-8389-421b-bdd0-1a34fcb6c6f2",
@@ -38,7 +49,8 @@
   "verus_branch": "verus-ai/phys-upool",
   "phase_boundary_shas": {
     "caller-analysis": "92031160111facf193a8110a96383bf67001503a",
-    "view-design": "210425703bc269e07076558969af98c1bbe0d0dd"
+    "view-design": "210425703bc269e07076558969af98c1bbe0d0dd",
+    "specification": "8d4e65c1456ca115f74484d18d38544fddb2a9a4"
   },
   "phase_start_shas": {
     "caller-analysis": "f0eee62b23c5446966da6be387c6b556c237fc8b",
@@ -74,6 +86,12 @@
       "phase": "specification",
       "event": "start",
       "sha": "210425703bc269e07076558969af98c1bbe0d0dd",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "specification",
+      "event": "end",
+      "sha": "8d4e65c1456ca115f74484d18d38544fddb2a9a4",
       "rollback_iter": 0
     }
   ],
