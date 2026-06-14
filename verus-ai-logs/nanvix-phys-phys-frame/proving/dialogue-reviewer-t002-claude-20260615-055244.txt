@@ -135,3 +135,107 @@ The fixer only completed FIX 1 (parse). The 3 admits and 2 assume_specifications
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "proof! {\|proof {" src/kernel/src/mm/phys/frame.rs | grep -v "proof! {"; ech
 
 [THINKING] The fixer only resolved the parse errors but left the three admits and two assume_specifications untouched. Let me verify the specific lines to confirm the current state and run a full check to see what still needs fixing.
+[RESULT ✓] bash: === (empty above = no bare proof blocks) ===
+    |         ---------------------------- failed precondition
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:497:17
+    |
+497 |                   Ok(()) => {
+    |                   ^^^^^^ failed this postcondition
+...
+515 | /...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+FIX 1 confirmed done (Verus now runs: 71 verified, 4 errors). But 3 admits remain (suppressing errors in alloc/alloc_contiguous/alloc_range) and 4 NEW verification errors surfaced. Let me get all 4 error locations.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "^error\|frame.rs:[0-9]" /tmp/verify2.log | head -40
+
+[THINKING] The parsing fix is working—Verus verified 71 cases with 4 errors remaining. The three admits at lines 137, 214, and 613 are masking those errors, so the 4 failures must be coming from different methods. I need to track down where those 4 errors are actually occurring.
+[RESULT ✓] bash: 16:error: postcondition not satisfied
+17:   --> src/kernel/src/mm/phys/frame.rs:270:17
+31:error: postcondition not satisfied
+32:   --> src/kernel/src/mm/phys/frame.rs:359:17
+40:error: precondition not satisfied
+41:   --> src/kernel/src/mm/phys/frame.rs:452:13
+51:error: postcondition not satisfied
+52...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for ln in 137 214 270 359 452 497 613; do fn=$(awk "NR<=$ln && /fn /{name=\$0; lno=NR
+
+[THINKING] I'm looking at verification errors in the frame.rs file across several functions—postcondition failures in `free`, `share`, and `book`, plus a precondition issue in `refcount` that needs alignment lemma support. There are also three admits scattered through the allocation functions that need to be resolved.
+[RESULT ✓] bash: err/admit line 137 -> 136:     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+err/admit line 214 -> 213:     fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+err/admit line 270 -> 213:     fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] grep: ^    fn |^    pub fn 
+
+[THINKING] The awk approach isn't capturing function boundaries correctly since it just grabs the last function declaration before each line, but functions can span multiple lines. I need to map out all the function definitions with their line numbers to get accurate boundaries.
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:136:    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:213:    fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+/home/ruize/nanvix-phy-specs/sr...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep "frame.rs" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt | grep -i 
+
+[THINKING] I'm mapping the admit calls to their corresponding allocation functions—137 maps to `alloc` at line 136, and 214 maps to `alloc_contiguous` at 213. But there's something odd: line 270 shows an error in `alloc_contiguous` where the postcondition isn't satisfied, yet the admit call is at 214. If admit is supposed to make everything pass, why would there be a postcondition failure downstream? Unless the admit is nested inside a conditional branch, which would change when it actually executes. Let me trace through the code more carefully to see where line 270 actually falls.
+
+Actually, I'm realizing line 270 isn't in the function body itself—it's in the spec attribute above `free`. The error is pointing at the postcondition location in the `#[verus_spec]` block, not the actual function implementation. So the errors are scattered across different functions: line 270 is `free`'s postcondition, 359 is `share`'s postcondition, 452 is `refcount`'s precondition, and 497 is `book`'s postcondition. Meanwhile, the admits are at 137 for `alloc`, 214 for `alloc_contiguous`, and 613 for `alloc_range`. That's seven unproven methods total, and it looks like the fixer delegated this to a background agent but never actually completed the verification work before committing.
+
+The progress report shows 71 verified methods across the whole kernel now, up from 42 earlier, but we still have 4 errors. So the first fix (parsing) is done, but the admits remain unresolved and new errors have surfaced in the free/share/refcount/book functions. I should verify that the cheating detail still lists those three frame admits.
+[RESULT ✓] bash: - mm/phys/frame.rs:136 alloc: admit
+    - mm/phys/frame.rs:213 alloc_contiguous: admit
+    - mm/phys/frame.rs:609 alloc_range: admit
+    - mm/phys/frame.rs:703 instance: external_body
+    - mm/phys/frame.rs:741 init: external_body
+    - mm/phys/frame.rs:797 alloc: external_body
+    - mm/phys/frame.r...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Confirmed. Writing the turn 2 review.
+[TOOL] report_intent: Writing turn 2 review
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_002_driver.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_002_driver.md with 6738 characters
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Turn 2 review complete. Wrote `turn_002_driver.md`. No STOP — items still FAIL.
+
+**Verdict: NOT RESOLVED.** `make verify-kernel` → 71 verified, **4 errors**.
+
+Fixer turn 1 completed only **FIX 1** (parse). Verus now runs, but:
+
+| Item | Status |
+|---|---|
+| Parse / build compiles | **FIXED** — `proof {`→`proof! {` landed |
+| Zero admit() | **FAIL** — 3 remain: `alloc`(137), `alloc_contiguous`(214), `alloc_range`(613) |
+| Verification 0 errors | **FAIL** — 4 errors: `free`(270), `share`(359), `refcount`(452 precond), `book`(497) |
+| Zero assume_specification | **FAIL** — 2 intra-crate in `frame.spec.rs:31,38` |
+| external_body in TCB | PASS |
+| No cfg-gated exec | PASS |
+| Limitation reproducers | PASS |
+| Spec-drift / exec-rewrite / cross-module | BLOCKED until above fixed |
+
+Key finding on `refcount`: its precondition error is real — the spec only guarantees `self.inv()` (no `frame.inv()`), so unaligned `frame@` can't satisfy `lemma_alloc_contains`'s alignment precondition. The body must **reject unaligned addresses**, not strengthen the (locked) spec.
+
+Fixer's FIX 2/FIX 3 were only investigated and delegated, never landed — the committed tree still has all 3 admits, 4 errors, and both assumes. I pushed back: investigation is not a fix.
+
+
+=== Session End ===
+Session: abf38b00-df42-4e7d-9aa5-2c1e8c327874
+Duration: 115.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue-reviewer-t002-claude-20260615-055244.jsonl
