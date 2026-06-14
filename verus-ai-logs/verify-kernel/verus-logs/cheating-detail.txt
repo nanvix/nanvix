@@ -18,7 +18,6 @@
     - mm/phys/frame.rs:838 free: external_body
     - mm/phys/frame.rs:880 book: external_body
     - mm/phys/frame.rs:901 alloc_range: external_body
-    - mm/phys/kframe.rs:94 new: external_body
     - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
     - mm/phys/manager.proof.rs:27 lemma_kernel_alloc_one: admit
     - mm/phys/manager.proof.rs:40 lemma_kernel_alloc_contiguous: admit
