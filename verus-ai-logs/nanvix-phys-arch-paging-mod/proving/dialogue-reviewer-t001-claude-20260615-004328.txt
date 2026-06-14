@@ -107,3 +107,199 @@ Turn 0
    1 src/libs/arch/src/x86/mem/paging/mod.proof.rs
   88 total
 <shellId: 1 completed with exit code 0>
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null
+
+[THINKING] The verification succeeded but there's evidence of cheating with external_body=3, admit=1, and cfg_gate=4. I need to examine the source files and understand what these cheating indicators mean.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:8 lemma_entry_roundtrip: admit
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 2 completed with exit code 0>
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. //==================================================================================================
+4. // Modules
+5. //=============================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== mod.spec.rs ==="; cat src/libs/arch/src/x86/mem/paging/mod.spec.r
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find . -name "tcb-allowed*" 2>/dev/null; echo "---"; cat verus-ai-logs/tcb-
+
+[THINKING] I need to focus on the specific module under review—`x86/mem/paging/mod.rs`—rather than the broader arch crate metrics. The scope includes the source file itself, its spec file, and proof file, all of which appear to be quite minimal. Let me clarify what exactly needs to be audited for this particular module. see if `invlpg` is in the tcb-allowed list.
+[RESULT ✓] bash: === mod.spec.rs ===
+verus! { } // verus!
+=== mod.proof.rs ===
+verus! { } // verus!
+=== full cheating detail ===
+     1	    - x86/mem/paging/mod.rs:80 invlpg: external_body
+     2	    - x86/mem/paging/table.proof.rs:8 lemma_entry_roundtrip: admit
+     3	    - x86/mem/paging/table.rs:209 read: externa...
+[RESULT ✓] bash: ./verus-ai-logs/tcb-allowed.md
+---
+# TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<In...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "cfg" src/libs/arch/src/x86/mem/paging/mod.rs src/libs/arch/src/x8
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -5 -- src/libs/arch/src/x86/mem/paging/mod.rs; echo "=== 
+
+[THINKING] Looking at the mod module files, I see that spec and proof are empty stubs, so the only substantive code is the `invlpg` external_body in mod.rs. I can confirm this is already listed in the tcb-allowed file under the external_body section for the paging module, so it's approved.
+
+For the checklist: there are no admits, no unlisted external_body calls, and no assume/assume_specification in the mod files themselves. The cfg attributes I'm seeing are `#[cfg(verus_keep_ghost)]` wrapping the spec and proof includes, which aren't executable code gates—they're just controlling what gets compiled in for verification versus runtime.
+
+I need to resolve those unsubstituted placeholders by checking the spec-drift-check skill and looking at git history to see if the invlpg contract matches the original upstream version, then verify the cfg_gate=4 count is actually coming from elsewhere in the crate rather than the mod module.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/mod.rs:8:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/mod.rs:10:#[cfg(verus_keep_ghost)]
+=== which exec files have cfg_gate (crate-wide) ===
+<shellId: 5 completed with exit code 1>
+[RESULT ✓] bash: 32bf28f79 [verus] verify PASS (cheating detected): arch::all (48 verified, 0 errors, admit=1 external_body=3 cfg_gate=4)
+46fbc54a1 [verus-ai] proving strip-external-body: arch-paging-mod (1)
+343e85f36 [verus] verify PASS (cheating detected): arch::all (48 verified, 0 errors, admit=1 external_body=3 ...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "cfg_gate\|cfg(" scripts/ 2>/dev/null | grep -i cfg_gate | head; e
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls .github/skills/ 2>/dev/null; echo "=== spec-drift-check skill ==="; find
+
+[THINKING] The cfg attributes in mod.rs are just the ghost-include pattern with `#[cfg(verus_keep_ghost)]`, so there's no exec code being gated there. The cfg_gate count of 4 must be coming from elsewhere in the crate, which is outside the scope of what I'm checking in this module. Let me trace back through the detection logic to see where that count is actually coming from.
+[RESULT ✓] bash: scripts/verify.sh:478:count_cfg_gates() {
+scripts/verify.sh:534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+scripts/verify.sh:559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATING_DIR")" || MOD_CFG_GATE=0
+scripts/verify.sh:584:        echo "  Globa...
+[RESULT ✓] bash: benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+=== spec-drift-check skill ===
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls verus-ai-logs/nanvix-phys-arch-paging-mod/ 2>/dev/null; echo "=== verus-
+
+[THINKING] I need to check if the spec-drift-check skill exists in the .github/skills directory, then examine the count_cfg_gates function to see what it's counting, verify the verus-constraints setup, and look at the verus-unsupported.md file for the mod module.
+[RESULT ✓] view: 478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+485. count = 0
+486. cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+487. 
+488. for rs_file in sorted(src_dir.glob('**...
+[RESULT ✓] bash: body_removed_source.rs
+caller-analysis
+caller_analysis.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+verus-unsupported.md
+view-design
+view_design.md
+=== verus-unsupported ===
+# Verus-Unsupported Constructs — `arch::x86::mem::paging` (`mod.rs`)
+
+This fil...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "MODULE\|--module\|--crate" scripts/verify.sh | head -20; echo "===
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "admit\|external_body\|assume\b\|assume_specification" src/libs/ar
+
+[THINKING] The cfg_gate count only captures cfg(verus_keep_ghost) directives that aren't paired with include!, use, extern, or mod statements—not derive or feature gates. Since mod.rs has two such cfgs followed by include! calls, they don't contribute to the count. The four cfg_gate instances must be elsewhere in the crate, and now I'm narrowing my focus to the mod module itself.
+
+I need to verify there are no admit/assume/external_body declarations in the mod files except for invlpg, which should be properly marked as tcb-allowed. Let me check if there's a module-scoped verification invocation in the scripts to get module-specific counts rather than crate-wide. I also want to confirm the invlpg contract hasn't drifted from upstream—the original had no requires/ensures (assume_specification), and the current external_body with an empty contract is equivalent in strength, so no spec weakening has occurred.
+
+Now I'm checking the build output for warnings and verifying the module-scoped counts to make this review rigorous. Let me see if verify.sh supports a module-scoped flag to run a targeted check.
+[RESULT ✓] bash: 6:#   Cargo mode:  ./verify.sh --crate <crate_name> [OPTIONS]
+24:MODULE=""
+35:Usage: $(basename "$0") (--crate CRATE | --verus-dir DIR) [OPTIONS]
+38:  --crate CRATE         Cargo crate name (uses: cargo verus verify -p CRATE).
+42:  --module MODULE       Module path to verify (e.g., "kernel::pm::thre...
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/mod.rs:77:// `assume_specification[ ::arch::mem::paging::invlpg ]` (no `requires`/`ensures`).
+src/libs/arch/src/x86/mem/paging/mod.rs:79:#[verus_verify(external_body)]
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && LOG=$(ls -t verus-ai-logs/verify-arch/verus-logs/verus_*.log | head -1); ec
+
+[THINKING] I've confirmed that the only cheating pattern in the mod files is the `external_body` on invlpg, and "assume_specification" only appears in comments—no actual assume statements or admits. Now I'm running a module-scoped verification to get counts specific to the x86::mem::paging module and confirm it passes the checks.
+
+Actually, I need to clarify the scope here. The task specifies reviewing mod.rs, mod.spec.rs, and mod.proof.rs—not the child modules like table, pde, pte, flags, and frame. Those submodules have their own review cycles, so any cheating in table.rs or table.proof.rs belongs to the table module review, not this one.
+
+For the mod module itself, I'm seeing: zero admits, one external_body on invlpg which is tcb-allowed, zero assume/assume_specification statements, and zero cfg-gated exec code. All checklist items pass for mod.rs. The make verify-arch run already completed with exit 0 and 48 verified modules with no errors, so I'm checking the logs to confirm there are no warnings.
+[RESULT ✓] bash: LOG: verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_00-44-06.log
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && LOG=$(ls -t verus-ai-logs/verify-arch/verus-logs/verus_*.log | head -1); ta
+
+[THINKING] The cached log might not include the verification results, so I need to examine the full log content directly.
+[RESULT ✓] bash: Timestamp: 2026-06-15_00-44-06
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=1
+  trusted=0
+  no_decreases=0
+  cfg_gate=4
+
+--- Full output ---
+    Finished `dev` profile [optimized + debuginfo] ta...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Let me force a non-cached verification run to confirm 0 errors/0 warnings for real.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/libs/arch/src/x86/mem/paging/mod.rs && make verify-arch 2>&1 | gr
+
+[THINKING] The build was cached with a clean exit, showing 48 verified entries and no errors or warnings according to the commit message. I'm debating whether to force a recompile to double-check the actual verification count, but that feels risky, so I'll trust the cached result.
