@@ -503,3 +503,64 @@ Turn 25
 [TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify 2>&1 | tail -25
 
 [THINKING] Got 48 verified entries with no errors, and the CHEATING_DETECTED status is expected since it's tied to the pre-existing admit flag and external body entries that are all in the allowed list. Now I'm running the verification suite to check for regressions, then building for dual compilation.
+[RESULT ✓] bash: === Results ===
+  48 verified
+  0 errors
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 48 verified, 0 errors (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=12 adm...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+verify-kernel exited 101. Let me check whether this is caused by my change (the kernel has an inherited `assume_specification` for `invlpg`) or pre-existing.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -iE "error|invlpg|conflict|duplicat" verus-ai-logs/verify-kernel/verus-logs/verus_2026-0
+
+[THINKING] The verify-kernel test is failing with exit code 101 despite showing 48 verified with 0 errors, which suggests a compilation error in the kernel crate itself. I need to determine whether this is a pre-existing issue or something my change to the arch crate introduced.
+
+The problem might be that the kernel crate has an `assume_specification` for `invlpg` in identity_map.spec.rs, but now that I've added an `external_body` contract to `invlpg` in the arch crate, there could be a conflicting specification. Let me look at the actual error to confirm.
+[RESULT ✓] bash: 0 errors
+verification results:: 48 verified, 0 errors
+error: duplicate specification for `arch::x86::mem::paging::invlpg`
+ 80 | pub unsafe fn invlpg(vaddr: usize) {
+151 | pub assume_specification[ ::arch::mem::paging::invlpg ](vaddr: usize);
+error: could not compile `kernel` (bin "kernel") due to 1 ...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Confirmed: now that the arch module provides `invlpg`'s own (trusted) contract, the kernel's inherited `assume_specification` placeholder is a duplicate. Per the rules, such placeholders are removed once the dependency module is verified. The contracts are identical (both empty), so nothing is weakened. Let me view and remove it.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] Now that the arch crate has its own verified contract for `invlpg` using the external body annotation, the kernel's duplicate `assume_specification` in identity_map.spec.rs is no longer needed—it was just a temporary placeholder before the arch module was properly verified.
+
+Since both the inherited and new contracts are empty (no requires or ensures clauses), removing the kernel's version doesn't weaken anything; the arch crate now provides the same contract. This is exactly the cleanup the rule prescribes. Let me find and remove that `assume_specification` from identity_map.spec.rs around line 151.
+[RESULT ✓] view: 140. 
+141. #[verifier::external_type_specification]
+142. #[verifier::external_body]
+143. pub struct ExPageTableBss(PageTableBss);
+144. 
+145. // --- Paging index helpers ---
+146. 
+147. // `pd_index` / `pt_index` are specified in `arch::…::paging::table` (removed here).
+148. 
+149. // --- TLB maintenan...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+I'll replace the `assume_specification` with a reference comment, matching the existing convention used for the other migrated `arch` specs in this file.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] I'm noticing the pattern where architectural specifications were moved from kernel assumptions to dedicated spec files, with comments left behind to point to the new location. I should apply the same approach to invlpg by replacing its assume_specification with a reference comment.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify 2>&1 | tail -22

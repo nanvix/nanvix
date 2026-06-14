@@ -148,7 +148,11 @@ pub struct ExPageTableBss(PageTableBss);
 
 // --- TLB maintenance ---
 
-pub assume_specification[ ::arch::mem::paging::invlpg ](vaddr: usize);
+// `invlpg` is specified in `arch::…::paging` (`mod.rs`) — an external-bottom
+// hardware trust boundary (`#[verus_verify(external_body)]`, inline-asm TLB flush),
+// recorded in `verus-ai-logs/tcb-allowed.md`. The inherited `assume_specification`
+// (empty contract) is removed here now that the dependency module provides the
+// identical trusted contract.
 
 // --- `Table` raw accessors ---
 
