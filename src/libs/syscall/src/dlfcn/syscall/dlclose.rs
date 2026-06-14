@@ -168,14 +168,19 @@ pub fn dlclose(handle: &DlHandle) -> Result<(), Error> {
         let mut registry: MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>> =
             DYNAMIC_LIBRARY_REGISTRY.lock();
         for dlfile in fini_order.iter() {
+            // Only finalize removal if no new strong references were acquired
+            // while destructors were running (e.g., RTLD_GLOBAL pin or new dependents).
+            // At this point, a removable library should be referenced only by the
+            // registry and this `fini_order` clone.
+            if Arc::strong_count(dlfile) != 2 {
+                continue;
+            }
+
             let dlhandle: DlHandle = {
                 let mut lib: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
                 let dlhandle: DlHandle = lib.handle();
                 // Detach this library's dependency edges so it releases its
-                // hold on its dependencies. The returned `Arc`s are dropped
-                // here; combined with removing this library from the registry
-                // and dropping `fini_order` below, this lets the dependencies
-                // be reclaimed.
+                // hold on its dependencies.
                 drop(lib.take_dependencies());
                 dlhandle
             };
