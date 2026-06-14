@@ -508,3 +508,77 @@ Turn 21
 [THINKING] I'm trying to figure out the right build command for the sys library in this verification task. The checklist requires running both a Verus command and a build command with zero errors and warnings. For Verus modules, the build command should compile the sys crate itself, though it looks like the verify-sys step might already handle this.
 
 I'll run the full `make verify` command to cover all crates and the kernel, which will catch any cross-module regressions. I'll kick this off in the background since it's the comprehensive check.
+[RESULT ✓] bash: cheating: assume=0 external_body=11 admit=27 trusted=0 no_decreases=0 cfg_gate=14
+  coverage: 55/1026 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_05-53-33.log
+<shellId: verifyall completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "Crate|Exit code|status:|verification:|error\[|verification failed
+
+[THINKING] The full verification run completed, and the kernel crate shows some expected cheating markers (admit, external_body, cfg_gate) since it's still a work-in-progress being proven bottom-up. The key constraint is that all verified modules must pass the cross-module regression check, and the verified crates like bitmap, sys, nanvix-slab, and bump-allocator are what actually matter for this requirement.
+
+Now I need to scan through the full log to check whether any crate actually failed verification with errors, rather than just having cheating counters—the sys crate's verification status is particularly important to confirm.
+[RESULT ✓] bash: 8:  Crate     : bitmap
+20:  Exit code : 0
+30:  verification: cached (no recompilation), — (exit 0)
+33:  status: CHEATING_DETECTED
+42:  Crate     : sys
+54:  Exit code : 0
+64:  verification: cached (no recompilation), — (exit 0)
+67:  status: CLEAN
+76:  Crate     : nanvix-slab
+88:  Exit code : 0
+98:  v...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+All crates verify with **exit 0** (no verification errors). The non-sys crates show pre-existing WIP cheating counters in other modules — unchanged by this work (cheating-phase git diff was empty). `sys` is CLEAN. Let me check for build warnings on sys.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -niE "warning|error" verus-ai-logs/verify-sys/verus-logs/coverage-unve
+
+[THINKING] All the crates are verifying successfully with exit code 0, which means there are no verification errors in the sys-virt-address scope. The "CHEATING_DETECTED" statuses showing up in other crates like bitmap and kernel are from pre-existing issues in those modules that haven't gone through the cheating-elimination process yet, so they're outside what I'm working on here. The sys crate itself is clean and everything's passing verification.
+
+Since sys-virt-address only touched virt.rs and the address directory, and the git diff for the cheating phase came back empty, nothing in the other crates actually changed — so there's no regression introduced. Now I need to verify the build has zero errors and zero warnings on the sys crate, which I can check through the verus verification log or by running a clean build.
+[RESULT ✓] bash: === latest sys verus log warnings ===
+log=verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_05-53-28.log
+warn_count=0
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && LOG=$(ls -t verus-ai-logs/verify-sys/verus-logs/verus_*.log | head -1); tai
+
+[THINKING] I'm checking the system logs to verify the results and confirm there are no warnings or errors.
+[RESULT ✓] bash: Timestamp: 2026-06-15_05-53-28
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Finished `dev` profile [optimized + debuginfo] tar...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Let me force a fresh (non-cached) compile of sys to confirm 0 warnings/errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/libs/sys/src/sys/mm/address/virt.rs && timeout 600 make verify-sy
+
+[THINKING] The cached build artifacts are masking whether there are actually any warnings, so I need to force a fresh compilation to get a true picture of the build status. Let me trigger a real rebuild of the sys library to verify there are genuinely zero warnings.
