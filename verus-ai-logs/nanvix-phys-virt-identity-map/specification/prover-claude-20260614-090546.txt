@@ -1438,3 +1438,23 @@ Adding the assume_specification...
 Turn 93
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error\[|error:|
+[RESULT ✓] bash: error: cannot find constant kernel::mm::virt::identity_map::KERNEL_PD_PADDR
+   --> src/kernel/src/mm/virt/identity_map.rs:701:27
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  0 verified
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+`KERNEL_PD_PADDR` static needs Verus visibility. Let me annotate it.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I need to make `KERNEL_PD_PADDR` visible to Verus by adding the `#[verus_verify]` attribute. The static is initialized with `AtomicUsize::new(0)`, so I'm checking whether vstd provides a specification for this constructor in the atomic specs module.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error\[|error:|
