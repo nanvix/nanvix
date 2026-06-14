@@ -638,3 +638,42 @@ Turn 36
 ────────────────────────────────────────────────────────────
 Now let me verify the lemmas compile (exec still has admit). Let me run the module verification:
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm
+[RESULT ✓] bash: 29 |     assert forall|x: int| v.mapped.contains(x) implies v.mapped.insert(page).contains(x) by {}
+   |     ^^^^^^
+
+verification results:: 9 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.62s
+
+=== Results ===
+  9 verifie...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+9 verified, 0 errors — the 5 lemmas pass. But there's a warning on line 29. Let me check it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n -B2 -A3 "line 29\|identity_map.proof.rs:29\|warning" verus-ai-logs/ve
+
+[THINKING] All five lemmas are now verified with no errors, but there's a warning on line 29 about an assert-forall statement that seems unnecessary or unreachable. Since the proving guide requires zero warnings, I need to check what the exact warning message says and address it.
+[RESULT ✓] bash: 21-
+22-note: automatically chose triggers for this expression:
+23:  --> src/kernel/src/mm/virt/identity_map.proof.rs:29:5
+24-   |
+25-29 |     assert forall|x: int| v.mapped.contains(x) implies v.mapped.insert(page).contains(x) by {}
+26-   |     ^^^^^^
+27-
+28-note:   trigger 1 of 1:
+29:  --> src/kern...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+It's a trigger auto-selection note. Let me add an explicit trigger to silence it.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.proof.rs
+
+[THINKING] The trigger selection warning can be silenced by adding an explicit `#[trigger]` annotation, though I could also simplify the monotone lemma by removing the unnecessary assert-forall and proving the subset directly through the insert axiom.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm
