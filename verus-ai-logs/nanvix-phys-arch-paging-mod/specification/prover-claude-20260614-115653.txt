@@ -354,3 +354,21 @@ Turn 14
 ────────────────────────────────────────────────────────────
 Let me run a baseline verify-arch to confirm the current state passes.
 [TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-arch 2>&1 | tail -40
+[RESULT ✓] bash: PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+/h...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Baseline passes (48 verified, 0 errors). Now let me add the annotation to `invlpg` and test whether Verus accepts the `asm!` body.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/mod.rs
+
+[THINKING] I've got a baseline of 48 verified tests with no errors, and invlpg is located in the paging module. Now I'm adding the Verus annotation to test whether it handles `core::arch::asm!` properly. Based on my analysis, the spec should have no requires clause and a trivial ensures clause, so I'll add the `#[verus_verify]` attribute and see how it behaves.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-arch 2>&1 | tail -30

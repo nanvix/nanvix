@@ -1,0 +1,34 @@
+Timestamp: 2026-06-14_11-59-01
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=2
+  admit=1
+  trusted=0
+  no_decreases=0
+  cfg_gate=4
+
+--- Full output ---
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::address::virt
+
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error: The verifier does not yet support the following Rust feature: inline-asm expressions
+  --> src/libs/arch/src/x86/mem/paging/mod.rs:72:5
+   |
+72 | /     core::arch::asm!(
+73 | |         "invlpg ({0})",
+74 | |         in(reg) vaddr,
+75 | |         options(nostack, preserves_flags, att_syntax)
+76 | |     );
+   | |_____^
+
+error: could not compile `arch` (lib) due to 1 previous error
