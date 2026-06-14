@@ -258,3 +258,38 @@ All 3 `external_body` are outside my scope (table.rs read/write are TCB-allowed;
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; touch src/libs/arch/src/x86/mem/paging/pde.rs; timeout 600 make verify-arch 2
 
 [THINKING] The external functions referenced in the pde module are all pre-existing and outside my scope, so there's nothing to address there. I'm running a fresh verification targeting just the pde module to confirm it passes cleanly, and the build completes successfully with exit 0.
+[RESULT ✓] bash: Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch)
+verification results:: 47 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 1.24s
+
+=== Results ===
+  47 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assum...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Fresh recompile: **47 verified, 0 errors**. The pde module verifies cleanly. The `CHEATING_DETECTED` status is solely from 3 pre-existing `external_body` functions outside my scope (table read/write are TCB-allowed; invlpg in mod.rs). The pde files have 0 admit/assume.
+
+Let me record the bug-reporting outcome and check for any warnings.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== bugs.md exists? ==="; ls -la verus-ai-logs/nanvix-phys-arch-x86-pde
+
+[THINKING] The verification passed with 47 confirmed functions and no errors—the CHEATING_DETECTED flags are only from three external functions outside my scope. All the pde.rs functions I'm responsible for verify cleanly with no admit or assume statements. Now I'm checking that the target functions like PageDirectoryEntry::new and PageDirectoryEntryFlags actually have proper contracts in place.
+[RESULT ✓] bash: === bugs.md exists? ===
+NO bugs.md
+=== warnings in log ===
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+No warnings. Let me create the bugs file (no bugs found) and run the full `make verify` to confirm no regressions.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/bugs.md
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify 2>&1 | tail -30
+
+[THINKING] The proofs are complete with no bugs found, so I'll create the bugs.md file documenting that. Then I need to run the full verification suite to ensure there are no regressions before wrapping up.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/bugs.md with 512 characters
