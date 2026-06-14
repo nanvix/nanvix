@@ -34,6 +34,7 @@ pub struct FrameNumber(usize);
 #[verus_verify]
 impl FrameNumber {
     /// The maximum frame number.
+    #[verus_verify(external)]
     pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
 
     #[verus_spec(ensures Self::NULL@ == 0)]
