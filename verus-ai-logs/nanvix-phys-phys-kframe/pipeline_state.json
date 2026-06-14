@@ -2,9 +2,11 @@
   "module_name": "phys-kframe",
   "log_name": "nanvix-phys-phys-kframe",
   "source_path": "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/kframe.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
-  "completed_phases": [],
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
   "phase_results": {
     "proving": {
       "phase": "proving",
@@ -26,7 +28,8 @@
     "proving": "15dac28574098e5c3ed9381f10ebba6a4fe3fa7a"
   },
   "phase_start_shas": {
-    "proving": "81a71178d1126943eafd83cf369f124f20943fdb"
+    "proving": "81a71178d1126943eafd83cf369f124f20943fdb",
+    "cheating-elimination": "039d3a2e4fa98c68f0ac505969a8d45efaf518b7"
   },
   "phase_history": [
     {
@@ -39,6 +42,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "15dac28574098e5c3ed9381f10ebba6a4fe3fa7a",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "039d3a2e4fa98c68f0ac505969a8d45efaf518b7",
       "rollback_iter": 0
     }
   ],
