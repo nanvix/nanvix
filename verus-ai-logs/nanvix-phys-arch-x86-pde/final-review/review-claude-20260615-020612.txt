@@ -368,3 +368,113 @@ Now let me run the verification and analysis scripts. Starting the longer ones i
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-arch 2>&1 | tail -40
 
 [THINKING] I've confirmed that the cfg directives on lines 9 and 11 are for ghost includes of spec and proof files, not executable code, so they're fine. The audit didn't find any admit, assume, or external_body statements in the pde files. Now I'm going to run the verification commands—make verify-arch and make build—along with the audit scripts, though these might take a while. Let me start with checking the Makefile target and launching verify-arch, though I should think about the most efficient approach to avoid build races if I'm coordinating with sub-agents. I'll run the expensive shared commands myself first and then pass the results along.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===cheating detail===" && cat verus-ai-logs/verify-arch/verus-logs/ch
+
+[THINKING] The verification shows three external_body instances in the arch crate with zero cheating violations—they're all in table.rs and mod.rs, which are listed in tcb-allowed.md and not in pde.rs. I'm checking the cheating-detail.txt file to confirm these are the only TCB-allowed external_body calls and that none appear in pde.rs.
+[RESULT ✓] bash: ===cheating detail===
+    - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+
+===external_body in arch src===
+src/libs/arch/src/x86/mem/paging/mod.rs:79:#[verus_verify(external_body)]
+src/libs/...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). The 3 external_body are all TCB-allowed (invlpg, table::read/write); none in pde.rs. Now running analysis scripts and broader builds.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===SPEC DRIFT===" && python3 /home/ruize/verus-ai-exp/verus-ai/script
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===AST CONSISTENCY===" && python3 /home/ruize/verus-ai-exp/verus-ai/s
+
+[THINKING] The external_body functions in the arch crate are all accounted for in the allowed list, while pde.rs has none of these external references. Now I'm running the remaining validation checks—function coverage, spec drift, and AST consistency first since they're quick, then kicking off the slower build and verify steps.
+[RESULT ✓] bash: ===AST CONSISTENCY===
+- **Consistent: YES**
+
+## All Functions
+
+| Function | Status | Hash Match | Verification |
+|----------|--------|------------|--------------|
+| `PageDirectoryEntry::flags` | MATCH | ✅ |  |
+| `PageDirectoryEntry::frame_address` | MATCH | ✅ |  |
+| `PageDirectoryEntry::frame_number...
+[RESULT ✓] bash: ===SPEC DRIFT===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 8 completed...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+AST consistent, no spec drift. Now running fn_coverage and the broader builds.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help 2>&
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make build 2>&1 | tail -25
+
+[THINKING] The AST checks are all passing with no drift or inconsistencies, and I haven't found any VERUS REWRITE comments in the pde.rs file. Now I need to run the fn_coverage script on the pde module to verify coverage is in scope, then execute the build and verification steps. Let me first check how to use the fn_coverage script.
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^[a-zA-Z0-9_-]+:" Makefile 2>/dev/null | head -40; echo "---"; ls
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/libs/a
+
+[THINKING] I'm seeing that `make build` returns "Nothing to be done for 'build'" which suggests the target exists but has no recipe or is already up to date. The project seems to use `z` as its build tool, but the task checklist specifies `make build`, so I need to figure out which one is actually correct by checking the Makefile and available targets.
+[RESULT ✓] bash: 378:update-sysroot-link:
+393:dump-sccache-stats:
+411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+440:init: init-repo...
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/libs/arch/src/x86/mem/paging/pde.rs`
+- **Verus file:** `src/libs/arch/src/x86/mem/paging/pde.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|---...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify 2>&1 | tail -50
+
+[THINKING] I'm noticing that `make build` doesn't actually do anything—the real build commands are `make all-nanvix` or `./z build`. The checklist references `make build`, but the actual verification step specified in the task is `make verify-arch`, which compiles the arch crate through Verus and exits cleanly. So I'll treat `make build` as a no-op and rely on `make verify-arch` combined with `make verify` for the build and verification checks.
+
+Looking at the function coverage, there are 15 executable functions total, but only the 5 in-scope ones have contracts—which is exactly what we want. The coverage requirement only applies to in-scope functions, and they all have proper requires and ensures clauses. Now I need to run the full `make verify` for cross-module regression testing, which will take a while.
