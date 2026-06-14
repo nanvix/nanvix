@@ -316,3 +316,94 @@ Spec drift: clean. Now cross-module regression and build.
 [THINKING] The spec drift check passes with no drift detected between the baseline and current state. Now I need to run the cross-module regression tests with `make verify` across all crates and ensure the build completes with zero errors and warnings, checking what the actual build command should be.
 
 For the regression check, `make verify` will run verification across all modules including the kernel, which has some known admits from the commit history. The requirement is that all verified modules must exit successfully, not necessarily that they have zero cheating. Let me run `make verify` with a generous timeout since kernel verification can take a while, then capture the pass/fail status for each crate.
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+  Crate     : bitmap
+=== Results ===
+  Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+=== Summary ===
+  verification: cached (no recompilatio...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+All crates pass (exit 0). Now the build check.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '1,60p' .github/skills/build/SKILL.md
+
+[THINKING] All the verified modules are exiting with code 0, which means the cross-module regression test passes. The cheating I'm seeing in other crates like bitmap and nanvix-slab is pre-existing and outside the scope of what I'm verifying here — those are separate modules in different pipeline stages. Since my module `sys` is clean and all verified modules pass, this requirement is satisfied.
+
+Now I need to check the build step. The verification command was `make verify-sys` and that passed, but I also need to ensure the build itself completes with zero errors and zero warnings. I'm looking at what the build command should be — likely `make` or `make all` — and I need to check the build skill documentation to confirm the exact command.
+[RESULT ✓] bash: ---
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 590 ./z build -- all 2>&1 | grep -iE "error|warning|Compiling sys|F
+
+[THINKING] The build command `./z build -- all` could be heavy for a proving phase check, so I should focus on just verifying the sys library compiles cleanly for the kernel target with no errors or warnings. Since verus already compiles the sys crate via cargo and the inline annotations need to work in non-verus mode too, I'll run a cargo check or build specifically on the sys crate to validate this.
+[RESULT ✓] bash: Compiling sys v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys)
+   Compiling syslog v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/syslog)
+   Compiling sysalloc v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sysalloc)
+   Compiling syscall v0.16.17 (/home/ruize/nanv...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== VERUS REWRITE in virt ==="; grep -rn "VERUS REWRITE\|VERUS\b" src
+
+[THINKING] The build completed successfully with no compiler errors or warnings—just a sysroot symlink note that's unrelated to the code. Now I need to work through the remaining checklist items.
+
+First, I'm checking the verus-unsupported.md file to see if any Verus limitations are claimed that would require isolated reproducers. Then I'm verifying whether there are any VERUS REWRITE comments in the code that would indicate semantic rewrites beyond what's expected.
+[RESULT ✓] bash: === VERUS REWRITE in virt ===
+=== verus-unsupported.md ===
+# Verus Unsupported Constructs — `virt` (`src/libs/sys/src/sys/mm/address/virt.rs`)
+
+Genuine Verus front-end limitations encountered while trying to attach an
+impl-level `#[verus_spec]` to `<VirtualAddress as Address>::into_raw_value`.
+Per t...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+All checklist items verified. Every item PASSES. Writing the review and STOP file.
+[TOOL] report_intent: Writing review and STOP file
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue/STOP
+
+[THINKING] The verus-unsupported.md file documents specific limitations with precise, isolated errors tied to individual constructs—like the cast errors that only appear with that exact `usize as *const u8` pattern. This represents the kind of targeted reproducer needed, and since the resolution involves adjusting the contract at the trait declaration level rather than using admits or external bodies, the verification remains clean. But I'm pausing to double-check whether this approach is actually the right one—
+
+let me verify against the full checklist: spec drift is zero, no admits or external bodies are present, no assumes or cfg-gating in the executable code, the Verus limitations are properly isolated and documented, no exec rewrites were made, and the cross-module regression tests all pass with clean builds. Every item checks out.
+
+The verification result is cached but valid since the source hasn't changed since the proving commit, so the exit 0 result is reliable. Function coverage of 2/255 isn't part of the proving checklist—that's a specification concern already addressed. I'm ready to write the review document marking all items as PASS and create the STOP file with RESOLVED status.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue/turn_001_driver.md with 4075 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue/STOP with 1090 characters
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Review complete — **RESOLVED**. All 10 proving-phase checklist items PASS with tool evidence.
+
+Key findings for `sys-virt-address`:
+- **`make verify-sys`**: exit 0, status **CLEAN** — `assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0`.
+- **Spec drift**: 0 contract drift (baseline `fe53d18963cf` → HEAD).
+- **Cross-module `make verify`**: all 6 crates exit 0; residual cheating in other crates is pre-existing/out of scope.
+- **`./z build -- all`**: `sys` + all crates compile, 0 errors/warnings (the lone `Warning:` is a `z` sysroot-symlink note, not a compiler diagnostic).
+- **Verus limitation** (`into_raw_value` impl-level spec blocked by `usize→*ptr` casts + all-or-nothing trait rule) is documented in `verus-unsupported.md` with isolated per-construct reproducers and resolved via the trait-declaration contract — no admit/external_body/assume introduced.
+
+No fixes were required. Wrote `turn_001_driver.md` and `STOP` (RESOLVED).
+
+
+=== Session End ===
+Session: 153f26b6-959e-4e6f-9e02-6cc567b302c5
+Duration: 215.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue-reviewer-t001-claude-20260615-054527.jsonl
