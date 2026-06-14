@@ -200,3 +200,24 @@ The only in-scope function `invlpg` is an inline-asm hardware TLB flush — unve
 Turn 8
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-arch 2>&1 | tail -25
+[RESULT ✓] bash: Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch)
+verification results:: 48 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 1.33s
+
+=== Results ===
+  48 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assum...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+invlpg now carries the approved empty-contract `external_body` (entry #3). The remaining `admit`/`external_body` are all in the out-of-scope `table` module. Let me confirm no regressions across all modules.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify 2>&1 | tail -30
+
+[THINKING] I see that `invlpg` is now the third external body, and the `admit=1` flag in table.proof.rs is outside my verification scope since the table module is a separate target. The external body for `invlpg` has moved to tcb-allowed.md, so it's permitted. The "CHEATING_DETECTED" status comes from those out-of-scope elements, but my `invlpg` target itself now has the faithful implementation.
+
+Verification shows 48 verified with 0 errors, and `invlpg` is correctly handled. Since there's no actual code bug here—just a trust boundary around inline assembly—bugs.md stays empty as expected. Now I should run `make verify` to check for any regressions, especially since `invlpg` was previously unannotated and now has an external body with an empty contract. Callers using `assume_specification` should still work fine.
