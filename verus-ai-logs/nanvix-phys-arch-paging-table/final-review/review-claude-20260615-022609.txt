@@ -356,3 +356,27 @@ Let me kick off `make verify-arch` and `make build` now.
 ===HEAD table.rs author===
 94a79af7f [verus] verify PASS (cheating detected): arch::all (47 verified, 0 errors, external_body=3)
 c28a799cd [verus-ai] ...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+verify-arch: **0 errors, exit 0**, external_body=3 (all in arch, TCB-listed), admit=0, assume=0. Now running full regression + build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 2400 make verify 2>&1 | tail -50
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== fn_coverage for table ===" && python3 /home/ruize/verus-ai-exp/ve
+
+[THINKING] The architecture verification passed with no errors—there are three external body references in the arch crate that are all properly documented in tcb-allowed.md. Now I'm running the full build and verification suite to check for any cross-module regressions.
+[RESULT ✓] bash: === fn_coverage for table ===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: the following arguments are required: verus_exec_file
+=== spec_drift ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with c...
