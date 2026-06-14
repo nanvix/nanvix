@@ -1,0 +1,59 @@
+Timestamp: 2026-06-14_08-09-50
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::address::virt
+
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error: expected one of `,`, `:`, or `}`, found `(`
+  --> src/libs/arch/src/x86/mem/paging/frame/number.rs:82:35
+   |
+82 |         proof { use_type_invariant(self); }
+   |         -----   ------------------^ expected one of `,`, `:`, or `}`
+   |         |       |
+   |         |       while parsing this struct field
+   |         while parsing this struct
+   |
+help: try naming a field
+   |
+82 |         proof { use_type_invariant: use_type_invariant(self); }
+   |                 +++++++++++++++++++
+
+error: expected `;`, found keyword `self`
+  --> src/libs/arch/src/x86/mem/paging/frame/number.rs:82:44
+   |
+82 |         proof { use_type_invariant(self); }
+   |                                            ^ help: add `;` here
+83 |         self.0
+   |         ---- unexpected token
+
+error: Misuse of #[verus_spec]
+  --> src/libs/arch/src/x86/mem/paging/frame/number.rs:81:5
+   |
+81 |     pub fn into_raw_value(self) -> usize {
+   |     ^^^
+
+error[E0425]: cannot find function `from_raw_value` in this scope
+  --> src/libs/arch/src/x86/mem/paging/frame/number.rs:59:12
+   |
+59 |     pub fn from_raw_value(value: usize) -> Option<Self> {
+   |            ^^^^^^^^^^^^^^ not found in this scope
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `arch` (lib) due to 4 previous errors
