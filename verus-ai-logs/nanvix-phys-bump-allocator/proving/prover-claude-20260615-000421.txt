@@ -188,3 +188,204 @@ Now let me run the baseline verification to see the current state.
 [THINKING] I'm tracking the specification status of different methods in the codebase. `align_up` is fully specified and verified, `as_mut_ptr` has trait method specifications with ensures clauses, but `alloc` and `alloc_as` are in a confusing state—they have `#[verus_spec]` annotations but appear to lack `external_body` declarations, which contradicts what the documentation suggests about them being unannotated.
 
 Let me verify the actual compilation state to understand the baseline, since the task is now moving into the proving phase where `alloc` and `alloc_as` are listed in tcb-allowed.md as functions that should have `external_body` added. The next step is to add those external_body markers and then discharge the proof lemmas by replacing the `admit()` calls with actual proofs.
+[RESULT ✓] bash: ---
+    Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/bump_allocator)
+error: The verifier does not yet support the following Rust feature: complex break expressions
+   --> src/libs/bump_allocator/src/lib.rs:298:17
+    |
+298 |                 break current;
+    |            ...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Let me look at how `external_body` is combined with `verus_spec` in the allowed examples.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "external_body" src/kernel/src/mm/phys/frame.rs | head; echo "=== context aro
+
+[THINKING] The issue is that the crate won't compile under Verus because `alloc` has unsupported features in its body like `break` statements and raw pointer dereferencing. To move forward with proving, I need to mark `alloc` and `alloc_as` with `#[verifier::external_body]` since they're already in the TCB allowlist, which will prevent Verus from trying to verify their implementations and instead treat their contracts as trusted.
+
+Then I need to resolve the three `admit()` lemmas. The `#[verus_spec]` annotations already define the contracts, so I'm checking how to properly combine `#[verifier::external_body]` with `verus_spec` by looking at similar patterns in the codebase like the `instance` function in frame.rs.
+[RESULT ✓] bash: 668:#[verus_verify(external_body)]
+697:// singleton and the BSS-backed refcount storage. `external_body` because it materializes
+701:#[verus_verify(external_body)]
+745:// `external_body` until the `frame` free-function layer is verified; the manager bridges the
+897:// to `phys_view().frames` in the ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+The pattern is `#[verus_verify(external_body)]` above `#[verus_spec(...)]`. Let me view the exact example.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to apply the `#[verus_verify(external_body)]` attribute above `#[verus_spec(...)]` for the `alloc` and `alloc_as` functions, so let me check the instance example to verify the correct ordering.
+[RESULT ✓] view: 665. // `PointsTo` for the `static mut` (mirrors the `bump_allocator` materialization). The `ensures`
+666. // pins the abstract state of the singleton to the global subsystem view (`phys_view().frames`)
+667. // and records that the allocator is initialized — the §8 ghost-token attachment realized he...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Now I understand. `alloc`/`alloc_as` are TCB-allowed `external_body`; the proving work is discharging the 3 lemmas. Let me check available arithmetic lemmas in vstd and how the repo uses them.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "lemma_mul_inequality\|lemma_mul_is_distributive\|lemma_mod_multiples\|lemma
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && ls vstd/arithmetic/ 2>/dev/null; echo "=== mul lemmas ==="; grep -n "pub proof f
+
+[THINKING] I'm adding the `#[verus_verify(external_body)]` attribute to the `alloc` and `alloc_as` functions since they're listed in the tcb-allowed file, placing it before the existing `#[verus_spec]` attribute. Then I need to work through discharging the three lemmas.
+
+For `lemma_exhausted_boundary`, the proof is straightforward arithmetic: `has_capacity()` means `allocated < capacity`, so `!has_capacity()` means `allocated >= capacity`, and combined with the invariant's `allocated <= capacity`, this forces `allocated == capacity`. An empty body should suffice since Verus can verify this automatically.
+
+For `lemma_alloc_transition`, I'm verifying that after calling `spec_alloc()`, the new view has the invariant satisfied, the allocated count increments by one, and the consumed state updates correctly. The key is checking that all invariant conditions still hold when we increment allocated while keeping other fields the same. Now I need to prove that the spec allocator maintains the invariant, which should follow automatically once the fields are shown to be equal. For the geometry lemma, I'm working through the three required conditions: that all slot addresses are properly aligned, fall within bounds, and are distinct. The key insight is using modular arithmetic properties—since the base is aligned and the stride is a multiple of the alignment, any slot address will also be aligned. The bounds follow from the capacity constraint, and distinctness comes from the stride being positive. For the in-bounds check, I need to show that `i*stride + unit_size <= storage_size`. Since `i < capacity`, I have `(i+1)*stride <= capacity*stride <= storage_size`, and since `stride >= unit_size`, this gives me `i*stride + unit_size <= (i+1)*stride`, which chains to the bound I need. For the distinctness clause, if `i != j` then `i*stride != j*stride` because `stride > 0` is nonzero, so multiplication by stride is injective—I can use a cancellation lemma or argue that the difference `(j-i)*stride` is at least `stride` when `j > i`.
+
+Now I need to find the right nonlinear arithmetic lemmas in the Verus standard library to formalize these steps.
+[RESULT ✓] bash: README.md
+div_mod.rs
+internals
+logarithm.rs
+mod.rs
+mul.rs
+overflow.rs
+power.rs
+power2.rs
+=== mul lemmas ===
+43:pub proof fn lemma_mul_is_mul_pos(x: int, y: int)
+53:pub proof fn lemma_mul_basics(x: int)
+<shellId: 7 completed with exit code 0>
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/pde.proof.rs:8:    lemma_mod_multiples_basic,
+src/libs/arch/src/x86/mem/paging/pde.proof.rs:10:use vstd::arithmetic::mul::lemma_mul_inequality;
+src/libs/arch/src/x86/mem/paging/pde.proof.rs:33:    lemma_mul_inequality(raw as int, m / s - 1, s);
+src/libs/arch/src/x86/...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The slab library has nearly identical geometry. Let me study its proof patterns.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -n "pub proof fn lemma" vstd/arithmetic/mul.rs; echo "=== div_mod relevant 
+
+[THINKING] I should check the slab proof file since it probably has similar geometric structures and modular arithmetic patterns I can reference for this proof.
+[RESULT ✓] bash: 43:pub proof fn lemma_mul_is_mul_pos(x: int, y: int)
+53:pub proof fn lemma_mul_basics(x: int)
+=== div_mod relevant ===
+vstd/arithmetic/mul.rs:164:pub broadcast proof fn lemma_mul_inequality(x: int, y: int, z: int)
+vstd/arithmetic/mul.rs:197:    lemma_mul_inequality(x, xbound, y);
+vstd/arithmetic/mul...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/arithmetic/div_mod.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/arithmetic/mul.rs
+
+[THINKING] I'm checking the signatures of the key lemmas—`lemma_mod_multiples_basic`, `lemma_mod_multiples_vanish`, and the slab proof that handles the geometric part.
+[RESULT ✓] view: 164. pub broadcast proof fn lemma_mul_inequality(x: int, y: int, z: int)
+165.     requires
+166.         x <= y,
+167.         z >= 0,
+168.     ensures
+169.         #[trigger] (x * z) <= #[trigger] (y * z),
+170. {
+171.     lemma_mul_induction_auto(z, |u: int| u >= 0 ==> x * u <= y * u);
+172. }
+173. 
+1...
+[RESULT ✓] view: 1066. pub broadcast proof fn lemma_mod_multiples_basic(x: int, m: int)
+1067.     requires
+1068.         m > 0,
+1069.     ensures
+1070.         #[trigger] ((x * m) % m) == 0,
+1071. {
+1072.     lemma_mod_auto(m);
+1073.     broadcast use group_mul_properties_internal;
+1074. 
+1075.     let f = |u: int| ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/slab/src/lib.proof.rs
+
+[THINKING] I'm setting up the proof structure for the geometry lemma by defining the key variables: alignment, stride, base address, and capacity. The invariants establish that alignment and unit size are positive, stride is at least as large as unit size, and both stride and base address are properly aligned.
+
+Now I'm working through the first clause to show that for any valid index, the slot address is properly aligned. Since both the base address and stride are multiples of the alignment value, I can decompose the slot address as a sum of two aligned components and use modular arithmetic properties to conclude the result is aligned.
+
+Let me check how the slab allocator handles this same alignment verification—that proof should give me a template for structuring the argument cleanly.
+[RESULT ✓] view: 220.                 let slab = Slab { index: *index, data_addr, end_addr, block_size };
+221.                 &&& slab@.block_size == slab.block_size
+222.                 &&& slab@.start_addr >= addr as usize
+223.                 &&& slab@.end_addr <= addr as usize + len
+224.                 &&& sla...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Good patterns. Let me check a couple more lemma signatures.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -n "pub proof fn lemma_fundamental_div_mod\b\|pub broadcast proof fn lemma_
+
+[THINKING] I'm seeing a pattern with alignment lemmas in Rust proofs where I assert that an address is aligned to a block size, using commutativity and modular arithmetic properties to verify it. The challenge is that my slot address calculation uses a different multiplier than the block size itself, so I need to adapt this approach.
+
+Since stride is a multiple of unit_align, I can express stride as unit_align times some quotient, then rewrite the address calculation to show that the stride contribution vanishes under modulo. I'm setting up a proof that uses the fundamental division-modulo property to establish the equality, then applies the modular arithmetic lemma to show the final alignment holds.
+
+For the in-bounds checks, I need to verify that the address stays within the buffer range. The lower bound follows from non-negative multiplication. For the upper bound, I'm using the capacity constraint and distributive properties to show that adding the unit size to any valid slot address still fits within the total size.
+
+For distinctness, since stride is positive, different indices produce different addresses—if two addresses were equal, the indices would have to be equal, which contradicts the assumption.
+
+Now I'm structuring the geometry lemma with proper forall quantifiers and checking the signature for the fundamental division-modulo lemma.
+[RESULT ✓] bash: vstd/arithmetic/div_mod.rs:489:pub broadcast proof fn lemma_fundamental_div_mod(x: int, d: int)
+vstd/arithmetic/mul.rs:123:pub broadcast proof fn lemma_mul_is_associative(x: int, y: int, z: int)
+vstd/arithmetic/mul.rs:134:pub broadcast proof fn lemma_mul_is_commutative(x: int, y: int)
+vstd/arithmeti...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/arithmetic/div_mod.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/arithmetic/mul.rs
+[RESULT ✓] view: 489. pub broadcast proof fn lemma_fundamental_div_mod(x: int, d: int)
+490.     requires
+491.         d != 0,
+492.     ensures
+493.         x == #[trigger] (d * (x / d) + (x % d)),
+494. {
+495.     assert(x == d * (x / d) + (x % d)) by {
+496.         ModINL::lemma_fundamental_div_mod(x, d);
+497.     }...
+[RESULT ✓] view: 280. pub broadcast proof fn lemma_mul_is_distributive_add_other_way(x: int, y: int, z: int)
+281.     ensures
+282.         #[trigger] ((y + z) * x) == y * x + z * x,
+283. {
+284.     broadcast use group_mul_properties_internal;
+285. 
+286. }
+287. 
+288. /// Proof that multiplication distributes over sub...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Now I'll write the proofs. First, add `external_body` to the TCB-allowed `alloc`/`alloc_as`, then discharge the three lemmas.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] I'm planning out the proof structure now—I'll start by updating lib.rs to add external_body annotations to the alloc and alloc_as functions since they're listed in tcb-allowed.md, then work through writing the lemma bodies. I'm also reconsidering whether the proof lemmas actually need to be explicitly referenced or if they can stand alone as verification of the geometry and transition properties.
+
+For the lemmas themselves, lemma_exhausted_boundary should be straightforward since the invariant gives me allocated <= capacity, which means !(allocated < capacity) is equivalent to allocated == capacity—Verus should handle this automatically with an empty body. For lemma_alloc_transition, I'll need to write out assertions that verify the spec_alloc() result maintains the invariant, using the struct comparison operator. Let me start writing these proofs now.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Now the proof lemmas:
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | tail -30
