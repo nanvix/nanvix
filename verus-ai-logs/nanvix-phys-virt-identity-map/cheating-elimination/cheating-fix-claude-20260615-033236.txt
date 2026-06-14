@@ -119,3 +119,63 @@ The real reason `ExPageTableBss` exists at all is because `PageTableBss` is refe
 Turn 6
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -n
+[RESULT ✓] bash: 18:verification results:: 9 verified, 0 errors (partial verification with `--verify-*`)
+23:  0 errors
+28:    ⚠️  admit: 3
+30:    - identity_map.rs:533 ensure_pt: admit
+31:    - identity_map.rs:627 ensure_pte: admit
+32:    - identity_map.rs:718 identity_map_page: admit
+33:  Global: assume=0 external_...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The `external_body` is eliminated (global count 12→11) and the module still verifies (9 verified, 0 errors). Now let me make a final genuine attempt on the 3 admits — testing whether any concrete `identity_map_view()` definition can satisfy the contracts. Let me confirm FRAME_SIZE==PAGE_SIZE and re-examine, then run the full-crate verify with the external_body fix.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rnE "FRAME_SIZE|PAGE_SIZE" src/libs/arch/src/x86/mem/mod.rs 2>/dev/nu
+
+[THINKING] Removing `external_body` brought the global count down and Verus still accepts the module, so that's resolved. Now I'm left with three admits that are genuinely blocking progress — the real challenge is these result-dependent postconditions tied to parameters, and I need to figure out if there's any way to actually satisfy them.
+
+The mathematical core is that a fixed constant can't prove both branches, and without a state-dependent view it's impossible altogether. But the gate demands zero admits, so I need to reconsider what's actually within scope. The spec.rs file is freely editable, and I'm wondering if I could redefine `identity_map_view()` itself — instead of leaving it uninterpreted, I could ground it in the actual page table memory using the arch's `spec_table_read` or `spec_table_word` ghost functions.
+
+But that runs into a hard blocker: the entry point (which page directory, whether initialized) depends on `KERNEL_PD_PADDR`, which is an AtomicUsize and not spec-readable. And `Table::write` has no contents postcondition, so even after writing a present PTE, we can't connect it back to what `spec_table_read` would return. The write-to-read connection is deliberately severed. So the view fundamentally can't be grounded in the actual memory state within the constraints.
+
+The gate keeps rejecting this, and while the task offers a hand-off to `verification_todo.md`, it also says remaining admits still fail the phase. I've already documented the blocker and made one real change by removing `external_body`. Now I need to genuinely try restructuring the contracts to see if there's an equivalent formulation that's actually provable without weakening the postconditions. For `ensure_pt`, I can at least prove that the returned address is page-aligned when the path succeeds, since it comes directly from the PDE's frame address. The error cases for `ensure_pt` and `ensure_pte` depend on whether the mapped region contains the target address, and for `identity_map_page` it's about accessibility. The real blocker is the read index precondition — `pde_idx` needs to be bounded by `PAGE_TABLE_LENGTH`, but `TableIndex` doesn't export its type invariant across crates even though it's used internally in the arch crate. I could add a precondition to `ensure_pt` requiring this bound, though that changes the contract.
+
+But stepping back, the three fundamental blockers — the `mapped.contains` result dependency, `bump_view.inv`, and `as_ptr` alignment — can't be solved anyway, so even fixing the index preconditions won't get the function to verify. The admits are already in place and the module verifies with them, so I should accept that these three admits are necessary and focus on confirming the external_body removal was the real progress. The real issue is that the cheating gate requires zero admits to pass, and there's no way to make these contracts provable without weakening them—which violates the original constraints. I've hit a genuine blocker: either the contracts need to change (forbidden) or the ghost token needs to be implemented (out of scope). Since I've already removed the external_body fix, the honest path forward is to keep the three remaining admits documented and acknowledge this as a fundamental limitation of the current design. The Err branches consistently fail no matter what constant I choose—mapped containing everything makes Ok work but breaks Err, and there's no middle ground. This proves it's impossible to satisfy both branches simultaneously with a constant value. I need to mark this as a blocker and remove the external_body from ExPageTableBss, then run the full crate verification to make sure that change doesn't break anything else.
+[RESULT ✓] bash: === check whether line 134 ensure_pt caller is in a verified fn ===
+/// new PDEs are created at runtime. The kernel PD and CR3 atomics are published only after
+/// pre-allocation succeeds, so other code never observes a partially-initialized identity map.
+pub(crate) fn init(
+    kernel_pd_paddr: Pag...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Let me re-read the actual contracts on the three functions to confirm my analysis of the result-dependent postconditions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '500,560p;610,650p;700,730p' src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] The index precondition could be satisfied by the caller, but that's not the real issue here. The actual problem is with the result-dependent postconditions—those are what's creating the hard constraint I can't work around. I need to accept this as a genuine blocker rather than keep chasing the index bounds.
+
+Now I'm reconsidering whether I even assessed the contracts correctly. Let me go back and check if the verus_spec for identity_map_page actually exposes both Ok and Err branches, or if I misread the contract structure.
+[RESULT ✓] bash: /// Upon success, the physical address of the page table is returned. Upon failure, an error is
+/// returned instead.
+///
+/// # Errors
+///
+/// - [`ErrorCode::InvalidArgument`]: Failed to read the PDE.
+/// - [`ErrorCode::OutOfMemory`]: No BSS page table slots available.
+/// - [`ErrorCode::BadAddress`...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+My analysis is confirmed: `ensure_pt`'s contract only asserts `inv()` on both branches (no contradiction), but `ensure_pte`/`identity_map_page` assert complementary `contains`/`accessible` facts on Ok vs Err over the **same parameterless constant** — logically impossible to satisfy for any fixed value.
+
+Let me run the full-crate verify-kernel to confirm the external_body fix holds whole-crate, then finalize.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make verify-kernel 2>&1 | grep -nE -i "verified, |external_bod
+
+[THINKING] I've confirmed that `ensure_pte` and `identity_map_page` have complementary postconditions for the parameterless constant, while `ensure_pt` doesn't—both its Ok and Err branches only assert `inv()`, with Ok adding alignment. This means `ensure_pt`'s contract is actually provable in principle without result-dependent contradictions. The real blocker is just the precondition on `pd.read(pde_idx)` requiring `pde_idx@ < PAGE_TABLE_LENGTH`.
+
+The remaining obstacles are the frame alignment check in the present path, establishing `bump_view(self).inv()` for the fresh path's allocator, and proving the alignment of `slot.as_ptr() as usize`. Even if I could handle the read precondition, the bump_view invariant is uninterpreted with no lemmas to establish it, and `as_ptr` has an empty contract, so both are fundamentally unprovable. At best I might remove one admit from `ensure_pt`, but the fresh path requirements make it impossible to fully prove anyway.
+
+All three admits are genuinely blocked—`ensure_pt` by the bump_view and as_ptr alignment issues, and the other two by the logical contradiction in their result-dependent preconditions. I should confirm the whole state by running the full verification, update the reports with the external_body removal, and document this as a confirmed blocker.
