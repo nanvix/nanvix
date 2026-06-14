@@ -507,3 +507,158 @@ The cfg_attr markers are redundant — the sibling pte.rs verifies without them.
 Turn 24
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-arch 2>&1 | tail -
+[RESULT ✓] bash: === Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== ...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+cfg_gate=0 now, but compilation failed. Let me see the error.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "error\|warning" verus-ai-logs/verify-arch/verus-logs/verus_2026-06-1
+
+[THINKING] The gate configuration is set to 0, but the verification step is hitting a compilation error. I need to look at what the actual error message is.
+[RESULT ✓] bash: 8:compilation/setup error (verus did not run)
+20:error[E0425]: cannot find function `new` in this scope
+26:error[E0425]: cannot find function `new` in this scope
+32:For more information about this error, try `rustc --explain E0425`.
+33:error: could not compile `arch` (lib) due to 2 previous errors
+<...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '15,32p' verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_01-47-3
+[RESULT ✓] bash: no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch)
+error[E0425]: cannot find function `new` in this scope
+  --> src/libs/arch/src/x86/mem/paging/pde.rs:96:12
+   |
+96 |     pub fn new(
+   |            ^^^ not found in thi...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Removing breaks compilation — the marker IS needed. Let me understand why pte.rs differs. Let me restore and investigate the macro mechanics.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git stash list; git --no-pager diff --stat; echo "=== restore ==="; git check
+
+[THINKING] I'm noticing that `verus_impl_method_marker` is needed here but not in pte.rs, and I'm trying to understand why. The error about not finding the `new` function seems related to how `#[verus_spec]` handles methods named `new` with certain spec conditions. The real question is what's different between the two files — it might come down to the actual spec content rather than just the presence of the attribute. I need to understand what `verus_impl_method_marker` actually does and why pte.rs compiles without it while pde.rs doesn't. Let me check if there's a `#[verus_verify]` attribute on the impl blocks themselves, since that might be what triggers the macro processing. The real question is how verus knows to process these `#[verus_spec]` methods in the first place — is it through the marker, or through some other mechanism like a verus_verify attribute on the impl block?
+[RESULT ✓] bash: .../prover-claude-20260615-014413.jsonl            | 61 ++++++++++++++++++++++
+ .../prover-claude-20260615-014413.txt              | 47 +++++++++++++++++
+ 2 files changed, 108 insertions(+)
+=== restore ===
+Updated 0 paths from the index
+/home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/s...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src; sed -n '300,360p' attr_rewrite.rs
+[RESULT ✓] bash: // need to desugar the for loop.
+        // So, if there's no `verus_spec` attribute, we need to add an empty one.
+        if get_verus_spec(&for_loop.attrs).is_none() {
+            for_loop.attrs.push(crate::syntax::mk_rust_attr_syn(
+                for_loop.span(),
+                VERUS_SPEC,
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== pde impl blocks ==="; grep -n "^impl\|verus_verify" src/libs/arch/s
+
+[THINKING] The `VerusVerifyVisitor` automatically applies `#[allow(unused, verus_impl_method_marker)]` to any impl method marked with `#[verus_spec]`, but only when the impl block itself is decorated with `#[verus_verify]`. This means in pte.rs, the impl block needs that attribute for the automatic annotation to kick in.
+
+In pde.rs, if the impl blocks lack `#[verus_verify]`, I'll need to manually add the marker through cfg_attr instead. Let me check whether pte.rs has `#[verus_verify]` on its impl blocks and whether pde.rs doesn't.
+[RESULT ✓] bash: === pde impl blocks ===
+41:#[verus_verify]
+62:impl PageDirectoryEntryFlags {
+279:#[verus_verify]
+288:impl PageDirectoryEntry {
+471:impl TableEntry for PageDirectoryEntry {
+=== pte impl blocks ===
+44:#[verus_verify]
+65:#[verus_verify]
+66:impl PageTableEntryFlags {
+120:impl PageTableEntryFlags {
+282:#...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Now it's clear: pte.rs puts `#[verus_verify]` on the **impl blocks** (which auto-injects the marker), while pde.rs puts it on the **structs** and manually adds the cfg_attr marker. The idiomatic fix matching the sibling: add `#[verus_verify]` to the impl blocks and drop the manual markers. Let me check `#[verus_verify]` is a pure verification annotation (erased in normal builds).
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src; grep -n "verus_verify\|pub fn verus_verify\|fn ver
+
+[THINKING] I see the pattern now — in pte.rs, the `#[verus_verify]` attribute is placed on the impl blocks that contain the spec'd `new` methods, which automatically adds the `verus_impl_method_marker` allow. I'm checking if pde.rs follows the same pattern.
+
+Looking at pde.rs, the `#[verus_verify]` attributes are on the structs themselves (lines 41 and 279), not on the impl blocks (lines 62 and 288). That's why the impl blocks are missing the auto-added marker, forcing manual `#[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]` on each `new` method.
+
+The cleaner fix would be to move `#[verus_verify]` to the impl blocks in pde.rs to match pte.rs's convention, then remove the manual cfg_attr markers from the `new` methods. Since `#[verus_verify]` is an attribute macro (not a cfg gate), it won't be counted by the detector, so this change should eliminate the cfg_gate=2 issue without introducing new problems. The visitor only marks functions that already have `#[verus_spec]`, so adding `#[verus_verify]` to the impl block won't unexpectedly verify other methods like `is_present` or `is_user`. The const `SIZE` should also be unaffected since `verify_const` isn't enabled by default. Since `pte.rs` uses the same pattern with `#[verus_verify]` on impl blocks containing const items and verifies fine, I should go ahead with Approach 1 and test it.
+[RESULT ✓] bash: lib.rs:224:        let ts: proc_macro::TokenStream = quote::quote! { ::core::cfg!(verus_verify_core) }.into();
+lib.rs:329:// If no #[verus_verify] on the item, it is verifier::external by default.
+lib.rs:331:// #[verus_verify] annotates the item with verifier::verify
+lib.rs:332:// #[verus_verify(ext...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src; sed -n '335,375p' lib.rs
+[RESULT ✓] bash: pub fn verus_verify(
+    args: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    attr_rewrite::rewrite_verus_attribute(&cfg_erase(), args, input)
+}
+
+#[proc_macro_attribute]
+pub fn verus_spec(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::Toke...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+`#[verus_verify]` uses `cfg_erase()` — erased in normal builds, pure verification annotation. This is the idiomatic fix matching pte.rs. Let me apply it.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] The `#[verus_verify]` attribute uses `cfg_erase()` to strip out verification code during normal compilation while preserving the executable implementation, making it a safe verification-only annotation that doesn't affect runtime semantics. I'll add this attribute to the impl block for `PageDirectoryEntryFlags` as the idiomatic solution.
+
+Now I need to add `#[verus_verify]` before the `PageDirectoryEntry` impl block as well, then remove the two `cfg_attr` marker lines that are no longer needed.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; perl -0pi -e 's/    #\[cfg_attr\(verus_keep_ghost, allow\(unused, verus_impl_
+[RESULT ✓] bash: === check ===
+41:#[verus_verify]
+62:#[verus_verify]
+63:impl PageDirectoryEntryFlags {
+97:    pub fn new(
+280:#[verus_verify]
+289:#[verus_verify]
+290:impl PageDirectoryEntry {
+313:    pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self {
+473:impl TableEntry for PageDirectoryEntry {...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-arch 2>&1 | tail -
