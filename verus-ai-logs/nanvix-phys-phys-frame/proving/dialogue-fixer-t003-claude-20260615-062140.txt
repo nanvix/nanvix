@@ -2633,3 +2633,90 @@ Turn 193
 Turn 194
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+[RESULT ✓] bash: === Summary ===
+  verification: 56 verified, 2 errors (exit 101)
+  cheating: assume=0 external_body=19 admit=16 trusted=0 no_decreases=0 cfg_gate=19
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_07-10-...
+
+────────────────────────────────────────────────────────────
+Turn 195
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error:"
+
+[THINKING] The build is compiling successfully now with 56 tests passing, but I need to track down the two remaining errors.
+[RESULT ✓] bash: 41:error: loop invariant not satisfied
+59:error: assertion failed
+65:error: assertion failed
+71:error: assertion failed
+328:error: could not compile `kernel` (bin "kernel") due to 4 previous errors
+=== details ===
+31:    --> src/kernel/src/mm/phys/frame.rs:1133:9
+42:    --> src/kernel/src/mm/phys/fr...
+
+────────────────────────────────────────────────────────────
+Turn 196
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '41,75p'
+[RESULT ✓] bash: error: loop invariant not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:1133:9
+     |
+1133 | /           #[cfg_attr(verus_keep_ghost, verus_spec(
+1134 | |               invariant
+1135 | |                   start_fn == start_frame_number as int,
+1136 | |                   end_exclusive as int == ...
+
+────────────────────────────────────────────────────────────
+Turn 197
+────────────────────────────────────────────────────────────
+Inside the loop, preamble facts aren't available. Let me add the needed equalities to the loop1 invariant and maintain the coverage fact in the `Ok(false)` arm.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm running into a loop invariant issue where the condition `k < pre_nb` isn't being satisfied at loop exit. The invariant needs to hold when the loop terminates with `index == end_exclusive`, but the trigger form is failing on that boundary condition.
+
+The core problem is that after processing each index in the loop body, I need to explicitly establish that the invariant extends to the next iteration—specifically, when we get `Ok(false)` (meaning the bit isn't set), I need to record that `index < pre_nb && !pre_sb.contains(index)` so Verus can connect these facts to maintain the invariant across the loop. The empty arm `Ok(false) => {}` doesn't provide any proof, so the invariant maintenance breaks down. The issue is that preamble assertions don't carry into the loop body—only the loop invariants and locally-derived facts are available there. So I need to add `rstart / ps == start_fn` and `(rstart+rsize)/ps == start_fn+nfr` to the loop invariant itself. Then at the loop exit, I can use the invariant's exit condition `forall k in [start_fn, start_fn+nfr)` to derive the needed facts about `start_fn+nfr-1`. I need to verify that preamble facts like `nfr>=1` persist after the loop—they should, since they're about immutable ghost values and the loop only havocs mutable state. The post-loop invariant gives me the exit condition and the internal invariant provides access to the refcount length, so the assertion at line 1230 should work once I fix the exit invariant. Now I need to update loop1's invariant to track the relationship between `rstart`, `rsize`, and the frame boundaries, and add a proof in the `Ok(false)` branch to maintain the coverage invariant.
+[RESULT ✓] view: 1133.         #[cfg_attr(verus_keep_ghost, verus_spec(
+1134.             invariant
+1135.                 start_fn == start_frame_number as int,
+1136.                 end_exclusive as int == start_fn + nfr,
+1137.                 nfr >= 1,
+1138.                 self@ == g_old,
+1139.                 se...
+
+────────────────────────────────────────────────────────────
+Turn 198
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 199
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 200
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '76,120p'
+
+[THINKING] I'm checking the errors at lines 344, 352, and 364 in proof.rs — they're in the lemma_reserve_range_v function, which should have been verified earlier. Something seems off since those errors are appearing now when they weren't before, so I need to investigate what changed.
+[RESULT ✓] bash: 1231 | |                         && start_fn + nfr - 1 < pre_nb);
+     | |______________________________________________________^ assertion failed
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:344:9
+    |
+344 |         assert forall|a: int| pos...
+
+────────────────────────────────────────────────────────────
+Turn 201
+────────────────────────────────────────────────────────────
+The proof.rs notes are just trigger-choice info, not errors. Let me re-verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+
+[THINKING] I see those trigger notes are just informational, not actual errors. The real issues are the four assertions I need to fix: the loop invariant violation in frame.rs at line 1133, two assertions about rstart and rsize alignment that should resolve through the invariant, and a fourth assertion about the pre_sb containment that depends on the existential proof.
+
+The summary reported 2 errors but grep shows 4 error lines total—different counting methods. After my edits shifted the line numbers, I need to verify that the post-loop assertion about pre_sb.contains(start_fn+nfr-1) will trigger correctly now that the exit invariant holds, since my assertion uses that exact predicate as a trigger.

@@ -1135,6 +1135,8 @@ impl Inner {
                 start_fn == start_frame_number as int,
                 end_exclusive as int == start_fn + nfr,
                 nfr >= 1,
+                rstart / ps == start_fn,
+                (rstart + rsize) / ps == start_fn + nfr,
                 self@ == g_old,
                 self.bitmap@.set_bits == pre_sb,
                 self.bitmap@.num_bits == pre_nb,
@@ -1175,7 +1177,14 @@ impl Inner {
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             }
             match self.bitmap.test(index) {
-                Ok(false) => {},
+                Ok(false) => {
+                    proof! {
+                        // Record coverage of `index` so the loop invariant extends to `index + 1`.
+                        assert(index < self.bitmap@.num_bits);
+                        assert(!self.bitmap@.is_bit_set(index as int));
+                        assert(!pre_sb.contains(index as int));
+                    }
+                },
                 Ok(true) => {
                     proof! {
                         // This frame is in the requested range but already allocated, not free.
