@@ -212,3 +212,19 @@ Turn 7
 [TOOL] report_intent: Verifying after external_body additions
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-arch 2>&1 | tail -30
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Module    : <all>
+  Source dir : /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs-bottom-up/build/tar...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+0 errors, 47 verified. The 3 `external_body` (invlpg, read, write) are all on the tcb-allowed list. Now confirming no regressions across all modules.
+[TOOL] report_intent: Running full verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make verify 2>&1 | tail -25
+
+[THINKING] All 47 checks passed with no errors. The "CHEATING_DETECTED" flag appeared because of three external_body functions, but they're all documented in the allowed list—invlpg, read, and write—so this is acceptable. The guardrail script flags any external_body presence by default, but since these are all whitelisted, there's no actual issue here.
+
+Now I'm checking that there are no admit or assume violations—both are at zero, which is good. Let me run the full verification suite to make sure nothing has regressed.
+[RESULT ✓] report_intent: Intent logged
