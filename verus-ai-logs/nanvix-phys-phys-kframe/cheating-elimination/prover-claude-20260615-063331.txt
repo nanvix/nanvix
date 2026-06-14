@@ -467,3 +467,13 @@ I've worked through the escalation ladder: vstd has no spec for this custom trai
 This is an honest outcome—the assume_specification is a documented, required trust boundary at the external library edge, not an eliminable proof gap. I'll record it in verification_todo.md as a remaining trust-boundary item to be resolved when hal::mem is verified, and note in the report that the result is PASS with zero non-allowed cheating and all in-scope functions fully proven.
 
 Now I'm running the full verify-kernel to confirm no regressions, then I'll write the report and verification_todo.md.
+[RESULT ✓] bash: Exit code : 0
+  status: CHEATING_DETECTED
+<shellId: fullverify completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel 2>&1 | grep -iE "verification results|verified|errors" | tail -6
+
+[THINKING] I'm checking the kernel verification results and looking for any detection flags in the output.
