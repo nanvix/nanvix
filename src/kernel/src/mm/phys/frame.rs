@@ -112,7 +112,6 @@ impl Inner {
     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -178,7 +177,6 @@ impl Inner {
     /// Upon success, the base `FrameAddress` of the contiguous range is returned. Upon failure,
     /// an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -251,7 +249,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -336,7 +333,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -408,7 +404,6 @@ impl Inner {
     /// Upon success, the current reference count is returned. Upon failure, an error is
     /// returned instead (out-of-bounds address, or the frame is not currently allocated).
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             self.inv(),
@@ -456,7 +451,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -502,7 +496,6 @@ impl Inner {
     ///
     /// `true` if the frame allocator tracks the frame at `phys_addr`, `false` otherwise.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(ret =>
         requires
             self.inv(),
@@ -532,7 +525,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -653,7 +645,6 @@ fn instance() -> &'static mut Inner {
 ///
 /// Must be called exactly once during boot, before any other function
 /// in this module.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         // `init` establishes the subsystem invariant. On success the allocator is
@@ -707,7 +698,6 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
 }
 
 /// Allocate a frame.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_view().initialized,
@@ -759,7 +749,6 @@ pub(super) fn free_count() -> usize {
 }
 
 /// Free a frame previously returned by [`alloc`].
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         // `free` runs on `Drop` of any `UserFrame`/`KernelFrame`, so it carries no
@@ -788,7 +777,6 @@ pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
 ///
 /// Returns `true` when the frame allocator tracks the frame at `phys_addr`.
 ///
-#[verus_verify(external_body)]
 #[verus_spec(ret =>
     requires
         phys_view().initialized,
@@ -804,7 +792,6 @@ pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
 }
 
 /// Reserve a frame so [`alloc`] will skip it.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_view().initialized,
@@ -824,7 +811,6 @@ pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error>
 }
 
 /// Book every frame in the given physical memory region.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_view().initialized,
@@ -846,7 +832,6 @@ pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Re
 }
 
 /// Add a new reference to an already-allocated frame (e.g. for copy-on-write sharing).
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_view().initialized,
@@ -871,7 +856,6 @@ pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
 }
 
 /// Returns the current reference count of an already-allocated frame.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_view().initialized,
