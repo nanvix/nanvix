@@ -27,10 +27,17 @@ use super::{
 ///
 /// The raw representation uses [`PteWord`] — `u32` on x86.
 ///
+#[verus_verify]
 pub trait TableEntry: Copy {
     /// Creates from a raw [`PteWord`], returning `None` if the value is invalid.
+    #[verus_spec(result =>
+        ensures result == spec_entry_from_raw::<Self>(raw),
+    )]
     fn from_raw(raw: PteWord) -> Option<Self>;
     /// Returns the raw [`PteWord`] representation.
+    #[verus_spec(result =>
+        ensures result == spec_entry_raw(self),
+    )]
     fn raw(self) -> PteWord;
 }
 
@@ -43,9 +50,11 @@ pub trait TableEntry: Copy {
 ///
 /// A validated index into a page table, guaranteed to be in `[0, PAGE_TABLE_LENGTH)`.
 ///
+#[verus_verify]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TableIndex(usize);
 
+#[verus_verify]
 impl TableIndex {
     ///
     /// # Description
@@ -53,6 +62,13 @@ impl TableIndex {
     /// Creates a [`TableIndex`] from a raw `usize`, returning `None` if the value is out of
     /// bounds.
     ///
+    #[verus_spec(result =>
+        ensures
+            match result {
+                Some(t) => index < crate::mem::PAGE_TABLE_LENGTH && t@ == index as nat,
+                None => index >= crate::mem::PAGE_TABLE_LENGTH,
+            },
+    )]
     pub const fn new(index: usize) -> Option<Self> { ... }
 
     ///
@@ -60,6 +76,11 @@ impl TableIndex {
     ///
     /// Returns the underlying index value.
     ///
+    #[verus_spec(result =>
+        ensures
+            result as nat == self@,
+            result < crate::mem::PAGE_TABLE_LENGTH,
+    )]
     pub const fn into_raw(self) -> usize { ... }
 }
 
@@ -68,9 +89,19 @@ impl TableIndex {
 //==================================================================================================
 
 /// Extracts the PD index (bits 22-31) from a virtual address as a [`TableIndex`].
+#[verus_spec(result =>
+    ensures
+        result@ == spec_pd_index(vaddr),
+        result@ < crate::mem::PAGE_TABLE_LENGTH,
+)]
 pub const fn pd_index(vaddr: usize) -> TableIndex { ... }
 
 /// Extracts the PT index (bits 12-21) from a virtual address as a [`TableIndex`].
+#[verus_spec(result =>
+    ensures
+        result@ == spec_pt_index(vaddr),
+        result@ < crate::mem::PAGE_TABLE_LENGTH,
+)]
 pub const fn pt_index(vaddr: usize) -> TableIndex { ... }
 
 //==================================================================================================
@@ -90,6 +121,7 @@ pub const fn pt_index(vaddr: usize) -> TableIndex { ... }
 /// (i.e., a mapped virtual address). It does not own the backing memory — the caller is
 /// responsible for allocation and lifetime management.
 ///
+#[verus_verify]
 #[derive(Debug)]
 pub struct Table<E: TableEntry> {
     /// Base address of the table (must be page-aligned).
@@ -98,6 +130,7 @@ pub struct Table<E: TableEntry> {
     _marker: ::core::marker::PhantomData<E>,
 }
 
+#[verus_verify]
 impl<E: TableEntry> Table<E> {
     ///
     /// # Description
@@ -109,6 +142,9 @@ impl<E: TableEntry> Table<E> {
     /// `base` must be a valid, page-aligned address with at least one page of readable/writable
     /// memory.
     ///
+    #[verus_spec(result =>
+        ensures result@.addr == base as nat,
+    )]
     pub const unsafe fn from_address(base: usize) -> Self { ... }
 
     ///
@@ -122,6 +158,20 @@ impl<E: TableEntry> Table<E> {
     ///
     /// The memory at `base + index * size_of::<PteWord>()` must be valid for a volatile read.
     ///
+    // Trust boundary (see `verus-ai-logs/.../tcb-allowed.md` and `verus-unsupported.md`):
+    // materializes a raw `*const PteWord` from the integer base address (`usize as *const`) and
+    // performs a volatile load — the hardware page-table access. Verus does not support the
+    // `usize -> *const T` cast, so the body cannot be verified; this mirrors the
+    // `bump_allocator::alloc` / `frame::instance` int-to-pointer materialization boundaries.
+    // The `ensures` pins the (trusted) result to the global page-table memory ghost, exactly as
+    // `frame::instance` pins its result to `phys_view()` — no exec signature change.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            index@ < crate::mem::PAGE_TABLE_LENGTH,
+        ensures
+            result == spec_table_read::<E>(self@.addr, index@),
+    )]
     pub unsafe fn read(&self, index: TableIndex) -> Option<E> { ... }
 
     ///
@@ -133,5 +183,27 @@ impl<E: TableEntry> Table<E> {
     ///
     /// The memory at `base + index * size_of::<PteWord>()` must be valid for a volatile write.
     ///
+    // Trust boundary (see `tcb-allowed.md` / `verus-unsupported.md`): materializes a raw
+    // `*mut PteWord` from the integer base address and performs a volatile store — the hardware
+    // page-table write. The `usize -> *mut T` cast is unsupported by Verus, so the body cannot be
+    // verified; same int-to-pointer boundary as `read`.
+    //
+    // No contents `ensures`: page-table memory is *mutable* volatile state, but `write` takes
+    // `&self` and the global ghost `spec_table_word(addr, index)` is a *pure* function (one fixed
+    // value per slot). Pinning that pure cell to the caller-chosen `entry` in an `external_body`
+    // (hence *assumed*) postcondition is unsound — two writes of distinct entries to the same slot
+    // would assume `spec_entry_raw(e1) == spec_entry_raw(e2)`, and with `lemma_entry_roundtrip`
+    // that derives `e1 == e2`, i.e. `false`. The slot-update transition
+    // (`self@.entries[index@] == Some(entry)` after the call, with all other slots framed) is a
+    // genuine `old@ -> @` state change and is therefore *deferred to the proving-phase page-table
+    // permission token* — exactly the deferral convention used by `identity_map_view()`'s
+    // `v -> v'` in `identity_map.spec.rs` (a global accessor whose cross-call transition is
+    // realized later by a ghost token, "not a verification escape"). Only the sound `requires`
+    // (in-range index, auto from `TableIndex::inv`) is kept here.
+    #[verus_verify(external_body)]
+    #[verus_spec(
+        requires
+            index@ < crate::mem::PAGE_TABLE_LENGTH,
+    )]
     pub unsafe fn write(&self, index: TableIndex, entry: E) { ... }
 }

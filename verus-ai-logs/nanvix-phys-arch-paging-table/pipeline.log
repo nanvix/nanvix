@@ -99,3 +99,19 @@ Final tool state:
 [2026-06-14 10:52:10] [PHASE] specification: dialogue-RESOLVED (55m52s)
 [2026-06-14 10:52:10] [SPEC DRIFT] (within specification) Comparing 6b53570e → a21d2660
 [2026-06-14 10:52:10] [SPEC DRIFT] (within specification) No changes detected
+[2026-06-15 02:14:24] [BRANCH] Staying on current branch: verus-ai-prove-bottom-up
+[2026-06-15 02:14:24] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/body_removed_source.rs (9393 -> 7839 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: arch-paging-table
+Source: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs
+Crate:  arch
+Branch: verus-ai-prove-bottom-up (base: verus-ai-prove-bottom-up)
+Phases: proving → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: proving
+Module: arch-paging-table
+============================================================
