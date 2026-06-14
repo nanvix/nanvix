@@ -262,3 +262,173 @@ Let me just try annotating the whole impl block and see if it verifies empirical
 Turn 14
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-sys 2>&1 | grep -iE "Exit code|error|cheating|verified|status:|
+[RESULT ✓] bash: error: Verus does not support this cast: `usize` to `*const u8`
+   --> src/libs/sys/src/sys/mm/address/virt.rs:263:9
+error: Verus does not support this cast: `usize` to `*mut u8`
+   --> src/libs/sys/src/sys/mm/address/virt.rs:267:9
+error: could not compile `sys` (lib) due to 2 previous errors
+  0 ve...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Now we hit a **genuine Verus limitation**: verifying the whole impl block (required to spec any single method) drags in `as_ptr`/`as_mut_ptr`, whose `usize as *const u8` int-to-pointer casts Verus does not support. Working around this would require `external_body` on those pointer methods — expanding the TCB rather than shrinking it (swapping one trivial `into_raw_value` assumption for two trivial pointer-cast assumptions). Let me confirm the full picture by checking remaining blockers, then revert.
+
+Let me revert the sys change and build the required isolated reproducer.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I'm running into a Verus limitation with pointer casting — `as_ptr` and `as_mut_ptr` perform integer-to-pointer conversions that Verus can't verify directly. To work around this, I need to mark these functions with `#[verus_verify(external_body)]`, but that requires them to be part of the trusted code base.
+
+The problem is that `as_ptr` and `as_mut_ptr` live in the `sys` module, not `phys`, and the same issue exists in the `PhysicalAddress` impl block which also isn't verified. Even if I could somehow support these pointer casts through Verus's limited raw pointer support, I'd still need `external_body` annotations and corresponding tcb-allowed entries for both functions, plus a separate bitvector proof for `is_aligned`.
+
+This is exactly the escape-hatch scenario the reviewer described — the whole-impl verification requirement forces me to deal with unsupported int-to-ptr casts just to spec one method. Adding `external_body` to `as_ptr` and `as_mut_ptr` in `sys` is a legitimate trust boundary, but it's a large change just to remove one `assume_specification`, and it might create its own complications.
+
+The real alternative would be to add those `external_body` annotations and prove `is_aligned` properly — that would give the verified phys body a spec without the assumption and keep everything verified. But the reviewer was clear: don't just justify the approach, actually implement the fix or use the escape hatch.
+
+Since both paths require a tcb-allowed.md entry anyway, the escape hatch (keeping the one assume_specification, adding an isolated reproducer, and documenting it) is the pragmatic choice given the genuine Verus limitation with int-to-pointer casts. I think the right move is Path A: isolate the genuine Verus limitation with a minimal reproducer showing both the "entire impl must verify" constraint and the unsupported int-to-ptr cast, then document the single `assume_specification` in tcb-allowed.md with clear rationale. The reviewer prefers real fixes, but Path B trades one precise assumption for two broader `external_body` calls plus a bitvector proof—that actually increases TCB surface area. I should at least attempt Path B by adding `external_body` to the pointer methods to see if `is_aligned` becomes tractable, but if it gets too invasive to sys's verified state, Path A is the defensible choice. I need to decide between Path B (expanding the TCB with external_body on pointer methods) and Path A (using the escape hatch). Path B would require touching multiple out-of-scope sys functions with bitvector proofs, which is risky and counterproductive since it expands the trusted code base. The reviewer explicitly sanctioned the escape hatch given a genuine limitation, which I've already demonstrated empirically. I'll take Path A: revert the sys changes, create an isolated reproducer showing the hard Verus errors, add a tcb-allowed.md entry documenting the rationale, and keep the assume_specification. Then I need to verify that both make verify-sys and make verify-kernel still pass with the phys module fully verified. Swapping as_ptr for into_raw_value doesn't actually improve things — both are trivial casts that Verus can't verify, so I'd just be moving the assumption rather than eliminating it. Path A with the escape hatch is the right call: keep the single simplest assumption documented rather than spreading it across multiple pointer operations. Let me revert the sys changes and build out the reproducer plus the tcb-allowed entry.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Let me find the verus binary to build a standalone isolated reproducer.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat scripts/verify.sh 2>/dev/null | grep -iE "verus|VERUS" | head -20; echo
+
+[THINKING] I need to locate the verus binary and create a minimal reproducer to confirm the issue.
+[RESULT ✓] bash: # Generic Verus verification script with cheating detection and git tracking.
+#   Legacy mode: ./verify.sh --verus-dir <dir> [OPTIONS]
+# Cargo mode uses `cargo verus verify -p <crate>` and is the recommended
+#   VERUS_EXTRA_CARGO_ARGS Extra arguments appended to the cargo verus verify command.
+VERUS...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: mkdir -p /tmp/repro && cat > /tmp/repro/trait_impl_cast.rs <<'EOF'
+// Isolated reproducer: speccing a single trait-impl 
+[RESULT ✓] bash: written
+Verus
+  Version: 0.2026.05.13.fae8859
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp/repro && /mnt/toolchain/verus/verus trait_impl_cast.rs 2>&1 | head -30; echo "=== EXIT: $? ==="
+[RESULT ✓] bash: error[E0428]: the name `VERUS_SPEC__into_raw_value` is defined multiple times
+  --> trait_impl_cast.rs:12:5
+   |
+12 |     fn into_raw_value(self) -> usize;
+   |     ^^ `VERUS_SPEC__into_raw_value` redefined here
+   |
+   = note: `VERUS_SPEC__into_raw_value` must be defined only once in the value name...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+My snippet has an unrelated trait-macro issue. Let me reproduce just the two core blockers faithfully and minimally.
+[TOOL] bash: cat > /tmp/repro/whole_impl_rule.rs <<'EOF'
+// Reproducer A: Verus requires the ENTIRE trait impl to be verified to spec
+
+[THINKING] I need to refocus my reproducer on the actual error from the repo—the int-to-ptr cast issue—rather than getting sidetracked by trait complications. Let me strip down the example to match the real codebase structure more closely, particularly how the trait is declared in a separate verus_verify block.
+[RESULT ✓] bash: === Reproducer A (whole-impl rule) ===
+error: In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.
+  --> whole_impl_rule.rs:21:1
+   |
+21 | / impl Address for VirtualAddress {
+22 | |     #[verus_spec(result =>
+23 | |   ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Both reproducers confirm the genuine, two-fold Verus limitation. Let me save them as artifacts and verify the reverted sys still passes, plus phys still verifies.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git diff --stat src/libs/sys/ ; echo "=== confirm virt.rs reverted ==="; gr
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/virt.rs | 1 -
+ 1 file changed, 1 deletion(-)
+=== confirm virt.rs reverted ===
+35:#[verus_verify(external_derive)]
+46:#[verus_verify]
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager diff src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] bash: diff --git a/src/libs/sys/src/sys/mm/address/virt.rs b/src/libs/sys/src/sys/mm/address/virt.rs
+index f7e173f34..8634b431a 100644
+--- a/src/libs/sys/src/sys/mm/address/virt.rs
++++ b/src/libs/sys/src/sys/mm/address/virt.rs
+@@ -164,7 +164,6 @@ impl VirtualAddress {
+     }
+ }
+ 
+-#[verus_verify]
+ impl Ad...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+The diff shows I removed a `#[verus_verify]` that existed in the committed version. Let me check the original HEAD state carefully — the working tree may have differed from HEAD at task start.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== HEAD version around impl Address ==="; git show HEAD:src/libs/sys
+
+[THINKING] I'm noticing something odd with the diff — it shows a `-#[verus_verify]` line being removed, which suggests the original file had that attribute on the `impl Address for VirtualAddress` block, but when I first looked at line 167, it wasn't there. Let me trace through what happened: I added `#[verus_verify]` and then removed it, so the net effect in the diff is showing it as deleted, which means it must have been in the original version after all.
+[RESULT ✓] bash: === HEAD version around impl Address ===
+        self.0.checked_sub(rhs).map(VirtualAddress::from_raw_value)
+    }
+}
+
+#[verus_verify]
+impl Address for VirtualAddress {
+    ///
+    /// # Description
+=== reflog of my edits done; check working tree now ===
+}
+
+impl Address for VirtualAddress {
+    ///
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Surprising: HEAD already has `#[verus_verify]` on the impl block. Let me examine HEAD's full impl block to understand how `as_ptr`/`as_mut_ptr` and `is_aligned` are handled there.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git show HEAD:src/libs/sys/src/sys/mm/address/virt.rs | sed -n '167,335p'
+
+[THINKING] I'm noticing a discrepancy here—when I first looked at the file, line 167 showed `impl Address for VirtualAddress {` without the `#[verus_verify]` annotation, but the committed HEAD version has that annotation already present. This suggests the working tree was modified before I even started examining it.
+
+Let me trace through my actual edits to figure out what happened: my first change added `#[verus_verify]` to the `into_raw_value` function, then I reverted that, so that's a wash. But I need to carefully check whether I actually removed the annotation from the impl block itself or if it was already missing when I started. I'm realizing the working tree at the start of this turn didn't have `#[verus_verify]` on that block, even though HEAD does. My edits must have removed it somehow — either Edit 3 inadvertently replaced the entire annotated block, or the file state changed between turns in a way I'm not accounting for. Rather than continue theorizing about the edit mechanics, I should just verify the current state directly.
+
+The real question is: if HEAD has `#[verus_verify]` on the `impl Address for VirtualAddress` block that contains those unsafe int-to-ptr casts, how did verification pass in CI? Either those methods have `external_body` annotations, or the block itself isn't actually being verified despite the attribute. I need to examine HEAD's full implementation to see what's actually happening with those cast operations.
+[RESULT ✓] bash: #[verus_verify]
+impl Address for VirtualAddress {
+    ///
+    /// # Description
+    ///
+    /// Instantiates a new [`VirtualAddress`] from a raw value.
+    ///
+    /// # Parameters
+    ///
+    /// - `raw_addr`: The raw value.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Self)`: The new address.
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+HEAD already has `#[verus_verify]` on the impl block. My working tree is missing it (net `-1` in diff). Let me restore virt.rs to the exact committed state and establish the true baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git checkout -- src/libs/sys/src/sys/mm/address/virt.rs && git status --sho
+
+[THINKING] I'm realizing that if the `#[verus_verify]` attribute is already on the trait impl block in HEAD and CI passes, then either the verification is actually failing but not being caught, or the attribute doesn't force verification of method bodies the way I thought it would.
+
+But my own experiment showed adding the attribute caused a cast error, which contradicts HEAD having it and passing. The resolution might be that the working tree was already modified before I started this turn—the attribute was already removed somehow—even though the previous turn's git status showed virt.rs unchanged. I need to trace back exactly when and how the file state diverged from HEAD. was already missing `#[verus_verify]` before I made any changes, which would mean my experiment of adding it caused the error. So the real question is: does HEAD actually pass `make verify-sys`? I need to restore the file to HEAD state and run the verification to see what the true baseline is.
+[RESULT ✓] bash: === confirm restored ===
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-sys 2>&1 | grep -iE "Exit code|error|cheating detected|verified

@@ -1,0 +1,32 @@
+Timestamp: 2026-06-15_06-55-35
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys)
+error: Verus does not support this cast: `usize` to `*const u8`
+   --> src/libs/sys/src/sys/mm/address/virt.rs:263:9
+    |
+263 |         self.0 as *const u8
+    |         ^^^^^^^^^^^^^^^^^^^
+
+error: Verus does not support this cast: `usize` to `*mut u8`
+   --> src/libs/sys/src/sys/mm/address/virt.rs:267:9
+    |
+267 |         self.0 as *mut u8
+    |         ^^^^^^^^^^^^^^^^^
+
+error: could not compile `sys` (lib) due to 2 previous errors
