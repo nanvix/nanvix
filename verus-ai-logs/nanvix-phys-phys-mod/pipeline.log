@@ -20,3 +20,11 @@ Module: phys-mod
 [2026-06-15 01:43:21] [PROVER] Running caller-analysis...
 [2026-06-15 01:43:21] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 01:45:23]   ↳ prover done in 2m02s (exit=0)
+[2026-06-15 01:45:23] [PHASE] caller-analysis: no-review (2m02s)
+[2026-06-15 01:45:23] ✅ caller-analysis: PASS (0/0)
+[2026-06-15 01:45:23] [ABSTRACTION] Using override source for view-design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/body_removed_source.rs
+
+============================================================
+PHASE: view-design
+Module: phys-mod
+============================================================
