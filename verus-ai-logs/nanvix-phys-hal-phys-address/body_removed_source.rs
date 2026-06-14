@@ -27,7 +27,6 @@ use ::sys::{
     },
     mm::Alignment,
 };
-use ::vstd::prelude::*;
 
 //==================================================================================================
 // Structures
@@ -49,6 +48,29 @@ pub struct PhysicalAddress(VirtualAddress);
 impl PhysicalAddress {
     pub fn from_virtual_address(addr: VirtualAddress) -> Result<Self, Error> { ... }
 
+    pub fn into_virtual_address(self) -> VirtualAddress { ... }
+
+    ///
+    /// # Description
+    ///
+    /// Constructs a [`PhysicalAddress`] from a [`FrameAddress`].
+    ///
+    /// # Parameters
+    ///
+    /// - `frame_addr`: The frame address.
+    ///
+    /// # Returns
+    ///
+    /// A [`PhysicalAddress`] associated with the given `frame_addr`.
+    ///
+    pub fn from_frame_address(frame_addr: FrameAddress) -> Self { ... }
+
+    pub fn from_into_frame_address(frame_addr: FrameAddress) -> Self { ... }
+}
+
+// Verified conversions between a physical address, frame numbers, and MMIO addresses.
+#[verus_verify]
+impl PhysicalAddress {
     ///
     /// # Description
     ///
@@ -67,9 +89,17 @@ impl PhysicalAddress {
     ///
     /// Behavior is undefined if the provided memory-mapped I/O address is invalid.
     ///
+    // Identity wrapping that deliberately bypasses the physical-RAM-range validator: MMIO
+    // addresses may legally lie outside tracked RAM. On success the abstract address is unchanged.
+    #[verus_spec(result =>
+        requires
+            spec_frame_number(addr@) <= spec_max_frame_number(),
+        ensures
+            result is Ok,
+            (result->Ok_0)@ == addr@,
+            (result->Ok_0).inv(),
+    )]
     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> { ... }
-
-    pub fn into_virtual_address(self) -> VirtualAddress { ... }
 
     ///
     /// # Description
@@ -84,26 +114,22 @@ impl PhysicalAddress {
     ///
     /// A [`PhysicalAddress`] associated with the given `frame_number`.
     ///
+    // Total constructor: the result is the frame's base address, hence `FRAME_SIZE`-aligned.
+    #[verus_spec(result =>
+        ensures
+            result@ == spec_from_number(spec_frame_raw_value(frame)),
+    )]
     pub fn from_number(frame: FrameNumber) -> Self { ... }
 
+    // Total projection (under `inv()`): identifies the frame containing the address,
+    // `self@ / FRAME_SIZE` (equivalently `self@ >> FRAME_SHIFT`). `inv()` underwrites the unwrap.
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            spec_frame_raw_value(result) == spec_frame_number(self@),
+    )]
     pub fn into_frame_number(self) -> FrameNumber { ... }
-
-    ///
-    /// # Description
-    ///
-    /// Constructs a [`PhysicalAddress`] from a [`FrameAddress`].
-    ///
-    /// # Parameters
-    ///
-    /// - `frame_addr`: The frame address.
-    ///
-    /// # Returns
-    ///
-    /// A [`PhysicalAddress`] associated with the given `frame_addr`.
-    ///
-    pub fn from_frame_address(frame_addr: FrameAddress) -> Self { ... }
-
-    pub fn from_into_frame_address(frame_addr: FrameAddress) -> Self { ... }
 }
 
 impl Address for PhysicalAddress {
@@ -183,6 +209,8 @@ impl Address for PhysicalAddress {
     fn max_addr() -> usize { ... }
 
     fn into_raw_value(self) -> usize { ... }
+
+    fn clone_address(&self) -> Self { ... }
 
     fn as_ptr(&self) -> *const u8 { ... }
 
