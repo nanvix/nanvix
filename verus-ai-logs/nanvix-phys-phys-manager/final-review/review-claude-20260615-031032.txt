@@ -308,3 +308,952 @@ Now I need to coordinate the verification work. The task wants each sub-agent to
 ────────────────────────────────────────────────────────────
 Turn 5
 ────────────────────────────────────────────────────────────
+[TOOL] task: {'name': 'final-review-claude', 'agent_type': 'general-purpose', 'mode': 'backgr
+[TOOL] task: {'name': 'final-review-codex', 'agent_type': 'general-purpose', 'mode': 'backgro
+
+[THINKING] I'll launch both sub-agents in parallel first since they take time to run, then read through the documentation files myself while they work. I'm giving each agent the full context they need—file paths, the rules to follow, and what output format to produce.
+[RESULT ✓] task: Agent started in background with agent_id: final-review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] task: Agent started in background with agent_id: final-review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'shellId': 'verify', 'delay': 5}
+[RESULT ✓] read_bash: - frame.rs:675 instance: external_body
+    - frame.rs:713 init: external_body
+    - frame.rs:769 alloc: external_body
+    - frame.rs:799 alloc_contiguous: external_body
+    - frame.rs:820 free_count: external_body
+    - frame.rs:838 free: external_body
+    - frame.rs:880 book: external_body
+    - fr...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+I'll start by reading the skills and the files in scope in parallel.
+[TOOL] report_intent: Reading skills and scope files
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Verus exits 0 (0 verification errors) but **CHEATING_DETECTED**: manager has 4 `admit()` + 2 `external_body` (init, kernel_watermark). Let me read the rest of the relevant files while sub-agents work.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/bugs.md
+
+[THINKING] The verification passes with zero errors, but there are admits scattered throughout the code that count as cheating violations—4 at the module level for the manager and 24 globally across the kernel. These admits are blockers according to the task rules, even though the formal verification succeeded.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::hal::mem::spec_page_size;
+4. use crate::mm::phys::FrameAllocView;
+5. 
+6. // `Result::and_then`: on `Ok`, the closure is applied to the payload (its precondition must hold);
+7. // on `Err`, the error is forwarded unchanged. Mirrors `core`'s implementation. vstd ships no
+...
+[RESULT ✓] view: 1. # Bugs — Nanvix phys manager
+2. 
+3. ## Observations (record-only; validated in the proving phase)
+4. 
+5. ### OBS-1: `alloc_many_kernel_frames` lacks the `count == 0` fast-path guard
+6. 
+7. `alloc_many_user_frames` early-returns `Ok(())` when `count == 0`, but
+8. `alloc_many_kernel_frames` has no ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing phys proofs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && wc -l src/kernel/src/mm/phys/manager.rs src/kernel/src/mm/phys/manager.spec.rs src/ke
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help && echo '---'
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 531 src/kernel/src/mm/phys/manager.rs
+  132 src/kernel/src/mm/phys/manager.spec.rs
+  219 src/kernel/src/mm/phys/manager.proof.rs
+  189 verus-ai-logs/nanvix-phys-phys-manager/caller_analysis.md
+  419 verus-ai-logs/nanvix-phys-phys-manager/view_design.md
+  173 verus-ai-logs/nanvix-phys-phys-manager/bu...
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Now let me read the spec-design skill and the scope files in parallel.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 260.    - Error postconditions (ensures, Err case): state preservation, failure condition in abstract terms
+261. 
+262. 2. **Safety** — What must never happen?
+263.    - Bounds, disjointness, uniqueness, conservation, injectivity, ordering, monotonicity
+264. 
+265. 3. **Liveness** — What good things m...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Now I have a complete picture. The `bugs.md` "Remaining" section explicitly acknowledges the 4 `admit()` as deferred ghost-token boundaries — but the task rules are strict: any `admit() > 0` is a BLOCKER. Let me read the target function specs and caller analysis while the sub-agents work.
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/caller_analysis.md
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "verus_spec\|requires\|ensures\|pub.*fn \|pub(super).*fn \|fn alloc_user_fram
+
+[THINKING] Looking at the bugs.md file, there are 4 admit() calls that the team considers irreducible because they depend on the ghost-token attachment mechanism in the frame layer, which is outside this module's scope. However, the task criteria explicitly state that any remaining admit() is a blocker, so this creates a conflict between the team's architectural reasoning and the strict review requirements—which means the current state would fail the review.
+
+While I wait for the other reviewers to finish their independent assessments, I should verify the caller coverage myself by examining the function specifications in manager.rs and cross-referencing them against the caller_analysis.md to ensure I have a complete picture before consolidating the final review.
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::manager` (`PhysMemoryManager`)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-phys-manager/find_callers_output.md`
+5. (generated by `scripts/find_callers_lsp.py`, rust-analyzer LSP, intra-crate).
+6. 
+7. ## Module Summary
+8. 
+9. | Category | Count |
+10. |-...
+[RESULT ✓] bash: 97:    #[verus_spec(result =>
+98:        ensures
+104:    pub(super) fn init(upool: Upool) -> Result<(), Error> {
+140:    pub unsafe fn get_mut<'a>() -> &'a mut PhysMemoryManager {
+173:    #[verus_spec(result =>
+174:        requires
+177:        ensures
+193:    pub fn alloc_many_user_frames(
+235:     ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Let me read the spec-design skill and the spec/proof files plus analysis docs.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.spec.rs
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::hal::mem::spec_page_size;
+4. use crate::mm::phys::FrameAllocView;
+5. 
+6. // `Result::and_then`: on `Ok`, the closure is applied to the payload (its precondition must hold);
+7. // on `Err`, the error is forwarded unchanged. Mirrors `core`'s implementation. vstd ships no
+...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Inspecting module code
+[TOOL] rg: fn (init|alloc_user_frame|check_user_watermark|alloc_many_user_frames|alloc_many_kernel_frames|alloc_kernel_frame)\b|\#\[verus_spec|\#\[verus_verify\(external_body\)\]|assume_specification|admit\(
+[TOOL] rg: VERUS REWRITE|cfg\(not\(verus_keep_ghost\)\)|cfg\(verus_keep_ghost\)|debug_assert!|trace!|warn!|error!|info!
+[TOOL] rg: init|alloc_user_frame|check_user_watermark|alloc_many_user_frames|alloc_many_kernel_frames|alloc_kernel_frame|expect|requires|ensures|failure|error
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/caller_analysis.md:13:| Private | 1 (`check_user_watermark`) |
+/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/caller_analysis.md:23:| `init` | `pub(super)` | 1 | `mm/phys/mod.rs:189` (subsystem `init`) |
+/home/r...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs:16:    admit();
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs:35:    admit();
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs:55:    admit();
+/home/ruize/nanvix-phy-specs/src/kernel/src/m...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs:8:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs:10:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs:207:            #[cfg(not(verus_keep_ghost))]
+/home/ruiz...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I need to examine the ensures clauses in the verus_spec annotations for all six target functions to evaluate their specification quality.
+[RESULT ✓] view: 170.     /// error is returned and any frames allocated by this call are dropped by truncating `frames`
+171.     /// back to empty.
+172.     ///
+173.     #[verus_spec(result =>
+174.         requires
+175.             self.inv(),
+176.             old(frames)@.len() == 0,
+177.         ensures
+178.     ...
+[RESULT ✓] view: 280.     #[verus_spec(result =>
+281.         requires
+282.             self.inv(),
+283.         ensures
+284.             final(self).inv(),
+285.             match result {
+286.                 Ok(uf) => {
+287.                     &&& old(self)@.user_alloc_ok(1)
+288.                     &&& old(self)...
+[RESULT ✓] view: 363.     #[verus_spec(result =>
+364.         requires
+365.             self.inv(),
+366.         ensures
+367.             final(self).inv(),
+368.             match result {
+369.                 Ok(kf) => {
+370.                     &&& old(self)@.free_frames.contains(kf@)
+371.                     &&& ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 181.                     &&& (count > 0 ==> old(self)@.user_alloc_ok(count as nat))
+182.                     &&& final(frames)@.len() == count
+183.                     &&& user_addr_set(final(frames)@).len() == count
+184.                     &&& old(self)@.all_free(user_addr_set(final(frames)@))
+185...
+[RESULT ✓] view: 381.         let result: Result<KernelFrame, Error> = KernelFrame::new(frame_addr).inspect_err(|e| {
+382.             #[cfg(not(verus_keep_ghost))]
+383.             warn!("failed to wrap frame after KernelFrame::new failure: {e:?}");
+384.             if let Err(free_err) = frame::free(frame_addr) {
+...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::hal::mem::spec_page_size;
+4. use crate::mm::phys::FrameAllocView;
+5. 
+6. // `Result::and_then`: on `Ok`, the closure is applied to the payload (its precondition must hold);
+7. // on `Err`, the error is forwarded unchanged. Mirrors `core`'s implementation. vstd ships no
+...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::mm::phys::phys_view;
+4. 
+5. //==================================================================================================
+6. // Global-token attachment (deferred to the proving phase)
+7. //==========================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Now the proof file and analysis docs, plus the rest of spec-design.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::mm::phys::phys_view;
+4. 
+5. //==================================================================================================
+6. // Global-token attachment (deferred to the proving phase)
+7. //==========================================================================...
+[RESULT ✓] view: 130.       code), would I believe this ensures clause is guaranteed?"
+131.    5. **Version sensitivity**: note the stdlib/crate version the
+132.       assumption was checked against.
+133. 
+134.    - `external_body`: allowed on dependency functions in other modules as
+135.      a temporary contract p...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::manager` (`PhysMemoryManager`)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-phys-manager/find_callers_output.md`
+5. (generated by `scripts/find_callers_lsp.py`, rust-analyzer LSP, intra-crate).
+6. 
+7. ## Module Summary
+8. 
+9. | Category | Count |
+10. |-...
+[RESULT ✓] view: 1. # Bugs — Nanvix phys manager
+2. 
+3. ## Observations (record-only; validated in the proving phase)
+4. 
+5. ### OBS-1: `alloc_many_kernel_frames` lacks the `count == 0` fast-path guard
+6. 
+7. `alloc_many_user_frames` early-returns `Ok(())` when `count == 0`, but
+8. `alloc_many_kernel_frames` has no ...
+[RESULT ✓] view: 1. # View Design: `mm::phys::manager` (`PhysMemoryManager`)
+2. 
+3. > Phase output. Designs the abstract `View` that all later specs
+4. > (`requires`/`ensures`) for the six in-scope functions will reference:
+5. > `init`, `alloc_user_frame`, `check_user_watermark`,
+6. > `alloc_many_user_frames`, `allo...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+All 6 target functions have well-formed specs. I have a complete independent picture. The decisive blocker is confirmed: **4 `admit()`**. Now waiting for the two review sub-agents to finish their independent analyses.
+[TOOL] read_agent: {'agent_id': 'final-review-claude', 'wait': True, 'timeout': 180}
+
+[THINKING] The specs are solid with good caller coverage, and I notice the check_user_watermark spec calls phys_view() directly, which is interesting since it's a static-free function. I have a clear picture now, but the main blocker is those four admit() calls — I should wait for the sub-agents to complete before consolidating. I'm also checking the bulk-vec capacity and InvalidArgument coverage, where the caller expects InvalidArgument when frames are non-empty or capacity is less than count, but the spec requires old(frames) to be empty as a precondition.
+
+The non-empty case is actually a precondition rather than an error path, and the caller analysis confirms the caller pre-checks that the vector is empty, which aligns with the spec's requirement. The capacity check isn't explicitly in the spec but it's an implementation detail, so that's acceptable. I'll wait for the sub-agents to finish their work before moving forward.
+[TOOL] report_intent: Checking verification log
+[TOOL] bash: if [ -f /tmp/verify_mmphys.log ]; then echo 'FILE_PRESENT'; ls -l --time-style=long-iso /tmp/verify_mmphys.log; echo '--
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: FILE_PRESENT
+-rw-rw-r-- 1 ruize ruize 3231 2026-06-15 03:11 /tmp/verify_mmphys.log
+---TAIL---
+Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Key finding already: 4 `admit()` in proof.rs. Let me confirm with grep and read the analysis docs + TCB list.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys
+echo "=== admit() ==="; grep -rn "admit()" manager.rs manager.spe
+[RESULT ✓] bash: === admit() ===
+manager.proof.rs:16:    admit();
+manager.proof.rs:35:    admit();
+manager.proof.rs:55:    admit();
+manager.proof.rs:216:    admit();
+=== assume( ===
+=== external_body ===
+manager.rs:96:    #[verus_verify(external_body)]
+manager.rs:524:#[verus_verify(external_body)]
+manager.spec.rs:47...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Confirmed: **4 admit()** (BLOCKER), 2 external_body, 3 assume_specification, 1 uninterp. Now let me read the docs and TCB list, and check the verify log.
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::manager` (`PhysMemoryManager`)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-phys-manager/find_callers_output.md`
+5. (generated by `scripts/find_callers_lsp.py`, rust-analyzer LSP, intra-crate).
+6. 
+7. ## Module Summary
+8. 
+9. | Category | Count |
+10. |-...
+[RESULT ✓] view: 1. # Bugs — Nanvix phys manager
+2. 
+3. ## Observations (record-only; validated in the proving phase)
+4. 
+5. ### OBS-1: `alloc_many_kernel_frames` lacks the `count == 0` fast-path guard
+6. 
+7. `alloc_many_user_frames` early-returns `Ok(())` when `count == 0`, but
+8. `alloc_many_kernel_frames` has no ...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running analysis scripts
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && BASE_REF='' && for b in main origin/main master origin/master; do if git rev-parse --
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: BASE_REF=
+⚠️  4 mismatched, 1 extra (3 functions match)
+ast_count_exit=1
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PhysMemoryManager::alloc_kernel_frame    MISMATCH      ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager branch -a && echo '---SHOW-REF---' && git show-ref | head -n 80
+[RESULT ✓] bash: dev
+  exp
+* verus-ai-prove
+  verus-ai/arch-frame-number
+  verus-ai/arch-paging-mod
+  verus-ai/arch-paging-table
+  verus-ai/arch-x86-pde
+  verus-ai/arch-x86-pte
+  verus-ai/bump-allocator
+  verus-ai/hal-frame-address
+  verus-ai/hal-memory-region
+  verus-ai/hal-page-aligned
+  verus-ai/hal-phys-address
+...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Now let me check the verify log and run the helper scripts.
+[TOOL] bash: echo "=== tail of verify log ==="; tail -40 /tmp/verify_mmphys.log 2>/dev/null || echo "LOG NOT FOUND"
+echo; echo "=== e
+[RESULT ✓] bash: === tail of verify log ===
+    - frame.rs:675 instance: external_body
+    - frame.rs:713 init: external_body
+    - frame.rs:769 alloc: external_body
+    - frame.rs:799 alloc_contiguous: external_body
+    - frame.rs:820 free_count: external_body
+    - frame.rs:838 free: external_body
+    - frame.rs:8...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: echo "=== verus pass/verified lines ==="; grep -iE "verification results|[0-9]+ verified|[0-9]+ error|errors:" /tmp/veri
+[RESULT ✓] bash: === verus pass/verified lines ===
+
+=== head ===
+Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --feat...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs
+LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log 2>/dev/null | head -1)
+ec
+[RESULT ✓] bash: Latest verus log: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_03-11-50.log
+--- cheating-detail manager only ---
+    - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
+    - mm/phys/manager.proof.rs:27 lemma_kernel_alloc_one: admit
+    - mm/phys/manager.proof.rs:40 lemma_kernel_a...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; BASE_REF=origin/dev; echo BASE_REF=$BASE_REF; python3 /home/ruize/verus-ai-exp/verus-ai
+[RESULT ✓] bash: BASE_REF=origin/dev
+⚠️  4 mismatched, 1 extra (3 functions match)
+ast_count_exit=1
+---AST SUMMARY---
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PhysMemoryManager::alloc_ke...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Verus itself passes (exit 0, cached) but the gate reports CHEATING_DETECTED. Now let me run the helper scripts.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs
+echo "===== AST CONSISTENCY (manager.rs) ====="
+python3 /home/ruize/verus-ai-exp/verus-a
+[RESULT ✓] bash: ===== AST CONSISTENCY (manager.rs) =====
+⚠️  4 mismatched, 1 extra (3 functions match)
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+AST consistency reports mismatches. Let me investigate the details.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs
+echo "===== SUMMARY ====="
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consist
+[RESULT ✓] bash: ===== SUMMARY =====
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PhysMemoryManager::alloc_kernel_frame    MISMATCH                             
+PhysMemoryManager::alloc_many...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo '---AUTO CHECK---' && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_dri
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p verus-ai-logs/nanvix-phys-phys-manager/final-review && git --no-pager show o
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `verus-ai-logs/nanvix-phys-phys-manager/final-review/manager.origin.dev.rs`
+- **Verus file:** `src/kernel/src/mm/phys/manager.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy-specs/src/kernel/src`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|-...
+[RESULT ✓] bash: ---AUTO CHECK---
+Module:   nanvix-phys-phys-manager
+Phase:    cheating-elimination
+Source:   /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+Baseline: 3a0b7204c305
+Current:  HEAD
+
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs
+for f in "PhysMemoryManager::check_user_watermark" "PhysMemoryManager::alloc_user_frame"
+[RESULT ✓] bash: ##### DIFF: PhysMemoryManager::check_user_watermark #####
+## PhysMemoryManager::check_user_watermark (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,13 +1,20 @@
+     fn check_user_watermark(count: usize) -> Result<(), Error> {
+-        let watermark_threshold: usize = config::kernel::KERNEL_WATERM...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+check_user_watermark has real exec changes (constant→accessor, reordered free_count read). Let me view the other three mismatches.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs
+for f in "PhysMemoryManager::alloc_kernel_frame" "PhysMemoryManager::alloc_many_kernel_f
+[RESULT ✓] bash: ##### DIFF: PhysMemoryManager::alloc_kernel_frame #####
+## PhysMemoryManager::alloc_kernel_frame (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,9 +1,14 @@
+     pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
++        
+         let frame_addr: FrameAddress = frame::alloc()?;
+-...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Now let me run the spec drift check.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs
+echo "=== fn_coverage ==="
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage
+[RESULT ✓] bash: === fn_coverage ===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Origi...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs
+echo "=== current branch & base ==="
+git branch --show-current
+git log --oneline -3
+echo
+[RESULT ✓] bash: === current branch & base ===
+verus-ai-prove
+9279910c0 [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilation), —, admit=24 external_body=18 cfg_gate=15)
+00c9ca9b5 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=24 external_body=...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Collecting guardrail counts
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo '---ADMIT LOCS---' && rg -n "\badmit\s*!?\s*\(" src/kernel/src/mm/phys/manager.r
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ---ADMIT LOCS---
+src/kernel/src/mm/phys/manager.proof.rs:16:    admit();
+src/kernel/src/mm/phys/manager.proof.rs:35:    admit();
+src/kernel/src/mm/phys/manager.proof.rs:55:    admit();
+src/kernel/src/mm/phys/manager.proof.rs:216:    admit();
+admit_count=4
+---ASSUME LOCS (assume())---
+assume_count=0
+...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs
+rm -f .base_manager.rs
+echo "=== spec_drift check ==="
+python3 /home/ruize/verus-ai-exp/
+[RESULT ✓] bash: === spec_drift check ===
+Module:   nanvix-phys-phys-manager
+Phase:    cheating-elimination
+Source:   /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+Baseline: 3a0b7204c305
+Current:  HEAD
+
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review require...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Spec drift PASS. Let me get the true original source to confirm the exec changes against the pre-verus baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs
+# Find the commit before verus annotations were added to manager.rs
+echo "=== history of
+[RESULT ✓] bash: === history of manager.rs ===
+dd841b286 [verus] verify PASS (cheating detected): kernel::all (71 verified, 0 errors, admit=24 external_body=18 cfg_gate=15)
+3eec743ca [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+61dadf5c7 [verus] verify PASS (cheatin...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs
+echo "=== ORIGINAL check_user_watermark (baseline 3a0b7204c305) ==="
+git show 3a0b7204c3
+[RESULT ✓] bash: === ORIGINAL check_user_watermark (baseline 3a0b7204c305) ===
+    fn check_user_watermark(count: usize) -> Result<(), Error> {
+        // Reading the free count first pins the abstract `free_count()` to a concrete `usize`,
+        // hence `free_count() <= usize::MAX`. This bound is what the overflo...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+The spec_drift baseline already contains verus changes — it's a phase-start baseline, not the true original. The AST checker uses the true pre-verus base. Let me confirm what that base is and verify the kernel-frames mismatch is benign.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/kernel/src/mm/p
+[RESULT ✓] bash: usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+--- look at pipeline_state for base sha ---
+./verus-ai-logs/nanvix-phys-bump-allocator/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-mod/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-manager/pipeline_state.json
+{'current_phase': 'che...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: final-review-claude, agent_type: general-purpose, status: running, description: Independent final review, elapsed: 223s, total_turns: 0, model: claude-opus-4.8, current_intent: "Reading skills and scope files", tool_calls_completed: 28, (timed out...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+I'm waiting for both review sub-agents to complete their independent analyses. I'll consolidate once they finish.
+Critical: pipeline_state shows **proving: passed=False (dialogue-BLOCKED)** and **cheating-elimination: passed=False (FAIL-cheating)**. Let me get the true pre-verus original to confirm the exec changes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs
+# Find first commit that introduced verus_spec into manager.rs
+FIRST=$(git --no-pager lo
+[RESULT ✓] bash: First verus_spec commit: 54a1d5c94
+Parent (pre-verus): 5e97f9a4f3e3f6cf276a6068af7254913f679f96
+=== ORIGINAL check_user_watermark ===
+    fn check_user_watermark(count: usize) -> Result<(), Error> {
+        let watermark_threshold: usize = config::kernel::KERNEL_WATERMARK
+            .checked_add(co...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/final-review
+[RESULT ✓] view: ast_report_manager_origin_dev
+manager.origin.dev.rs
+review-claude-20260615-031032.jsonl
+review-claude-20260615-031032.txt
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rm -rf verus-ai-logs/nanvix-phys-phys-manager/final-review/manager.origin.dev.rs veru
+[RESULT ✓] bash: review-claude-20260615-031032.jsonl
+review-claude-20260615-031032.txt
+<shellId: 31 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat > /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.gpt53codex.md <<'EOF
+[RESULT ✓] bash: 
+<shellId: 32 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.gpt53codex.md
+[RESULT ✓] view: 1. # Spec Quality
+2. 
+3. Scope: `PhysMemoryManager::init`, `alloc_user_frame`, `check_user_watermark`, `alloc_many_user_frames`, `alloc_many_kernel_frames`, `alloc_kernel_frame` in `src/kernel/src/mm/phys/manager.rs`.
+4. 
+5. - `init` (`manager.rs:96-104`): **Weak / blocker context**. Spec is `extern...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager status --short
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-manager/final-review/review-claude-20260615-031032.jsonl
+ M verus-ai-logs/nanvix-phys-phys-manager/final-review/review-claude-20260615-031032.txt
+?? verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.gpt53codex.md
+<shellId: 33 completed with exit code 0...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Confirmed real exec changes. Let me check for verification-todo.md and finalize my analysis.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs
+echo "=== verification-todo.md ==="; find verus-ai-logs -name "verification-todo.md" 2>/
+[RESULT ✓] bash: === verification-todo.md ===
+-rw-rw-r-- 1 ruize ruize 2152 Jun 13 23:38 verus-ai-logs/nanvix-phys-bump-allocator/verification-todo.md
+=== view_design.md (head) ===
+# View Design: `mm::phys::manager` (`PhysMemoryManager`)
+
+> Phase output. Designs the abstract `View` that all later specs
+> (`requires`...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Done. I wrote the raw review to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.gpt53codex.md`
+
+Final Result: **FAIL**
+
+Exact counts in scoped files (`manager.rs/.spec.rs/.proof.rs`):
+- `admit()` = **4**
+- `external_body` = **2**
+
+(Also from `/tmp/verify_mmphys.log`: verifier exit code 0, error count 0, but status `CHEATING_DETECTED`.)
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'final-review-codex', 'wait': False}
+[RESULT ✓] read_agent: Agent completed. agent_id: final-review-codex, agent_type: general-purpose, status: completed, description: Independent final review, elapsed: 288s, total_turns: 0, model: gpt-5.3-codex, duration: 286s
+
+Done. I wrote the raw review to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-ma...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Codex agent done (FAIL, admit=4, external_body=2). Waiting on the Claude agent.
+[TOOL] read_agent: {'agent_id': 'final-review-claude', 'timeout': 180, 'wait': True}
+I have all findings. Let me write the review file.
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/final-review && echo created
+[RESULT ✓] bash: created
+<shellId: 35 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.claude.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.claude.md with 14842 characters
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Review saved to `verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.claude.md`.
+
+## Summary
+
+**RESULT: FAIL**
+
+**Exact guardrail counts (manager scope):**
+- `admit() = 4` — **BLOCKER** → `manager.proof.rs:16, 35, 55, 216` (`lemma_manager_attached`, `lemma_kernel_alloc_one`, `lemma_kernel_alloc_contiguous`, `lemma_user_bulk_err_restored`)
+- `assume() = 0`
+- `external_body = 2` → `manager.rs:96` (`init`), `manager.rs:524` (`kernel_watermark`)
+- `assume_specification = 3` → spec.rs:9/23/33 (std-lib, allowed)
+- `uninterp = 1` → spec.rs:50 (`spec_kernel_watermark`, justified external-bottom)
+- semantic cfg-gated exec = 0 (all cfg gates are logging/ghost/include — permitted)
+
+**Blockers:**
+1. **4 admit()** — any admit ⇒ FAIL. Core transition/attachment/Drop-restoration facts are assumed, not proven. No `verification-todo.md` exists for the stuck proofs.
+2. **`init` external_body** masks an in-scope target function that now has a `#[verus_spec]` ensures. The tcb-allowed.md rationale ("no specs yet; opaque callee") is **stale/invalid** — it's an in-module target, and `verus-constraints` forbids external_body on the current module's own functions.
+3. **AST consistency FAIL** — real exec changes in `check_user_watermark` (constant→`kernel_watermark()` accessor + `free_count()` hoist) and a newly added `kernel_watermark` exec function. The other 3 mismatches are pre-approved/benign.
+
+**Corroboration:** `pipeline_state.json` records proving = `dialogue-BLOCKED` and cheating-elimination = `FAIL-cheating`; the central gate reports `CHEATING_DETECTED`. Verus's cached exit-0 is hollow (the 4 admits pass vacuously).
+
+**Caller coverage:** 6/6 target functions mapped (minor weakness: `init`'s degenerate Err arm). **Bugs:** 0 true code bugs; OBS-1/2/3 + BUILD-1 all resolved correctly. **spec_drift:** clean (but baseline is a phase-start snapshot already containing the verus changes, not the true original).
+[RESULT ✓] read_agent: Agent completed. agent_id: final-review-claude, agent_type: general-purpose, status: completed, description: Independent final review, elapsed: 384s, total_turns: 0, model: claude-opus-4.8, duration: 384s
+
+Review saved to `verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.claude.md`.
+...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Both sub-agents independently agree: **FAIL**, admit=4, external_body=2. Let me verify the raw files exist and run spec_drift myself for the consolidated report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-phys-manager/final-review/*.md && echo "=== spec_dri
+
+[THINKING] Both agents flagged the same failures around the admit and external_body issues, but Claude's agent caught an additional constraint violation where external_body is masking an in-scope target function that violates the verus spec rules. I should verify the AST consistency claim for check_user_watermark and the spec drift before pulling everything together, so let me cross-check both sub-agent outputs.
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 14994 Jun 15 03:18 verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.claude.md
+-rw-rw-r-- 1 ruize ruize  7477 Jun 15 03:17 verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.gpt53codex.md
+=== spec_drift ===
+# Spec Drift Report
+
+## Summary
+
+- Func...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Both raw reviews saved; spec_drift clean. Both models independently reached **FAIL** with identical counts. Writing the consolidated review.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.md
+
+[THINKING] Now I'm consolidating the review findings into a final document. The spec shows no drift against HEAD, and I have both raw files ready to merge. I'm marking the checklist items honestly—there are four admits which is a blocker, and I'm noting the external body findings including the kernel watermark as a valid TCB-listed item.
+
+The configuration-gated execution is all logging under the appropriate guards, so no semantic issues there. The AST consistency check shows no VERUS REWRITE comments, though the check_user_watermark refactor lacks documentation which I'll flag as a concern. Verus exits cleanly with zero errors despite the admits passing vacuously, and I've confirmed there are no actual code bugs—the previous issues are resolved. Now I'll write out the final consolidated review.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.md with 12152 characters
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Consolidated review written. Both sub-agents (claude-opus-4.8, gpt-5.3-codex) independently reached the same verdict.
+
+## Result: **FAIL**
+
+**Raw reviews:**
+- `final-review/final_review.claude.md`
+- `final-review/final_review.gpt53codex.md`
+- Consolidated → `final-review/final_review.md`
+
+**Guardrail counts (manager scope):** `admit=4`, `assume=0`, `external_body=2`, `assume_specification=3` (std-lib only), cfg-gated exec=0 semantic (all logging/imports).
+
+**Blockers:**
+1. **4 `admit()`** in `manager.proof.rs:16,35,55,216` (`lemma_manager_attached`, `lemma_kernel_alloc_one`, `lemma_kernel_alloc_contiguous`, `lemma_user_bulk_err_restored`). Any `admit>0` ⇒ automatic FAIL. Verus exits 0 but `CHEATING_DETECTED` — the exit-0 is vacuous.
+2. **`init` `external_body`** — an in-scope target now carrying a real `#[verus_spec]`, but masked under a stale `tcb-allowed.md` rationale ("no specs yet; opaque callee").
+3. **AST/process gaps** — `check_user_watermark` exec refactor lacks a `// VERUS REWRITE` marker; no isolated reproducer/`verification-todo.md` for the stuck proofs.
+
+**Strengths (not enough to pass):** specs for all 6 targets are correct/complete (watermark gate, contiguity, distinctness, all-or-nothing, no-leak); caller coverage 6/6; `spec_drift` clean; 0 true code bugs (OBS-1/2/3, BUILD-1 all resolved). The 4 admits are honestly documented as deferred ghost-token/Drop debt — but the effort is incomplete.
+
+[THINKING] I'm ready to wrap this up and provide the user with a clear summary.
+
+
+=== Session End ===
+Session: 87ba0a4a-9b4b-4bcd-8439-240de00c34f0
+Duration: 607.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/final-review/review-claude-20260615-031032.jsonl
