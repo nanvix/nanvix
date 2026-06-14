@@ -324,3 +324,46 @@ Both pass. Let me run the full `make verify` to confirm no kernel regression.
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | grep -E "verified, [0-9]+ errors|status:" | tail -6
 
 [THINKING] Both the verify-arch and build checks pass. I should run the full `make verify` to be thorough and confirm there's no regression on the kernel side, even though the ensures didn't change and the reviewer only asked for those two checks.
+[RESULT ✓] bash: status: CHEATING_DETECTED
+  status: CHEATING_DETECTED
+verification results:: 41 verified, 0 errors
+verification results:: 76 verified, 0 errors
+  verification: 76 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+All green: arch 41/0, kernel 76/0. Remaining `CHEATING_DETECTED` is solely the out-of-scope `table` module. Now writing the fixer response.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/specification/dialogue/turn_001_fixer.md
+
+[THINKING] The error checks are passing across the board with no issues detected, though there's still that pre-existing CHEATING_DETECTED flag lingering in the unrelated proof and table files that's out of scope. Now I'm ready to draft the fixer response.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/specification/dialogue/turn_001_fixer.md with 3616 characters
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Fixed. 
+
+## Summary
+
+The reviewer required removing the `admit()` in `PageDirectoryEntry::frame_address` and proving its `ensures` for real.
+
+**Changes:**
+- **`pde.rs`** — `frame_address` now binds the raw frame index and calls a proof lemma instead of `admit()`.
+- **`pde.proof.rs`** (was empty) — added `lemma_frame_address`, proving `(raw << FRAME_SHIFT) == raw * FRAME_SIZE` and `% FRAME_SIZE == 0` using vstd lemmas (`lemma2_to64`, `lemma_usize_shl_is_mul`, `lemma_mod_multiples_basic`) plus a small overflow bound from the `FrameNumber` type invariant.
+
+**Verification:**
+- `make verify-arch` → 41 verified, 0 errors; `admit` dropped 2→1 (remaining one is the out-of-scope `table` module). No `admit` in `pde.rs`.
+- `make verify` → arch 41/0, kernel 76/0 — no regression.
+- `./z build -- all-kernel` → exit 0 (dual compilation intact).
+
+The `ensures` was not weakened. Response written to `turn_001_fixer.md` with result **FIXED**.
+
+
+=== Session End ===
+Session: a66fdff5-0eb1-48ce-be3b-983ec65d03d9
+Duration: 243.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/specification/dialogue-fixer-t001-claude-20260614-113147.jsonl
