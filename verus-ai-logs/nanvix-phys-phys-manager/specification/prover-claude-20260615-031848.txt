@@ -1582,3 +1582,47 @@ Turn 97
 [TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/manager.rs /tmp/manager.rs.bak && timeout 600 make verify-kernel 
 
 [THINKING] I need to verify that `is_contiguous_run` is still being used elsewhere in the codebase, particularly in the proof.rs lemmas, and confirm that the KernelFrame import is necessary for the kernel_frames_contiguous function. Let me also double-check whether the map_values and lambda expressions were properly removed.
+[RESULT ✓] bash: error[E0252]: the name `KernelFrame` is defined multiple times
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+  verificat...
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+`KernelFrame` is already in scope (spec.rs is included into manager.rs's module). Let me check and remove the duplicate:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && grep -n "KernelFrame\|UserFrame\|use crate::mm::phys\|use super" man
+
+[THINKING] I'm checking whether `KernelFrame` is already in scope since spec.rs and proof.rs are included directly into manager.rs, which likely already imports it.
+[RESULT ✓] bash: 18:        kframe::KernelFrame,
+21:            UserFrame,
+200:        frames: &mut Vec<UserFrame>,
+242:    /// Upon success, a [`UserFrame`] is returned. Upon failure, an error is returned
+264:    pub fn alloc_user_frame(&mut self) -> Result<UserFrame, Error> {
+349:    pub fn alloc_kernel_frame(&mut...
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && grep -n "include!\|spec.rs\|proof.rs\|mod manager" manager.rs ../mod
+
+[THINKING] I'm noticing that `KernelFrame` is already imported in manager.rs, so the duplicate import in spec.rs within the same module is redundant. Now I need to figure out how `UserFrame` and `FrameAllocView` are being handled across these files.
+
+The key question is whether manager.rs's imports are visible inside the `verus!{}` block in spec.rs when it's included. If spec.rs is included directly into manager.rs, then manager.rs's `use` statements should be in scope, which means I can safely remove the `KernelFrame` import from spec.rs while keeping `FrameAllocView` and `phys_view` since those aren't imported in manager.rs. Let me check how the include mechanism actually works first.
+[RESULT ✓] bash: manager.rs:10:include!("manager.spec.rs");
+manager.rs:12:include!("manager.proof.rs");
+<shellId: 55 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+
+[THINKING] KernelFrame is already imported in manager.rs at the module level, so I should remove the duplicate from spec.rs. The question is whether removing it from inside the `verus!{}` macro will still allow KernelFrame to be resolved there, since the import at module scope should make it available throughout the file.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/manager.rs /tmp/manager.rs.bak && timeout 600 make verify-kernel 

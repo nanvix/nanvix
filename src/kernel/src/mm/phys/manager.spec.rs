@@ -21,7 +21,6 @@ use crate::hal::mem::spec_page_size;
 use crate::mm::phys::{
     phys_view,
     FrameAllocView,
-    KernelFrame,
 };
 use vstd::seq::Seq;
 
