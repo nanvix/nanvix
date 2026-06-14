@@ -1525,3 +1525,30 @@ Now verify dual compilation with `make build`, and re-run module verify to confi
 [THINKING] I'm checking the other foralls in proof.rs to see which ones trigger warnings—lemma_spec_book_frames_preserves_inv and lemma_book_region_reserves both have foralls in their ensures clauses, but only line 154 actually warned. The key difference seems to be that 154's forall uses `reserved.contains(a)` in its conclusion, whereas the others likely have natural triggers that prevent the warning.
 
 Let me rebuild the verify-kernel module to confirm there are no new warnings and we still have 8 verified lemmas, then proceed with the build.
+[RESULT ✓] bash: note: automatically chose triggers for this expression:
+note:   trigger 1 of 1:
+note: automatically chose triggers for this expression:
+note:   trigger 1 of 1:
+note: automatically chose triggers for this expression:
+note:   trigger 1 of 1:
+note: Verus printed one or more automatically chosen quantif...
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+Let me add explicit triggers to the remaining low-confidence foralls for cleanliness:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs
+
+[THINKING] I'm seeing some trigger notes on the remaining foralls that need explicit triggers to clean things up. Let me go through the ones that have both hypothesis and conclusion containing the relevant conditions—like the lemma about frame preservation and the one about region reservations—and add the necessary triggers to each.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "trigger|error:|verified|sta

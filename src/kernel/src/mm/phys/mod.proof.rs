@@ -64,9 +64,9 @@ pub proof fn lemma_spec_book_frames_preserves_inv(pre: PhysMemView, frames: Set<
         pre.spec_book_frames(frames).inv(),
         pre.spec_book_frames(frames).initialized,
         forall|a: int| frames.contains(a)
-            ==> pre.spec_book_frames(frames).frames.allocated_frames.contains(a),
+            ==> #[trigger] pre.spec_book_frames(frames).frames.allocated_frames.contains(a),
         forall|a: int| frames.contains(a)
-            ==> !pre.spec_book_frames(frames).frames.free_frames.contains(a),
+            ==> #[trigger] pre.spec_book_frames(frames).frames.free_frames.contains(a) == false,
 {
     admit();
 }
@@ -90,7 +90,7 @@ pub proof fn lemma_book_region_reserves_region_frames(
     ensures
         pre.spec_book_frames(PhysMemView::region_frames(start, size)).inv(),
         forall|a: int| PhysMemView::region_frames(start, size).contains(a)
-            ==> pre.spec_book_frames(PhysMemView::region_frames(start, size))
+            ==> #[trigger] pre.spec_book_frames(PhysMemView::region_frames(start, size))
                 .frames.allocated_frames.contains(a),
 {
     admit();
