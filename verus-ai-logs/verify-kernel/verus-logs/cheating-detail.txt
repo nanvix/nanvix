@@ -14,4 +14,4 @@
     - mm/phys/mod.rs:68 book_physical_memory_regions: external_body
     - mm/phys/mod.rs:88 book_mmio_regions: external_body
     - mm/phys/mod.spec.rs:73 ExLinkedList (struct): external_type_spec
-    - mm/phys/upool.rs:147 new: external_body
+    - mm/phys/upool.rs:148 new: external_body

@@ -1321,3 +1321,60 @@ Turn 75
 ────────────────────────────────────────────────────────────
 Now let me run module verification to see where `init` stands:
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|warning:|orphan|verif
+[RESULT ✓] bash: error: cannot use type `kernel::mm::phys::upool::Upool` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+ 86 |     pub(super) fn init(upool: Upool) -> Result<(), Error> {
+    = help: The following declaration may resolve this error:
+error: could ...
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+`Upool` type isn't Verus-visible. Let me check how `Inner` is made visible in frame.rs vs how `Upool` is declared.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && grep -n "struct Inner\|struct Upool\|struct PhysMemoryManager\|verus
+
+[THINKING] I'm running into a type visibility issue where the `Upool` struct, defined outside the verus! macro, isn't recognized by Verus even though it's needed in the external function signature. The problem cascades because external_body functions still require type specifications for their parameters, but Verus can't see types declared outside its scope. I'm considering whether marking `Upool` with external_type_specification might resolve this, though I need to think through how that works for project-internal types. The real issue is that `Upool` needs to be visible to Verus when `PhysMemoryManager::init` references it in its signature, even though `init` is marked `external_body`. Since `Upool` is defined in upool.rs as a plain struct, it should theoretically be visible like `Inner` is in frame.rs — but something about the module structure or how Verus processes different files is preventing it from being recognized. The difference might be that `Inner` is in the same file where it's used in specs, whereas `Upool` is being referenced across modules, and Verus may not be picking it up during signature checking. I notice that frame::init also takes Bitmap and is marked external_body without errors, so Bitmap must already be verus-visible through the bitmap crate. The real issue is Upool—it's not visible to Verus. I could use external_type_specification to declare it as an opaque external type, but that's meant for foreign crates, not internal project types. The proper approach would be to make Verus see Upool natively like it does other structs. Let me check how Inner is defined in frame.rs to understand why it's visible.
+[RESULT ✓] bash: 81:#[verus_verify]
+82:struct Inner {
+103:#[verus_verify]
+115:    #[verus_verify(external_body)]
+116:    #[verus_spec(result =>
+181:    #[verus_verify(external_body)]
+182:    #[verus_spec(result =>
+254:    #[verus_verify(external_body)]
+255:    #[verus_spec(result =>
+339:    #[verus_verify(external_b...
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+`Inner` has `#[verus_verify]`. I need to add it to `Upool`. Let me check Upool's struct definition:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && grep -n "struct Upool\|struct PhysMemoryManager" upool.rs manager.rs
+
+[THINKING] The issue is that Verus doesn't recognize the Upool struct because it's declared outside the verus macro. Since the Inner struct has the `#[verus_verify]` attribute making it visible, I need to add the same attribute to the Upool struct to make it recognized by Verus.
+[RESULT ✓] bash: upool.rs:131:pub struct Upool {
+manager.rs:63:pub struct PhysMemoryManager {
+<shellId: 36 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 125. /// # Description
+126. ///
+127. /// Thin facade over the module-level [`frame`](super::frame) allocator. Exists as a distinct type
+128. /// so user-frame allocation has its own entry point ([`Upool::alloc`] returning [`UserFrame`]).
+129. ///
+130. #[derive(Debug)]
+131. pub struct Upool {
+132.   ...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|warning:|orphan|verif
