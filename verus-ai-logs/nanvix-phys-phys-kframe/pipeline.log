@@ -221,3 +221,20 @@ Module: phys-kframe
 [2026-06-15 04:36:52] Running final comprehensive review...
 [2026-06-15 04:36:52] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 04:45:10]   ↳ review done in 8m18s (exit=0)
+[2026-06-15 04:45:11] [FINAL REVIEW] Result: PASS (0/5)
+[2026-06-15 04:45:11] [FINAL REVIEW] Cheating report: external_body: 16 (15 on user fns), admit: 12
+[2026-06-15 04:45:11] [FINAL REVIEW] ⚠ admit: 12
+[2026-06-15 04:45:11] [FINAL REVIEW] ⚠ unapproved external_body fn: 15
+[2026-06-15 04:45:11] [FINAL REVIEW] ⚠ unapproved external_body type-spec: 1
+[2026-06-15 04:45:11] [FINAL REVIEW] ❌ Overriding to FAIL — cheating: admit: 12; unapproved external_body fn: 15; unapproved external_body type-spec: 1
+[2026-06-15 04:45:11] [FINAL REVIEW] Done (8m18s)
+
+============================================================
+PIPELINE FINISHED: phys-kframe (some phases need work)
+  ✅ proving                   dialogue-RESOLVED        11m59s (1 dialogue turns)
+  ❌ cheating-elimination      FAIL-cheating             6m22s
+  ❌ final-review              FAIL                      8m18s
+  ──────────────────────────────────────────────────────────
+  Total: 37m53s
+============================================================
+[2026-06-15 04:45:11] [USAGE] Summary: 12 calls, 0 tokens, 59m36s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-kframe/usage_summary.json
