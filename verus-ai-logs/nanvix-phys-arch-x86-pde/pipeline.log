@@ -80,3 +80,19 @@ Summary of evidence (turn 2, independently re-verified):
 [2026-06-14 11:37:45] [PHASE] specification: dialogue-RESOLVED (39m51s)
 [2026-06-14 11:37:45] [SPEC DRIFT] (within specification) Comparing b04638ea → 354d18b6
 [2026-06-14 11:37:45] [SPEC DRIFT] (within specification) No changes detected
+[2026-06-15 01:38:00] [BRANCH] Staying on current branch: verus-ai-prove-bottom-up
+[2026-06-15 01:38:00] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/body_removed_source.rs (12413 -> 9914 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: arch-x86-pde
+Source: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+Crate:  arch
+Branch: verus-ai-prove-bottom-up (base: verus-ai-prove-bottom-up)
+Phases: proving → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: proving
+Module: arch-x86-pde
+============================================================
