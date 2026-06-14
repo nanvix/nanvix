@@ -972,3 +972,76 @@ Now let me run the full `make verify` to confirm no regressions in other modules
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify 2>&1 | tail -40
 
 [THINKING] Running the full verification suite to check for any regressions across all modules, particularly to ensure my refactoring of the watermark check and frame allocation loop changes haven't introduced any AST consistency issues with the exec modifications. The real concern is whether calling free_count() unconditionally on the error path is safe—it invokes instance() which could panic if the allocator isn't initialized. In practice, check_user_watermark is only called after initialization, so this shouldn't happen, but it's a subtle behavioral difference on an error path that makes me hesitant. I'm leaning toward reverting the refactor to keep the original exec structure and accepting one more admitted lemma instead. an additional axiom, making the proof cleaner overall. The refactor is minimal and safe—it just calls a pure read operation on the error path, which is practically unreachable anyway. So I'll keep the exec change and discharge free_count_bounded without an admit. onstrates sound discharge. The free_count() call is safe in practice since the frame allocator is initialized by the time check_user_watermark runs, and Verus doesn't model the panic anyway. I'm keeping the refactor—it's technically superior with one fewer assumption and behavior-preserving. Now let me run the full verify to check for regressions and confirm the final state is 4 admits.
+[RESULT ✓] bash: note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int,...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+Full `make verify` passes (exit 0, 0 errors). There's a low-confidence trigger warning at `manager.proof.rs:200`. Let me find all such warnings and annotate triggers explicitly.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1 | xargs grep -n "m
+
+[THINKING] The verification passes cleanly but there's a trigger warning on the forall assertion at line 200 in manager.proof.rs — Verus auto-selected triggers with low confidence, and the guide requires explicit #[trigger] annotations to eliminate warnings. I need to add the trigger directive to resolve this.
+[RESULT ✓] bash: 29:note: automatically chose triggers for this expression:
+30:   --> src/kernel/src/mm/phys/manager.proof.rs:104:17
+36:   --> src/kernel/src/mm/phys/manager.proof.rs:104:59
+41:note: automatically chose triggers for this expression:
+42:   --> src/kernel/src/mm/phys/manager.proof.rs:102:5
+48:   --> sr...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I'm noticing trigger issues scattered across my helper lemmas—specifically in `lemma_user_addr_set_push` and `lemma_user_bulk_step`—so I need to examine those sections and add explicit triggers to resolve them.
+[RESULT ✓] view: 94. }
+95. 
+96. /// Pushing a handle extends the owned-address set by exactly that handle's address.
+97. pub proof fn lemma_user_addr_set_push(frames: Seq<UserFrame>, uf: UserFrame)
+98.     ensures
+99.         user_addr_set(frames.push(uf)) =~= user_addr_set(frames).insert(uf@),
+100. {
+101.     let e...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I'm identifying where the trigger warnings originate in the code—they're coming from the forall assertions and choose expressions at specific line numbers, with the triggers themselves activating on the `user_addr_set(extended).contains(a)` predicate and the choose statements.
+
+The core issue is that Verus is automatically selecting triggers for these quantified expressions, particularly `extended[i]@` in the choose, which creates ambiguity. I can suppress these warnings by adding explicit `#[trigger]` annotations to the foralls and choose expressions, or I could restructure the proof to use cleaner approaches like the `assert_sets_equal!` macro that handles set extensionality more directly. The simplest fix is to annotate the foralls with explicit triggers on the key predicates. Adding explicit triggers...
+[RESULT ✓] view: 176. )
+177.     requires
+178.         user_bulk_inv(g_old, mview, frames),
+179.         mview.free_frames.contains(uf@),
+180.     ensures
+181.         user_bulk_inv(g_old, mview.alloc_one(uf@), frames.push(uf)),
+182. {
+183.     broadcast use vstd::set::group_set_axioms;
+184. 
+185.     let s = user_a...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+Let me add explicit triggers to silence the low-confidence warnings:
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I need to add explicit triggers to help the solver focus on the right assertions. For line 200's forall, I'm using `s2.contains(x)` as the trigger. Then I'm updating the lemma_user_addr_set_push to add triggers in three places: marking the contains check in the first assertion, adding a trigger for the extended array access in the choose expression, and completing the forall for the frames insert operation.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verified,|errors|error

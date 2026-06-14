@@ -99,19 +99,19 @@ pub proof fn lemma_user_addr_set_push(frames: Seq<UserFrame>, uf: UserFrame)
         user_addr_set(frames.push(uf)) =~= user_addr_set(frames).insert(uf@),
 {
     let extended = frames.push(uf);
-    assert forall|a: int| user_addr_set(extended).contains(a) implies
+    assert forall|a: int| #[trigger] user_addr_set(extended).contains(a) implies
         user_addr_set(frames).insert(uf@).contains(a) by {
-        let i = choose|i: int| 0 <= i < extended.len() && extended[i]@ == a;
+        let i = choose|i: int| #![trigger extended[i]@] 0 <= i < extended.len() && extended[i]@ == a;
         if i < frames.len() {
             assert(frames[i]@ == a);
         }
     }
-    assert forall|a: int| user_addr_set(frames).insert(uf@).contains(a) implies
+    assert forall|a: int| #[trigger] user_addr_set(frames).insert(uf@).contains(a) implies
         user_addr_set(extended).contains(a) by {
         if a == uf@ {
             assert(extended[frames.len() as int]@ == a);
         } else {
-            let i = choose|i: int| 0 <= i < frames.len() && frames[i]@ == a;
+            let i = choose|i: int| #![trigger frames[i]@] 0 <= i < frames.len() && frames[i]@ == a;
             assert(extended[i]@ == a);
         }
     }
@@ -197,7 +197,7 @@ pub proof fn lemma_user_bulk_step(
     assert(s2.len() == s.len() + 1);
     assert(frames.push(uf).len() == frames.len() + 1);
     // Every address in the enlarged set was free in `g_old`.
-    assert forall|x: int| s2.contains(x) implies g_old.free_frames.contains(x) by {
+    assert forall|x: int| #[trigger] s2.contains(x) implies g_old.free_frames.contains(x) by {
         if x != uf@ {
             assert(s.contains(x));
         }
