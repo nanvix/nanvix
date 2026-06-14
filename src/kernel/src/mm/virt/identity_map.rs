@@ -534,6 +534,7 @@ fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize
     proof! { admit(); }
     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
         let reason: &str = "invalid PDE read from kernel PD";
+        #[cfg(not(verus_keep_ghost))]
         error!("ensure_pt(): {reason}");
         Error::new(ErrorCode::InvalidArgument, reason)
     })?;

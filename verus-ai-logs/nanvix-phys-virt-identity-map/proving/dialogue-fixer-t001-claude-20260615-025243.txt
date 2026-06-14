@@ -209,3 +209,44 @@ The `read` precondition is blocked by a cross-crate `use_type_invariant` Verus i
 [THINKING] I'm noticing a mismatch in how bounds are enforced across these functions. The `pd_index` and `pt_index` functions have explicit postconditions ensuring their results stay within `PAGE_TABLE_LENGTH`, and `into_raw` does too, but when `ensure_pt` and `ensure_pte` receive `pde_idx` and `pte_idx` as bare `TableIndex` parameters, the bounds only exist as type invariants. The problem is that Verus can't access those type invariants across crate boundaries—it throws an internal error about missing the invariant function.
 
 So I'm facing three fundamental blockers: the read precondition needs cross-crate type invariants (which Verus doesn't support), the `alloc_as` precondition requires a spec-readable invariant for the module-static allocator (which doesn't exist), and the postconditions at L618/L706 depend on an uninterpreted `identity_map_view()` with no ghost-token attachment. None of these can be fixed without either weakening preconditions, using `assume`, or touching functions outside the scope. I'm now checking whether I can make progress on any secondary items the reviewer might accept. I'll test removing the error! gates while keeping the admits in place to see if the macro compiles under verus verification.
+[RESULT ✓] bash: ungated one error!
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |           ------------------------------- in this macro invocation
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Confirmed: ungating `error!` breaks Verus compilation (`error: Unsupported constant type` in the `write`/`error` macro expansion). The cfg-gate is **required** and is explicitly sanctioned by the verus-constraints skill (logging macros may be cfg-gated). Item 5 is not a valid fix. Let me restore the clean state and verify:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cp /tmp/idm.rs.bak src/kernel/src/mm/virt/identity_map.rs; cp /tmp/idm.proof.
+
+[THINKING] The `error!` macro doesn't compile under Verus due to unsupported constant types in the `write` macro, which is precisely why the `#[cfg(not(verus_keep_ghost))]` gate was added in the first place. The verus-constraints skill explicitly permits cfg-gating logging macros, so removing that gate would break Verus compilation — the reviewer's suggestion on item 5 is incorrect, and the skill actually sanctions this approach.
+
+For items 3 and 4, these are type and spec registrations rather than function implementations. The `assume_specification` calls are justified because `FixedSizeBumpAllocator::new` isn't verified and `<[T]>::as_ptr` is from the standard library, so both need the assumption. The `ExPageTableBss` external type specification is just a type registration for an opaque marker type with no executable contract, so there's no actionable code change here either.
+
+The honest assessment is that the primary items can't be fixed within the constraints, item 5 isn't a valid fix, and items 3 and 4 are already justified — this genuinely needs guidance rather than code changes.
+
+Now I'll restore the file to its clean state with the admits in place and lemmas proven, then write up the fixer report with all the exact errors documented.
+[RESULT ✓] bash: === diff vs backup (should be empty) ===
+CLEAN
+src/kernel/src/mm/virt/identity_map.rs:3
+src/kernel/src/mm/virt/identity_map.proof.rs:1
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "admit" src/kernel/src/mm/virt/identity_map.proof.rs
+
+[THINKING] I'm checking the proof.rs file to verify how many lemmas I've actually proven — I thought I completed all five, but the backup suggests there might still be an admit() placeholder somewhere. Let me trace through what changed between turns to figure out the current state.
+[RESULT ✓] bash: 6:// Fully proven from the `IdentityMapView` spec definitions (no `admit()`). They expose the
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+All 5 lemmas proven; the 3 exec admits restored. Let me run the final `make verify-kernel` and `make build` per the task:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm
+
+[THINKING] The proof module is clean with all lemmas verified and no admits in the actual code—just in the exec functions where they're expected. I need to run the final verification to confirm everything still compiles correctly and check that `make build` works as required, then document the cross-crate type-invariant limitation I've already identified.
