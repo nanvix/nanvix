@@ -9,10 +9,6 @@
 
 verus! {
 
-use crate::hal::mem::spec_page_size;
-use crate::mm::phys::FrameAllocView;
-use vstd::seq::Seq;
-
 /// The many-frame watermark gate subsumes the single-frame one: if servicing
 /// `count >= 1` frames still respects the watermark, then so does servicing one.
 ///

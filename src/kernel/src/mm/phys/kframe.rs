@@ -23,6 +23,8 @@ use ::core::ops::{
     DerefMut,
 };
 use ::sys::error::Error;
+#[cfg(verus_keep_ghost)]
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Kernel Frame
@@ -36,13 +38,13 @@ pub struct KernelFrame {
 }
 
 #[cfg(verus_keep_ghost)]
-::vstd::prelude::verus! {
+verus! {
 
 /// Abstract view of a [`KernelFrame`]: the base physical address of the frame it
 /// owns. Lets allocator contracts name a returned kernel frame's address (e.g.
 /// the contiguity guarantee of `alloc_many_kernel_frames`) without exposing any
 /// storage detail.
-impl ::vstd::prelude::View for KernelFrame {
+impl View for KernelFrame {
     type V = int;
 
     closed spec fn view(&self) -> int {

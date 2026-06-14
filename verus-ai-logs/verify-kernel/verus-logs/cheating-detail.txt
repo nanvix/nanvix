@@ -10,8 +10,8 @@
     - mm/phys/frame.rs:765 is_covered: external_body
     - mm/phys/frame.rs:785 book: external_body
     - mm/phys/frame.rs:807 alloc_range: external_body
-    - mm/phys/manager.proof.rs:21 lemma_watermark_monotone: admit
-    - mm/phys/manager.proof.rs:37 lemma_contiguous_run_distinct: admit
+    - mm/phys/manager.proof.rs:17 lemma_watermark_monotone: admit
+    - mm/phys/manager.proof.rs:33 lemma_contiguous_run_distinct: admit
     - mm/phys/manager.rs:106 init: external_body
     - mm/phys/manager.rs:195 alloc_many_user_frames: external_body
     - mm/phys/manager.rs:262 alloc_user_frame: external_body

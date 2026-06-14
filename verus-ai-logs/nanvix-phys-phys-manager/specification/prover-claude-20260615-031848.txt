@@ -812,3 +812,49 @@ Turn 37
 ────────────────────────────────────────────────────────────
 Now let me run the verification to get early feedback before updating docs.
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -50
+[RESULT ✓] bash: - manager.proof.rs:21 lemma_watermark_monotone: admit
+    - manager.proof.rs:37 lemma_contiguous_run_distinct: admit
+    - manager.rs:106 init: external_body
+    - manager.rs:195 alloc_many_user_frames: external_body
+    - manager.rs:262 alloc_user_frame: external_body
+    - manager.rs:300 check_use...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '/Full output/,
+
+[THINKING] I need to look at the actual compilation error that's preventing verus from running.
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0252]: the name `spec_page_size` is defined multiple times
+  --> src/kernel/src/mm/phys/manager.proof.rs:12:5
+   |
+12 | use crate::hal::mem::spec_page_size;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `spec_page...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+Import duplication and missing `int` import. Let me fix proof.rs (drop dup imports) and kframe.rs (add vstd prelude).
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I'm spotting a module organization issue where both spec.rs and proof.rs are included in manager.rs, causing duplicate imports since proof.rs can already access what spec.rs brings in. I need to clean up those redundant imports from proof.rs. There's also a type annotation problem in kframe.rs where `int` isn't recognized in the verus! macro scope, so I'll need to use the fully qualified path instead. needs to be in scope. The real issue is that `int` in a type alias position might not get rewritten by the verus macro, so I should follow the pattern from upool.rs and frame.rs — add `use ::vstd::prelude::*;` at the top of kframe.rs (cfg-gated) and use plain `verus!` instead of the fully qualified macro path. For proof.rs, I need to clean up duplicate imports since spec.rs already brings those items into the module scope.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
