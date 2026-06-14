@@ -129,3 +129,30 @@ Module: phys-manager
 [2026-06-15 02:24:24] [DIALOGUE] Reviewer turn 2 (remaining: 6448s)...
 [2026-06-15 02:24:24] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 02:32:12]   ↳ dialogue-reviewer-t2 done in 7m48s (exit=0)
+[2026-06-15 02:32:12] [DIALOGUE] Reviewer created STOP file: BLOCKED
+[2026-06-15 02:32:12] [DIALOGUE] STOP detail:
+BLOCKED
+
+9/10 checklist items PASS with evidence (see turn_002_driver.md). The sole blocker is item 2
+(Zero remaining admit()): 4 admits remain in manager.proof.rs — lemma_manager_attached:12,
+lemma_kernel_alloc_one:27, lemma_kernel_alloc_contiguous:40, lemma_user_bulk_err_restored:210.
+
+Independently confirmed (not accepted as verbal justification) that these are undischargeable
+within the manager module's editable scope:
+- The module's own view_design.md §8 pins the attachment to the *verified* `View for Inner`, but
+  frame.rs still carries 8 admits (frame::Inner not yet verified).
+- `phys_view()` (mod.spec.rs) is a parameter-free uninterp constant that cannot express a pre→post
+  transition, making the kernel-path postconditions (alloc_one / book_all on self@) unsatisfiable
+  until a tracked-token redesign of the DO-NOT-MODIFY global view.
+- lemma_user_bulk_err_restored needs an inverse free-transition on self.upool@ that no in-scope API
+  exposes (frame::free ensures `true`; Upool is external_body with no free spec; Drop side-effects
+  unmodeled).
+
+Resolution requires sequencing the `frame` proving phase first (discharge its 8 admits + realize
+the §8 ghost token over frame::INSTANCE), after which the 4 manager admits follow mechanically.
+This is a cross-module dependency block, not a weak proof.
+
+Repo state: working tree restored to a verifying baseline (HEAD dd841b286, `make verify-kernel` =
+71 verified / 0 errors; `./z build` = OK). Reproducers for all 4 admits and the cfg-gate Verus
+limitation are recorded in turn_002_driver.md / turn_001_fixer.md.
+[2026-06-15 02:32:12] [DIALOGUE] proving ended after 2 turns: BLOCKED (1220s)
