@@ -262,3 +262,248 @@ Now let me run the baseline verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-arch 2>&1 | tail -
 
 [THINKING] I see that `verify-arch` comes from the pattern rule where `VERUS_CRATES` includes `arch`, so I need to run `make verify-arch` to execute it.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Crate-wide shows external_body=3, cfg_gate=2. Let me check the detail to see if any are in pde scope.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+[THINKING] I'm seeing some crate-wide metrics for external_body and cfg_gate, but those apply to the whole architecture crate. I need to dig into the specifics to understand what's actually happening—they might be defined in table.rs or mod.rs, which are part of the trusted code base. My focus is on pde.rs, so let me examine the details there.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "cfg_gate\|cfg-gate\|cfg_gated\|external_body\|cheating" scripts/veri
+
+[THINKING] I'm checking whether the external_body entries are all in the TCB-allowed list—invlpg, table::read, and table::write all check out. The cfg_gate=2 is puzzling me, so I need to trace where that's coming from. Looking at verify.sh might clarify what cfg_gate detection actually means, and I'm wondering if those conditional compilation directives in pde.rs around lines 9-12 could be the source.
+[RESULT ✓] bash: 3:# Generic Verus verification script with cheating detection and git tracking.
+103:# Determine verification mode and source directory for cheating detection.
+292:# --- Helper: run cheating detection on a directory, print JSON ---
+293:run_cheating_scan() {
+298:from guardrails import detect_cheating
+...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Let me find which cfg_gates are flagged across the arch crate.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; python3 -c "
+import re
+from pathlib import Path
+src_dir = Path('src/libs/arch
+
+[THINKING] I need to identify which two cfg_gates are in the arch crate, so I'm going to write a script that counts them and shows me exactly which lines they appear on.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/pde.rs:83: #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]  -> ensures
+src/libs/arch/src/x86/mem/paging/pde.rs:307: #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]  -> ensures
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Both cfg_gate hits are in pde.rs lines 83 and 307. Let me compare with the base branch to see if these are original or introduced.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git --no-pager log --oneline -5; echo "===branch==="; git branch --show-curre
+
+[THINKING] I'm looking at two cfg_gate hits in pde.rs at lines 83 and 307 — both are `#[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]` attributes on the `new` methods of `PageDirectoryEntryFlags` and `PageDirectoryEntry`. These are being flagged as cfg-gated exec code violations, but they're actually just allow attributes rather than code gating itself, though the detection is still counting them as violations.
+
+The `verus_impl_method_marker` attribute is necessary here, so I need to understand why these cfg_attr annotations were added in the first place. Let me check the git history to see if these were part of the original codebase or introduced later.
+[RESULT ✓] bash: 46ead7ccb [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, external_body=3 cfg_gate=2)
+39e930c91 [verus-ai] cheating-elimination START: arch-x86-pde
+086b61006 [verus] verify PASS (cheating detected): kernel::all (76 verified, 0 errors, admit=36 external_body=12 cfg_g...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+These cfg_attr lines exist in the base branch. Let me load the relevant skills and understand the `verus_impl_method_marker` usage.
+[TOOL] skill: coding-standards
+
+[THINKING] These `cfg_attr` attributes allowing unused code are already in the base branch and aren't actually cheating—they're just lint suppressions, not proof shortcuts like `admit` or `assume`. The detection script is flagging them as cfg-gated executable code, but I need to reconsider whether they should really count as violations since they're not bypassing verification. Searching the codebase for how it's used elsewhere...
+[RESULT ✓] skill: Skill "coding-standards" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Let me load the verus-constraints and ast-consistency skills which are critical here.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; for s in verus-constraints ast-consistency spec-design; do echo "=== $s ===";
+[RESULT ✓] bash: === verus-constraints ===
+=== ast-consistency ===
+=== spec-design ===
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; ls .github/skills/; echo "==="; find .github/skills -iname "*constraint*" -o 
+[RESULT ✓] bash: benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+===
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: find / -iname "*.md" \( -ipath "*verus-constraint*" -o -ipath "*ast-consistency*" -o -ipath "*spec-design*" \) 2>/dev/nu
+
+[THINKING] I'm noticing that verus-constraints, ast-consistency, and spec-design are mentioned in the task requirements but aren't showing up in the project skills list—they might be located in the verus-ai global location, so I should search there.
+[RESULT ✓] bash: /mnt/shared/nanvix/verus-ai-history/ast-consistency/bitmap/consistency_report.md
+/mnt/shared/nanvix/verus-ai-history/ast-consistency/bitmap/summary.md
+/mnt/shared/nanvix/verus-ai-history/ast-consistency/error/consistency_report.md
+/mnt/shared/nanvix/verus-ai-history/ast-consistency/error/summary.md
+...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/.openclaw/workspace/skills/verus-constraints/SKILL.md
+[RESULT ✓] bash: ---
+name: verus-constraints
+description: "Mandatory rules for writing Verus code. Covers verus! block syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+---
+
+# Verus Constraints
+
+Study `...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/.openclaw/workspace/skills/ast-consistency/SKILL.md
+
+[THINKING] I see the tension here: the verus-constraints skill requires using native `verus! { }` block syntax for all new code, but the existing codebase uses attribute-style decorators like `#[verus_spec]` and `#[verus_verify]`. The skill is explicit that even when existing code uses attributes, I should write new code in the block syntax instead. But since I'm not actually writing new exec functions—I'm removing the cheating—this constraint might not directly apply to what I'm doing.
+
+The actual cheating items I need to address are two `cfg_attr` lines in pde.rs (lines 83 and 307) that add lint allowances under verus. The detector flags these as cfg-gated exec code, which violates the ast-consistency rule against exec code changes via cfg gates. Even though these attributes only suppress warnings rather than change behavior, and the module already verifies in the base branch, the task explicitly requires eliminating cfg-gated exec code. I need to check the ast-consistency skill to understand exactly what the rule prohibits and whether removing these attributes would keep verification passing.
+[RESULT ✓] bash: ---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+for the full ru...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Let me check how other verified modules handle constructor functions, and whether the cfg_attr is needed.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "verus_impl_method_marker" src/ | head -30; echo "=== count ==="; gr
+
+[THINKING] I'm running the AST consistency check on pde.rs to verify that the executable code matches the base version, which should be identical since I haven't made changes yet. The detector found three external_body instances (all TCB-allowed) and two cfg_gate cases in pde.rs across the arch crate, so I need to clarify what specific cheating behavior I'm targeting in this scope.
+
+The three external_body instances are actually in table.rs and mod.rs, not in my pde module scope, so those don't need work. The two cfg_gate flags are both in pde.rs at lines 83 and 307 — they're `#[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]` attributes on the two `new` functions. These conditionally suppress lint warnings during verification but don't change the actual executable code semantics, so I need to understand whether the detector is correctly identifying them as problematic cfg-gated code or if they're false positives based on how the heuristic counts cfg_gates around multiline attributes. The real issue is that cfg_gate=2 isn't in the allowed list, so I need to eliminate it. Let me try removing those `#[cfg_attr]` lines entirely and see if verus still verifies cleanly without them — if the attributes aren't actually necessary for correctness, dropping them solves the problem without major restructuring.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/pde.rs:83:    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+src/libs/arch/src/x86/mem/paging/pde.rs:307:    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+=== count ===
+1
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; ls src/libs/arch/src/x86/mem/paging/; echo "=== pte new ==="; grep -n "verus_
+
+[THINKING] I'm checking how the sibling pte.rs module handles its `new` function to see if there's an established pattern I should follow for pde.rs.
+[RESULT ✓] bash: flags.rs
+frame
+mod.proof.rs
+mod.rs
+mod.spec.rs
+pde.proof.rs
+pde.rs
+pde.spec.rs
+pte.proof.rs
+pte.rs
+pte.spec.rs
+table.proof.rs
+table.rs
+table.spec.rs
+=== pte new ===
+44:#[verus_verify]
+65:#[verus_verify]
+86:    #[verus_spec(result =>
+98:    pub fn new(
+181:    #[verus_spec(result =>
+282:#[verus_verif...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+pte.rs `new` functions don't use the cfg_attr marker. Let me compare structures.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs
+
+[THINKING] I'm noticing that the sibling `new` functions in pte.rs don't use that `cfg_attr` wrapper—they just have `#[verus_spec(...)]` directly and verify fine. So I can strip out the unnecessary attribute from pde.rs to match the pte.rs pattern.
+[RESULT ✓] view: 84.     /// A new [`PageTableEntryFlags`] with the given flags.
+85.     ///
+86.     #[verus_spec(result =>
+87.         ensures
+88.             result@ == spec_pte_flags_new(
+89.                 present,
+90.                 read_write,
+91.                 user_supervisor,
+92.                 page_wri...
+[RESULT ✓] view: 308.     /// # Returns
+309.     ///
+310.     /// A [`PageTableEntry`].
+311.     ///
+312.     #[verus_spec(result =>
+313.         ensures
+314.             result@ == spec_pte_new(flags@, frame@),
+315.             result.inv(),
+316.     )]
+317.     pub fn new(flags: PageTableEntryFlags, frame: FrameNu...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+The cfg_attr markers are redundant — the sibling pte.rs verifies without them. Let me remove both and verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; perl -0pi -e 's/    #\[cfg_attr\(verus_keep_ghost, allow\(unused, verus_impl_
+
+[THINKING] The sibling file pte.rs uses the same structure without those cfg_attr annotations, so they're redundant in pde.rs and can be safely removed. Since pte.rs compiles fine without them, removing both lines should eliminate the cfg_gate=2 issue without triggering any warnings.
+[RESULT ✓] bash: 83:    #[verus_spec(result =>
+96:    pub fn new(
+128:    #[verus_spec(result =>
+306:    #[verus_spec(result =>
+311:    pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self {
+378:    #[verus_spec(result =>
+407:    #[verus_spec(result =>
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-arch 2>&1 | tail -
