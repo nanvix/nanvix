@@ -631,3 +631,80 @@ Source is byte-identical to the phase-start state. Running full-crate verify to 
 Turn 30
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify 2>&1 | grep -iE "verified,|errors\b|exit [0-9]" | tail -20
+[RESULT ✓] bash: verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recom...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Full crate verify passes (all targets exit 0, cached — no regressions). Let me get precise cfg-gate counts for the report:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "cfg(not(verus_keep_ghost)) exec gates:" && grep -c "cfg(not(verus_keep_ghost))"
+
+[THINKING] The full crate verification passes with all sub-targets exiting cleanly, though the CHEATING_DETECTED status reflects pre-existing admits scattered across modules that were already there before my changes. Now I'm documenting the findings in the report and gathering the exact counts for the verification table.
+
+Looking at the manager-scope cheating metrics: admit stays at 4 before and after with no eliminations, assume remains at 0, and the two external_body instances (init and kernel_watermark) are both TCB-approved so they persist. The assume_specification count holds at 3 for trusted stdlib specs that don't trigger the cheating gate. For the cfg-gated exec code, I need to be precise about what counts—the logging macros gated with `cfg(not(verus_keep_ghost))` are the actual exec code gates, separate from the spec annotation cfg_attrs, so I'm counting those logging instances specifically in manager.rs.
+[RESULT ✓] bash: cfg(not(verus_keep_ghost)) exec gates:
+9
+--- those lines ---
+207:            #[cfg(not(verus_keep_ghost))]
+213:            #[cfg(not(verus_keep_ghost))]
+339:                #[cfg(not(verus_keep_ghost))]
+345:            #[cfg(not(verus_keep_ghost))]
+382:            #[cfg(not(verus_keep_ghost))]
+385: ...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/fix_report.md
+
+[THINKING] There are nine configuration-gated execution lines in manager.rs that guard error and warning logging macros—these are pre-approved Verus deviations since the error macro uses an unsupported constant type. They're existing code that hasn't changed. Now I'm moving on to write the fix_report.md file.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/fix_report.md with 4521 characters
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rm -f /tmp/manager.proof.rs.bak && echo "=== final source state vs phase start (shoul
+
+[THINKING] I need to clean up the temporary backup file and verify the working tree is in the correct final state—confirming that the four commits have been restored and the source matches the initial phase state. Let me also double-check that manager.proof.rs contains the restored good version.
+[RESULT ✓] bash: === final source state vs phase start (should be empty) ===
+(empty=good)
+=== admits present ===
+4
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Done. Here's the honest outcome.
+
+## Result: BLOCKER
+
+**Cheating inventory (manager scope):**
+| Item | Before → After |
+|------|------|
+| admit() | 4 → 4 |
+| assume() | 0 → 0 |
+| external_body | 2 → 2 (both TCB-allowed: `init`, `kernel_watermark`) |
+| assume_specification | 3 → 3 (trusted std specs; gate-neutral) |
+| cfg-gated exec | 9 → 9 (pre-approved logging gates) |
+
+**Verification:** `make verify-kernel MODULE=mm::phys` → 42 verified, 0 errors; full `make verify` → all targets exit 0 (no regressions). AST consistency: 8/8 MATCH, 0 mismatches; source byte-identical to phase start.
+
+**Why the 4 admits are irreducible in scope.** I genuinely attempted each (removed all four → exactly 4 `postcondition not satisfied` errors at the lemma seams, no collateral). All share one root cause: the §8 global ghost-token attachment lives in the out-of-scope, **still-unverified** `frame` free-function layer (`frame.rs` has 8 of its own admits).
+- `lemma_manager_attached` — links opaque `self.upool@` (external_body `Upool`) to the parameter-free `uninterp` DO-NOT-MODIFY `phys_view()`.
+- `lemma_kernel_alloc_one` / `lemma_kernel_alloc_contiguous` — frames come from free functions `frame::alloc`/`alloc_contiguous` (no `&mut self`), so Verus proves `self@` unchanged while the spec demands a transition. (The user path *is* fully proven because `Upool::alloc` is `&mut self`.)
+- `lemma_user_bulk_err_restored` — relies on `Drop → frame::free`, which Verus doesn't model.
+
+Eliminating them requires verifying/token-instrumenting `frame.rs` (out of scope) or an unsound axiom (banned). Recorded with reproducers and unblock sequencing in `verification_todo.md`; full write-up in `cheating-elimination/fix_report.md`. The independent proving-phase reviewer reached the same conclusion.
+
+
+=== Session End ===
+Session: 511fc3c9-9d9e-499f-9aaa-b8520b146def
+Duration: 555.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/prover-claude-20260615-023221.jsonl
