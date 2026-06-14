@@ -246,3 +246,37 @@ Now update the fix_report's conclusion with the decisive findings, and do a fina
 Turn 14
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs; echo "=== source cleanliness ==="; git status --short -- src/; echo "(empty = no source
+[RESULT ✓] bash: === source cleanliness ===
+(empty = no source modified)
+=== frame files admit/assume count ===
+src/kernel/src/mm/phys/frame.rs:0
+src/kernel/src/mm/phys/frame.proof.rs:0
+src/kernel/src/mm/phys/frame.spec.rs:0
+=== final verify ===
+verification results:: 58 verified, 0 errors (partial verification with...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+I have now definitively resolved the investigation with harness-grade evidence.
+
+## Conclusion: BLOCKER (genuine cross-phase architectural dependency)
+
+**The phys-frame target is clean.** `frame.rs`/`frame.proof.rs`/`frame.spec.rs` carry **0 admit, 0 assume, 0 trusted, 0 `exec_allows_no_decreases`, 0 multi-line `limitation_assume`, 0 `external_body` on proof fns**. Its 10 exec `external_body` are all on the human-approved `tcb-allowed.md` list. `make verify-kernel MODULE=mm::phys` → **58 verified, 0 errors**. No source file is modified (`git status` clean).
+
+**The 4 flagged `admit()`s are not mine to fix.** They live in `manager.proof.rs:{16,35,55,216}` (the **phys-manager** module) and are already owned and documented by the separate `nanvix-phys-phys-manager` phase. That phase's harness analysis — backed by **committed isolated reproducers** — proves three decisive facts that make elimination impossible within this phase:
+
+1. **Postconditions are provably FALSE in editable scope.** `self@ == upool@`, but kernel allocs go through `frame::alloc` (not the pool), so Verus derives `final(self)@ == old(self)@`; the goals reduce to `v == v.alloc_one(a)` — false. Not a missing proof step; no model exists.
+2. **Axiom conversion is UNSOUND (proven).** As `external_body` axioms, 3 of 4 let a caller prove `false` (`exploit() ensures false` → `1 verified, 0 errors`). Converting them would inject `false` into the whole proof — strictly worse than the admit.
+3. **The sound fix needs forbidden exec changes.** It requires threading a versioned/tracked global-partition token through the `frame` free-function wrappers (`alloc`/`alloc_contiguous`/`free`) + `init`/`Upool::new` — an exec-signature change to TCB-allowed `external_body` functions, banned by source-integrity/ast-consistency and outside a cheating-elimination phase's mandate.
+
+Additionally, the task's hard rule forbids touching unlisted functions (all four lemmas are unlisted), and they are load-bearing for verified-in-body manager functions, so they can't be deleted either.
+
+Any action available to me here would either inject unsoundness, change exec signatures, or modify do-not-modify specs/unlisted functions — all violations. The honest, cross-referenced hand-off is recorded in `verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md` and `cheating-elimination/fix_report.md`. The §8 token instrumentation is the genuine unblock, owned jointly by the frame token-instrumentation work and the phys-manager phase.
+
+
+=== Session End ===
+Session: e8ebf350-78c2-42f6-94d1-67406728dc0f
+Duration: 346.9s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/cheating-fix-claude-20260615-075246.jsonl
