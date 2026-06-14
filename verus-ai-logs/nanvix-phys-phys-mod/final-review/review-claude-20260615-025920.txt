@@ -1391,3 +1391,43 @@ I should run `make verify` to confirm all modules pass cross-module regression, 
 18:- `src/kernel/src/mm/phys/mod.rs::book_mmio_regions` — same std-`LinkedList`
 === verus-unsupported head ===
 # Verus-unsupported c...
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=17 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  Detail: v...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+`make verify` exit 0 (cross-module regression passes). I have everything needed. Now writing the consolidated review.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-phys-mod/final-review/ && echo "exists check:" && test -f veru
+
+[THINKING] The cross-module regression test passes, confirming all verified modules work correctly. I'm reviewing the documentation now—verus-unsupported.md explicitly lists ExLinkedList as the mitigation for the LinkedList limitation, while tcb-allowed.md mentions the limitation but lacks an explicit ExLinkedList entry. I'm deciding whether ExLinkedList is a sound external boundary solution.
+
+The real issue isn't ExLinkedList itself—it's the set of unsatisfied checklist items: tautological ensures appearing three times, subsumed ensures violations, error paths lacking meaningful ensures, and only 2 out of 5 key caller invariants surfaced. Since the task requires ALL checklist items to pass, any unchecked item means FAIL. I'm now writing the consolidated final_review.md file to document this verdict thoroughly.
+[RESULT ✓] bash: final_review.claude.md
+final_review.gpt53codex.md
+review-claude-20260615-025920.jsonl
+review-claude-20260615-025920.txt
+exists check:
+FINAL_ABSENT
+<shellId: 49 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+
+
+=== Session End ===
+Session: de964e3a-b7d4-4f44-b089-e6f05683b08c
+Duration: 772.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/final-review/review-claude-20260615-025920.jsonl
