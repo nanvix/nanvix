@@ -229,3 +229,372 @@ Turn 6
 
 [THINKING] I'm noticing the `impl Address for VirtualAddress` block at line 167 is missing the `#[verus_verify]` attribute, so I need to run the verify-sys make target to see what the current verification state looks like.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ===
+Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/mod.rs
+
+[THINKING] The verification is passing with exit 0, though only 2 out of 255 exec functions have contracts—likely just `new` and the inherent `from_raw_value`. The proof files are currently empty `verus! { }` blocks with no `admit()` calls to remove, and the unverified trait impl containing `into_raw_value` is one of the targets I need to handle.
+
+To make `into_raw_value` verified, I need to add `#[verus_verify]` to the `impl Address for VirtualAddress` block so it verifies against the trait spec, which requires `into_raw_value` to ensure `result as int == self@`. But that impl block contains other functions outside my scope, so adding the attribute could trigger verification failures for those methods. I should check what specs the `Address` trait actually requires for each method before proceeding.
+[RESULT ✓] view: 80.     /// # Returns
+81.     ///
+82.     /// A copy of the target [`Address`].
+83.     ///
+84.     #[verus_spec(result =>
+85.         ensures
+86.             result@ == self@,
+87.     )]
+88.     fn clone_address(&self) -> Self;
+89.     ///
+90.     /// # Description
+91.     ///
+92.     ///  Aligns t...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/nanvix-phys-sys-virt-address/pipeline_state.json; echo "=
+
+[THINKING] The trait defines specs for `from_raw_value`, `into_raw_value`, `clone_address`, and `is_aligned`, while the other methods lack specifications. Adding `#[verus_verify]` to the `impl Address for VirtualAddress` block would require proving all methods against their specs, meaning I'd need to establish correctness for those four specified methods.
+
+But the task restricts me to only the listed functions, so `into_raw_value` is the only one in scope. I'm wondering if the right approach is to look at how already-verified sibling modules like PhysicalAddress and FrameAddress handle this situation — whether their impl blocks are marked `#[verus_verify]` and how they deal with out-of-scope methods. Let me check the verification plan and pipeline state to understand the exact targets and intended strategy for this module.
+[RESULT ✓] bash: {
+  "module_name": "sys-virt-address",
+  "log_name": "nanvix-phys-sys-virt-address",
+  "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs",
+  "current_phase": "proving",
+  "current_phase_idx": 3,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_s...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/nanvix-phys-sys-virt-address/body_removed_source.rs
+
+[THINKING] I'm checking the body_removed_source.rs file to understand how the spec phase defined these functions and which ones have specifications, particularly looking for into_raw_value.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use vst...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -i "virt\|VirtualAddress\|into_raw\|from_raw\|::new" verus-ai-logs/ver
+
+[THINKING] Looking at the verification scope, I need to figure out which methods are already verified and which ones need marking. The `from_raw_value` and `new` methods are inherent implementations in a `#[verus_verify]` block, so they're likely already covered. But `into_raw_value` lives in a trait implementation that isn't marked for verification, so I'd need to add `#[verus_verify]` to that impl block to verify it against the trait spec—though that would pull in all the trait methods at once.
+
+The key question is whether trait implementations of a verified trait are automatically checked or treated as external. Given that the current impl passes without `#[verus_verify]`, it seems like they're being treated as external. Let me check the coverage report to see which two functions actually have contracts and whether `into_raw_value` is among them.
+[RESULT ✓] bash: into_raw
+  from_raw_value
+  into_raw_value
+  from_raw_parts
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "virt\|VirtualAddress\|into_raw_value\|from_raw_value\|fn new" veru
+[RESULT ✓] bash: 165:  from_raw_value
+170:  into_raw_value
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+[RESULT ✓] view: 155.   new
+156.   is_readable
+157.   is_writable
+158.   is_executable
+159.   fmt
+160.   align_up
+161.   align_down
+162.   is_aligned
+163.   checked_add
+164.   checked_sub
+165.   from_raw_value
+166.   align_up
+167.   align_down
+168.   is_aligned
+169.   max_addr
+170.   into_raw_value
+171.   clone_addr...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find src/kernel/src/hal/mem/types/address/ -name "*.rs" | head; echo "===";
+
+[THINKING] Looking at the coverage data, the trait implementation block for `Address` on `VirtualAddress` spans lines 165-173 and includes methods like `from_raw_value`, `align_up`, `align_down`, `is_aligned`, `max_addr`, `into_raw_value`, `clone_address`, `as_ptr`, and `as_mut_ptr` — all of which are currently unverified since no contracts are being checked. The `new` function and the inherent `from_raw_value` are the only two with actual contracts, while the rest of the trait implementation is being treated as external code.
+
+The real challenge is that if I add `#[verus_verify]` to the impl block to verify `into_raw_value` against its trait spec, Verus would require proving all the other trait methods that have specs too — like `from_raw_value`, `is_aligned`, and `clone_address` — not just the one method I need to focus on. But the constraint is to only touch the listed functions, which means I can't modify the code of unlisted methods.
+
+Let me check how the related address types in the kernel handle this, since they're already marked as verified in the design.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/mod.rs
+src/kernel/src/hal/mem/types/address/aligned/pgtab.rs
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+src/kernel/src/hal/mem/types/address/aligned/page.proof.rs
+src/kernel/src/hal/mem/types/address/aligned/page.rs
+src/kernel/src/hal/mem/t...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm checking the `impl Address for PhysicalAddress` block in phys.rs starting around line 179 to see if it has the `#[verus_verify]` attribute and examining whether the trait methods include inline specifications.
+[RESULT ✓] view: 179. impl Address for PhysicalAddress {
+180.     ///
+181.     /// # Description
+182.     ///
+183.     /// Instantiates a new [`PhysicalAddress`] from a raw value.
+184.     ///
+185.     /// # Parameters
+186.     ///
+187.     /// - `raw_addr`: The raw value.
+188.     ///
+189.     /// # Returns
+190.   ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "fn is_aligned\|fn align_up\|fn align_down\|spec_addr_is_aligned\|
+
+[THINKING] I'm noticing that PhysicalAddress's `Address` trait implementation lacks the `#[verus_verify]` attribute despite being marked as already verified, which makes me wonder if it's actually using the same `sys::mm::Address` trait. Let me trace through the imports in phys.rs to confirm, because the real question is how PhysicalAddress's `into_raw_value` method gets verified against the trait specification.
+
+Actually, I realize that in Verus, trait method implementations are always verified against the trait's spec when the trait has specifications, regardless of whether the impl block has `#[verus_verify]`. But if that were the case, the current `make verify-sys` would already be verifying `into_raw_value` and it should pass since the body is just `self.0` and the view is `self.0 as int`. Yet the coverage report shows `into_raw_value` as unverified, which suggests trait impls without `#[verus_verify]` might not actually be getting verified.
+
+Wait—the claim that PhysicalAddress is "already verified" might only apply to its View and invariant definitions plus inherent constructors, not the trait impl itself. Looking back at the actual task statement, the verification targets are `into_raw_value`, `from_raw_value`, `new`, and `VirtualAddress`, and I need to prove all specifications until `make verify-sys` passes with zero errors and zero remaining `admit()` calls. But checking the current state, `make verify-sys` already passes with exit code 0 and there are no `admit()` calls anywhere in the files, so technically the goal state is already satisfied—which feels too simple for what this task is actually asking me to accomplish.
+
+The real intent is to ensure these target functions are actually verified with contracts and proofs, not just skipped. Right now `new` and the inherent `from_raw_value` have contracts, but `into_raw_value` is stuck in an unverified trait impl block. To get it verified, I'd need to mark the `impl Address for VirtualAddress` block with `#[verus_verify]`, which would force verification of all its methods against their trait specs. Looking at which trait methods have specs that would need proving: `from_raw_value` has a Result spec that's provable from the inherent version, `into_raw_value` is provable since the view is visible within the module, `clone_address` is straightforward, but `is_aligned` requires `mm::is_aligned` to have a matching spec which is out of scope and potentially difficult, while the other methods like `align_up`, `align_down`, `max_addr`, and pointer methods have no trait specs at all.
+
+The problem is that marking the whole impl block forces verification of `is_aligned`, which pulls in dependencies I shouldn't need to touch. I can't split a trait impl block, and `external_body` isn't allowed as an opt-out. Let me reconsider whether `mm::is_aligned` and `spec_addr_is_aligned` might already be available in the same crate — if they're already verified, then marking the impl block might actually work without extra scope creep.
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/alignment.rs:39:#[verus_verify(external_derive)]
+src/libs/sys/src/sys/mm/alignment.rs:187:pub const fn align_up(value: usize, align: Alignment) -> Option<usize> {
+src/libs/sys/src/sys/mm/alignment.rs:195:pub fn align_down(value: usize, align: Alignment) -> usize {
+src/libs/sy...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '180,205p' src/libs/sys/src/sys/mm/alignment.rs; echo "=== spec_addr
+[RESULT ✓] bash: } // verus!
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+pub const fn align_up(value: usize, align: Alignment) -> Opt...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -8; echo "=== status ==="; git status --short; echo "=== 
+
+[THINKING] The issue is that `mm::is_aligned` lacks verification annotations, so I can't prove the trait implementation without speccing that function first—which is outside the current scope. I need to find a different approach, possibly by checking if Verus allows verifying individual trait impl methods rather than the whole block.
+
+Actually, stepping back: the task says to prove all specifications for the target functions in scope, and the current state already has zero admits and zero assumes with passing verification. So maybe there's nothing left to do—the specs for `new` and the inherent `from_raw_value` are already present and verified, and the `View` is defined. The real question is whether `into_raw_value` and the `VirtualAddress` type's `inv` spec are actually needed or already in place.
+
+Let me test the simplest approach: add `#[verus_verify]` to the `impl Address for VirtualAddress` block and run verify-sys to see what actually fails, rather than speculating about what the macro will enforce. The issue is that `is_aligned` calls `mm::is_aligned`, which has no spec and would be treated as an opaque external function, making it impossible to prove the trait spec that requires `aligned == spec_addr_is_aligned(...)`. Since `mm::is_aligned` is an unlisted function I can't modify, this creates a verification blocker. I should check the git status and prover logs to see if the file is already in a partial state or if there's something I'm missing about what's actually in scope.
+[RESULT ✓] bash: 8bce7023c [verus] verify PASS: sys::all (cached (no recompilation), —)
+cf47e86d9 [verus-ai] proving START: sys-virt-address
+fe53d1896 [verus-ai] pipeline COMPLETE: hal-frame-address
+f557ba597 [verus-ai] final review: hal-frame-address
+b655d7faa [verus] verify PASS (cheating detected): kernel::all (c...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls .github/skills/ 2>/dev/null; echo "==="; find / -path /proc -prune -o -n
+
+[THINKING] I need to review the verification-order, proving-guide, and verus-constraints skills to understand how trait impl methods like `into_raw_value` get verified when they have out-of-scope sibling functions in the same impl block.
+[RESULT ✓] bash: benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+===
+/mnt/shared/verus-ai-improve4/docs/skills/ast-consistency/SKILL.md
+/mnt/shared/verus-ai-improve4/docs/skills/bug-r...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/verification-order/SKILL.md
+[RESULT ✓] bash: ---
+name: verification-order
+description: "Determine function-level verification order within a module using the verification plan. Use at the start of proving to know which function to verify first and how to sequence work."
+---
+
+# Verification Order
+
+## Purpose
+
+When proving a module, you must ver...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py verus-ai
+[RESULT ✓] bash: No matching modules found.
+Available modules:
+=== try address ===
+No matching modules found.
+Available modules:
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py verus-ai
+
+[THINKING] I need to look at the verification-plan.json in the module's log directory instead, since the one at the repo level is for the kernel phys target.
+[RESULT ✓] bash: No matching modules found.
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 -c "
+import json
+d=json.load(open('verus-ai-logs/nanvix-phys-sys-vi
+[RESULT ✓] bash: keys ['target', 'entries', 'total_modules', 'cycles_broken', 'steps']
+target src/kernel/src/mm/phys/frame.rs
+== entries 39
+   src/kernel/src/mm/phys/frame.rs:Inner::alloc
+   src/kernel/src/mm/phys/frame.rs:Inner::alloc_contiguous
+   src/kernel/src/mm/phys/frame.rs:Inner::free
+   src/kernel/src/mm/ph...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls verus-ai-logs/verify-sys/verus-logs/; echo "=== tail log ==="; tail -30 
+
+[THINKING] I'm focusing on the kernel-level module for address virtualization, which has no dependencies. The real challenge is figuring out how to verify the `into_raw_value` trait implementation without getting blocked by the problematic `is_aligned` function. Let me check whether these trait methods are actually being verified currently—the fact that `make verify-sys` passes suggests maybe I'm mistaken about them being unverified and trusted.
+
+I could test this by temporarily breaking `into_raw_value` to return an incorrect value and seeing if verification fails, but that's destructive. Instead, let me think about the structure more carefully: the design doc says the trait methods like `is_aligned`, `align_up`, and the conversion methods are out of scope and intentionally left unspecified. But `into_raw_value` is listed as an in-scope target function. The tension is that they're all in the same impl block—in Verus, you can't selectively verify one trait method while leaving siblings unverified unless the unverified ones are marked as external.
+
+The real blocker is `is_aligned`, which depends on `mm::is_aligned` being specced, but that's out of scope. So either I need to mark `is_aligned` with `#[verifier::external_body]` (which isn't in the tcb-allowed list), or I need to check whether `mm::is_aligned` is already verified elsewhere in the codebase.
+
+Let me actually verify this empirically by checking the Verus log to see which functions were actually verified, rather than guessing about the scope.
+[RESULT ✓] bash: cheating-detail.txt
+coverage-unverified.txt
+verus_2026-06-13_23-26-31.log
+verus_2026-06-13_23-37-10.log
+verus_2026-06-13_23-58-58.log
+verus_2026-06-13_23-59-16.log
+verus_2026-06-13_23-59-23.log
+verus_2026-06-14_00-02-05.log
+verus_2026-06-14_00-02-18.log
+verus_2026-06-14_00-37-25.log
+verus_2026-06-14...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n -i "trait\|external\|impl block\|verus_verify\|when_used_as_spec" /home/ruize/verus-ai-exp/verus-ai/docs/skills/
+
+[THINKING] The verus log is just a cached summary, so I need to run a definitive test—I'll temporarily modify `into_raw_value` to return an obviously incorrect value, run verify-sys, and see if it fails, which would confirm whether the trait implementation is actually being verified. Since the impl block lacks `#[verus_verify]`, it's likely treated as external code under Verus conventions, but I want to confirm by testing with the attribute added.
+[RESULT ✓] bash: 11:(`#[verus_spec]`, `#[verus_verify]`, `proof! { }`, `proof_decl! { }`).
+64:   `external_body`, or add `assume_specification` to work around it.
+69:rewrite exec code, add `external_body` — these are never needed.
+72:`#[cfg(not(verus_keep_ghost))]` to a function, impl block, struct, enum, or
+76:- **...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "verus_verify" src/libs/sys/src/sys/mm/access.rs | head; echo "===
+
+[THINKING] So the key insight is that only items marked with `#[verus_verify]` get checked by Verus, which means the `impl Address for VirtualAddress` block is currently untrusted since it lacks that annotation. To actually verify the `into_raw_value` method, I need to add `#[verus_verify]` to the impl block, which will then subject all its methods to verification.
+
+The real problem emerges when I do this: the `is_aligned` method calls `mm::is_aligned`, which itself has no `#[verus_verify]` annotation, so Verus treats it as an external function with no specification—it just returns an arbitrary boolean. This means the postcondition `aligned == spec_addr_is_aligned(self@, align)` becomes unprovable. The only way forward is if `mm::is_aligned` gets an `assume_specification` in the spec file, which is technically allowed for external or not-yet-verified functions.
+
+But here's the tension: adding `assume_specification` for functions outside the task scope feels like I'm introducing trust assumptions just to make `into_raw_value` verify, which goes against the spirit of the constraint. The design doc explicitly says the trait methods other than `into_raw_value` are "intentionally left unspecified," yet they're all in the same impl block. This suggests the design expects a way to verify one method while leaving its siblings unverified—but I'm not sure Verus syntactic mode supports that cleanly.
+
+Wait, maybe I can put `#[verus_verify]` directly on just the `into_raw_value` method itself, not the whole impl block. If individual methods count as items under the constraint, then only that one method gets checked while the others stay unchecked. Let me try that approach.
+[RESULT ✓] bash: 24:#[verus_verify]
+38:#[verus_verify]
+52:#[verus_verify]
+66:#[verus_verify]
+=== check if per-method verus_verify used anywhere in trait impls ===
+src/libs/sys/src/sys/event/descriptor.rs
+src/libs/sys/src/sys/event/exception.rs
+src/libs/sys/src/sys/event/information.rs
+src/libs/sys/src/sys/event/inte...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "verus_verify\|impl Address for\|fn into_raw_value\|fn from_raw_val
+
+[THINKING] I'm looking for examples of how verified trait impl methods are handled elsewhere in the codebase—specifically checking the `View` impl and other verified sections like `page.rs` to understand how methods like `into_raw_value` get verified against their trait specs.
+[RESULT ✓] bash: 35:#[verus_verify(external_derive)]
+39:#[verus_verify]
+64:    fn into_raw_value(self) -> usize {
+86:    fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+139:    fn is_aligned(&self, align: Alignment) -> Result<bool, Error> {
+=== proof file ===
+verus! { } // verus!
+<shellId: 25 completed w...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] view: 39. #[verus_verify]
+40. impl<T: Address> PageAligned<T> {
+41.     /// Constructs a page address from an aligned virtual address.
+42.     #[verus_spec(ret =>
+43.         ensures
+44.             match ret {
+45.                 Ok(r) => spec_aligned(addr@) && r@ == addr@ && r.inv(),
+46.                ...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+I found the key pattern. Let me test whether a single trait-impl method can be verified independently.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I'm noticing that in `page.rs`, the trait implementation for `Address` on `PageAligned<T>` at line 63 lacks the `#[verus_verify]` attribute, even though the inherent impl block does have it. This means the trait methods like `into_raw_value` and `is_aligned` aren't actually verified—they're being trusted instead.
+
+Looking at the pattern across the codebase, it seems trait impl blocks for `Address` are consistently left unverified (matching what I see in `PageAligned` and `PhysicalAddress`), while inherent methods and Views get verified. So for `VirtualAddress`, the same convention would apply: the `Address` trait impl stays unverified as a trusted component.
+
+This raises a question though—if the trait impl is meant to be trusted and the inherent methods already verify, what's left to do? The spec files are empty, `new` and `from_raw_value` have proofs, the View is defined, and `make verify-sys` already passes with zero admits and zero assumes. It's possible the module is already in its final verified state, which would make the task essentially complete.
+
+But I should verify whether `into_raw_value` could be proven individually with just a `#[verus_verify]` annotation on that one method, even though the broader trait impl is trusted. The postcondition would be straightforward—`result as int == self@`—and the body would just return `self.0`. However, given that `PageAligned` leaves this unverified and that module is considered done, the pipeline's definition of completion likely doesn't require body-verifying `into_raw_value` specifically.
+
+Let me test whether applying `#[verus_verify]` to just this single trait method would work and actually prove it while leaving the rest trusted.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Testing per-method verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-sys 2>&1 | tail -35
+[RESULT ✓] report_intent: Intent logged

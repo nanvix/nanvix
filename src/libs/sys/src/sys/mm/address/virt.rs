@@ -250,6 +250,7 @@ impl Address for VirtualAddress {
         usize::MAX
     }
 
+    #[verus_verify]
     fn into_raw_value(self) -> usize {
         self.0
     }
