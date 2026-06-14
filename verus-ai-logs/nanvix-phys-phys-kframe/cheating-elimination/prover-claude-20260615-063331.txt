@@ -285,3 +285,161 @@ Turn 8
 ────────────────────────────────────────────────────────────
 Good, the default verus dir exists. Let me run the baseline module verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+[RESULT ✓] bash: - frame.rs:731 alloc: external_body
+    - frame.rs:778 free: external_body
+    - frame.rs:802 is_covered: external_body
+    - frame.rs:822 book: external_body
+    - frame.rs:844 alloc_range: external_body
+    - frame.rs:869 share: external_body
+    - frame.rs:894 refcount: external_body
+    - kframe...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | head -80
+
+[THINKING] I'm looking at the verification output more carefully—the global status shows CHEATING_DETECTED, but that includes many allowed external_body cases. I notice "new" is appearing in the unverified functions list, which is odd since it has a #[verus_spec] annotation, so I need to check why it's being flagged as unverified.
+
+Let me run this again and capture the full output, especially the cheating-detail.txt file to understand what's actually being flagged.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). All flagged items are TCB-allowed. Let me examine the cheating detail and investigate why `new` shows as "unverified".
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | grep -i kframe
+
+[THINKING] The verification passes with exit code 0, and the cheating detection found external_body references and gate counts that are all listed in tcb-allowed.md, though the global gate count triggers the CHEATING_DETECTED status. For the phys-kframe task specifically, the relevant items are the external_body reference in kframe.rs at line 141, which is allowed, and I'm checking the deref operations. Looking at the coverage details more carefully — the "Unverified functions" list shows 9 functions without contracts (44 total minus 35 with contracts), and `new` is apparently among them despite having a `#[verus_spec]` annotation. This might mean there are multiple `new` functions or the coverage detection is counting differently than expected. Let me examine the cheating-detail output to see exactly what's attributed to the kframe module and whether there's actually any non-allowed cheating to eliminate, since the verification already passes with exit code 0. I should verify that the `new` function is actually being checked during verification, since it appearing in the unverified list could mean its contract isn't being validated at all. Let me examine the cheating details and coverage to confirm whether `new` is genuinely verified or if there's a gap in the verification scope.
+[RESULT ✓] bash: - mm/phys/kframe.rs:141 clear: external_body
+=== full coverage section / how unverified computed ===
+663:        echo "  ✅ All $COV_TOTAL exec functions have contracts."
+666:        echo "  $COV_VERIFIED/$COV_TOTAL exec functions have contracts."
+667:        echo "  Unverified functions:"
+677:    f....
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/scripts/verify.sh
+
+[THINKING] I see that `clear` is the only function flagged as having an external body in kframe and it's permitted. Now I'm looking into how the coverage "new" listing works by examining the verify.sh script to understand how coverage gets calculated.
+[RESULT ✓] view: 600. fi
+601. 
+602. echo ""
+603. 
+604. # ==============================================================================
+605. # Function coverage analysis (tree-sitter AST via guardrails.py).
+606. # ==============================================================================
+607. 
+608. echo "=== Fun...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_AI_DIR=/home/ruize/verus-ai-exp/verus-ai python3 -c '
+import sys, os
+sys.path.insert(
+
+[THINKING] I'm looking at why the `new` function in kframe.rs is marked as unverified by the coverage detection, even though it has a `#[verus_spec]` attribute. The coverage heuristic might be checking for specific contract markers like `ensures` or `requires` clauses, and the spec annotation itself might not be enough to register as verified coverage. It seems the spec might be incomplete or formatted in a way the detector doesn't recognize.
+[RESULT ✓] bash: new has_contracts= True
+base has_contracts= True
+clear has_contracts= False
+deref has_contracts= False
+deref_mut has_contracts= False
+drop has_contracts= True
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+`new` has contracts in kframe.rs — the unverified `new` is from another file (out of scope). Let me confirm there are no admit/assume in the kframe files and check what the prior prover log concluded.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== grep cheating in kframe files ==="; grep -nE "admit|assume|external_body|assume_s
+
+[THINKING] The `new` function in the unverified list must be coming from a different file like upool.rs rather than kframe.rs, since kframe.rs already has HAS contracts for its `new`. Since the coverage scope is the mm/phys directory, those other `new` functions are outside what we're checking anyway.
+
+Looking at what's actually in scope for kframe.rs: `new`, `base`, and `drop` all have contracts and verify properly. The other functions like `clear`, `deref`, `deref_mut` are marked as TCB external_body and documented in tcb-allowed.md, as is `assume_specification` from kframe.spec.rs. The module verification passes, and all the cheating items in kframe are already TCB-allowed.
+
+So the real question is whether I should try to eliminate the `clear` external_body and `assume_specification` even though they're not in the listed scope of functions to fix — the task says not to touch unlisted functions, and `clear`, `deref`, `deref_mut` aren't on that list.
+
+The `assume_specification` is a trait method from hal::mem, which isn't verified yet, so eliminating it would require verifying an external module that's out of scope. Given the constraints and the fact that everything is already TCB-allowed, I should verify whether there are any other `admit()` or `assume()` calls hiding in the kframe files that I might have missed.
+[RESULT ✓] bash: === grep cheating in kframe files ===
+src/kernel/src/mm/phys/kframe.rs:140:    #[verus_verify(external_body)]
+src/kernel/src/mm/phys/kframe.spec.rs:33:pub assume_specification<T: crate::hal::mem::Address> [
+=== which file has unverified new ===
+src/kernel/src/mm/phys/kframe.rs
+src/kernel/src/mm/phys...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+No admit/assume in kframe. The unverified `new` is from upool.rs (out of scope). Now let me run the AST consistency check against the base branch.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== diff kframe.rs vs base verus-ai/phys-upool ==="; git --no-pager diff verus-ai/phy
+
+[THINKING] The unverified `new` call comes from upool.rs, which is outside my scope. Looking at the kframe files, I only found two cheating markers: the `clear` function in kframe.rs that's TCB-allowed and not on my list to modify, and the `assume_specification` in kframe.spec.rs which is also TCB-allowed. There are no `admit` or `assume` statements in the kframe files themselves. Now I'm checking the AST consistency by comparing the current kframe.rs against the base branch version to make sure no semantic changes were introduced in the executable code.
+[RESULT ✓] bash: === diff kframe.rs vs base verus-ai/phys-upool ===
+diff --git a/src/kernel/src/mm/phys/kframe.rs b/src/kernel/src/mm/phys/kframe.rs
+index 62de438e3..595f8a47b 100644
+--- a/src/kernel/src/mm/phys/kframe.rs
++++ b/src/kernel/src/mm/phys/kframe.rs
+@@ -11,6 +11,12 @@
+ // Imports
+ //======================...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+AST is consistent: only verification annotations (`#[verus_verify]`, `#[verus_spec]`, ghost-gated includes) were added — all exec bodies are byte-identical to base. Let me check the cfg-gate items and confirm none are harmful.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== cfg_gate detail ==="; grep -i "cfg" verus-ai-logs/verify-kernel/verus-logs/cheati
+
+[THINKING] The exec function bodies remain semantically identical to the original—I've only added verification scaffolding like imports, `#[verus_verify]` attributes, and spec contracts, which don't affect the runtime behavior. The actual implementations of `new`, `base`, `clear`, and `drop` are unchanged.
+
+Now I need to run the full verification suite as specified: `make verify-kernel` without module filtering to check the entire kernel, then `make verify` to catch any regressions across the full crate. Now I'm looking at the cfg-gated exec code count of 9 to understand what's being flagged. The `#[cfg(verus_keep_ghost)]` annotations on the include statements and vstd imports are ghost-only additions that only appear during verification, which is standard practice rather than actual cheating. But the gate is counting them anyway. Let me dig into what those 3 cfg-gated items in the module actually are and whether kframe is contributing to this count.
+[RESULT ✓] bash: === cfg_gate detail ===
+=== all kframe lines in detail ===
+    - mm/phys/kframe.rs:141 clear: external_body
+=== full detail head ===
+    - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
+    - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: ext...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "cfg(" src/kernel/src/mm/phys/kframe.rs; echo "=== same pattern in sibling verified
+
+[THINKING] The external_body items in the cheating detail only include `clear` as a kframe entry, which is TCB-allowed. The cfg_gate items aren't listed in this detail file, though the 9 global and 3 module cfg_gate instances are detected separately through the `#[cfg(verus_keep_ghost)]` ghost includes and aren't problematic. I'm checking what those 3 cfg-gated module items are to verify whether any are in kframe and if they pose any issues.
+
+Looking at how the script detects cfg_gate, I see that kframe.rs has 2 `#[cfg(verus_keep_ghost)]` on the include! lines plus 1 on the vstd import, which accounts for the 3 module cfg_gate count. These cfg gates follow the standard pattern used throughout the verified codebase—they're necessary scaffolding to include ghost-only spec and proof code during verification, not gates that change exec behavior. The actual KernelFrame methods remain identical in both builds, so this isn't a harmful cfg gate pattern. Let me verify there are no cfg gates wrapping actual exec code in kframe.rs.
+[RESULT ✓] bash: 15:#[cfg(verus_keep_ghost)]
+17:#[cfg(verus_keep_ghost)]
+32:#[cfg(verus_keep_ghost)]
+47:#[cfg(verus_keep_ghost)]
+=== same pattern in sibling verified files (baseline)? ===
+src/kernel/src/mm/phys/frame.rs:2
+src/kernel/src/mm/phys/manager.rs:2
+src/kernel/src/mm/phys/upool.rs:3
+<shellId: 15 completed wi...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+All cfg gates are ghost-only scaffolding (include! of spec/proof, vstd import, View block) — identical pattern to sibling verified files, no exec-behavior change. Let me confirm the actual verification result counts (verified/errors) from a non-cached run.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "verification results\|verified\|errors" verus-ai-logs/verify-kernel/verus-logs/ve
+
+[THINKING] The cfg gates in kframe.rs at lines 15, 17, 32, and 47 are all gating ghost-only scaffolding for spec, proof, and View code—not exec code—which follows the same established pattern used across all the other verified files like frame.rs, manager.rs, and upool.rs. These gates don't affect exec semantics; they just conditionally include ghost code during verification, which is the accepted approach.
+
+Looking at the cheating analysis: the module has zero admits and zero assumes in the in-scope functions (new, drop, base), which are fully verified with real contracts. The external_body on `clear` is TCB-allowed and outside my modification scope, and the assume_specification on `from_raw_value` is also TCB-allowed since it's an external trait method from an unverified HAL. The verification exits cleanly with no non-allowed cheating to eliminate, so this is a pass—no code changes needed. I don't need to create verification_todo.md since there are no actual proof gaps—the assume_specification is a documented trust boundary, not a cheat. The phys-kframe scope is clean with zero proof gaps and zero disallowed cheating, so it passes. I should run a fresh verification to confirm the actual verified/error counts rather than relying on the cached result.
+[RESULT ✓] bash: === latest log ===
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/mm/phys/kframe.rs && make verify-kernel MODULE=mm::phys 2>&1 | grep -i
+
+[THINKING] The cached build isn't showing the verification results I need, so I'll invalidate the cache by touching the source file or doing a clean rebuild to force recompilation and get the actual verified/error counts from the verus output.
