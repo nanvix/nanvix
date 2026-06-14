@@ -987,3 +987,253 @@ Turn 8
 ────────────────────────────────────────────────────────────
 AST consistency and spec drift both pass. Now let me run the actual verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 590 make verify-kernel MODULE=mm::phys 2>&1 | tail -40; echo "PIPEEXIT=${PIPE
+[RESULT ✓] bash: - frame.rs:583 alloc_range: admit
+    - frame.rs:675 instance: external_body
+    - frame.rs:713 init: external_body
+    - frame.rs:769 alloc: external_body
+    - frame.rs:799 alloc_contiguous: external_body
+    - frame.rs:820 free_count: external_body
+    - frame.rs:838 free: external_body
+    - fra...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -iE 'ver]?ification|verified|errors|error:' verus-ai-logs/verify-kernel/verus-lo
+[RESULT ✓] bash: ---
+verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_03-43-14.log:verification results:: 42 verified, 1 errors (partial verification with `--verify-*`)
+verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_03-44-04.log:verification results:: 42 verified, 0 errors (partial verification with ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -iE 'verification results|verified|error' verus-ai-logs/verify-kernel/verus-logs
+[RESULT ✓] bash: === file size ===
+29 verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_04-01-22.log
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Writing final report
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/final-review && cat > /home/ruize/nanvix-phy-
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 34 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.gpt.md
+[RESULT ✓] view: 1. # Spec Quality
+2. 
+3. Status: **FAIL**
+4. 
+5. Reviewed in-scope contracts (`UserFrame::{new,address,leak,share,refcount,drop}`, `Upool::{new,alloc}`) against `spec-design` criteria.
+6. 
+7. - **BLOCKER:** `UserFrame::drop` has no behavioral `ensures` (only `opens_invariants none` / `no_unwind`). C...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Completed. I performed an independent review, ran all requested checks, and wrote the full report to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.gpt.md`
+
+Key outcomes:
+- Verification command passed: `42 verified, 0 errors`, exit code `0`.
+- Spec drift check: no contract drift / no weakened guarantees.
+- AST consistency: all in-scope exec items `MATCH`, no `VERUS REWRITE` comments found.
+- Guardrails (upool files): `admit=0`, `assume=0`, `external_body=2` (TCB-listed), `assume_specification=0`, cfg-gated logging exception only.
+
+Final verdict: **FAIL** (blockers in spec/caller-coverage semantics, especially `drop`/`share`).
+Verification passes (42 verified, 0 errors, cached exit 0). Let me check the output directory and confirm the share/refcount spec details against the frame-layer contracts one more time.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-phys-upool/final-review/ 2>&1; echo "=== frame layer
+[RESULT ✓] bash: total 1504
+drwxrwxr-x 1 ruize ruize     174 Jun 15 04:02 .
+drwxrwxr-x 1 ruize ruize     486 Jun 15 03:56 ..
+-rw-rw-r-- 1 ruize ruize    5973 Jun 15 04:02 final_review.gpt.md
+-rw-rw-r-- 1 ruize ruize 1462199 Jun 15 04:02 review-claude-20260615-035639.jsonl
+-rw-rw-r-- 1 ruize ruize   68006 Jun 15 04:0...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 820. pub(super) fn free_count() -> usize {
+821.     let inner = instance();
+822.     inner.bitmap.number_of_bits() - inner.bitmap.usage()
+823. }
+824. 
+825. /// Free a frame previously returned by [`alloc`].
+826. // Dependency contract: best-effort release of a frame. Callers (the manager's error-cle...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-claude, agent_type: general-purpose, status: running, description: Independent final review (claude), elapsed: 245s, total_turns: 0, model: claude-opus-4.8, current_intent: "Writing final review report", tool_calls_completed: 25, (timed out...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+I'll retrieve the codex review and check on the claude review.
+[TOOL] read_agent: {'agent_id': 'review-codex', 'wait': False}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 250s, total_turns: 0, model: gpt-5.3-codex, duration: 194s
+
+Completed. I performed an independent review, ran all requested checks, and wrote the full repo...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Codex returned FAIL on spec/caller-coverage grounds. Let me read its full report while waiting for the claude review.
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.gpt.md
+
+[THINKING] The codex review came back with a failure on the spec and caller-coverage semantics, particularly around drop and share operations. I need to look at the full report and wait for more information.
+[RESULT ✓] view: 1. # Spec Quality
+2. 
+3. Status: **FAIL**
+4. 
+5. Reviewed in-scope contracts (`UserFrame::{new,address,leak,share,refcount,drop}`, `Upool::{new,alloc}`) against `spec-design` criteria.
+6. 
+7. - **BLOCKER:** `UserFrame::drop` has no behavioral `ensures` (only `opens_invariants none` / `no_unwind`). C...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+All evidence gathered. The upool specs faithfully forward the frame-layer contracts (e.g., `frame::share` snapshot-only `ensures` matches `UserFrame::share` exactly; `frame::free` is `ensures true` so `drop` carries no functional postcondition). Now writing the review.
+[TOOL] report_intent: Writing final review report
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.claude.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.claude.md with 12186 characters
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Review written to the required path. Here's my summary.
+
+## Final Review — `mm::phys::upool`
+
+**Verdict: PASS** (zero blockers; spec gaps are documented, non-blocking deferrals)
+
+### Hard gates (all clean)
+- **Proof completeness**: 0 `admit`, 0 `assume` in all three upool files. `proof.rs` is empty — the 6 `UserFrame` methods verify with no proof body (via `UserFrame::inv ⇔ FrameAddress::inv`).
+- **TCB**: exactly 2 `external_body` attributes (`Upool::new`, `Upool::alloc`) — **both listed in `tcb-allowed.md`**. The other 3 textual matches are prose comments.
+- **Guardrails**: admit 0 / assume 0 / external_body 2(TCB) / assume_specification 0 / exec cfg-gate 0. The lone `cfg(not(verus_keep_ghost))` guards an `error!` log in `Drop` (allowed exception).
+- **AST consistency**: PASS — 8 functions, 2 structs match; 0 `VERUS REWRITE`.
+- **Verification**: `make verify-kernel MODULE=mm::phys` → exit 0, **42 verified, 0 errors**.
+- **Spec drift vs HEAD**: 0 — no original guarantee weakened.
+
+### Findings (all Medium/Low, documented intentional deferrals)
+I verified the upool specs against the frame-layer contracts directly:
+- `UserFrame::share` and `refcount` **exactly forward** `frame::share`/`frame::refcount`'s snapshot postconditions, so `share` proves the frame stays allocated but **not** the refcount **+1** transition.
+- `UserFrame::drop` has **no functional postcondition** because `frame::free` is `ensures true`.
+- Root cause is singular: `phys_view()` is a parameter-free `uninterp` global accessor, so `old()`/transition semantics aren't expressible; `view_design.md` §4's stronger specs were deferred to a proving-phase ghost token that wasn't realized.
+
+These are faithful forwards of a deferred dependency layer — not silent weakenings, not cheating, not unlisted trust. `bugs.md` reconciles accurately ("no code bugs"); no new bug surfaced.
+Codex flags spec-completeness gaps (drop has no release ensures; share lacks the +1 refcount transition). These are the documented "deferred" semantics. Let me wait for the claude review to cross-check before consolidating.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 180, 'wait': True}
+
+[THINKING] Codex flagged some spec-completeness issues—drop lacks behavioral ensures, share is missing the refcount transition—but these are deferred modeling decisions documented in the design docs, justified because `phys_view()` is a global constant function that can't express state transitions. The real question is whether this deferral blocks final review or represents an acceptable, intentional design constraint.
+
+The task instructions say spec-completeness issues are advisory and intentional nondeterminism is acceptable if it matches caller expectations, and the caller analysis notes the refcount transition is deferred to the proving phase. But we're at the end of the proving phase now, and the refcount semantics were never actually realized—they remain unexpressed in the ensures clauses. The core constraint is architectural: you can't express old/new transitions of a parameterless global constant without a ghost token parameter, and the view definitions are frozen out of scope. So this is a genuine limitation of the current infrastructure, not an oversight. I need to check whether this counts as a blocker against the strict checklist.
+
+Looking at the checklist items: share actually does have meaningful error paths that characterize why it failed (frame not allocated or refcount saturated), and the Ok arm asserts the frame is allocated—what's missing is just the refcount increment transition. Drop, though, has no behavioral ensures at all, which codex flags as a blocker. There's also a minor hygiene issue where result.inv() in new/address/leak is subsumed by the precondition and other ensures, but that's not a blocker, just a checklist item.
+
+The critical question now is whether drop's lack of behavioral postcondition counts as a failure. Drop has a verus_spec annotation with opens_invariants and no_unwind, which fn_coverage counts as having a contract, but semantically it has no behavioral postcondition—I need to see what the review says before making a final call on whether that's a blocker.
+
+The deeper issue is that the module was verified under frozen infrastructure where the view is uninterpreted and phys_view() is a parameterless constant, making the refcount-transition semantics genuinely inexpressible as ensures clauses. The design defers these to a ghost token that was never implemented, so the core safety properties callers depend on—that share increments refcount, drop releases exactly one reference, leak suppresses release—aren't captured in the specs. This is the central tension: can I imagine a buggy share that still satisfies the spec?
+
+Yes—a share that returns Ok with the frame unchanged but doesn't increment refcount would pass the current spec since it only requires the frame be in allocated_frames, which it already was. Similarly, drop could do nothing (leak) or free twice and still satisfy the empty contract. By the spec-design criterion of "sufficient to reject bugs," the share and drop specs are incomplete. But fixing this requires expressing before/after global state transitions, and phys_view() is frozen and parameterless. Without threading a ghost token through share/drop's signatures, you can't capture the refcount changes—and that's the fundamental blocker.
+
+This is a real limitation of the chosen abstraction, documented as an intentional deferral in the design docs. So now I'm weighing how to judge PASS/FAIL against the strict checklist: several items genuinely cannot be checked off—result.inv() clauses are subsumed, drop has no ensures, and spec sufficiency for share/drop is incomplete. But I need to determine whether these are true failures or acceptable limitations given the frozen constraints.
+
+The core tension is whether "caller coverage complete" is a hard blocker or whether the intentional deferral of refcount-transition modeling is sound enough to not block PASS. I should wait for a broader review before consolidating the verdict.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 312s, total_turns: 0, model: claude-opus-4.8, duration: 303s
+
+Review written to the required path. Here's my summary.
+
+## Final Review — `mm::phys::upool...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Both reviews agree on all hard gates but split on spec-completeness. Let me read the full claude review, then consolidate.
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.claude.md
+
+[THINKING] Both reviewers agree on all the hard requirements but diverge on whether the deferred refcount-transition modeling should block approval—Codex treats it as a blocker while Claude marks it as a documented, non-blocking deferral. I'm reading through Claude's full review to form my own judgment on this key disagreement.
+
+Now I need to apply the strict criterion: a PASS only if every checklist item is genuinely checked. Looking at the specification section, I see two critical issues. The subsumed ensures in `new`, `address`, `leak`, and `share` are technically derivable from the precondition invariants and equality ensures—they're hygiene violations per the strict checklist, though they do provide caller convenience. More significantly, `share`'s +1 and `drop`'s release semantics aren't covered by any requires/ensures pair, which is a clear caller-coverage gap. The error paths in `share` also lack meaningful ensures. These unchecked items push toward a FAIL under the strict standard.
+
+The core tension is that the hard guardrails—no cheating, TCB compliance, verification passes—are all solid, but the spec-completeness around refcount transitions, which is the entire point of a reference-counted frame handle, isn't captured. The caller_analysis explicitly documents that callers expect refcount increments on success and would break if that didn't happen, yet there's no corresponding ensures to enforce it. That's a genuine checklist violation that can't be honestly overlooked. I need to review the full analysis file and finalize the consolidated report, making sure to distinguish between code correctness (which is sound) and spec completeness (where the refcount transition postconditions are missing). The deferred ghost token represents a verification gap rather than an actual code defect, so I'll classify it accordingly in the final documentation.
+[RESULT ✓] view: 1. # Final Verification Review — `mm::phys::upool`
+2. 
+3. > Independent, strict review. All findings were re-derived from the source, spec,
+4. > proof, frame-layer dependency contracts, and freshly re-run tooling — not taken
+5. > on trust from the supplied summaries.
+6. 
+7. - **Module**: `kernel::mm...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Both reviews agree on every objective fact and diverge only on the verdict — the split hinges entirely on whether the deferred (never-realized) refcount-transition specs for `share`/`drop` are blocking. Under the explicit strict mandate ("PASS only if ALL checklist items are checked"), the caller-coverage item cannot be honestly checked: `caller_analysis.md` lists `share`'s +1 and `drop`'s release as "would break callers," yet neither is in any `ensures`. Consolidating to **FAIL** on spec-completeness, while recording that all cheating/TCB/verification hard gates pass cleanly.
+[TOOL] report_intent: Writing consolidated review
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.md
+
+[THINKING] Both reviews align on the facts but diverge on whether the deferred refcount-transition specs are a blocker. I need to apply the strict mandate now: PASS only if every checklist item is checked, otherwise FAIL. Let me work through the questionable items, starting with whether caller coverage has been properly verified against the specification requirements.
+
+The caller-coverage item is the critical one—share's refcount-increment and drop's release are listed as caller expectations that would break callers, but they have no corresponding ensures in the spec. That's an unchecked item. The subsumption check is technically unchecked too (result.inv() and uf.inv() are derivable from invariants and other ensures). Error paths mostly look fine except drop has no error arm. The proving gates all check out—zero admits, zero assumes, two external bodies in the TCB, AST consistency against HEAD is clean. There's one pre-approved deviation: a cfg-gated logging line that differs from the pre-verification baseline, but it lacks a documenting comment. Under strict application, the unchecked caller-coverage item alone triggers FAIL.
+
+The core issue is that the spec doesn't capture the refcount-transition semantics that are the module's actual safety properties. The code itself is correct and bugs.md is accurate, so there are no code defects to record. The gap is purely spec-completeness. The cfg-gated logging is a minor documentation note, not a blocker.
+
+Now I'm filling out the final_review.md checklist honestly. The caller analysis items all pass—callers are documented, the abstract resource is identified, and pre-existing specs are assessed. The view design mostly checks out, though the critical issue is that the Upool view doesn't represent the refcount-transition state that callers actually observe, which is why the spec fails to capture caller-critical guarantees like share-increment and drop-release semantics. Checking the remaining specification items: error paths with meaningful ensures are present where they exist (share and refcount have them, drop has no error path), so that's covered. Specs aren't written in a way that directly gives callers the refcount facts they need—that ties back to the caller coverage gap. Drop's spec also doesn't capture the release semantics properly, which is a trait obligation issue. The advisory completeness check confirms specs don't match what callers actually expect around reference counting and release. No loops to worry about, no cheating with external_body or assume statements, zero spec drift, and the bugs documentation is accurate.
+
+Cross-module regression passes cleanly, and verification runs with zero errors. For the proving checklist: no specs weakened, zero admits, the two external_body calls are both listed, no assume or assume_specification anywhere, no cfg-gated exec code except the pre-approved logging exception, and no exec rewrites needed—though I'll note the cfg-gate logging is missing a minor VERUS REWRITE comment. All the hard cheating elimination checks pass: zero admits, zero assumes, zero trusted, zero exec_allows_no_decreases, zero cfg-gated exec beyond logging, and the two external_body calls are accounted for.
+
+For bugs, there's nothing recorded, which is correct since the gaps aren't code defects. Now I'm moving to the consolidated report with the checklist, spec quality, caller coverage breakdown, proof completeness, TCB compliance, guardrails compliance, and AST consistency sections.
+
+For caller coverage, the two analyses gave different counts, so I'm consolidating: of the 8 in-scope functions, the value and address facts are covered across all of them, but the refcount and effect transitions for share, drop, and leak aren't captured. I'll frame it as 5 functions fully covered (new, address, refcount, Upool::new, Upool::alloc) with leak and share partially covered and drop missing entirely, then note the specific missing expectations.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.md with 13527 characters
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-phys-upool/final-review/*.md
+
+[THINKING] Now I'm checking that all three files are present in the final-review directory.
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 12279 Jun 15 04:04 verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.claude.md
+-rw-rw-r-- 1 ruize ruize  5973 Jun 15 04:02 verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.gpt.md
+-rw-rw-r-- 1 ruize ruize 13674 Jun 15 04:06 verus-ai-logs/nanvix-phys...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Done. Two independent sub-agent reviews (claude-opus-4.8, gpt-5.3-codex) ran, each saved raw, then consolidated.
+
+## Result: **FAIL**
+
+All raw + consolidated reviews are in `verus-ai-logs/nanvix-phys-phys-upool/final-review/`.
+
+**Hard gates — all clean** (this is *not* a cheating/TCB/verification failure):
+- admit **0**, assume **0**, assume_specification **0**, exec cfg-gate **0**
+- external_body **2** (`Upool::new`, `Upool::alloc`) — both pre-listed in `tcb-allowed.md`
+- AST consistent (8 fns + 2 structs match, 0 `VERUS REWRITE`)
+- `make verify-kernel` → **42 verified, 0 errors**; `make verify` exit 0; spec-drift **0**
+- `bugs.md` accurate; **0** code bugs
+
+**Why FAIL (spec-completeness / caller coverage):** the module's defining reference-counting guarantees are not specified —
+- `UserFrame::drop` has **no** functional postcondition (release-one-reference unspecified)
+- `UserFrame::share` omits the refcount **+1** transition
+- `UserFrame::leak` suppress-Drop guarantee unspecified
+
+`caller_analysis.md` flags all three as "would break callers," and the spec-design "sufficient to reject bugs" test fails (a non-incrementing `share` / no-op `drop` satisfy the contracts). Root cause is the parameter-free `phys_view()` global + snapshot-only frame-layer contracts; the planned proving-phase ghost token was designed but **never realized**.
+
+The two models split (claude PASS, codex FAIL) solely on whether this documented-but-undischarged deferral blocks. Under the strict mandate ("PASS only if ALL checklist items checked"), the Caller-coverage / Trait-obligation items can't be checked → **FAIL**, pending the frame free-layer contracts + ghost token.
+
+
+=== Session End ===
+Session: ba738c37-05b5-46cd-8e74-2fd681f8a6dc
+Duration: 637.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/final-review/review-claude-20260615-035639.jsonl
