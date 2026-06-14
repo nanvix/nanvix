@@ -903,3 +903,343 @@ Turn 48
 Turn 49
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -40
+[RESULT ✓] bash: Timestamp : 2026-06-14_08-10-07
+
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::address::virt
+
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error[E0425]: cannot find function `from_raw_value` in this scope
+  --> src/libs/arch/src/x86/mem/paging/frame/nu...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+
+[THINKING] There's a compiler error about `from_raw_value` not being found in scope at line 59, and it seems related to the `#[verus_spec]` macro on that function. Let me check the current state of the file to see what's happening.
+[RESULT ✓] view: 39.     ///
+40.     /// # Description
+41.     ///
+42.     /// Constructs a [`FrameNumber`].
+43.     ///
+44.     /// # Parameters
+45.     ///
+46.     /// - `value`: The value of the frame number.
+47.     ///
+48.     /// # Returns
+49.     ///
+50.     /// - `Some(`[`FrameNumber`]`)`: Upon success.
+51. ...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; find . -name "syntax_attr.rs" 2>/dev/null | head; echo "=== search verus_spec earl
+
+[THINKING] The `#[verus_spec]` macro seems fine, but the error about `from_raw_value` not being found is puzzling — it's related to how the macro handles the `Option<Self>` return type and the `?` operator. I'm wondering if an early `return None;` statement inside the function body is causing the macro to generate code that can't find the expected function in scope. The `proof!{ use_type_invariant(self); }` at the start might not be the issue here. Let me look more carefully at how `verus_spec` handles early returns and check the syntax examples to understand why the macro is trying to call `from_raw_value`.
+[RESULT ✓] bash: ./docs/skills/verus-syntax/syntax_attr.rs
+./verus/examples/syntax_attr.rs
+./verus/source/rust_verify_test/tests/syntax_attr.rs
+=== search verus_spec early return / Option examples ===
+docs/skills/verus-syntax/GUIDE.md:36:- `#[verus_spec(with |= Ghost(x))]` on the return expression returns a ghost ou...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; grep -n "return\|verus_spec\|ensures\|fn " docs/skills/verus-syntax/syntax_attr.rs
+[RESULT ✓] bash: 5:19:/// exec and proof functions may name their return values inside parentheses, before the return type
+=== view lines around 310-340 ===
+        *old(y) < 100,
+    ensures
+        *y == x,
+        ret == x,
+        z == x,
+)]
+fn test_mut_tracked(x: u32) -> u32 {
+    proof!{
+        *y = x;
+    }
+...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls -t verus-ai-logs/verify-arch/verus-logs/*.log | head -1 | xargs grep -n -A8 "from_raw_valu
+
+[THINKING] I'm trying to narrow down where the `from_raw_value` function error is actually coming from—it might not be related to the verus_spec macro at all, but rather something about how the tuple struct is being constructed or how the early return is being handled. Let me set up a minimal test case to isolate whether this is a macro expansion issue or something else entirely.
+[RESULT ✓] bash: 24:error[E0425]: cannot find function `from_raw_value` in this scope
+25-  --> src/libs/arch/src/x86/mem/paging/frame/number.rs:59:12
+26-   |
+27:59 |     pub fn from_raw_value(value: usize) -> Option<Self> {
+28-   |            ^^^^^^^^^^^^^^ not found in this scope
+29-
+30-For more information about t...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn -B6 "Option<" src/ --include=*.rs | grep -B6 "fn " | grep "verus_spec\|return None\|
+
+[THINKING] I'm wondering if the `#[verus_spec]` macro expansion is the culprit here—specifically how it handles early returns combined with ensures clauses. The macro might be transforming the function into an inner implementation and outer wrapper, which could create a scoping issue where `from_raw_value` isn't visible in the right context.
+
+Let me look for a working example of a verus_spec function that returns an Option to see how it's structured.
+[RESULT ✓] bash: src/daemons/linuxd/src/profiler/mod.rs:155:    fn write<W: io::Write>(&self, out: &mut W, max_depth: Option<usize>) -> io::Result<()> {
+src/daemons/linuxd/src/profiler/scope.rs:53:    pub fn new(name: &'static str, pred: Option<Rc<RefCell<Scope>>>) -> Scope {
+src/daemons/linuxd/src/profiler/scope.rs...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n -B12 "return Err\|return None" src/kernel/src/hal/mem/types/address/phys.rs | grep -A
+[RESULT ✓] bash: 
+<shellId: 40 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] view: 170.     ///
+171.     /// Instantiates a new [`PhysicalAddress`] from a raw value.
+172.     ///
+173.     /// # Parameters
+174.     ///
+175.     /// - `raw_addr`: The raw value.
+176.     ///
+177.     /// # Returns
+178.     ///
+179.     /// - `Ok(Self)`: The new address.
+180.     /// - `Err(Error::Bad...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "verus_spec\|return None\|return Err\|fn " src/libs/bitmap/src/lib.rs | grep -B2 "ret
+
+[THINKING] I notice the `from_raw_value` function doesn't have a verus_spec annotation and lacks an early return, so I should look for examples of verus_spec functions that do include early returns—like in the bitmap library code.
+[RESULT ✓] bash: 89:    #[verus_spec(result =>
+100:    pub fn new(number_of_bits: usize) -> Result<Self, Error> {
+104:            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+110:            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+153:    #[verus_spec(result =>
+168:    pub fn from_...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bitmap/src/lib.rs
+[RESULT ✓] view: 89.     #[verus_spec(result =>
+90.         ensures
+91.             result matches Ok(bitmap) ==> {
+92.                 &&& bitmap.inv()
+93.                 &&& bitmap@.num_bits == number_of_bits as int
+94.                 &&& bitmap@.is_empty()
+95.             },
+96.             number_of_bits == 0 ...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls -t verus-ai-logs/verify-arch/verus-logs/*.log | head -1 | xargs sed -n '1,24p'
+
+[THINKING] Bitmap's `new` function handles early returns with `verus_spec` successfully, so that pattern should work for my `from_raw_value` too. The key difference is bitmap uses `result matches Ok(bitmap)` and `result is Err`, while I'm using `result is Some` and `result->Some_0`. The error about `from_raw_value` not being found is puzzling—I'm wondering if the `?` operator might be causing issues, though that seems unlikely.
+
+Actually, thinking about this more carefully: the E0425 error happens during macro expansion and type checking, so it's a rustc issue, not a verification-time problem. My suspicion is that since this is inside an `impl FrameNumber` block, the macro might be generating a call to `from_raw_value` as a free function somewhere, which wouldn't resolve. I could try restructuring the function body to use if/else instead of early return to isolate whether that's the culprit, but that would change the control flow structure, which I should avoid. Let me look more carefully at whether `Self::MAX` inside the body combined with verus might be the actual issue—maybe verus needs special handling for const references.
+
+I should get the full verus build output to see if there are more error details above what I'm seeing.
+[RESULT ✓] bash: Timestamp: 2026-06-14_08-10-07
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+note: verifying module s...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+Let me isolate the cause by testing a minimal verus file directly.
+[TOOL] bash: cd /tmp; cat > vtest.rs <<'EOF'
+use vstd::prelude::*;
+
+verus!{
+pub struct FrameNumber(usize);
+
+impl View for FrameNumber
+
+[THINKING] I'm trying to isolate the error with a minimal example using Verus directly. The issue might be with how the `#[verus_spec]` macro handles `Option<Self>` with `result is Some`, whereas the bitmap code uses `Result` with `result is Err` without problems. I need to look more carefully at the macro syntax — bitmap uses `#[verus_spec(result => ensures ...)]` but mine might be structured differently. I'm going to test my hypothesis by simplifying the ensures clause to something trivial and see if the error persists, which would help isolate whether the problem is with the ensures content itself or something about the early return structure. Let me iterate quickly through the actual file, toggling one thing at a time to narrow down what's causing the name resolution failure for `from_raw_value`.
+[RESULT ✓] bash: error[E0425]: cannot find function `from_raw_value` in this scope
+  --> vtest.rs:22:12
+   |
+22 |     pub fn from_raw_value(value: usize) -> Option<Self> {
+   |            ^^^^^^^^^^^^^^ not found in this scope
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rust...
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp; sed 's/        if value > 100 {\n            return None;\n        }\n        Some(Self(value))/XX/' vtest.rs >
+
+[THINKING] Testing the toggle functionality and checking what happens when I remove that early return.
+[RESULT ✓] bash: === no early return ===
+error[E0425]: cannot find function `from_raw_value` in this scope
+  --> vtest2.rs:19:12
+   |
+19 |     pub fn from_raw_value(value: usize) -> Option<Self> {
+   |            ^^^^^^^^^^^^^^ not found in this scope
+
+error: aborting due to 1 previous error
+
+For more information ab...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp
+cat > vtest3.rs <<'EOF'
+use vstd::prelude::*;
+verus!{
+pub struct FrameNumber(usize);
+impl View for FrameNumber {
+
+[THINKING] I should try removing that `result->Some_0` part to see if that's what's causing the issue.
+[RESULT ✓] bash: === simple ensures ===
+error[E0425]: cannot find function `from_raw_value` in this scope
+  --> vtest3.rs:17:12
+   |
+17 |     pub fn from_raw_value(value: usize) -> Option<Self> {
+   |            ^^^^^^^^^^^^^^ not found in this scope
+
+error: aborting due to 1 previous error
+
+For more information abo...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp
+cat > vtest4.rs <<'EOF'
+use vstd::prelude::*;
+verus!{
+pub struct FrameNumber(usize);
+impl View for FrameNumber {
+
+[THINKING] The simple ensures aren't helping, so this looks like a deeper structural problem with how `#[verus_spec]` handles functions in impl blocks that return `Option<Self>` and construct `Some(Self(value))`. Let me test if renaming the function from `from_raw_value` to something simpler like `foo` makes a difference, or if the issue is actually with how `Self` and `Some` interact in the spec context.
+[RESULT ✓] bash: === renamed foo ===
+error[E0425]: cannot find function `foo` in this scope
+  --> vtest4.rs:13:12
+   |
+13 |     pub fn foo(value: usize) -> Option<Self> {
+   |            ^^^ not found in this scope
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain ...
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp
+cat > vtest5.rs <<'EOF'
+use vstd::prelude::*;
+verus!{
+pub struct FrameNumber(usize);
+impl View for FrameNumber {
+
+[THINKING] The issue might be with `#[verus_spec]` on a method returning `Option<Self>` when the impl block is outside the verus macro, though `Result<Self>` works fine in similar cases. I'm wondering if the problem is specific to `Option` versus `Result` as the return type.
+[RESULT ✓] bash: === Result return ===
+error[E0425]: cannot find function `foo` in this scope
+  --> vtest5.rs:13:12
+   |
+13 |     pub fn foo(value: usize) -> Result<Self, ()> {
+   |            ^^^ not found in this scope
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --ex...
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+The same pattern works in `bitmap`. Let me compare bitmap's structure carefully.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bitmap/src/lib.rs
+
+[THINKING] The issue is that my direct invocation of verus is missing the proper setup that `cargo verus verify` provides — the macro expansion for `#[verus_spec]` likely depends on being run through the cargo-verus wrapper with the correct rustc configuration and edition settings, which is why the bitmap example works in the real build but fails in my minimal reproduction. So the real issue is that both my minimal repro and the actual `make verify-arch` fail with this error, which means it's not just an environment problem — it's something about how arch's code is structured compared to bitmap's. I need to look at the exact impl layout in bitmap's lib.rs and see where the `inv()` and `view()` methods are defined relative to the `verus_spec` methods, then compare that directly to arch's number.rs to find what's different.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. #![cfg_attr(not(feature = "std"), no_std)]
+5. // To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+6. // we need `proc_macro_hygiene`.
+7. #![cfg_attr(verus_keep_ghost, feature(...
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+Found it — bitmap has `#[verus_verify]` on the struct and impl block, plus `feature(proc_macro_hygiene)`. Let me test this.
+[TOOL] bash: cd /tmp
+cat > vtest6.rs <<'EOF'
+#![feature(proc_macro_hygiene)]
+use vstd::prelude::*;
+verus!{
+pub struct FrameNumber(usi
+
+[THINKING] I'm spotting the critical attributes needed for Verus verification: the `cfg_attr` macro on line 7 enables the proc macro hygiene feature that the `verus_spec` attributes depend on, and then the `#[verus_verify]` annotations on both the struct definition and the impl block are what actually trigger the verification process.
+[RESULT ✓] bash: === with verus_verify on impl ===
+error: postcondition not satisfied
+  --> vtest6.rs:13:17
+   |
+13 |         ensures result is Some ==> value < 100,
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+16 |         if value > 100 { None } else { Some(Self(value)) }
+   | ...
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+That's the fix. Let me add `#[verus_verify]` to the impl block and `proc_macro_hygiene` to the crate.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+
+[THINKING] The `#[verus_verify]` attribute on the impl block is what makes `#[verus_spec]` work properly — it converts the spec into a real verification error, which is what I expected. I need to add this attribute to the `impl FrameNumber` block in number.rs that contains the exec functions, and I should check whether the crate-level `feature(proc_macro_hygiene)` in lib.rs is necessary for this to work. I need to verify whether the struct itself requires `#[verus_verify]` or if just marking the impl block is sufficient. Since the spec.rs file is in the same module and verus processes the whole thing, the struct definition should be visible, but the derives like Copy and Clone might need special handling. Let me start by adding `#[verus_verify]` to just the exec impl block in number.rs and test incrementally. I should also add the proc_macro_hygiene feature to lib.rs gated the same way bitmap does it, to handle any statement-level attributes safely.
+[RESULT ✓] view: 29. //==================================================================================================
+30. // Implementations
+31. //==================================================================================================
+32. 
+33. impl FrameNumber {
+34.     /// The maximum frame number.
+3...
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+Now add `proc_macro_hygiene` to arch's lib.rs:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/lib.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -40
