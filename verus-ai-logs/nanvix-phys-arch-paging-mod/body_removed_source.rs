@@ -66,5 +66,15 @@ pub const NUM_HIERARCHY_PAGES: usize = 1;
 ///
 /// Must be called from kernel mode (ring 0).
 ///
+// Trust boundary (see `verus-ai-logs/tcb-allowed.md` and the module's
+// `verus-unsupported.md`): the body is a single `core::arch::asm!` block issuing the
+// `invlpg` instruction, which flushes the CPU TLB entry for `vaddr`. Verus does not
+// support inline-asm expressions, so the body cannot be verified. The effect is purely
+// on hardware TLB state — outside Verus' memory model and invisible to every caller's
+// Rust-visible state — so the faithful contract is empty (no `requires`, trivial
+// `ensures`): any `usize` is accepted, no error path, and no Rust-visible state changes,
+// hence every caller-side invariant is preserved. This matches the inherited upstream
+// `assume_specification[ ::arch::mem::paging::invlpg ]` (no `requires`/`ensures`).
 #[inline]
+#[verus_verify(external_body)]
 pub unsafe fn invlpg(vaddr: usize) { ... }
