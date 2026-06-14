@@ -78,7 +78,6 @@ impl KernelFrame {
     // same physical frame that was passed in. `external_body` per `verus-ai-logs/tcb-allowed.md`:
     // the identity-mapping side effect lives in `mm::virt` and the body's `?`/log closures call
     // into that layer, so the wrap contract is trusted until `mm::virt` is verified.
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             base.inv(),
