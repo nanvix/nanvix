@@ -1,0 +1,11 @@
+RESOLVED
+
+All 12 cheating-elimination checklist items for sys-virt-address are PASS with tool evidence:
+- admit=0, assume=0, trusted=0, no_decreases=0, external_body=0, cfg_gate=0 (make verify-sys, status CLEAN)
+- AST consistency: empty git diff over the address dir for the cheating phase (446430c1->HEAD); the 3 ast_consistency.py "mismatches" are checker name-collision false positives (inherent vs trait-impl align_up/align_down/is_aligned), not real exec changes.
+- No exec rewrites; no external_body to TCB-list.
+- spec_drift.py: no contract drift (exit 0).
+- make verify: all 6 crates exit 0 (sys CLEAN; other crates' cheating counters are pre-existing out-of-scope WIP, not regressions).
+- Fresh build: 6 verified, 0 errors, 0 warnings.
+
+See turn_001_driver.md for full evidence.
