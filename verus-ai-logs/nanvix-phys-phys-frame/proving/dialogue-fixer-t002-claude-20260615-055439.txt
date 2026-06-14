@@ -915,3 +915,29 @@ Let me run verification on mm::phys to validate the build fix and refcount.
 [TOOL] report_intent: Verifying refcount and build fix
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -30
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: - manager.proof.rs:27 lemma_kernel_alloc_one: admit
+    - manager.proof.rs:40 lemma_kernel_alloc_contiguous: admit
+    - manager.proof.rs:210 lemma_user_bulk_err_restored: admit
+    - manager.rs:104 init: external_body
+    - manager.rs:529 kernel_watermark: external_body
+    - mod.rs:73 book_physica...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Progress: 46 verified, 3 errors (was 42/4). The build is fixed and refcount verifies. Let me confirm the remaining errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error\|
+[RESULT ✓] bash: 8:3 errors
+30:error: postcondition not satisfied
+31:   --> src/kernel/src/mm/phys/frame.rs:270:17
+39:324 | |                 Err(error) => {
+45:error: postcondition not satisfied
+46:   --> src/kernel/src/mm/phys/frame.rs:359:17
+54:error: postcondition not satisfied
+55:   --> src/kernel/src/mm/phys/f...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Let me commit item 1, then tackle book/free/share. First commit:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git add -A && git commit -q -m "[verus-ai] phys-frame: restore PageAligned dep contra
