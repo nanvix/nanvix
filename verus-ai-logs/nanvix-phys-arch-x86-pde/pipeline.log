@@ -106,3 +106,26 @@ Module: arch-x86-pde
 [2026-06-15 01:40:09] [DIALOGUE] Reviewer turn 1 (remaining: 7200s)...
 [2026-06-15 01:40:09] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 01:44:00]   ↳ dialogue-reviewer-t1 done in 3m51s (exit=0)
+[2026-06-15 01:44:00] [DIALOGUE] Reviewer created STOP file: RESOLVED
+[2026-06-15 01:44:00] [DIALOGUE] STOP detail:
+RESOLVED
+
+All ten proving-phase checklist items PASS for arch-x86-pde with tool-backed
+evidence (fresh `make verify-arch`: 47 verified, 0 errors, 0 warnings).
+
+- Specs not weakened: proving phase only ADDED contracts (git diff confirms);
+  pde.spec.rs unchanged during proving.
+- admit=0, assume=0 (live counts + grep over pde.proof.rs/pde.spec.rs).
+- external_body: pde module has 0. Crate-wide 3 (mod.rs:80 invlpg,
+  table.rs:209 read, table.rs:246 write) are ALL listed in tcb-allowed.md and
+  are outside the pde scope.
+- cfg_gate=2 (pde.rs:83,307) are `#[cfg_attr(verus_keep_ghost, allow(unused,
+  verus_impl_method_marker))]` lint-allows on the two `new` constructors — NOT
+  cfg-gated exec code (bodies identical across configs; the verus-only lint
+  requires cfg_attr and cannot be a plain attribute). Scanner false-positive due
+  to multi-line #[verus_spec] look-ahead.
+- Only exec rewrite: trivial let-binding extraction in `frame_address`,
+  semantically equivalent; otherwise ghost-only proof! additions.
+- No Verus limitation claimed in pde (N/A).
+- Cross-module: whole arch crate verifies (47 verified, 0 errors).
+[2026-06-15 01:44:00] [DIALOGUE] proving ended after 1 turns: RESOLVED (232s)
