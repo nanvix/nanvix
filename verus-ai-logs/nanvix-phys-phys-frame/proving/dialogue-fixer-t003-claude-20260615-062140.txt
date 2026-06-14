@@ -267,3 +267,71 @@ In the share overflow `None` arm I reference `addr` but didn't bind it there. Le
 Turn 22
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -20
+[RESULT ✓] bash: Global: assume=0 external_body=19 admit=19 trusted=0 cfg_gate=15
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  40/45 exec functions have contracts.
+  Unverified functions:
+    - clear
+    - deref
+    - deref_mut
+    - get_mut
+    - test
+
+=== Summar...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Big progress: 52 verified, only 2 errors (was 5). Lemmas + free + share + book + refcount now verify. Let me see the 2 remaining errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error" 
+[RESULT ✓] bash: 8:2 errors
+30:error: precondition not satisfied
+63:error: precondition not satisfied
+210:verification results:: 52 verified, 2 errors (partial verification with `--verify-*`)
+211:error: could not compile `kernel` (bin "kernel") due to 2 previous errors
+<shellId: 3 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '28,90p'
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:320:13
+    |
+320 |             lemma_refcount_value(self, addr);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/mm/phys/frame.proof.rs:222:9
+    |
+222 |   ...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Both errors: I called `lemma_refcount_value` at the start before establishing the frame is allocated (so `contains_key` wasn't known yet). Move it into the "frame is allocated" block. Fix free and share.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm seeing the issue now—both the free and share functions are calling `lemma_refcount_value` at the start before I've established that the frame is actually allocated. The precondition requires `inner@.refcounts.contains_key(addr)`, but at that point in the proof I haven't yet verified that the address exists in the refcount map. I need to use the allocation lemmas to establish this containment first before invoking the refcount lemma.
+
+The fix is to move the `lemma_refcount_value` call and the assertion about `g_old.refcounts[addr]` into the block where I've already proven the frame is allocated (after checking that `refcount[fnx] != 0`). At that point, the containment property will hold and the precondition will be satisfied.
+
+Restructuring the proof blocks...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Now the same fix for `share`:
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+
+[THINKING] I need to check what lemmas I'm using in the start proof block—I'm still referencing `lemma_alloc_contains` which requires `addr` to be defined, and I have that from `let addr = frame@;`. The key insight is that `lemma_alloc_contains` only needs `internal_inv` and the alignment check `addr%PS==0`, while `lemma_alloc_iff_key` has no preconditions, so both should work fine for the error arms where I need to show `!allocated.contains(frame@)`.

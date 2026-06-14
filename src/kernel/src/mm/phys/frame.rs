@@ -317,8 +317,6 @@ impl Inner {
             assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
             lemma_alloc_contains(self, addr);
             lemma_alloc_iff_key(self, addr);
-            lemma_refcount_value(self, addr);
-            assert(g_old.refcounts[addr] == pre_rc[fnx] as int);
         }
 
         if frame_number >= self.refcount.len() {
@@ -353,10 +351,15 @@ impl Inner {
         proof! {
             // The frame is currently allocated: refcount[fnx] > 0 and fnx < num_bits, so the bit
             // is set. Records the facts needed to discharge the postcondition's first conjuncts.
+            let addr = frame@;
             let fnx = frame_number as int;
             assert(self.refcount@[fnx] != 0);
             assert(fnx < self.bitmap@.num_bits);
             assert(self.bitmap@.set_bits.contains(fnx));
+            lemma_alloc_contains(self, addr);
+            lemma_alloc_iff_key(self, addr);
+            lemma_refcount_value(self, addr);
+            assert(g_old.refcounts[addr] == pre_rc[fnx] as int);
         }
 
         self.refcount[frame_number] -= 1;
@@ -483,8 +486,6 @@ impl Inner {
             assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
             lemma_alloc_contains(self, addr);
             lemma_alloc_iff_key(self, addr);
-            lemma_refcount_value(self, addr);
-            assert(g_old.refcounts[addr] == pre_rc[fnx] as int);
         }
 
         if frame_number >= self.refcount.len() {
@@ -519,10 +520,15 @@ impl Inner {
 
         proof! {
             // The frame is allocated: refcount[fnx] > 0 and fnx < num_bits, so the bit is set.
+            let addr = frame@;
             let fnx = frame_number as int;
             assert(self.refcount@[fnx] != 0);
             assert(fnx < self.bitmap@.num_bits);
             assert(self.bitmap@.set_bits.contains(fnx));
+            lemma_alloc_contains(self, addr);
+            lemma_alloc_iff_key(self, addr);
+            lemma_refcount_value(self, addr);
+            assert(g_old.refcounts[addr] == pre_rc[fnx] as int);
         }
 
         self.refcount[frame_number] = match self.refcount[frame_number].checked_add(1) {
