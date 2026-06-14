@@ -407,3 +407,17 @@ The module-scoped cheating only scans `identity_map.rs`. Let me confirm the scop
 The copy operation at line 524 only pulls in `identity_map.rs` itself, not the separate `.spec.rs` or `.proof.rs` files that are included via macros. So the module-scoped cheating scan would only count the three admits in the main identity_map.rs file, while the assume_specifications and external_body declarations in the spec file wouldn't be flagged—though for completeness I should address those too.
 
 The real constraint is that `identity_map_view()` is an uninterpreted constant with no connection to the actual execution, so the postconditions claiming it's accessible or properly initialized can't be derived from just the invariant alone. Without fundamentally changing how the function is specified or providing a concrete implementation, those three admits seem structurally necessary. The core issue is that `spec_table_word` and the page-table memory ghost in arch might be the key to defining `identity_map_view()` in terms of actual tracked state, but the atomic value storing the kernel PD address isn't spec-readable, and I'd need to hook into the global page-table ghost to make this work. Let me dig into what those arch ghosts actually are and whether there's a path to connect them.
+[RESULT ✓] bash: === Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=12 admit=31 trusted=0 no_decreases=0 cfg_gate=15
+  coverage: 3/11 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-1...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -n
+
+[THINKING] I'm looking at the global summary counts, but I need to examine the module-specific output to see the breakdown. Let me trace through the full output before the summary section to understand what each module is reporting.
