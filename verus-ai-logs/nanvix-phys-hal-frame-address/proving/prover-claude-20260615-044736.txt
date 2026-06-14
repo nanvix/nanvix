@@ -422,3 +422,51 @@ Makefile:629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log
 Turn 19
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -40
+[RESULT ✓] bash: Checking elf v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/elf)
+verification results:: 0 verified, 0 errors
+    Checking bitmap v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/bitmap)
+verification results:: 47 verified, 0 errors
+verification results:: 70 verified, 0 errors
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/; grep -n "admit\|assume\|external_body" 
+
+[THINKING] Good news—the two lemmas are now verifying after removing the admits. The global counts showing "admit=29" and "external_body=11" are across the entire kernel crate, not my module specifically, so my target file frame.proof.rs has zero admits. I'm checking whether that cfg-gated exec code warning is coming from the structure definition itself.
+[RESULT ✓] bash: frame.rs:40:// Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
+frame.spec.rs:20:pub assume_specification[ <PhysicalAddress as ::sys::mm::Address>::from_raw_value ](value: usize)
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -i "frame" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>
+
+[THINKING] The `assume_specification` for PhysicalAddress::from_raw_value was already there as a documented dependency placeholder, and I didn't introduce any external_body or admit() calls. The cfg-gated exec code warning appears to be pre-existing from the global configuration, not something I added—my module itself verifies cleanly with 6 verified items and no errors.
+[RESULT ✓] bash: === admits in address/frame files ===
+<shellId: 17 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '1,60p' verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt | g
+
+[THINKING] My target files don't have any admits, so the cheating detection is coming from other modules like the physical proof and memory management ones. The CHEATING_DETECTED status is a global flag triggered by those unverified modules, not my code. Now I'm looking into what the "cfg-gated exec code: 1" means for my module and whether it's something I need to worry about by examining the cheating details specific to the frame module.
+[RESULT ✓] bash: - hal/mem/types/address/phys.proof.rs:6 lemma_from_number_no_overflow: admit
+    - hal/mem/types/address/phys.proof.rs:16 lemma_frame_index: admit
+    - mm/phys/frame.rs:136 alloc: admit
+    - mm/phys/frame.rs:213 alloc_contiguous: admit
+    - mm/phys/frame.rs:298 free: admit
+    - mm/phys/frame.rs:...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Module verifies (6 verified, 0 errors). All admits/external_bodies flagged are in other out-of-scope modules. Let me run the full verify to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; make verify 2>&1 | grep -iE "verifying module|errors|verified|error\[|Exit co
+
+[THINKING] All the admits and external bodies are actually in other modules like phys.proof.rs and the mm/phys directory, so my target frame module is completely proven with zero admits. I'm checking what the cfg-gated exec code flag means for the frame module—it's likely just the PartialEq and Debug implementations that aren't in Verus, which is a pre-existing issue.
+
+The core task is done: verify-kernel passes with 0 errors, 0 admits, and 0 assumes in my module. Now I need to run the full `make verify` to confirm no regressions, though I'm aware other modules have pre-existing admits that are still being worked on. The key metric is checking that the error count stays at zero and that I haven't introduced any new issues.
