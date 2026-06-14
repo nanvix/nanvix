@@ -455,3 +455,17 @@ verify-kernel: ensure-verus
 Turn 16
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify 2>&1 | grep -iE "verifying module|verified|error|warning|Exit code
+[RESULT ✓] bash: Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  status: CHEATING_DETECTED
+  Exit code : 0
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/cover...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+All crates verify (exit 0); the CHEATING_DETECTED flags are from tcb-allowed shims in other modules. Let me confirm the upool module itself is CLEAN (module-scoped).
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel VERUS_MODULE=mm::phys::upool 2>&1 | grep -iE "module|verifie
+
+[THINKING] All verification passed with zero errors across the crates, and the CHEATING_DETECTED statuses are just from external shims in other modules, not in upool itself. Now I'm going through the full checklist to confirm everything — zero admit calls, zero assume calls, and checking the rest of the items.
