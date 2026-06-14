@@ -162,3 +162,66 @@ The verification_todo.md is already accurate and complete. Let me run the final 
 Turn 8
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make verify-kernel 2>&1 | grep -nE "verification results::|ver
+[RESULT ✓] bash: 30:=== Summary ===
+31:  verification: cached (no recompilation), — (exit 0)
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Confirmed: `make verify-kernel` exits 0 (76 verified, 0 errors; cached). Now writing the turn response documenting this turn's exhaustive re-investigation.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue/turn_003_fixer.md
+
+[THINKING] The kernel verification came back clean with no recompilation needed, confirming the source hasn't changed—76 verified files, zero errors, exit code 0, and 3 documented admits accounted for. Now I'm drafting the response for this turn that documents the re-investigation and identifies the confirmed blocker.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue/turn_003_fixer.md with 5322 characters
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+The response is written. Let me do a final state check to confirm everything is clean and consistent.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== source files modified vs HEAD ===" && git status --short src/ && 
+
+[THINKING] Let me double-check that the repository is in a clean state with only the expected changes—the logs and report modifications—and that the build still passes without any source code alterations beyond the three commits and the removal of the external body.
+[RESULT ✓] bash: === source files modified vs HEAD ===
+(empty above = source clean, all committed)
+=== HEAD source state ===
+admits: 3
+real external_body attrs in spec.rs: 1
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git show HEAD:src/kernel/src/mm/virt/identity_map.spec.rs | grep -nE "verif
+
+[THINKING] I'm confirming that the external_body attribute mentioned at line 151 is indeed inside a comment, not an actual attribute declaration.
+[RESULT ✓] bash: 151:// hardware trust boundary (`#[verus_verify(external_body)]`, inline-asm TLB flush),
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+The single match is comment prose (line 151), not a real attribute — zero actual `external_body` in the module.
+
+## Summary
+
+The gate flags only the 3 admits (`identity_map.rs:534/632/719`); the `external_body` I eliminated last turn stays gone.
+
+This turn I re-derived the blocker from the dependency specs rather than relying on prior conclusions:
+
+- **`ensure_pt`** — no contract contradiction, but its `alloc_as` precondition `bump_view(self).inv()` is unestablishable: `bump_view` is `uninterp`, `new()` has no `ensures`, and **every** lemma in `bump_allocator/lib.proof.rs` *requires* `inv()` — none produces it. The spec header explicitly defers view-attachment to a proving-phase ghost token.
+- **`ensure_pte` / `identity_map_page`** — assert result-dependent **opposite** facts (`Ok ⇒ contains/accessible`, `Err ⇒ !…`) over a parameterless `uninterp` constant; mathematically unsatisfiable for any fixed value, and `AtomicUsize::load()` is not spec-readable so the `pd_paddr==0 ⇔ !initialized` link can't be made without a ghost atomic (exec type change to a static used by out-of-scope callers).
+- Read-index preconditions: `use_type_invariant` → `Verus Internal Error: missing type invariant function`; adding a `requires` forces out-of-scope `init` to prove it.
+
+Every sound fix requires the cross-module proving-phase ghost-token framework — forbidden by the task's hard rules (no exec signature/type change, no spec weakening, no new `external_body`/`assume_specification`, `table.rs`/callers off-limits).
+
+**State:** `make verify-kernel` → 76 verified, **0 errors**, exit 0. AST consistent (14 fns, 1 struct). Source clean/committed. Reports updated (`turn_003_fixer.md`, `verification_todo.md`, `fix_report.md`).
+
+**Result:** external_body FIXED (1→0); 3 admits are a re-verified impossibility within scope — escalated to the proving-phase owner. Removing them yields a failing build (`6 verified, 3 errors`), strictly worse than the documented verifying baseline.
+
+
+=== Session End ===
+Session: 8479c69d-e2de-4c1e-abc2-5ca2060868ef
+Duration: 231.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/cheating-fix-claude-20260615-033955.jsonl
