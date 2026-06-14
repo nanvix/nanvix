@@ -648,3 +648,23 @@ Module status is now **CLEAN** — "No cheating detected in module mm::phys::upo
 Now I need to run AST consistency to confirm the View move didn't break anything, then run the full verification suite and check the broader mm::phys module to ensure upool doesn't introduce any regressions.
 [RESULT ✓] bash: ✅ Consistent: 8 functions, 2 structs match.
 <shellId: 29 completed with exit code 0>
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=25 admit=0 trusted=0 no_decreases=0 cfg_gate=9
+  Detail: v...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Full `make verify` completed (exit 0). The kernel still shows global CHEATING_DETECTED, but that's the TCB-allowed baseline (all 25 external_body in frame/manager/mod per tcb-allowed.md; cfg_gate dropped 10→9 by eliminating upool's). Let me confirm `make verify` exited successfully overall and that no upool item remains.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify > /tmp/verify_full.log 2>&1; echo "EXIT=$?"; echo "=== any FAIL/err
+
+[THINKING] The full verification suite passed, and the kernel's cheating detection shows the baseline is holding at external_body=25 with cfg_gate dropping from 10 to 9—confirming I successfully removed the upool's cfg_gate contribution and reduced the total cheating count by 1.
