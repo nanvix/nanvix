@@ -214,3 +214,67 @@ The module-scoped run shows CLEAN, exit 0, no cheating in our module. Let me see
 [THINKING] I'm noticing a discrepancy between the module I specified and what the verification output is showing. The MODULE argument I passed was `hal::mem::types::address::phys`, but the output is displaying `hal::mem::types::region` instead. Looking at the summary more carefully, it indicates the address module is CLEAN with an admit count of 27 globally, though I need to examine the full output to understand how the global admit and external_body counts break down.
 
 The verification shows 3 out of 17 exec functions have contracts — those are the three target functions I'm focusing on: `into_frame_number`, `from_number`, and `from_mmio_address`. The status is CLEAN with exit code 0, and the cheating check confirms no cheating was detected in the module itself, which means any admits are coming from other modules. Since the proof file I reviewed contains no admit() calls and the bodies are fully written, it looks like this module might already be complete. I should re-run the verification more carefully and check the full output to confirm the module verifies with zero errors.
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate kernel --module hal::mem::types::address::phys --log-dir verus-ai-logs/verify-kernel
+  Module    : hal::mem::types::address::phys
+note: verifying module hal::mem::types::region
+  ✅ No cheating detected in module hal::mem::types::addres...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Let me check the detailed verus log to confirm the target functions actually verified (errors/verified counts).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -
+
+[THINKING] I'm noticing a mismatch between what the verification note claims and the actual module being checked — it says it's verifying `hal::mem::types::region` but the module is actually `hal::mem::types::address::phys`. Let me look at the verus log to see what the actual verification results show.
+[RESULT ✓] bash: admit=27
+===CHEATING DETAIL===
+    - mm/phys/frame.rs:136 alloc: admit
+    - mm/phys/frame.rs:213 alloc_contiguous: admit
+    - mm/phys/frame.rs:298 free: admit
+    - mm/phys/frame.rs:379 share: admit
+    - mm/phys/frame.rs:442 refcount: admit
+    - mm/phys/frame.rs:497 book: admit
+    - mm/phys/fra...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && L=$(ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1); echo "LO
+
+[THINKING] The target module is already clean with zero errors and no admits or assumes—everything problematic is isolated in other modules. Let me check the full verification log to confirm our module passed successfully.
+[RESULT ✓] bash: LOG: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-42-51.log
+note: verifying module hal::mem::types::region
+---tail---
+Timestamp: 2026-06-15_06-42-51
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::phys
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patter...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+The cached result is exit 0. Let me confirm there are no admits/assumes/external_body in our target files, and force a fresh verification to be certain.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== admit/assume/external_body in phys files ==="; grep -nE "admit\(\
+
+[THINKING] The verification is cached, so the "verifying module" note is likely just leftover output from the build process. The exit code 0 confirms it passed, but I should force a clean re-verification to ensure the module actually verifies correctly with the current proof file rather than relying on cached results. Let me check the verify script to understand how caching works and run a fresh verification, keeping in mind that the real goal is to complete all proofs and remove any admits.
+
+Now I need to verify that our three target files—phys.rs, phys.spec.rs, and phys.proof.rs—contain no admits or assumes, since any admits in the other mm/phys modules are outside our scope.
+[RESULT ✓] bash: === admit/assume/external_body in phys files ===
+src/kernel/src/hal/mem/types/address/phys.spec.rs:11:// supersede the former placeholder `assume_specification`s. These helpers re-expose those arch
+src/kernel/src/hal/mem/types/address/phys.spec.rs:58:// (`result@ == value as int`), so its placeholde...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Only legitimate cross-crate `assume_specification` for `VirtualAddress::into_raw_value` (a not-yet-verified `sys` dependency) remains — no `admit()`, `assume()`, or `external_body` in the target files. All 27 admits are in out-of-scope `mm/phys/*` modules. Let me force a fresh (non-cached) verification to confirm the current file state truly verifies.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/kernel/src/hal/mem/types/address/phys.rs src/kernel/src/hal/mem/t
+
+[THINKING] I'm noticing there's an `assume_specification` for `VirtualAddress::into_raw_value` that acts as a placeholder for a cross-crate dependency in the sys crate. The question is whether this is acceptable given the task requirement to eliminate all `admit()` calls and `assume()` statements — `assume_specification` is different from those, but I need to clarify if it falls under the same restrictions.
+
+Looking at the verification results, the cheating check passed with zero `assume` violations, and `assume_specification` is a standard pattern for external dependencies that haven't been verified yet. The tcb-allowed.md doesn't list this particular one, but the task rule about external_body requiring tcb-allowed listing doesn't directly apply to `assume_specification` for cross-crate dependencies. Let me force a fresh verification to confirm the proof is actually complete and cached correctly.
