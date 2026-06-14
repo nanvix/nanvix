@@ -608,3 +608,182 @@ Turn 31
 Turn 32
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-sys 2>&1 | tail -25
+[RESULT ✓] bash: Timestamp : 2026-06-15_04-31-13
+
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys)
+verification results:: 6 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.90s
+
+=== Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pa...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Status is now CLEAN. Let me run AST-consistency checks and the full-crate `make verify` for regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls scripts/ | grep -i ast; find / -name "ast_consistency.py" 2>/dev/null | 
+
+[THINKING] The build is clean with 6 verified items and no errors, so now I need to make sure the normal non-verus build still works since I removed the cfg gate. I'm thinking through whether to run a quick cargo check on the sys crate or jump straight to the full verification step, but I should validate that the standard build path hasn't regressed.
+
+Actually, I realize virt.rs already has a bare verus block in the same crate and the project builds fine, so my change to alignment.rs follows the same pattern and should be safe. To be thorough though, I should run the AST consistency check and then make verify to catch any regressions across the full crate. Let me locate and run the AST consistency script on the modified files.
+[RESULT ✓] bash: /mnt/shared/verus-ai-improve4/scripts/ast_consistency.py
+/mnt/shared/verus-ai-improve5-argus-exp2/scripts/ast_consistency.py
+/mnt/shared/view-design-exp/kheap-worker7-clean/scripts/ast_consistency.py
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find /home/ruize/verus-ai-exp/verus-ai -name "ast_consistency.py" 2>/dev/nu
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+ast_consistency.py
+scan_ast_limitations.py
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for f in src/libs/sys/src/sys/mm/alignment.rs src/libs/sys/src/sys/mm/addre
+[RESULT ✓] bash: === src/libs/sys/src/sys/mm/alignment.rs ===
+usage: ast_consistency.py [source] verus diff [-h] --name NAME [--full]
+ast_consistency.py [source] verus diff: error: the following arguments are required: --name
+=== src/libs/sys/src/sys/mm/address/mod.rs ===
+usage: ast_consistency.py [source] verus dif...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --help
+[RESULT ✓] bash: usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+
+AST-level exec consistency checker for Verus verification.
+
+Compare executable code between an original Rust source and its
+Verus-verified counterpart using tree-sitter AST ...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for f in src/libs/sys/src/sys/mm/alignment.rs src/libs/sys/src/sys/mm/addre
+
+[THINKING] I'm looking at how the ast_consistency tool works—it compares an original Rust source against a verus-verified version, using count mode to analyze the AST between a base reference and the current file. The command structure takes an optional source parameter, the verus file path, and the count mode flag.
+[RESULT ✓] bash: === src/libs/sys/src/sys/mm/alignment.rs ===
+✅ Consistent: 12 functions, 0 structs match.
+=== src/libs/sys/src/sys/mm/address/mod.rs ===
+✅ Consistent: 0 functions, 0 structs match.
+=== src/libs/sys/src/sys/mm/address/virt.rs ===
+⚠️  3 mismatched (16 functions match)
+<shellId: 29 completed with exit ...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+alignment.rs is AST-consistent (my change altered no exec AST). virt.rs shows 3 mismatches but I never touched it — let me investigate (likely pre-existing).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base
+
+[THINKING] The alignment.rs file checks out—all 12 functions match between my cfg-removal change and the base, so the AST transformation is consistent. But virt.rs is showing 3 mismatches, which is strange since I didn't modify that file. Let me investigate what's actually different here, since this shouldn't be happening if I only changed the cfg handling.
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+VirtualAddress::add                      MATCH                                
+VirtualAddress::add_assign               MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+virt.rs is unmodified by me — let me confirm these 3 mismatches are a pre-existing tool artifact (duplicate function names across the inherent and trait impls).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== git diff stat working tree ===" && git diff --stat && echo "=== i
+
+[THINKING] I'm seeing three mismatches in virt.rs for align_down, align_up, and is_aligned, but I haven't modified that file. The comparison is between the base-ref (verus-ai-prove-bottom-up) and my working tree, yet since I'm already on that branch with virt.rs unchanged, the files should match—so something's off with this comparison.
+
+The issue is likely that virt.rs has duplicate function names across two different impl blocks: the inherent impl methods and the trait impl methods for Address. The tool's name-based matching might be detecting these as mismatches because the same function names have different bodies in each impl block. This is a pre-existing artifact of how the tool handles name collisions, not something I introduced. Since virt.rs is byte-identical to the base version, the mismatch is inherent to the tool's comparison logic rather than my changes.
+[RESULT ✓] bash: === git diff stat working tree ===
+ .../prover-claude-20260615-042407.jsonl            | 137 +++++++++++++++++++++
+ .../prover-claude-20260615-042407.txt              |  95 ++++++++++++++
+ 2 files changed, 232 insertions(+)
+=== is virt.rs modified? ===
+(empty above = unmodified)
+=== is_aligned diff ...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== git status ===" && git status --short && echo "=== alignment.rs l
+
+[THINKING] Something's off — the git diff output only shows the log files changed, not alignment.rs, even though the edit tool confirmed the update went through. Let me verify the file actually saved and check if it's being ignored or if there's a name collision issue with the is_aligned diff.
+[RESULT ✓] bash: === git status ===
+ M verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/prover-claude-20260615-042407.jsonl
+ M verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/prover-claude-20260615-042407.txt
+=== alignment.rs line 151 area ===
+
+verus! {
+
+// Abstract numeric value (in byt...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+git shows alignment.rs as unmodified despite the on-disk change. Let me investigate—possibly gitignored or a symlink.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== check-ignore ===" && git check-ignore -v src/libs/sys/src/sys/mm/
+
+[THINKING] The file on disk shows my change went through—the cfg attribute is gone—but git isn't detecting it as modified, which suggests alignment.rs might be git-ignored or there's something unusual with how git is tracking it. Let me verify with git check-ignore to see what's happening.
+[RESULT ✓] bash: === check-ignore ===
+rc=1
+=== ls -la ===
+-rw-rw-r-- 1 ruize ruize 8470 Jun 15 04:31 src/libs/sys/src/sys/mm/alignment.rs
+=== is tracked? ===
+src/libs/sys/src/sys/mm/alignment.rs
+=== HEAD line 151 ===
+
+verus! {
+
+// Abstract numeric value (in bytes) of an [`Alignment`]. Mirrors the enum's
+<shellId: 33...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== current HEAD ===" && git log --oneline -5 | cat && echo "=== bran
+
+[THINKING] I'm checking the git history and noticing something odd — the cfg gate that was present in the base branch at line 151 is now gone in HEAD. Let me trace through what happened here. Or maybe the branch ref itself moved. Let me check the recent commits and see where the branch is pointing now.
+[RESULT ✓] bash: === current HEAD ===
+2e2afe732 [verus] verify PASS: sys::all (6 verified, 0 errors)
+6f9f364fe [verus] verify PASS (cheating detected): sys::mm::address (cached (no recompilation), —, cfg_gate=1)
+cc5568d6f [verus] verify PASS (cheating detected): sys::mm::address (cached (no recompilation), —, cfg_ga...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+The verify script auto-commits on pass — my alignment.rs change is committed in `2e2afe732`. The virt.rs "mismatches" are a tool name-collision artifact (inherent vs trait methods sharing names). Let me confirm each resolves to MATCH when queried directly, and that virt.rs is byte-identical to the pre-task base.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for n in "VirtualAddress::align_up" "VirtualAddress::align_down" "VirtualAd
+
+[THINKING] Ah, so the `make verify-sys` target automatically commits changes when verification passes—that's why the git log shows my alignment.rs edit was committed after the latest verify run succeeded.
+
+The AST mismatch for virt.rs is a pre-existing artifact from name collisions between inherent and trait method implementations with the same names (align_up, align_down, is_aligned), not something I introduced. Since virt.rs is unchanged from the base and verification passed cleanly, this is just the tool picking up the wrong overload when comparing by name—not a real issue in my scope.
+[RESULT ✓] bash: === VirtualAddress::align_up ===
+✅ VirtualAddress::align_up: MATCH
+=== VirtualAddress::align_down ===
++    fn align_down(&self, align: Alignment) -> Result<Self, Error> {
++        Ok(self.align_down(align))
+     }
+=== VirtualAddress::is_aligned ===
+✅ VirtualAddress::is_aligned: MATCH
+=== virt.rs vs ...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+virt.rs is byte-identical to the pre-task base — those mismatches are a pre-existing name-collision artifact (inherent vs trait overloads), not regressions. Now the full-crate regression check.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1800 make verify 2>&1 | tail -40
+
+[THINKING] Checking virt.rs against the baseline commit shows it's completely unchanged, so the AST mismatches are just pre-existing artifacts from function name collisions between the inherent and trait implementations of `align_down`. The other functions like `align_up` and `is_aligned` actually match when I query them directly.
+
+Since virt.rs is identical to the base version, these aren't regressions I introduced. The base reference I used earlier (`verus-ai-prove-bottom-up`) now points to my post-edit commit, and virt.rs is still unchanged there too — the mismatch is just the tool's name-collision artifact comparing identical versions.
+
+Now I need to run the full workspace verification to check for any regressions across dependent crates. The change to alignment.rs could theoretically affect other crates like kernel that depend on sys. I'm also verifying that removing the cfg gate on the verus! block doesn't break normal (non-verus) builds — but since spec_align_value is only used in spec files under cfg(verus_keep_ghost), and the verus! macro strips it in normal builds anyway, there shouldn't be an issue. Let me run the full make verify.
