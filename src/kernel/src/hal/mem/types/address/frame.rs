@@ -33,7 +33,6 @@ use ::sys::error::Error;
 #[derive(Clone, Copy)]
 pub struct FrameAddress(PageAligned<PhysicalAddress>);
 
-#[cfg(verus_keep_ghost)]
 verus! {
 
 // The architectural page size, delegating to the `arch` crate's verified `PAGE_SIZE` constant.

@@ -339,3 +339,147 @@ Turn 11
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 |
 
 [THINKING] I'm checking the module path structure—it looks like `MODULE` is specified relative to the crate root, so `kernel::hal::mem::types::address::frame` would be referenced as `hal::mem::types::address::frame` in the MODULE argument. Let me verify this works correctly.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | 
+
+[THINKING] The module verification passed, and there's only one flagged cheating item in this module: cfg-gated exec code appearing once. I need to locate which specific instance it is—it looks like it's related to a `#[cfg(verus_keep_gh` attribute that got cut off.
+
+Let me trace through how the cfg-gate detection works. The module path resolves to `frame.rs`, and when the detection runs on just that file, it finds cfg gates at lines 9, 11 (which are excluded because they're in include! statements), and line 36 (which gets counted). So the count of 1 makes sense. But I should check whether this is actually a problem by looking at how other verified modules in the codebase handle similar cfg-gating patterns, particularly the ones that are already considered clean.
+[RESULT ✓] bash: - hal/mem/types/address/phys.proof.rs:16 lemma_frame_index: admit
+    - mm/phys/frame.rs:136 alloc: admit
+    - mm/phys/frame.rs:213 alloc_contiguous: admit
+    - mm/phys/frame.rs:298 free: admit
+    - mm/phys/frame.rs:379 share: admit
+    - mm/phys/frame.rs:442 refcount: admit
+    - mm/phys/frame.r...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== base branch frame.rs lines 30-65 ==="; git show verus-ai-prove-bott
+
+[THINKING] Looking at the cheating-detail.txt file, it doesn't break down the cfg gate details by function. The global view shows admits and external_body appearing in other modules like mm/phys and phys.proof.rs, but those aren't relevant to hal-frame-address. The actual scope here is just the FrameAddress methods, and the module-scoped cheating check flags only one cfg-gated exec code block as in-scope.
+
+Now comparing frame.rs and its sibling phys.rs: phys.rs has `#[cfg(verus_keep_ghost)]` annotations at lines 9 and 11, but the verus! block at line 292 isn't cfg-gated. Meanwhile, frame.rs has the verus! block at line 37 preceded by a cfg gate at line 36. The fix would be removing that cfg gate from frame.rs to match phys.rs's pattern, since the verus! macro itself always produces compilable Rust regardless of whether verus_keep_ghost is set—it just erases ghost and spec content when the flag isn't present. The real question is whether this difference exists because frame.rs's verus! block contains impl blocks and spec functions that need different handling than what's in phys.rs's block.
+
+The heuristic flagging cfg_gate=1 is crude—it counts the verus! block as "exec code" even though it only contains ghost and spec code (spec functions and View implementations), which isn't actually executable code. The detection logic doesn't exclude verus! blocks the way it does for use statements or module declarations. To truly clean this up and get cfg_gate=0, I'd need to remove the cfg gate, but only if it's safe and matches the established pattern in the codebase. Let me check the git history to see if this gate was added recently or if it's been there from the start.
+[RESULT ✓] bash: === base branch frame.rs lines 30-65 ===
+/// A type that represents a frame address.
+///
+#[verus_verify(external_derive)]
+#[derive(Clone, Copy)]
+pub struct FrameAddress(PageAligned<PhysicalAddress>);
+
+#[cfg(verus_keep_ghost)]
+verus! {
+
+// The architectural page size, delegating to the `arch` crate's...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '555,600p' scripts/verify.sh
+
+[THINKING] Looking at the pattern across the codebase, frame.rs currently has a cfg gate before the verus! block while phys.rs doesn't, and the verified approach in phys.rs suggests removing that gate from frame.rs would align the two files and clean up the inconsistency.
+
+The key question is whether this breaks normal builds — but since vstd is imported unconditionally at the top of frame.rs and phys.rs proves that non-gated verus! blocks with View trait impls compile fine under normal builds, removing the cfg gate should be safe.
+
+Let me look more carefully at the module summary though — the cfg_gate count isn't actually part of the MOD_SUM calculation, which only sums assume, external_body, admit, trusted, and no_decreases. So I need to recheck what's actually being flagged as cheating here.
+[RESULT ✓] bash: :
+elif [[ -n "$MODULE_CHEATING_DIR" ]]; then
+    # --- MODULE set: module cheating is primary, global is secondary ---
+    MOD_CHEATING_JSON="$(run_cheating_scan "$MODULE_CHEATING_DIR")"
+    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATING_DIR")" || MOD_CFG_GATE=0
+    MOD_SUM="$(echo "$MOD_CHEATING...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/.openclaw/workspace/skills/ast-consistency/*.md 2>/dev/null | sed -n '1,120p'
+
+[THINKING] The issue is that `cfg_gate=1` triggers the cheating detection, so I need to remove the `#[cfg(verus_keep_ghost)]` attribute at line 36 to match the pattern in the verified phys.rs file and eliminate this false positive. I should verify this fix works correctly.
+
+Now I'm reconsidering whether removing the cfg gate is the right approach. The base branch had it gated, but phys.rs (a verified sibling) has it ungated and compiles fine. I need to think through what happens under normal build mode—the View impl and spec functions would be compiled but the spec function bodies get erased by verus!, which could leave an incomplete trait implementation if the View trait requires the spec fn to be present.
+
+Since phys.rs demonstrates this pattern works, I'm fairly confident it's safe. But I should verify this doesn't break a normal cargo build, not just the ghost-mode verification. The ast-consistency concern is whether removing a cfg gate counts as changing exec code structure—the gate wraps a verus! block, so I need to check if that's considered exec code or just proof code.
+[RESULT ✓] bash: ---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+for the full ru...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+The only in-scope cheating flag is `cfg-gated exec code: 1` (the `#[cfg(verus_keep_ghost)]` before the `verus!` block at line 36). The verified sibling `phys.rs` keeps its `verus!` block **ungated**. Let me align frame.rs to that canonical pattern.
+[TOOL] report_intent: Removing cfg-gate on verus block
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] The ast-consistency checker strips ghost and spec annotations when hashing exec code, so removing `#[cfg(verus_keep_ghost)]` before a verus block likely won't affect the exec AST hash since the block itself is spec code that gets stripped anyway. But the real question is whether removing that cfg gate changes the semantics of the normal build.
+
+Looking at how `#[cfg(verus_keep_ghost)]` works: with the gate, the entire verus block gets removed during normal cargo build; without it, the verus macro expands and produces erased code. Since phys.rs implements View for a type without any cfg gating and that compiles fine in the kernel, an ungated verus View impl should work here too. My plan is to remove the cfg attribute at line 36 of frame.rs to match the phys.rs pattern, then run a normal kernel build to verify it actually works.
+
+I'm also checking whether removing this gate will actually eliminate the cfg_gate=1 issue. The frame.spec.rs file is included behind a cfg gate at lines 9-11, but the detector excludes include! targets, so that shouldn't count toward the gate. The only cheating item I need to eliminate is the cfg_gate itself. I'm verifying that removing the cfg gate won't break the normal build. The View impl in phys.rs is ungated and compiles fine, so frame.rs's identical structure should work the same way. Since the verus_keep_ghost flag is set during verification anyway, the ungated verus! block will still be processed correctly. I'm confident this change is safe and matches the established pattern in the codebase.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; python3 scripts/ast_consistency.py --base-ref verus-ai-prove-bottom-up src/ke
+
+[THINKING] I'll run the AST consistency check first, then verify the modules again.
+[RESULT ✓] bash: python3: can't open file '/home/ruize/nanvix-phy-specs-bottom-up/scripts/ast_consistency.py': [Errno 2] No such file or directory
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; find / -name ast_consistency.py 2>/dev/null | head; ls /home/ruize/verus-ai-e
+[RESULT ✓] bash: /mnt/shared/verus-ai-improve4/scripts/ast_consistency.py
+/mnt/shared/verus-ai-improve5-argus-exp2/scripts/ast_consistency.py
+/mnt/shared/view-design-exp/kheap-worker7-clean/scripts/ast_consistency.py
+/mnt/shared/verus-ai-improve5-kheap-claw/scripts/ast_consistency.py
+/mnt/shared/kheap-mas-exp/script...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; ls /home/ruize/verus-ai-exp/verus-ai/scripts/; echo "---"; python3 /home/ruiz
+[RESULT ✓] bash: __pycache__
+add_verification.py
+ai_residue.py
+ast_consistency.py
+cascade_analysis.py
+check_proof_blocks.py
+compute_scope.py
+dummy_probe.py
+dummy_probe_report.py
+eb_diagnose.py
+find_callers_lsp.py
+find_deps_lsp.py
+fn_coverage.py
+groundtruth_diff.py
+inject_verus_verify.py
+llm_fix_suggest.py
+llm_review...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+AST consistency: 0 mismatches. Now re-run module verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 |
+
+[THINKING] The AST checks are all consistent, which confirms the cfg-gate removal didn't impact the executable AST since that code gets stripped during hashing anyway. Now I need to re-run the module verification to make sure everything still passes with cfg_gate set to 0, and then do a normal build to check for any regressions.
