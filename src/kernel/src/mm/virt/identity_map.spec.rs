@@ -119,13 +119,11 @@ use super::page_table_allocator::PageTableBss;
 
 // --- Page-table structure types ---
 
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExPageTableEntry(PageTableEntry);
-
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExPageTableEntryFlags(PageTableEntryFlags);
+// NOTE: `PageTableEntry` and `PageTableEntryFlags` now carry real `#[verus_verify]`
+// modeling (View types) in `arch::x86::mem::paging::pte`. Their former placeholder
+// external type specifications here (`ExPageTableEntry`, `ExPageTableEntryFlags`)
+// were removed because the real arch modeling supersedes them — per the documented
+// "placeholders are removed when the dependency module is verified" methodology.
 
 // --- Flag enums ---
 
@@ -167,22 +165,10 @@ pub assume_specification[ ::arch::mem::paging::invlpg ](vaddr: usize);
 
 // --- Page-table-entry operations ---
 
-pub assume_specification[ PageTableEntryFlags::new ](
-    present: PresentFlag,
-    read_write: ReadWriteFlag,
-    user_supervisor: UserSupervisorFlag,
-    page_write_through: PageWriteThroughFlag,
-    page_cache_disable: PageCacheDisableFlag,
-    accessed: AccessedFlag,
-    dirty: DirtyFlag,
-) -> PageTableEntryFlags;
-
-pub assume_specification[ PageTableEntry::new ](
-    flags: PageTableEntryFlags,
-    frame: FrameNumber,
-) -> PageTableEntry;
-
-pub assume_specification[ PageTableEntry::is_present ](pte: &PageTableEntry) -> bool;
+// `PageTableEntryFlags::new`, `PageTableEntry::new`, and `PageTableEntry::is_present`
+// now carry real `#[verus_spec]` contracts in `arch::x86::mem::paging::pte`, so their
+// former placeholder `assume_specification`s here were removed — the real arch
+// specifications supersede them.
 
 // --- Slice base pointer (std, not covered by vstd) ---
 

@@ -440,3 +440,77 @@ Verification passes: 48 verified, 0 errors. The `admit=1`/`external_body=2` are 
 [THINKING] The verification passed with 48 checks and no errors. The `admit=1` and `external_body=2` flags showing up in the cheating metrics are pre-existing from other modules, not introduced by my changes—my pte.proof.rs file is empty, so I haven't added anything that would cause these.
 
 Now I'll run the full verification suite across all modules and then build to make sure there are no regressions.
+[RESULT ✓] bash: === Results ===
+  48 verified
+  0 errors
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 48 verified, 0 errors (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=14 adm...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+verify-kernel failed with exit 101 but shows "0 errors". Let me see the actual error:
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "error|warning: unused|cannot|ambiguous|conflict" verus-ai-logs/verify-kernel/veru
+
+[THINKING] The verify-kernel command exited with code 101 despite reporting 48 verified items with no errors, which suggests a compilation issue in the kernel itself rather than a verification failure. I need to check the full kernel verify log to identify the actual error causing the non-zero exit code.
+[RESULT ✓] bash: 8:0 errors
+20:verification results:: 48 verified, 0 errors
+22:error: duplicate specification for `arch::x86::mem::paging::pte::impl&%0::new`
+45:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '20,45p' verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-14_11-45-35.log
+[RESULT ✓] bash: verification results:: 48 verified, 0 errors
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: duplicate specification for `arch::x86::mem::paging::pte::impl&%0::new`
+   --> src/libs/arch/src/x86/mem/paging/pte.rs:98:5
+    |
+ 98 | /     pub fn new(
+ 99 | |         present: Pres...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+As the caller analysis predicted, the placeholder `assume_specification`s in `identity_map.spec.rs` now conflict with my real contracts. They must be removed. Let me view that region.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] Now that I've added the actual `#[verus_spec]` contracts to pte.rs, the placeholder specifications in identity_map.spec.rs are creating conflicts. I need to remove those superseded `assume_specification` entries from lines 170-185 for the four in-scope functions, and potentially clean up the external_type_specification as well.
+[RESULT ✓] view: 110. 
+111. // NOTE: `TableEntry` (trait), `Table<E>`, `TableIndex`, `pd_index`, `pt_index`,
+112. // `Table::from_address`, `Table::read`, and `Table::write` now have real
+113. // `#[verus_spec]`/`#[verus_verify]` contracts in `arch::x86::mem::paging::table`.
+114. // Their former placeholder declarat...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Following the documented methodology (as already applied to pde), I'll remove the now-superseded placeholders in `identity_map.spec.rs`. The real arch contracts supersede them.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] I need to clean up the placeholder specifications for the three page table entry functions and remove the external type specifications since the actual architecture modeling with the `#[verus_verify]` attribute now handles that. The thought seems to trail off mid-sentence about the external type specification.
+
+The external type specs declare types as opaque for use in specs, but now that the real View implementation exists in the architecture layer, those external specs are redundant. I should follow the same pattern used for pde: replace the external type specifications and assume_specifications with explanatory NOTE comments. I need to verify that identity_map doesn't actually use these removed functions (particularly the flag-level is_present), and since the architecture now provides the View through `#[verus_verify]`, removing them from identity_map.spec.rs should be safe.
+
+Removing the external specs now...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Now re-run full verification:
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -25
+
+[THINKING] I'm checking whether removing the assume_specifications will leave unused imports in the spec file — PresentFlag, ReadWriteFlag, and PageTableEntry were only referenced there, so I need to verify if identity_map.rs itself still needs them before cleaning up the imports.
+
+Let me just run the verification build and see what happens.
