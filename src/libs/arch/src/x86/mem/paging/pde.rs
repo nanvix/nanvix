@@ -80,7 +80,7 @@ impl PageDirectoryEntryFlags {
     ///
     /// A [`PageDirectoryEntryFlags`].
     ///
-    #[allow(unused, verus_impl_method_marker)]
+    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
     #[verus_spec(result =>
         ensures
             result@ == spec_pde_flags_new(
@@ -304,7 +304,7 @@ impl PageDirectoryEntry {
     ///
     /// A [`PageDirectoryEntry`].
     ///
-    #[allow(unused, verus_impl_method_marker)]
+    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
     #[verus_spec(result =>
         ensures
             result@ == spec_pde_new(flags@, frame@),

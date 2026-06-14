@@ -1616,3 +1616,118 @@ Turn 111
 Turn 112
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -30
+[RESULT ✓] bash: Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-k...
+
+────────────────────────────────────────────────────────────
+Turn 113
+────────────────────────────────────────────────────────────
+`make verify`: 76 verified, 0 errors. CHEATING_DETECTED is expected (admit in spec phase). Now confirm dual compilation with `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make build 2>&1 | tail -20
+
+[THINKING] The verification passed with 76 verified and no errors, which is expected since CHEATING_DETECTED is supposed to contain admits from the spec phase. I'm checking that the cheating details only include the expected admits—my frame_address admit plus the pre-existing ones—and confirming there's nothing unexpected I introduced. The admit count is holding at 36, same as before, so it looks like everything checks out.
+
+Now I'm running `make build` to verify the dual compilation works.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 50 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 114
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^[a-zA-Z0-9_-]+:" Makefile | grep -iE "build|all|kernel" | head -20
+[RESULT ✓] bash: 411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+458:clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanv...
+
+────────────────────────────────────────────────────────────
+Turn 115
+────────────────────────────────────────────────────────────
+No `build` target. Let me check the build skill for the correct command.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,60p' .github/skills/build/SKILL.md 2>/dev/null
+
+[THINKING] I notice there's no `make build` target, so that command didn't actually do anything. The dual compilation check is just the regular cargo build of the kernel/arch in non-verus mode. Since the task asks me to verify that `make build` still works, I need to figure out what the actual build command is—the instructions mention using `./z` for Linux, so let me check what `./z build` does.
+[RESULT ✓] bash: ---
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system...
+
+────────────────────────────────────────────────────────────
+Turn 116
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- kernel 2>&1 | tail -25
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 53 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 117
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- all-kernel 2>&1 | tail -25 ; echo "EXIT=$?"
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 118
+────────────────────────────────────────────────────────────
+Non-verus build rejects the raw `verus_impl_method_marker` lint. I need to cfg-gate it so it only applies under verus. Let me view and fix.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] The issue is that the `verus_impl_method_marker` lint is only recognized when building with verus, so in non-verus builds it becomes an unknown lint, which `-D warnings` treats as an error. I need to either cfg-gate the attribute to only apply under verus, or wrap it with `#[allow(unknown_lints)]`. Let me check how other files handle this—the `#[verus_verify]` and `#[verus_spec]` macros seem to work fine in non-verus mode since they're procedural macros that expand gracefully.
+
+Actually, I should use `#[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]` so the attribute only appears during verus verification when the lint is actually registered. In non-verus mode it won't be present at all, avoiding the unknown lint error.
+
+Let me check the exact code at lines 83 and 307 to see where this needs to be applied.
+[RESULT ✓] view: 78.     ///
+79.     /// # Returns
+80.     ///
+81.     /// A [`PageDirectoryEntryFlags`].
+82.     ///
+83.     #[allow(unused, verus_impl_method_marker)]
+84.     #[verus_spec(result =>
+85.         ensures
+86.             result@ == spec_pde_flags_new(
+87.                 present,
+88.                 r...
+
+────────────────────────────────────────────────────────────
+Turn 119
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -i 's/    #\[allow(unused, verus_impl_method_marker)\]/    #[cfg_attr(verus_keep_ghost,
+[RESULT ✓] bash: 83:    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+307:    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+<shellId: 55 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 120
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- all-kernel 2>&1 | tail -25 ; echo "EXIT=$?"
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 121
+────────────────────────────────────────────────────────────
+Non-verus build works. Let me confirm verus mode still passes after the cfg-gating change.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | grep -E "verified, [0-9]+ errors|status:|cheating:" | tail -8
+
+[THINKING] The non-verus build is working now, so I need to verify that the cfg_attr change doesn't break verify-arch and the full verify suite. Since the change is gated and verus mode still gets the marker, the behavior should be unchanged, but I'll run a quick verify-arch to confirm. I should also check the cheating-detail to make sure there are no unexpected admits.
+
+Looking at the admits introduced by my changes: I added a frame_address admit (expected), the kernel's into_frame_number now calls lemma2_to64() which is a real proof with no admit, and lemma_frame_index which is a pre-existing admit. The total admit count stays at 36, so that's good. Now let me run verify-arch and verify to make sure the gated attribute didn't break verus mode.
