@@ -268,7 +268,6 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     // raw-memory operation Verus cannot verify without a `PointsTo` permission for
     // the externally-owned `BssStorage` region. Mirrors the `src/libs/raw-array`
     // pattern. Registered in `verus-ai-logs/tcb-allowed.md`.
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires bump_view(self).inv(),
         ensures
@@ -345,7 +344,6 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     // `alloc` and then re-materializes the slot reference as `&'static mut
     // MaybeUninit<T>`). The size/alignment guard arms make the `T`-vs-`(N, A)`
     // contract caller-visible. Registered in `verus-ai-logs/tcb-allowed.md`.
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires bump_view(self).inv(),
         ensures

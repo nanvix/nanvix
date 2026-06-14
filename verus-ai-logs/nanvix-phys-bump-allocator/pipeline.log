@@ -111,3 +111,4 @@ Module: bump-allocator
 PHASE: proving
 Module: bump-allocator
 ============================================================
+[2026-06-15 01:04:38] [STRIP-EXT] removed 2 external_body attribute(s) from /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
