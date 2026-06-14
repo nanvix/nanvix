@@ -713,3 +713,18 @@ All non-allowed cheating eliminated. The two remaining `external_body` are the t
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify 2>&1 | grep -E "Verification|Crate|verified|errors|status|FAIL|err
 
 [THINKING] The CHEATING_DETECTED status is just from those two allowed external_body allocations in the tcb-allowed.md file, so everything else checks out—10 verified with no errors. Now I'm running the full verify suite to make sure there are no regressions, which might take a bit, but since we're on the verus-ai/bump-allocator branch it should auto-commit fine.
+[RESULT ✓] bash: === Verus Verification (cargo mode) ===
+  Crate     : bitmap
+  status: CHEATING_DETECTED
+=== Verus Verification (cargo mode) ===
+  Crate     : sys
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  status: CLEAN
+=== Verus Verification (cargo mode) ==...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify 2>&1 | grep -E "VERIFY_FAILED|errors \(exit|exit [1-9]|make.*Error"
+
+[THINKING] The full verification run completed successfully with all crates returning exit code 0 and no VERIFY_FAILED statuses. The CHEATING_DETECTED flags I'm seeing in bitmap, nanvix-slab, and bump-allocator are pre-existing external_body items unrelated to my changes, and bump-allocator's are within the allowed limit. I've confirmed there are no error messages or verification failures in the output.
