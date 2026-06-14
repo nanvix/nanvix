@@ -744,3 +744,294 @@ Turn 12
 ────────────────────────────────────────────────────────────
 Now let me run the baseline verification (slow).
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -30
+[RESULT ✓] bash: - manager.proof.rs:27 lemma_kernel_alloc_one: admit
+    - manager.proof.rs:40 lemma_kernel_alloc_contiguous: admit
+    - manager.proof.rs:210 lemma_user_bulk_err_restored: admit
+    - manager.rs:104 init: external_body
+    - manager.rs:529 kernel_watermark: external_body
+    - mod.rs:73 book_physica...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '1,90p'
+[RESULT ✓] bash: Timestamp: 2026-06-15_05-42-56
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+42 verified
+4 errors
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=19
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-p...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Let me look at the bitmap specs precisely.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat src/libs/bitmap/src/lib.spec.rs 2>/dev/null | head -250
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+// Bitmap - Specifications
+//
+// This file contains specification functions, BitmapView, and View trait for Bitmap.
+
+verus! {
+
+//============================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "verus_spec\|pub fn\|ensures\|requires\|fn alloc\|fn clear\|fn set\|fn test\|
+[RESULT ✓] bash: 5:// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+89:    #[verus_spec(result =>
+90:        ensures
+100:    pub fn new(number_of_bits: usize) -> Result<Self, Error> {
+153:    #[verus_spec(result =>
+154:        requires
+159:        ensures
+168:    pub fn from_raw_...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '203,335p' src/libs/bitmap/src/lib.rs
+[RESULT ✓] bash: #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            result as int == self@.num_bits,
+            result > 0,
+            result < u32::MAX as usize,
+    )]
+    pub fn number_of_bits(&self) -> usize {
+        self.number_of_bits
+    }
+
+    ///
+    /// # Descrip...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '516,700p' src/libs/bitmap/src/lib.rs
+[RESULT ✓] bash: #[verus_spec(result =>
+        requires
+            old(self).inv(),
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(()) => {
+                    &&& index < final(self)@.num_bits
+                    &&& final(self)@.is_bit_set(index as int)
+             ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Now let me check the FrameAddress and FrameNumber specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "from_frame_number\|into_raw_value\|fn inv\|spec_max\|from_raw_value\|fn vie
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:40:    fn into_raw_value(self) -> usize {
+src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:62:    fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:187:    closed spec fn view(&...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '40,160p' src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] bash: // Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
+// that `arch` carries a real verified spec for `PAGE_SIZE`, that placeholder is superseded and this
+// definition names the same concrete value the proofs already relied on.
+pub open spec fn spec_page...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat src/kernel/src/hal/mem/types/address/phys.spec.rs; echo "=== FrameNumber in arch 
+[RESULT ✓] bash: use crate::hal::mem::spec_page_size;
+use vstd::arithmetic::power2::pow2;
+
+verus! {
+
+// =================================================================================================
+// Abstract models of frame-number quantities, realized by the verified `arch` crate.
+//
+// `FrameNumber` is a newt...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat src/libs/arch/src/x86/mem/paging/frame/number.spec.rs; echo "=== from_raw_value =
+[RESULT ✓] bash: verus! {
+
+//==================================================================================================
+// View
+//==================================================================================================
+
+impl View for FrameNumber {
+    type V = int;
+
+    // `closed`: callers referen...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '54,90p' src/libs/arch/src/x86/mem/paging/frame/number.rs
+[RESULT ✓] bash: /// - `None`: If the value is greater than [`Self::MAX`].
+    ///
+    #[verus_spec(result =>
+        ensures
+            value as int <= Self::spec_max() ==> (result is Some
+                && (result->Some_0)@ == value as int),
+            value as int > Self::spec_max() ==> result is None,
+    )]
+...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "FRAME_SIZE\|PAGE_SIZE" src/libs/arch/src/x86/mem/mod.rs src/libs/arch/src/x
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/constants.rs:39:/// Log2 PAGE_SIZE
+src/libs/arch/src/x86/mem/constants.rs:50:pub const PAGE_SIZE: usize = 4096;
+src/libs/arch/src/x86/mem/constants.rs:51:::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
+src/libs/arch/src/x86/mem/constants.rs:58:pub const PAGE_MASK...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '30,60p;105,120p' src/libs/arch/src/x86/mem/constants.rs; echo "=== verus_veri
+[RESULT ✓] bash: /// # Description
+///
+/// Log2 WORD_SIZE
+///
+pub const WORD_SHIFT: usize = WORD_SIZE.trailing_zeros() as usize;
+
+///
+/// # Description
+///
+/// Log2 PAGE_SIZE
+///
+#[verus_verify]
+pub const PAGE_SHIFT: usize = 12;
+
+///
+/// # Description
+///
+/// Number of bytes in a page.
+///
+#[verus_verify]
+pub const ...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "derive\|struct FrameAddress\|impl Clone\|impl Copy" src/kernel/src/hal/mem/t
+[RESULT ✓] bash: 32:#[verus_verify(external_derive)]
+33:#[derive(Clone, Copy)]
+34:pub struct FrameAddress(PageAligned<PhysicalAddress>);
+=== PageAligned ===
+35:#[verus_verify(external_derive)]
+36:#[derive(Clone, Copy)]
+37:pub struct PageAligned<T: Address>(T);
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Let me look at how the codebase handles before/after-state proofs with mutations.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "assert_sets_equal\|assert_maps_equal\|old(self)" src/kernel/src/mm/phys/ sr
+[RESULT ✓] bash: src/kernel/src/mm/phys/upool.rs:267:    // (`final(self)@ == old(self)@.alloc_one(uf@)`), but `frame::alloc`'s own contract speaks
+src/kernel/src/mm/phys/upool.rs:275:            old(self)@.wf(),
+src/kernel/src/mm/phys/upool.rs:280:                    &&& old(self)@.free_frames.contains(uf@)
+src/ker...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '195,260p' src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] bash: count: usize,
+        frames: &mut Vec<UserFrame>,
+    ) -> Result<(), Error> {
+        proof_decl! {
+            let ghost g_old = self@;
+        }
+        proof! {
+            assert(g_old == old(self)@);
+            assert(g_old.wf());
+        }
+        if !frames.is_empty() {
+            let rea...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Let me check Bitmap::inv definition and the View<->wf relationship.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "spec fn inv\|fn inv\|wf()\|num_bits\|set_bits" src/libs/bitmap/src/lib.rs | 
+[RESULT ✓] bash: 93:                &&& bitmap@.num_bits == number_of_bits as int
+163:                &&& bitmap@.num_bits == array@.len() * (u8::BITS as int)
+165:                &&& forall|i: int| 0 <= i < bitmap@.num_bits ==> !bitmap@.is_bit_set(i)
+207:            result as int == self@.num_bits,
+230:            r...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "spec fn inv\|spec fn wf\|num_bits\|set_bits\|finite\|usage" src/libs/bitmap
+[RESULT ✓] bash: 20:    /// Invariant: all elements are in [0, num_bits).
+26:    /// Requires set_bits to be finite (enforced by Bitmap::inv()).
+57:    pub open spec fn wf(&self) -> bool {
+374:    pub open spec fn inv(&self) -> bool {
+385:        &&& self@.wf()  // set_bits only contains valid indices
+=== search inv...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '370,400p' src/libs/bitmap/src/lib.spec.rs
+[RESULT ✓] bash: false
+        }
+    }
+
+    pub open spec fn inv(&self) -> bool {
+        &&& self@.wf()
+        &&& self.internal_inv()
+    }
+
+    /// Invariant: the bitmap's state is well-formed.
+    pub closed spec fn internal_inv(&self) -> bool {
+        &&& self.bits.inv()
+        &&& self@.num_bits > 0
+       ...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+I now have enough understanding. Let me write the helper lemmas. First let me add them to frame.proof.rs before the closing brace.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 166. 
+167. /// The integer value of the refcount slot for index `i`. A spec-fn wrapper so the value can be
+168. /// named in `proof fn` postconditions without dereferencing the `&'static mut [u8]` field directly
+169. /// (which Verus rejects in an `ensures`); reading the field in a spec-fn body is t...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+
+
+=== Session End ===
+Session: 57463f30-57bb-45c0-af90-e95d6504cb3d
+Duration: 1142.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue-fixer-t001-claude-20260615-053341.jsonl
