@@ -373,3 +373,140 @@ Turn 25
 ────────────────────────────────────────────────────────────
 Now let me verify the final state and run AST-consistency check against the base branch.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/mm/phys/upool.rs && timeout 900 make verify-kernel MODULE=mm::ph
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+verification results:: 42 verified, 0 errors (partial verification with `--verify-*`)
+  Exit code : 0
+    ⚠️  external_body: 16
+    ⚠️  admit: 12
+  status: CHEATING_DETECTED
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Module-wide `external_body` dropped 17→16 (upool 3→2), Verus passes (42 verified, 0 errors). Let me review the full diff vs base for AST-consistency documentation, then run the full-crate regression.
+[TOOL] report_intent: Checking AST consistency and regression
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== exec-relevant diff (ignoring comments) ===" && git diff verus-ai-prove -- s
+
+[THINKING] The module-wide external_body count dropped from 17 to 16 after reducing upool from 3 to 2 instances, and Verus verification passed with 42 verified items and no errors. The remaining external_body and admit violations are isolated to the frame/manager/mod/kframe module, which is out of scope for this phase. Now I'm checking whether removing the `#[verus_verify(external_body)]` attribute from the Upool struct affects the exec-level semantics or compilation.
+
+The attribute only impacts verification behavior, not the compiled runtime code—the struct body itself remains unchanged. This means there's no difference in semantics, performance, or memory footprint at execution time. I should verify the diff against the base to confirm AST consistency.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === exec-relevant diff (ignoring comments) ===
+<shellId: 14 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git diff verus-ai-prove -- src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] bash: 
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short && echo "=== diff stat ===" && git --no-pager diff --stat HEAD -- 
+
+[THINKING] The diff appears empty, which is strange. Let me verify the git status and check whether my changes to upool.rs are actually being tracked.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/cheating-fix-claude-20260615-033758.jsonl
+ M verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/cheating-fix-claude-20260615-033758.txt
+=== diff stat ===
+=== grep verus_verify on struct ===
+31:#[verus_verify(external_derive)]
+66:#[ve...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== HEAD struct line ===" && git show HEAD:src/kernel/src/mm/phys/upool.rs | se
+
+[THINKING] So git diff shows no changes to upool.rs, but the file itself already has my edits—the struct is marked with `#[verus_verify]` instead of `external_body`. This suggests the current branch HEAD already contains these modifications, even though git status doesn't show the file as modified.
+
+The most likely explanation is that either the base branch already had this change, or my modifications were somehow committed already. Let me check what HEAD actually has for those specific lines to figure out what's going on.
+[RESULT ✓] bash: === HEAD struct line ===
+/// so user-frame allocation has its own entry point ([`Upool::alloc`] returning [`UserFrame`]).
+///
+#[derive(Debug)]
+#[verus_verify]
+pub struct Upool {
+    /// Private field prevents external construction.
+    _private: (),
+}
+=== verus-ai-prove struct line ===
+/// so user-f...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+A harness auto-committed my changes (HEAD == verus-ai-prove, both already contain my edits). Let me find the original base state via git log to do the AST-consistency comparison.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager log --oneline -8 && echo "=== reflog ===" && git --no-pager reflog -8
+
+[THINKING] Something committed my changes without my explicit action — HEAD and verus-ai-prove both point to commit 34838f2, which already contains my struct modification marked as `#[verus_verify]`. The cheating-fix harness must be auto-committing, so I need to investigate what's actually happening.
+
+Since HEAD now equals verus-ai-prove and my working tree matches HEAD, I can't use that ref to diff against the original base anymore. Let me check the git log or reflog to find the parent commit before my changes were introduced, so I can verify the AST consistency against the actual original state.
+[RESULT ✓] bash: 34838f22d [verus] verify PASS (cheating detected): kernel::mm::phys (42 verified, 0 errors, admit=24 external_body=17 cfg_gate=15)
+3bcfbab34 [verus] verify FAIL: kernel::mm::phys (42 verified, 1 errors)
+e02035f51 [verus] verify FAIL: kernel::mm::phys (42 verified, 1 errors)
+de08a2978 [verus] verify ...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for c in 0922a8e0c de08a2978 3bcfbab34; do echo "=== $c struct ==="; git show $c:src/
+
+[THINKING] The verify.sh harness auto-commits after each run and updates the `verus-ai-prove` branch. The latest commit shows external_body=17 (the global count), which matches the original PASS commit from a few steps back, though my most recent run reported external_body=16 at the module level.
+
+Looking at the commit history, before my struct change the global external_body count was 18, and after my change it dropped to 17 — that's the improvement I'm trying to preserve. Now I need to find the original upool.rs baseline before this task started to compare my exec code against the original struct definition and ensure AST consistency. The commit 0922a8e0c marks the end of the previous phase, so that's where I should look for the pre-change version.
+[RESULT ✓] bash: === 0922a8e0c struct ===
+pub struct Upool {
+    /// Private field prevents external construction.
+=== de08a2978 struct ===
+pub struct Upool {
+    /// Private field prevents external construction.
+=== 3bcfbab34 struct ===
+pub struct Upool {
+    /// Private field prevents external construction.
+<shell...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== 0922a8e0c (pre-task END) line 219-225 ===" && git show 0922a8e0c:src/kernel
+[RESULT ✓] bash: === 0922a8e0c (pre-task END) line 219-225 ===
+#[derive(Debug)]
+#[verus_verify(external_body)]
+pub struct Upool {
+    /// Private field prevents external construction.
+    _private: (),
+}
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+The original baseline (`0922a8e0c`) had the struct as `external_body`. Let me get the full exec diff against that baseline for AST-consistency documentation.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff 0922a8e0c -- src/kernel/src/mm/phys/upool.rs src/kernel/src/mm/ph
+
+[THINKING] So the key change I made was converting the struct attribute from `#[verus_verify(external_body)]` to `#[verus_verify]`, making it transparent instead of external. Now I'm comparing the full diff of execution-relevant lines against the baseline to verify AST consistency.
+[RESULT ✓] bash: diff --git a/src/kernel/src/mm/phys/upool.rs b/src/kernel/src/mm/phys/upool.rs
+index 479239db1..84a53fb5a 100644
+--- a/src/kernel/src/mm/phys/upool.rs
++++ b/src/kernel/src/mm/phys/upool.rs
+@@ -51,8 +51,10 @@ impl View for UserFrame {
+ 
+ /// Abstract view of the user page pool: the frame partition it...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Only one exec-attribute change (`external_body`→plain `verus_verify` on the struct); rest is documentation. This is verification-only, preserving semantics/time/space. Now the full-crate regression.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 2400 make verify 2>&1 | tail -20
+
+[THINKING] The key change here is removing `external_body` from the `#[verus_verify]` attribute on the `Upool` struct, with everything else being documentation updates. I'm checking whether this affects execution semantics or complexity—since `verus_verify` is a macro that expands to nothing in non-verus builds, the `external_body` parameter shouldn't impact runtime behavior.
+
+The struct's layout, fields, and derives remain unchanged, so this is purely a verification-level adjustment that removes an overly conservative trust boundary. The struct is simple enough that Verus can verify it without treating it as opaque. Now I'm running the full crate verification to confirm nothing breaks, then I'll update the report and verification todo.
+[RESULT ✓] bash: <command started in background with shellId: fullverify2>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
