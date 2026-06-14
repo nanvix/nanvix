@@ -849,3 +849,12 @@ Since this is a genuine Verus tool limitation (version 0.2026.05.24) that causes
 Turn 54
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus RUST_BACKTRACE=full && touch 
+[RESULT ✓] bash: 
+<shellId: 41 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus RUST_BACKTRACE=full && make v
+
+[THINKING] The build seems to be using cached output instead of rerunning, so I need to investigate why the touch command didn't trigger a rebuild.

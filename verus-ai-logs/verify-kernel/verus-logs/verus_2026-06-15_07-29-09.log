@@ -1,0 +1,31 @@
+Timestamp: 2026-06-15_07-29-09
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::aligned::page
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=27
+  trusted=0
+  no_decreases=0
+  cfg_gate=14
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+error: In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.
+   --> src/kernel/src/hal/mem/types/address/aligned/page.rs:63:1
+    |
+ 63 | / impl<T: Address> Address for PageAligned<T> {
+ 64 | |     #[verus_verify]
+ 65 | |     fn into_raw_value(self) -> usize {
+ 66 | |         self.0.into_raw_value()
+...   |
+164 | | }
+    | |_^
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
