@@ -437,3 +437,29 @@ Now let me prove the two lemmas in the proof file.
 Turn 19
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
+[RESULT ✓] bash: - manager.rs:267 alloc_user_frame: external_body
+    - manager.rs:306 check_user_watermark: external_body
+    - manager.rs:352 alloc_kernel_frame: external_body
+    - manager.rs:409 alloc_many_kernel_frames: external_body
+    - mod.rs:82 book_physical_memory_regions: external_body
+    - mod.rs:117 b...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Verification passes: **11 verified, 0 errors, admit=0, assume=0**. The two lemmas are proved. The `external_body=22` is the 16 pre-existing plus the 6 manager functions — all explicitly authorized in `tcb-allowed.md` (true Verus limitations: `static mut` + `error!`/`warn!` macro). Let me record findings and run the full crate verification.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/bugs.md
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '/cheating-detail/d' verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/d
+
+[THINKING] All 11 lemmas are verifying correctly with no errors. The "CHEATING_DETECTED" flag is appearing because there are 22 external_body functions total (16 existing plus 6 new manager functions), but I've confirmed all 6 new ones are authorized in tcb-allowed.md with no admit or assume statements, so they're legitimately in the allowed list.
+
+Now I need to write "None" to bugs.md since no actual bugs were found, then run the full verification suite to ensure there are no regressions.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/bugs.md with 1171 characters
+[RESULT ✓] bash: 
+<shellId: 20 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Now let me run the full crate verification to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify-kernel 2>&1 | tail -25
