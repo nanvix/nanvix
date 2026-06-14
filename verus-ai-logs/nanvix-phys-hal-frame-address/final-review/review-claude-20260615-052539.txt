@@ -435,3 +435,39 @@ AST consistency PASS (9 functions, 1 struct all MATCH; no exec rewrites). Now ru
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1800 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1
 
 [THINKING] The AST checks are passing with no mismatches, and all execution rewrites matched as expected. Now I need to run the verification suite starting with the module-scoped checks using `make verify-kernel MODULE=hal::mem::types::address::frame`, followed by the full build and cross-module verification steps.
+[RESULT ✓] bash: VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs-bottom-up/build/targets/x86-kernel.json" \
+/home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.s...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Module verification PASS, CLEAN. Now running `make build` and cross-module `make verify`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^(build|verify|verify-kernel|verify-all):" Makefile 2>/dev/null |
+
+[THINKING] The module verification passed with no cheating detected, covering 4 out of 9 functions that have contracts, while the remaining 5 functions without contracts are outside the verification scope. It looks like the verification also checked the parent phys module, though the output seems to cut off mid-thought.
+
+The global cheating metrics show counts from other modules in the repo, but the current module itself is clean. The 4 in-scope functions (into_raw_value, into_frame_number, from_raw_value, from_frame_number) are all covered, while the other 5 are explicitly excluded per the caller analysis. Now I need to run the build and cross-module verification steps — let me check what the Makefile targets are.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+---targets---
+378:update-sysroot-link:
+393:dump-sccache-stats:
+411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-n...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^build:|VERUS_CRATES" Makefile | head; echo "--- z build help ---
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 2400 make verify 2>&1 | tail -50
+
+[THINKING] I need to figure out the correct build command—there's no plain `make build` target, so I should use `./z build -- all-kernel` as documented in bugs.md. I'll run `make verify` to check all crates and the kernel, then proceed with the kernel build.
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator arch
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+--- z build help ---
+Main Build Targets
+  all        ...
