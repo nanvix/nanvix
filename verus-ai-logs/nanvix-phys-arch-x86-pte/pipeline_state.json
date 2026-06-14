@@ -6,7 +6,7 @@
   "current_phase_idx": 0,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "655ec626-0bb1-4ea9-92f9-1e5c1dbd43eb",
   "completed": false,
   "base_branch": "verus-ai/arch-x86-pde",
   "verus_branch": "verus-ai/arch-x86-pte",
