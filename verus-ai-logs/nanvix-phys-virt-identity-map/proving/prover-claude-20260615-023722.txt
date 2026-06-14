@@ -791,3 +791,41 @@ s=open
 Turn 48
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm
+[RESULT ✓] bash: --> src/kernel/src/mm/virt/identity_map.rs:533:1
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:535:44
+    |             -------------------------------------- failed precondition
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:550:9
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+Empirically confirmed. The failing obligations are exactly the deferred global-view facts:
+- `ensure_pte` L619: `mapped.contains(spec_page_base(...))` — opaque uninterp view
+- `identity_map_page` L708: `accessible(phys_addr@)` — opaque uninterp view
+- `ensure_pt`: `read`/`alloc_as` preconditions + path-2 `as_ptr` alignment disconnect
+
+Let me restore the admits and verify the module is clean again.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cp /tmp/identity_map.rs.bak src/kernel/src/mm/virt/identity_map.rs; grep -c "
+
+[THINKING] I'm working through the verification failures across these functions. The `ensure_pt` function hits precondition errors before reaching the alignment postcondition check. The `ensure_pte` function fails its postcondition about mapped page containment, and `identity_map_page` doesn't satisfy its accessibility postcondition for the physical address.
+
+Both postconditions involve opaque global view facts that can't be proven without ghost tokens, which I need to defer. The precondition failures in `ensure_pt` are also deferred obligations. I'm documenting all of these as cross-module ghost-token requirements and restoring the admits with a verification todo list.
+[RESULT ✓] bash: 3
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+Now let me re-verify the module is clean (lemmas proven, exec admits restored) and run a quick final check.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm
+
+[THINKING] I'm reconsidering whether I can actually prove the dischargeable preconditions without expanding the trusted footprint—but `admit()` accepts everything, and I can't selectively admit parts without relying on `assume()`, which isn't available. Let me think about whether there's a cleaner approach to this constraint.
+
+The identity map view postconditions are fundamentally uncontrollable since the function is uninterpreted, so I'm confident now: these three exec functions genuinely require the deferred cross-module ghost-token framework. This represents the honest state of the bottom-up proving effort.
+
+Given the task's "0 admit" requirement, I can't meet it soundly for these functions—the correct approach is to record them in verification-todo.md as genuine unproven hand-offs, which is the sanctioned mechanism for stuck proofs. I'll place this in the logs directory for this module. Since there are no actual code bugs here, only spec-framework deferrals, I won't create a bugs.md entry.
+
+Let me run a final module verification to confirm the clean state (5 lemmas proven, 3 exec admits remaining), then write up the verification-todo.md.
