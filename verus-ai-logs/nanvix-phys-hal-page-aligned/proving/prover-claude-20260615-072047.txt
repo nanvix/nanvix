@@ -770,3 +770,21 @@ Now let me reproduce the reported panic by adding `#[verus_verify]` to the gener
 Turn 48
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && make verify-kernel MODULE=
+[RESULT ✓] bash: thread 'rustc' (2719697) panicked at vir/src/traits.rs:511:13:
+assertion failed: !method_impls.contains(&p)
+error: could not compile `kernel` (bin "kernel")
+  process didn't exit successfully: `/home/ruize/toolchain/verus/verus /home/ruize/.cargo/bin/rustc --crate-name kernel --edition=2021 src/kern...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+Confirmed the Verus panic at the impl level. Let me try annotating only the `into_raw_value` method instead of the whole impl block.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I've confirmed this is the VERUS-TOOL-1 panic—the assertion fails when trying to inherit default bodies in the impl block. Since I can't annotate the whole impl, I'll try annotating just the `into_raw_value` method directly with `#[verus_verify]` to verify its body in isolation.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && make verify-kernel MODULE=
