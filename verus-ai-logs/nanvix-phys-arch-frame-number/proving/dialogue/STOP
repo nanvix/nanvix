@@ -1,0 +1,19 @@
+RESOLVED
+
+All proving-phase checklist items PASS with concrete evidence:
+
+- No specs weakened: git diff since proving START (753e1e6af) is empty; specs
+  identical to speccing-approved versions.
+- Zero admit: proof file empty; tool admit=0.
+- Zero external_body in arch-frame-number: the only 3 crate-wide external_body
+  (mod.rs::invlpg, table.rs::read, table.rs::write) are all in tcb-allowed.md and
+  outside this module.
+- Zero assume/assume_specification: tool assume=0.
+- No cfg-gated exec code: tool cfg_gate=0; the #[cfg(verus_keep_ghost)] guards are
+  ghost-only spec/proof include! lines.
+- Cheating audit: assume=0 external_body=3(all TCB-allowed,0 in module) admit=0
+  trusted=0 no_decreases=0 cfg_gate=0.
+- No Verus limitation claimed in this module (reproducer item N/A).
+- Exec rewrites: none (no // VERUS REWRITE; original trivial bodies).
+- Cross-module regression: make verify-arch Module <all> = 47 verified, 0 errors.
+- Verification + build: fresh run 47 verified, 0 errors, exit 0, no warnings.

@@ -280,3 +280,64 @@ Turn 10
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/libs/arch/src/x86/mem/paging/frame/number.rs && timeout 600 make 
 
 [THINKING] I need to run a fresh verification to confirm the module shows 5 verified with 0 errors, so I'll invalidate the cache by touching the spec file and running verus again to get a definitive result that matches what the checklist requires.
+[RESULT ✓] bash: verification results:: 47 verified, 0 errors
+  47 verified
+  0 errors
+  Exit code : 0
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+  verification: 47 verified, 0 er...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "VERUS REWRITE\|admit\|assume" src/libs/arch/src/x86/mem/paging/fr
+
+[THINKING] The full verification run completed successfully across the entire architecture crate with 47 verified items and no errors or warnings. All three external_body references are properly in the TCB allowed list and outside the frame/number module. The build command using cargo-mode covers the verification step, and the spec-drift check shows no changes since the proving started.
+
+I'm confirming the core contracts on from_raw_value, into_raw_value, NULL, view, inv, and spec_max are all present and strong as approved during the speccing phase. The tool reports zero cfg-gated exec code, and the proof file is empty as expected with no admit or assume statements anywhere. There are no VERUS REWRITE comments in the exec code, and since this module has no external_body references, there are no claimed Verus limitations to document. All checklist items pass, so I'm ready to write the turn_001_driver.md file and mark the STOP file as RESOLVED.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:25:    // `MAX` is discharged by verification rather than assumed. Realizes the kernel's
+exit 0
+--- proof file ---
+verus! { } // verus!
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+All checklist items verified. Writing the review and STOP file.
+[TOOL] report_intent: Writing review and STOP
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/proving/dialogue
+
+[THINKING] All the verification checks have passed—no specs were weakened, the admit count is zero, and there are no unexpected external_body references in this module. Now I'm writing the driver turn file and marking the status as RESOLVED.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/proving/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/proving/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/proving/dialogue/turn_001_driver.md with 3433 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/proving/dialogue/STOP with 1016 characters
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Review complete — **RESOLVED**. All proving-phase checklist items PASS with evidence:
+
+- **Specs not weakened**: `git diff` since proving START is empty — files unchanged from speccing-approved versions.
+- **admit / assume / cfg-gated exec**: tool reports `admit=0 assume=0 cfg_gate=0 no_decreases=0`.
+- **external_body**: only 3 crate-wide (`invlpg`, table `read`/`write`) — all in `tcb-allowed.md`, **none in this module**.
+- **Cross-module + verification**: fresh `make verify-arch` (Module `<all>`) → **47 verified, 0 errors, exit 0**, no warnings.
+- No exec rewrites, no claimed Verus limitations in this module.
+
+Wrote `turn_001_driver.md` and `STOP` (RESOLVED).
+
+
+=== Session End ===
+Session: 887e7191-c31c-4179-acb1-5ad5037268e3
+Duration: 161.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/proving/dialogue-reviewer-t001-claude-20260615-040000.jsonl
