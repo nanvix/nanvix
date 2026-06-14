@@ -162,3 +162,121 @@ Turn 2
 6. 
 7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
 8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "cfg!\|#\[cfg(\|external_body\|admit\|assume" src/libs/arch/src/x8
+
+[THINKING] The verification passed with three external_body references showing up in the arch crate, but they're all in table.rs and mod.rs handling paging operations—all of which are already in the TCB allowed list. I need to double-check the cheating-detail output to confirm these three instances aren't coming from the frame/number module I'm reviewing.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/frame/number.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:25:    // `MAX` is discharged by verification rather than assumed. Realizes the kernel's
+<she...
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== diff number.rs since proving START ===" && git --no-pager diff 75
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls scripts/ | grep -i "drift\|spec"; echo "---"; ls .github/skills/ -la 2>/
+
+[THINKING] The external_body references are all accounted for in the allowed TCB files, and the ghost code annotations are standard practice for spec inclusion. Now I need to track down the spec-drift command that the checklist references, since I don't see a corresponding skill listed yet.
+
+The real concern here is whether any specs were weakened during the proving phase. Since the proof file is essentially empty, all the actual contracts are in the spec file. I should compare the spec and source files between when proving started and now to verify nothing was loosened.
+
+Let me check the git diff between the proving start commit and the current state to see what changed in those files.
+[RESULT ✓] bash: === diff number.rs since proving START ===
+EXIT 0
+<shellId: 6 completed with exit code 0>
+[RESULT ✓] bash: ---
+total 0
+drwxrwxr-x 1 ruize ruize 340 Jun 11 00:19 .
+drwxrwxr-x 1 ruize ruize 166 Jun  8 19:33 ..
+drwxrwxr-x 1 ruize ruize  16 Jun  8 19:33 benchmarking
+drwxrwxr-x 1 ruize ruize  16 Jun 11 00:19 build
+drwxrwxr-x 1 ruize ruize  16 Jun  8 19:33 ci-cd-pipeline
+drwxrwxr-x 1 ruize ruize  16 Apr 20 20:...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -in "warning\|error" verus-ai-logs/verify-arch/verus-logs/verus_2026-0
+
+[THINKING] The proving phase didn't introduce any changes since the proof was already complete from the specification phase, so the specs remain intact and haven't been weakened. I'm checking this against the kernel's original guarantees to ensure there's no spec drift.
+
+Now I need to verify the proof file is properly structured and that verification passed cleanly. The proof block is empty as expected, and the commit message confirms 5 verified functions with 0 errors. I should also check the build output for any warnings to complete the checklist requirements.
+[RESULT ✓] bash: --- verus result lines ---
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && tail -25 verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_04-00-30.log
+
+[THINKING] The cached log isn't showing the actual verification counts, so I need to look at a fresh run to see the real numbers. Looking back at the commit message, I can see it shows "5 verified, 0 errors" for that particular module. Let me pull the full verus log to confirm the overall results.
+[RESULT ✓] bash: Timestamp: 2026-06-15_04-00-30
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+note: verifying module x86::mem::paging::frame::numbe...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for f in verus-ai-logs/nanvix-phys-arch-frame-number/verus-logs/verus_2026-
+
+[THINKING] The build is cached, so I need to force a fresh run to see the actual verification summary. Let me touch the source file to trigger recompilation and confirm the verified count with zero warnings.
+[RESULT ✓] bash: === verus-ai-logs/nanvix-phys-arch-frame-number/verus-logs/verus_2026-06-15_03-59-*.log ===
+grep: verus-ai-logs/nanvix-phys-arch-frame-number/verus-logs/verus_2026-06-15_03-59-*.log: No such file or directory
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find verus-ai-logs/nanvix-phys-arch-frame-number -name "*.log" | tail; echo
+[RESULT ✓] bash: verus-ai-logs/nanvix-phys-arch-frame-number/pipeline.log
+===
+FILE: 
+grep: : No such file or directory
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find verus-ai-logs/nanvix-phys-arch-frame-number -type f | head -40
+[RESULT ✓] bash: verus-ai-logs/nanvix-phys-arch-frame-number/verification-plan.json
+verus-ai-logs/nanvix-phys-arch-frame-number/pipeline.log
+verus-ai-logs/nanvix-phys-arch-frame-number/pipeline_state.json
+verus-ai-logs/nanvix-phys-arch-frame-number/body_removed_source.rs
+verus-ai-logs/nanvix-phys-arch-frame-number/c...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/libs/arch/src/x86/mem/paging/frame/number.rs && timeout 600 make 
+
+[THINKING] I need to run a fresh verification to confirm the module shows 5 verified with 0 errors, so I'll invalidate the cache by touching the spec file and running verus again to get a definitive result that matches what the checklist requires.
