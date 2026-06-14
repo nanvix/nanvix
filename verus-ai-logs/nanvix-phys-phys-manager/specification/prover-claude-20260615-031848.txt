@@ -1,0 +1,442 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T03:18:48.092249
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are adding formal specifications to /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs using Verus, in-place.
+Spec and proof files sit alongside the source file.
+
+== PROJECT CONTEXT ==
+
+File: `src/kernel/src/mm/phys/manager.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`PhysMemoryManager::init`, `PhysMemoryManager::alloc_user_frame`, `PhysMemoryManager::check_user_watermark`, `PhysMemoryManager::alloc_many_user_frames`, `PhysMemoryManager::alloc_many_kernel_frames`, `PhysMemoryManager::alloc_kernel_frame`
+
+Existing spec/view definitions (do not modify):
+`byte_at_address`, `FrameAllocView`, `FrameAllocView::wf`, `Inner::inv`, `frame_addr_of`, `View for Inner`, `Inner::internal_inv`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+
+- Do not modify existing spec/view definitions listed above.
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+
+
+
+Caller analysis: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/caller_analysis.md
+View design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/view_design.md
+Source file: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+Spec file:  /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+Proof file: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs
+Verus command: make verify-kernel
+
+== SKILLS ==
+
+Follow strictly:
+- **spec-design** — MUST follow: primary methodology for this phase
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns
+- **verification-order** — MUST follow: write specs in dependency order
+- **spec-completeness** — SHOULD follow: determinism-based completeness check (best-effort)
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai/scripts/
+- Source directory: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai/vstd/
+
+== TASK ==
+
+**Planning**: Before writing any specs, read all functions in the module
+and plan the order to write specs (leaves first, callers last).
+
+If `/home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json` exists, use it as a starting point:
+```
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json     -m "YOUR_MODULE"
+```
+
+**Read the caller analysis and View design first.** Read /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/caller_analysis.md
+to understand what callers expect from each function — these expectations define
+the guarantees your specs must provide. If /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/view_design.md exists, use the
+View type defined there — do not redesign from scratch. If the file does not
+exist, design the View following the **view-design** skill.
+If you need to modify the View (e.g. add fields, adjust inv()), follow
+the **view-design** skill's principles and update /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/view_design.md accordingly.
+
+The project structure (spec/proof files, Cargo.toml) is already set up.
+Work in-place on:
+1. **/home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs** — View types, invariants, helper predicates,
+   spec transition functions. Every caller expectation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/caller_analysis.md
+   must map to at least one `requires`, `ensures`, `invariant`, or lemma signature.
+2. **/home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs** — Proof function signatures only
+   (requires/ensures). Leave bodies as `admit()` — proving phase fills them in.
+3. **/home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs** — The primary work: add `#[verus_spec]` annotations
+   (requires/ensures) to every exec function. Also add cfg-gated includes.
+
+Follow the **spec-design** skill's Exec Binding Rules strictly.
+
+**Handling dependency functions:**
+- **Already verified** (has specs): reference the existing specs
+  directly — do not rewrite them.
+- **Not yet verified** (no specs): write a spec for it and mark the function
+  `external_body`. These will be eliminated when that module is verified later.
+
+Goal: meaningful specs covering every caller expectation from
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/caller_analysis.md and every View operation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/view_design.md.
+0 Verus errors (`admit()` in proof bodies is fine).
+
+**ULTIMATE GOAL**: The verification target is not just this module in isolation.
+The end goal is that `make verify` (all verified modules) passes with 0 errors.
+Existing ensures/requires clauses inherited from upstream modules are caller
+dependencies — they must not be weakened or removed. In this phase, proof bodies
+use `admit()`, so proving difficulty is not a factor — write the correct spec that
+describes what the function actually does, without concern for proof complexity.
+If an existing spec seems unsatisfiable, determine whether the spec is incorrect
+(it describes behavior the code cannot have) or the code is wrong (a code bug).
+Correct whichever is broken; do not weaken the guarantee.
+
+**Bug awareness**: If you encounter code that cannot have a correct spec
+(e.g., logic that is always wrong, impossible error paths, arithmetic that
+always overflows), follow the **bug-reporting** skill. For auto-fixable bugs
+(overflow, off-by-one, missing bounds check), fix them directly and record
+in /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/bugs.md. For complex bugs, record only — proving phase will validate.
+
+Run `make verify-kernel` to confirm 0 errors.
+Then run `make verify` to ensure no regressions in other modules.
+Verify `make build` still works (dual compilation).
+
+
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by reading the skills and context files. Let me load the relevant skills first.
+[TOOL] report_intent: Reading context and skills
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm starting by reviewing the available skills and understanding what needs to be done, then reading through the relevant context files to get oriented.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. # View Design: `mm::phys::manager` (`PhysMemoryManager`)
+2. 
+3. ## Abstract Resource
+4. 
+5. `PhysMemoryManager` is the kernel's **single global owner of physical RAM
+6. frames**. Through a `&mut PhysMemoryManager` (obtained from the `get_mut`
+7. singleton accessor) a caller hands out *exclusive o...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::manager` (`PhysMemoryManager`)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-phys-manager/find_callers_output.md`
+5. (generated by `scripts/find_callers_lsp.py`, rust-analyzer LSP, intra-crate `kernel`).
+6. 
+7. Module summary: 7 exec functions (6 pub / 1...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Now let me read the spec/proof files, the existing spec definitions, and the relevant skills.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs
+[TOOL] bash: ls -la /home/ruize/nanvix-phy/src/kernel/src/mm/phys/
+
+[THINKING] I'm reviewing the existing spec files and frame specifications to understand the current structure, then looking at the skills definitions to see what I'm working with.
+[RESULT ✓] bash: total 112
+drwxrwxr-x 1 ruize ruize   258 Jun 15 03:12 .
+drwxrwxr-x 1 ruize ruize   140 Jun 13 00:06 ..
+-rw-rw-r-- 1 ruize ruize  2740 Jun 15 02:26 frame.proof.rs
+-rw-rw-r-- 1 ruize ruize 29757 Jun 15 02:26 frame.rs
+-rw-rw-r-- 1 ruize ruize   135 Jun 15 00:16 frame.spec.rs
+-rw-rw-r-- 1 ruize ruize  4...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Let me load the skills and read the existing spec definitions.
+[TOOL] skill: spec-design
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // This file contains specification functions and view types.
+7. 
+8. verus! {
+9. 
+10. use crate::hal::mem::spec_page_size;
+11. use vstd::map::*;
+12. 
+13. pub unin...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl Inner {
+4.     pub open spec fn inv(&self) -> bool
+5.     {
+6.         &&& self@.wf()
+7.         &&& self.internal_inv()
+8.     }
+9. }
+10. 
+11. }
+12. 
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+The named skills aren't in the skill tool. Let me check the verus-ai scripts/skills location and read the frame.rs/mod.rs specs.
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/ 2>/dev/null; echo "---skills---"; ls /home/ruize/verus-ai-exp/verus-ai/skills/ 2>/
+[TOOL] grep: verus_spec|ensures|requires|external_body
+
+[THINKING] The skill names referenced in the task aren't matching what's available through the skill tool, so I need to check if there are skill files directly in the verus-ai repository paths. I'm looking at the frame.rs specs to understand how the existing exec functions are annotated (frame::alloc, frame::free, frame::free_count, frame::alloc_contiguous), and I need to see how mod.rs uses specs for initialization and what spec helpers are available.
+[RESULT ✓] grep: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs:115:    #[verus_verify(external_body)]
+/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs:116:    #[verus_spec(result =>
+/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs:117:        requires
+/home/ruize/nanvix-phy/src/kernel/src/mm/phy...
+[RESULT ✓] bash: EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.py
+docs
+guardrails.py
+logs
+prompts.py
+report.py
+run.py
+scripts
+talk
+target-systems
+tests
+tree-sitter-verus
+tree_sitter_compat.py
+utils.py
+verus
+verus-ai-logs
+verus-ai.toml.example
+vstd
+workflow.py
+---skills---
+/home/ru...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Let me find the actual skill docs and read the key frame.rs exec specs (free_count, alloc, alloc_contiguous, free) plus mod.rs init.
+[TOOL] bash: find /home/ruize/verus-ai-exp -iname '*.md' 2>/dev/null | grep -iE 'spec-design|verus-constraint|verification-order|spec
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The skills mentioned in the task aren't directly available through the skill tool, so I'm checking the verus-ai documentation for the actual skill markdown files—specifically looking for spec-design, verus-constraints, verification-order, spec-completeness, and bug-reporting.
+[RESULT ✓] view: 640. 
+641.     // SAFETY: `INSTANCE_INIT` is `true`, so `INSTANCE` has been fully written by `init()`.
+642.     // The kernel is single-threaded with interrupts disabled, so no concurrent access is possible.
+643.     unsafe { INSTANCE.assume_init_mut() }
+644. }
+645. 
+646. //=========================...
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/view-design/SKILL.md
+/home/ruize/verus-ai-exp...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Let me read the completed `mod.rs` and `mod.proof.rs` as templates, plus the relevant skills and tcb-allowed.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs
+
+[THINKING] Looking at the frame.rs module, I notice that the public free functions like `alloc()`, `alloc_contiguous()`, `free_count()`, and `free()` lack the `#[verus_spec]` annotations, whereas other functions like `init`, `is_covered`, `book`, and `alloc_range` have them.
+
+This creates a dependency problem: my manager.rs functions call these unspecified frame functions, and without specs or opacity, the proof won't work even with `admit()`. The task says to write specs for unverified dependencies and mark them `external_body`, but these functions live in other files that I'm not supposed to modify. I'm hitting a tension between the constraint not to touch unlisted functions and the requirement that callees need specs or be opaque for the proof to succeed. The core issue is that my manager functions need meaningful ensures clauses to verify their bodies, but their callees like `frame::alloc()` currently have no useful specs. The task acknowledges this pattern — for unverified dependencies, I should add specs and mark them `external_body`. But I'm constrained by the rule against modifying unlisted functions, though the dependency-handling guidance suggests I may need to add specs to the frame and upool functions anyway to make the overall verification work.
+
+Let me look at how the existing mod.rs handled this same problem — it's already completed and in the same subsystem, so it should show me the right pattern for connecting the manager's closed view to the global frame state.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Proofs
+5. //
+6. // Proven lemmas that map the caller expectations recorded in
+7. // `verus-ai-logs/nanvix-phys-phys-mod/caller_analysis.md` onto the `PhysMemView`
+8. // transition vocabu...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Let me read the key skills and the dependency source files (upool, kframe), plus tcb-allowed.
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+
+[THINKING] I see the pattern now—the `mod.rs` `init` function isn't marked as external_body, but it verifies its body by relying on the contracts of its callees like `frame::init` and `book_physical_memory_regions`, which are all external_body functions with ensures clauses over `phys_view()`. The key is that these contracts are stated over the global uninterpreted subsystem view, not over `self@`, so the verification works because each callee's ensures provides the necessary `phys_view().inv()` guarantees. Now I'm moving on to analyze manager.rs and how its View design creates a tension: the `PhysMemoryManager` is supposed to have a closed `FrameAllocView`, but the manager functions operate on global state like `frame::*` and `self.upool` whose actual state lives in `phys_view().frames`, not in `self@`. The challenge is that if I try to state the manager's contracts over `self@` as the View design proposes, the exec function bodies can't verify because the callees don't have ensures clauses relating their effects back to `self@`. I'm realizing the cleaner approach might be to follow the same pattern as `mod.rs` and state the manager contracts over `phys_view()` instead, even though the View design explicitly chose `self@ : FrameAllocView`.
+
+Actually, the task guidance suggests marking unverified dependencies as `external_body` and writing specs for them. So I'd need to add specs over `phys_view()` for `frame::alloc`, `frame::alloc_contiguous`, `frame::free_count`, `frame::free`, `Upool::alloc`, `KernelFrame::new`, and the address conversion functions. But that's a huge surface area, and it still doesn't resolve the fundamental issue: the manager's allocation state is split between `self.upool` and the global `frame` allocator, so they're not the same `FrameAllocView`. For consistency, `self@` would have to actually be `phys_view().frames` itself.
+
+But `self@` is a spec function of `self` only and can't read the global `frame::INSTANCE`, so it can't equal `phys_view().frames`. This creates a real tension between the View design's intent and what's actually achievable. I could keep the manager's contracts modest and stated over `phys_view()` like the module does, but that goes against the explicit `self@`-based design. Alternatively, I could craft callee specs that directly deliver the manager's ensures, but there's a deeper problem: `alloc_kernel_frame` calls the global `frame::alloc()` and doesn't modify `self.upool` at all, so `self` is unchanged across the call, meaning `self@` must equal `old(self)@` by necessity.
+
+This means the ensures requiring `self@` to change would be unprovable—the `self@`-based design is fundamentally inconsistent with how kernel frame allocation actually works. Since the global `phys_view().frames` is the true source of truth for frame reservations and `self@` can't capture those changes, the cleanest approach is to state manager contracts directly over `phys_view()`, just like the module and frame code do.
+
+But the View design doc insists on using `FrameAllocView` as the view and expressing allocation through `self@` transitions. The issue is that `view(&self)` must be a pure function of `self`, and if `self` doesn't change, neither does `self@`. Even with a closed spec function, I can't have the body read global state—Verus doesn't allow that. An uninterpreted helper function would make `self@` constant across all instances and unchanging over time, which defeats the purpose.
+
+The real mechanism for modeling mutable global state is `phys_view()`, an uninterpreted spec function whose value is pinned to the current program point by external_body ensures. That's how frame.rs handles it. So the manager's contracts should be stated over `phys_view()` and the returned frame values, not over `self@`. I should update view_design.md to reflect this, and probably skip adding a View impl for PhysMemoryManager altogether since frame.rs doesn't have one either. The task says to follow view-design if I modify View, but I need to check whether the callers actually require a `self@` view or if stating everything over `phys_view()` is sufficient.
+
+Now I'm reading through the relevant skills and examining the existing specs in upool.rs, kframe.rs, and the frame APIs to ground my decisions.
+[RESULT ✓] bash: Output too large to read at once (23.2 KB). Saved to: /tmp/copilot-tool-output-1781464837979-kzbnbd.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '1,260p' /tmp/copilot-tool-output-1781464837979-kzbnbd.txt
+[RESULT ✓] bash: ---
+name: spec-design
+description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or reviewing Ve...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '260,520p' /tmp/copilot-tool-output-1781464837979-kzbnbd.txt
+
+[THINKING] I need to review the rest of the skill documentation covering view design and classification, then examine the inner specifications for upool.rs, kframe.rs, and frame.rs.
+[RESULT ✓] bash: - Error postconditions (ensures, Err case): state preservation, failure condition in abstract terms
+
+2. **Safety** — What must never happen?
+   - Bounds, disjointness, uniqueness, conservation, injectivity, ordering, monotonicity
+
+3. **Liveness** — What good things must happen?
+   - Guaranteed succe...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Let me read the `Inner` method specs in frame.rs and the upool/kframe sources.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm realizing the core tension: the `self@` view can't capture global state mutations, since functions like `alloc_kernel_frame` and `alloc_many_kernel_frames` operate on global frame state without touching `self`. Only `alloc_user_frame` and `alloc_many_user_frames` actually modify `self.upool`. This creates a problem for the View consistency principle—if `view()` must be a function of `self` alone, it can't account for these global changes.
+
+The cleaner path forward is to drop the `View` impl entirely and instead state all contracts over `phys_view()`, which aligns with how the existing verified code in frame.rs and mod.rs already works. I need to spec out the dependency functions—`frame::alloc()`, `frame::free_count()`, `frame::alloc_contiguous()`, `frame::free()`, `upool.alloc()`, and the address accessors on `KernelFrame` and `UserFrame`—all in terms of `phys_view()` to capture their effects on the global physical memory state. I'm realizing the frame module is only partially specified — `alloc`, `free`, `free_count`, and `alloc_contiguous` lack specs while other functions like `init` and `is_covered` have them. The free functions just delegate to `Inner` methods, which do have specs, so I can either add thin wrapper specs to the free functions or reference the `Inner` method specs directly. I need to check what `instance()` returns and how its specs work to understand the full picture.
+[RESULT ✓] view: 100.     refcount: &'static mut [u8],
+101. }
+102. 
+103. #[verus_verify]
+104. impl Inner {
+105.     ///
+106.     /// # Description
+107.     ///
+108.     /// Allocates a frame.
+109.     ///
+110.     /// # Returns
+111.     ///
+112.     /// Upon success, the address of the allocated frame is returned. U...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] Looking at how `Inner` has detailed specifications over `self@: FrameAllocView`, and the free functions in `frame::*` delegate to `instance()` which returns a mutable reference to the static `Inner`. The specs for `alloc`, `free`, `free_count`, and `alloc_contiguous` are currently missing, though there's a connection between `phys_view().frames` and `frame::instance()@` noted in the mod.spec.rs comment that I need to trace through.
+
+The manager calls these free functions directly rather than `Inner` methods, so I need to add external_body specs for them over `phys_view()` following the same pattern as the existing frame.rs specs. For the manager's own contract, the soundest approach is to state it over `phys_view()` and return values without a `View for PhysMemoryManager`, since the actual mutated state is global and only accessible through `phys_view()`. But I need to check whether `upool` draws frames from the global allocator or maintains its own pool.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Kernel frame type.
+5. //!
+6. //! A [`KernelFrame`] represents a single page-sized physical frame allocated for kernel use.
+7. //! It provides `Deref`/`DerefMut` for direct kernel access (identity-mapped) a...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Let me check the TCB allowed list, bugs file, and how `make verify-kernel` MODULE works.
+[TOOL] bash: cat /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md 2>/dev/null; echo "=== BUGS ==="; cat /home/ruize/nanvix-phy/ver
+
+[THINKING] So `Upool` is essentially a thin wrapper with no actual state—`_private` is just an empty tuple, and `alloc()` delegates directly to the global `frame::alloc()`. This means `self.upool` carries no meaningful information, confirming that `PhysMemoryManager` itself is stateless and just wraps the global frame allocator. The real state contracts need to be defined over `phys_view()`, not over `self`.
+
+For the free functions like `frame::alloc()`, `frame::free()`, etc., I need to specify them using `phys_view()` as the state reference. The challenge is that `phys_view()` is uninterpreted and returns the current program state, so within an `ensures` clause, there's no automatic "old" binding—I'd need to explicitly capture the pre-state to relate old and new states. The existing specs in frame.rs don't precisely track old/new relationships; they just describe the outcome without explicit state transitions.
+
+This reveals a fundamental limitation: using `phys_view()` lets me state monotone facts like "after alloc, the frame is allocated" and "invariants are preserved," but I can't express full all-or-nothing semantics like "on error, `phys_view()` is unchanged" because there's no `old(phys_view())` available. The manager's stateless nature makes it impossible to give it a meaningful `View` that captures old state through `&mut self`, since the view function would have no information to work with.
+
+Given this constraint, the practical path forward is to accept the monotone-only style that the existing verified code already uses—frame.rs and mod.rs don't express full frame conditions or error-state preservation beyond trivial `Err(_) => true` postconditions, so aligning the manager's specs with that established idiom makes sense.
+
+For each function I'll write requires and ensures clauses over phys_view(): the invariant must hold on entry and exit, initialized state is preserved, and success cases get their specific facts. This sacrifices expressing watermark checks and all-or-nothing atomicity directly, but check_user_watermark itself can have a clean contract—since it only reads and never mutates, the result condition `Ok ⟺ free_frames.len() ≥ WATERMARK + count` works at exit, and because nothing changed, that's equivalent to the entry state.
+
+For free_count(), I need to link it to the actual free_frames length via an external_body spec that ensures the result equals phys_view().frames.free_frames.len(), and I'll also assert finiteness as a dependency contract. Rather than keep spiraling into View design for the manager itself, I'm going to stick with a simpler approach: no View wrapper for PhysMemoryManager, just manager specs written directly over phys_view() that capture the monotone, caller-relevant guarantees that are actually expressible without old-state references.
+
+For init specifically, the frame allocator is already initialized before manager::init runs, so phys_view().initialized is already true. The manager::init function only sets up the facade and doesn't change phys_view() itself, so its contract is straightforward: requires nothing special, ensures phys_view() is preserved. The real lifecycle guarantee is about a separate PHYS_MEMORY_MANAGER_INIT atomic flag, which is distinct from the frame's INSTANCE_INIT and doesn't have an abstract model in the view design yet. I need to check what the TCB guidelines allow for this kind of separate lifecycle flag.
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+  `alloc::collections::LinkedList` via `for region in list.iter()`. The build
+  toolchain's `vstd`...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm noting which functions need to be excluded from my verification targets—`PhysMemoryManager::get_mut` and `frame::init` are being skipped. My six core targets must be fully verified without relying on external implementations. Interestingly, the TCB list doesn't mark functions like `frame::alloc`, `frame::free`, and related allocation functions as external, which means they're part of what I need to verify.
+
+There's a tension here: the spec allows marking dependency functions in other modules as external_body temporarily while those modules are being verified separately, but the TCB file says anything outside its list must be removed. The key question is whether running `make verify-kernel MODULE=mm::phys` verifies just that exact module or includes its submodules like `frame`, `upool`, and `kframe`. If it includes submodules, then marking those functions as external_body would change their verification status, which conflicts with the requirement. The existing frame.rs already has several external_body functions, so I need to understand the scope of what gets verified together.
+
+Actually, I'm realizing the free functions in frame.rs just delegate to Inner methods that already have specs. Rather than marking them external_body, I could add proper specs to these free functions and verify them directly — their bodies call `instance()` which returns a mutable reference to Inner with an invariant, so if `instance()` has a proper spec connecting to `phys_view()`, then I could verify frame::alloc and the others against meaningful ensures based on the physical view.
+[RESULT ✓] view: 420.                     &&& self@.refcounts.contains_key(frame@)
+421.                     &&& count as int == self@.refcounts[frame@]
+422.                 },
+423.                 Err(_) => {
+424.                     !self@.allocated_frames.contains(frame@)
+425.                 }
+426.             },...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Let me establish the baseline by running the current verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+
+[THINKING] I'm looking at the verification gap where the free functions in the frame module don't have specifications, so the manager's implementation gets no useful guarantees when calling them. Now I'm weighing two approaches for the manager spec: either base it on phys_view like the rest of the module, or take a different direction—and the second option seems to be cut off, but I'm considering what makes sense given the existing module structure.
+
+The core tension is that phys_view-based specs can't express full state transitions without `old()`, and adding Ghost parameters to change signatures would violate the anti-pattern. I'm realizing though that the real constraint is simpler: the manager specs only need to satisfy the module's own verification and not break the existing callers like `mod.rs::init`, which calls `PhysMemoryManager::init(upool)`.
+
+Looking at what `mod.rs::init` actually requires from the manager: it needs the invariant and initialized flag preserved, plus the disjointness between allocated and free regions maintained. So the minimal spec for `manager::init` is just `requires phys_view().inv()` and `ensures` those same properties hold afterward. But now I'm wondering whether `mod.rs::init` even currently verifies given that `manager::init` has no spec at all — if it's unspecced, Verus would assume it preserves nothing, which should break the proof. Either the module isn't being verified yet, or the manager is excluded from the verification pipeline.
+
+Let me just run the baseline verification to see what the current state actually is.
