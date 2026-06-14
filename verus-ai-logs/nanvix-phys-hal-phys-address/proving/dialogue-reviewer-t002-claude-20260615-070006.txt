@@ -195,3 +195,31 @@ There is a standard Verus pattern of marking unsupported methods with external_b
 c7a556350 [verus] verify FAIL: sys::all (0 verified, compilation/setup error (verus did not run))
 091b70c4f [verus] verify FAIL: sys::all (0 verified, compilation/setup error (verus did not run))
 d54fd253d [verus]...
+[RESULT ✓] bash: Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs-bottom-up/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_07-01-19
+
+    Finished `dev` profile [optimize...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+verify-sys is CLEAN and git history confirms the regression fix (24a56f3f0 PASS). Now run verify-kernel and attempt to actually execute the reproducers through Verus.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel 2>&1 | tail -30
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls /home/ruize/toolchain/verus/ | head; echo "=== try run reproducer A ==="
+
+[THINKING] The verify-sys check passed, and looking at the git history, commit 24a56f3f0 shows the fix that made sys::all pass, while c7a556350 was the regression. I need to verify whether 24a56f3f0 is actually an ancestor of the current HEAD to understand the timeline here.
+
+Looking at the virt.rs changes, 24a56f3f0 is the most recent commit that removed the #[verus_verify] annotation and added the NOTE comment. The impl Address block at line 176 is correctly left unannotated, while the inherent impl block at line 46 still has the annotation. Now I should run verify-kernel to check that the phys module is still clean and see the overall counts.
+[RESULT ✓] bash: builtin
+builtin_macros
+cargo-verus
+libverus_builtin.rlib
+libverus_builtin_macros.so
+libverus_state_machines_macros.so
+libvstd.rlib
+rust_verify
+state_machines_macros
+version.json
+=== try run reproducer A ===
+error: In order to verify any items of this trait impl, the entire impl must be verified. Try...
