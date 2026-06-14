@@ -510,3 +510,51 @@ The struct's layout, fields, and derives remain unchanged, so this is purely a v
 ────────────────────────────────────────────────────────────
 Turn 35
 ────────────────────────────────────────────────────────────
+While that runs, let me update the report and verification_todo.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'delay': 3, 'shellId': 'fullverify2'}
+[RESULT ✓] read_bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=17 admit=24 trusted=0 no_decreases=0 cfg_gate=15
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  56/1026 exec functions...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Full-crate verify passes (exit 0); global `external_body` dropped 18→17. Now let me overwrite the existing verification_todo and report files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rm verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md verus-ai-logs/nanvix-phy
+[RESULT ✓] bash: done
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md with 4286 characters
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md with 5530 characters
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Let me do the final confirmation run of `make verify-kernel` as requested.
+[TOOL] report_intent: Final verification confirmation
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/mm/phys/upool.rs && timeout 1200 make verify-kernel MODULE=mm::p
+
+[THINKING] Running the kernel verification one more time to confirm everything passes as requested.
+[RESULT ✓] report_intent: Intent logged
