@@ -707,6 +707,27 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
 }
 
 /// Allocate a frame.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        phys_view().initialized,
+        phys_view().inv(),
+    ensures
+        phys_view().inv(),
+        phys_view().initialized,
+        // On success the returned frame is freshly reserved: page-aligned, now in
+        // `allocated_frames`, and carrying a single reference. On failure nothing
+        // is reported about the returned (absent) frame.
+        match result {
+            Ok(frame) => {
+                &&& frame.inv()
+                &&& phys_view().frames.allocated_frames.contains(frame@)
+                &&& phys_view().frames.refcounts.contains_key(frame@)
+                &&& phys_view().frames.refcounts[frame@] == 1
+            },
+            Err(_) => true,
+        },
+)]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
     instance().alloc()
 }
@@ -738,6 +759,17 @@ pub(super) fn free_count() -> usize {
 }
 
 /// Free a frame previously returned by [`alloc`].
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        // `free` runs on `Drop` of any `UserFrame`/`KernelFrame`, so it carries no
+        // caller precondition. It preserves the subsystem invariant on every path
+        // (releasing a reference, and the last reference returns the frame to the
+        // free pool). The exact refcount transition is not expressible here:
+        // `phys_view()` is a single fixed value, with no `old(phys_view())` to
+        // compare against.
+        phys_view().inv(),
+)]
 pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
     instance().free(frame)
 }
@@ -809,11 +841,51 @@ pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Re
 }
 
 /// Add a new reference to an already-allocated frame (e.g. for copy-on-write sharing).
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        phys_view().initialized,
+        phys_view().inv(),
+        frame.inv(),
+    ensures
+        phys_view().inv(),
+        phys_view().initialized,
+        // On success the frame remains allocated (it has gained a reference). The
+        // increment itself is not stated: `phys_view()` is a single fixed value
+        // with no `old(phys_view())` to compare against.
+        match result {
+            Ok(()) => {
+                &&& phys_view().frames.allocated_frames.contains(frame@)
+                &&& phys_view().frames.refcounts.contains_key(frame@)
+            },
+            Err(_) => true,
+        },
+)]
 pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
     instance().share(frame)
 }
 
 /// Returns the current reference count of an already-allocated frame.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        phys_view().initialized,
+        phys_view().inv(),
+        frame.inv(),
+    ensures
+        phys_view().inv(),
+        phys_view().initialized,
+        // A pure query: on success it returns the frame's current refcount (and
+        // the frame is allocated); on failure the frame is not allocated.
+        match result {
+            Ok(count) => {
+                &&& phys_view().frames.allocated_frames.contains(frame@)
+                &&& phys_view().frames.refcounts.contains_key(frame@)
+                &&& count as int == phys_view().frames.refcounts[frame@]
+            },
+            Err(_) => !phys_view().frames.allocated_frames.contains(frame@),
+        },
+)]
 pub(super) fn refcount(frame: FrameAddress) -> Result<u8, Error> {
     instance().refcount(frame)
 }

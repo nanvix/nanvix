@@ -22,8 +22,7 @@ Any `external_body` outside this list must be removed.
   well-formed across booking.
 - `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref`
 - `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref_mut`
-- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::clear`
-- `src/libs/bump_allocator/src/lib.rs::FixedSizeBumpAllocator::alloc` — materializes a
+- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::clear`- `src/libs/bump_allocator/src/lib.rs::FixedSizeBumpAllocator::alloc` — materializes a
   `&'static mut [u8; N]` from a backend-provided address (`usize as *mut`); raw-memory
   op Verus cannot verify without a `PointsTo` for the externally-owned `BssStorage`
   region. Mirrors `src/libs/raw-array`. `ensures` states alignment + in-bounds over
@@ -36,6 +35,33 @@ Any `external_body` outside this list must be removed.
 
 - `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::get_mut`
 - `src/kernel/src/mm/phys/frame.rs::init`
+
+## Allowed `external_body` — `frame::*` free-function shims (`frame.rs`)
+
+The module-level `frame::*` free functions bridge the global allocator singleton
+(`static mut INSTANCE`, reached via `instance()`) to the do-not-modify abstract
+`phys_view()` / `FrameAllocView`. That bridge is a trust boundary identical in
+character to the already-trusted `frame::book` / `frame::is_covered` /
+`frame::alloc_range` shims: `phys_view()` is a zero-argument uninterpreted spec
+function whose value cannot be tied to the `unsafe { INSTANCE.assume_init_mut() }`
+static by any verifiable means. Each is `external_body` with a `#[verus_spec]`
+contract stated over `phys_view()` and the returned frame values (monotone
+post-state facts; there is no `old(phys_view())`). They were left unspecced when
+`frame.rs` was the proof target because their sole consumer is `mm::phys::upool`;
+they are specced here so `upool` can rely on them, and will be removed when the
+frame singleton bridge is itself verified.
+
+- `src/kernel/src/mm/phys/frame.rs::alloc` — draws a fresh frame from the global
+  allocator. `ensures` (on success) page alignment, membership in
+  `allocated_frames`, and refcount = 1.
+- `src/kernel/src/mm/phys/frame.rs::free` — releases one reference (last reference
+  returns the frame to the free pool). Runs on `Drop`, so it has no precondition;
+  `ensures` keeps the subsystem invariant on every path.
+- `src/kernel/src/mm/phys/frame.rs::share` — adds a reference to an allocated
+  frame. `ensures` (on success) the frame stays allocated / refcounted.
+- `src/kernel/src/mm/phys/frame.rs::refcount` — pure query of an allocated frame's
+  reference count. `ensures` (on success) the returned count equals the frame's
+  refcount; (on failure) the frame is not allocated.
 
 ## Allowed `external_body` — `PhysMemoryManager` (`manager.rs`)
 

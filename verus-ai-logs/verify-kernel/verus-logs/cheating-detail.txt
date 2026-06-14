@@ -7,9 +7,13 @@
     - mm/phys/frame.rs:517 is_covered: external_body
     - mm/phys/frame.rs:565 alloc_range: external_body
     - mm/phys/frame.rs:668 init: external_body
-    - mm/phys/frame.rs:765 is_covered: external_body
-    - mm/phys/frame.rs:785 book: external_body
-    - mm/phys/frame.rs:807 alloc_range: external_body
+    - mm/phys/frame.rs:731 alloc: external_body
+    - mm/phys/frame.rs:773 free: external_body
+    - mm/phys/frame.rs:797 is_covered: external_body
+    - mm/phys/frame.rs:817 book: external_body
+    - mm/phys/frame.rs:839 alloc_range: external_body
+    - mm/phys/frame.rs:864 share: external_body
+    - mm/phys/frame.rs:889 refcount: external_body
     - mm/phys/manager.rs:107 init: external_body
     - mm/phys/manager.rs:198 alloc_many_user_frames: external_body
     - mm/phys/manager.rs:267 alloc_user_frame: external_body
@@ -19,4 +23,3 @@
     - mm/phys/mod.rs:82 book_physical_memory_regions: external_body
     - mm/phys/mod.rs:117 book_mmio_regions: external_body
     - mm/phys/mod.spec.rs:73 ExLinkedList (struct): external_type_spec
-    - mm/phys/upool.rs:166 new: external_body
