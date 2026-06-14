@@ -17,7 +17,6 @@ use crate::{
 };
 use ::core::mem::ManuallyDrop;
 use ::sys::error::Error;
-use ::vstd::prelude::*;
 
 //==================================================================================================
 // User Frame
@@ -62,6 +61,7 @@ impl View for Upool {
 
 } // verus!
 
+#[verus_verify]
 impl UserFrame {
     ///
     /// # Description
@@ -76,6 +76,13 @@ impl UserFrame {
     ///
     /// A user frame.
     ///
+    #[verus_spec(result =>
+        requires
+            addr.inv(),
+        ensures
+            result@ == addr@,
+            result.inv(),
+    )]
     pub fn new(addr: FrameAddress) -> Self { ... }
 
     ///
@@ -87,6 +94,13 @@ impl UserFrame {
     ///
     /// The physical address of the target user frame.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            result@ == self@,
+            result.inv(),
+    )]
     pub fn address(&self) -> FrameAddress { ... }
 
     ///
@@ -98,6 +112,13 @@ impl UserFrame {
     ///
     /// The frame address.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            result@ == self@,
+            result.inv(),
+    )]
     pub fn leak(self) -> FrameAddress { ... }
 
     ///
@@ -116,6 +137,22 @@ impl UserFrame {
     /// On success, a new [`UserFrame`] that aliases the same physical frame as
     /// `self`. On failure, an error is returned.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            match result {
+                Ok(uf) => {
+                    &&& uf@ == self@
+                    &&& uf.inv()
+                    &&& crate::mm::phys::phys_view().frames.allocated_frames.contains(self@)
+                },
+                Err(_) => {
+                    ||| !crate::mm::phys::phys_view().frames.allocated_frames.contains(self@)
+                    ||| crate::mm::phys::phys_view().frames.refcounts[self@] >= 255
+                },
+            },
+    )]
     pub fn share(&self) -> Result<UserFrame, Error> { ... }
 
     ///
@@ -128,10 +165,27 @@ impl UserFrame {
     /// Upon success, the current reference count of the underlying physical frame is returned.
     /// Upon failure, an error is returned instead.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            match result {
+                Ok(count) => {
+                    &&& crate::mm::phys::phys_view().frames.allocated_frames.contains(self@)
+                    &&& count as int == crate::mm::phys::phys_view().frames.refcounts[self@]
+                },
+                Err(_) => !crate::mm::phys::phys_view().frames.allocated_frames.contains(self@),
+            },
+    )]
     pub fn refcount(&self) -> Result<u8, Error> { ... }
 }
 
+#[verus_verify]
 impl Drop for UserFrame {
+    #[verus_spec(
+        opens_invariants none
+        no_unwind
+    )]
     fn drop(&mut self) { ... }
 }
 
@@ -152,6 +206,7 @@ pub struct Upool {
     _private: (),
 }
 
+#[verus_verify]
 impl Upool {
     ///
     /// # Description
@@ -162,7 +217,15 @@ impl Upool {
     ///
     /// A user frame pool.
     ///
+    // Dependency contract: opaque pool facade whose real backing store is the global frame
+    // allocator. `external_body` (the `Upool` struct carries no spec-readable state) per
+    // `verus-ai-logs/tcb-allowed.md`. The pool introduces no frames of its own; `wf()` is the
+    // only fact its boot-time caller needs before handing the pool to `PhysMemoryManager::init`.
     #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        ensures
+            result@.wf(),
+    )]
     pub(super) fn new() -> Self { ... }
 
     ///
