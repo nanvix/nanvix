@@ -10,14 +10,14 @@ use vstd::bits::lemma_usize_shr_is_div;
 
 // A frame index scaled by the frame size stays within `usize`, so `from_number`'s base-address
 // multiply never overflows. This follows from `FrameNumber::MAX == MAX_ADDRESS / FRAME_SIZE - 1`,
-// hence `(MAX + 1) * FRAME_SIZE == MAX_ADDRESS <= usize::MAX`. Proven in the proving phase.
+// hence `(MAX + 1) * FRAME_SIZE == MAX_ADDRESS <= usize::MAX`. The frame-index bound is supplied by
+// the caller (via `FrameNumber`'s type invariant), mirroring `arch`'s `lemma_frame_address`.
 pub proof fn lemma_from_number_no_overflow(frame: FrameNumber)
+    requires
+        0 <= spec_frame_raw_value(frame) <= spec_max_frame_number(),
     ensures
         spec_frame_raw_value(frame) * spec_page_size() <= usize::MAX as int,
 {
-    // `frame@ <= FrameNumber::spec_max() == MAX_ADDRESS / FRAME_SIZE - 1` (type invariant).
-    use_type_invariant(frame);
-
     let raw: int = frame@;
     let s: int = spec_page_size();
     let m: int = ::arch::mem::MAX_ADDRESS as int;
@@ -26,7 +26,7 @@ pub proof fn lemma_from_number_no_overflow(frame: FrameNumber)
     assert(s == ::arch::mem::FRAME_SIZE as int);
     assert(m == usize::MAX as int);
 
-    // The type invariant bound, re-expressed over `int`: `raw <= m / s - 1`.
+    // The supplied bound, re-expressed over `int`: `raw <= spec_max() == m / s - 1`.
     assert(raw <= m / s - 1);
 
     // The product fits in `usize`: `raw <= m / s - 1`, and `(m / s) * s <= m`.

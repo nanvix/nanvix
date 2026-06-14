@@ -276,3 +276,117 @@ Turn 15
 Turn 16
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | s
+[RESULT ✓] bash: === Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== ...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); ec
+[RESULT ✓] bash: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_05-15-33.log
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=27
+  trusted=0
+  no_decreases=0
+  cfg_gate=14
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-ph...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "use_type_invariant" /mnt/toolchain/verus/vstd/*.rs | head; echo "==
+
+[THINKING] I'm working through how `use_type_invariant` interacts with proof-mode parameters in Verus. Since `lemma_from_number_no_overflow` is a proof function, its parameters are spec mode by default, but `use_type_invariant` expects a tracked or exec value. I need to figure out whether the frame parameter can work with this constraint, or if I'm misunderstanding how the modes interact.
+[RESULT ✓] bash: /mnt/toolchain/verus/vstd/cell.rs:366:            use_type_invariant(self);
+/mnt/toolchain/verus/vstd/cell.rs:383:            use_type_invariant(self);
+/mnt/toolchain/verus/vstd/rwlock.rs:408:            use_type_invariant(&self);
+/mnt/toolchain/verus/vstd/rwlock.rs:446:            use_type_invarian...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "fn use_type_invariant" /mnt/toolchain/verus/ 2>/dev/null | head; ec
+[RESULT ✓] bash: /mnt/toolchain/verus/builtin/src/lib.rs:384:pub fn use_type_invariant<A>(_a: A) {
+=== how callers use it on params ===
+src/libs/arch/src/x86/mem/paging/frame/number.rs:85:        proof! { use_type_invariant(self); }
+src/libs/arch/src/x86/mem/paging/table.rs:91:        proof! { use_type_invariant(sel...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '305,335p' src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] The issue is that `use_type_invariant` is being called inside `proof!` blocks where `frame` is a ghost parameter, but type invariants only apply to actual exec-mode values, not arbitrary ghost instances. A ghost `FrameNumber` passed to a proof function may not satisfy the invariant that holds for real tracked values.
+
+The solution is to have the lemma take the bound as a `requires` clause instead, and let the caller—which is an exec function like `from_number`—establish the invariant via `use_type_invariant` before invoking the lemma. I should check how `pde.rs` and `pte.rs` handle this pattern, particularly around line 318 in `pde.rs` where they call `use_type_invariant` and then pass the raw value to a lemma with appropriate preconditions.
+[RESULT ✓] bash: /// - `flags`: The flags.
+    /// - `frame`: The frame number.
+    ///
+    /// # Returns
+    ///
+    /// A [`PageDirectoryEntry`].
+    ///
+    #[verus_spec(result =>
+        ensures
+            result@ == spec_pde_new(flags@, frame@),
+            result.inv(),
+    )]
+    pub fn new(flags: PageDirect...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+The type invariant can't be used on a ghost parameter. I'll follow the `pde.rs`/`pte.rs` idiom: the lemma takes the bound as a `requires`, and the exec caller establishes it via `use_type_invariant`.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] I'm seeing the pattern now: the exec function establishes a type invariant bound on the frame, and then the proof lemma requires that bound on the raw value. So I need to add a `requires` clause to `lemma_from_number_no_overflow` with the bounds check, and have the exec `from_number` in phys.rs establish it through `use_type_invariant`. But modifying the exec function there means rethinking how the bound gets threaded through. The cleanest approach is to add a `requires` clause to the lemma stating the bound on the frame value, then have the caller establish that bound using `use_type_invariant` before invoking the lemma. Since `into_raw_value` already provides the postcondition that the result is within the valid range, I just need to convert that bound into the form the lemma expects for the overflow check. To use the type invariant in the proof, I need to call `use_type_invariant(frame)` explicitly — without it, the lemma's requires won't be satisfied. I could reorder the code to call `into_raw_value()` first and use its postcondition, but that moves `frame` and makes it unavailable for the lemma call. The cleanest approach is to add `use_type_invariant` as a ghost-only addition in the proof block, which is invisible to the exec AST and minimal.
+
+My plan: add a `requires` clause to the lemma that directly states the bound on the frame's raw value, then invoke `use_type_invariant(frame)` in the caller's proof block to satisfy it. This keeps the changes ghost-only and avoids restructuring the exec code.
+
+The tricky part is that the frame's view is closed, so the lemma can't automatically see that the raw value is non-negative — I need to add both `0 <= spec_frame_raw_value(frame)` and the upper bound as explicit requirements. Alternatively, I could refactor the lemma to take the raw integer directly with both bounds in the requires clause, then have the caller extract and pass `frame@` after establishing those bounds through the type invariant. So the plan is to add `use_type_invariant(frame)` to from_number's proof block to establish the frame bounds, then have the lemma require those bounds and prove the nonlinear overflow fact using arithmetic. I'm verifying that `spec_max_frame_number()` and `spec_frame_raw_value()` are both in scope in phys.proof.rs, and that `use_type_invariant()` is available via the prelude — all checks pass. Unlike `lemma_frame_index()`, this lemma will need the explicit bounds requirement since the overflow check is inherently nonlinear.
+
+Now I'm working through the arithmetic to make sure Verus can equate the usize division `m/s` with the integer division in the spec, and I'm going to rewrite the lemma with a concrete assertion that `raw <= m/s - 1` to help the solver.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use vstd::arithmetic::div_mod::{
+4.     lemma_fundamental_div_mod,
+5.     lemma_mod_bound,
+6. };
+7. use vstd::arithmetic::mul::lemma_mul_inequality;
+8. use vstd::arithmetic::power2::lemma_pow2_pos;
+9. use vstd::bits::lemma_usize_shr_is_div;
+10. 
+11. // A frame index scaled by the ...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Now update the `from_number` caller to establish the bound via `use_type_invariant` (ghost-only addition to the proof block):
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | s
