@@ -58,6 +58,19 @@ impl PhysicalAddress {
 // (`result@ == value as int`), so its placeholder `assume_specification` was removed — the real
 // specification supersedes it.
 
+// Trusted contract for `VirtualAddress::into_raw_value`. Unlike `new`, this method CANNOT be
+// verified in the `sys` crate due to a genuine Verus limitation: it is a trait-impl method
+// (`<VirtualAddress as Address>::into_raw_value`), and Verus requires an *entire* trait impl to be
+// verified as a unit ("In order to verify any items of this trait impl, the entire impl must be
+// verified"). The same `impl Address for VirtualAddress` block contains `as_ptr` / `as_mut_ptr`,
+// whose `usize as *const u8` / `usize as *mut u8` int-to-pointer casts Verus does not support
+// ("Verus does not support this cast: `usize` to `*const u8`"). Annotating the block therefore
+// breaks `make verify-sys` (empirically confirmed: commit history shows the annotation regressed
+// sys from PASS to a compilation/setup error). Verifying it would instead require `external_body`
+// on `as_ptr` / `as_mut_ptr`, which would *expand* the trusted base rather than shrink it. This
+// single placeholder is therefore retained and documented under "External crate (`sys`)" in
+// `verus-ai-logs/tcb-allowed.md`; its body (`self.0`) trivially satisfies `result as int == self@`.
+// Isolated reproducers: `verus-ai-logs/nanvix-phys-hal-phys-address/specification/`.
 pub assume_specification[ <::sys::mm::VirtualAddress as ::sys::mm::Address>::into_raw_value ](
     addr: VirtualAddress,
 ) -> (result: usize)

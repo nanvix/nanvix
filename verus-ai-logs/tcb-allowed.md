@@ -166,3 +166,42 @@ layer is verified" rationale already used for `FrameAddress::from_raw_value`/`in
     `from_raw_value` gains its own `#[verus_spec]` and this `assume_specification` is
     removed — the same "superseded when the address layer is verified" rationale used for
     `FrameAddress::from_raw_value`/`into_raw_value` above.
+
+## `assume_specification` retained due to a genuine Verus limitation (`sys::VirtualAddress::into_raw_value`)
+
+- `src/kernel/src/hal/mem/types/address/phys.spec.rs::<::sys::mm::VirtualAddress as
+  ::sys::mm::Address>::into_raw_value` — `ensures result as int == addr@`. Trusted contract for a
+  not-yet-verifiable `sys` callee, consumed by the verified `PhysicalAddress::into_frame_number`
+  (`phys.rs`, `let raw_addr = self.0.into_raw_value();`).
+
+  **Why it cannot be eliminated (unlike its sibling `VirtualAddress::new`):** `into_raw_value` is a
+  **trait-impl** method (`<VirtualAddress as Address>::into_raw_value`). Verus requires an *entire*
+  trait impl to be verified as a unit:
+
+  > error: In order to verify any items of this trait impl, the entire impl must be verified.
+  > Try wrapping the entire impl in the `verus!` macro.
+
+  But the same `impl Address for VirtualAddress` block (`src/libs/sys/src/sys/mm/address/virt.rs`)
+  contains `as_ptr` / `as_mut_ptr`, whose `usize as *const u8` / `usize as *mut u8` int-to-pointer
+  casts Verus does not support:
+
+  > error: Verus does not support this cast: `usize` to `*const u8`
+  > error: Verus does not support this cast: `usize` to `*mut u8`
+
+  Empirically confirmed against the committed history: commit `d54fd253d` verified `sys` (PASS, 6
+  verified, 0 errors) with the block **un-annotated**; a later commit adding `#[verus_verify]` to
+  the block regressed `make verify-sys` to a compilation/setup error (`HEAD` = `c7a556350`). That
+  regression has been reverted (block left un-annotated) so `make verify-sys` PASSES again.
+
+  Verifying `into_raw_value` would require `external_body` on `as_ptr` / `as_mut_ptr`, i.e. moving
+  two int-to-pointer casts into the trusted base — strictly *expanding* the TCB to remove a single
+  trivial assumption whose body (`self.0`) plainly satisfies `result as int == self@`. The
+  `assume_specification` is therefore the smaller, more honest trust boundary.
+
+  **Isolated reproducers** (minimal standalone Verus snippets, each reproducing one of the two
+  errors above verbatim): `verus-ai-logs/nanvix-phys-hal-phys-address/specification/whole_impl_rule.rs`
+  (whole-impl-must-verify rule) and `.../specification/ptr_cast.rs` (`usize`→`*const u8` cast).
+
+  Superseded only if/when `sys` gains a Verus-supported pointer-materialization path for `as_ptr` /
+  `as_mut_ptr` (e.g. `vstd::raw_ptr` exposed-provenance), after which the whole block can be
+  verified and this placeholder removed.
