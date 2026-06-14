@@ -507,3 +507,30 @@ The module path needs the `sys::` prefix. Let me re-run correctly.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-sys MODULE=sys::mm::address 2>&1 | grep -iE "error|verif|fail|a
 
 [THINKING] The module path needs to be `sys::mm::address` rather than `mm::address` — the earlier cached run succeeded because it never actually executed, but now with a fresh compilation the incorrect path is failing. I'll rerun with the correct module specification.
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate sys --module sys::mm::address --log-dir verus-ai-logs/verify-sys
+=== Verus Verification (cargo mode) ===
+  Module    : mm::address
+error: could not find module mm::address specified by --verify-module or --verify-only-module
+       ava...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "module\|MODULE\|verify-module\|strip\|sed" scripts/verify.sh | gre
+
+[THINKING] The script is stripping the crate prefix from `sys::mm::address` to get `mm::address`, but when verus runs with the module filter, it's reporting no available modules at all—which is odd since the initial error run showed `sys::mm::address` and `sys::mm::address::virt` in the list. The empty module list in run 2 is suspicious — maybe the caching affected how the compilation reported available modules. Let me trace through how verify.sh actually constructs and passes the `--module` argument.
+[RESULT ✓] bash: 24:MODULE=""
+42:  --module MODULE       Module path to verify (e.g., "kernel::pm::thread").
+66:        --module)
+67:            MODULE="$2"
+157:    MODULE_ARG="$MODULE"
+158:    if [[ -n "$CRATE_NAME" && "$MODULE_ARG" == "$CRATE_NAME"::* ]]; then
+159:        MODULE_ARG="${MODULE_ARG#"$CRATE_NAME"::}"...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+The script strips the crate prefix. Let me run the full `make verify-sys` (the canonical command) to get ground truth.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-sys 2>&1 | grep -iE "error|^\s+[0-9]+ verif|fail|admit|warning|
+
+[THINKING] I'm seeing an issue with how the module path is being stripped. The code removes the crate prefix like `sys::` from module names, so `sys::mm::address` becomes `mm::address`, but Verus's `--verify-module` flag expects the full path including the crate name. The error message is showing that Verus has `sys::mm::address` available but the tool is asking for just `mm::address`, which doesn't exist in Verus's module listing. `mm::address` → same arg `mm::address`... but available modules empty? The emptiness might be due to the second compile reusing cache and not fully loading modules. Rather than overthink this, let me just run the full sys crate verification without specifying a MODULE. That's the canonical command anyway and will give me ground truth on whether address actually verifies.
