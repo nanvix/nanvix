@@ -105,3 +105,25 @@ Turn 4
 Turn 5
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | tail -16
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  cheating: assume=0 external_body=2 admit=1 trusted=0 no_decreases=0 cfg_gate=0
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  9/525 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/ve...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+23 verified, 0 errors. Now check `spec_table_word` is still referenced (to avoid an unused-import warning) and run full verify + build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "spec_table_word\|spec_entry_raw" src/libs/arch/src/x86/mem/paging/table.rs src/li
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/table.rs:39:        ensures result == spec_entry_raw(self),
+src/libs/arch/src/x86/mem/paging/table.rs:230:    // `&self` and the global ghost `spec_table_word(addr, index)` is a *pure* function (one fixed
+src/libs/arch/src/x86/mem/paging/table.rs:233:    // would ass...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+`spec_table_word` is still used by `read` (via `spec_table_read`) and `spec_entry_raw` by the `raw` ensures. No dead code. Run full verify and build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify 2>&1 | grep -E "verification results::|Error 101|error\[" | head; 
