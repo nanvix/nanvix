@@ -567,3 +567,16 @@ Let me add explicit `#[trigger]` annotations to both assertions. For line 56, I'
 Turn 24
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "warning|low confidence|automatically ch
+[RESULT ✓] bash: Global: assume=0 external_body=17 admit=0 trusted=0 cfg_gate=5
+  verification: 9 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=17 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  status: CHEATING_DETECTED
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+No trigger warnings now. Let me confirm the full log is warning-free and run a final full verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy && LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); echo "LOG: $LOG"
+
+[THINKING] I've confirmed there are no more automatic trigger warnings—9 verified entries with zero errors, admits, or assumptions. Now I'm checking the full log to make sure it's completely clean of warnings.
