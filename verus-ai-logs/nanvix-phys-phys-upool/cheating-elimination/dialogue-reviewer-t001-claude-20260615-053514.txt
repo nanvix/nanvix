@@ -492,3 +492,62 @@ Turn 18
 Turn 19
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys::upool 2>&1 | grep -iE "Module |verified|err
+[RESULT ✓] bash: /home/ruize/nanvix-phy/scripts/verify.sh --crate kernel --module mm::phys::upool --log-dir verus-ai-logs/verify-kernel
+  Module    : mm::phys::upool
+  Exit code : 0
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module mm::phys::upool.
+  Detail: verus-ai-logs/verify-kernel/verus-logs/che...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Module `mm::phys::upool`: **CLEAN** — "✅ No cheating detected", exit 0. Every checklist item passes. Let me write the review and STOP file.
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/dialogue
+
+[THINKING] The module passed all checks with no issues detected, so I'm ready to document the findings in the review file and mark this as resolved.
+[RESULT ✓] bash: 
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/dialogue/turn_001_driver.md with 4602 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: rm -f /tmp/drift.txt
+
+[THINKING] Cleaning up the temporary file.
+[RESULT ✓] bash: 
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Review complete. **All 12 checklist items PASS** — verified independently with tools, not just the fixer's claims.
+
+**Key evidence:**
+- **admit/assume/trusted/no_decreases/external_body in upool**: all 0. Module scan: `✅ No cheating detected in module mm::phys::upool`, `status: CLEAN`.
+- **drop** verifies *directly* (no `external_body`) despite calling `frame::free` + `error!` — stronger than the tcb-allowed entry permitted.
+- **cfg gates**: only `include!`/`use` imports — excluded by detector.
+- **AST consistency**: `8 functions, 2 structs match`, exit 0 (exec byte-identical to base).
+- **No rewrites** → no `VERUS REWRITE` comments needed (vacuous PASS).
+- **Spec drift**: Ensures removed = 0; the 9 added `requires` are legitimate subsystem preconditions mirroring the `frame::*` contracts.
+- **Cross-module**: `make verify` → all crates exit 0, kernel `20 verified, 0 errors`.
+- **Build**: forced recompile → 0 errors, 0 warnings; `./z build -- all-kernel` exit 0.
+
+The 24 cross-module `external_body` sites are all in `frame.rs`/`manager.rs`/`mod.rs` and documented in `tcb-allowed.md` — none in upool.
+
+Wrote `turn_001_driver.md` and `STOP` = **RESOLVED**.
+
+
+=== Session End ===
+Session: 1b7cfd8c-6321-4857-abb9-203032733fd8
+Duration: 235.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/dialogue-reviewer-t001-claude-20260615-053514.jsonl
