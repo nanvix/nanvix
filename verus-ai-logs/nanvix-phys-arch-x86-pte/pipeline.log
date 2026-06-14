@@ -51,3 +51,6 @@ Module: arch-x86-pte
 [2026-06-14 11:52:53]   ↳ dialogue-reviewer-t1 done in 5m36s (exit=0)
 [2026-06-14 11:52:53] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-06-14 11:52:53] [DIALOGUE] specification ended after 1 turns: RESOLVED (337s)
+[2026-06-14 11:52:53] [PHASE] specification: dialogue-RESOLVED (10m32s)
+[2026-06-14 11:52:54] [SPEC DRIFT] (within specification) Comparing 2462d363 → 0d221ffc
+[2026-06-14 11:52:54] [SPEC DRIFT] (within specification) No changes detected
