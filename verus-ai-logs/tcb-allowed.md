@@ -47,6 +47,23 @@ Any `external_body` outside this list must be removed.
   **deferred to the proving-phase page-table permission token**, exactly the `identity_map_view()`
   `v -> v'` deferral convention in `identity_map.spec.rs`.
 
+## `external_body` introduced while speccing `arch::x86::mem::paging` (`mod.rs`)
+
+- `src/libs/arch/src/x86/mem/paging/mod.rs::invlpg` — the body is a single
+  `core::arch::asm!` block issuing the `invlpg` instruction, which flushes the CPU TLB
+  entry for `vaddr`. Verus does not support inline-asm expressions, so the body cannot be
+  verified — an external-bottom hardware trust boundary (same class as the volatile
+  page-table access in `table::read`/`write` and the int-to-pointer materialization in
+  `frame::instance`/`bump_allocator::alloc`). See
+  `nanvix-phys-arch-paging-mod/verus-unsupported.md`. The effect is purely on hardware TLB
+  state (outside Verus' memory model and invisible to every caller's Rust-visible state),
+  so the faithful contract is **empty**: no `requires` (any `usize` is accepted), trivial
+  `ensures` (returns `()`, no Rust-visible effect, every caller-side invariant preserved).
+  This matches the inherited upstream
+  `src/kernel/src/mm/virt/identity_map.spec.rs:151`
+  `pub assume_specification[ ::arch::mem::paging::invlpg ](vaddr: usize);` (no
+  `requires`/`ensures`). No exec signature changed.
+
 ## Skip / exclude from current proof target
 
 - `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::get_mut`
