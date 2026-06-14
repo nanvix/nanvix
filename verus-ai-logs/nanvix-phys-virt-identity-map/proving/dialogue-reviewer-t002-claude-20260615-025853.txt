@@ -109,3 +109,116 @@ I'll review the fixer's turn 1 changes. Let me read their report and re-verify.
 5. **Proven (kept from the proving pass — these are real, admit-free):**
 6. - `src/kernel/src/mm/virt/identity_map.proof.rs` — all 5 transition lemmas have full
 7.   proof bodies, **0 `admit()`**: `lemma_install_page_maps`, `lemma_install_page_m...
+[RESULT ✓] bash: note: verifying module mm::virt::identity_map
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.24s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=12 admit=31 trusted=0 no_decreases=0 cfg_gate=15
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The fixer made **no code change** — 3 admits and 5 cfg-gates remain. They returned NEEDS_GUIDANCE with justifications. Per my rules, justification is not a fix. But I must verify their technical claims before deciding. Let me check the cfg-gate claim and the skills they cite.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== find skills ==="; find . -path ./build -prune -o -iname "*.md" \(
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== other verified modules: do they cfg-gate error! ? ==="; grep -rn 
+
+[THINKING] The fixer hasn't actually made any changes to the code—the admits and cfg gates are still there. They're claiming the work needs guidance, but I need to scrutinize their technical justifications rather than take them at face value. They're asserting that removing the cfg-gate from the `error!` macro would break Verus compilation and that the admits can't be eliminated without ghost-token infrastructure that spans modules outside the scope of this task.
+
+Let me verify these claims directly. I should check whether the verus-constraints and spec-drift-check skills they referenced actually exist in the skills directory, and whether there's precedent for cfg-gating logging macros in verified modules.
+[RESULT ✓] bash: === other verified modules: do they cfg-gate error! ? ===
+src/kernel/src/mm/phys/frame.rs:141:                #[cfg(not(verus_keep_ghost))]
+src/kernel/src/mm/phys/frame.rs:147:        #[cfg(not(verus_keep_ghost))]
+src/kernel/src/mm/phys/frame.rs:154:                #[cfg(not(verus_keep_ghost))]
+src/...
+[RESULT ✓] bash: === find skills ===
+=== search verus-constraints content ===
+=== git diff since fixer (any code change?) ===
+8ce0e205c [verus] verify PASS (cheating detected): kernel::mm::virt::identity_map (9 verified, 0 errors, admit=31 external_body=12 cfg_gate=15)
+400f367ef [verus] verify FAIL: kernel::mm::virt...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+The cfg-gate on `error!` is an established, pervasive pattern (frame.rs: 22, manager.rs: 9). Let me verify the fixer's two hardest claims myself: (1) that ungating `error!` actually breaks Verus compilation, and (2) whether sibling verified modules genuinely retain exec admits as a deferred-convention (not a local gap).
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== frame.rs admit context ==="; grep -n "admit()" src/kernel/src/mm/
+
+[THINKING] The cfg-gate pattern on `error!` macros is clearly established across the codebase—frame.rs has 22 instances and manager.rs has 9—so this is a sanctioned approach rather than a workaround. I'm trusting this precedent instead of testing the compile failure myself. Now I need to circle back to checklist item 5.
+
+The real architectural issue is whether the three admits are a genuine blocker or fixable locally. The fixer's core argument hinges on `identity_map_view()` being an uninterpreted spec function with no ghost-token attachment to connect exec writes to the postconditions—and the spec itself says the proving phase is supposed to realize the state transition via a ghost token. So the question becomes: are all sibling modules in the same deferred state with unresolved admits, or have they found a way forward?
+[RESULT ✓] view: 120.             match result {
+121.                 Ok(frame) => {
+122.                     &&& frame.inv()
+123.                     &&& old(self)@.free_frames.contains(frame@)
+124.                     &&& final(self)@ == FrameAllocView {
+125.                         allocated_frames: old(self)@.al...
+[RESULT ✓] bash: === frame.rs admit context ===
+137:        proof! { admit(); }
+214:        proof! { admit(); }
+299:        proof! { admit(); }
+380:        proof! { admit(); }
+443:        proof! { admit(); }
+498:        proof! { admit(); }
+536:        proof! { admit(); }
+587:        proof! { admit(); }
+758:    proof...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Sibling module `frame.rs` (a committed "verify PASS" module) uses the **identical** pattern: `proof! { admit(); }` at the top of exec functions whose postconditions reference the singleton-global view, plus cfg-gated `error!`. This suggests a documented codebase convention. But I must verify the fixer's claims myself rather than accept them. Let me independently reproduce the two key failures.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/verification-todo.md
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp src/kernel/src/mm/virt/identity_map.rs /tmp/idmap_backup.rs && echo "bac
+
+[THINKING] I'm noticing that the sibling module `frame.rs` uses the same pattern of `proof! { admit(); }` at the beginning of exec functions when their postconditions reference the singleton-global view. Since `frame.rs` is already verified and committed with many admits allowed, it seems this methodology might be standard across the physical memory verification effort, though I should double-check whether those admits were actually accepted in prior phases.
+
+But here's the tension: my role as a strict reviewer means enforcing the checklist requirement of "Zero remaining admit()" without exception. The fixer claims this is genuinely impossible without modifying out-of-scope functions like `init`, `sync_kernel_pdes`, `Table::write`, and atomics operations. I need to verify whether this is a real blocker or if the fixer hasn't exhausted all options.
+
+Looking at the concrete claims, the strongest one is that removing the cfg-gate from `error!` causes an "Unsupported constant type" compile error—this appears to be a genuine Verus limitation, and every sibling module cfg-gates logging macros the same way. But the checklist explicitly forbids cfg-gating exec code, which creates a direct conflict between the literal requirement and the established methodology across the codebase. I need to reconsider whether item 5 about cfg-gating actually applies to logging macros or just to the exec logic itself.
+
+The central question is whether I should accept the "deferred" admits as documented in the spec and TCB-allowed.md, or demand they be eliminated. The specification itself explicitly states the v→v' transition is "realized in the proving phase by a ghost token over those singletons," and the sibling frame.rs module has identical singleton-boundary admits that were already accepted as verified. The TCB documentation even explicitly recognizes this deferral convention for Table::write's slot-update transition, suggesting these admits represent a recognized, documented pattern rather than a gap.
+
+But I'm the strict reviewer, and the checklist says zero remaining admits. Rather than accept justifications at face value, I should test the fixer's core claim directly — that removing an admit produces unprovable obligations rooted in the missing ghost token infrastructure. If I can independently verify this by attempting to remove an admit and seeing the errors, I'll have concrete evidence whether this is genuinely blocked or a fix I can demand.
+
+Let me start with the simpler test: removing the cfg-gate from one error! statement to see if that produces a compile error. I'll do these tests separately, reverting each time, to gather hard evidence rather than relying on claims.
+[RESULT ✓] view: 1. # Verification TODO — `mm::virt::identity_map`
+2. 
+3. Honest hand-off of genuinely-stuck proof obligations per the `verus-constraints`
+4. skill. These are NOT accepted trust assumptions and NOT code bugs — they are the
+5. cross-module **proving-phase ghost-token** obligations that the whole botto...
+[RESULT ✓] bash: backup done
+=== TEST 1: ungate one error! at line 537-538 ===
+        let reason: &str = "invalid PDE read from kernel PD";
+        #[cfg(not(verus_keep_ghost))]
+        error!("ensure_pt(): {reason}");
+        Error::new(ErrorCode::InvalidArgument, reason)
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Let me independently reproduce both claims. First, test ungating one `error!`:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 - <<'EOF'
+import re
+f="src/kernel/src/mm/virt/identity_map.rs"
+s=op
+
+[THINKING] I'm going to test both key claims independently to verify them. First, I'll remove the admit from ensure_pte to see if the postcondition actually fails to discharge, then I'll test ungating the error! macro to check that claim too. I'll run the verification on each change and capture the errors before reverting.
+[RESULT ✓] bash: edited
+        let reason: &str = "invalid PDE read from kernel PD";
+        error!("ensure_pt(): {reason}");
+        Error::new(ErrorCode::InvalidArgument, reason)
+    })?;
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel 2>&1 | grep -iE "error|verified|Unsupported|exit|status"
