@@ -150,3 +150,19 @@ layer is verified" rationale already used for `FrameAddress::from_raw_value`/`in
   (`crate::hal::mem::TruncatedMemoryRegion::<T>::start` / `size` were removed from
   `frame.spec.rs` once the `hal::mem::types::region` module gained real specifications —
   their real `#[verus_spec]` contracts now supersede the placeholders.)
+
+- **Intra-crate placeholder in `hal::mem::types::address::frame.spec.rs` (bottom-up
+  proving of `hal::mem::types::address::frame`):**
+  - `src/kernel/src/hal/mem/types/address/frame.spec.rs::<PhysicalAddress as
+    ::sys::mm::Address>::from_raw_value` — `ensures Ok(pa) => pa@ == value as int`,
+    `Err(_) => true`. `PhysicalAddress` is the kernel-internal type in the sibling
+    `hal::mem::types::address::phys` module; its `Address::from_raw_value` body
+    (`phys.rs:185`) currently carries **no** `#[verus_spec]` (verified: `grep -n
+    verus_spec` over `phys.rs:168-187` is empty). The verified
+    `FrameAddress::from_raw_value` postcondition (`Ok(fa) => fa@ == raw_addr as int`)
+    depends on this raw-value contract, so the placeholder is genuinely required for
+    bottom-up verification of the frame module and cannot be deleted. It is trusted only
+    until the HAL address layer (`phys`) is verified, at which point `phys.rs`'s
+    `from_raw_value` gains its own `#[verus_spec]` and this `assume_specification` is
+    removed — the same "superseded when the address layer is verified" rationale used for
+    `FrameAddress::from_raw_value`/`into_raw_value` above.
