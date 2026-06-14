@@ -76,7 +76,7 @@ impl Inner {
 //==================================================================================================
 
 /// For a page-aligned address `a`, dividing by the page size then multiplying recovers `a`.
-pub proof fn lemma_aligned_addr_index(a: int)
+proof fn lemma_aligned_addr_index(a: int)
     requires
         a % spec_page_size() == 0,
         spec_page_size() > 0,
@@ -88,7 +88,7 @@ pub proof fn lemma_aligned_addr_index(a: int)
 }
 
 /// `frame_addr_of` is injective: distinct indices map to distinct frame addresses.
-pub proof fn lemma_frame_addr_injective(i: int, j: int)
+proof fn lemma_frame_addr_injective(i: int, j: int)
     requires
         frame_addr_of(i) == frame_addr_of(j),
         spec_page_size() > 0,
@@ -105,7 +105,7 @@ pub proof fn lemma_frame_addr_injective(i: int, j: int)
 //==================================================================================================
 
 /// A page-aligned address is in `allocated_frames` iff its bitmap index bit is set.
-pub proof fn lemma_alloc_contains(inner: &Inner, addr: int)
+proof fn lemma_alloc_contains(inner: &Inner, addr: int)
     requires
         inner.internal_inv(),
         addr % spec_page_size() == 0,
@@ -129,7 +129,7 @@ pub proof fn lemma_alloc_contains(inner: &Inner, addr: int)
 }
 
 /// A page-aligned address is in `free_frames` iff its bitmap index is in range and unset.
-pub proof fn lemma_free_contains(inner: &Inner, addr: int)
+proof fn lemma_free_contains(inner: &Inner, addr: int)
     requires
         inner.internal_inv(),
         addr % spec_page_size() == 0,
@@ -157,7 +157,7 @@ pub proof fn lemma_free_contains(inner: &Inner, addr: int)
 }
 
 /// The refcount map's domain coincides with the allocated-frame set.
-pub proof fn lemma_alloc_iff_key(inner: &Inner, addr: int)
+proof fn lemma_alloc_iff_key(inner: &Inner, addr: int)
     ensures
         inner@.allocated_frames.contains(addr) == inner@.refcounts.contains_key(addr),
 {
@@ -168,12 +168,12 @@ pub proof fn lemma_alloc_iff_key(inner: &Inner, addr: int)
 /// named in `proof fn` postconditions without dereferencing the `&'static mut [u8]` field directly
 /// (which Verus rejects in an `ensures`); reading the field in a spec-fn body is the same context
 /// `view()`/`internal_inv()` already use.
-pub open spec fn spec_refcount_slot(inner: &Inner, i: int) -> int {
+open spec fn spec_refcount_slot(inner: &Inner, i: int) -> int {
     inner.refcount@[i] as int
 }
 
 /// The refcount-map value at an allocated address equals the underlying refcount slot.
-pub proof fn lemma_refcount_value(inner: &Inner, addr: int)
+proof fn lemma_refcount_value(inner: &Inner, addr: int)
     requires
         inner@.refcounts.contains_key(addr),
     ensures

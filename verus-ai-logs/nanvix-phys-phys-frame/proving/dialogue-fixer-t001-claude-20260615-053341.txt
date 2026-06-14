@@ -242,3 +242,64 @@ Turn 15
 ────────────────────────────────────────────────────────────
 Now run verify to confirm the parse/compile is unblocked and see which methods verify (the 3 admits will be the remaining proof gap, FIX 2).
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -55
+[RESULT ✓] bash: === Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  Module mm::phys:
+    ⚠️  external_body: 18
+    ⚠️  admit: 7
+    ⚠...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '18,60p'
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: disallowed: field expression for a non-visible datatype
+   --> src/kernel/src/mm/phys/frame.proof.rs:114:18
+    |
+114 |               <==> inner.bitmap@.set_bits.contains(addr / spec_page_size()),
+    |...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Public lemmas can't reference private `Inner` fields in their `ensures`. These helpers are only used within the `frame` module, so they should be module-private. Let me check usage then drop `pub`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for l in lemma_alloc_contains lemma_free_contains lemma_alloc_iff_key lemma_refcount_
+
+[THINKING] I'm hitting a visibility issue where the public lemma's ensures clause references a private field from the Inner struct, which violates Verus's well-formedness rules. Since these lemmas are only used within the same module, I can just remove the `pub` visibility to fix this.
+
+Let me identify which helper lemmas actually reference private fields — `lemma_alloc_contains` and `lemma_free_contains` access the private `bitmap` field, and `spec_refcount_slot` accesses the private `refcount` field. The others either use only public types or reference public functions like `frame_addr_of`, so they're fine to keep as-is.
+
+The tricky part is that `lemma_refcount_value` is public and uses `spec_refcount_slot` in its ensures clause, which creates a visibility problem — a public function can't reference a private spec function. So either `spec_refcount_slot` needs to be visible, or `lemma_refcount_value` also needs to be private. Since all these helpers are only used within frame.rs itself, the simplest fix is to make them all module-private, then verify none of them leak into external usage.
+[RESULT ✓] bash: lemma_alloc_contains: 2 external uses
+lemma_free_contains: 1 external uses
+lemma_alloc_iff_key: 1 external uses
+lemma_refcount_value: 1 external uses
+spec_refcount_slot: 0 external uses
+lemma_aligned_addr_index: 0 external uses
+lemma_frame_addr_injective: 0 external uses
+<shellId: 9 completed with e...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+All uses are within the `frame` module. Drop `pub` from the agent's helpers so they can reference private fields.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -i \
+ -e 's/^pub proof fn lemma_aligned_addr_index/proof fn lemma_aligned_addr_in
+
+[THINKING] I'm realizing that all the uses of these functions are contained within the frame module itself—nothing outside of `mm/phys/frame*` is calling them. That means I can remove the `pub` visibility modifier from these proof and spec functions, making them private to the module.
+[RESULT ✓] bash: 8:pub open spec fn frame_addr_of(i: int) -> int {
+79:proof fn lemma_aligned_addr_index(a: int)
+91:proof fn lemma_frame_addr_injective(i: int, j: int)
+108:proof fn lemma_alloc_contains(inner: &Inner, addr: int)
+132:proof fn lemma_free_contains(inner: &Inner, addr: int)
+160:proof fn lemma_alloc_iff_ke...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
