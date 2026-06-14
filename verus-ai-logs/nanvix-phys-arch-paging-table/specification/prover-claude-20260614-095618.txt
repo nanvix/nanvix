@@ -1611,3 +1611,192 @@ Turn 92
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify 2>&1 | grep -E "verification:|verified, [0-9]+ error" ; echo "EXIT
 
 [THINKING] All the crates compiled successfully, but each one shows `CHEATING_DETECTED` because they all have external_body as documented. The real question is whether the make verify command actually exited with success or failure, and whether there were any actual errors reported. Let me search more carefully for the error count to see what the build status actually was.
+[RESULT ✓] bash: verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recom...
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+All crates pass with 0 errors (exit 0). The CHEATING_DETECTED is the informational external_body gate — all documented in tcb-allowed.md. Now `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make build 2>&1 | tail -25; echo "EXIT: ${PIPESTATUS[0]}"
+
+[THINKING] All six crates compiled successfully with zero errors, and `make verify` passed. The CHEATING_DETECTED status is just informational since external_body is documented in tcb-allowed.md, and it doesn't cause the build to fail—this matches the expected behavior from the phys-mm phase. The task requirement of zero Verus errors is satisfied, so now I'll run `make build` to verify the dual compilation still works.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+EXIT: 0
+<shellId: 67 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^build:|^all:|^kernel:|^image:" Makefile | head
+[RESULT ✓] bash: 411:all: all-nanvix
+878:image: all-nanvix
+<shellId: 68 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls z* 2>/dev/null; grep -nE "all-nanvix:" Makefile | head
+
+[THINKING] I need to figure out the correct build command for this project—`make build` doesn't seem to work, so I'm checking whether it's `make all-nanvix` or the `./z build` script that's the standard approach here.
+[RESULT ✓] bash: z
+z.bat
+z.ps1
+z.py
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+<shellId: 69 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+The repo uses `./z`. Let me build via the build skill's command.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 ./z build 2>&1 | tail -30; echo "EXIT: ${PIPESTATUS[0]}"
+[RESULT ✓] bash: mkimage: adding '/home/ruize/nanvix-phy/bin/hello-rust-nostd.elf' (3567640 bytes, cmdline='hello-rust-nostd')
+mkimage: wrote '/home/ruize/nanvix-phy/bin/hello-rust-nostd.initrd' (28049408 bytes, 4 entries)
+/home/ruize/nanvix-phy/bin/mkimage.elf -o /home/ruize/nanvix-phy/bin/vfs-bench-nostd.initrd \
+...
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+Build succeeds (dual compilation works). Let me clean up the /tmp test files and verify final state.
+[TOOL] bash: cd /tmp && rm -f vtest*.rs vt_*.rs vt_*.d 2>/dev/null; ls vt_*.rs vtest*.rs 2>/dev/null; echo "cleaned"
+[RESULT ✓] bash: cleaned
+<shellId: 71 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+Let me do a final review of the key deliverable file and update the plan.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] I'm updating the plan.md to mark everything as complete, then reviewing the final table.rs file to verify the key components like pd_index, pt_index, into_raw, and the constructor are all properly implemented.
+[RESULT ✓] view: 28. /// The raw representation uses [`PteWord`] — `u32` on x86.
+29. ///
+30. #[verus_verify]
+31. pub trait TableEntry: Copy {
+32.     /// Creates from a raw [`PteWord`], returning `None` if the value is invalid.
+33.     fn from_raw(raw: PteWord) -> Option<Self>;
+34.     /// Returns the raw [`PteWord`...
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "include!\|verus!\|cfg\|use vstd\|verus_verify\|verus_spec" src/libs/arch/src/x86/m
+
+[THINKING] I'm checking the bottom of table.rs to verify the cfg-gated includes are properly set up, particularly around the from_address section.
+[RESULT ✓] bash: 8:use vstd::prelude::*;
+9:#[cfg(verus_keep_ghost)]
+10:include!("table.spec.rs");
+11:#[cfg(verus_keep_ghost)]
+12:include!("table.proof.rs");
+30:#[verus_verify]
+47:#[verus_verify]
+51:#[verus_verify]
+59:    #[verus_spec(result =>
+79:    #[verus_spec(result =>
+95:#[verus_spec(result =>
+113:#[verus_spec(...
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+All annotations and cfg-gated includes are in place. Let me verify the proof file and from_address are coherent, then finalize.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] I'm noticing that the `use vstd::prelude::*;` import on line 8 isn't wrapped in a cfg gate, which could be problematic for non-verus builds where vstd might not be available—but since the build passed, vstd must either be shimmed or included as a dependency. Let me check if line 8 is actually gated by looking at the surrounding context.
+
+Now I'm verifying that all the pieces are in place: the table module has its annotations and proofs fixed, the spec and proof files are properly structured, constants are marked for verification, and the identity map placeholders are cleaned up. The verification runs show 22 verified items with no errors across all crates, and the build completes successfully. I should confirm the proof file is truly empty and double-check the from_address verification before wrapping up.
+[RESULT ✓] view: 160.     ///
+161.     /// Creates a table reference from a base address.
+162.     ///
+163.     /// # Safety
+164.     ///
+165.     /// `base` must be a valid, page-aligned address with at least one page of readable/writable
+166.     /// memory.
+167.     ///
+168.     #[verus_spec(result =>
+169.       ...
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat src/libs/arch/src/x86/mem/paging/table.proof.rs; echo "=== git status ==="; git --no-pa
+[RESULT ✓] bash: verus! { } // verus!
+=== git status ===
+ M verus-ai-logs/nanvix-phys-arch-paging-table/specification/prover-claude-20260614-095618.jsonl
+ M verus-ai-logs/nanvix-phys-arch-paging-table/specification/prover-claude-20260614-095618.txt
+<shellId: 73 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager status --short src/libs/arch/src/x86/mem/paging/ src/libs/arch/src/x86/mem/c
+
+[THINKING] I'm noticing git status only shows a couple of log files as modified, but not the source files like table.rs or spec.rs, which is odd. They might not be tracked, ignored by git, or already committed. Let me check the status of those specific files to understand what's going on.
+[RESULT ✓] bash: --- check ignore ---
+--- diff stat ---
+<shellId: 74 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager log --oneline -8; echo "--- last commit files ---"; git --no-pager show --st
+
+[THINKING] Git status shows no changes to my source files, which is strange since I just edited them—either they're already committed or the working tree matches HEAD somehow. Let me check the recent git log and see if there's a diff against HEAD to understand what's actually been committed.
+[RESULT ✓] bash: 6a3965415 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=36 external_body=16 cfg_gate=15)
+74d00adf7 [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, external_body=2)
+48747e805 [verus] verify PASS (cheating detected): bump-al...
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+The verify.sh wrapper auto-commits successful runs, so my source changes are committed. Let me confirm the key changes are in the tree.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager log --oneline -5 -- src/libs/arch/src/x86/mem/paging/table.rs src/kernel/src
+
+[THINKING] The verify.sh script automatically commits changes after each successful run, so my source modifications got committed through that wrapper. That explains why git status is clean aside from the new log files. Now I need to check if the recent commits actually include my table.rs changes by looking at the diff.
+[RESULT ✓] bash: 43acdcda4 [verus] verify PASS (cheating detected): bitmap::all (cached (no recompilation), —, cfg_gate=5)
+4e40cdff8 [verus] verify PASS (cheating detected): arch::all (22 verified, 0 errors, external_body=2)
+00b303345 [verus] verify FAIL: arch::all (16 verified, 6 errors)
+5ad576955 [verus] verify FA...
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+All changes are committed and present. The task is complete.
+
+## Summary
+
+Added Verus specifications to the `arch::x86::mem::paging::table` module, all verifying with **0 errors**.
+
+**`table.rs`** (exec annotations):
+- `TableEntry` trait, `TableIndex`, `Table<E>` structs/impls → `#[verus_verify]`; cfg-gated `include!` of spec/proof files.
+- `TableIndex::new`, `into_raw` → full `#[verus_spec]` contracts (bounds + identity projection via `use_type_invariant`).
+- `pd_index`/`pt_index` → contracts `result@ == spec_pd/pt_index(vaddr)` and `< PAGE_TABLE_LENGTH`, proven with `by (compute)` const-folding + `by (bit_vector)` mask bound.
+- `from_address` → `result@.addr == base`.
+- `read`/`write` → `#[verus_verify(external_body)]` trust boundaries (Verus cannot translate the `usize`→pointer cast over volatile page-table memory).
+
+**`table.spec.rs`**: `TableIndex` View (`nat`) + `type_invariant`; `spec_table_index`/`spec_pd_index`/`spec_pt_index`; `Table<E>` View (`TableView{addr}`).
+
+**`constants.rs`**: `#[verus_verify]` on `PAGE_SHIFT`/`PGTAB_SHIFT`/`PGTAB_SIZE`/`PAGE_TABLE_LENGTH`.
+
+**`identity_map.spec.rs`**: removed now-superseded placeholders (ExTable/ExTableIndex/ExTableEntry and the `assume_specification`s for the index helpers + raw accessors) since real arch specs now supersede them.
+
+**Docs**: `verus-unsupported.md` (int-to-ptr cast), `bugs.md` (no code bugs; limitation + deferred round-trip), `view_design.md` as-built addendum (addr-only View), `tcb-allowed.md` (read/write entries).
+
+**Verification**: `make verify-arch` → 22 verified, 0 errors. `make verify` → all 6 crates 0 errors (exit 0). `./z build` → OK. (`CHEATING_DETECTED` is the informational `external_body` gate; both are documented in `tcb-allowed.md`, consistent with the phys-mm precedent.)
+
+
+=== Session End ===
+Session: 702a087e-71ae-4509-a5b2-ec753e322d88
+Duration: 1833.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/specification/prover-claude-20260614-095618.jsonl
