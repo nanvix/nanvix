@@ -1,0 +1,81 @@
+Timestamp: 2026-06-15_05-42-56
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+42 verified
+4 errors
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=19
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:270:17
+    |
+270 |                   Ok(()) => {
+    |                   ^^^^^^ failed this postcondition
+...
+321 | /         if self.refcount[frame_number] == 0 {
+322 | |             match self.bitmap.clear(frame_number) {
+323 | |                 Ok(()) => Ok(()),
+324 | |                 Err(error) => {
+...   |
+331 | |             Ok(())
+332 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:359:17
+    |
+359 |                 Ok(()) => {
+    |                 ^^^^^^ failed this postcondition
+...
+411 |         Ok(())
+    |         ------ at the end of the function body
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:452:13
+    |
+452 |             lemma_alloc_contains(self, addr);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/mm/phys/frame.proof.rs:111:9
+    |
+111 |         addr % spec_page_size() == 0,
+    |         ---------------------------- failed precondition
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:497:17
+    |
+497 |                   Ok(()) => {
+    |                   ^^^^^^ failed this postcondition
+...
+515 | /         match self.bitmap.set(frame_number) {
+516 | |             Ok(()) => {
+517 | |                 #[cfg(not(verus_keep_ghost))]
+518 | |                 debug_assert_eq!(self.refcount[frame_number], 0);
+...   |
+526 | |             },
+527 | |         }
+    | |_________- at the end of the function body
+
+verification results:: 42 verified, 4 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 4 previous errors
