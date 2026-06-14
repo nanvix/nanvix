@@ -2411,3 +2411,16 @@ Now run the full `make verify`:
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -45
 
 [THINKING] I'm checking that the remaining references are accounted for—the ExLinkedList in mod.spec.rs is unrelated, and frame.spec.rs still has access to the spec functions it needs from the physics module. Now I'll run the verification to see if everything compiles correctly.
+[RESULT ✓] bash: PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targ...
+
+────────────────────────────────────────────────────────────
+Turn 150
+────────────────────────────────────────────────────────────
+Both arch (4 verified, 0 errors) and kernel (66 verified, 0 errors) pass. The `CHEATING_DETECTED` for kernel is pre-existing (admit=28/external_body=11 from the phys-mm proving phase). Let me confirm all crates passed and that I didn't increase those baseline counts.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | grep -E "Crate|verifica
+
+[THINKING] The kernel verification passed with 66 verified entries and no errors, and the architecture check also came through clean. The "CHEATING_DETECTED" flags I'm seeing in the kernel are pre-existing from the phys-mm proving phase—they're documented in the tcb-allowed list as existing admits and external bodies, not something my changes introduced.
+
+But I'm realizing the `make verify` output I saw was just the tail end showing the kernel results. I need to check whether all the other crates (bitmap, arch, etc.) also passed verification. Let me re-run the verification and capture all the result lines to confirm everything went through.
