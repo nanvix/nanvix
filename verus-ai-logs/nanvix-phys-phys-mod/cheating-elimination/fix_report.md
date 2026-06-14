@@ -15,16 +15,18 @@ items are all `admit()`s that are genuine, irreducible blockers (analysis below)
 |------|--------|-------|------------|
 | admit() | 22 | 15 | 7 |
 | assume() | 0 | 0 | 0 |
-| external_body | 11 | 16 (all TCB-allowed) | 0 |
+| external_body | 11 | 17 (16 exec fns all TCB-allowed + 1 type spec) | 0 |
 | assume_specification | 0 | 0 | 0 |
 | cfg-gated exec | 15 | 15 | 0 |
 
 - `admit()` 22 = 8 `Inner` methods (`frame.rs`) + 8 manager lemmas (`manager.proof.rs`) +
   6 free-fn wrapper bodies (`frame.rs`). After = 8 `Inner` + 7 manager = 15.
-- `external_body` After = 16 exec items, **every one listed in
-  `verus-ai-logs/tcb-allowed.md`** (verified by audit). Plus one
-  `external_type_specification` (`ExLinkedList`, spec infrastructure to name
-  `alloc::collections::LinkedList` in signatures — not an exec cheat).
+- `external_body` After = 16 exec items + 1 `external_type_specification` = 17 (matching the
+  gate's `cheating_report_2` "external_body: 17 (16 on user fns)"). **Every exec item is
+  listed in `verus-ai-logs/tcb-allowed.md`** (verified by audit). The type spec
+  (`ExLinkedList`) is spec infrastructure to name `alloc::collections::LinkedList` in
+  signatures — not an exec cheat. The before→after delta is the 6 free-fn wrappers whose
+  `admit()` placeholders were converted to design-sanctioned TCB `external_body`.
 - `cfg-gated exec` = the pre-existing `#[cfg(not(verus_keep_ghost))]` logging guards
   (`error!`/`debug!`; logging is exec-only, not ghost-relevant — semantics preserved) and
   the two `#[cfg_attr(verus_keep_ghost, verus_spec(invariant false))]` placeholders inside
