@@ -92,3 +92,34 @@ Module: virt-identity-map
 [2026-06-15 02:58:53] [DIALOGUE] Reviewer turn 2 (remaining: 6653s)...
 [2026-06-15 02:58:53] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 03:04:27]   ↳ dialogue-reviewer-t2 done in 5m33s (exit=0)
+[2026-06-15 03:04:27] [DIALOGUE] Reviewer created STOP file: BLOCKED
+[2026-06-15 03:04:27] [DIALOGUE] STOP detail:
+BLOCKED
+
+Item 2 (Zero remaining admit) and the dependent item 10 (0 errors/0 warnings, no
+CHEATING_DETECTED) are genuinely blocked. The 3 exec admit()s in
+src/kernel/src/mm/virt/identity_map.rs (ensure_pt:534, ensure_pte:632,
+identity_map_page:719) discharge postconditions over the parameter-free `uninterp spec fn
+identity_map_view()`. Removing any admit was independently reproduced by the reviewer to
+fail ("postcondition not satisfied" at identity_map.rs:619 / :708; precondition wall at
+arch table.rs:205), because no spec fact flows from the exec page-table writes
+(`Table::write`, whose old@->@ contents postcondition is deliberately deferred per
+verus-ai-logs/tcb-allowed.md) to `identity_map_view().mapped`. Closing the gap requires
+cross-module ghost-token / page-table-permission infrastructure that touches out-of-scope
+modules and functions (KERNEL_PD_PADDR atomics, arch Table::write, and the signatures of
+init/memcpy/memset/ensure_identity_mapped_range). Every sibling mm::phys::* module carries
+the identical deferred exec admit()s, confirming a cross-module framework decision rather
+than a local proof gap.
+
+All other checklist items verified PASS this turn with concrete evidence:
+1 (no specs weakened), 3 (external_body: only ExPageTableBss opaque type-spec; function
+external_body all in tcb-allowed.md), 4 (assume=0; 2 external-bottom assume_specifications
+for std `as_ptr` and unverified `bump_allocator::new`), 5 (cfg-gated `error!` is a
+reproduced Verus limitation — "Unsupported constant type"; logging-only, pervasive
+sanctioned pattern), 6 (cheating audit: module admit=3, external_body type-spec=1,
+assume_specification=2, cfg_gate=5), 7 (isolated reproducer produced for the `error!`
+limitation), 8 (no exec rewrites), 9 (cross-module regression: 76 verified, 0 errors,
+exit 0).
+
+Baseline restored and confirmed clean: make verify-kernel -> 76 verified, 0 errors, exit 0.
+[2026-06-15 03:04:27] [DIALOGUE] proving ended after 2 turns: BLOCKED (881s)
