@@ -162,3 +162,174 @@ Turn 3
 Turn 4
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error|veri
+[RESULT ✓] bash: note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/virt/identity_map.rs:533:1
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:534:44...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Confirmed — the fixer's reproduction is accurate (6 verified, 3 errors, exit 101). Let me restore the file and investigate the dependency contracts before adjudicating.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git checkout src/kernel/src/mm/virt/identity_map.rs && grep -n "admit" src/
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "fn pd_index\|fn pt_index" src/libs/arch/src/x86/mem/paging/ src/l
+
+[THINKING] The fixer's claims check out—removing the admits reproduces all five errors at the exact locations they specified, covering index bounds, bump view invariants, and postcondition violations across the identity mapping logic. Now I need to restore the file and dig into what the fixer's actually arguing about.
+
+The core issue is that `identity_map_view()` is an uninterpreted spec function with no parameters, so it returns a fixed deterministic value throughout any single execution. The postcondition for `ensure_pte` requires that same fixed value to satisfy contradictory constraints—it needs to contain `p` on the Ok branch but not contain `p` on the Err branch. Since the value doesn't change between branches and nothing in the execution constrains which state it's in, neither exit path is provable. The fixer is correct that this is logically impossible as currently written.
+
+The real problem is that the spec was designed with the intent that `identity_map_view()` represents a ghost state that transitions from pre to post, but without parameters or explicit state threading, there's no way to express that distinction—it's just a single constant. So these admits are hiding a genuine architectural issue: the contracts can't actually be verified within this module as they stand.
+
+Looking at the broader codebase, the entire `mm` crate defers these kinds of proofs through admits and external bodies, treating this as a specification phase that will be resolved in a later proving phase. The sibling `mm::phys` modules do the same thing. So this is a known, systemic pattern—the codebase explicitly acknowledges that ghost-token infrastructure and cross-module reasoning are out of scope for now.
+
+But I should double-check whether the logical impossibility is truly unavoidable. For the Ok branch where we return early because the PTE is already present, could we prove that a present PTE implies the page is in the mapped set?
+
+That would require `internal_inv()` to actually relate the page-table memory to the `mapped` set, plus a lemma connecting present-PTEs to mapped membership. But `internal_inv()` is currently just a placeholder returning true, and `Table::read` is uninterpreted. So with the current state, it's genuinely impossible to prove.
+
+The real question is whether I should accept this as blocked or push the fixer to do the cross-module work anyway. The task scope is explicitly limited to the identity_map module's cheating-elimination phase. All three requested unblocks require either changing other modules' ghost infrastructure, modifying `arch::Table::write` (which is documented as deliberately deferred), or adding preconditions. Adding a precondition like `requires pde_idx < PAGE_TABLE_LENGTH` would actually strengthen the requires clause, which technically weakens the function's usability—but I need to think through whether that's truly forbidden by the constraints.
+
+The real issue is that `TableIndex`'s type invariant isn't usable cross-crate. The proper fix would be for `pd_index` and `pt_index` to have explicit `ensures` clauses guaranteeing the bound in their contracts. Let me check whether those functions already have those ensures—if they do, the read preconditions might be dischargeable without needing a type invariant at all.
+[RESULT ✓] bash: Updated 0 paths from the index
+<shellId: 4 completed with exit code 1>
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/table.rs:106:pub const fn pd_index(vaddr: usize) -> TableIndex {
+src/libs/arch/src/x86/mem/paging/table.rs:124:pub const fn pt_index(vaddr: usize) -> TableIndex {
+src/libs/arch/src/x86/mem/paging/table.rs:106:pub const fn pd_index(vaddr: usize) -> TableIndex {
+src/li...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "admit" src/kernel/src/mm/virt/identity_map.rs; echo "exit=$?"; git
+
+[THINKING] The grep for "admit" came back empty, which means the echo command never ran due to the `&&` operator. More puzzling is that `git checkout` reported "Updated 0 paths," suggesting the file hasn't changed — but I definitely ran the perl command to remove those lines, so something's not adding up.
+[RESULT ✓] bash: exit=1
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --short src/kernel/src/mm/virt/identity_map.rs; echo "=== diff =
+
+[THINKING] The admits disappeared after the perl command ran, and git diff shows no changes at all. Git checkout reported updating zero paths, which is strange. When I grep for admits now, there's nothing there. It seems like the checkout might have failed or something unexpected happened with how git is handling the state.
+[RESULT ✓] bash: === diff ===
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git show HEAD:src/kernel/src/mm/virt/identity_map.rs | grep -n "admit"; ech
+
+[THINKING] I'm confused about the git state — the diff shows no changes, but the file apparently has content at those line numbers from the earlier run. Let me check what's actually in the file right now instead of relying on git's output.
+[RESULT ✓] view: 530.             Err(_) => identity_map_view().inv(),
+531.         },
+532. )]
+533. fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+534.     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
+535.         let reason: &str = "invalid PD...
+[RESULT ✓] bash: HEAD-exit=1
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+The git state is confusing — HEAD appears to lack admits yet cached verification reports them. Let me establish ground truth with a clean re-verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== working tree admits ===" && grep -c "admit" src/kernel/src/mm/vir
+
+[THINKING] So HEAD actually has no admits in it already, which means my perl edit removed them from the working tree to match what's already committed. That's why git diff shows nothing. But this contradicts what I saw earlier in turn 1, where the cheating detail listed admits at those specific line numbers, and the fixer claimed they'd restored the file to its pre-task state with those three documented admits intact. Now I'm realizing HEAD doesn't have them at all. The perl command successfully removed the admits from the working tree, and `git checkout` reported "Updated 0 paths" because HEAD itself has no admits — so the working tree already matched HEAD after the removal. The cached verification is stale and reporting old results; I need to force a fresh verification run to see the current actual state. The perl command must have actually modified the file since sed found admits at those line numbers before the removal. But then git checkout reported zero paths updated, which only makes sense if the working tree already matched HEAD — meaning HEAD itself has no admits. So the fixer's claim to restore admits may not have actually happened on disk, or the current HEAD state is different from what was documented. I need to check the actual committed state directly and restore from there if necessary.
+[RESULT ✓] bash: === working tree admits ===
+0
+=== HEAD admits ===
+0
+=== git log for this file ===
+a884c22a8 [verus] verify FAIL: kernel::mm::virt::identity_map (6 verified, 3 errors)
+55b6ab858 [verus] verify PASS (cheating detected): kernel::all (76 verified, 0 errors, admit=31 external_body=12 cfg_gate=15)
+7cca492...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Now I understand the git state: my reproduction run was auto-committed by the verify harness as `a884c22a8 [verus] verify FAIL`. The repo is now in the admits-removed state showing the 3 real errors. Let me check whether the read-precondition errors are in-scope-fixable by inspecting `pd_index`/`pt_index` contracts.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] I see there's a discrepancy between the HEAD commit which shows a passing state and the most recent commit affecting this specific file, which has verification failures with 3 errors despite having 6 verified items. The file's last change is from a different commit than the current HEAD.
+
+Looking at the git history, there was a passing state with admits at commit `55b6ab858`, followed by a failing state at `a884c22a8` where the admits were removed. It seems the automated verification and commit system in this repo captured the failing state when I ran the verification command with admits removed, which inadvertently committed that broken state to the repository.
+
+Now I need to seriously examine whether the fixer's claim about logical impossibility in the postconditions holds up. The argument is that `identity_map_view()` is a parameterless uninterpreted spec function—a single fixed value within any proof context—and the contract requires it to simultaneously satisfy contradictory conditions depending on whether `ensure_pte` returns Ok or Err. Since the value is opaque and has no relation to the execution state, the only available facts come from the `requires` clause, which constrains the invariant. This is the crux of whether this is genuinely blocked or solvable.
+
+The deeper issue is architectural: this spec was designed to be discharged during a proving phase using ghost tokens that would replace the uninterpreted function with actual tracked ghost state transitions. The current placeholder cannot support that, and the same pattern appears throughout the sibling `mm::phys` modules with their own admits. This is a systemic deferral, not a local proof-engineering gap.
+
+As a strict reviewer, I have BLOCKED as a legitimate option given multiple documented attempts and confirmed logical impossibility. But I should consider whether there's an in-scope fix that doesn't weaken specs or introduce cheating—specifically, whether an unsatisfiable spec itself might be the right call.
+
+The real fix would require cross-module ghost-token infrastructure that's out of scope. Given the constraints against weakening specs, adding assumes, or changing signatures, admit=0 is genuinely unachievable here. This qualifies as a legitimate BLOCKED situation, though I need to be careful: the whole repo has 31 admits and this is a known multi-module proving-phase deferral. The cheating-elimination phase might be premature if the proving infrastructure doesn't exist yet, but the checklist explicitly requires zero admits with no allowlist for deferred functions.
+
+Let me check one more time if there's any in-scope way to make the postconditions hold. I could strengthen `internal_inv()` to encode that mapped reflects PTE-present bits, then use `Table::read`'s ensures clause to derive facts about which pages are in mapped. But the fundamental blocker remains: `identity_map_view()` is uninterpreted, so its `mapped` field has no defined relationship to actual page table memory. Strengthening `internal_inv()` adds an assumption, but proving the postcondition requires deriving facts about `identity_map_view().mapped` from the executed PTE reads—and without an axiom connecting the read results to the mapped field, I'd have to add an assume, which is forbidden.
+
+Even after a successful `ensure_pte` write, `identity_map_view()` doesn't change since it's an uninterpreted constant, so the postcondition becomes structurally impossible to satisfy. I'm now confident this is genuinely BLOCKED—not from laziness but from an architectural mismatch where the contracts require ghost-token infrastructure outside this module's scope, and the parameterless uninterpreted view makes the Ok/Err postcondition pair logically unsatisfiable.
+
+Before declaring BLOCKED, I should verify whether the read preconditions could actually be discharged in-scope. The fixer claims the `TableIndex` type invariant isn't usable cross-crate and that `pd_index`/`pt_index` don't help, but those functions return `TableIndex` with spec ensures clauses that might provide the needed bounds.
+[RESULT ✓] view: 95. 
+96. //==================================================================================================
+97. // Virtual Address Index Extraction
+98. //==================================================================================================
+99. 
+100. /// Extracts the PD index (bits 22-...
+[RESULT ✓] view: 190.     ///
+191.     /// # Safety
+192.     ///
+193.     /// The memory at `base + index * size_of::<PteWord>()` must be valid for a volatile read.
+194.     ///
+195.     // Trust boundary (see `verus-ai-logs/.../tcb-allowed.md` and `verus-unsupported.md`):
+196.     // materializes a raw `*const PteW...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+`pd_index`/`pt_index` correctly ensure `result@ < PAGE_TABLE_LENGTH`, but inside `ensure_pt`/`ensure_pte` the index arrives as an opaque parameter with no `requires`, so the bound is lost — and `Table::write` deliberately has **no** contents `ensures` (documented as soundness-required in tcb-allowed.md). This confirms the postconditions are structurally unprovable in isolation. Let me restore the verifying baseline (admits present) since my reproduction run got auto-committed as a failing state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== admits in 55b6ab858 ===" && git show 55b6ab858:src/kernel/src/mm/
+
+[THINKING] I'm realizing that `pd_index` and `pt_index` do enforce the bounds constraint, but when `ensure_pt` receives `pde_idx` as a parameter from callers like `identity_map_page` or `init`, that safety guarantee doesn't automatically carry through—the function itself has no `requires` clause to capture that invariant.
+
+The core issue is that fixing the read precondition at line 534 would require either adding a `requires pde_idx@ < PAGE_TABLE_LENGTH` to `ensure_pt`'s signature (which violates the constraint about not strengthening contracts), or relying on a type invariant from `TableIndex` that Verus can't access across crate boundaries. Even if `TableIndex` does carry such an invariant, the cross-crate limitation prevents `use_type_invariant` from working. But this read precondition problem is actually secondary—the real structural blocker is the postconditions at lines 618 and 706, which remain logically unresolved regardless.
+
+The postconditions demand that `mapped.contains(p)` be true in the Ok branch and false in the Err branch, but `identity_map_view()` is an uninterpreted parameterless function with no connection to execution state, so there's no way to establish either truth value in-scope. The contract can't be rewritten to use `old(...)` transitions because `identity_map_view()` is a free function without `&mut` parameters, making pre-state references impossible. This architectural limitation—that a free function over a singleton can't express state transitions without a ghost token—is exactly what the spec defers to the proving phase. So within this module in isolation, achieving zero admits is genuinely impossible.
+
+I've verified three fixer attempts and confirmed the logical impasse independently. Weakening the contracts would violate the spec, and threading a ghost token through the exec signatures would require changes to callers like `init`, which are out of scope. The honest outcome is BLOCKED, and I should document the precise reasons and what cross-module work would be needed to unblock it.
+
+Before finalizing, I'm reconsidering whether to restore the admits to the repo. The original state had them (making verify-kernel exit cleanly with CHEATING_DETECTED), whereas leaving the tree with three errors is worse. But keeping admits means keeping cheating in the codebase. The most honest state for a BLOCKED outcome is probably to restore the admits so the repo at least compiles and runs, even if it's flagged as cheating.
+[RESULT ✓] bash: === admits in 55b6ab858 ===
+3
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git checkout 55b6ab858 -- src/kernel/src/mm/virt/identity_map.rs && grep -n
+[RESULT ✓] bash: 534:    proof! { admit(); }
+632:    proof! { admit(); }
+719:    proof! { admit(); }
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Restored the verifying baseline. I have now independently verified the fixer's blocker claim through reproduction and structural analysis. Let me write the turn-2 adjudication and the STOP file.
+[TOOL] report_intent: Writing turn 2 adjudication
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue/turn_002_driver.md
+
+[THINKING] I'm stepping back to reconsider the strict reviewer mandate more carefully. I've verified that the three admits produce real errors when removed, and I'm examining the preconditions around the bound—it's provable in the architecture through pd_index, but it doesn't propagate into ensure_pt and ensure_pte since they take TableIndex parameters without requires clauses, so fixing this would require adding a requires annotation or restructuring how those functions receive their bounds.
+
+The alloc_as precondition needs `bump_view(self).inv()` for the static PAGE_TABLE_ALLOCATOR, but that's uninterpreted with no axiom, so it's deferred to the proving phase. The postconditions at lines 618 and 706 are logically unsatisfiable for the fixed uninterpreted `identity_map_view()` function—there's no way to use `old()` since it's a free function without mutable references, and `write` has no contents ensures clause, which is sound. Both the fixer's approach and my own structural analysis confirm this.
+
+Every path to zero admits requires cross-module ghost-token infrastructure that's explicitly out of scope—changing module statics, threading Tracked tokens through callers, or adding permission tokens to arch::Table::write. This matches the codebase's convention where specification phases leave admits and proving phases discharge them, just like the sibling functions in mm::phys::* and frame.rs do. I'm confident this is genuinely blocked, and I'll document this as BLOCKED in turn_002_driver.md.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue/turn_002_driver.md with 6165 characters
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel 2>&1 | grep -E "Exit code|cheating:|status:"
+
+[THINKING] I need to create a STOP file marked as BLOCKED, then run a kernel verification to ensure everything exits cleanly and the repository is in a proper state before finalizing.
