@@ -1231,3 +1231,57 @@ Since the comment explicitly states "representable frame address," strengthening
 Turn 88
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+[RESULT ✓] bash: === Summary ===
+  verification: 53 verified, 1 errors (exit 101)
+  cheating: assume=0 external_body=19 admit=18 trusted=0 no_decreases=0 cfg_gate=15
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-43-...
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error:\
+[RESULT ✓] bash: 30:error: assertion failed
+31:   --> src/kernel/src/mm/phys/frame.rs:195:28
+37:   --> src/kernel/src/mm/phys/frame.proof.rs:295:9
+43:   --> src/kernel/src/mm/phys/frame.proof.rs:295:31
+49:   --> src/kernel/src/mm/phys/frame.proof.rs:303:9
+55:   --> src/kernel/src/mm/phys/frame.proof.rs:304:21
+61:   ...
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+The strengthened invariant alone isn't enough — `alloc` needs to *invoke* the bound from `old(self)`'s invariant. Let me add that derivation right where `idx` becomes known.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm stuck on the assertion at line 195 — the strengthened invariant requires `i <= spec_max` for all `i < num_bits`, which should give me `idx <= spec_max` since `idx < pre_nb`. But the problem is that `self` has already been modified by the time we reach that assertion, so I need to verify the invariant holds with the mutated state including the bitmap allocation and refcount changes.
+
+The key insight is that I should use `old(self)` to reference the precondition invariant — since `old(self).inv()` holds at function entry and gives me `old(self).internal_inv()`, I can extract the clause about `spec_max` from there. The challenge is that `internal_inv` is a closed spec function, so I need to figure out how to unfold it or reference its clauses within the proof context to establish that `idx <= spec_max_frame_number()`. Adding assertion hints...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to update the None arm assertion around line 195 by ensuring the idx <= spec_max constraint carries through the proof, so the `assert(false)` statement has the necessary context to work properly.
+[RESULT ✓] view: 186.         debug_assert_eq!(self.refcount[frame_number], 0);
+187.         self.refcount[frame_number] = 1;
+188.         proof! {
+189.             assert(spec_refcount_seq(self) == pre_rc.update(idx, 1u8));
+190.         }
+191.         let frame_number: FrameNumber = match FrameNumber::from_raw_valu...
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8

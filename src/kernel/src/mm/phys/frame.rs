@@ -177,6 +177,9 @@ impl Inner {
             assert(self.bitmap@.set_bits == pre_sb.insert(idx));
             assert(self.bitmap@.num_bits == pre_nb);
             assert(spec_refcount_seq(self) == pre_rc);
+            // Representability: the old invariant bounds every in-range frame index by `spec_max`.
+            assert(old(self).internal_inv());
+            assert(idx <= spec_max_frame_number());
         }
         // Newly allocated frames have a single owner.
         #[cfg(not(verus_keep_ghost))]
@@ -189,9 +192,9 @@ impl Inner {
             Some(frame_number) => frame_number,
             None => {
                 proof! {
-                    // `None` would require `idx > spec_max`, but every bitmap-managed frame is
-                    // representable: `frame_addr_of(idx) <= usize::MAX` (internal_inv) bounds the
-                    // index. This arm is therefore unreachable.
+                    // `None` would require `idx > spec_max`, but the allocator invariant bounds
+                    // every in-range frame index by `spec_max` (representability). Unreachable.
+                    assert(old(self).internal_inv());
                     assert(idx <= spec_max_frame_number());
                     assert(false);
                 }
