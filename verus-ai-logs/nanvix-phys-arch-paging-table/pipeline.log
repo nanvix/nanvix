@@ -115,3 +115,4 @@ Phases: proving → cheating-elimination + final-review
 PHASE: proving
 Module: arch-paging-table
 ============================================================
+[2026-06-15 02:14:24] [STRIP-EXT] removed 2 external_body attribute(s) from /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs

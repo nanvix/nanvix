@@ -199,7 +199,6 @@ impl<E: TableEntry> Table<E> {
     // `bump_allocator::alloc` / `frame::instance` int-to-pointer materialization boundaries.
     // The `ensures` pins the (trusted) result to the global page-table memory ghost, exactly as
     // `frame::instance` pins its result to `phys_view()` — no exec signature change.
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             index@ < crate::mem::PAGE_TABLE_LENGTH,
@@ -238,7 +237,6 @@ impl<E: TableEntry> Table<E> {
     // `v -> v'` in `identity_map.spec.rs` (a global accessor whose cross-call transition is
     // realized later by a ghost token, "not a verification escape"). Only the sound `requires`
     // (in-range index, auto from `TableIndex::inv`) is kept here.
-    #[verus_verify(external_body)]
     #[verus_spec(
         requires
             index@ < crate::mem::PAGE_TABLE_LENGTH,
