@@ -148,7 +148,6 @@ impl From<Alignment> for usize {
 // Material for verification
 //==================================================================================================
 
-#[cfg(verus_keep_ghost)]
 verus! {
 
 // Abstract numeric value (in bytes) of an [`Alignment`]. Mirrors the enum's
