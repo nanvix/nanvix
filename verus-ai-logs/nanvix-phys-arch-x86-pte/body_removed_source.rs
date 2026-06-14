@@ -41,6 +41,7 @@ use crate::{
 ///
 /// A type that represents flags of a page table entry.
 ///
+#[verus_verify]
 #[derive(Clone, Copy, Debug)]
 pub struct PageTableEntryFlags {
     /// Present flag.
@@ -81,6 +82,19 @@ impl PageTableEntryFlags {
     ///
     /// A new [`PageTableEntryFlags`] with the given flags.
     ///
+    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+    #[verus_spec(result =>
+        ensures
+            result@ == spec_pte_flags_new(
+                present,
+                read_write,
+                user_supervisor,
+                page_write_through,
+                page_cache_disable,
+                accessed,
+                dirty,
+            ),
+    )]
     pub fn new(
         present: PresentFlag,
         read_write: ReadWriteFlag,
@@ -127,6 +141,9 @@ impl PageTableEntryFlags {
     /// `true` if the present flag is set, `false` otherwise.
     ///
     #[inline(always)]
+    #[verus_spec(result =>
+        ensures result == self@.present,
+    )]
     pub fn is_present(&self) -> bool { ... }
 
     ///
@@ -211,6 +228,7 @@ impl PageTableEntryFlags {
 ///
 /// A type that represents a page table entry.
 ///
+#[verus_verify]
 #[derive(Debug, Clone, Copy)]
 pub struct PageTableEntry {
     /// Flags.
@@ -237,6 +255,12 @@ impl PageTableEntry {
     ///
     /// A [`PageTableEntry`].
     ///
+    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+    #[verus_spec(result =>
+        ensures
+            result@ == spec_pte_new(flags@, frame@),
+            result.inv(),
+    )]
     pub fn new(flags: PageTableEntryFlags, frame: FrameNumber) -> Self { ... }
 
     ///
@@ -309,6 +333,9 @@ impl PageTableEntry {
     /// `true`: If the target page table entry is marked as present.
     /// `false`: Otherwise.
     ///
+    #[verus_spec(result =>
+        ensures result == self@.flags.present,
+    )]
     pub fn is_present(&self) -> bool { ... }
 
     ///
