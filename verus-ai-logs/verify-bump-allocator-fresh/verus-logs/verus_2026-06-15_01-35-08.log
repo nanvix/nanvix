@@ -1,0 +1,21 @@
+Timestamp: 2026-06-15_01-35-08
+Mode: cargo
+Crate: bump-allocator
+Directory: N/A
+Module: <all>
+Exit code: 1
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=2
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+The Verus-relevant command-line argument --target-dir can't follow the Verus-irrelevant argument --target because that will cause the Verus-relevant argument to be ignored. To fix this, place Verus-relevant cargo options (like --package, --features, --manifest-path) before any Verus-irrelevant ones.
+Args forwarded to Cargo must precede args forwarded to Verus
+Error: Args forwarded to Cargo must precede args forwarded to Verus

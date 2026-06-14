@@ -1,0 +1,4 @@
+# Unverified exec functions: 3/6
+  fmt
+  new
+  default

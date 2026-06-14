@@ -1020,3 +1020,128 @@ Let me force a fresh (non-cached) verification to confirm the genuine verified/0
 ────────────────────────────────────────────────────────────
 Turn 18
 ────────────────────────────────────────────────────────────
+[RESULT ✓] bash: verification results:: 10 verified, 0 errors
+  10 verified
+  0 errors
+  Exit code : 0
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  Unverified function list written to: verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt
+  verification: 10 veri...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Fresh run confirms **10 verified, 0 errors, exit 0**. Now the AST consistency check on the `// VERUS REWRITE` in `align_up`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git -C . log --oneline -5 2>/dev/null; echo "=== status ==="; git status --short src/libs/b
+[RESULT ✓] bash: bc4f04fdb [verus] verify PASS (cheating detected): bump-allocator::all (10 verified, 0 errors, external_body=2)
+44d23cc8a [verus] verify PASS (cheating detected): bump-allocator::all (cached (no recompilation), —, external_body=2)
+6a77dadeb [verus] verify PASS (cheating detected): bump-allocator::al...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+I need the original (pre-verification) `align_up` to assess the rewrite. Let me find the base commit.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -- src/libs/bump_allocator/src/lib.rs | tail -8; echo "=== first verus co
+[RESULT ✓] bash: 47ee6ef23 [verus] verify PASS (cheating detected): bump-allocator::all (10 verified, 0 errors, external_body=2)
+25bf2932a [verus] verify PASS (cheating detected): bump-allocator::all (6 verified, 0 errors, external_body=2)
+94acf2566 [verus-ai] proving strip-external-body: bump-allocator (2)
+20881db5...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-claude, agent_type: general-purpose, status: running, description: Independent final review (claude), elapsed: 207s, total_turns: 0, model: claude-opus-4.8, current_intent: "Running verification and guardrail counts", tool_calls_completed: ...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Both review agents are running. I'll wait for their completion notifications before consolidating.
+[TOOL] read_agent: {'agent_id': 'review-codex', 'timeout': 120, 'wait': True}
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== parent of first verus commit c6f37acae ==="; git log --oneline -1 c6f37acae^ -- s
+[RESULT ✓] bash: === parent of first verus commit c6f37acae ===
+e79991a92 update bump allocator
+=== original align_up body ===
+pub const fn align_up(value: usize, alignment: usize) -> Option<usize> {
+    if alignment == 0 {
+        return None;
+    }
+    value.div_ceil(alignment).checked_mul(alignment)
+}
+<shellId: 3...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+The original used `value.div_ceil(alignment).checked_mul(alignment)`. Let me run the AST tool, verify the `div_ceil` no-spec claim in vstd, and confirm the reproducer exists.
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref c6f37acae^ 
+[TOOL] bash: VSTD=$(find /home/ruize/toolchain/verus -type d -name vstd 2>/dev/null | head -1); echo "vstd=$VSTD"; echo "=== div_ceil
+[RESULT ✓] bash: vstd=/home/ruize/toolchain/verus/vstd
+=== div_ceil in vstd ===
+=== reproducer file ===
+-rw-rw-r-- 1 ruize ruize 1719 Jun 15 01:26 /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/repro/div_ceil_no_spec.rs
+<shellId: 34 completed with exit code 0>
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+BackendA::as_mut_ptr                     MATCH                                
+BackendB::as_mut_ptr                     MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] rg: verify-bump-allocator|VERUS_EXTRA_CARGO_ARGS|verify.sh
+[RESULT ✓] rg: /home/ruize/nanvix-phy/Makefile:325:export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+/home/ruize/nanvix-phy/Makefile:620:	VERUS_EXTRA_CARGO_ARGS="--locked $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)" \
+/home/ruize/nanvix-phy/Makefile:628:	VERUS_EXTRA_CARGO_ARGS="--locked --features micr...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/Makefile
+[RESULT ✓] view: 580. 	@echo "  PROFILER        yes, no"
+581. 	@echo "  MAKE_NO_PRINT   yes, no"
+582. 
+583. # Verifies all Verus-annotated crates.
+584. .PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585. verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+586. 
+587. # Ensures the correct Verus version is...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref c6f37acae^ 
+[TOOL] bash: cat /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/repro/div_ceil_no_spec.rs
+[RESULT ✓] bash: // Minimal reproducer for the `align_up` exec rewrite in
+// `src/libs/bump_allocator/src/lib.rs`.
+//
+// This is the ORIGINAL `align_up` body, which uses the `usize::div_ceil`
+// intrinsic. Verus ships no specification for `div_ceil`, so the function
+// cannot be verified as written — which is why th...
+[RESULT ✓] bash: ## align_up (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -2,5 +2,23 @@
+     if alignment == 0 {
+         return None;
+     }
+-    value.div_ceil(alignment).checked_mul(alignment)
++    // VERUS REWRITE: the original body was
++    //   `value.div_ceil(alignment).checked_mul(alignment)`.
++    // Veru...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Forcing fresh verification
+[TOOL] bash: cd /home/ruize/nanvix-phy && RUSTFLAGS='-C relocation-model=static -C prefer-dynamic=no' PATH='/home/ruize/toolchain/ver
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: /home/ruize/nanvix-phy/scripts/verify.sh: line 106: date: command not found
+<shellId: 37 completed with exit code 127>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && RUSTFLAGS='-C relocation-model=static -C prefer-dynamic=no' PATH="/home/ruize/toolchain/ver
