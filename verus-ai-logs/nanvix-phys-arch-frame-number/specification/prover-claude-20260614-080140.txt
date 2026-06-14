@@ -2444,3 +2444,116 @@ Turn 151
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | grep -E "verification: 
 
 [THINKING] I need to check the verified and error counts for each crate to confirm everything is clean.
+[RESULT ✓] bash: verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recom...
+
+────────────────────────────────────────────────────────────
+Turn 152
+────────────────────────────────────────────────────────────
+All crates pass with exit 0 (cached). `arch` is **CLEAN**; the other `CHEATING_DETECTED` statuses are pre-existing baselines (documented admits/external_body from earlier proving phases). My kernel edits *removed* a placeholder `external_type_specification` (ExFrameNumber, which was `external_body`), so I didn't increase any counts. Let me confirm via git diff that changes are clean, then run `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager diff --stat
+
+[THINKING] All the crates are verifying cleanly with zero errors, and the CHEATING_DETECTED statuses I'm seeing for bitmap, sys, nanvix-slab, bump-allocator, and kernel are pre-existing from their proving phases with documented admits and external bodies. The arch crate is clean. Now I need to verify that my kernel changes didn't increase the baseline cheating counts.
+
+I moved an external type specification that had an external_body annotation and two assume specifications, plus changed two uninterpreted functions to open—this should actually decrease the external_body count, not increase it. Let me check the git diff to confirm the kernel changes are only the supersession with no accidental modifications and that the baseline metrics haven't gotten worse.
+[RESULT ✓] bash: .../prover-claude-20260614-080140.jsonl            | 28 ++++++++++++++++++++++
+ .../prover-claude-20260614-080140.txt              | 16 +++++++++++++
+ 2 files changed, 44 insertions(+)
+<shellId: 97 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 153
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager status | head -40
+
+[THINKING] I'm noticing that git diff --stat is only showing log files, which means my source changes might not be tracked properly—they could be in already-committed files, untracked, or just not showing up in the diff. Let me run git status to see what's actually going on.
+[RESULT ✓] bash: On branch verus-ai/arch-frame-number
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   verus-ai-logs/nanvix-phys-arch-frame-number/specification/prover-claude-20260614-08014...
+
+────────────────────────────────────────────────────────────
+Turn 154
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager log --oneline -8 && echo "=== diff HEAD for my source files ===" && git --no
+
+[THINKING] I'm realizing that only the log files changed, which means my source code edits from this session might have already been committed in an earlier step, or the pipeline auto-commits between stages. Let me check the git history and diff to see what's actually staged versus what I've modified with my recent changes to the constants and spec file.
+[RESULT ✓] bash: 954e5d8cd [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=28 external_body=11 cfg_gate=15)
+ae535f91f [verus] verify PASS: arch::all (cached (no recompilation), —)
+b426cdf0e [verus] verify PASS (cheating detected): bump-allocator::all (cached (no recompilatio...
+
+────────────────────────────────────────────────────────────
+Turn 155
+────────────────────────────────────────────────────────────
+The verify pipeline auto-commits each step. Working tree is clean (only tooling log artifacts remain). Baseline kernel cheating (admit=28, external_body=11, cfg_gate=15) is **unchanged** from before my edits (commit 0aae63127 → 954e5d8cd), confirming no regression. Now verify the normal `make build` (dual compilation).
+[TOOL] sql: {'description': 'Update progress', 'query': "UPDATE work SET status='done' WHERE
+
+[THINKING] The verify.sh pipeline auto-commits after each step, so my source changes are already committed with messages like "verify PASS: arch::all". The working tree is clean except for prover log artifacts. The baseline kernel had admit=28, external_body=11, and cfg_gate=15, and commit 954e5d8cd shows my new kernel verification results starting with S
+
+—actually the same counts: admit=28, external_body=11, cfg_gate=15. Even though I removed an ExFrameNumber external_body, the count didn't increase, which suggests either that particular struct wasn't being counted or the metric is computed differently. Either way, no regression. Both arch and kernel verify cleanly with zero errors and no new cheating introduced. Now I need to test the dual compilation with make build to ensure the non-verus build still works.
+[RESULT ✓] sql: 3 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 156
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- all 2>&1 | tail -30
+[RESULT ✓] bash: mkimage: wrote '/home/ruize/nanvix-phy/bin/hello-rust-nostd.initrd' (28049408 bytes, 4 entries)
+/home/ruize/nanvix-phy/bin/mkimage.elf -o /home/ruize/nanvix-phy/bin/vfs-bench-nostd.initrd \
+	/home/ruize/nanvix-phy/bin/procd.elf\;procd \
+	/home/ruize/nanvix-phy/bin/memd.elf\;memd \
+	/home/ruize/nanvi...
+
+────────────────────────────────────────────────────────────
+Turn 157
+────────────────────────────────────────────────────────────
+`make build` succeeds — dual compilation works. Let me try to eliminate the cosmetic "already marked external" warning for cleanliness.
+[TOOL] bash: cd /tmp
+# Try #[verifier::external] instead of #[verus_verify(external)]
+sed 's/    #\[verus_verify(external)\]/    #[ve
+
+[THINKING] The dual build succeeded with no issues, so my architectural changes don't break the standard compilation path. Now I'm checking whether the external attribute on MAX is causing any warnings that I should clean up.
+
+The warning about the attribute being redundant only appears during the verus verification phase, not the normal build, so it's cosmetic. I'm reconsidering whether `#[verus_verify(external)]` is actually necessary — earlier attempts without it triggered a duplicate error, suggesting the attribute is doing real work despite the warning. The mechanism is subtle: `assume_specification` marks it external, but without the explicit attribute, verus tries to verify MAX before that takes effect. The attribute resolves this cleanly, even if it leaves a cosmetic warning.
+
+I'm wondering if switching to `#[verifier::external]` instead would eliminate the warning, but I should first check whether this warning is actually a blocker for the task's success criteria.
+[RESULT ✓] bash: === verifier::external ===
+  --> vtF.rs:26:5
+   |
+26 |     pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+verification results:: 4 verified, 0 errors
+warning: 1 warning emitted
+
+=== try: no attr but MAX outside ...
+
+────────────────────────────────────────────────────────────
+Turn 158
+────────────────────────────────────────────────────────────
+Moving `MAX` to a separate plain (non-`#[verus_verify]`) impl eliminates the warning cleanly. Let me restructure number.rs.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+
+[THINKING] Moving MAX to a plain impl block without the `#[verus_verify]` attribute eliminates the warning—it gets verified cleanly without auto-verification interference. The solution is to extract MAX into its own separate impl block outside the verus_verify context.
+[RESULT ✓] view: 30. //==================================================================================================
+31. // Implementations
+32. //==================================================================================================
+33. 
+34. #[verus_verify]
+35. impl FrameNumber {
+36.     /// The max...
+
+────────────────────────────────────────────────────────────
+Turn 159
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 160
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | grep -E "warning|v

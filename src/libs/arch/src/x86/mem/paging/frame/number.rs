@@ -31,12 +31,16 @@ pub struct FrameNumber(usize);
 // Implementations
 //==================================================================================================
 
-#[verus_verify]
+// `MAX` is kept in a plain (non-`#[verus_verify]`) impl so Verus treats it as external: its value
+// bottoms out at the build-time page-size constants, and its abstract value is supplied by the
+// `assume_specification[FrameNumber::MAX]` in `number.spec.rs`.
 impl FrameNumber {
     /// The maximum frame number.
-    #[verus_verify(external)]
     pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+}
 
+#[verus_verify]
+impl FrameNumber {
     #[verus_spec(ensures Self::NULL@ == 0)]
     pub const NULL: Self = Self(0);
 
