@@ -905,3 +905,54 @@ Turn 67
 Turn 68
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+[RESULT ✓] bash: === Summary ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  cheating: assume=0 external_body=19 admit=18 trusted=0 no_decreases=0 cfg_gate=15
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/...
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error\[
+[RESULT ✓] bash: 20:error[E0603]: module `types` is private
+35:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "mod types\|pub use.*types\|pub mod types" src/kernel/src/hal/mem/mod.rs | h
+[RESULT ✓] bash: 8:mod types;
+14:pub use self::types::{
+===
+<shellId: 27 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/mod.rs
+[RESULT ✓] view: 14. pub use self::types::{
+15.     access::*,
+16.     address::*,
+17.     region::*,
+18. };
+19. 
+20. //==================================================================================================
+21. // Standalone Functions
+22. //================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I see that `spec_max_frame_number` should be accessible through the re-exported path `crate::hal::mem::spec_max_frame_number` since the address module is publicly re-exported into mem. The existing import pattern with `spec_page_size` confirms this works, as it's defined in the same frame.rs layer and is already being used successfully.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
