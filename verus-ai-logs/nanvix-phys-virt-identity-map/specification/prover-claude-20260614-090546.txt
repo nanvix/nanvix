@@ -764,3 +764,19 @@ Now let me run the module verification. First check the verify-kernel target syn
 Turn 42
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -50
+[RESULT ✓] bash: | |_____________^
+    |
+   ::: src/kernel/src/mm/virt/identity_map.rs:617:9
+    |
+617 |           error!("ensure_pte(): {reason}");
+    |           -------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+Compilation error. Let me see the full error messages.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -nE "error\[|error:
+
+[THINKING] I'm seeing a compilation error with the `error!` macro and `write` function around line 617, and there are a couple other issues too. Let me check the actual error messages at the top to understand what's going wrong.
