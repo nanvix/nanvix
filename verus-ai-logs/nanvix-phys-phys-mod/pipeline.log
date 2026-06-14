@@ -135,3 +135,4 @@ No in-scope admit/assume/trusted. The `phys_view()` axiom set was hand-checked s
 PHASE: proving
 Module: phys-mod
 ============================================================
+[2026-06-15 02:36:51] [STRIP-EXT] removed 2 external_body attribute(s) from /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
