@@ -753,7 +753,7 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
     // The post-state membership fact is over the fixed uninterpreted
     // `phys_view()`; tying it to the mutation of `instance()` is a proving-phase
     // obligation deferred here.
-    proof {
+    proof! {
         admit();
     }
     instance().alloc()
@@ -794,7 +794,7 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
         },
 )]
 pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
-    proof {
+    proof! {
         admit();
     }
     instance().alloc_contiguous(count)
@@ -823,7 +823,7 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
         result as int == phys_view().frames.free_frames.len(),
 )]
 pub(super) fn free_count() -> usize {
-    proof {
+    proof! {
         admit();
     }
     let inner = instance();
@@ -847,7 +847,7 @@ pub(super) fn free_count() -> usize {
     no_unwind
 )]
 pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
-    proof {
+    proof! {
         admit();
     }
     instance().free(frame)
@@ -892,7 +892,7 @@ pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
         },
 )]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
-    proof {
+    proof! {
         admit();
     }
     instance().book(phys_addr)
@@ -916,7 +916,7 @@ pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error>
         },
 )]
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
-    proof {
+    proof! {
         admit();
     }
     instance().alloc_range(region)
@@ -943,7 +943,7 @@ pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Re
         },
 )]
 pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
-    proof {
+    proof! {
         admit();
     }
     instance().share(frame)

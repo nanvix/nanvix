@@ -773,3 +773,89 @@ Turn 42
 ────────────────────────────────────────────────────────────
 Now run verification to see how the shims (especially the clean `is_covered`/`refcount`) fare:
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | grep -vE "
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+=== Verus Verification (cargo mode) ===
+  Crate     : kernel
+  Module    : mm::phys
+  Source dir : /home/ruize/nanvix-phy/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_b...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+The shims use `#[verus_spec]` attribute mode (outside `verus!{}`), where `proof { }` isn't valid syntax. Let me check how this codebase writes proof blocks in attribute-mode functions:
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "proof_decl\|proof!\|proof_with\|broadcast use\|proof {" src/kernel/src/mm/phys/*.
+
+[THINKING] The issue is that these shim functions use the `#[verus_spec]` attribute on regular Rust functions outside the `verus!` macro, so the Rust parser interprets `proof { }` as a struct literal rather than a Verus proof block, making `proof { admit(); }` syntax invalid in this context.
+
+I should either mark these functions as `external_body` since they're trust boundaries anyway and can't easily host proof blocks in attribute mode, or look at how the codebase handles proof blocks within attribute-style functions to use the correct syntax.
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs:756:    proof {
+src/kernel/src/mm/phys/frame.rs:797:    proof {
+src/kernel/src/mm/phys/frame.rs:826:    proof {
+src/kernel/src/mm/phys/frame.rs:850:    proof {
+src/kernel/src/mm/phys/frame.rs:895:    proof {
+src/kernel/src/mm/phys/frame.rs:919:    proof {
+src/kernel/s...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] view: 91.     pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
+92.         // Ensure the frame is identity-mapped in the kernel address space so that
+93.         // Deref/DerefMut can safely access it. This lazily installs a page
+94.         // table entry if needed (page tables come from a ...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "proof!\s*{\|proof_decl\|proof_with\|exec_proof" src/ 2>/dev/null | head; echo "==
+
+[THINKING] I need to search the codebase to understand how proof blocks are written in attribute-mode functions, since `kframe::new` doesn't use them. I'm looking for patterns like `proof_decl!`, the verus_proof macro, or inline proof syntax to see if the codebase even uses proof blocks in attribute mode, and it seems the verus crate provides a `proof_with!` macro for this purpose.
+
+The simplest approach might be to convert those seven shims back to `external_body` instead of trying to use inline `admit` — they're genuine trust boundaries anyway since we can't prove against a fixed phys_view. This avoids the proof-block syntax issue entirely and is well-justified architecturally. The pre-strip state had them as `external_body` and it passed, so this matches the established design. I should document all of them in tcb-allowed.md, though this does increase the external_body count.
+[RESULT ✓] bash: src/libs/bitmap/src/lib.rs:116:        proof! {
+src/libs/bitmap/src/lib.rs:128:        proof! {
+src/libs/bitmap/src/lib.rs:187:        proof! {
+src/libs/bitmap/src/lib.rs:271:        proof! {
+src/libs/bitmap/src/lib.rs:333:            proof! {
+src/libs/bitmap/src/lib.rs:344:            proof! {
+src/...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+The correct attribute-mode syntax is `proof! { ... }`. Let me fix all seven:
+[TOOL] bash: cd /home/ruize/nanvix-phy && perl -0pi -e 's/    proof \{\n        admit\(\);\n    \}/    proof! {\n        admit();\n  
+[RESULT ✓] bash: 756:    proof! {
+797:    proof! {
+826:    proof! {
+850:    proof! {
+895:    proof! {
+919:    proof! {
+946:    proof! {
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nB3 "proof! {" src/kernel/src/mm/phys/frame.rs | grep -E "fn |proof!"
+
+[THINKING] I'm noticing a discrepancy in my line numbers — the grep output shows proof! appearing at different lines than where I thought I added them. Let me double-check which functions actually have the admit statement and verify the exact locations, particularly around line 850 where I need to confirm whether that's is_covered or book.
+[RESULT ✓] bash: 756:    proof! {
+796-pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
+797:    proof! {
+825-pub(super) fn free_count() -> usize {
+826:    proof! {
+849-pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+850:    proof! {
+894-pub(super) fn book(phys_addr: PageAli...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+Seven shims have `admit`; `is_covered` and `refcount` are clean. Re-running verification:
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | grep -vE "
+
+[THINKING] I'm seeing that seven functions are passing verification with clean state for the coverage and reference count tracking, so let me run through the checks again to confirm everything's working correctly.
