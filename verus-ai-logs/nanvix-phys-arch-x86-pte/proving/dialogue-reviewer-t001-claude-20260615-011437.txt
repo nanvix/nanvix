@@ -118,3 +118,191 @@ Turn 0
 6. //=========================================================================================...
 [RESULT ✓] view: 1. verus! { } // verus!
 2. 
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Investigating cheating patterns
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+[THINKING] The verification passes but the cheating check is flagging external_body=3 and cfg_gate=4, which suggests there are external dependencies or configuration issues at the crate level for the arch module. I need to examine the cheating detail file to understand the scope and identify where these references are coming from.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== admit ===" && grep -rn "admit(" src/libs/arch/src/x86/mem/paging/
+
+[THINKING] I'm looking at which items in the checklist actually belong to the pte module versus sibling files like mod.rs and table.rs. The external_body violations are scattered across those other files, not in pte.rs itself, so I need to figure out if they're actually in scope for this pte-specific checklist.
+[RESULT ✓] bash: === admit ===
+=== external_body ===
+=== assume ===
+=== cfg ===
+src/libs/arch/src/x86/mem/paging/pte.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/pte.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/pte.rs:85:    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_m...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== cfg_gate detail (search logs) ===" && find verus-ai-logs/verify-a
+
+[THINKING] Looking at the cfg occurrences in the pte module, I see that the include! macros on lines 9 and 11 use `#[cfg(verus_keep_ghost)]` as part of the standard include pattern for spec and proof files, while lines 85 and 307 have `#[cfg_attr(verus_keep_ghost, allow(...))]` which are just attribute configurations rather than actual cfg-gating of code.
+
+The external_body and cfg_gate counts from the crate-wide check are outside the pte module scope. Now I'm realizing the task description has unsubstituted placeholders like `{spec_drift_cmd}`, `{tcb_allowed_file}`, and `{verus_cmd}` that need to be resolved by finding the actual skill files and TCB allowed file.
+[RESULT ✓] bash: === cfg_gate detail (search logs) ===
+verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+---
+cheating-detail.txt
+coverage-unverified.txt
+verus_2026-06-14_08-09-50.log
+verus_2026-06-14_08-10-07.log
+verus_2026-06-14_08-13-23.log
+verus_...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== tcb-allowed.md ===" && cat verus-ai-logs/tcb-allowed.md; echo; ec
+[RESULT ✓] bash: === tcb-allowed.md ===
+# TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<Inner>` single...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "cfg_gate\|cfg_gated\|cfg(" scripts/verify.sh 2>/dev/null | head; e
+
+[THINKING] The external_body count of 3 comes from invlpg, table::read, and table::write in the sibling modules, while pte.rs itself has none. Now I need to track down where cfg_gate=4 is coming from since the cheating check reports it but the detail file doesn't show the specific locations like it did for external_body.
+
+Looking at pte.rs, the cfg occurrences are the `#[cfg(verus_keep_ghost)] include!(...)` lines that gate the spec and proof includes—these are standard patterns that don't gate any executable code branches or expressions. The cfg_attr lines are just annotations, not exec code either. So pte should pass the checklist requirement about no cfg-gated exec code.
+
+I need to find all 4 cfg_gate locations across the crate to understand what's being counted and verify none of them are actually gating executable code in pte.
+[RESULT ✓] bash: 478:count_cfg_gates() {
+486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATING_DIR")" || MOD_CFG_GATE=0
+584:        echo "  Global:...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 -c "
+import re
+from pathlib import Path
+src_dir = Path('src/libs/ar
+
+[THINKING] I'm looking at how the cfg_gate counter handles various macro invocations and attributes. The `include!` macros on lines 9 and 11 get skipped, while lines 85 and 307 contain `cfg_attr` directives with `allow` targets. On line 85 specifically, there's a `cfg_attr` that applies `allow(unused, verus_impl_method_marker)` to the `pub fn new` function that follows it.
+
+When I trace through the logic, line 86 starts another attribute `#[verus_spec(result =>` which gets skipped since it begins with `#[`, but line 87 contains `ensures` which doesn't match the skip patterns and isn't a log macro, so it counts as a target. This means both lines 85 and 307 contribute to the cfg_gate count, giving us 4 total across the file.
+
+However, these are `cfg_attr` directives applying lint suppressions, not actual cfg-gated executable code like branches or match arms.  The function bodies remain identical regardless of configuration — this is just the standard verus pattern for marking constructor methods. So while the counter flags these as cfg_gate hits, they don't represent the kind of divergent execution behavior the checklist is actually concerned with. I should verify the other two cfg_gate locations outside pte are similarly benign, then note that the count includes these heuristic false positives.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/pde.rs:83: #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method -> target: ensures
+src/libs/arch/src/x86/mem/paging/pde.rs:307: #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method -> target: ensures
+src/libs/arch/src/x86/mem/paging/pte.rs:85: #[cfg_a...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -5 -- src/libs/arch/src/x86/mem/paging/pte.rs; echo "=== 
+
+[THINKING] All four cfg_gate hits are lint-allow attributes for verus constructor methods with `ensures` clauses—two in pde.rs and two in pte.rs—not actual cfg-gated executable code. The body remains identical across both configurations, which is the standard pattern for this use case.
+
+The cfg_gate checklist passes for pte since the only cfg uses are the include! directives for spec and proof code, plus these lint-allow attributes. No branches, expressions, or match arms are cfg-gated.
+
+Now I need to check the remaining items, starting with the spec drift verification. I'm looking for how to compare the current specs against a baseline to ensure they haven't been weakened. Let me check git history and diffs for the pte files to see what the original specs were.
+[RESULT ✓] bash: 8f7db3a50 [verus] verify FAIL: arch::all (0 verified, compilation/setup error (verus did not run))
+e86feeddb [verus-ai] caller-analysis START: arch-x86-pte
+61b47c783 [arch] E: Add copy-on-write flag to PTEs
+edc66554b [arch] E: TableEntry impl for PageTableEntry
+371b67ead [arch] E: Replace bare u32 w...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== current HEAD ==="; git log --oneline -1; echo "=== diff exec pte.
+
+[THINKING] I need to verify that the specs haven't weakened the original guarantees from the exec code by comparing the pre-speccing version of pte.rs with the current version. Since this is bottom-up speccing, I'm checking that the exec functions still maintain their original contracts and behavior.
+
+Let me find the right commit to diff against—I'll look at the last architecture commit (61b47c783 which added the cow flag) and compare pte.rs from then to HEAD to see what specs were added.
+[RESULT ✓] bash: === current HEAD ===
+d645d8847 [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, external_body=3 cfg_gate=4)
+=== diff exec pte.rs from 61b47c783 (last arch commit) to HEAD ===
+diff --git a/src/libs/arch/src/x86/mem/paging/pte.rs b/src/libs/arch/src/x86/mem/paging/pte....
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== warnings/errors in latest log ==="; grep -in "warning\|error" ver
+
+[THINKING] The changes are purely additive—I've imported the necessary Verus modules, added verification attributes and contracts, and included a ghost-only proof block in the constructor that has no effect on the actual execution logic. The core executable code remains unchanged.
+
+The specs I added are strong and faithful: `new` ensures the full result matches the spec function, and `is_present` guarantees exact equality. Since these are newly added specs rather than replacements, there's nothing to weaken. The functions without contracts (like `is_user`, `is_writable`, etc.) were never specced in the first place, so that's not a weakening either—it's just incomplete coverage, which is acceptable for the proving phase.
+
+Now I need to verify the build passes with zero errors and zero warnings.
+[RESULT ✓] bash: === warnings/errors in latest log ===
+=== verification result line ===
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== full latest log ==="; cat verus-ai-logs/verify-arch/verus-logs/ve
+[RESULT ✓] bash: === full latest log ===
+Timestamp: 2026-06-15_01-14-45
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=4
+
+--- Full output ---
+note: verifying module x86::m...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/libs/arch/src/x86/mem/paging/pte.rs && make verify-arch 2>&1 | gr
+
+[THINKING] The cached result shows the pte module verification completed with exit 0, but I need to run a clean build to see the full verification summary with the actual count of verified functions and confirm there are no warnings. Let me check the verify script to see how to force a non-cached run.
