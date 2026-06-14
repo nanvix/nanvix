@@ -241,3 +241,18 @@ Now running the required `make verify-kernel` and `make build`:
 But I'm realizing this partial fix wouldn't actually solve the core problem — the reviewer's bar is admit=0, and the remaining unsound steps can't be soundly converted. The real issue is that the manager module's specification itself has a flaw that's out of scope for this phase; it's a frame layer problem that I've already documented in verification_todo.md with reproducers showing the exact unsoundness. Given that the task explicitly anticipates genuinely-stuck admits and expects me to hand them off honestly, and I now have the evidence backing that decision, NEEDS_GUIDANCE is the correct result.
 
 The key contribution here is that I can now prove with isolated Verus reproducers that the lemmas are unprovable from their in-scope hypotheses, and that converting them to external_body axioms would be provably unsound for three of the four cases — so the fallback isn't just difficult, it's unsafe. This directly answers what the reviewer asked me to demonstrate. Now I'll run the build and verification checks for the record, then write the response.
+[RESULT ✓] bash: note: verifying module mm::phys::manager
+    ⚠️  admit: 12
+    - frame.rs:136 alloc: admit
+    - frame.rs:213 alloc_contiguous: admit
+    - frame.rs:298 free: admit
+    - frame.rs:379 share: admit
+    - frame.rs:442 refcount: admit
+    - frame.rs:497 book: admit
+    - frame.rs:535 is_covered: admit
+...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "^  [0-9]+ verified|er
