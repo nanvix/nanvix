@@ -182,3 +182,216 @@ Now let me run the verification and scan for cheating markers.
 === src/kernel/src/hal/mem/types/address/aligned/page.proof.rs ===
   (no markers)
 <shellId: 3 completed...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== admit/external_body/cfg in page module? ==="; grep -nE "aligned/p
+
+[THINKING] The verify-kernel results show widespread use of unsafe patterns across the entire kernel crate, but when I zoom in on just the page module that I'm reviewing, there are no admits, assumes, external bodies, or trusted annotations—only a few cfg gates in the page.rs file itself.
+[RESULT ✓] bash: === admit/external_body/cfg in page module? ===
+  NONE in page module
+
+=== full cheating-detail summary (paths) ===
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== head of cheating-detail.txt ==="; head -60 verus-ai-logs/verify-k
+
+[THINKING] The grep pattern didn't match anything, so the file format might be different than expected. Let me examine what's actually in the file.
+[RESULT ✓] bash: === head of cheating-detail.txt ===
+    - mm/phys/frame.rs:136 alloc: admit
+    - mm/phys/frame.rs:213 alloc_contiguous: admit
+    - mm/phys/frame.rs:298 free: admit
+    - mm/phys/frame.rs:379 share: admit
+    - mm/phys/frame.rs:442 refcount: admit
+    - mm/phys/frame.rs:497 book: admit
+    - mm/phy...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+No cheating markers are in the page module — all are in out-of-scope modules (mm/phys, mm/virt). Let me check for the AST-consistency and spec-drift tooling, and verify the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== look for ast-consistency / spec-drift tools ==="; ls scripts/ 2>/
+
+[THINKING] Looking at the scope of the review, the `hal-page-aligned` module files—page.rs, page.spec.rs, and page.proof.rs—contain none of the cheating markers like admit, assume, external_body, or trusted. The only cfg gates present are two specific ones, while all other such markers are confined to out-of-scope modules like mm/phys and mm/virt.
+
+Going through the verification checklist: the page module passes all checks for zero admit/assume/trusted functions, zero exec_allows_no_decreases, and zero cfg-gated exec code (the two cfg gates are just imports of spec/proof files). There are no external_body declarations, no exec rewrites needing VERUS REWRITE comments, and no specs to check for weakening. The verify-kernel output shows exit 0 with the page module verified, though the global status flags cheating in other modules outside this review's scope.
+
+Now I need to run the ast-consistency and spec-drift checks, but I'm realizing these tools aren't available as skills in the GitHub workflows — they're referenced in the checklist but I need to locate the actual scripts in the VERUS_AI_DIR to run them.
+[RESULT ✓] bash: === look for ast-consistency / spec-drift tools ===
+bench
+benchmark.py
+cleanup-nanvixd.sh
+common
+create-release.py
+docker-retry.sh
+generate-l2-initramfs.sh
+generate-l2-snapshot.sh
+generate-manifest.sh
+get-nanvix.sh
+install-containerd.sh
+install-shim.sh
+pipeline.sh
+plot-performance.py
+run-smoke-test....
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md 
+[RESULT ✓] bash: ---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+for the full ru...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find . -name "pipeline_state.json" 2>/dev/null | grep -i page | head; echo 
+
+[THINKING] I'm running the AST consistency and spec drift checks on the page module to establish a baseline, starting with looking for pipeline_state.json. I'll execute the ast_consistency.py script with auto-detect on page.rs, though I may need to adjust for the `verus-ai-prove-bottom-up` branch since the auto-detect might require a `verus-ai/*` branch pattern.
+[RESULT ✓] bash: ./verus-ai-logs/nanvix-phys-hal-page-aligned/pipeline_state.json
+=== git log baseline ===
+f25dd5ae9 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=27 external_body=11 cfg_gate=13)
+b7d920c00 [verus-ai] cheating-elimination scaffold END: hal-page-aligned
+527b...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/nanvix-phys-hal-page-aligned/pipeline_state.json 2>/dev/n
+[RESULT ✓] bash: {
+    "module_name": "hal-page-aligned",
+    "log_name": "nanvix-phys-hal-page-aligned",
+    "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.rs",
+    "current_phase": "cheating-elimination",
+    "current_phase_idx": 4,
+    "completed_phases": ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Now let me run the AST-consistency and spec-drift checks for the page module.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && SRC=src/kernel/src/hal/mem/types/address/aligned/page.rs && BASE=ed53de1afa
+
+[THINKING] I've got the starting commit hash for the cheating-elimination phase, so now I'm running the ast-consistency and spec-drift checks against that baseline.
+[RESULT ✓] bash: === AST consistency (base ed53de1afa0cfd7701da0d801bcbe0edb1036373) ===
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PageAligned::align_down                  MATCH          ...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== spec drift (auto) ==="; python3 /home/ruize/verus-ai-exp/verus-ai
+
+[THINKING] The AST checks are passing with all execution functions remaining consistent. Now I need to verify spec drift by comparing the current state against the baseline from when the cheating-elimination phase started, so I'm running the spec drift check to see what's changed.
+[RESULT ✓] bash: === spec drift (auto) ===
+Module:   hal-page-aligned
+Phase:    cheating-elimination
+Source:   /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.rs
+Baseline: ed53de1afa0c
+Current:  HEAD
+
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract d...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && BASE=ed53de1afa0cfd7701da0d801bcbe0edb1036373 && echo "=== diff of page mod
+
+[THINKING] I need to verify that the spec files haven't been weakened compared to the baseline, not just check the source file for drift. The spec definitions live in the .spec.rs files, so I should diff those against the phase-start SHA to ensure the specifications themselves haven't been compromised.
+
+I also want to confirm the verification results for the page module show 2 verified with 0 errors, and then run a build to check for 0 warnings and 0 errors. Let me start by examining the file diffs against the baseline.
+[RESULT ✓] bash: === diff of page module files vs phase-start ed53de1afa0cfd7701da0d801bcbe0edb1036373 ===
+diff --git a/src/kernel/src/hal/mem/types/address/aligned/page.rs b/src/kernel/src/hal/mem/types/address/aligned/page.rs
+index 7fc33366d..32a4bc0c0 100644
+--- a/src/kernel/src/hal/mem/types/address/aligned/page...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+All checks so far pass. Let me confirm the page module verifies freshly (not just cached) and check the build for warnings.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "PAGE_ALIGNMENT\|assume_specification" src/kernel/src/hal/mem/type
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '1,60p' scripts/verify.sh | grep -n "module\|MODULE\|--crate\|usage"
+
+[THINKING] Looking at the diffs, the main change is moving the `inv` spec function from page.rs (where it was in a cfg-gated verus block) into page.spec.rs, which is a cleaner organization of the ghost code. The function definition itself remains the same.
+
+In the proving phase, an `assume_specification` for `PAGE_ALIGNMENT` was removed from page.spec.rs — this is a TCB reduction, but I need to verify that `from_address` still verifies without it. The ensures clause requires `spec_aligned(addr@)`, which expands to `addr@ % spec_page_size() == 0`, and the exec side checks `addr.is_aligned(PAGE_ALIGNMENT)`. Since the module still verifies after the removal, there must be another way the spec for `is_aligned` and `PAGE_ALIGNMENT` relates to `spec_page_size()`. The assume_specification removal actually happened during the proving phase (between 78854c and ed53de1), not during cheating-elimination, so within the cheating-elimination scope the only change is the relocation. Let me verify the module independently with a fresh run to confirm it's genuinely verified and not cached, then check what options verify.sh supports for targeted module verification.
+[RESULT ✓] bash: 6:#   Cargo mode:  ./verify.sh --crate <crate_name> [OPTIONS]
+24:MODULE=""
+33:usage() {
+35:Usage: $(basename "$0") (--crate CRATE | --verus-dir DIR) [OPTIONS]
+38:  --crate CRATE         Cargo crate name (uses: cargo verus verify -p CRATE).
+42:  --module MODULE       Module path to verify (e.g., "ker...
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/page.rs:21:use ::arch::mem::PAGE_ALIGNMENT;
+src/kernel/src/hal/mem/types/address/aligned/page.rs:51:        if !addr.is_aligned(PAGE_ALIGNMENT)? {
+=== where is PAGE_ALIGNMENT spec'd now? ===
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1) &
+
+[THINKING] I'm noticing that the `assume_specification` for PAGE_ALIGNMENT was removed without an obvious replacement, yet `from_address` still calls `addr.is_aligned(PAGE_ALIGNMENT)` to verify alignment. The module apparently passes verification despite this change, so the alignment check must be handled through the underlying Address type's own specification rather than a direct PAGE_ALIGNMENT spec.
+
+Since the PAGE_ALIGNMENT removal happened in the baseline commit and my review is only scoped to changes after that point, I should focus on confirming the current state has zero `assume_specification` entries in the page files—which grep confirms it does. To be thorough about the verification claim, I should run a fresh module verify to ensure it's not relying on cached results.
+[RESULT ✓] bash: LOG=verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_07-47-16.log
+=== warnings/errors in verus log ===
+=== verified/errors summary lines ===
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1) &
+
+[THINKING] The cached run is why the verification summary isn't showing up in the logs—I need to check the actual log content to see what's there.
+[RESULT ✓] bash: 21 verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_07-47-16.log
+=== full log ===
+Timestamp: 2026-06-15_07-47-16
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=27
+  trusted=0
+  no_decrea...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+The run was cached. To eliminate any doubt, let me force a fresh verification of the module.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/kernel/src/hal/mem/types/address/aligned/page.rs && timeout 1800 
+
+[THINKING] The build cache is interfering with getting a clean verification result, so I need to force a fresh rebuild of the page module. Touching the file should invalidate the cache, though I'm realizing cargo's incremental compilation uses mtime for tracking changes, which might trigger a broader recompilation than intended.
+
+Actually, looking at the git history more carefully, the last non-cached verification run showed "2 verified, 0 errors" and the content hasn't fundamentally changed since then—the inv relocation is a content change to page.rs and page.spec.rs, but the current cached run suggests the compiled content matches what was already verified. Let me trace through the commit history to see if there was a non-cached verify after the relocation commits that would confirm the current state is sound.
