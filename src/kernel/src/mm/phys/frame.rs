@@ -745,7 +745,7 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
                 &&& phys_view().frames.refcounts.contains_key(frame@)
                 &&& phys_view().frames.refcounts[frame@] == 1
             },
-            Err(_) => true,
+            Err(_) => phys_view().frames.free_frames.is_empty(),
         },
 )]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
@@ -887,7 +887,7 @@ pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
         phys_view().initialized,
         match result {
             Ok(()) => phys_view().frames.allocated_frames.contains(phys_addr@),
-            Err(_) => true,
+            Err(_) => !phys_view().frames.free_frames.contains(phys_addr@),
         },
 )]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
@@ -911,7 +911,8 @@ pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error>
             Ok(()) => forall|a: int|
                 #[trigger] PhysMemView::region_frames(region@.start, region@.size).contains(a)
                     ==> phys_view().frames.allocated_frames.contains(a),
-            Err(_) => true,
+            Err(_) => !PhysMemView::region_frames(region@.start, region@.size)
+                .subset_of(phys_view().frames.free_frames),
         },
 )]
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
@@ -938,7 +939,9 @@ pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Re
                 &&& phys_view().frames.allocated_frames.contains(frame@)
                 &&& phys_view().frames.refcounts.contains_key(frame@)
             },
-            Err(_) => true,
+            Err(_) => !phys_view().frames.allocated_frames.contains(frame@)
+                || (phys_view().frames.refcounts.contains_key(frame@)
+                    && phys_view().frames.refcounts[frame@] >= 255),
         },
 )]
 pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {

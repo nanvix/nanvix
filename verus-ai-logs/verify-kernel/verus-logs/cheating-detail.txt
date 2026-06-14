@@ -14,8 +14,8 @@
     - mm/phys/frame.rs:824 free_count: admit
     - mm/phys/frame.rs:848 free: admit
     - mm/phys/frame.rs:893 book: admit
-    - mm/phys/frame.rs:917 alloc_range: admit
-    - mm/phys/frame.rs:944 share: admit
+    - mm/phys/frame.rs:918 alloc_range: admit
+    - mm/phys/frame.rs:947 share: admit
     - mm/phys/kframe.rs:141 clear: external_body
     - mm/phys/manager.rs:107 init: external_body
     - mm/phys/manager.rs:198 alloc_many_user_frames: external_body
