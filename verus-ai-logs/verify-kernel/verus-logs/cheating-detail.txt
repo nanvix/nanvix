@@ -28,7 +28,6 @@
     - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
     - mm/phys/mod.rs:103 book_mmio_regions: external_body
     - mm/phys/mod.spec.rs:69 ExLinkedList (struct): external_type_spec
-    - mm/phys/upool.rs:221 Upool (struct): external_body
     - mm/phys/upool.rs:246 new: external_body
     - mm/phys/upool.rs:279 alloc: external_body
     - mm/virt/identity_map.proof.rs:14 lemma_install_page_maps: admit

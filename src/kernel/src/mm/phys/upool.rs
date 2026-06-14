@@ -217,7 +217,7 @@ impl Drop for UserFrame {
 /// so user-frame allocation has its own entry point ([`Upool::alloc`] returning [`UserFrame`]).
 ///
 #[derive(Debug)]
-#[verus_verify(external_body)]
+#[verus_verify]
 pub struct Upool {
     /// Private field prevents external construction.
     _private: (),
