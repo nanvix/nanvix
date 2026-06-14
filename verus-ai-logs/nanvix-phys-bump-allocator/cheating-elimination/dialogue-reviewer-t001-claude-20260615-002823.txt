@@ -113,3 +113,160 @@ dialogue-reviewer-t001-claude-20260615-002823.jsonl
 dialogue-reviewer-t001-claude-20260615-002823.txt
 fix_report.md
 prover-claude-2026061...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-bump-allocator/verus-logs/cheating-detail.txt 2>&1
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] The verification passed, but I'm seeing two external_body entries that I need to validate against the TCB allowed file. Let me check the source files and the cheating details to locate and review that allowlist.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //!
+5. //! # Fixed-Size Bump Allocator
+6. //!
+7. //! A generic, `no_std`-compatible bump allocator that hands out fixed-size slots from a
+8. //! statically reserved memory region (typically BSS). Each slot is ...
+[RESULT ✓] bash: - lib.rs:286 alloc: external_body
+    - lib.rs:367 alloc_as: external_body
+=== TCB allowed file search ===
+./verus-ai-logs/tcb-allowed.md
+=== grep tcb ===
+arch-frame-number
+arch-paging-mod
+arch-paging-table
+arch-x86-pde
+arch-x86-pte
+bump-allocator
+hal-frame-address
+hal-memory-region
+hal-page-aligned...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.proof.rs
+
+[THINKING] I'm checking whether the `alloc` and `alloc_as` external functions at lines 286 and 367 are actually documented in the TCB allowed list, since both have SAFETY-SPEC comments claiming they're registered there.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // FixedSizeBumpAllocator - Specifications
+5. //
+6. // This file contains the abstract View (`BumpView`), its invariant and geometry
+7. // helpers, the numeric specification of `align_up`, and the proof-lemma ...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // FixedSizeBumpAllocator - Proofs
+5. //
+6. // Proof functions for the abstract pool model. Each lemma encodes a caller
+7. // expectation from `verus-ai-logs/nanvix-phys-bump-allocator/caller_analysis.md`.
+8. ...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] grep: VERUS REWRITE
+[TOOL] grep: admit|assume\(|external_body|trusted|no_decreases|exec_allows
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls .github/skills/ 2>/dev/null; echo "=== ast/spec scripts ==="; find . -pa
+
+[THINKING] The external_body functions are properly listed in the TCB allowed file, and I'm verifying the cheating checks across all metrics—admit, assume, trusted, no_decreases, and cfg_gate all show zero, which is what we want. I notice assume_specification appears for div_ceil, but that's a legitimate standard library construct distinct from the assume() function, so it doesn't trigger the cheating flag.
+
+Now I need to check for VERUS REWRITE comments to ensure any exec rewrites have proper documentation, run the build to verify there are no errors or warnings, and look for the ast-consistency and spec-drift-check tools to complete the verification checklist.
+[RESULT ✓] grep: No matches found.
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs:266:    // SAFETY-SPEC: `external_body` because the success path materializes a
+/home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs:271:    #[verus_verify(external_body)]
+/home/ruize/nanvix-phy-specs-bott...
+[RESULT ✓] bash: benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+=== ast/spec scripts ===
+=== fix_report ===
+# Cheating Elimination Report: bump-allocator
+
+## Cheating Counts (before ...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -E "build|verify-all|verify:" Makefile 2>/dev/null | head -30; echo "=
+[TOOL] grep: #\[cfg|cfg_attr|#\[verifier|assume_spec
+
+[THINKING] I need to verify that the ast-consistency and spec-drift-check skills actually exist in the project, so I'm going to run the build command and do a cross-module verification myself. For the AST consistency check, I'm comparing the exec code between the original unspecified version and the spec'd version to make sure the execution bodies haven't changed—the fix report indicates lib.rs is byte-identical to the reference, so I should verify that reference actually exists and understand what a typical AST consistency check entails.
+
+Let me focus on what I can actually verify by running the build command and cross-module verification, then track down the build command itself.
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs:83:#![cfg_attr(not(any(test, feature = "std")), no_std)]
+/home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs:101:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src...
+[RESULT ✓] bash: # Memory size in megabytes. Exported as MEMORY_SIZE_BYTES for build.rs scripts.
+export BUILD_DIR     := $(ROOT_DIR)/build
+# passed on the command line (e.g., from Dockerfile.build).
+# Exported so that build.rs scripts read it via the MEMORY_SIZE_BYTES env var.
+export GUEST_CARGO_FLAGS := -Zbuild-std...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls -d ../verus-ai-prove-bottom-up 2>/dev/null && echo "REF EXISTS"; echo "=
+
+[THINKING] I'm checking the configuration gates to ensure they're not gating any executable code differences—the `cfg_attr` for no_std, the `cfg` for ghost code, and the test module are all allowed since they only affect imports and configuration. The tool confirms no executable code is gated. Now I need to run the build and verify across modules to check the verify target.
+
+Let me focus on the key checklist items: I've confirmed zero admits, assumes, trusted blocks, and no_decreases, plus the cfg gates are clean. I need to verify AST consistency by stripping Verus annotations from the exec code and confirming the bodies match the original upstream Rust semantically, then run the full cross-module regression with `make verify` and the build.
+[RESULT ✓] bash: === git status of bump files ===
+3de3c28e4 [verus] verify PASS (cheating detected): bump-allocator::all (5 verified, 0 errors, admit=3 external_body=2)
+7057f407b [verus-ai] proving strip-external-body: bump-allocator (2)
+569112a4e [verus] verify PASS (cheating detected): bump-allocator::all (5 verif...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cargo build -p bump-allocator --locked 2>&1 | tail -20
+
+[THINKING] I don't have access to the reference repo, so I can't verify the fix_report's byte-identical claim directly. What I really need to focus on is comparing the exec code's AST to the non-Verus version—that's what AST consistency is actually about. The check ensures that when Verus is stripped out (with cfg(verus_keep_ghost) disabled), the remaining code compiles and behaves the same way.
+
+Since there are no cfg-gated exec variants or VERUS REWRITE comments, the exec code is identical in both builds. All Verus-specific additions are either attributes like `#[verus_verify]` or gated behind `cfg(verus_keep_ghost)`, so they don't affect exec behavior. This means AST consistency should pass—the exec code is the same regardless of whether verus_keep_ghost is set.
+
+Let me verify this practically by building the crate in normal mode to confirm it compiles without Verus, which is the real AST consistency check. I'll run a cargo build first to check that the exec code compiles cleanly on its own.
+[RESULT ✓] bash: Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling autocfg v1.5.0
+   Compiling verus_prettyplease v0.0.0-2026-05-31-0205
+   Compiling hashbrown v0.12.3
+   Compiling vstd v0.0.0-2026-05-31-0205
+   Compiling verus_builtin v0.0.0-2026-05-17-0151
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for c in bitmap sys nanvix-slab bump-allocator arch; do echo "=== verify-$c
+
+[THINKING] The build passed cleanly, so now I need to decide on testing strategy. The checklist specifies running `make verify` for cross-module regression, which covers bitmap, sys, nanvix-slab, bump-allocator, arch, and kernel modules. Since the kernel verification could be slow, I'm considering running just the verus-crate verifications to keep things reasonable, but the checklist requirement is that all verified modules must pass. I'll go ahead and run the full `make verify` command despite the potential time cost.
