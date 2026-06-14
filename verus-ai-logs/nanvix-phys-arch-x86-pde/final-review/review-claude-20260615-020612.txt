@@ -785,3 +785,13 @@ description: "How to write good Verus specs. Covers spec quality principles (ant
 Turn 6
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify
+[TOOL] bash: sed -n '260,520p' /tmp/copilot-tool-output-1781460572768-nnvi9n.txt
+[RESULT ✓] bash: - Success postconditions (ensures, Ok case): new abstract state, return value, frame condition
+   - Error postconditions (ensures, Err case): state preservation, failure condition in abstract terms
+
+2. **Safety** — What must never happen?
+   - Bounds, disjointness, uniqueness, conservation, injectiv...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
