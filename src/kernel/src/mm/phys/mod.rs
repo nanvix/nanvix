@@ -60,11 +60,25 @@ pub use self::{
 // iterator cannot be given a Verus `for`-loop specification from this crate (the orphan
 // rule forbids implementing vstd's iterator traits for the foreign `Iter` type, and the
 // pinned `vstd` dependency cannot be extended — see `mod.spec.rs` / `verus-unsupported.md`).
-// The function is therefore `external_body`. Its abstract effect — every frame of every
-// region becomes booked — is modelled by `PhysMemView::spec_book_frames` and the
-// `lemma_book_physical_*` signatures in `mod.proof.rs`; binding that effect to the global
-// allocator state is deferred to a later phase per the View design.
+// The function is therefore `external_body`; its `#[verus_spec]` contract is honored by the
+// caller (`init`). The abstract effect — every frame of every region becomes booked — is
+// modelled by `PhysMemView::spec_book_frames` / `region_frames` and discharged by
+// `lemma_book_region_reserves_region_frames` in `mod.proof.rs`. Because the region frames are
+// the contents of the (un-viewable) `LinkedList`, they cannot be enumerated in this boundary
+// contract; what is expressed is the caller-relevant guarantee that the allocator stays
+// initialized and well-formed across booking.
 #[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        phys_view().initialized,
+        phys_view().inv(),
+    ensures
+        phys_view().inv(),
+        match result {
+            Ok(()) => phys_view().initialized,
+            Err(_) => true,
+        },
+)]
 fn book_physical_memory_regions(
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
 ) -> Result<(), Error> {
@@ -80,11 +94,26 @@ fn book_physical_memory_regions(
 }
 
 // `external_body` for the same std-`LinkedList` reason as
-// `book_physical_memory_regions`. Its abstract effect — every *tracked* MMIO frame
-// (`is_covered`) becomes booked while untracked frames are skipped — is modelled by
-// `PhysMemView::spec_book_frames` over `M.intersect(covered())` and the
-// `lemma_book_mmio_*` signatures in `mod.proof.rs`.
+// `book_physical_memory_regions`; its `#[verus_spec]` contract is honored by the caller
+// (`init`). The abstract effect — every *tracked* MMIO frame (`is_covered`) becomes booked
+// while untracked frames are skipped — is modelled by `PhysMemView::spec_book_frames` over
+// `M.intersect(covered())` and discharged by `lemma_book_mmio_skip_untracked` /
+// `lemma_book_mmio_books_tracked` in `mod.proof.rs`. As with the physical-region helper, the
+// concrete MMIO frame set is the contents of the (un-viewable) `LinkedList`, so the boundary
+// contract expresses the caller-relevant guarantee: the allocator stays initialized and
+// well-formed (the skip-if-not-covered tolerance never aborts boot).
 #[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        phys_view().initialized,
+        phys_view().inv(),
+    ensures
+        phys_view().inv(),
+        match result {
+            Ok(()) => phys_view().initialized,
+            Err(_) => true,
+        },
+)]
 fn book_mmio_regions(
     mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
 ) -> Result<(), Error> {
@@ -133,17 +162,22 @@ fn book_mmio_regions(
 ///
 #[verus_spec(ret =>
     ensures
-        // `init` is the one-shot boot entry point for the global physical-memory
-        // subsystem. Its caller-visible abstract effect — establish the frame-allocator
-        // invariant (`PhysMemView::inv`) and pre-reserve all boot-known RAM frames and all
-        // tracked MMIO frames so they are never handed out by `alloc` — is modelled by
-        // `PhysMemView::spec_initialize` / `spec_book_frames` and the `lemma_init_*`
-        // signatures in `mod.proof.rs`. Binding that effect to the global singleton state
-        // (`frame::instance()@` / `INSTANCE_INIT`) is deferred to a later phase (the
-        // functions take no `self`/ghost handle through which the post-state could be named;
-        // see the View design "Notes for Later Phases"). At this layer the body is verified
-        // for memory/type safety and that every callee precondition is met.
-        true,
+        // The frame-allocator invariant is established/preserved on every path: this
+        // is the precondition every later `frame::*` / `PhysMemoryManager::*` call
+        // relies on. (Vacuous before the allocator becomes initialized.)
+        phys_view().inv(),
+        match ret {
+            // One-shot boot success: the global subsystem is now initialized and its
+            // reservation state is well-formed, so reserved frames (allocated) are
+            // disjoint from the free pool and can never be handed out by `alloc`.
+            Ok(()) => {
+                &&& phys_view().initialized
+                &&& phys_view().frames.allocated_frames.disjoint(phys_view().frames.free_frames)
+            },
+            // Failure is terminal for the boot path; no completeness of reservation is
+            // promised, only that the invariant still holds (checked above).
+            Err(_) => true,
+        },
 )]
 pub fn init(
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,

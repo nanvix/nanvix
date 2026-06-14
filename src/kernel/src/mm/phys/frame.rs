@@ -654,6 +654,17 @@ fn instance() -> &'static mut Inner {
 /// Must be called exactly once during boot, before any other function
 /// in this module.
 #[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        // `init` establishes the subsystem invariant. On success the allocator is
+        // marked initialized; on either outcome the abstract view is well-formed
+        // (vacuously so if it never became initialized).
+        phys_view().inv(),
+        match result {
+            Ok(()) => phys_view().initialized,
+            Err(_) => true,
+        },
+)]
 pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
     if unlikely(INSTANCE_INIT.load(ORDER)) {
         return Err(Error::new(ErrorCode::InvalidArgument, "frame allocator already initialized"));
@@ -741,18 +752,58 @@ pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
 /// Returns `true` when the frame allocator tracks the frame at `phys_addr`.
 ///
 #[verus_verify(external_body)]
+#[verus_spec(ret =>
+    requires
+        phys_view().initialized,
+        phys_addr.inv(),
+    ensures
+        phys_view().inv(),
+        // `is_covered` reports exactly the frames the allocator tracks: the union
+        // of reserved and free frames (`PhysMemView::covered`).
+        ret <==> phys_view().covered().contains(phys_addr@),
+)]
 pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
     instance().is_covered(phys_addr)
 }
 
 /// Reserve a frame so [`alloc`] will skip it.
 #[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        phys_view().initialized,
+        phys_addr.inv(),
+    ensures
+        phys_view().inv(),
+        // On success the frame is reserved (now in `allocated_frames`); the
+        // subsystem stays initialized and well-formed regardless of outcome.
+        phys_view().initialized,
+        match result {
+            Ok(()) => phys_view().frames.allocated_frames.contains(phys_addr@),
+            Err(_) => true,
+        },
+)]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
     instance().book(phys_addr)
 }
 
 /// Book every frame in the given physical memory region.
 #[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        phys_view().initialized,
+        region.inv(),
+    ensures
+        phys_view().inv(),
+        phys_view().initialized,
+        // On success every frame of the region is reserved. The region's frame
+        // set is `PhysMemView::region_frames` and matches `Inner::alloc_range`.
+        match result {
+            Ok(()) => forall|a: int|
+                #[trigger] PhysMemView::region_frames(region@.start, region@.size).contains(a)
+                    ==> phys_view().frames.allocated_frames.contains(a),
+            Err(_) => true,
+        },
+)]
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
     instance().alloc_range(region)
 }

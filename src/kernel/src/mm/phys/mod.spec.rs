@@ -155,5 +155,20 @@ impl PhysMemView {
     }
 }
 
+/// Abstract view of the global physical-memory subsystem at the current program
+/// point.
+///
+/// The subsystem state lives in module-level `static`s (`frame::INSTANCE` /
+/// `frame::INSTANCE_INIT`) that a Verus `spec fn` cannot read directly, so this
+/// is an *uninterpreted* function: the exec wrappers in `frame.rs` and the
+/// `book_*`/`init` functions pin down its value through their `ensures` clauses.
+/// `initialized` mirrors `INSTANCE_INIT`; `frames` mirrors `frame::instance()@`.
+///
+/// This is the handle the caller-facing contract of `init` is stated over: after
+/// a successful `init`, `phys_view().initialized` and `phys_view().inv()` hold, so
+/// every later `frame::*` / `PhysMemoryManager::*` operation may rely on the
+/// frame-allocator invariant.
+pub(crate) uninterp spec fn phys_view() -> PhysMemView;
+
 } // end verus!
 

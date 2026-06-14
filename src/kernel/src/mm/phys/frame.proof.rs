@@ -1,6 +1,8 @@
 verus! {
 
 use super::FrameAllocView;
+use super::PhysMemView;
+use super::phys_view;
 use crate::hal::mem::spec_page_size;
 use vstd::map::*;
 
