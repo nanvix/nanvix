@@ -939,3 +939,84 @@ VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z bu
 ────────────────────────────────────────────────────────────
 Turn 7
 ────────────────────────────────────────────────────────────
+[RESULT ✓] bash: Blocking waiting for file lock on package cache
+     Removed 82 files, 18.8MiB total
+Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VE...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cargo verus verify --help | sed -n '1,220p'
+[RESULT ✓] bash: Verify the current crate with 'cargo build'
+
+Usage: cargo verus verify [OPTIONS] [CARGO_OPTIONS]... [-- [ARGS]...]
+
+Arguments:
+  [CARGO_OPTIONS]...
+          Options forwarded to 'cargo build' or 'cargo check'
+
+  [ARGS]...
+          Arguments passed to 'verus' after `--`
+
+Options:
+      --manifest-p...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+The verification was cached. Let me check the actual verus log for the verified/errors count and confirm a genuine run, plus inspect the cheating detail.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== cheating detail ==="; cat verus-ai-logs/verify-bump-allocator/verus-logs/cheating
+[RESULT ✓] bash: === cheating detail ===
+    - lib.rs:318 alloc: external_body
+    - lib.rs:405 alloc_as: external_body
+=== coverage unverified ===
+# Unverified exec functions: 3/6
+  fmt
+  new
+  default
+=== tail verus log ===
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && RUSTFLAGS='-C relocation-model=static -C prefer-dynamic=no' VERUS_AI_DIR='/home/ruize/verus
+[RESULT ✓] bash: error: failed to run `rustc` to learn about target-specific information
+
+Caused by:
+  process didn't exit successfully: `/home/ruize/verus-bin/verus /home/ruize/.rustup/toolchains/nightly-2026-05-21-x86_64-unknown-linux-gnu/bin/rustc - --crate-name ___ --print=file-names -C relocation-model=static -...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] rg: uninterp spec fn
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs:27:pub uninterp spec fn base_of<S: ?Sized>() -> int;
+/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs:36:pub uninterp spec fn slot_ref_addr<T: ?Sized>(r: &T) -> int;
+/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.sp...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Let me force a fresh (non-cached) verification to confirm the genuine verified/0-errors result.
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/libs/bump_allocator/src/lib.rs && make verify-bump-allocator 2>&1 | grep -iE "ver
+[TOOL] rg: \#\[verus_spec\(result =>|requires bump_view\(self\)\.inv\(\)|Err\(e\)|slot_ref_addr|base_of::<Self>|align_up_spec
+[TOOL] rg: pub open spec fn inv|align_up_spec\(self\.unit_size|self\.base %|self\.allocated <= self\.capacity|pub open spec fn spec_alloc
+[TOOL] rg: lemma_exhausted_boundary|lemma_alloc_transition|ensures|requires
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs:102:    pub open spec fn inv(self) -> bool {
+/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs:109:        &&& align_up_spec(self.unit_size, self.unit_align) == Some(self.stride)
+/home/ruize/nanvix-phy/src/libs/bump_allocato...
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs:126:#[verus_spec(result =>
+/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs:129:            Some(r) => align_up_spec(value as nat, alignment as nat) == Some(r as nat),
+/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs:130:   ...
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.proof.rs:23:    requires
+/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.proof.rs:28:    ensures
+/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.proof.rs:40:            requires
+/home/ruize/nanvix-phy/src/libs/bump_allocator/src/li...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
