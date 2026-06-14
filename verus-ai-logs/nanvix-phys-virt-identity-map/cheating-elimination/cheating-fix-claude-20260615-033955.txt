@@ -153,3 +153,12 @@ The verification_todo.md is already accurate and complete. Let me run the final 
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make verify-kernel 2>&1 | grep -nE -i "verified, 0 errors|erro
 
 [THINKING] The verification_todo.md looks solid and accurate, so I'll run a final kernel verification to ensure the clean baseline is still intact, then move on to writing the turn_003 response.
+[RESULT ✓] bash: 23:  cheating: assume=0 external_body=11 admit=31 trusted=0 no_decreases=0 cfg_gate=15
+32:  cheating: assume=0 external_body=11 admit=31 trusted=0 no_decreases=0 cfg_gate=15
+34:  status: CHEATING_DETECTED
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make verify-kernel 2>&1 | grep -nE "verification results::|ver
