@@ -1,97 +1,24 @@
 {
   "module_name": "phys-mod",
   "log_name": "nanvix-phys-phys-mod",
-  "source_path": "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
-  "completed_phases": [
-    "caller-analysis",
-    "view-design"
-  ],
-  "phase_results": {
-    "caller-analysis": {
-      "phase": "caller-analysis",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "no-review",
-      "review_file": null,
-      "duration_s": 110.9,
-      "review_rounds": 0
-    },
-    "view-design": {
-      "phase": "view-design",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "no-review",
-      "review_file": null,
-      "duration_s": 315.1,
-      "review_rounds": 0
-    },
-    "specification": {
-      "phase": "specification",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "dialogue-RESOLVED",
-      "review_file": null,
-      "duration_s": 2303.4,
-      "review_rounds": 1
-    }
-  },
-  "prover_session_id": "40b69cc9-c7f1-4f81-b273-aa7023789f89",
+  "source_path": "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.rs",
+  "current_phase": "proving",
+  "current_phase_idx": 3,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_session_id": null,
   "completed": false,
-  "base_branch": "verus-ai/bump-allocator",
-  "verus_branch": "verus-ai/phys-mod",
-  "phase_boundary_shas": {
-    "caller-analysis": "380e24e822d9b5a5f02b0abd28b7d203c63442fd",
-    "view-design": "f5a2b87013b5d5016d66226fadf2c237c5bea635",
-    "specification": "5220f10d7d14e953c4e492b0dda1b45840e3e46c"
-  },
+  "base_branch": "verus-ai-prove",
+  "verus_branch": "verus-ai-prove",
+  "phase_boundary_shas": {},
   "phase_start_shas": {
-    "caller-analysis": "51cba35369b010043afe07384db23a56443a8773",
-    "view-design": "380e24e822d9b5a5f02b0abd28b7d203c63442fd",
-    "specification": "f5a2b87013b5d5016d66226fadf2c237c5bea635"
+    "proving": "320ae092ee9070e6b37639f016646ec572a9f8e8"
   },
   "phase_history": [
     {
-      "phase": "caller-analysis",
+      "phase": "proving",
       "event": "start",
-      "sha": "51cba35369b010043afe07384db23a56443a8773",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "caller-analysis",
-      "event": "end",
-      "sha": "380e24e822d9b5a5f02b0abd28b7d203c63442fd",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "view-design",
-      "event": "start",
-      "sha": "380e24e822d9b5a5f02b0abd28b7d203c63442fd",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "view-design",
-      "event": "end",
-      "sha": "f5a2b87013b5d5016d66226fadf2c237c5bea635",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "specification",
-      "event": "start",
-      "sha": "f5a2b87013b5d5016d66226fadf2c237c5bea635",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "specification",
-      "event": "end",
-      "sha": "5220f10d7d14e953c4e492b0dda1b45840e3e46c",
+      "sha": "320ae092ee9070e6b37639f016646ec572a9f8e8",
       "rollback_iter": 0
     }
   ],

@@ -2,16 +2,19 @@
 # Regenerate with scripts/generate_nanvix_phys_verus_configs.py.
 
 [project]
-background = """File: `src/libs/bump_allocator/src/lib.rs`
+background = """File: `src/kernel/src/mm/phys/mod.rs`
 
 Verification-order target functions (the only functions in scope for this module):
-`FixedSizeBumpAllocator::alloc_as`, `FixedSizeBumpAllocator::alloc`, `align_up`, `as_mut_ptr`
+`init`, `book_mmio_regions`, `book_physical_memory_regions`
+
+Existing spec/view definitions (do not modify):
+`byte_at_address`, `FrameAllocView`, `FrameAllocView::wf`, `Inner::inv`, `frame_addr_of`, `View for Inner`, `Inner::internal_inv`
 
 
 Hard rules:
 - Do not touch unlisted functions.
 
-
+- Do not modify existing spec/view definitions listed above.
 - Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
 - For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
 
