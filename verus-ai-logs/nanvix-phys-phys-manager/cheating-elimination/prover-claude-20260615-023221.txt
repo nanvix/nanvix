@@ -620,3 +620,14 @@ Source is byte-identical to the phase-start state. Running full-crate verify to 
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify 2>&1 | grep -iE "verified|errors|status|FAIL|PASS|regress" |
 
 [THINKING] The source hasn't changed from the baseline, so running the full verification should just confirm there are no regressions. I'll execute it with a reasonable timeout since it might be cached and run quickly.
+[RESULT ✓] bash: status: CHEATING_DETECTED
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  status: CHEATING_DETECTED
+  status: CHEATING_DETECTED
+  Unverified function list written to: verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt
+  status:...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify 2>&1 | grep -iE "verified,|errors\b|exit [0-9]" | tail -20
