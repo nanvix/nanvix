@@ -1544,3 +1544,20 @@ Turn 107
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -30
 
 [THINKING] I need to verify that removing those PTE flag enum external specs doesn't break anything else — the kernel's identity_map.spec.rs still imports PresentFlag and similar types, so I should check for unused import errors and scan the kernel proof for any other usages of these flag types that might now be problematic.
+[RESULT ✓] bash: 162 |             broadcast use vstd::arithmetic::power2::lemma2_to64;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+
+=== Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit c...
+
+────────────────────────────────────────────────────────────
+Turn 108
+────────────────────────────────────────────────────────────
+The PDE conflicts are resolved. Now the `broadcast use` placement has an error. Let me see the full message.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | grep -B3 -A8 "lemma2_to64\|broadcast" | head -40
+
+[THINKING] The PDE conflicts are resolved, but now there's an issue with `broadcast use` appearing inside the proof block—let me check what the full error message says.
