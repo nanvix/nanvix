@@ -235,3 +235,32 @@ Turn 12
 Turn 13
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -n
+[RESULT ✓] bash: 16:error: Verus Internal Error: missing type invariant function
+17:   --> src/kernel/src/mm/virt/identity_map.rs:534:33
+22:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+30:  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+51:  verification:...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+`use_type_invariant` fails with "missing type invariant function" — TableIndex's type invariant isn't accessible cross-crate. Let me capture the clean underlying obligation errors instead (plain admit removal), with full error reporting.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] The issue is that `use_type_invariant` won't work because TableIndex is from a foreign crate and its type invariant isn't accessible across crate boundaries. The `into_raw_value` function has an ensures clause that bounds the result to `PAGE_TABLE_LENGTH`, which is where the actual constraint lives. I'm reconsidering whether calling `into_raw()` directly is the right approach here.
+
+The real problem is deeper: `pd.read(pde_idx)` requires `pde_idx@ < PAGE_TABLE_LENGTH`, but I can't discharge that precondition in `ensure_pt` without adding it as a requires clause. That would change the function's contract, making it more restrictive on callers. Since `init` is out of scope and I can't modify it, adding a precondition to `ensure_pt` would break the constraint that contracts must stay as strong as they currently are.
+
+The root issue is that Verus won't export TableIndex's type invariant function across crates for `use_type_invariant`, so I can't access the invariant that would prove the precondition. Let me strip out the `use_type_invariant` calls and capture the raw precondition and postcondition errors cleanly with `--multiple-errors` to see the full picture.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -n

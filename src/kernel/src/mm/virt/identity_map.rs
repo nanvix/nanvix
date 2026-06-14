@@ -531,7 +531,6 @@ fn ensure_identity_mapped_range(
         },
 )]
 fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
-    proof! { use_type_invariant(pde_idx); }
     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
         let reason: &str = "invalid PDE read from kernel PD";
         #[cfg(not(verus_keep_ghost))]
@@ -629,7 +628,6 @@ fn ensure_pte(
     pte_idx: TableIndex,
     phys_addr: usize,
 ) -> Result<(), Error> {
-    proof! { use_type_invariant(pte_idx); }
     let pte: PageTableEntry = unsafe { pt.read(pte_idx) }.ok_or_else(|| {
         let reason: &str = "invalid PTE read from page table";
         #[cfg(not(verus_keep_ghost))]
