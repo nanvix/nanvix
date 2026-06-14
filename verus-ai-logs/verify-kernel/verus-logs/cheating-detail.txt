@@ -9,11 +9,12 @@
     - mm/phys/frame.rs:565 alloc_range: external_body
     - mm/phys/frame.rs:652 instance: external_body
     - mm/phys/frame.rs:689 init: external_body
-    - mm/phys/frame.rs:789 alloc_contiguous: admit
-    - mm/phys/frame.rs:849 free: admit
-    - mm/phys/frame.rs:894 book: admit
-    - mm/phys/frame.rs:919 alloc_range: admit
-    - mm/phys/frame.rs:948 share: admit
+    - mm/phys/frame.rs:751 alloc: admit
+    - mm/phys/frame.rs:795 alloc_contiguous: admit
+    - mm/phys/frame.rs:855 free: admit
+    - mm/phys/frame.rs:900 book: admit
+    - mm/phys/frame.rs:925 alloc_range: admit
+    - mm/phys/frame.rs:954 share: admit
     - mm/phys/kframe.rs:141 clear: external_body
     - mm/phys/manager.rs:107 init: external_body
     - mm/phys/manager.rs:198 alloc_many_user_frames: external_body
