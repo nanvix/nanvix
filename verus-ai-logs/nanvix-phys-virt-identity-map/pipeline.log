@@ -29,3 +29,6 @@ Module: virt-identity-map
 PHASE: view-design
 Module: virt-identity-map
 ============================================================
+[2026-06-14 09:01:27] [PROVER] Running view-design...
+[2026-06-14 09:01:27] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-14 09:05:46]   ↳ prover done in 4m18s (exit=0)
