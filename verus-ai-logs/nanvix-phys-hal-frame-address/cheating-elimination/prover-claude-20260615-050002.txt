@@ -559,3 +559,106 @@ Full-crate kernel verification: **exit 0, 0 errors**. Global cheating counts are
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1800 make verify 2>&1 | grep -E "Crate|verification:|errors|status:|E
 
 [THINKING] The kernel verification passed cleanly with no errors from my module—it actually reduced the cfg_gate count by one. The full crate also compiled successfully using the cached build. Now I need to run the full `make verify` command across all the VERUS_CRATES to check for any regressions.
+[RESULT ✓] bash: Crate     : bitmap
+  Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  status: CHEATING_DETECTED
+  Crate     : sys
+  E...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+All crates verify with **exit 0, no errors**. My target module is CLEAN; no regressions. Now writing the report and TODO.
+[TOOL] report_intent: Writing fix report and TODO
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git --no-pager diff --stat; echo "---"; ls verus-ai-logs/nanvix-phys-hal-fram
+
+[THINKING] All crates pass verification with no errors, and my target module in hal::mem::types::address::frame is clean with no regressions. The cfg_gate count in kernel decreased by one from my change. Now I'm preparing the fix report and need to clarify the assume_specification situation—there's one in frame.spec.rs that isn't being counted by the checker.
+
+The assume_specification is approved in tcb-allowed.md as an external-bottom placeholder for PhysicalAddress::from_raw_value, and since the cheating gate doesn't count this keyword type, it's permitted. Eliminating it would require modifying an unlisted function in a different module, which violates the constraints, so the right call is to keep it and document it as a verification todo for when the phys module gets verified.
+
+Now I'm setting up the report and verification_todo files to document this finding.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: .../prover-claude-20260615-050002.jsonl            | 31 ++++++++++++++++++++++
+ .../prover-claude-20260615-050002.txt              | 22 +++++++++++++++
+ 2 files changed, 53 insertions(+)
+---
+prover-claude-20260615-050002.jsonl
+prover-claude-20260615-050002.txt
+<shellId: 23 completed with exit code 0...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git --no-pager diff -- src/kernel/src/hal/mem/types/address/frame.rs; echo "=
+
+[THINKING] I'm noticing the git diff --stat output only showed changes in the logs directory, but frame.rs should have modifications too. Let me check git status to see what's actually staged or unstaged.
+[RESULT ✓] bash: === status ===
+ M verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/prover-claude-20260615-050002.jsonl
+ M verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/prover-claude-20260615-050002.txt
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git --no-pager log --oneline -6; echo "=== verify frame.rs committed state ha
+
+[THINKING] Frame.rs was already committed by the verify.sh script's auto-commit feature, which handles spec and proof files after verification. Let me check the git log to see what happened.
+[RESULT ✓] bash: 30e99602f [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=29 external_body=11 cfg_gate=14)
+3c99e3361 [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, external_body=3)
+20e256f6e [verus] verify PASS (cheating detected): bump-al...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat > verus-ai-logs/nanvix-phys-hal-frame-address/verification_todo.md <<'EOF
+
+[THINKING] The verify.sh script auto-committed my frame.rs changes, leaving the necessary include! macros intact while removing the gate around the module verus! block. Now I'm writing up the fix report and creating the verification_todo.md file at the nanvix-phys-hal-frame-address path, starting with the module-scoped cheating counts for the report.
+
+The results show no admits, assumes, or external_body declarations in the module, one assume_specification that's TCB-approved and doesn't count against the gate, and successfully eliminated the one cfg-gated exec block. The module passes verification as clean, so I'll document the assume_specification item in the verification_todo.
+[RESULT ✓] bash: written
+28 verus-ai-logs/nanvix-phys-hal-frame-address/verification_todo.md
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat > verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/fix_re
+[RESULT ✓] bash: written
+46 verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/fix_report.md
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Done. Here's the summary.
+
+## Result: PASS
+
+**Target module `hal::mem::types::address::frame` is now CLEAN** (was `CHEATING_DETECTED`). Verification: `6 verified, 0 errors`.
+
+### What was wrong
+The only in-scope cheating flag was **cfg-gated exec code: 1** — the `#[cfg(verus_keep_ghost)]` at `frame.rs:36` preceding the `verus! { … }` spec block (`spec_page_size`, `impl View`, `inv`). The gate heuristic counts any such cfg-gate whose following item isn't a `use`/`include!`/`mod`.
+
+### Fix
+Removed that one cfg-gate, matching the verified sibling `phys.rs` (whose `verus!` View-impl block is ungated). It's pure ghost/spec code — erased by the `verus!` macro under non-ghost build — so it's semantically identical.
+
+### Verification
+- Module scan: **CLEAN**, `6 verified, 0 errors`, cfg_gate 1→0.
+- AST consistency: **0 mismatches** (matched=9).
+- Non-ghost `cargo build`: succeeds (proves no semantic/build regression).
+- Full `make verify-kernel` and `make verify`: all crates **exit 0, no errors**.
+
+### Not eliminated (correctly)
+The `assume_specification` for `PhysicalAddress::from_raw_value` (frame.spec.rs:20) is an external-bottom placeholder **explicitly listed in `tcb-allowed.md`**, is **not counted by the cheating gate**, and eliminating it would require editing an unlisted function in the sibling `phys` module. Recorded in `verification_todo.md`; removed when `phys` is verified bottom-up.
+
+No `admit`/`assume`/`external_body`/`trusted` anywhere in the module. Reports written to `cheating-elimination/fix_report.md` and `verification_todo.md`.
+
+
+=== Session End ===
+Session: 04c5a2a9-b9aa-4f23-a96d-eab0822390d5
+Duration: 389.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/prover-claude-20260615-050002.jsonl
