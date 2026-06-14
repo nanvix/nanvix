@@ -5,7 +5,7 @@
 //
 // Abstract laws backing the caller-facing guarantees of the `PhysMemoryManager`
 // shim contracts in `manager.rs` (stated over `phys_view()` / `FrameAllocView`).
-// Bodies are `admit()` in this spec-design phase; the proving phase discharges them.
+// Bodies are discharged here in the proving phase (no `admit()`/`assume()`).
 
 verus! {
 

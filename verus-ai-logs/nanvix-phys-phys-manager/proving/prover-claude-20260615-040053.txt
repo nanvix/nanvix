@@ -501,3 +501,64 @@ Turn 23
 Turn 24
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 2400 make verify 2>&1 | grep -iE "note: verifying|Exit code|verification:|errors|st
+[RESULT ✓] bash: /home/ruize/nanvix-phy/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+  Crate     : bitmap
+  Exit code : 0
+  verification: cached (no recompilation), — (exit 0)
+  status: CHEATING_DETECTED
+/home/ruize/nanvix-phy/scripts/verify.sh --crate sys  --log-dir verus-ai-logs/verify-s...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+All crates pass with exit 0, admit=0, assume=0. The `CHEATING_DETECTED` status is solely from the authorized `external_body` markers. Let me confirm my changes are minimal (only added the attribute lines + proof bodies, no exec logic changes).
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager diff --stat && echo "=== manager.rs diff ===" && git --no-pager diff src/ker
+
+[THINKING] All the crates are passing with exit code 0, and the CHEATING_DETECTED status is just from pre-existing authorized external_body markers that are already accounted for. Everything shows admit=0, assume=0, and zero errors across the board. The kernel has verified all mm::phys modules including the manager, and I'm doing a final check to confirm there are no admit or assume violations throughout the kernel and that the manager-related external_body entries match what's authorized.
+
+The source integrity looks good — I only added the attribute lines without changing any exec logic or contracts. Now I'm checking the git diff to confirm the changes are limited to just those 6 attribute lines plus the proof bodies, with no alterations to the actual exec implementations.
+[RESULT ✓] bash: .../proving/prover-claude-20260615-040053.jsonl    | 28 ++++++++++++++++++++++
+ .../proving/prover-claude-20260615-040053.txt      | 16 +++++++++++++
+ 2 files changed, 44 insertions(+)
+=== manager.rs diff ===
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short src/kernel/src/mm/phys/ && echo "=== check markers present ===" && grep 
+
+[THINKING] The manager.rs diff appears empty, which suggests those files might not be tracked by git yet or were already committed. Let me check the current git status to understand what's happening.
+[RESULT ✓] bash: === check markers present ===
+98:    #[verus_verify(external_body)]
+177:    #[verus_verify(external_body)]
+249:    #[verus_verify(external_body)]
+292:    #[verus_verify(external_body)]
+336:    #[verus_verify(external_body)]
+388:    #[verus_verify(external_body)]
+=== check no admit ===
+1
+<shellId: 26...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "admit\|assume" src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I'm getting a count of 1 from the grep search, so let me look at what actually matched — it's probably a comment that contains the word "admit" or "assume" rather than the code itself.
+[RESULT ✓] bash: 8:// Bodies are `admit()` in this spec-design phase; the proving phase discharges them.
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+The only remaining match is a now-stale header comment. Let me update it to reflect the completed proofs.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I found a stale comment in the proof file that mentions bodies being admitted during the spec-design phase, but since we've now moved into the proving phase where they're discharged, I should update it to reflect the current state.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verification:|admit|assume
