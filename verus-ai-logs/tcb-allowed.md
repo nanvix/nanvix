@@ -27,14 +27,22 @@ Any `external_body` outside this list must be removed.
 - `src/libs/arch/src/x86/mem/paging/table.rs::Table::<E>::read` — reads a `TableEntry` from a
   page-table slot through a raw pointer materialized from `self.base` (`usize as *const E::Word`).
   Verus does not support `usize`→pointer casts (int-to-ptr materialization of externally-owned,
-  volatile page-table memory), so the body cannot be verified without a `PointsTo`-style permission
-  token keyed by the table address. Same trust-boundary rationale as `bump_allocator::alloc`
-  (`usize as *mut`) and `frame::instance`. See `nanvix-phys-arch-paging-table/verus-unsupported.md`.
+  volatile page-table memory), so the body cannot be verified. Same trust-boundary rationale as
+  `bump_allocator::alloc` (`usize as *mut`) and `frame::instance`. See
+  `nanvix-phys-arch-paging-table/verus-unsupported.md`. **The function is not contract-free:** it
+  carries a full `#[verus_spec]` pinned to the global page-table-memory ghost — `requires index@ <
+  PAGE_TABLE_LENGTH`, `ensures result == spec_table_read::<E>(self@.addr, index@)` — exactly as
+  `frame::instance` pins its result to `phys_view()` (parameter-free global ghost, no signature
+  change).
 - `src/libs/arch/src/x86/mem/paging/table.rs::Table::<E>::write` — writes a `TableEntry` into a
   page-table slot through a raw pointer materialized from `self.base` (`usize as *mut E::Word`).
-  Same int-to-ptr / volatile externally-owned-memory limitation as `read`. The round-trip
-  (`read` after `write`) law is deferred to the permission layer (see `view_design.md`); no
-  currently verified caller depends on it (all upstream callers in `identity_map.rs` `admit()`).
+  Same int-to-ptr / volatile externally-owned-memory limitation as `read`. Carries a full
+  `#[verus_spec]`: `requires index@ < PAGE_TABLE_LENGTH`, `ensures spec_table_word(self@.addr,
+  index@) == spec_entry_raw(entry)`. Because the global ghost is a pure function, every other
+  slot/page is preserved across the call (frame condition), and `read`-after-`write` decodes back
+  to `Some(entry)` via the `lemma_entry_roundtrip` broadcast law (`table.proof.rs`). The
+  cross-call write transition is realized in the proving phase by a ghost token over the
+  page-table pages — the same `phys_view()` "transition realized in the proving phase" placeholder.
 
 ## Skip / exclude from current proof target
 

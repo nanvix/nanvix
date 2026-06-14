@@ -46,9 +46,13 @@ used by `bump_allocator::alloc` (`usize as *mut`) and `frame::instance`. Their
 volatile access) are trusted.
 
 ### Deferred work
-The `read`-after-`write` round-trip law (and a per-slot entries model on the
-Table view) is deferred to a future permission layer that threads a `PointsTo`
-token keyed by the table address. No currently verified caller depends on it —
-every upstream caller in `identity_map.rs` (`ensure_pt`, `ensure_pte`,
-`identity_map_page`) starts its body with `proof! { admit(); }`. See
-`view_design.md`.
+`read`/`write` keep their **full** abstract contracts (they are not contract-free
+trust boundaries): the global page-table-memory ghost `spec_table_word` /
+`spec_table_read::<E>` models the slot contents (parameter-free, like
+`phys_view()`), and the `lemma_entry_roundtrip` broadcast law gives callers the
+`read`-after-`write` round-trip. Only the *body* (the `usize`→pointer cast + the
+volatile access) is trusted via `external_body`. The cross-call write transition
+and same-slot-write consistency are realized in the proving phase by a ghost
+token over the page-table pages — the same `phys_view()` placeholder rationale —
+without any exec signature change, so the out-of-scope `admit()` callers in
+`identity_map.rs` (`ensure_pt`, `ensure_pte`, `identity_map_page`) do not cascade.

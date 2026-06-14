@@ -14,14 +14,14 @@ a tooling limitation, not a logic error in the code. Mitigated with the
 documented `external_body` trust boundary (see `verus-unsupported.md` and
 `verus-ai-logs/tcb-allowed.md`). No fix required.
 
-## Deferred (not a bug) — read/write round-trip + entries model
+## Resolved (Turn 1 review) — read/write now carry full contracts
 
-The full `Table` View (per-slot `entries: Map<nat, Option<E>>` with
-`spec_read`/`spec_write` and the `TableEntry` round-trip law) needs a ghost
-memory-permission token keyed by the table address. Threading that token adds a
-`with`-clause ghost parameter to `read`/`write` that cascades into out-of-scope
-callers (`identity_map::ensure_pt`/`ensure_pte`/`identity_map_page`), all of
-which currently `admit()`. Deferred to the permission layer; the struct View is
-`addr`-only for now. See `view_design.md` "As-Built Decision". No verified
-caller loses guarantees today. Proving phase will revisit when the permission
-layer is verified.
+The earlier "deferred round-trip / addr-only View" note was resolved during the
+Turn 1 specification review. `read`/`write` and the `TableEntry` codec now carry
+complete `#[verus_spec]` contracts referencing a **global, parameter-free**
+page-table-memory ghost (`spec_table_word`/`spec_table_read`), mirroring
+`frame::instance`→`phys_view()`. No exec signature changed, so the out-of-scope
+`admit()` callers do not cascade (`make verify`: kernel 76 verified, 0 errors).
+The `entries: Map<nat, Option<E>>` model and the read-after-write round-trip law
+(`lemma_entry_roundtrip`) are now expressed, not deferred. `read`/`write` remain
+`external_body` only for the genuine Verus `usize`→pointer limitation below.

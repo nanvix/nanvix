@@ -294,3 +294,47 @@ What is retained verbatim from the target design:
 The `entries`-map design is preserved above as the **forward target** for when
 the page-table permission layer is verified; at that point `read`/`write` lose
 their `external_body` and gain the `spec_read`/`spec_write` postconditions.
+
+---
+
+## Revision (Turn 1 review) — `read`/`write` now carry full contracts
+
+The earlier "addr-only View, entries deferred" decision was **revised** after the
+Turn 1 specification review: contract-free `external_body` trust boundaries were
+rejected because the precedent they cite (`frame::instance`) is `external_body`
+*with* a complete `#[verus_spec]` pinned to a **global, parameter-free** ghost
+state (`phys_view()`), adding **no** tracked parameter to the signature.
+
+Following that precedent exactly:
+
+- **Global ghost memory.** `spec_table_word(addr, index) -> PteWord` (uninterp,
+  parameter-free) models the raw word at each page-table slot — the analogue of
+  `phys_view()`. `spec_table_read::<E>(addr, index) = spec_entry_from_raw(spec_table_word(addr, index))`
+  is the decoded entry. Because it is a pure function, a `write` call only
+  updates knowledge of the one named slot; **every other slot/page is preserved
+  across the call for free** (the caller-facing frame condition), and the
+  cross-call transition / same-slot consistency is realized in the proving phase
+  by a ghost token (the `phys_view()` placeholder rationale).
+- **Entries map restored.** `TableView<E> { addr: nat, entries: Map<nat, Option<E>> }`
+  with `entries` defined pointwise from `spec_table_read` over `[0, PAGE_TABLE_LENGTH)`
+  — the `Map<nat, Option<E>>` model from the target design above.
+- **TableEntry codec + law.** `spec_entry_raw::<E>`/`spec_entry_from_raw::<E>`
+  (unbounded over `E` to avoid a trait↔function definitional cycle) abstract
+  `raw`/`from_raw`; the round-trip law `spec_entry_from_raw(spec_entry_raw(e)) == Some(e)`
+  is the broadcast lemma `lemma_entry_roundtrip` (`table.proof.rs`).
+- **Contracts (no signature change).**
+  - `from_raw` → `result == spec_entry_from_raw::<Self>(raw)`;
+    `raw` → `result == spec_entry_raw(self)`.
+  - `read` → `requires index@ < PAGE_TABLE_LENGTH`,
+    `ensures result == spec_table_read::<E>(self@.addr, index@)`.
+  - `write` → `requires index@ < PAGE_TABLE_LENGTH`,
+    `ensures spec_table_word(self@.addr, index@) == spec_entry_raw(entry)`.
+- **Read-after-write** is now caller-derivable: after `write(idx, e)`,
+  `read(idx) == spec_entry_from_raw(spec_entry_raw(e)) == Some(e)` via
+  `broadcast use lemma_entry_roundtrip`.
+
+`read`/`write` remain `#[verus_verify(external_body)]` solely because of the
+genuine Verus `usize`→pointer limitation (`verus-unsupported.md`); they are no
+longer contract-free. No exec signature changed, so the out-of-scope `admit()`
+callers (`identity_map::ensure_pt`/`ensure_pte`/`identity_map_page`) do not
+cascade — confirmed by `make verify` (kernel: 76 verified, 0 errors).

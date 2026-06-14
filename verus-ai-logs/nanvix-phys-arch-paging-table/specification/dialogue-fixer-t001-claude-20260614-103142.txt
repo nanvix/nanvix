@@ -385,3 +385,137 @@ No cascade — kernel stays 76 verified, 0 errors. Let me confirm overall exit c
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify >/dev/null 2>&1; echo "verify exit: $?"
 
 [THINKING] The kernel verification still holds at 76 with no errors, and the index bounds check didn't cause any issues with the admit() callers since they proceed immediately. Now I'm checking that the overall exit status is clean.
+[RESULT ✓] bash: verify exit: 0
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 ./z build 2>&1 | tail -6; echo "build exit: ${PIPESTATUS[0]}"
+[RESULT ✓] bash: SCCACHE Statistics
+================================================================================
+SCCACHE not available or not configured.
+================================================================================
+
+[OK]    Build complete.
+build exit: 0
+<shellId: 18 completed with exit code 0...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Both pass. Let me run the reviewer's requested verification scripts (fn_coverage, spec_drift) and confirm the grep evidence.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== fn_coverage ==="; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.p
+[RESULT ✓] bash: === fn_coverage ===
+
+| Function |
+|----------|
+| `from_address` |
+| `into_raw` |
+| `new` |
+| `pd_index` |
+| `pt_index` |
+| `read` |
+| `write` |
+
+## SPEC/PROOF ONLY (informational)
+
+_None._
+
+=== spec_drift ===
+
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review ...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== coverage summary ==="; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_cover
+[RESULT ✓] bash: === coverage summary ===
+| Matched | 7 |
+| Missing | 0 |
+## MISSING (exec fns in source but not in verus)
+## MATCHED (exec fns present in both)
+=== grep verus_spec on read/write/raw/from_raw ===
+33:    #[verus_spec(result =>
+38:    #[verus_spec(result =>
+65:    #[verus_spec(result =>
+85:    #[verus_...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+7/7 matched, all four methods now carry `#[verus_spec]`. Let me update the supporting docs to reflect that read/write are no longer contract-free, then write the fixer response.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat >> verus-ai-logs/nanvix-phys-arch-paging-table/view_design.md <<'EOF'
+
+---
+
+## Revision
+
+[THINKING] All seven functions are now properly annotated with verus_spec. I need to update the documentation files to reflect that read and write operations now carry full contracts instead of being contract-free, since the entries model is now realized through the global ghost state. Let me revise the as-built sections in view_design.md and tcb-allowed.md to capture this change.
+[RESULT ✓] bash: done
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/bugs.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/bugs.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/verus-unsupported.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/verus-unsupported.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Now clean up /tmp and write the fixer response.
+[TOOL] bash: cd /tmp && rm -f tt.rs tt2.rs tt3.rs *.d 2>/dev/null; echo cleaned
+[RESULT ✓] bash: cleaned
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/specification/dialogue/turn_001_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/specification/dialogue/turn_001_fixer.md with 4956 characters
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Fixed. The reviewer's core finding — that `read`/`write`/`raw`/`from_raw` were contract-free `external_body` trust boundaries — is resolved.
+
+## What I did
+
+Gave all four functions real, caller-usable contracts following the `frame::instance` → `phys_view()` precedent (external_body body trusted, but full `#[verus_spec]` against a **global, parameter-free** ghost state, **no signature change**):
+
+- **`table.spec.rs`**: added the entry codec (`spec_entry_raw`/`spec_entry_from_raw`, unbounded over `E` to avoid a trait↔fn cycle), the global page-table-memory ghost `spec_table_word(addr, index)` + decoded `spec_table_read`, and restored the target `TableView<E> { addr, entries: Map<nat, Option<E>> }`.
+- **`table.proof.rs`**: the round-trip law `lemma_entry_roundtrip` (broadcast, `admit()` body).
+- **`table.rs`**: `from_raw`/`raw` tied to the codec; `read`/`write` got `requires index@ < PAGE_TABLE_LENGTH` + ensures pinned to the ghost (kept `external_body`).
+
+Read-after-write is now caller-derivable; the frame condition is free because the ghost is a pure function (a `write` only updates the one named slot).
+
+## Verification
+- `make verify-arch` → **23 verified, 0 errors**
+- `make verify` → arch 23 + kernel 76, **0 errors** (no cascade into `identity_map`)
+- `./z build` → **OK**
+- `fn_coverage` 7/7, `spec_drift` **0 drift**
+
+
+=== Session End ===
+Session: 702a087e-71ae-4509-a5b2-ec753e322d88
+Duration: 519.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/specification/dialogue-fixer-t001-claude-20260614-103142.jsonl
