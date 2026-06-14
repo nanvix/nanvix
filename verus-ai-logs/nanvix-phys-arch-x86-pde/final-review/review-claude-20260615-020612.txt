@@ -478,3 +478,291 @@ Turn 10
 [THINKING] I'm noticing that `make build` doesn't actually do anything—the real build commands are `make all-nanvix` or `./z build`. The checklist references `make build`, but the actual verification step specified in the task is `make verify-arch`, which compiles the arch crate through Verus and exits cleanly. So I'll treat `make build` as a no-op and rely on `make verify-arch` combined with `make verify` for the build and verification checks.
 
 Looking at the function coverage, there are 15 executable functions total, but only the 5 in-scope ones have contracts—which is exactly what we want. The coverage requirement only applies to in-scope functions, and they all have proper requires and ensures clauses. Now I need to run the full `make verify` for cross-module regression testing, which will take a while.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  18/525 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/v...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+All shared checks done: verify-arch exit 0, full `make verify` all crates exit 0, no spec drift, AST consistent, no admit/assume/external_body in pde files, bugs.md = None. Now launching the 2 independent review sub-agents.
+[TOOL] report_intent: Launching independent review agents
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'mode': 'background',
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'mode': 'background', 
+
+[THINKING] The verification run shows all crates passing with exit code 0, and while the kernel crate has some violations in other modules, those are pre-existing and out of scope. The pde module in the arch crate is clean with no admit violations and only TCB-allowed external bodies. All modules are passing verification across the board.
+
+Now I'm gathering all the verification results into a comprehensive context bundle to send to the sub-agents, including the arch verification status, pde.rs specifications and proofs, spec drift analysis, AST consistency checks, function coverage metrics, and the build status.
+
+I'll set up the final-review directory and launch both Claude and GPT-5.3-Codex as independent reviewers in parallel, each producing their own review file with the model name appended. They'll each verify the findings independently using the shared context I provide.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+Both independent review agents are running (claude-opus-4.8 and gpt-5.3-codex). I'm waiting for them to complete before consolidating into the final review.
+I'll start by reading the required skills and the in-scope files, then run the verification tools.
+[TOOL] report_intent: Reading skills and scope files
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== pde.rs ===" && cat src/libs/arch/src/x86/mem/paging/pde.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== pde.spec.rs ===" && cat src/libs/arch/src/x86/mem/paging/pde.spec
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === pde.rs ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//============================================================================================...
+[RESULT ✓] bash: === pde.spec.rs ===
+verus! {
+
+//==================================================================================================
+// Flag projection helpers
+//==================================================================================================
+
+// Each paging-control enum is two-value...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== caller_analysis.md ===" && cat verus-ai-logs/nanvix-phys-arch-x86
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== view_design.md ===" && cat verus-ai-logs/nanvix-phys-arch-x86-pde
+[RESULT ✓] bash: === caller_analysis.md ===
+# Caller Analysis: `x86/mem/paging/pde.rs` (Page Directory Entry)
+
+## Script Output
+See: `verus-ai-logs/nanvix-phys-arch-x86-pde/find_callers_output.md`
+
+> **Note on script results:** the LSP script reported **0 external callers** for
+> every public function. This is a fal...
+[RESULT ✓] bash: Output too large to read at once (26.1 KB). Saved to: /tmp/copilot-tool-output-1781460559295-mcee8f.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing pde module
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use vstd::bits::lemma_usize_shl_is_mul;
+4. use vstd::arithmetic::power2::{pow2, lemma2_to64};
+5. use vstd::arithmetic::div_mod::{
+6.     lemma_fundamental_div_mod,
+7.     lemma_mod_bound,
+8.     lemma_mod_multiples_basic,
+9. };
+10. use vstd::arithmetic::mul::lemma_mul_inequality;
+...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // Flag projection helpers
+5. //==================================================================================================
+6. 
+7. // Each paging-control enum is two-valu...
+[RESULT ✓] view: 1. # Caller Analysis: `x86/mem/paging/pde.rs` (Page Directory Entry)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-arch-x86-pde/find_callers_output.md`
+5. 
+6. > **Note on script results:** the LSP script reported **0 external callers** for
+7. > every public function. This is a false neg...
+[RESULT ✓] view: 1. # View Design: `arch::x86::mem::paging::pde` (Page Directory Entry)
+2. 
+3. In-scope (verification-order) targets — the **only** functions this View must
+4. serve, and the only ones any later phase may annotate:
+5. 
+6. - `PageDirectoryEntryFlags::new`
+7. - `PageDirectoryEntry::new`
+8. - `PageDirec...
+[RESULT ✓] view: 1. # Bug Report — arch::x86::mem::paging::pde
+2. 
+3. None.
+4. 
+5. All in-scope functions (`PageDirectoryEntry::new`, `PageDirectoryEntryFlags::new`,
+6. `PageDirectoryEntry::is_present`, `PageDirectoryEntryFlags::is_present`,
+7. `PageDirectoryEntry::frame_address`) verify against their specifications...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 221. 2. **Bidirectional Failure Condition** — express error conditions as abstract
+222.    predicates on the module's interface state, not as a list of individual
+223.    code checks. Ask: what condition at the interface level makes success
+224.    impossible?
+225. 3. **Liveness** — if the precondit...
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== bugs.md ===" && cat verus-ai-logs/nanvix-phys-arch-x86-pde/bugs.m
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "external_body" src/libs/arch/src/ ; echo "=== admit/assume in pde
+[RESULT ✓] bash: === bugs.md ===
+# Bug Report — arch::x86::mem::paging::pde
+
+None.
+
+All in-scope functions (`PageDirectoryEntry::new`, `PageDirectoryEntryFlags::new`,
+`PageDirectoryEntry::is_present`, `PageDirectoryEntryFlags::is_present`,
+`PageDirectoryEntry::frame_address`) verify against their specifications with...
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/mod.rs:79:#[verus_verify(external_body)]
+src/libs/arch/src/x86/mem/paging/table.rs:202:    #[verus_verify(external_body)]
+src/libs/arch/src/x86/mem/paging/table.rs:231:    // value per slot). Pinning that pure cell to the caller-chosen `entry` in an `external_body`
+s...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: for f in spec-design verus-constraints ast-consistency bug-reporting spec-drift-check; do echo "===== $f ====="; cat /ho
+[RESULT ✓] bash: Output too large to read at once (48.8 KB). Saved to: /tmp/copilot-tool-output-1781460572768-nnvi9n.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running verification checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/li
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff sr
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/libs/a
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "external_body" src/libs/arch/src/
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && rg -n "VERUS REWRITE|admit\(|assume\(|assume_specification|external_body|#\
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/mod.rs:79:#[verus_verify(external_body)]
+src/libs/arch/src/x86/mem/paging/table.rs:202:    #[verus_verify(external_body)]
+src/libs/arch/src/x86/mem/paging/table.rs:231:    // value per slot). Pinning that pure cell to the caller-chosen `entry` in an `external_body`
+s...
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/pde.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/pde.rs:11:#[cfg(verus_keep_ghost)]
+<shellId: 24 completed with exit code 0>
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/libs/arch/src/x86/mem/paging/pde.rs`
+- **Verus file:** `src/libs/arch/src/x86/mem/paging/pde.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|---...
+[RESULT ✓] bash: ✅ All exec functions consistent.
+# AST Consistency Report: ast_orig_bth1qnti
+
+**Source:** `/tmp/ast_orig_bth1qnti.rs`
+**Verus:** `src/libs/arch/src/x86/mem/paging/pde.rs`
+
+## Summary
+
+- Functions matched: 23/23
+- Functions mismatched: 0
+- Missing in Verus: 0
+- Extra in Verus: 0
+- **Consistent: YES**...
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 21 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781460572768-nnvi9n.txt
+[RESULT ✓] view: File too large to read at once (48.8 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running arch verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-arch
+[RESULT ✓] report_intent: Intent logged
