@@ -15,7 +15,8 @@ pub proof fn lemma_install_page_maps(v: IdentityMapView, page: int)
     ensures
         v.spec_install_page(page).mapped.contains(page),
 {
-    admit();
+    assert(v.spec_install_page(page).mapped =~= v.mapped.insert(page));
+    assert(v.mapped.insert(page).contains(page));
 }
 
 // Installing a page never removes an already-mapped page (monotonicity: once mapped, stays
@@ -24,7 +25,8 @@ pub proof fn lemma_install_page_monotone(v: IdentityMapView, page: int)
     ensures
         v.mapped.subset_of(v.spec_install_page(page).mapped),
 {
-    admit();
+    assert(v.spec_install_page(page).mapped =~= v.mapped.insert(page));
+    assert forall|x: int| v.mapped.contains(x) implies v.mapped.insert(page).contains(x) by {}
 }
 
 // Installing a page preserves well-formedness when the new page is page-aligned and the mapper is
@@ -37,7 +39,15 @@ pub proof fn lemma_install_page_preserves_inv(v: IdentityMapView, page: int)
     ensures
         v.spec_install_page(page).inv(),
 {
-    admit();
+    let w = v.spec_install_page(page);
+    assert(w.mapped =~= v.mapped.insert(page));
+    assert(w.initialized == v.initialized);
+    assert forall|p: int| #[trigger] w.mapped.contains(p) implies spec_is_page_aligned(p) by {
+        assert(v.mapped.insert(page).contains(p));
+        if p != page {
+            assert(v.mapped.contains(p));
+        }
+    }
 }
 
 // After `identity_map_page`'s full transition the target page is accessible, regardless of whether
@@ -46,7 +56,10 @@ pub proof fn lemma_map_page_accessible(v: IdentityMapView, page: int)
     ensures
         v.spec_map_page(page).accessible(page),
 {
-    admit();
+    if v.initialized {
+        assert(v.spec_map_page(page) == v.spec_install_page(page));
+        lemma_install_page_maps(v, page);
+    }
 }
 
 // `spec_map_page` preserves well-formedness for a page-aligned target.
@@ -57,7 +70,9 @@ pub proof fn lemma_map_page_preserves_inv(v: IdentityMapView, page: int)
     ensures
         v.spec_map_page(page).inv(),
 {
-    admit();
+    if v.initialized {
+        lemma_install_page_preserves_inv(v, page);
+    }
 }
 
 } // verus!
