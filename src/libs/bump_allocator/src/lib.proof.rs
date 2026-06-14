@@ -81,7 +81,13 @@ pub proof fn lemma_geometry(v: BumpView)
 
     assert forall|i: int, j: int| (0 <= i < cap && 0 <= j < cap && i != j) implies (
     #[trigger] v.slot_addr(i)) != (#[trigger] v.slot_addr(j)) by {
-        assert(v.slot_addr(i) - v.slot_addr(j) == (i - j) * stride) by (nonlinear_arith);
+        assert(v.slot_addr(i) == base + i * stride);
+        assert(v.slot_addr(j) == base + j * stride);
+        assert(v.slot_addr(i) - v.slot_addr(j) == (i - j) * stride) by (nonlinear_arith)
+            requires
+                v.slot_addr(i) == base + i * stride,
+                v.slot_addr(j) == base + j * stride,
+        ;
         assert((i - j) * stride != 0) by (nonlinear_arith)
             requires
                 i != j,

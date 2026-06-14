@@ -377,3 +377,40 @@ Now let me write the proofs.
 Turn 18
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && mv src/libs/bump_allocator/src/lib.proof.rs.new src/libs/bump_allocator/src
+[RESULT ✓] bash: |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 11 verified, 1 errors
+error: could not compile `bump-allocator` (lib) due to 1 previous error
+
+=== Results ===
+  11 verified
+  1 errors
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "error\|assertion failed\|-->" verus-ai-logs/verify-bump-allocator/
+[RESULT ✓] bash: 8:1 errors
+20:error: assertion failed
+21:  --> src/libs/bump_allocator/src/lib.proof.rs:84:16
+24:   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+26:verification results:: 11 verified, 1 errors
+27:error: could not compile `bump-allocator` (lib) due to 1 previo...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.proof.rs
+
+[THINKING] Looking at line 84, I need to verify the nonlinear assertion about slot addresses. The assertion checks that the difference between two slot addresses equals the stride difference, which should follow from the distributive property: since slot_addr(i) = base + i*stride and slot_addr(j) = base + j*stride, their difference simplifies to (i-j)*stride through basic algebra.
+
+The issue is that nonlinear_arith operates in isolation and won't automatically unfold the open spec function definition of slot_addr. I should explicitly bind the slot address values and provide their expansions as requires clauses to the nonlinear block, so it has the necessary equalities to work with rather than trying to unfold the spec function itself.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-bump-allocator 2>&1 | tail -22
