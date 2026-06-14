@@ -235,3 +235,16 @@ Module: arch-frame-number
 [2026-06-15 04:06:29] Running final comprehensive review...
 [2026-06-15 04:06:29] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 04:14:21]   ↳ review done in 7m52s (exit=0)
+[2026-06-15 04:14:21] [FINAL REVIEW] Result: UNKNOWN (0/5)
+[2026-06-15 04:14:21] [FINAL REVIEW] Cheating report: No cheating detected
+[2026-06-15 04:14:21] [FINAL REVIEW] Done (7m52s)
+
+============================================================
+PIPELINE FINISHED: arch-frame-number (some phases need work)
+  ✅ proving                   dialogue-RESOLVED         6m05s (1 dialogue turns)
+  ✅ cheating-elimination      dialogue-RESOLVED         3m25s (1 dialogue turns)
+  ❌ final-review              UNKNOWN                   7m52s
+  ──────────────────────────────────────────────────────────
+  Total: 17m44s
+============================================================
+[2026-06-15 04:14:21] [USAGE] Summary: 11 calls, 0 tokens, 1h19m09s total → /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/usage_summary.json
