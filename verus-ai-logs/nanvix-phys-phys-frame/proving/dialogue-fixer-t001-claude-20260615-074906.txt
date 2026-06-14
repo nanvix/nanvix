@@ -182,3 +182,17 @@ Turn 9
 Turn 10
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|verified, |postconditio
+[RESULT ✓] bash: error: postcondition not satisfied
+    |             ^^^^^^^^^ failed this postcondition
+verification results:: 31 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  1 errors
+  verification: 31 verified, 1 errors (ex...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Confirmed the postcondition failure. Let me capture exactly which postcondition fails.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -B2 -A12 "postcondition not satis
+
+[THINKING] I need to verify the exact postcondition that's failing when I remove the admit statement.
