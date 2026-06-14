@@ -38,5 +38,5 @@
     - mm/phys/upool.rs:246 new: external_body
     - mm/phys/upool.rs:279 alloc: external_body
     - mm/virt/identity_map.rs:533 ensure_pt: admit
-    - mm/virt/identity_map.rs:718 identity_map_page: admit
+    - mm/virt/identity_map.rs:717 identity_map_page: admit
     - mm/virt/identity_map.spec.rs:143 ExPageTableBss (struct): external_type_spec

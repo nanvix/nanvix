@@ -629,7 +629,6 @@ fn ensure_pte(
     pte_idx: TableIndex,
     phys_addr: usize,
 ) -> Result<(), Error> {
-    proof! { use_type_invariant(pte_idx); }
     let pte: PageTableEntry = unsafe { pt.read(pte_idx) }.ok_or_else(|| {
         let reason: &str = "invalid PTE read from page table";
         #[cfg(not(verus_keep_ghost))]

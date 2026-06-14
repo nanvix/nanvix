@@ -120,3 +120,22 @@ Turn 4
 Turn 5
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm
+[RESULT ✓] bash: error: Verus Internal Error: missing type invariant function
+   --> src/kernel/src/mm/virt/identity_map.rs:632:33
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  verification: 0 verified, co...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+`use_type_invariant` on a cross-crate type fails (internal error — the arch `TableIndex` type-invariant isn't visible in the kernel crate). Let me try without it to see the underlying obligations:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] The `use_type_invariant` function isn't available in this context, so I need to find the precondition another way. The `read` operation requires `index@ < PAGE_TABLE_LENGTH`, so I'm looking at how other functions like `sync_kernel_pdes` handle this constraint, though they use `admit`. I should check whether the TableIndex type invariant can be accessed differently or if I need to pass the type explicitly to `use_type_invariant`.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm
