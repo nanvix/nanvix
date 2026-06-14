@@ -256,3 +256,88 @@ The key contribution here is that I can now prove with isolated Verus reproducer
 Turn 11
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "^  [0-9]+ verified|er
+[RESULT ✓] bash: === build ===
+./z
+z
+z.ps1
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make build 2>&1 | tail -15; echo "BUILD EXIT: ${PIPESTATUS[0]}"
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+BUILD EXIT: 0
+<shellId: build1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 ./z build 2>&1 | tail -20; echo "Z BUILD EXIT: ${PIPESTATUS[0]}"
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.13s
+cp -f --preserve /home/ruize/nanvix-phy-specs/target/debug/nanvix-test /home/ruize/nanvix-phy-specs/bin/nanvix-test.elf
+/home/ruize/nanvix-phy-specs/bin/mkramfs.elf -o /home/ruize/nanvix-phy-specs/bin/test-kernel-ramfs.img /home/ruize...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+All evidence gathered. `./z build` passes (exec [OK]); `make verify-kernel` confirms the 4 manager admits remain (admit=24 global). Let me append the unsoundness findings to the TODO and write the fixer response.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat >> verus-ai-logs/nanvix-phys-phys-manager/verification_todo.md <<'EOF'
+
+---
+
+## U
+
+[THINKING] The build passes and the verification shows the cheating detection flag, so I have the full picture now. I'm weighing whether to attempt a partial workaround to reduce the admit count, but I'm realizing I need to step back and commit to the core principle—the task is fundamentally about eliminating the cheating, not finding ways around it.
+
+I've proven that in-scope discharge is impossible due to missing bridging contracts and that sound conversion fails for most cases due to provably-false axioms. The honest path forward is NEEDS_GUIDANCE with reproducers and precise missing contracts, which the reviewer has sanctioned. Let me nail down exactly which contract each lemma needs and where it's missing: lemma_manager_attached requires a tracked attachment token linking the PhysMemoryManager and Upool singletons to the physical view frames, which should be produced during initialization but falls outside my scope; lemma_kernel_alloc_one needs frame::alloc() to ensure stronger postconditions about the physical view state that it currently doesn't provide.
+
+For lemma_kernel_alloc_contiguous, the callee must export the bulk transition showing how the physical view frames change after allocating a contiguous region, again requiring the same tracked token threading. For lemma_user_bulk_err_restored, the restoration happens implicitly through Drop semantics that Verus doesn't model, so I'd need either a tracked-aware frame::free step applied per dropped handle or a restructured execution path using mutable references—both out of scope. I'll finalize the NEEDS_GUIDANCE response with all this evidence and the unsoundness proofs as the decisive new material, then update the fixer turn documentation.
+
+Now I'm compiling the exact reproducer outputs to embed in the report.
+[RESULT ✓] bash: appended
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/dialogue/turn_001_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/dialogue/turn_001_fixer.md with 8462 characters
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rm -rf /tmp/repro && echo "=== final source integrity ===" && git --no-pager diff a8d
+[RESULT ✓] bash: === final source integrity ===
+(no source files listed = clean)
+=== admits in manager ===
+4
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+I followed the reviewer's demand to **try every approach and show the result**, not justify with prose.
+
+## Result: NEEDS_GUIDANCE (backed by executable proof)
+
+I tested all three paths the reviewer named, with real Verus output:
+
+**A. Discharge in-scope** — removed the `admit()`s → `38 verified, 4 errors` (`postcondition not satisfied` at the 4 lemma seams). Isolated reproducer for `lemma_kernel_alloc_one` → `0 verified, 1 errors`. Unprovable from `requires pre.wf()` alone.
+
+**B. Reviewer's "convert to tcb-allowed boundary" fallback** — this is the decisive new finding: for 3 of the 4 lemmas, an `external_body` axiom is **provably unsound**. I wrote isolated reproducers where Verus *verifies a proof of `false`* (`1 verified, 0 errors`) by calling the axiom on adversarial inputs. So the fallback would inject silent `false`-deriving axioms — strictly worse than `admit()`, and exactly the landmine the proving reviewer deleted (`lemma_kernel_alloc_err_empty`). I refused to do it.
+
+**C. Thread the §8 ghost token** — no in-scope token producer exists (all are out-of-scope `external_body` frame-layer fns), and the parameter-free `phys_view()` constant structurally cannot express a `v→v'` step (forces `pre==post`).
+
+**Verification:** `make verify-kernel` → `42 verified, 0 errors` (source byte-identical to phase start, spec-drift = 0, no new assume/external_body); `./z build` → `[OK]` exit 0.
+
+**Unblock:** the 4 admits are a cross-module sequencing dependency — the `frame` layer (itself still 8 admits) must first be verified and expose a versioned partition-step token + singleton attachment. Then all 4 discharge mechanically.
+
+Committed: reproducers under `cheating-elimination/reproducers/`, updated `verification_todo.md`, and `turn_001_fixer.md`.
+
+
+=== Session End ===
+Session: 511fc3c9-9d9e-499f-9aaa-b8520b146def
+Duration: 491.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/dialogue-fixer-t001-claude-20260615-024540.jsonl

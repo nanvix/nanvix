@@ -102,3 +102,35 @@ discharge mechanically:
 
 No spec was weakened and no `external_body`/`assume` was introduced to mask
 these gaps.
+
+---
+
+## Update (cheating-elimination turn 1 fixer): conversion-to-boundary is UNSOUND
+
+The reviewer's fallback ("convert the admit into a tcb-allowed.md-listed
+`external_body` boundary") was **tested and rejected by Verus** for 3 of the 4
+lemmas: as free-standing `#[verifier::external_body]` axioms they are
+**provably false** (a caller derives `false`). Isolated reproducers are committed
+under `cheating-elimination/reproducers/`:
+
+- `alloc_one_realbody.rs` — `lemma_kernel_alloc_one` with a real body →
+  `0 verified, 1 errors` (postconditions `pre.free_frames.contains(addr)` and
+  `post == pre.alloc_one(addr)` not satisfied): **unprovable in-scope**.
+- `alloc_one_unsound.rs` — same lemma as `external_body` axiom → `1 verified,
+  0 errors` where the verified proof is `exploit() ensures false`: **unsound**.
+- `others_unsound.rs` — `lemma_user_bulk_err_restored` as `external_body` axiom
+  → `1 verified, 0 errors` proving `false`: **unsound**.
+  `lemma_kernel_alloc_contiguous` is the same universal-over-arbitrary-`frames`
+  shape as `alloc_one`, hence equally unsound as an axiom.
+
+Only `lemma_manager_attached` (`m@ == phys_view().frames`) is a *sound* trust
+axiom (both sides `uninterp`, no counterexample constructible), but even granting
+it, the kernel-step lemmas remain unprovable because the **parameter-free**
+`phys_view()` cannot express a `v → v'` transition (asserting attachment at the
+pre- and post-points forces `pre == post`, contradicting `post == pre.alloc_one`).
+
+**Net:** the 4 admits can be eliminated only by an out-of-scope change to the
+`frame` free-function layer (a versioned/tracked global-partition token threaded
+through `frame::alloc`/`alloc_contiguous`/`free`, plus a singleton attachment
+token produced by `init`/`Upool::new`). They cannot be discharged or *soundly*
+converted within `manager.{rs,spec.rs,proof.rs}`.
