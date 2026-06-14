@@ -96,3 +96,152 @@ I've now traced the complete contract chain. The decisive structural fact is con
 frames. This is why `lemma_kernel_alloc_one` is fundamentally inexpressible: it claims a transition that the constant-based model makes contradictory. The only sound solution would be a versioned or tracked token, which isn't available. I've verified this is irreducible across multiple approaches, and the task requires eliminating all proof gaps—so I need to record this as a remaining item in the verification todo rather than leaving it admitted.
 
 I'm now running the full verification to get the exact cheating line the directive asks for, then I'll produce a concise final response that consolidates the findings and confirms the todo file is in place.
+[RESULT ✓] bash: cheating: assume=0 external_body=18 admit=24 trusted=0 no_decreases=0 cfg_gate=15
+  cheating: assume=0 external_body=18 admit=24 trusted=0 no_decreases=0 cfg_gate=15
+  status: CHEATING_DETECTED
+<shellId: vkfull completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+The whole-kernel scan shows admit=24; the module scope (`mm::phys` = manager + frame) is the 12 the reviewer counts. Let me confirm my module's exact contribution and that source is untouched, then finalize.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== manager source diff vs phase-start a8d643993 ===" && git diff a8d643993 -- 
+
+[THINKING] I'm noticing a discrepancy in the admit counts—the whole-kernel scan shows 24, but earlier reports indicated 12, which suggests the difference comes down to what's being measured. Now I need to verify my module's actual contribution by checking the manager.proof.rs admits count and confirming the manager details.
+
+The core issue is that the reviewer expects all 12 admits in the mm::phys module to be fixed, including the 8 in frame.rs, but my task only lists manager functions as targets. Since frame.rs is a separate module with its own elimination phase, I'm caught between the reviewer's expectation and the constraint against touching unlisted functions.
+
+I've decided to treat this as a documented blocker rather than continue looping. I'll finalize the turn_003 response and ensure the verification todo is complete and accurate, leaving the source unchanged.
+[RESULT ✓] bash: === manager source diff vs phase-start a8d643993 ===
+(empty above = unchanged)
+=== admit locations ===
+16:    admit();
+35:    admit();
+55:    admit();
+216:    admit();
+=== frame.rs admit count (out-of-scope) ===
+8
+=== todo file ===
+-rw-rw-r-- 1 ruize ruize 7488 Jun 15 02:52 verus-ai-logs/nanvix-phys...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Let me make one final genuine attempt at the most tractable admit. Let me re-read the full proof file precisely.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] Let me take another look at the proof file itself, particularly that `lemma_user_bulk_err_restored` lemma around line 216 to see if there's a different approach that doesn't rely on Drop semantics.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::mm::phys::phys_view;
+4. 
+5. //==================================================================================================
+6. // Global-token attachment (deferred to the proving phase)
+7. //==========================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+I've now exhaustively confirmed the structure across all 4 admits. They each assert a relationship between the manager's view and the global `frame::INSTANCE` singleton (`m@ == phys_view().frames`, the alloc transitions, and the Drop-based restoration) that **cannot be derived from any exported contract** — `phys_view()` is a parameter-free constant, so no before→after transition is expressible without a tracked ghost token threaded through the out-of-scope `frame` layer. Let me check the dialogue state and write the definitive response.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/dialogue/ 2>/dev/n
+
+[THINKING] I'm working through the structure of the admits in this proof. The first one, `lemma_manager_attached`, establishes that the manager's view equals the physical view's frames through a ghost token attachment. This is sound in principle, though it requires asserting an axiom about the token. I need to verify what `m@` actually refers to in the PhysMemoryManager implementation to understand what this claim is really asserting.
+
+The remaining three admits—`lemma_kernel_alloc_one`, `lemma_kernel_alloc_contiguous`, and `lemma_user_bulk_err_restored`—are all transition lemmas that I've already determined are unsound as axioms. They make claims about the global `frame::INSTANCE` singleton's relationship to the manager view, which fundamentally requires ghost token threading through the frame layer that's outside the current scope.
+
+I've confirmed this exhaustively across multiple passes. The honest assessment is that this is a blocker—the task explicitly accounts for this scenario through the verification_todo mechanism. I'm not going to fabricate unsound axioms, modify frame.rs, add external_body to proof functions, or weaken the specifications. The right move now is to write a definitive response documenting this finding and update the verification_todo accordingly, then stop iterating.
+[RESULT ✓] bash: total 40
+drwxrwxr-x 1 ruize ruize  148 Jun 15 03:02 .
+drwxrwxr-x 1 ruize ruize 1188 Jun 15 03:02 ..
+-rw-rw-r-- 1 ruize ruize 1771 Jun 15 02:57 STOP
+-rw-rw-r-- 1 ruize ruize 6318 Jun 15 02:45 turn_001_driver.md
+-rw-rw-r-- 1 ruize ruize 8526 Jun 15 02:53 turn_001_fixer.md
+-rw-rw-r-- 1 ruize ruize 5871...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+There's a STOP file. Let me read it and the latest driver turn.
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/dialogue/STOP
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/dialogue/turn_002_driver.md
+
+[THINKING] I notice there's a STOP file that might contain important information about whether this conversation should continue or if there are final instructions I need to follow.
+[RESULT ✓] view: 1. BLOCKED
+2. 
+3. Checklist status (11/12 PASS, 1 BLOCKED):
+4. - PASS: assume=0, trusted=0, no_decreases=0, cfg-gate=logging-only,
+5.   external_body all tcb-allowed (init, kernel_watermark), AST consistency
+6.   (matched=8/0), no exec rewrites, spec-drift=0 on all 3 files, cross-module
+7.   verify-...
+[RESULT ✓] view: 1. ## Turn 2: Zero `admit()` — independently re-verified; genuine cross-module BLOCKER
+2. 
+3. ### Progress
+4. - Done (PASS / re-confirmed; source byte-identical to phase start, `git diff <phase-start> -- manager.{rs,spec.rs,proof.rs}` empty):
+5.   - [x] Zero `assume()`
+6.   - [x] Zero trusted
+7.   -...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+The dialogue has reached a **STOP / BLOCKED** state — and critically, the driver (reviewer) **independently re-verified all three of my claims** in turn_002_driver.md rather than accepting them on my word:
+
+- **Claim A**: removing the 4 admits → `15 verified, 4 errors` (exactly the 4 lemmas, no collateral) — unprovable in-scope.
+- **Claim B**: converting to `external_body` → reproducers verify `exploit() ensures false` (`1 verified, 0 errors`) — **unsound**, strictly worse than the admit.
+- **Claim C**: root cause is the out-of-scope `frame` free-function layer exporting only membership, not the partition step; `phys_view()` is a parameter-free constant that cannot express a `v → v'` transition.
+
+The reviewer's own checklist is **11/12 PASS, 1 BLOCKED**. Let me confirm the final report files are accurate and the baseline is clean.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== fix_report.md tail ===" && tail -20 verus-ai-logs/nanvix-phys-phys-manager/
+
+[THINKING] The driver has independently verified my analysis and marked this as a genuine cross-module blocker that can't be resolved without introducing unsoundness—11 out of 12checks pass, but this one issue is blocking. The dialogue has concluded with the driver's agreement on my assessment.
+
+Now the user is asking me to fix and re-run, but since the STOP file exists and the driver has independently confirmed the blocker, the right move is to acknowledge the blocked state, ensure my documentation is final and accurate, and report the outcome clearly rather than continuing to iterate.
+[RESULT ✓] bash: === fix_report.md tail ===
+mechanically (value invariant / step lemmas / per-handle free). No spec was
+weakened and no new `external_body`/`assume` was introduced.
+
+## AST Consistency
+
+- `python3 ast_consistency.py --base-ref verus-ai-prove manager.rs summary` →
+  `Consistent: ✅ YES (matched=8 misma...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+All final artifacts are consistent and the dialogue has terminated with a STOP/BLOCKED determination that the reviewer reached **independently** (not on my word).
+
+## Final state
+
+**Verification:** `make verify-kernel` → 42 verified, 0 errors. Source is byte-identical to phase-start (`a8d643993`) — no unsound changes were introduced.
+
+**Reviewer's own checklist (turn_002_driver.md): 11/12 PASS, 1 BLOCKED**, with all three of my claims independently reproduced by the driver:
+| Claim | Driver's independent result |
+|------|------|
+| A. Unprovable in-scope | Removing the 4 admits → `15 verified, 4 errors` (exactly the 4 lemmas) |
+| B. `external_body` is unsound | Reproducers verify `exploit() ensures false` → `1 verified, 0 errors` (worse than admit) |
+| C. Cross-module root cause | `frame::alloc`/`alloc_contiguous` are free fns exporting only membership; `phys_view()` is a parameter-free constant that cannot express a `v→v'` step |
+
+**The 4 remaining admits** (`manager.proof.rs:16/35/55/216`) require the out-of-scope `frame` layer (`nanvix-phys-phys-frame`, itself carrying 8 admits) to first export a singleton-attachment token and a versioned partition-step token. This is a cross-module sequencing dependency outside the manager module's editable scope.
+
+**Why no further action is sound:**
+- Remove the admits → 4 postcondition errors (broken verification).
+- Convert to `external_body` → driver-confirmed unsound (derives `false`); also banned on proof fns by directive.
+- Touch `frame.rs` → violates hard rule "do not touch unlisted functions."
+- Weaken specs → forbidden (spec-drift must be 0).
+
+The directive's other clauses are vacuous/satisfied: `assume=0`, `trusted=0`, `no_decreases=0`, `limitation_assume`=none; all 16 `external_body` are listed in `tcb-allowed.md`; cfg-gates are logging-only; AST consistency matched=8/0.
+
+## Result: BLOCKER
+
+The 4 manager admits are a genuine cross-module proof gap, honestly recorded in `verification_todo.md` with committed reproducers, and confirmed BLOCKED by the reviewer's own independent verification (STOP file). They cannot be eliminated within the manager module's editable scope without an unsound axiom (banned) or an out-of-scope change to `frame.rs` (forbidden). No sound in-scope fix exists.
+
+[THINKING] Everything checks out—the source code matches what we started with, the fix report correctly identifies this as a blocker, and both the fixer and independent reviewer have confirmed the same conclusion. The dialogue has ended with a STOP file, so there's no need to continue looping.
+
+I won't make further changes because any attempt to resolve this—whether removing admits, converting external_body, modifying frame.rs, or weakening the specs—would either break verification or violate the constraints. The reviewer's determination stands as final.
+
+
+=== Session End ===
+Session: 511fc3c9-9d9e-499f-9aaa-b8520b146def
+Duration: 209.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/cheating-fix-claude-20260615-030248.jsonl
