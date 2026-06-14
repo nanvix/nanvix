@@ -60,6 +60,7 @@ use ::arch::mem::{
 use ::core::{
     cell::RefCell,
     mem::ManuallyDrop,
+    ops::ControlFlow,
 };
 use ::sys::{
     config,
@@ -736,6 +737,35 @@ impl Vmem {
     where
         F: FnMut(PageAligned<VirtualAddress>, PageTableEntry) -> Result<(), Error>,
     {
+        self.try_for_each_user_mapping(|vaddr, pte| {
+            f(vaddr, pte)?;
+            Ok(ControlFlow::Continue(()))
+        })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Like [`Self::for_each_user_mapping`], but the callback may stop the walk early by
+    /// returning [`ControlFlow::Break`]. Bounded consumers that snapshot a fixed-size batch of
+    /// mappings per pass use this to stop as soon as their buffer is full, instead of paying for
+    /// a full traversal of every remaining mapping on each pass.
+    ///
+    /// # Parameters
+    ///
+    /// - `f`: Callback invoked with `(vaddr, pte)` for every present user mapping, in the order
+    ///   they appear in the internal user page-table list. Returning `Ok(ControlFlow::Break(()))`
+    ///   stops the iteration; returning an error short-circuits and propagates it to the caller.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned, whether the walk ran to completion or was stopped
+    /// early. Upon failure, the first error returned by `f` is propagated.
+    ///
+    pub(crate) fn try_for_each_user_mapping<F>(&self, mut f: F) -> Result<(), Error>
+    where
+        F: FnMut(PageAligned<VirtualAddress>, PageTableEntry) -> Result<ControlFlow<()>, Error>,
+    {
         for (pgtab_addr, page_table) in self.user_page_tables.iter() {
             let base: usize = pgtab_addr.into_raw_value();
             for (pte_idx, pte) in page_table.iter_present_ptes() {
@@ -749,7 +779,9 @@ impl Vmem {
                         Error::new(ErrorCode::BadAddress, "user mapping vaddr overflow")
                     })?;
                 let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
-                f(vaddr, pte)?;
+                if f(vaddr, pte)?.is_break() {
+                    return Ok(());
+                }
             }
         }
         Ok(())
