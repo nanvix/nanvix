@@ -114,6 +114,28 @@ Rust-visible behavior are identical across builds.
   boundary `KernelFrame::new` (`external_body`), eliminated when `virt-identity-map` realizes the
   `identity_map_view()` token. No `admit()`/`assume()` exist in any kframe file.
 
+
+
+## Round-3 update: escalation-ladder experiment on `KernelFrame::new`
+
+Per verus-constraints ("provide evidence that the change is required by Verus, e.g. error
+message without it"), I did NOT merely assert irreducibility this round — I removed
+`#[verus_verify(external_body)]` from `KernelFrame::new` and ran the verifier. Three in-scope
+blockers appeared in sequence, each proving the body is unverifiable here:
+
+1. `error: Unsupported constant type` (`kframe.rs:101/105`) — `error!` logging macros in the body.
+2. After cfg-gating those: `error: cannot use function `PageAligned::from_raw_value` which is ...
+   `external`` (`kframe.rs:100`) — verifying the body would require **adding** an
+   `assume_specification` for the out-of-scope HAL fn `PageAligned::<T>::from_raw_value`
+   (owned by `hal-page-aligned`): a new cheat AND a hard-rule violation.
+3. Beyond that, `identity_map_page` requires `identity_map_view().inv()`, and
+   `identity_map_view()` is `uninterp` — unprovable from the only precondition `base.inv()`.
+
+This is concrete Verus evidence that the `external_body` on `KernelFrame::new` is **required**,
+not a convenience. Source was restored **byte-identical** to `verus-ai-prove`
+(`git diff verus-ai-prove -- kframe.rs` = empty). The TCB-allowed entry is justified by the
+verifier itself.
+
 ## Result: PASS (within phys-kframe scope)
 Within the permitted scope, all cheating is eliminated or authorized: kframe has zero
 `admit`/`assume`/`trusted`/`limitation_assume`/`exec_no_decreases`, and its single `external_body`

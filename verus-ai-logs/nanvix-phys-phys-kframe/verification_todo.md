@@ -30,3 +30,21 @@ None. `kframe.rs` / `kframe.spec.rs` / `kframe.proof.rs` contain:
 - `phys-manager`: 4 admits (manager.proof.rs:16,35,55,216) + 2 external_body.
 - `phys-mod`: 2 external_body + 1 external_type_spec.
 - `phys-upool`: 2 external_body.
+
+## Empirical irreducibility evidence (round 3 — escalation ladder executed)
+Removed `#[verus_verify(external_body)]` from `KernelFrame::new` and ran
+`make verify-kernel MODULE=mm::phys`. Three independent in-scope blockers surfaced, in order:
+
+1. `error: Unsupported constant type` at `kframe.rs:101/105` — the `error!` logging macros in
+   the body (same class as `deref`/`clear`). Mitigable only by `#[cfg(not(verus_keep_ghost))]`
+   gates (adds exec cfg-gates).
+2. After gating (1): `error: cannot use function `PageAligned::from_raw_value` which is ignored
+   because it is ... `external`` (`kframe.rs:100`). Verifying the body would require **adding a
+   new `assume_specification`** for `PageAligned::<T>::from_raw_value` — an out-of-scope HAL
+   function (owned by `hal-page-aligned`); that is itself a fresh cheat and a hard-rule violation.
+3. Beyond (2) lies `identity_map_page`'s `requires identity_map_view().inv()`, where
+   `identity_map_view()` is `uninterp` — unprovable from `base.inv()`.
+
+Conclusion: `KernelFrame::new` cannot be verified in-body within `mm::phys` without (a) adding
+forbidden out-of-scope `assume_specification`s and (b) discharging an uninterp global invariant.
+The `external_body` is genuinely required; source restored byte-identical to `verus-ai-prove`.

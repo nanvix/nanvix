@@ -108,3 +108,46 @@ Turn 6
 Turn 7
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "kframe|error|fail|req
+[RESULT ✓] bash: error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/kframe.rs:100:13
+    = help: The following declaration may re...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Definitive empirical evidence obtained. Verifying `new` in-body hits a chain of blockers: (1) `error!` macros, (2) `PageAligned::from_raw_value` is unspecified (needs an out-of-scope HAL `assume_specification`), and (3) `identity_map_page` requires the uninterp global `identity_map_view().inv()`. All three are unprovable/forbidden in `mm::phys` scope. The `external_body` is genuinely required. Let me restore the exact base-branch source.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git checkout verus-ai-prove -- src/kernel/src/mm/phys/kframe.rs && echo "restored"; g
+
+[THINKING] I'm hitting another issue: `PageAligned::from_raw_value` isn't specified anywhere, so I'd need to add an `assume_specification` to verify it in-body, but that's itself a cheating pattern and not allowed in the tcb-allowed.md for kframe. Let me check if the specification already exists somewhere else.
+
+The help message suggests adding an `assume_specification` for `PageAligned::from_raw_value`, but that's an out-of-scope HAL function, so adding it would introduce a new cheat that belongs to a later phase. Looking at the full chain of blockers to verify `new()` in-body: error macros are gateable but add cfg-gates, `PageAligned::from_raw_value` needs an assume_specification for an out-of-scope HAL function, and `identity_map_page` depends on `identity_map_view().inv()` which is an uninterpreted global token that can't be proven in mm::phys. This proves `new()` genuinely cannot be verified in-body within kframe scope without adding forbidden assume_specifications and discharging unprovable global invariants. The external_body is irreducible and required. I'll restore the file to the base branch version and document this evidence.
+[RESULT ✓] bash: restored
+=== confirm external_body restored ===
+78:    // same physical frame that was passed in. `external_body` per `verus-ai-logs/tcb-allowed.md`:
+102:                error!("frame base is not page-aligned: {e:?}");
+107:            error!("failed to identity-map frame: {:?}", e);
+156:            ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Source restored exactly to base. Now let me record this concrete empirical evidence in the reports and re-run verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat >> verus-ai-logs/nanvix-phys-phys-kframe/verification_todo.md <<'EOF'
+
+## Empiric
+[RESULT ✓] bash: appended evidence
+<shellId: 3 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 - <<'PY'
+import re
+p="verus-ai-logs/nanvix-phys-phys-kframe/cheating-eliminat
+[RESULT ✓] bash: updated
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verifying module mm::
