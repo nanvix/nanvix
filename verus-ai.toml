@@ -2,10 +2,10 @@
 # Regenerate with scripts/generate_nanvix_phys_verus_configs.py.
 
 [project]
-background = """File: `src/kernel/src/hal/mem/types/address/phys.rs`
+background = """File: `src/kernel/src/hal/mem/types/address/aligned/page.rs`
 
 Verification-order target functions (the only functions in scope for this module):
-`PhysicalAddress::into_frame_number`, `PhysicalAddress::from_number`, `PhysicalAddress`, `PhysicalAddress::from_mmio_address`
+`PageAligned::into_raw_value`, `PageAligned::from_address`, `PageAligned`
 
 
 Hard rules:

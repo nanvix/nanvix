@@ -86,3 +86,19 @@ placeholders in mm/phys/* and FrameAddress shims — none in this module's own f
 [2026-06-14 05:14:53] [PHASE] specification: dialogue-RESOLVED (54m28s)
 [2026-06-14 05:14:53] [SPEC DRIFT] (within specification) Comparing 0bb17a40 → d10a1863
 [2026-06-14 05:14:53] [SPEC DRIFT] (within specification) No changes detected
+[2026-06-15 07:20:46] [BRANCH] Staying on current branch: verus-ai-prove-bottom-up
+[2026-06-15 07:20:46] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-page-aligned/body_removed_source.rs (6324 -> 5327 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: hal-page-aligned
+Source: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.rs
+Crate:  kernel
+Branch: verus-ai-prove-bottom-up (base: verus-ai-prove-bottom-up)
+Phases: proving → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: proving
+Module: hal-page-aligned
+============================================================
