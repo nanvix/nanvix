@@ -1,0 +1,173 @@
+Timestamp: 2026-06-15_03-34-32
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=22
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0252]: the name `spec_page_size` is defined multiple times
+  --> src/kernel/src/mm/phys/manager.proof.rs:12:5
+   |
+12 | use crate::hal::mem::spec_page_size;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `spec_page_size` reimported here
+   |
+  ::: src/kernel/src/mm/phys/manager.spec.rs:20:5
+   |
+20 | use crate::hal::mem::spec_page_size;
+   |     ------------------------------- previous import of the value `spec_page_size` here
+   |
+   = note: `spec_page_size` must be defined only once in the value namespace of this module
+
+error[E0252]: the name `FrameAllocView` is defined multiple times
+  --> src/kernel/src/mm/phys/manager.proof.rs:13:5
+   |
+13 | use crate::mm::phys::FrameAllocView;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `FrameAllocView` reimported here
+   |
+  ::: src/kernel/src/mm/phys/manager.spec.rs:23:5
+   |
+23 |     FrameAllocView,
+   |     -------------- previous import of the type `FrameAllocView` here
+   |
+   = note: `FrameAllocView` must be defined only once in the type namespace of this module
+
+error[E0252]: the name `Seq` is defined multiple times
+  --> src/kernel/src/mm/phys/manager.proof.rs:14:5
+   |
+14 | use vstd::seq::Seq;
+   |     ^^^^^^^^^^^^^^ `Seq` reimported here
+   |
+  ::: src/kernel/src/mm/phys/manager.spec.rs:25:5
+   |
+25 | use vstd::seq::Seq;
+   |     -------------- previous import of the type `Seq` here
+   |
+   = note: `Seq` must be defined only once in the type namespace of this module
+
+error[E0425]: cannot find type `int` in this scope
+  --> src/kernel/src/mm/phys/kframe.rs:46:14
+   |
+46 |     type V = int;
+   |              ^^^ not found in this scope
+   |
+help: perhaps you intended to use this type
+   |
+46 -     type V = int;
+46 +     type V = i32;
+   |
+help: consider importing one of these structs
+   |
+14 + use crate::mm::phys::int;
+   |
+14 + use vstd::prelude::int;
+   |
+
+error[E0425]: cannot find type `int` in this scope
+  --> src/kernel/src/mm/phys/kframe.rs:48:35
+   |
+48 |     closed spec fn view(&self) -> int {
+   |                                   ^^^ not found in this scope
+   |
+help: perhaps you intended to use this type
+   |
+48 -     closed spec fn view(&self) -> int {
+48 +     closed spec fn view(&self) -> i32 {
+   |
+help: consider importing one of these structs
+   |
+14 + use crate::mm::phys::int;
+   |
+14 + use vstd::prelude::int;
+   |
+
+error[E0425]: cannot find function `init` in this scope
+    --> src/kernel/src/mm/phys/manager.rs:106:19
+     |
+ 106 |     pub(super) fn init(upool: Upool) -> Result<(), Error> {
+     |                   ^^^^
+     |
+    ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin-0.0.0-2026-05-17-0151/src/lib.rs:650:1
+     |
+ 650 | pub struct int;
+     | -------------- similarly named unit struct `int` defined here
+     |
+note: these functions exist but are inaccessible
+    --> src/kernel/src/event/manager.rs:1159:1
+     |
+1159 |   pub fn init() -> Result<(), Error> {
+     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `crate::event::manager::init`: not accessible
+     |
+    ::: src/kernel/src/hal/arch/x86/cpu/../../shared/cpu/fpu.rs:143:1
+     |
+ 143 |   pub unsafe fn init() {
+     |   ^^^^^^^^^^^^^^^^^^^^ `crate::hal::arch::x86::cpu::fpu::init`: not accessible
+     |
+    ::: src/kernel/src/hal/arch/x86/cpu/interrupt/mod.rs:189:1
+     |
+ 189 | / pub fn init(
+ 190 | |     ioports: &mut IoPortAllocator,
+ 191 | |     ioaddresses: &mut IoMemoryAllocator,
+ 192 | |     madt: &Option<MadtInfo>,
+...    |
+ 337 | | }
+     | |_^ `crate::hal::arch::x86::cpu::interrupt::init`: not accessible
+     |
+    ::: src/kernel/src/hal/platform/microvm/mod.rs:876:1
+     |
+ 876 | / pub fn init(
+ 877 | |     ioports: &mut IoPortAllocator,
+ 878 | |     ioaddresses: &mut IoMemoryAllocator,
+ 879 | |     _memory_regions: &mut LinkedList<MemoryRegion<VirtualAddress>>,
+...    |
+ 982 | |     })
+ 983 | | }
+     | |_^ `crate::klog::buffer::platform::init`: not accessible
+     |
+    ::: src/kernel/src/mm/virt/identity_map.rs:115:1
+     |
+ 115 | / pub(crate) fn init(
+ 116 | |     kernel_pd_paddr: PageDirectoryAddress,
+ 117 | |     kernel_cr3: Cr3Register,
+ 118 | | ) -> Result<(), Error> {
+...    |
+ 136 | |     Ok(())
+ 137 | | }
+     | |_^ `crate::mm::virt::identity_map::init`: not accessible
+help: a unit struct with a similar name exists
+     |
+ 106 -     pub(super) fn init(upool: Upool) -> Result<(), Error> {
+ 106 +     pub(super) fn int(upool: Upool) -> Result<(), Error> {
+     |
+help: consider importing one of these functions
+     |
+   8 + use crate::event::init;
+     |
+   8 + use crate::hal::arch::x86::cpu::idt::init;
+     |
+   8 + use crate::hal::arch::x86::cpu::init;
+     |
+   8 + use crate::hal::arch::x86::init;
+     |
+     = and 7 other candidates
+
+error[E0425]: cannot find function `check_user_watermark` in this scope
+   --> src/kernel/src/mm/phys/manager.rs:300:8
+    |
+300 |     fn check_user_watermark(count: usize) -> Result<(), Error> {
+    |        ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+Some errors have detailed explanations: E0252, E0425.
+For more information about an error, try `rustc --explain E0252`.
+error: could not compile `kernel` (bin "kernel") due to 7 previous errors

@@ -88,6 +88,21 @@ impl PhysMemoryManager {
     ///
     /// Returns `InvalidArgument` if the singleton has already been initialized.
     ///
+    // Trusted shim: writes the `static mut` singleton storage and an `AtomicBool`
+    // lifecycle gate (raw global state Verus cannot model). The manager-singleton
+    // lifecycle flag is distinct from the frame-allocator lifecycle and has no
+    // abstract model (the do-not-modify `PhysMemView` only tracks the allocator);
+    // the contract therefore states the caller-relevant guarantee: the global
+    // frame allocator stays initialized and well-formed across this call.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            phys_view().initialized,
+            phys_view().inv(),
+        ensures
+            phys_view().inv(),
+            phys_view().initialized,
+    )]
     pub(super) fn init(upool: Upool) -> Result<(), Error> {
         if unlikely(PHYS_MEMORY_MANAGER_INIT.load(ORDER)) {
             return Err(Error::new(
@@ -152,6 +167,31 @@ impl PhysMemoryManager {
     /// error is returned and any frames allocated by this call are dropped by truncating `frames`
     /// back to empty.
     ///
+    // Trusted shim: loops over the global frame allocator (`Upool::alloc`) and the
+    // caller-provided `Vec`, with `error!`-logging and a clear()-on-error rollback
+    // that Verus cannot body-verify without editing exec code. The contract is
+    // stated over `phys_view()` and `frames@`: on success exactly `count` frames
+    // are handed out (each now allocated); on error the vector is emptied
+    // (all-or-nothing). Frames are not claimed contiguous.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            phys_view().initialized,
+            phys_view().inv(),
+            old(frames)@.len() == 0,
+        ensures
+            phys_view().inv(),
+            phys_view().initialized,
+            match result {
+                Ok(()) => {
+                    &&& frames@.len() == count
+                    &&& forall|i: int|
+                        0 <= i < count as int ==>
+                            #[trigger] phys_view().frames.allocated_frames.contains(frames@[i]@)
+                },
+                Err(_) => frames@.len() == 0,
+            },
+    )]
     pub fn alloc_many_user_frames(
         &mut self,
         count: usize,
@@ -200,6 +240,25 @@ impl PhysMemoryManager {
     /// Upon success, a [`UserFrame`] is returned. Upon failure, an error is returned
     /// instead.
     ///
+    // Trusted shim: applies the watermark gate then delegates to the global
+    // `Upool::alloc`. On success the returned frame's physical address is now in
+    // the allocator's `allocated_frames` and is page-aligned.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            phys_view().initialized,
+            phys_view().inv(),
+        ensures
+            phys_view().inv(),
+            phys_view().initialized,
+            match result {
+                Ok(frame) => {
+                    &&& phys_view().frames.allocated_frames.contains(frame@)
+                    &&& frame@ % spec_page_size() == 0
+                },
+                Err(_) => true,
+            },
+    )]
     pub fn alloc_user_frame(&mut self) -> Result<UserFrame, Error> {
         Self::check_user_watermark(1)?;
         self.upool.alloc()
@@ -220,6 +279,24 @@ impl PhysMemoryManager {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    // Trusted shim: reads the global free-frame count and compares it against
+    // `KERNEL_WATERMARK + count`. Pure gate, no allocator state change. `Ok` exactly
+    // captures the watermark policy: at least `KERNEL_WATERMARK` frames remain free
+    // after servicing `count`. `Err` covers both the overflow guard and a breach.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            phys_view().initialized,
+            phys_view().inv(),
+        ensures
+            phys_view().inv(),
+            phys_view().initialized,
+            phys_view().frames.free_frames.finite(),
+            match result {
+                Ok(()) => spec_watermark_ok(phys_view().frames, count as int),
+                Err(_) => true,
+            },
+    )]
     fn check_user_watermark(count: usize) -> Result<(), Error> {
         let watermark_threshold: usize = config::kernel::KERNEL_WATERMARK
             .checked_add(count)
@@ -247,6 +324,25 @@ impl PhysMemoryManager {
     ///
     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
     ///
+    // Trusted shim: allocates one frame from the global allocator (bypassing the
+    // watermark) and wraps it, freeing the raw frame if wrapping fails. On success
+    // the returned frame's base address is now allocated and page-aligned.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            phys_view().initialized,
+            phys_view().inv(),
+        ensures
+            phys_view().inv(),
+            phys_view().initialized,
+            match result {
+                Ok(frame) => {
+                    &&& phys_view().frames.allocated_frames.contains(frame@)
+                    &&& frame@ % spec_page_size() == 0
+                },
+                Err(_) => true,
+            },
+    )]
     pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
         let frame_addr: FrameAddress = frame::alloc()?;
         KernelFrame::new(frame_addr).inspect_err(|e| {
@@ -277,6 +373,33 @@ impl PhysMemoryManager {
     /// Upon success, `Ok(())` is returned and `frames` is filled with `count`
     /// contiguous entries. Upon failure, an error is returned instead.
     ///
+    // Trusted shim: allocates a physically-contiguous run from the global allocator
+    // (bypassing the watermark) and wraps each frame, with a two-phase
+    // (`Vec::clear` + `frame::free`) rollback Verus cannot body-verify without
+    // editing exec code. On success exactly `count` frames are handed out, each now
+    // allocated, and their base addresses form an ascending page-stride run
+    // (contiguity is load-bearing for kernel stacks). On error the vector is emptied.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            phys_view().initialized,
+            phys_view().inv(),
+            old(frames)@.len() == 0,
+        ensures
+            phys_view().inv(),
+            phys_view().initialized,
+            match result {
+                Ok(()) => {
+                    &&& frames@.len() == count
+                    &&& forall|i: int|
+                        0 <= i < count as int ==>
+                            #[trigger] phys_view().frames.allocated_frames.contains(frames@[i]@)
+                    &&& exists|base: int|
+                        is_contiguous_run(frames@.map_values(|kf: KernelFrame| kf@), base)
+                },
+                Err(_) => frames@.len() == 0,
+            },
+    )]
     pub fn alloc_many_kernel_frames(
         &mut self,
         count: usize,

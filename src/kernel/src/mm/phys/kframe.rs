@@ -35,6 +35,23 @@ pub struct KernelFrame {
     base: FrameAddress,
 }
 
+#[cfg(verus_keep_ghost)]
+::vstd::prelude::verus! {
+
+/// Abstract view of a [`KernelFrame`]: the base physical address of the frame it
+/// owns. Lets allocator contracts name a returned kernel frame's address (e.g.
+/// the contiguity guarantee of `alloc_many_kernel_frames`) without exposing any
+/// storage detail.
+impl ::vstd::prelude::View for KernelFrame {
+    type V = int;
+
+    closed spec fn view(&self) -> int {
+        self.base@
+    }
+}
+
+} // verus!
+
 impl KernelFrame {
     ///
     /// # Description
