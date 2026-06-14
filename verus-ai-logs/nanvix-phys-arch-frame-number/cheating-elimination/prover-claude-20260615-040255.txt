@@ -1,0 +1,182 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T04:02:55.008156
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are performing cheating elimination for arch-frame-number. The goal is to
+**eliminate all cheating** — replace every `assume`, `admit`,
+and `external_body` with real proofs so that `make verify-arch` passes cleanly.
+The only exception: if `/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md` exists, functions listed there
+are allowed to keep `external_body`. Any `external_body` on a function NOT
+in that file is a blocker and must be eliminated.
+
+Follow the **verus-constraints** escalation ladder: search vstd, write an
+isolated reproducer, try equivalent rewrites.
+
+== PROJECT CONTEXT ==
+
+File: `src/libs/arch/src/x86/mem/paging/frame/number.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`FrameNumber::into_raw_value`, `FrameNumber::from_raw_value`, `FrameNumber`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+
+
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+
+
+
+Source file: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/frame/number.rs
+Source directory: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/frame
+Spec file:  /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+Proof file: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/frame/number.proof.rs
+Verus command: make verify-arch
+Base branch: verus-ai-prove-bottom-up
+
+== SKILLS ==
+
+Follow strictly:
+- **verus-constraints** — MUST follow: forbidden patterns, escalation ladder
+- **spec-design** — reference: trust classifications (external-top, external-bottom)
+- **ast-consistency** — reference: no exec code changes via cfg gates; workarounds must preserve semantics, time complexity, and space complexity
+
+== TASK ==
+
+Eliminate all cheating items. Zero cheating must remain — no exceptions.
+
+1. **Cheating detection**: Run `make verify-arch` and count: admit, assume,
+   external_body, assume_specification, cfg-gated exec code.
+
+2. **Plan**: List every cheating item across source, spec, and proof files
+   (function name, file, cheating type). Plan an elimination order.
+
+3. **Eliminate each item**: For every cheating item:
+   - Follow **verus-constraints** escalation ladder: search vstd, write
+     isolated reproducer, try equivalent rewrite.
+   - `external_body` — remove every instance.
+   - **Proof gap** (verifiable but not yet proven): must be eliminated.
+     If you cannot resolve it now, record in /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/verification_todo.md as
+     a remaining item, but keep trying — the goal is zero proof gaps.
+     Recording here does NOT make this phase pass: any remaining `admit()`
+     or `assume()` still trips the cheating gate and the phase FAILs.
+     The file is an honest hand-off of genuinely-stuck proofs, not a way out.
+   - admit/assume → must be eliminated, no exceptions.
+
+4. **AST consistency**: Run checks per the **ast-consistency** skill.
+   For each mismatch: if it matches a pre-approved deviation, document it.
+   Otherwise, provide evidence that the change is required by Verus
+   (e.g., error message without it) and confirm it preserves
+   semantics, time complexity, and space complexity. If no evidence,
+   restore the original
+   from `git show verus-ai-prove-bottom-up:/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/frame/number.rs` and fix the proof
+   strategy instead.
+
+5. **Full-crate verification**: Re-run `make verify-arch` to confirm 0 errors,
+   then `make verify` to ensure no regressions across the full crate.
+
+== OUTPUT ==
+
+Write to /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/cheating-elimination/fix_report.md:
+```markdown
+# Cheating Elimination Report: arch-frame-number
+
+## Cheating Counts (before → after)
+| Item | Before | After | Eliminated |
+|------|--------|-------|------------|
+| admit() | N | N | N |
+| assume() | N | N | N |
+| external_body | N | N | N |
+| assume_specification | N | N | N |
+| cfg-gated exec | N | N | N |
+
+## Items Eliminated
+- [each item: what it was, how it was eliminated]
+
+## Verification TODOs (/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/verification_todo.md)
+- [each: function, specific Verus error or code pattern blocking the proof]
+
+## AST Consistency
+- Zero mismatches confirmed: YES / NO
+
+## Result: PASS / BLOCKER
+```
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Exploring frame number files
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/frame/number.proof.rs
+[TOOL] bash: cat /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md 2>/dev/null || echo "NO TCB FILE"
+
+[THINKING] I'll start by looking at the relevant files to understand what needs to be done.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<Inner>` singleton (guarded by `INSTAN...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // View
+5. //==================================================================================================
+6. 
+7. impl View for FrameNumber {
+8.     type V = int;
+9. 
+10.  ...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running baseline verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --short && echo "---BRANCH---" && git branch --show-current && e
+
+[THINKING] I need to verify whether `FrameNumber::from_raw_value` and `into_raw_value` are actually permitted in the arch crate, since the allowed list only mentions them as placeholders in the kernel crate. Let me check the current source code to see if it already has any external_body, admit, or assume annotations, then run verification to establish a baseline.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-arch-frame-number/pipeline.log
+?? verus-ai-logs/nanvix-phys-arch-frame-number/cheating-elimination/
+---BRANCH---
+verus-ai-prove-bottom-up
+---DIFF base---
+<shellId: 1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rnE "admit|assume|external_body|assume_specification|external_type_sp
+
+[THINKING] The frame directory hasn't changed from the base version, so the source, spec, and proof files are already in their original state. Now I'm searching through those files to identify any instances of cheating.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:25:    // `MAX` is discharged by verification rather than assumed. Realizes the kernel's
+<shellId: 2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+No cheating items present in the module files. Let me run the verification to confirm it passes.
+[TOOL] report_intent: Running make verify-arch
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-arch 2>&1 | tail -40
+
+[THINKING] I see there's only a comment about "assumed" with no actual cheating items in the module, so I'm running the architecture verification to make sure everything checks out cleanly.
+[RESULT ✓] report_intent: Intent logged
