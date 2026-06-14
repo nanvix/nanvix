@@ -405,3 +405,80 @@ Unexpected — a compilation error on the clean tree. Let me see the actual erro
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel 2>&1 | grep -iE "error|-->|panic|cannot|unsupported" | head -30
 
 [THINKING] That's strange—the clean tree shouldn't have compilation errors. Let me look at what the actual error is.
+[RESULT ✓] bash: error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+191 | |                     crate::klog::KlogLevel::Error,
+207 |               error!("{reason}");
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, ru...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '204,210p' src/kernel/src/mm/phys/manager.rs; echo "=== git status ==="; git -
+
+[THINKING] The error on line 207 shows an ungated `error!` macro, but I expected it to be cfg-gated after my checkout. This could be a stale build cache issue, so I need to verify the actual file content at that line to see what's really there.
+[RESULT ✓] bash: }
+        if !frames.is_empty() {
+            let reason: &str = "frames vector is not empty";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        if frames.capacity() < count {
+=== git status ===
+=== HEAD line 206-208 ===
+       ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+The committed HEAD is missing the cfg gate at line 207 — but turn 1 showed it present. My earlier "PASS" was a **stale cache**. This is a real regression. Let me confirm it was the fixer's commit that removed it, and that it wasn't my experiment.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== blame for the error! line in alloc_many_user_frames ==="; git --no-pager lo
+
+[THINKING] Ah, I see the issue now—the HEAD version of manager.rs at line 207 has the error log without the cfg gate, so when I restored the file with git checkout, it went back to that version without the gate. My backup had the gate from before the fixer ran, which is why the diff showed it as an addition.
+
+Looking back at turn 1, the file definitely had `#[cfg(not(verus_keep_ghost))]` at line 207, but now HEAD doesn't have it—meaning the fixer's commits removed the gate from this location. The normal build still passes because the non-verus build strips ghost code anyway, but this breaks verification. Yet my first `make verify-kernel` returned exit 0 because it was using a cached build from the previous commit where the gate was still present.
+
+When I invalidated the cache with my perl edit, then restored the backup and ran `git checkout`, the actual HEAD source revealed the missing gate, causing verification to fail. This is a real regression introduced by the fixer. Let me check the git history to see exactly when this gate was removed.
+[RESULT ✓] bash: === blame for the error! line in alloc_many_user_frames ===
+3eec743ca [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+61dadf5c7 [verus] verify PASS (cheating detected): kernel::mm::phys (42 verified, 0 errors, admit=24 external_body=18 cfg_gate=15)
+e6a...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+A commit `3eec743ca [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error)` is the latest to touch manager.rs. The fixer's experiment left a broken cfg gate **committed**. Let me examine it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== full recent history ==="; git --no-pager log --oneline -8; echo; echo "=== 
+
+[THINKING] I'm noticing a commit that failed verification in manager.rs, which means the fixer left the codebase in a broken state. But then there's a later commit showing a passing verification overall, so I need to figure out what happened between these two points.
+
+The key insight is that the later PASS commit was actually cached — it didn't recompile anything, so it masked the underlying failure from the broken manager.rs commit. This is the real problem: the fixer removed the cfg gate and committed broken code, and the caching mechanism hid that failure in the recorded history.
+
+Let me look at what actually changed in that failing commit to understand what went wrong.
+[RESULT ✓] bash: === full recent history ===
+f2c83cda1 [verus] verify FAIL: kernel::all (0 verified, compilation/setup error (verus did not run))
+68a5f20cd [verus] verify FAIL: kernel::all (0 verified, compilation/setup error (verus did not run))
+f3c02de06 [verus] verify FAIL: kernel::mm::phys (0 verified, compilati...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+The verify script **auto-commits** each run — my experiment (removing the gate) got committed as the FAIL commits at 02:28:26, and my `git checkout` restored to that broken HEAD. The fixer's actual final good state is `6465a2a13`/`e6ffd141a` (gate present). Let me restore manager.rs to the correct state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== gate present at 6465a2a13? ==="; git --no-pager show 6465a2a13:src/kernel/s
+
+[THINKING] So the verification automation was actually committing the broken states when I ran the kernel verification after my perl edit—those FAIL commits weren't manual, they were auto-generated by the system as it tracked each failed verification attempt.
+
+When I did `git checkout -- manager.rs`, it restored the file to HEAD, which is now one of those broken FAIL commits, which is why the gate is missing from line 207. I need to restore the file from an earlier good commit like `e6ffd141a` or `6465a2a13` where the gate was still present.
+[RESULT ✓] bash: === gate present at 6465a2a13? ===
+        if !frames.is_empty() {
+            let reason: &str = "frames vector is not empty";
+            #[cfg(not(verus_keep_ghost))]
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+=== restore manager.rs fro...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Restored. Now let me re-verify the clean tree to re-establish the true baseline (non-cached).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel 2>&1 | tail -14
