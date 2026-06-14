@@ -2,22 +2,16 @@
     - hal/mem/types/address/frame.proof.rs:22 lemma_aligned_div_mul: admit
     - hal/mem/types/address/phys.proof.rs:6 lemma_from_number_no_overflow: admit
     - hal/mem/types/address/phys.proof.rs:16 lemma_frame_index: admit
-    - mm/phys/frame.rs:136 alloc: admit
-    - mm/phys/frame.rs:213 alloc_contiguous: admit
-    - mm/phys/frame.rs:298 free: admit
-    - mm/phys/frame.rs:379 share: admit
-    - mm/phys/frame.rs:442 refcount: admit
-    - mm/phys/frame.rs:497 book: admit
-    - mm/phys/frame.rs:535 is_covered: admit
-    - mm/phys/frame.rs:583 alloc_range: admit
-    - mm/phys/frame.rs:675 instance: external_body
-    - mm/phys/frame.rs:713 init: external_body
-    - mm/phys/frame.rs:769 alloc: external_body
-    - mm/phys/frame.rs:799 alloc_contiguous: external_body
-    - mm/phys/frame.rs:820 free_count: external_body
-    - mm/phys/frame.rs:838 free: external_body
-    - mm/phys/frame.rs:880 book: external_body
-    - mm/phys/frame.rs:901 alloc_range: external_body
+    - mm/phys/frame.rs:212 alloc_contiguous: admit
+    - mm/phys/frame.rs:577 alloc_range: admit
+    - mm/phys/frame.rs:669 instance: external_body
+    - mm/phys/frame.rs:707 init: external_body
+    - mm/phys/frame.rs:763 alloc: external_body
+    - mm/phys/frame.rs:793 alloc_contiguous: external_body
+    - mm/phys/frame.rs:814 free_count: external_body
+    - mm/phys/frame.rs:832 free: external_body
+    - mm/phys/frame.rs:874 book: external_body
+    - mm/phys/frame.rs:895 alloc_range: external_body
     - mm/phys/kframe.rs:94 new: external_body
     - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
     - mm/phys/manager.proof.rs:21 lemma_free_count_bounded: admit

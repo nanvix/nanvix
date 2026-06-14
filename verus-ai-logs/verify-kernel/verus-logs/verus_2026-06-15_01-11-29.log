@@ -1,0 +1,191 @@
+Timestamp: 2026-06-15_01-11-29
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+33 verified
+6 errors
+
+Cheating patterns:
+  assume=0
+  external_body=18
+  admit=21
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/frame.rs:136:5
+    |
+136 |     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:121:17
+    |
+121 |                   Ok(frame) => {
+    |                   ^^^^^^^^^ failed this postcondition
+...
+160 | /         match FrameAddress::from_frame_number(frame_number) {
+161 | |             Ok(frame_address) => Ok(frame_address),
+162 | |             Err(error) => {
+163 | |                 #[cfg(not(verus_keep_ghost))]
+...   |
+166 | |             },
+167 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:121:17
+    |
+121 |                 Ok(frame) => {
+    |                 ^^^^^^^^^ failed this postcondition
+...
+155 |                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
+    |                 ------------------------------------------------------ at this exit
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/frame.rs:297:5
+    |
+297 |     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:269:17
+    |
+269 |                   Ok(()) => {
+    |                   ^^^^^^ failed this postcondition
+...
+318 | /         if self.refcount[frame_number] == 0 {
+319 | |             match self.bitmap.clear(frame_number) {
+320 | |                 Ok(()) => Ok(()),
+321 | |                 Err(error) => {
+...   |
+328 | |             Ok(())
+329 | |         }
+    | |_________- at the end of the function body
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:298:35
+    |
+298 |         let frame_number: usize = frame.into_frame_number().into_raw_value();
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/hal/mem/types/address/frame.rs:142:13
+    |
+142 |             spec_frame_number(self@) <= spec_max_frame_number(),
+    |             --------------------------------------------------- failed precondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/frame.rs:377:5
+    |
+377 |     fn share(&mut self, frame: FrameAddress) -> Result<(), Error> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:356:17
+    |
+356 |                 Ok(()) => {
+    |                 ^^^^^^ failed this postcondition
+...
+406 |         Ok(())
+    |         ------ at the end of the function body
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:378:35
+    |
+378 |         let frame_number: usize = frame.into_frame_number().into_raw_value();
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/hal/mem/types/address/frame.rs:142:13
+    |
+142 |             spec_frame_number(self@) <= spec_max_frame_number(),
+    |             --------------------------------------------------- failed precondition
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:440:35
+    |
+440 |         let frame_number: usize = frame.into_frame_number().into_raw_value();
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/hal/mem/types/address/frame.rs:142:13
+    |
+142 |             spec_frame_number(self@) <= spec_max_frame_number(),
+    |             --------------------------------------------------- failed precondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/frame.rs:493:5
+    |
+493 |     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:479:17
+    |
+479 |                   Ok(()) => {
+    |                   ^^^^^^ failed this postcondition
+...
+495 | /         match self.bitmap.set(frame_number) {
+496 | |             Ok(()) => {
+497 | |                 #[cfg(not(verus_keep_ghost))]
+498 | |                 debug_assert_eq!(self.refcount[frame_number], 0);
+...   |
+506 | |             },
+507 | |         }
+    | |_________- at the end of the function body
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:494:35
+    |
+494 |         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/hal/mem/types/address/phys.rs:152:13
+    |
+152 |             self.inv(),
+    |             ---------- failed precondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/frame.rs:530:5
+    |
+530 |     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:525:13
+    |
+525 | /             ret <==> (
+526 | |                 self@.allocated_frames.contains(phys_addr@)
+527 | |                 || self@.free_frames.contains(phys_addr@)
+528 | |             ),
+    | |_____________^ failed this postcondition
+...
+532 |           frame_number < self.bitmap.number_of_bits()
+    |           ------------------------------------------- at the end of the function body
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:531:35
+    |
+531 |         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/hal/mem/types/address/phys.rs:152:13
+    |
+152 |             self.inv(),
+    |             ---------- failed precondition
+
+verification results:: 33 verified, 6 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 11 previous errors

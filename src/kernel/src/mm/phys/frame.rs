@@ -134,7 +134,6 @@ impl Inner {
             },
     )]
     fn alloc(&mut self) -> Result<FrameAddress, Error> {
-        proof! { admit(); }
         let frame_number: usize = match self.bitmap.alloc() {
             Ok(index) => index,
             Err(error) => {
@@ -296,7 +295,6 @@ impl Inner {
             },
     )]
     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
-        proof! { admit(); }
         let frame_number: usize = frame.into_frame_number().into_raw_value();
 
         if frame_number >= self.refcount.len() {
@@ -377,7 +375,6 @@ impl Inner {
             },
     )]
     fn share(&mut self, frame: FrameAddress) -> Result<(), Error> {
-        proof! { admit(); }
         let frame_number: usize = frame.into_frame_number().into_raw_value();
 
         if frame_number >= self.refcount.len() {
@@ -440,7 +437,6 @@ impl Inner {
             },
     )]
     fn refcount(&self, frame: FrameAddress) -> Result<u8, Error> {
-        proof! { admit(); }
         let frame_number: usize = frame.into_frame_number().into_raw_value();
 
         if frame_number >= self.refcount.len() {
@@ -495,7 +491,6 @@ impl Inner {
             },
     )]
     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
-        proof! { admit(); }
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
         match self.bitmap.set(frame_number) {
             Ok(()) => {
@@ -533,7 +528,6 @@ impl Inner {
             ),
     )]
     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
-        proof! { admit(); }
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
         frame_number < self.bitmap.number_of_bits()
     }
