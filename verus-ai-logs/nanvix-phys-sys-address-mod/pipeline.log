@@ -70,3 +70,6 @@ Phases: proving → cheating-elimination + final-review
 PHASE: proving
 Module: sys-address-mod
 ============================================================
+[2026-06-15 04:14:22] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/mod.rs
+[2026-06-15 04:14:22] [PROVER] Running proving...
+[2026-06-15 04:14:22] [COPILOT] Running: copilot --model claude-opus-4.8 ...
