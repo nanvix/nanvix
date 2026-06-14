@@ -219,3 +219,91 @@ No changes to table.rs vs base — AST consistency trivially holds. Now running 
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-arch 2>&1 | tail -40
 
 [THINKING] Since table.rs hasn't changed from the base branch, the AST consistency check passes automatically. Now I'm running the architecture verification to confirm everything aligns.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Verification passes (exit 0), but 3 external_body across arch crate. Let me see which ones.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null
+
+[THINKING] The verification passed, but I'm seeing three external_body instances across the arch crate—two in table.rs are expected, so I need to track down where the third one is coming from by checking the details file.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+All 3 external_body (`invlpg`, `read`, `write`) are explicitly TCB-allowed. The two in-scope ones (read/write) are authorized. Let me confirm git state and check `make verify` target.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager status --short -- src/libs/arch/src/x86/mem/paging/ 2>&1; ec
+
+[THINKING] Looking at the three external body references, they're all already listed in tcb-allowed.md, so they're permitted. The `invlpg` call in mod.rs is outside the scope of the arch-paging-table module anyway, so there are no cheating violations to flag for this task. I should verify there are no admit, assume, or proof gaps in the scope by checking git status to see what files have been modified or added during the proving phase.
+[RESULT ✓] bash: === base branch table files ===
+100644 blob e152ad6429bff52d457c1b7b7a5ae8796bb18a44	src/libs/arch/src/x86/mem/paging/flags.rs
+040000 tree 79ddbe0d0f8fd0373469987be52982735ec48384	src/libs/arch/src/x86/mem/paging/frame
+100644 blob 6c2f998f27cda4026c303960bac13f9c585b0ff5	src/libs/arch/src/x86/mem/pa...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Working tree is clean — all files match base branch. Let me confirm spec/proof files are unchanged too.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for f in table.rs table.spec.rs table.proof.rs; do echo "=== $f ==="; git -
+
+[THINKING] The git status shows no uncommitted changes, and all three files—table.rs, table.spec.rs, and table.proof.rs—are present on the base branch unchanged. I should verify that the spec and proof files haven't diverged from the base version either.
+[RESULT ✓] bash: === table.rs ===
+(empty above = no diff)
+=== table.spec.rs ===
+(empty above = no diff)
+=== table.proof.rs ===
+(empty above = no diff)
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+All three files are byte-identical to the base branch, verify-arch passes (exit 0), and the only `external_body` items (`read`, `write`, plus out-of-scope `invlpg`) are all explicitly listed in `tcb-allowed.md`. There are zero unauthorized cheating items. Let me write the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls verus-ai-logs/nanvix-phys-arch-paging-table/cheating-elimination/ 2>&1
+[TOOL] report_intent: Writing fix report
+
+[THINKING] All three files match the base branch, so the verification passes. The only allowed external_body instances are TCB-approved, and there's no unauthorized cheating—no admit, assume, assume_specification, or cfg-gated exec anywhere in the arch-paging-table module. The work is essentially done, and I should just confirm the full crate doesn't regress. Now I'll write up the fix report.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: prover-claude-20260615-021904.jsonl
+prover-claude-20260615-021904.txt
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/cheating-elimination/fix_report.md with 3162 characters
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Done. Result: **PASS** — zero unauthorized cheating in `arch-paging-table`.
+
+## Findings
+- Scanned `table.rs`, `table.spec.rs`, `table.proof.rs`: **0** `admit`, **0** `assume`, **0** `assume_specification`, **0** cfg-gated exec.
+- Only cheating items are `external_body` on `Table::read` and `Table::write` — **both explicitly listed in `tcb-allowed.md`** (int-to-ptr / volatile page-table memory boundary Verus cannot model). These are authorized to keep `external_body` and carry real `#[verus_spec]` contracts.
+- The former `lemma_entry_roundtrip` axiom was already removed (documented in `table.proof.rs`); no proof depends on it.
+
+## Verification
+- `make verify-arch` → **exit 0**. Cheating check reports only the 3 TCB-allowed `external_body` (read, write, and out-of-scope `invlpg`).
+
+## AST consistency
+- All three files are **byte-identical** to base branch `verus-ai-prove-bottom-up` (clean working tree). No regression possible.
+
+Report written to `verus-ai-logs/nanvix-phys-arch-paging-table/cheating-elimination/fix_report.md`. No `verification_todo.md` needed — no stuck proof gaps.
+
+
+=== Session End ===
+Session: ea350f4b-5634-454a-9214-370235bca12b
+Duration: 114.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/cheating-elimination/prover-claude-20260615-021904.jsonl
