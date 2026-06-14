@@ -444,16 +444,38 @@ impl Inner {
     fn refcount(&self, frame: FrameAddress) -> Result<u8, Error> {
         // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
         // aligned address; compute the index totally (downstream bounds checks reject oversized).
-        let frame_number: usize = frame.into_raw_value() / mem::FRAME_SIZE;
+        let raw: usize = frame.into_raw_value();
+        let frame_number: usize = raw / mem::FRAME_SIZE;
+        if raw % mem::FRAME_SIZE != 0 {
+            // VERUS BUG FIX: an unaligned address is never a tracked frame; reject it.
+            // `refcount` only requires `self.inv()` (not `frame.inv()`), so `frame@` need not
+            // be page-aligned — the previous code missed this input validation, making the
+            // `allocated_frames.contains(frame@)` postcondition unreachable for unaligned input.
+            proof! { lemma_alloc_unaligned(self, frame@); }
+            let reason: &str = "unaligned frame address";
+            #[cfg(not(verus_keep_ghost))]
+            error!("{reason} (frame={frame:?})");
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
         proof! {
             let addr = frame@;
+            let i = frame_number as int;
             assert(addr >= 0);
             vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size());
+            assert(i == addr / spec_page_size());
             lemma_alloc_contains(self, addr);
             lemma_alloc_iff_key(self, addr);
         }
 
         if frame_number >= self.refcount.len() {
+            proof! {
+                // frame_number >= refcount.len() >= num_bits, and set_bits ⊆ [0, num_bits),
+                // so the bit is clear and the frame is not allocated.
+                let i = frame_number as int;
+                assert(i >= self.refcount@.len());
+                assert(self.refcount@.len() >= self.bitmap@.num_bits);
+                assert(!self.bitmap@.set_bits.contains(i));
+            }
             let reason: &str = "frame number out of bounds";
             #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
@@ -461,6 +483,12 @@ impl Inner {
         }
 
         if self.refcount[frame_number] == 0 {
+            proof! {
+                // refcount[i] == 0, so the bit is clear (internal_inv), hence not allocated.
+                let i = frame_number as int;
+                assert(self.refcount@[i] == 0);
+                assert(!self.bitmap@.set_bits.contains(i));
+            }
             let reason: &str = "frame is not allocated";
             #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
@@ -468,7 +496,12 @@ impl Inner {
         }
 
         proof! {
+            // refcount[i] != 0 and i < refcount.len(); tail-zero forces i < num_bits, so the
+            // bit is set, the frame is allocated, and its refcount-map value is the slot value.
             let i = frame_number as int;
+            assert(self.refcount@[i] != 0);
+            assert(i < self.bitmap@.num_bits);
+            assert(self.bitmap@.set_bits.contains(i));
             lemma_refcount_value(self, frame@);
         }
         Ok(self.refcount[frame_number])

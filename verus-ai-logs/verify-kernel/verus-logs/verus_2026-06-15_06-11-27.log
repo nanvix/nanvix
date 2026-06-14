@@ -1,0 +1,70 @@
+Timestamp: 2026-06-15_06-11-27
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+46 verified
+3 errors
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=19
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:270:17
+    |
+270 |                   Ok(()) => {
+    |                   ^^^^^^ failed this postcondition
+...
+321 | /         if self.refcount[frame_number] == 0 {
+322 | |             match self.bitmap.clear(frame_number) {
+323 | |                 Ok(()) => Ok(()),
+324 | |                 Err(error) => {
+...   |
+331 | |             Ok(())
+332 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:359:17
+    |
+359 |                 Ok(()) => {
+    |                 ^^^^^^ failed this postcondition
+...
+411 |         Ok(())
+    |         ------ at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:530:17
+    |
+530 |                   Ok(()) => {
+    |                   ^^^^^^ failed this postcondition
+...
+548 | /         match self.bitmap.set(frame_number) {
+549 | |             Ok(()) => {
+550 | |                 #[cfg(not(verus_keep_ghost))]
+551 | |                 debug_assert_eq!(self.refcount[frame_number], 0);
+...   |
+559 | |             },
+560 | |         }
+    | |_________- at the end of the function body
+
+verification results:: 46 verified, 3 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 3 previous errors

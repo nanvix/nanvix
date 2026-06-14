@@ -754,3 +754,164 @@ Let me run the baseline verify to confirm the current state.
 [TOOL] report_intent: Running baseline verification
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -25
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: - mod.rs:73 book_physical_memory_regions: external_body
+    - mod.rs:103 book_mmio_regions: external_body
+    - mod.spec.rs:69 ExLinkedList (struct): external_type_spec
+    - upool.rs:251 new: external_body
+    - upool.rs:289 alloc: external_body
+  Global: assume=0 external_body=19 admit=19 trusted=...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Compilation error. Let me check the log.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '1,80p'
+[RESULT ✓] bash: Timestamp: 2026-06-15_06-06-07
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=19
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking ker...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+The FIX C removal appears to have broken compilation. Let me investigate the hal layer usage.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 100.         Ok(Self(PageAligned::from_address(PhysicalAddress::from_raw_value(raw_addr)?)?))
+101.     }
+102. 
+103.     ///
+104.     /// # Description
+105.     ///
+106.     /// Converts a [`FrameAddress`] into a raw value.
+107.     ///
+108.     /// # Returns
+109.     ///
+110.     /// The raw value o...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,80p' src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use vst...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+This is a build-breaking conflict. Let me examine what FIX C removed.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git show 43d1db8e6 -- src/kernel/src/mm/phys/frame.spec.rs | head -120
+[RESULT ✓] bash: commit 43d1db8e6d3d81404790c77c23f55008db7378cf
+Author: Ruize Tang <1466040111@qq.com>
+Date:   Mon Jun 15 06:03:57 2026 +0800
+
+    [verus-ai] phys-frame: FIX C remove redundant PageAligned assume_specs; add arithmetic helper lemmas
+    
+    Co-authored-by: Copilot <223556219+Copilot@users.noreply.gi...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "into_raw_value\|impl.*Address for PageAligned\|assume_specification" src/ke
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:40:    fn into_raw_value(self) -> usize {
+src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:41:        self.0.into_raw_value()
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:7:pub assume_specification[ ::arch::mem::PAGE_ALIGNMENT ]...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Build is broken because FIX C removed needed specs. Let me look at the full PageAligned Address impl and the Address trait to decide the minimal fix.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '60,140p' src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] bash: }
+}
+
+impl<T: Address> Address for PageAligned<T> {
+    fn into_raw_value(self) -> usize {
+        self.0.into_raw_value()
+    }
+
+    fn clone_address(&self) -> Self {
+        PageAligned(self.0.clone_address())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Instantiates a new [`PageAligned`] f...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat src/kernel/src/hal/mem/types/address/aligned/page.spec.rs && echo "===DEREF impl=
+[RESULT ✓] bash: verus! {
+
+// `PAGE_ALIGNMENT` is an external (arch-crate) constant. Model it so that verified
+// exec code referencing it has a Verus specification. The page alignment's numeric
+// value is the page size (both are 4096 on the supported target), which is the link
+// that lets `from_address` relate `i...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: prove-frame, agent_type: general-purpose, status: running, description: Prove frame allocator methods, elapsed: 184s, total_turns: 0, model: claude-opus-4.8, current_intent: "Running baseline verification", tool_calls_completed: 19, (timed out wai...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+The agent is running its first verify cycle (baseline) and proceeding through the proofs. These verify cycles take ~5 minutes each, so this will take a while. I'm waiting for it to complete the proving work; I'll review and verify its results when it finishes.
+I found the root cause. The "42 verified" baseline was measured at commit `a142be31c` (before FIX C). FIX C (`43d1db8e6`) removed two `assume_specification`s that are actually **required** by the HAL layer (`hal/.../frame.rs:119,149` use `PageAligned::into_raw_value`/`deref`), breaking the verus build. The comment's claim that the trait contract covers them is wrong because the `impl Address for PageAligned` is external (outside `#[verus_verify]`).
+
+I'll restore these dependency contracts in **page.spec.rs** (PageAligned's own module/home) — honoring the literal rule "do not re-add them to frame.spec.rs".
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+The build fix is in place. Now let me implement item 1 (refcount alignment guard).
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 444.     fn refcount(&self, frame: FrameAddress) -> Result<u8, Error> {
+445.         // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
+446.         // aligned address; compute the index totally (downstream bounds checks reject oversized).
+447.         let raw: usize ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Now let me strengthen the refcount proof blocks to handle the Err arms and Ok arm.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Let me run verification on mm::phys to validate the build fix and refcount.
+[TOOL] report_intent: Verifying refcount and build fix
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -30
+[RESULT ✓] report_intent: Intent logged
